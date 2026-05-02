@@ -1,0 +1,97 @@
+# ── ServiceAccounts — un compte par service (least privilege) ──────────────────
+# OWASP K8s-SEC-02, CIS 5.1.1 : pas de serviceAccountToken monté par défaut
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexusrh-api
+  namespace: nexusrh
+  labels:
+    app.kubernetes.io/component: api
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexusrh-web
+  namespace: nexusrh
+  labels:
+    app.kubernetes.io/component: web
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexusrh-worker
+  namespace: nexusrh
+  labels:
+    app.kubernetes.io/component: worker
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexusrh-infra
+  namespace: nexusrh
+  labels:
+    app.kubernetes.io/component: infra
+automountServiceAccountToken: false
+---
+# ── Role API — lecture de ses propres secrets uniquement ───────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexusrh-api-role
+  namespace: nexusrh
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["nexusrh-app-secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["nexusrh-config"]
+    verbs: ["get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexusrh-api-rolebinding
+  namespace: nexusrh
+subjects:
+  - kind: ServiceAccount
+    name: nexusrh-api
+    namespace: nexusrh
+roleRef:
+  kind: Role
+  apiGroupname: rbac.authorization.k8s.io
+  name: nexusrh-api-role
+---
+# ── Role Worker ─────────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexusrh-worker-role
+  namespace: nexusrh
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["nexusrh-app-secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["nexusrh-config"]
+    verbs: ["get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexusrh-worker-rolebinding
+  namespace: nexusrh
+subjects:
+  - kind: ServiceAccount
+    name: nexusrh-worker
+    namespace: nexusrh
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: nexusrh-worker-role

@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  # En prod : secrets via External Secrets Operator (ne pas committer secrets.yaml)
+  # - secrets.yaml
+
+namePrefix: ""
+namespace: nexusrh
+
+patches:
+  - path: patches.yaml
+    target:
+      kind: Ingress
+      name: nexusrh-ingress
+  - path: replicas-patch.yaml
+    target:
+      kind: Deployment
+      name: nexusrh-api
+  - path: replicas-patch.yaml
+    target:
+      kind: Deployment
+      name: nexusrh-web
+
+images:
+  # Remplacer par votre registry CI/CD
+  - name: nexusrh/api
+    newName: ghcr.io/YOUR_ORG/nexusrh-api
+    newTag: "1.0.0"
+  - name: nexusrh/web
+    newName: ghcr.io/YOUR_ORG/nexusrh-web
+    newTag: "1.0.0"
+  - name: nexusrh/worker
+    newName: ghcr.io/YOUR_ORG/nexusrh-worker
+    newTag: "1.0.0"
+
+configMapGenerator:
+  - name: nexusrh-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn
+      - APP_URL=https://YOUR_DOMAIN
+      - API_URL=https://api.YOUR_DOMAIN

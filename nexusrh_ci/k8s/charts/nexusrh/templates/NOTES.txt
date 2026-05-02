@@ -1,0 +1,22 @@
+NexusRH déployé avec succès !
+
+Frontend : https://{{ .Values.global.domain }}
+API      : https://{{ .Values.global.apiDomain }}
+Swagger  : https://{{ .Values.global.apiDomain }}/docs
+
+Comptes de test (après seed) :
+  superadmin@nexusrh.com / SuperAdmin1234!
+  admin@techcorp.com     / Admin1234!
+  employe@techcorp.com   / Admin1234!
+
+Commandes utiles :
+  kubectl get pods -n {{ include "nexusrh.namespace" . }}
+  kubectl logs -n {{ include "nexusrh.namespace" . }} -l app.kubernetes.io/component=api -f
+
+  # Seed base de données
+  kubectl exec -n {{ include "nexusrh.namespace" . }} \
+    $(kubectl get pod -n {{ include "nexusrh.namespace" . }} -l app.kubernetes.io/component=api -o name | head -1) \
+    -- node dist/db/seed.js
+
+  # Désinstaller
+  helm uninstall {{ .Release.Name }} -n {{ include "nexusrh.namespace" . }}

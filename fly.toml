@@ -1,0 +1,52 @@
+app = "nexusrh-api"
+primary_region = "cdg"  # Paris — closest to French users
+kill_signal = "SIGINT"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+  target = "production"
+
+[build.args]
+  NODE_VERSION = "20"
+
+[env]
+  NODE_ENV = "production"
+  API_PORT = "4000"
+  LOG_LEVEL = "info"
+  # Override DATABASE_URL, REDIS_URL, JWT_SECRET via fly secrets
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = true      # Scale to zero on free tier
+  auto_start_machines = true
+  min_machines_running = 0       # 0 = free (stops when idle)
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+  tls_skip_verify = false
+
+[vm]
+  memory = "512mb"          # free tier: 256MB shared / upgrade to 512MB = ~$2/mo
+  cpu_kind = "shared"
+  cpus = 1
+
+[[mounts]]
+  # No persistent volume needed — all state in Neon + Upstash
+  # Uncomment if you add local file processing:
+  # source = "nexusrh_tmp"
+  # destination = "/app/tmp"
+
+[processes]
+  app = "node dist/index.js"

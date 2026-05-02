@@ -1,0 +1,59 @@
+# values.local.yaml — Surcharges pour cluster kind local
+# Usage : helm upgrade --install nexusrh . -f values.local.yaml -f values.secret.yaml
+
+global:
+  domain: nexusrh.local
+  apiDomain: api.nexusrh.local
+  imagePullPolicy: IfNotPresent
+
+# En local : baseline evite les rejets PSS sur les containers infra officiels
+pss:
+  enforceLevel: baseline
+  warnLevel: restricted
+
+images:
+  api:
+    repository: nexusrh/api
+    tag: local
+  web:
+    repository: nexusrh/web
+    tag: local
+  worker:
+    repository: nexusrh/worker
+    tag: local
+
+ingress:
+  certIssuer: nexusrh-local-issuer
+
+api:
+  replicas: 1
+  env:
+    NODE_ENV: development
+    LOG_LEVEL: debug
+  autoscaling:
+    enabled: false
+
+web:
+  replicas: 1
+
+worker:
+  replicas: 1
+
+# Desactiver les sous-charts Bitnami (images non disponibles sans auth Docker Hub)
+postgres:
+  enabled: false
+
+redis:
+  enabled: false
+
+minio:
+  enabled: false
+
+# Infra locale : images officielles Docker Hub avec noms de services compatibles
+infra:
+  enabled: true
+
+# Meilisearch : storage reduit en local
+meilisearch:
+  persistence:
+    size: 1Gi

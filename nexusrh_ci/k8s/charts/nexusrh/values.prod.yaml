@@ -1,0 +1,63 @@
+# values.prod.yaml — Surcharges production
+# Usage : helm upgrade --install nexusrh . -f values.prod.yaml -f values.secret.yaml
+# Remplacer YOUR_DOMAIN et ghcr.io/YOUR_ORG
+
+global:
+  domain: nexusrh.openlabconsulting.com
+  apiDomain: api.nexusrh.openlabconsulting.com
+  imagePullPolicy: Always
+
+images:
+  api:
+    repository: ghcr.io/YOUR_ORG/nexusrh-api
+    tag: "1.0.0"
+  web:
+    repository: ghcr.io/YOUR_ORG/nexusrh-web
+    tag: "1.0.0"
+  worker:
+    repository: ghcr.io/YOUR_ORG/nexusrh-worker
+    tag: "1.0.0"
+
+ingress:
+  certIssuer: letsencrypt-prod
+
+api:
+  replicas: 3
+  env:
+    NODE_ENV: production
+    LOG_LEVEL: warn
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+
+web:
+  replicas: 3
+
+worker:
+  replicas: 2
+
+postgres:
+  primary:
+    persistence:
+      size: 50Gi
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "4"
+        memory: "8Gi"
+
+redis:
+  master:
+    persistence:
+      size: 5Gi
+
+minio:
+  persistence:
+    size: 100Gi
+
+meilisearch:
+  persistence:
+    size: 20Gi

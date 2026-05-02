@@ -1,0 +1,131 @@
+import { useQuery } from '@tanstack/react-query'
+import { api, formatFCFA } from '@/lib/api'
+import { Building2, Users, TrendingUp, AlertCircle } from 'lucide-react'
+
+interface DashStats {
+  activeCount: number
+  trialCount: number
+  suspendedCount: number
+  totalCount: number
+}
+
+interface Tenant {
+  id: string; name: string; slug: string; plan_type: string
+  status: string; city: string; created_at: string
+  max_employees: number
+}
+
+export default function PlatformDashboard() {
+  const { data: statsData } = useQuery<{ data: DashStats }>({
+    queryKey: ['platform-stats'],
+    queryFn: () => api.get('/platform/dashboard').then(r => r.data),
+  })
+
+  const { data: tenantsData } = useQuery<{ data: Tenant[]; total: number }>({
+    queryKey: ['platform-tenants'],
+    queryFn: () => api.get('/platform/tenants?limit=10').then(r => r.data),
+  })
+
+  const stats = statsData?.data
+  const tenants = tenantsData?.data ?? []
+
+  const statusLabel: Record<string, string> = {
+    active: 'Actif', trial: 'Trial', suspended: 'Suspendu',
+  }
+  const statusColor: Record<string, string> = {
+    active: 'bg-green-100 text-green-700',
+    trial: 'bg-yellow-100 text-yellow-700',
+    suspended: 'bg-red-100 text-red-700',
+  }
+  const planLabel: Record<string, string> = {
+    trial: 'Trial', starter: 'Starter', business: 'Business',
+    enterprise: 'Enterprise', public_sector: 'Secteur Public',
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Tableau de bord plateforme</h1>
+        <p className="text-sm text-muted-foreground mt-1">NexusRH CI — OpenLab Consulting</p>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          { label: 'Tenants actifs',   value: stats?.activeCount ?? 0,    icon: Building2, color: 'bg-green-50 text-green-600' },
+          { label: 'En trial',          value: stats?.trialCount ?? 0,     icon: TrendingUp, color: 'bg-yellow-50 text-yellow-600' },
+          { label: 'Suspendus',          value: stats?.suspendedCount ?? 0, icon: AlertCircle, color: 'bg-red-50 text-red-600' },
+          { label: 'Total tenants',     value: stats?.totalCount ?? 0,     icon: Users, color: 'bg-blue-50 text-blue-600' },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                <p className="text-2xl font-bold">{value}</p>
+              </div>
+              <div className={`rounded-lg p-2 ${color}`}>
+                <Icon className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Liste tenants */}
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold">Tenants récents</h2>
+          <a href="/platform/tenants/new"
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
+            + Créer un tenant
+          </a>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="pb-2 pr-4">Entreprise</th>
+                <th className="pb-2 pr-4">Ville</th>
+                <th className="pb-2 pr-4">Plan</th>
+                <th className="pb-2 pr-4">Max employés</th>
+                <th className="pb-2">Statut</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {tenants.map(tenant => (
+                <tr key={tenant.id} className="hover:bg-muted/50">
+                  <td className="py-2.5 pr-4">
+                    <a href={`/platform/tenants/${tenant.id}`} className="font-medium hover:text-primary">
+                      {tenant.name}
+                    </a>
+                    <p className="text-xs text-muted-foreground">{tenant.slug}</p>
+                  </td>
+                  <td className="py-2.5 pr-4 text-muted-foreground">{tenant.city ?? '—'}</td>
+                  <td className="py-2.5 pr-4">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                      {planLabel[tenant.plan_type] ?? tenant.plan_type}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-4 text-muted-foreground">{tenant.max_employees}</td>
+                  <td className="py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[tenant.status] ?? ''}`}>
+                      {statusLabel[tenant.status] ?? tenant.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {tenants.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    Aucun tenant créé
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}

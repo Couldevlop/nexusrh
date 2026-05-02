@@ -1,0 +1,290 @@
+# ── values.yaml — NexusRH Helm Chart (valeurs par défaut) ─────────────────────
+# Surcharges : values.local.yaml (kind) | values.prod.yaml (cloud)
+
+global:
+  namespace: nexusrh
+  # Domaine principal (surchargé par overlay)
+  domain: nexusrh.example.com
+  apiDomain: api.nexusrh.example.com
+  imagePullPolicy: IfNotPresent
+  # Labels communs injectés sur toutes les ressources
+  labels:
+    app.kubernetes.io/part-of: nexusrh
+    app.kubernetes.io/managed-by: helm
+
+# ── Images ────────────────────────────────────────────────────────────────────
+images:
+  api:
+    repository: ghcr.io/couldevlop/nexusrh-ci-api
+    tag: latest
+  web:
+    repository: ghcr.io/couldevlop/nexusrh-ci-web
+    tag: latest
+  worker:
+    repository: ghcr.io/couldevlop/nexusrh-ci-worker
+    tag: latest
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  # Issuer cert-manager (surchargé par overlay)
+  certIssuer: nexusrh-local-issuer
+  tlsSecretName: nexusrh-tls
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/limit-rps: "30"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    nginx.ingress.kubernetes.io/add-base-url: "true"
+
+# ── API ───────────────────────────────────────────────────────────────────────
+api:
+  replicas: 2
+  port: 4001
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  pdb:
+    minAvailable: 1
+  env:
+    NODE_ENV: production
+    LOG_LEVEL: info
+    API_PORT: "4001"
+    DATABASE_POOL_MIN: "2"
+    DATABASE_POOL_MAX: "10"
+    JWT_EXPIRES_IN: "7d"
+    JWT_REFRESH_EXPIRES_IN: "30d"
+    MFA_ISSUER: NexusRH
+    S3_REGION: eu-west-1
+    S3_FORCE_PATH_STYLE: "true"
+    SMTP_PORT: "587"
+    SMTP_SECURE: "false"
+    FEATURE_AI_ASSISTANT: "true"
+    FEATURE_PREDICTIVE_ANALYTICS: "true"
+    FEATURE_ELECTRONIC_SIGNATURE: "true"
+    FEATURE_MULTI_COUNTRY: "false"
+    FEATURE_KIOSK_MODE: "true"
+    FEATURE_MOBILE_MONEY: "true"
+    FEATURE_CNPS_AUTO_EXPORT: "true"
+    FEATURE_DISA_GENERATOR: "true"
+    FEATURE_FDFP_MODULE: "true"
+    FEATURE_OHADA_CONTRACTS: "true"
+    FEATURE_MULTI_SITES: "false"
+    FEATURE_OFFLINE_PWA: "true"
+    AI_MODEL: claude-sonnet-4-20250514
+    AI_MAX_TOKENS: "4096"
+    AI_TEMPERATURE: "0.3"
+  # Secrets injectés (valeurs à fournir via --set ou values.secret.yaml)
+  secrets:
+    jwtSecret: ""
+    anthropicApiKey: ""
+    smtpUser: ""
+    smtpPass: ""
+    smtpFrom: ""
+    googleClientId: ""
+    googleClientSecret: ""
+    microsoftClientId: ""
+    microsoftClientSecret: ""
+    microsoftTenantId: common
+
+# ── Web ───────────────────────────────────────────────────────────────────────
+web:
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  pdb:
+    minAvailable: 1
+
+# ── Worker ────────────────────────────────────────────────────────────────────
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+# ── Sécurité (appliquée à tous les pods) ──────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# ── Pod Security Standards ────────────────────────────────────────────────────
+pss:
+  enforceLevel: restricted   # restricted | baseline | privileged
+  warnLevel: restricted
+
+# ── NetworkPolicies ───────────────────────────────────────────────────────────
+networkPolicies:
+  enabled: true
+  defaultDenyIngress: true
+  defaultDenyEgress: true
+
+# ── ResourceQuota + LimitRange ────────────────────────────────────────────────
+resourceQuota:
+  enabled: true
+  requests:
+    cpu: "8"
+    memory: "16Gi"
+  limits:
+    cpu: "16"
+    memory: "32Gi"
+  pods: "50"
+
+limitRange:
+  enabled: true
+  container:
+    defaultCpu: "500m"
+    defaultMemory: "512Mi"
+    defaultRequestCpu: "100m"
+    defaultRequestMemory: "128Mi"
+
+# ── PostgreSQL (Bitnami sub-chart) ────────────────────────────────────────────
+postgres:
+  enabled: true
+  auth:
+    username: nexusrh
+    database: nexusrh
+    # password injecté via --set postgres.auth.password=xxx ou valeurs CI
+    password: ""
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      runAsUser: 1001
+      fsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      runAsUser: 1001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+  metrics:
+    enabled: false
+
+# ── Redis (Bitnami sub-chart) ─────────────────────────────────────────────────
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    password: ""
+    existingSecret: ""
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  metrics:
+    enabled: false
+
+# ── MinIO (Bitnami sub-chart) ─────────────────────────────────────────────────
+minio:
+  enabled: true
+  auth:
+    rootUser: nexusrh-minio
+    rootPassword: ""
+    existingSecret: ""
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  defaultBuckets: nexusrh
+  apiIngress:
+    enabled: false
+  ingress:
+    enabled: false
+
+# ── Meilisearch (sub-chart) ───────────────────────────────────────────────────
+meilisearch:
+  enabled: true
+  environment:
+    MEILI_ENV: production
+  auth:
+    existingMasterKeySecret: ""
+    masterKey: ""
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+# ── Infra officielle (remplace Bitnami en local si enabled: true) ─────────────
+infra:
+  enabled: false

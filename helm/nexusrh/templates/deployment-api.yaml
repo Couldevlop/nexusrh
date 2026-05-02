@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nexusrh.fullname" . }}-api
+  labels:
+    {{- include "nexusrh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      {{- include "nexusrh.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "nexusrh.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: {{ include "nexusrh.serviceAccountName" . }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}-api:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.config.nodeEnv | quote }}
+            - name: APP_NAME
+              value: {{ .Values.config.appName | quote }}
+            - name: APP_URL
+              value: {{ .Values.config.appUrl | quote }}
+            - name: API_URL
+              value: {{ .Values.config.apiUrl | quote }}
+            - name: API_PORT
+              value: {{ .Values.api.service.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: redis-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: jwt-secret
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: anthropic-api-key
+                  optional: true
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: smtp-host
+                  optional: true
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: smtp-user
+                  optional: true
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: smtp-pass
+                  optional: true
+            - name: S3_ENDPOINT
+              value: "http://{{ include "nexusrh.fullname" . }}-minio:9000"
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nexusrh.secretName" . }}
+                  key: s3-secret-key
+            - name: MEILISEARCH_URL
+              value: "http://{{ include "nexusrh.fullname" . }}-meilisearch:7700"
+            - name: FEATURE_AI_ASSISTANT
+              value: {{ .Values.config.features.aiAssistant | quote }}
+            - name: FEATURE_ELECTRONIC_SIGNATURE
+              value: {{ .Values.config.features.electronicSignature | quote }}
+            - name: FEATURE_KIOSK_MODE
+              value: {{ .Values.config.features.kioskMode | quote }}
+          livenessProbe:
+            {{- toYaml .Values.api.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.api.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}

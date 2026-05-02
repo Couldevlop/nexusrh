@@ -1,0 +1,69 @@
+# ── ClusterIssuers cert-manager ─────────────────────────────────────────────────
+# Appliqué APRÈS `helm install cert-manager` (voir deploy.sh)
+
+# ── LOCAL : CA auto-signée (trust navigateur via mkcert ou import manuel) ───────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: nexusrh-selfsigned-ca
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nexusrh-local-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: nexusrh-local-ca
+  secretName: nexusrh-local-ca-secret
+  duration: 87600h  # 10 ans
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: nexusrh-selfsigned-ca
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: nexusrh-local-issuer
+spec:
+  ca:
+    secretName: nexusrh-local-ca-secret
+
+# ── STAGING Let's Encrypt (test sans rate limit) ─────────────────────────────
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ACME_EMAIL_PLACEHOLDER
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+
+# ── PRODUCTION Let's Encrypt ─────────────────────────────────────────────────
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ACME_EMAIL_PLACEHOLDER
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

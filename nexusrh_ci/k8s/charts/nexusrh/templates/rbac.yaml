@@ -1,0 +1,70 @@
+{{- $ns := include "nexusrh.namespace" . -}}
+{{- range list "api" "web" "worker" "infra" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexusrh-{{ . }}
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/component: {{ . }}
+automountServiceAccountToken: false
+---
+{{- end }}
+# Rôle API : lecture seule sur ses secrets et configmap
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexusrh-api-role
+  namespace: {{ $ns }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [nexusrh-app-secrets]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [nexusrh-config]
+    verbs: [get, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexusrh-api-rb
+  namespace: {{ $ns }}
+subjects:
+  - kind: ServiceAccount
+    name: nexusrh-api
+    namespace: {{ $ns }}
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: nexusrh-api-role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexusrh-worker-role
+  namespace: {{ $ns }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [nexusrh-app-secrets]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [nexusrh-config]
+    verbs: [get, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexusrh-worker-rb
+  namespace: {{ $ns }}
+subjects:
+  - kind: ServiceAccount
+    name: nexusrh-worker
+    namespace: {{ $ns }}
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: nexusrh-worker-role

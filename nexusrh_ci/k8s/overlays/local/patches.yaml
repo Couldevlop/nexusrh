@@ -1,0 +1,16 @@
+# Patch Ingress : domaine local + issuer local
+- op: replace
+  path: /metadata/annotations/cert-manager.io~1cluster-issuer
+  value: nexusrh-local-issuer
+- op: replace
+  path: /spec/tls/0/hosts/0
+  value: nexusrh.local
+- op: replace
+  path: /spec/tls/0/hosts/1
+  value: api.nexusrh.local
+- op: replace
+  path: /spec/rules/0/host
+  value: nexusrh.local
+- op: replace
+  path: /spec/rules/1/host
+  value: api.nexusrh.local

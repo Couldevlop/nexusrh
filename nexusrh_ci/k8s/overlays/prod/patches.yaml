@@ -1,0 +1,16 @@
+# Patch Ingress production : Let's Encrypt + votre domaine
+- op: replace
+  path: /metadata/annotations/cert-manager.io~1cluster-issuer
+  value: letsencrypt-prod
+- op: replace
+  path: /spec/tls/0/hosts/0
+  value: YOUR_DOMAIN
+- op: replace
+  path: /spec/tls/0/hosts/1
+  value: api.YOUR_DOMAIN
+- op: replace
+  path: /spec/rules/0/host
+  value: YOUR_DOMAIN
+- op: replace
+  path: /spec/rules/1/host
+  value: api.YOUR_DOMAIN

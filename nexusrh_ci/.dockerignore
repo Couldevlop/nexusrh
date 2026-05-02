@@ -1,0 +1,9 @@
+**/node_modules
+**/.turbo
+**/.next
+**/dist
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+k8s/charts/nexusrh/values.secret.yaml

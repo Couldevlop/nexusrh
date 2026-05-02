@@ -1,0 +1,31 @@
+{
+  "name": "@nexusrh/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3",
+    "@nexusrh/shared": "workspace:*",
+    "bullmq": "^5.8.2",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.31.2",
+    "ioredis": "^5.4.1",
+    "nodemailer": "^6.9.14",
+    "pg": "^8.12.0",
+    "pino": "^9.3.1",
+    "pino-pretty": "^11.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/nodemailer": "^6.4.15",
+    "@types/pg": "^8.11.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,74 @@
+# ── Ingress NGINX + TLS (cert-manager) ─────────────────────────────────────────
+# OWASP A02 : HTTPS forcé, HSTS, headers sécurité
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexusrh-ingress
+  namespace: nexusrh
+  annotations:
+    # TLS terminaison + cert-manager (issuer injecté par overlay)
+    cert-manager.io/cluster-issuer: "ISSUER_PLACEHOLDER"
+    # ── Security Headers (OWASP A05) ──────────────────────────────────────────
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 0";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: geolocation=(), microphone=(), camera=()";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss:; font-src 'self' data:;";
+    # ── HTTPS forcé ────────────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # ── HSTS (1 an, preload) ──────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/server-snippet: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    # ── Rate limiting (OWASP A06, DoS protection) ─────────────────────────────
+    nginx.ingress.kubernetes.io/limit-rps: "30"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    # ── Proxy timeouts ────────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # ── Upload max (notes de frais, documents) ────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # ── WebSocket (notifications temps réel) ──────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-set-headers: "nexusrh/websocket-headers"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - INGRESS_HOST_PLACEHOLDER
+        - api.INGRESS_HOST_PLACEHOLDER
+      secretName: nexusrh-tls
+  rules:
+    - host: INGRESS_HOST_PLACEHOLDER
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-svc
+                port:
+                  number: 3000
+    - host: api.INGRESS_HOST_PLACEHOLDER
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-svc
+                port:
+                  number: 4000
+---
+# Headers WebSocket
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: websocket-headers
+  namespace: nexusrh
+data:
+  Upgrade: "$http_upgrade"
+  Connection: "upgrade"

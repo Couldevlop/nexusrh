@@ -1,0 +1,25 @@
+{
+  "name": "nexusrh-ci",
+  "private": true,
+  "version": "1.0.0",
+  "description": "NexusRH CI — SIRH SaaS Multi-Tenant · Côte d'Ivoire · OpenLab Consulting",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "e2e": "turbo run e2e",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^1.13.3",
+    "typescript": "^5.4.5",
+    "@types/node": "^20.14.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.4.0"
+}

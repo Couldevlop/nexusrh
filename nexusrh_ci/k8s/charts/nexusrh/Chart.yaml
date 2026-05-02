@@ -1,0 +1,40 @@
+apiVersion: v2
+name: nexusrh
+description: SIRH SaaS Multi-Tenant — NexusRH
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/YOUR_ORG/nexusrh
+keywords: [hrms, saas, multi-tenant, rh]
+maintainers:
+  - name: OpenLab
+    email: cti.intelligency@gmail.com
+
+dependencies:
+  # ── PostgreSQL 16 (Bitnami) ────────────────────────────────────────────────
+  - name: postgresql
+    version: "16.3.3"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    alias: postgres
+    condition: postgres.enabled
+
+  # ── Redis 7 (Bitnami) ─────────────────────────────────────────────────────
+  - name: redis
+    version: "20.6.3"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    alias: redis
+    condition: redis.enabled
+
+  # ── MinIO (Bitnami) ───────────────────────────────────────────────────────
+  - name: minio
+    version: "14.9.3"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    alias: minio
+    condition: minio.enabled
+
+  # ── Meilisearch ───────────────────────────────────────────────────────────
+  - name: meilisearch
+    version: "0.10.0"
+    repository: "https://meilisearch.github.io/meilisearch-kubernetes"
+    alias: meilisearch
+    condition: meilisearch.enabled

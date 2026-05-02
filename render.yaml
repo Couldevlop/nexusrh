@@ -1,0 +1,170 @@
+## ─────────────────────────────────────────────────────────────────────────────
+## NexusRH — Render Blueprint
+## Déploiement one-click : https://render.com/deploy
+## ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── API Backend ──────────────────────────────────────────────────────────────
+  - type: web
+    name: nexusrh-api
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter api run build
+    startCommand: pnpm --filter api run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_NAME
+        value: NexusRH
+      - key: API_PORT
+        value: "4000"
+      - key: LOG_LEVEL
+        value: info
+      - key: APP_URL
+        fromService:
+          type: web
+          name: nexusrh-web
+          property: host
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexusrh-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: nexusrh-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: MEILISEARCH_URL
+        fromService:
+          type: web
+          name: nexusrh-meilisearch
+          property: host
+      - key: MEILISEARCH_MASTER_KEY
+        generateValue: true
+      - key: S3_ENDPOINT
+        value: https://s3.eu-west-1.amazonaws.com
+      - key: S3_BUCKET
+        value: nexusrh
+      - key: S3_REGION
+        value: eu-west-1
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-sonnet-4-20250514
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: "NexusRH <noreply@nexusrh.com>"
+      - key: FEATURE_AI_ASSISTANT
+        value: "true"
+      - key: FEATURE_ELECTRONIC_SIGNATURE
+        value: "true"
+      - key: FEATURE_KIOSK_MODE
+        value: "true"
+
+  # ── Frontend React ────────────────────────────────────────────────────────────
+  - type: web
+    name: nexusrh-web
+    runtime: static
+    region: frankfurt
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter web run build
+    staticPublishPath: apps/web/dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: nexusrh-api
+          property: host
+
+  # ── Worker BullMQ ─────────────────────────────────────────────────────────────
+  - type: worker
+    name: nexusrh-worker
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter worker run build
+    startCommand: pnpm --filter worker run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexusrh-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: nexusrh-redis
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: S3_ENDPOINT
+        value: https://s3.eu-west-1.amazonaws.com
+      - key: S3_BUCKET
+        value: nexusrh
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+
+  # ── Meilisearch ───────────────────────────────────────────────────────────────
+  - type: web
+    name: nexusrh-meilisearch
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: Dockerfile.meilisearch
+    envVars:
+      - key: MEILI_ENV
+        value: production
+      - key: MEILI_MASTER_KEY
+        generateValue: true
+
+databases:
+  - name: nexusrh-postgres
+    databaseName: nexusrh
+    user: nexusrh
+    region: frankfurt
+    plan: starter
+    postgresMajorVersion: "16"
+
+  - name: nexusrh-redis
+    region: frankfurt
+    plan: starter
+    ipAllowList: []

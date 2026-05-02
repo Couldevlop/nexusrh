@@ -1,0 +1,92 @@
+version: '3.9'
+
+# NexusRH CI — Infrastructure locale
+# Ports distincts de NexusRH (parent) pour cohabitation :
+#   PostgreSQL : 5434  (NexusRH : 5433)
+#   Redis      : 6380  (NexusRH : 6379)
+#   Meilisearch: 7701  (NexusRH : 7700)
+#   MinIO API  : 9002  (NexusRH : 9000)
+#   MinIO UI   : 9003  (NexusRH : 9001)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexusrhci_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexusrhci
+      POSTGRES_USER: nexusrhci
+      POSTGRES_PASSWORD: nexusrhci
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '5434:5432'
+    volumes:
+      - nexusrhci_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexusrhci -d nexusrhci']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexusrhci_redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    volumes:
+      - nexusrhci_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: nexusrhci_meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: nexusrhci-dev-master-key
+      MEILI_ENV: development
+    ports:
+      - '7701:7700'
+    volumes:
+      - nexusrhci_meilisearch_data:/meili_data
+
+  minio:
+    image: minio/minio:latest
+    container_name: nexusrhci_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9002:9000'
+      - '9003:9001'
+    volumes:
+      - nexusrhci_minio_data:/data
+    command: server /data --console-address ':9001'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: nexusrhci_mailhog
+    restart: unless-stopped
+    ports:
+      - '1026:1025'  # SMTP
+      - '8026:8025'  # UI web
+
+volumes:
+  nexusrhci_postgres_data:
+  nexusrhci_redis_data:
+  nexusrhci_meilisearch_data:
+  nexusrhci_minio_data:
+
+networks:
+  default:
+    name: nexusrhci_network

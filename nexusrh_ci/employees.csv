@@ -1,0 +1,3 @@
+﻿prenom;nom;email;date_naissance;telephone;poste;departement;date_embauche;salaire_brut;type_contrat;statut;sexe;numero_cnps;ville
+Kouamé;Konan;thomscoulio@gmail,com;15/03/1985;+225 07 12 34 56;Développeur Senior;Engineering;10/01/2022;450000;CDI;active;M;CI-123456;Abidjan
+Aminata;Traoré;devopsdevdata@gmail,com;22/07/1990;+225 05 98 76 54;Chef de projet;Direction;01/06/2021;650000;CDI;active;F;CI-789012;Abidjan

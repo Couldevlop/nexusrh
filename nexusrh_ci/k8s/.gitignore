@@ -1,0 +1,17 @@
+# Secrets Helm — NE JAMAIS COMMITTER
+charts/nexusrh/values.secret.yaml
+charts/*/values.secret.yaml
+
+# Dépendances Helm (générées par helm dependency update)
+charts/nexusrh/charts/
+charts/nexusrh/Chart.lock
+
+# CA locale exportée
+*.ca.crt *.local.crt
+
+# Kustomize (legacy — remplacé par Helm)
+overlays/local/secrets.yaml
+overlays/prod/secrets.yaml
+
+# Temporaires
+*.tmp manifest-*.yaml

@@ -1,0 +1,18 @@
+# Meilisearch self-hosted — pour Render free tier ou tout hébergeur Docker
+# Usage : docker build -f Dockerfile.meilisearch -t nexusrh-meilisearch .
+#         docker run -p 7700:7700 -e MEILI_MASTER_KEY=nexusrh-key nexusrh-meilisearch
+
+FROM getmeili/meilisearch:v1.6
+
+# La clé master est injectée via variable d'environnement au runtime
+# MEILI_MASTER_KEY=votre-clé-secrète
+ENV MEILI_ENV=production
+ENV MEILI_NO_ANALYTICS=true
+
+# Données persistées dans /meili_data (à monter comme volume)
+VOLUME ["/meili_data"]
+
+EXPOSE 7700
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:7700/health | grep -q '"status":"available"' || exit 1

@@ -1,0 +1,194 @@
+# ── NetworkPolicies — défaut : tout bloquer (OWASP A01, CIS 5.3.2) ──────────────
+# Stratégie : default-deny tout puis ouvrir au minimum
+
+# 1. Bloquer tout trafic entrant dans le namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: nexusrh
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2. Bloquer tout trafic sortant du namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: nexusrh
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+# 3. DNS autorisé (port 53 UDP/TCP vers kube-dns)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: nexusrh
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# 4. Ingress NGINX → API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 4000
+          protocol: TCP
+---
+# 5. Ingress NGINX → Web
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-web
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 3000
+          protocol: TCP
+---
+# 6. API/Worker → PostgreSQL (label réel : app=nexusrh-infra-postgres)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-postgres
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app: nexusrh-infra-postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, worker]
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# 7. API/Worker → Redis (label réel : app=nexusrh-infra-redis)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-redis
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app: nexusrh-infra-redis
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, worker]
+      ports:
+        - port: 6379
+          protocol: TCP
+---
+# 8. API/Worker → MinIO (label réel : app=nexusrh-infra-minio)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-minio
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app: nexusrh-infra-minio
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, worker]
+      ports:
+        - port: 9000
+          protocol: TCP
+        - port: 9001
+          protocol: TCP
+---
+# 9. Egress API → infra interne + SMTP + HTTPS (OWASP A10 anti-SSRF)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [nexusrh-infra-postgres, nexusrh-infra-redis, nexusrh-infra-minio]
+    - ports:
+        - port: 587
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+---
+# 10. Egress Worker
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-egress
+  namespace: nexusrh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [nexusrh-infra-postgres, nexusrh-infra-redis, nexusrh-infra-minio]
+    - ports:
+        - port: 587
+          protocol: TCP
+        - port: 443
+          protocol: TCP

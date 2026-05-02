@@ -1,0 +1,25 @@
+apiVersion: v2
+name: nexusrh
+description: NexusRH — SIRH SaaS Multi-Tenant. Déploiement Kubernetes on-premise ou cloud.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - hrms
+  - hris
+  - sirh
+  - saas
+  - multi-tenant
+home: https://github.com/your-org/nexusrh
+maintainers:
+  - name: Openlab
+    email: contact@openlab.fr
+dependencies:
+  - name: postgresql
+    version: "^15.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "^18.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

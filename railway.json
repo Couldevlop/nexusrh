@@ -1,0 +1,59 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "nixpacks"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 3
+  },
+  "services": {
+    "api": {
+      "source": {
+        "repo": ".",
+        "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter api run build",
+        "startCommand": "pnpm --filter api run start"
+      },
+      "deploy": {
+        "healthcheckPath": "/health",
+        "healthcheckTimeout": 30
+      },
+      "variables": {
+        "NODE_ENV": "production",
+        "APP_NAME": "NexusRH",
+        "API_PORT": "4000",
+        "LOG_LEVEL": "info",
+        "JWT_EXPIRES_IN": "7d",
+        "JWT_REFRESH_EXPIRES_IN": "30d",
+        "AI_MODEL": "claude-sonnet-4-20250514",
+        "FEATURE_AI_ASSISTANT": "true",
+        "FEATURE_ELECTRONIC_SIGNATURE": "true",
+        "FEATURE_KIOSK_MODE": "true",
+        "S3_REGION": "eu-west-1",
+        "S3_FORCE_PATH_STYLE": "false"
+      }
+    },
+    "web": {
+      "source": {
+        "repo": ".",
+        "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter web run build",
+        "staticDir": "apps/web/dist"
+      },
+      "deploy": {
+        "staticDir": "apps/web/dist"
+      }
+    },
+    "worker": {
+      "source": {
+        "repo": ".",
+        "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter worker run build",
+        "startCommand": "pnpm --filter worker run start"
+      },
+      "variables": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

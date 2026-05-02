@@ -1,0 +1,4 @@
+# En local kind avec un seul nœud worker : supprimer la contrainte tier
+# (kind labelle les workers, mais on veut laisser l'infra sur n'importe quel nœud)
+- op: remove
+  path: /spec/template/spec/nodeSelector

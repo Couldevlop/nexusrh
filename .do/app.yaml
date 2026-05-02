@@ -1,0 +1,163 @@
+## ─────────────────────────────────────────────────────────────────────────────
+## NexusRH — DigitalOcean App Platform Blueprint
+## Déploiement : doctl apps create --spec .do/app.yaml
+## ─────────────────────────────────────────────────────────────────────────────
+
+name: nexusrh
+region: fra
+
+services:
+  # ── API Backend ──────────────────────────────────────────────────────────────
+  - name: api
+    source_dir: /
+    github:
+      repo: your-github-org/nexusrh
+      branch: main
+      deploy_on_push: true
+    build_command: pnpm install --frozen-lockfile && pnpm --filter api run build
+    run_command: pnpm --filter api run start
+    environment_slug: node-js
+    instance_size_slug: professional-xs
+    instance_count: 1
+    http_port: 4000
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 15
+      period_seconds: 30
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: APP_NAME
+        value: NexusRH
+      - key: API_PORT
+        value: "4000"
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        value: ${nexusrh-db.DATABASE_URL}
+        type: SECRET
+      - key: REDIS_URL
+        value: ${nexusrh-redis.DATABASE_URL}
+        type: SECRET
+      - key: JWT_SECRET
+        value: ""
+        type: SECRET
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: ANTHROPIC_API_KEY
+        value: ""
+        type: SECRET
+      - key: AI_MODEL
+        value: claude-sonnet-4-20250514
+      - key: SMTP_HOST
+        value: ""
+        type: SECRET
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        value: ""
+        type: SECRET
+      - key: SMTP_PASS
+        value: ""
+        type: SECRET
+      - key: S3_ENDPOINT
+        value: https://fra1.digitaloceanspaces.com
+      - key: S3_BUCKET
+        value: nexusrh
+      - key: S3_REGION
+        value: fra1
+      - key: S3_ACCESS_KEY
+        value: ""
+        type: SECRET
+      - key: S3_SECRET_KEY
+        value: ""
+        type: SECRET
+      - key: MEILISEARCH_URL
+        value: http://meilisearch:7700
+      - key: MEILISEARCH_MASTER_KEY
+        value: ""
+        type: SECRET
+      - key: FEATURE_AI_ASSISTANT
+        value: "true"
+      - key: FEATURE_ELECTRONIC_SIGNATURE
+        value: "true"
+      - key: FEATURE_KIOSK_MODE
+        value: "true"
+
+  # ── Frontend React (SPA) ──────────────────────────────────────────────────────
+  - name: web
+    source_dir: /
+    github:
+      repo: your-github-org/nexusrh
+      branch: main
+      deploy_on_push: true
+    build_command: pnpm install --frozen-lockfile && pnpm --filter web run build
+    environment_slug: node-js
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    output_dir: apps/web/dist
+    routes:
+      - path: /
+        preserve_path_prefix: false
+    envs:
+      - key: VITE_API_URL
+        value: ${api.PUBLIC_URL}
+
+  # ── Worker BullMQ ─────────────────────────────────────────────────────────────
+  - name: worker
+    source_dir: /
+    github:
+      repo: your-github-org/nexusrh
+      branch: main
+      deploy_on_push: true
+    build_command: pnpm install --frozen-lockfile && pnpm --filter worker run build
+    run_command: pnpm --filter worker run start
+    environment_slug: node-js
+    instance_size_slug: basic-xs
+    instance_count: 1
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: ${nexusrh-db.DATABASE_URL}
+        type: SECRET
+      - key: REDIS_URL
+        value: ${nexusrh-redis.DATABASE_URL}
+        type: SECRET
+      - key: ANTHROPIC_API_KEY
+        value: ""
+        type: SECRET
+      - key: SMTP_HOST
+        value: ""
+        type: SECRET
+      - key: SMTP_USER
+        value: ""
+        type: SECRET
+      - key: SMTP_PASS
+        value: ""
+        type: SECRET
+      - key: S3_ENDPOINT
+        value: https://fra1.digitaloceanspaces.com
+      - key: S3_BUCKET
+        value: nexusrh
+      - key: S3_ACCESS_KEY
+        value: ""
+        type: SECRET
+      - key: S3_SECRET_KEY
+        value: ""
+        type: SECRET
+
+databases:
+  - name: nexusrh-db
+    engine: PG
+    version: "16"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1
+
+  - name: nexusrh-redis
+    engine: REDIS
+    version: "7"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1

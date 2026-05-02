@@ -1,0 +1,34 @@
+{{- $ns := include "nexusrh.namespace" . -}}
+{{- $rel := .Release.Name -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexusrh-config
+  namespace: {{ $ns }}
+  labels:
+    {{- include "nexusrh.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.api.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  APP_URL: "https://{{ .Values.global.domain }}"
+  API_URL: "https://{{ .Values.global.apiDomain }}"
+  DATABASE_HOST: "{{ $rel }}-postgres-postgresql.{{ $ns }}.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "nexusrh"
+  DATABASE_URL: "postgresql://nexusrh:$(POSTGRES_PASSWORD)@{{ $rel }}-postgres-postgresql.{{ $ns }}.svc.cluster.local:5432/nexusrh"
+  REDIS_URL: "redis://:$(REDIS_PASSWORD)@{{ $rel }}-redis-master.{{ $ns }}.svc.cluster.local:6379"
+  S3_ENDPOINT: "http://{{ $rel }}-minio.{{ $ns }}.svc.cluster.local:9000"
+  S3_BUCKET: "nexusrh"
+  S3_REGION: "eu-west-1"
+  S3_FORCE_PATH_STYLE: "true"
+  MEILISEARCH_URL: "http://{{ $rel }}-meilisearch.{{ $ns }}.svc.cluster.local:7700"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_SECURE: "false"
+  LOCALE: "fr-CI"
+  CURRENCY: "XOF"
+  TIMEZONE: "Africa/Abidjan"
+  AI_SYSTEM_LOCALE: "ci"
+  ECNPS_EXPORT_FORMAT: "csv"
+  HOSTING_LOCATION: "cloud"

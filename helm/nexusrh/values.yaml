@@ -1,0 +1,188 @@
+## ─────────────────────────────────────────────────────────────────────────────
+## NexusRH Helm Chart — values.yaml
+## Usage : helm install nexusrh ./helm/nexusrh -f my-values.yaml
+## ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+image:
+  registry: docker.io
+  repository: openlab/nexusrh
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# ── Replicas ──────────────────────────────────────────────────────────────────
+replicaCount:
+  api: 2
+  web: 2
+  worker: 1
+
+# ── Application config ────────────────────────────────────────────────────────
+config:
+  nodeEnv: production
+  appName: NexusRH
+  appUrl: https://nexusrh.example.com
+  apiUrl: https://api.nexusrh.example.com
+  logLevel: info
+  features:
+    aiAssistant: true
+    electronicSignature: true
+    kioskMode: true
+    multiCountry: false
+
+# ── Secrets (à définir dans un Secret K8s ou via Vault) ──────────────────────
+secrets:
+  # Créer manuellement : kubectl create secret generic nexusrh-secrets \
+  #   --from-literal=jwt-secret="..." \
+  #   --from-literal=anthropic-api-key="..."
+  existingSecret: ""
+  jwtSecret: "change-me-minimum-32-characters-long!!"
+  anthropicApiKey: ""
+  smtpHost: smtp.example.com
+  smtpUser: ""
+  smtpPass: ""
+  s3AccessKey: minioadmin
+  s3SecretKey: minioadmin
+
+# ── API ───────────────────────────────────────────────────────────────────────
+api:
+  service:
+    type: ClusterIP
+    port: 4000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 4000
+    initialDelaySeconds: 30
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 4000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# ── Web (frontend) ────────────────────────────────────────────────────────────
+web:
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Worker ────────────────────────────────────────────────────────────────────
+worker:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: nexusrh.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web
+    - host: api.nexusrh.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api
+  tls:
+    - secretName: nexusrh-tls
+      hosts:
+        - nexusrh.example.com
+        - api.nexusrh.example.com
+
+# ── PostgreSQL (Bitnami chart) ────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    username: nexusrh
+    password: nexusrh-pg-password
+    database: nexusrh
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+
+# ── Redis (Bitnami chart) ─────────────────────────────────────────────────────
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: nexusrh-redis-password
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# ── MinIO (stockage fichiers S3-compatible) ────────────────────────────────────
+minio:
+  enabled: true
+  auth:
+    rootUser: minioadmin
+    rootPassword: minioadmin
+  defaultBuckets: nexusrh
+  persistence:
+    enabled: true
+    size: 50Gi
+
+# ── Meilisearch ───────────────────────────────────────────────────────────────
+meilisearch:
+  enabled: true
+  masterKey: nexusrh-search-master-key
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# ── ServiceAccount ────────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+
+# ── Pod disruption budget ─────────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ── Network policy ────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
