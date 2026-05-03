@@ -7,6 +7,14 @@ on:
       - 'nexusrh_ci/apps/**'
       - 'nexusrh_ci/packages/**'
       - 'nexusrh_ci/pnpm-lock.yaml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environnement cible'
+        required: true
+        default: preprod
+        type: choice
+        options: [preprod]
 
 env:
   REGISTRY: ghcr.io
