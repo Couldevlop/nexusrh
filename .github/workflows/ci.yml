@@ -193,7 +193,7 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
-          target: production
+          target: runner
 
       - name: Build & push Web (amd64 + arm64)
         uses: docker/build-push-action@v6
@@ -206,7 +206,7 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
-          target: production
+          target: runner
           build-args: |
             VITE_API_URL=${{ secrets.VITE_API_URL || 'http://localhost:4000' }}
 
@@ -221,7 +221,7 @@ jobs:
           labels: ${{ steps.meta-worker.outputs.labels }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
-          target: production
+          target: runner
 
       - name: Docker image digest summary
         run: |

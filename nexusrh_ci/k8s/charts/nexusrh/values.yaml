@@ -2,7 +2,7 @@
 # Surcharges : values.local.yaml (kind) | values.prod.yaml (cloud)
 
 global:
-  namespace: nexusrh
+  namespace: nexusrh-ci
   # Domaine principal (surchargé par overlay)
   domain: nexusrh.example.com
   apiDomain: api.nexusrh.example.com

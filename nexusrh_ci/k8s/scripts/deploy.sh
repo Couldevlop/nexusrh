@@ -4,8 +4,8 @@
 set -euo pipefail
 
 ENV="${1:-preprod}"
-RELEASE="nexusrh"
-NAMESPACE="nexusrh"
+RELEASE="nexusrh-ci"
+NAMESPACE="nexusrh-ci"
 CHART="$(dirname "$0")/../charts/nexusrh"
 SECRET_FILE="$CHART/values.secret.yaml"
 

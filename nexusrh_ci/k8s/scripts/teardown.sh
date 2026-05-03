@@ -3,8 +3,8 @@
 # Usage : ./scripts/teardown.sh [--purge]   (--purge supprime aussi les PVCs/données)
 set -euo pipefail
 
-RELEASE="nexusrh"
-NAMESPACE="nexusrh"
+RELEASE="nexusrh-ci"
+NAMESPACE="nexusrh-ci"
 PURGE="${1:-}"
 
 echo "=== NexusRH Teardown ==="
