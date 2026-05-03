@@ -68,6 +68,9 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Verify build context
+        run: ls -la nexusrh_ci/apps/${{ matrix.app }}/
+
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
@@ -75,8 +78,8 @@ jobs:
           file: nexusrh_ci/apps/${{ matrix.app }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=ci-${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=ci-${{ matrix.app }}
+          cache-from: type=gha,scope=ci-${{ matrix.app }}-v2
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.app }}-v2
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@master
