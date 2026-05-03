@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @nexusrh/shared build
       - run: pnpm --filter @nexusrh/api run type-check
       - run: pnpm --filter web run type-check
 
