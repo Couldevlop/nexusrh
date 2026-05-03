@@ -16,7 +16,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY tsconfig.base.json ./
 COPY apps/api/ ./apps/api/
 
-RUN pnpm --filter @nexusrhci/api run build
+WORKDIR /build/apps/api
+RUN /build/node_modules/.bin/tsc -p tsconfig.build.json
 
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner

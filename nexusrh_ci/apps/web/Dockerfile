@@ -16,7 +16,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY tsconfig.base.json ./
 COPY apps/web/ ./apps/web/
 
-RUN pnpm --filter @nexusrhci/web run build
+WORKDIR /build/apps/web
+RUN /build/node_modules/.bin/vite build
 
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
