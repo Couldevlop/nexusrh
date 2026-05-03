@@ -4,104 +4,41 @@ on:
   push:
     branches: [main]
     tags: ['v*.*.*']
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'k8s/**'
   workflow_dispatch:
     inputs:
       environment:
         description: 'Environnement cible'
         required: true
-        default: production
+        default: preprod
         type: choice
-        options: [staging, production]
-      run_seed:
-        description: 'Relancer le seed (données démo)'
-        required: false
-        default: 'false'
-        type: boolean
+        options: [preprod, production]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
-  # ─── Deploy on-premise via SSH ──────────────────────────────────────────────
-  deploy-onprem:
-    name: Deploy on-premise → ${{ github.event.inputs.environment || 'production' }}
-    runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
-    if: vars.DEPLOY_TYPE == 'onprem'
-    concurrency:
-      group: deploy-${{ github.event.inputs.environment || 'production' }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          timeout: 120s
-          script: |
-            set -e
-            cd /opt/nexusrh
-
-            echo "==> Pulling latest images..."
-            docker compose -f docker-compose.prod.yml pull
-
-            echo "==> Stopping old containers..."
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans --no-build
-
-            echo "==> Waiting for API health..."
-            timeout 60 bash -c 'until curl -sf http://localhost:4000/health; do sleep 2; done'
-
-            echo "==> Running migrations (idempotent)..."
-            # Le boot auto-migrate gère ça — cette ligne est un filet de sécurité
-            docker compose -f docker-compose.prod.yml exec -T api node -e "
-              import('./dist/db/ensure-platform.js').then(m => m.ensurePlatformSchema()).then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })
-            " || true
-
-            echo "==> Cleanup old images..."
-            docker image prune -f --filter 'until=24h'
-
-            echo "==> Deployment complete ✓"
-
-      - name: Smoke test production
-        if: success()
-        run: |
-          DEPLOY_URL="${{ secrets.APP_URL || 'http://localhost:4000' }}"
-          curl -sf "${DEPLOY_URL}/health" | grep -q '"status":"ok"' && echo "Health check passed" || (echo "Health check FAILED" && exit 1)
-          curl -sf "${DEPLOY_URL}/metrics" | grep -q 'nexusrh_up 1' && echo "Metrics OK" || echo "Metrics not available (warn)"
-
-  # ─── Deploy to Kubernetes (Helm) ───────────────────────────────────────────
   deploy-k8s:
-    name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'production' }}
+    name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'preprod' }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
-    if: vars.DEPLOY_TYPE == 'k8s' || vars.DEPLOY_TYPE == ''
+    environment: ${{ github.event.inputs.environment || 'preprod' }}
     concurrency:
-      group: deploy-k8s-${{ github.event.inputs.environment || 'production' }}
+      group: deploy-k8s-${{ github.event.inputs.environment || 'preprod' }}
       cancel-in-progress: false
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+      - uses: azure/setup-kubectl@v3
         with: { version: 'latest' }
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v4
         with: { version: 'latest' }
 
-      - name: Configure kubeconfig
+      - name: Configure kubectl
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
@@ -111,17 +48,19 @@ jobs:
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Deploy with Helm
+      - name: Helm dependency update
+        run: helm dependency update k8s/charts/nexusrh
+
+      - name: Helm upgrade
         run: |
-          helm dependency update k8s/charts/nexusrh
           helm upgrade --install nexusrh k8s/charts/nexusrh \
             --namespace nexusrh \
             --create-namespace \
-            --set images.api.repository=ghcr.io/${{ github.repository_owner }}/nexusrh/api \
+            --set images.api.repository=${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh/api \
             --set images.api.tag=sha-${{ steps.sha.outputs.short }} \
-            --set images.web.repository=ghcr.io/${{ github.repository_owner }}/nexusrh/web \
+            --set images.web.repository=${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh/web \
             --set images.web.tag=sha-${{ steps.sha.outputs.short }} \
-            --set images.worker.repository=ghcr.io/${{ github.repository_owner }}/nexusrh/worker \
+            --set images.worker.repository=${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh/worker \
             --set images.worker.tag=sha-${{ steps.sha.outputs.short }} \
             --set postgres.auth.password=${{ secrets.DB_PASSWORD }} \
             --set redis.auth.password=${{ secrets.REDIS_PASSWORD }} \
@@ -131,87 +70,15 @@ jobs:
             --set api.secrets.anthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} \
             --set api.secrets.smtpUser=${{ secrets.SMTP_USER }} \
             --set api.secrets.smtpPass=${{ secrets.SMTP_PASS }} \
+            --set api.secrets.smtpFrom=${{ secrets.SMTP_FROM }} \
             --set networkPolicies.enabled=true \
             --set infra.enabled=false \
             --timeout 10m \
             --wait \
             --atomic
 
-      - name: Verify rollout
+      - name: Vérifier le déploiement
         run: |
           kubectl rollout status deployment/nexusrh-api -n nexusrh --timeout=5m
           kubectl rollout status deployment/nexusrh-web -n nexusrh --timeout=5m
-
-  # ─── Deploy to Render ──────────────────────────────────────────────────────
-  deploy-render:
-    name: Deploy Render
-    runs-on: ubuntu-latest
-    if: vars.DEPLOY_TYPE == 'render'
-    steps:
-      - name: Trigger Render deploy hook
-        run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}" &
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}" &
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}" &
-          wait
-          echo "Render deploy hooks triggered"
-
-  # ─── Deploy to Railway ─────────────────────────────────────────────────────
-  deploy-railway:
-    name: Deploy Railway
-    runs-on: ubuntu-latest
-    if: vars.DEPLOY_TYPE == 'railway'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to Railway
-        uses: bervProject/railway-deploy@main
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
-          service: nexusrh-api
-
-  # ─── Notifications ─────────────────────────────────────────────────────────
-  notify:
-    name: Notify
-    runs-on: ubuntu-latest
-    needs: [deploy-onprem, deploy-k8s, deploy-render, deploy-railway]
-    if: always() && (needs.deploy-onprem.result != 'skipped' || needs.deploy-k8s.result != 'skipped' || needs.deploy-render.result != 'skipped' || needs.deploy-railway.result != 'skipped')
-    steps:
-      - name: Determine overall status
-        id: status
-        run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
-            echo "overall=failure" >> $GITHUB_OUTPUT
-          else
-            echo "overall=success" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Notify Slack
-        uses: slackapi/slack-github-action@v1
-        if: vars.SLACK_NOTIFICATIONS == 'true'
-        with:
-          payload: |
-            {
-              "text": "${{ steps.status.outputs.overall == 'success' && '✅' || '❌' }} NexusRH — Déploiement ${{ steps.status.outputs.overall }} sur ${{ github.event.inputs.environment || 'production' }}",
-              "blocks": [{
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "${{ steps.status.outputs.overall == 'success' && '✅' || '❌' }} *NexusRH* déployé en *${{ github.event.inputs.environment || 'production' }}*\nCommit: `${{ github.sha }}`\nPar: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Voir les logs>"
-                }
-              }]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-        continue-on-error: true
-
-      - name: Write deployment summary
-        run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | ${{ steps.status.outputs.overall }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Environment | ${{ github.event.inputs.environment || 'production' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Time | $(date -u) |" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n nexusrh
