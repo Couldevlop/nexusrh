@@ -28,7 +28,7 @@ jobs:
     name: Deploy on-premise → ${{ github.event.inputs.environment || 'production' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'production' }}
-    if: vars.DEPLOY_TYPE == 'onprem' || vars.DEPLOY_TYPE == ''
+    if: vars.DEPLOY_TYPE == 'onprem'
     concurrency:
       group: deploy-${{ github.event.inputs.environment || 'production' }}
       cancel-in-progress: false
@@ -86,7 +86,7 @@ jobs:
     name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'production' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'production' }}
-    if: vars.DEPLOY_TYPE == 'k8s'
+    if: vars.DEPLOY_TYPE == 'k8s' || vars.DEPLOY_TYPE == ''
     concurrency:
       group: deploy-k8s-${{ github.event.inputs.environment || 'production' }}
       cancel-in-progress: false
@@ -104,7 +104,7 @@ jobs:
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Get short SHA
