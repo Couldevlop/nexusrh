@@ -299,6 +299,49 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
 
+  apps/worker:
+    dependencies:
+      bullmq:
+        specifier: ^5.8.4
+        version: 5.73.4
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.10.1
+      nodemailer:
+        specifier: ^6.9.14
+        version: 6.10.1
+      pg:
+        specifier: ^8.12.0
+        version: 8.20.0
+      pino:
+        specifier: ^9.2.0
+        version: 9.14.0
+      pino-pretty:
+        specifier: ^11.2.1
+        version: 11.3.0
+      uuid:
+        specifier: ^10.0.0
+        version: 10.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.2
+        version: 20.19.39
+      '@types/nodemailer':
+        specifier: ^6.4.15
+        version: 6.4.23
+      '@types/pg':
+        specifier: ^8.11.6
+        version: 8.20.0
+      '@types/uuid':
+        specifier: ^10.0.0
+        version: 10.0.0
+      tsx:
+        specifier: ^4.15.7
+        version: 4.21.0
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
