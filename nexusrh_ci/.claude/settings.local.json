@@ -24,7 +24,10 @@
       "Bash(git push *)",
       "PowerShell(git push *)",
       "Bash(git rm *)",
-      "Bash(del \"k8s\\\\charts\\\\nexusrh\\\\values.secret.yaml.example\")"
+      "Bash(del \"k8s\\\\charts\\\\nexusrh\\\\values.secret.yaml.example\")",
+      "Bash(Remove-Item -Force \"D:\\\\OPENLAB\\\\nexusrh\\\\nexusrh_ci\\\\.github\\\\workflows\\\\build.yml\")",
+      "Bash(Remove-Item -Force \"D:\\\\OPENLAB\\\\nexusrh\\\\nexusrh_ci\\\\.github\\\\workflows\\\\deploy.yml\")",
+      "Bash(Remove-Item -Recurse -Force \"D:\\\\OPENLAB\\\\nexusrh\\\\nexusrh_ci\\\\.github\")"
     ]
   }
 }
