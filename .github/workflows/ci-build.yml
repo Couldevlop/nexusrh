@@ -36,6 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nexusrhci/api run type-check
       - run: pnpm --filter @nexusrhci/web run type-check
+      - run: pnpm --filter @nexusrhci/worker run typecheck
 
   docker:
     name: Docker Build & Push

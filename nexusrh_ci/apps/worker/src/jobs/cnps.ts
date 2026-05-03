@@ -1,14 +1,14 @@
 import type { Job } from 'bullmq'
 import { logger } from '../logger.js'
 
-export async function processCnpsDeclarationJob(job: Job) {
-  const { tenantId, schemaName, month, year } = job.data as {
-    tenantId: string
-    schemaName: string
-    month: number
-    year: number
-  }
+interface CnpsPayload {
+  tenantId: string
+  schemaName: string
+  month: number
+  year: number
+}
 
+export async function processCnpsDeclarationJob(job: Job<CnpsPayload, void>): Promise<void> {
+  const { tenantId, schemaName, month, year } = job.data
   logger.info({ tenantId, schemaName, month, year }, 'Processing CNPS declaration job')
-  // Generates monthly e-CNPS export CSV and marks declaration as generated
 }

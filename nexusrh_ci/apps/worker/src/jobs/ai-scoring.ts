@@ -1,13 +1,13 @@
 import type { Job } from 'bullmq'
 import { logger } from '../logger.js'
 
-export async function processAiScoringJob(job: Job) {
-  const { tenantId, schemaName, employeeId } = job.data as {
-    tenantId: string
-    schemaName: string
-    employeeId?: string
-  }
+interface AiScoringPayload {
+  tenantId: string
+  schemaName: string
+  employeeId?: string
+}
 
+export async function processAiScoringJob(job: Job<AiScoringPayload, void>): Promise<void> {
+  const { tenantId, schemaName, employeeId } = job.data
   logger.info({ tenantId, schemaName, employeeId }, 'Processing AI retention scoring job')
-  // Updates employees.retention_score and burnout_risk via Claude API
 }

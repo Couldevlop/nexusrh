@@ -1,4 +1,4 @@
-import { Worker, Queue } from 'bullmq'
+import { Worker, type Job } from 'bullmq'
 import { createClient } from './redis.js'
 import { logger } from './logger.js'
 import { processEmailJob } from './jobs/email.js'
@@ -6,12 +6,14 @@ import { processPayrollJob } from './jobs/payroll.js'
 import { processCnpsDeclarationJob } from './jobs/cnps.js'
 import { processAiScoringJob } from './jobs/ai-scoring.js'
 
+type AnyJob = Job<unknown, void>
+type JobHandler = (job: AnyJob) => Promise<void>
+
 const connection = createClient()
+const workers: Worker<unknown, void>[] = []
 
-const workers: Worker[] = []
-
-function createWorker(queueName: string, processor: (job: any) => Promise<void>) {
-  const worker = new Worker(queueName, processor, {
+function createWorker(queueName: string, handler: JobHandler): Worker<unknown, void> {
+  const worker = new Worker<unknown, void>(queueName, handler, {
     connection,
     concurrency: 5,
   })
@@ -27,28 +29,31 @@ function createWorker(queueName: string, processor: (job: any) => Promise<void>)
   return worker
 }
 
-async function start() {
+async function start(): Promise<void> {
   logger.info('NexusRH CI Worker starting...')
 
-  workers.push(createWorker('email', processEmailJob))
-  workers.push(createWorker('payroll-ci', processPayrollJob))
-  workers.push(createWorker('cnps-declaration', processCnpsDeclarationJob))
-  workers.push(createWorker('ai-scoring-ci', processAiScoringJob))
+  workers.push(createWorker('email', processEmailJob as JobHandler))
+  workers.push(createWorker('payroll-ci', processPayrollJob as JobHandler))
+  workers.push(createWorker('cnps-declaration', processCnpsDeclarationJob as JobHandler))
+  workers.push(createWorker('ai-scoring-ci', processAiScoringJob as JobHandler))
 
-  logger.info({ queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci'] }, 'Workers started')
+  logger.info(
+    { queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci'] },
+    'Workers started',
+  )
 }
 
-async function shutdown() {
+async function shutdown(): Promise<void> {
   logger.info('Shutting down workers...')
   await Promise.all(workers.map((w) => w.close()))
   await connection.quit()
   process.exit(0)
 }
 
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.on('SIGTERM', () => { void shutdown() })
+process.on('SIGINT', () => { void shutdown() })
 
-start().catch((err) => {
+start().catch((err: unknown) => {
   logger.error({ err }, 'Failed to start worker')
   process.exit(1)
 })
