@@ -49,11 +49,11 @@ jobs:
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Helm dependency update
-        run: helm dependency update k8s/charts/nexusrh
+        run: helm dependency update helm/nexusrh
 
       - name: Helm upgrade
         run: |
-          helm upgrade --install nexusrh k8s/charts/nexusrh \
+          helm upgrade --install nexusrh helm/nexusrh \
             --namespace nexusrh \
             --create-namespace \
             --set images.api.repository=${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh/api \
