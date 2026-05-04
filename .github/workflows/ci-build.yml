@@ -62,20 +62,15 @@ jobs:
         cache: pnpm
         cache-dependency-path: nexusrh_ci/pnpm-lock.yaml
 
-    - name: Install dependencies
-      working-directory: nexusrh_ci
-      run: pnpm install --frozen-lockfile
-
-    - name: Build ${{ matrix.app }}
-      working-directory: nexusrh_ci
-      run: pnpm --filter @nexusrhci/${{ matrix.app }} run build
-
-    - name: Deploy prod deps
-      if: matrix.app != 'web'
+    - name: Install & build on runner
       working-directory: nexusrh_ci
       run: |
-        pnpm --filter @nexusrhci/${{ matrix.app }} deploy --prod \
-          "$GITHUB_WORKSPACE/nexusrh_ci/apps/${{ matrix.app }}/.deploy"
+        pnpm install --frozen-lockfile
+        pnpm --filter @nexusrhci/${{ matrix.app }} run build
+
+    - name: Get pnpm store path
+      id: pnpm-store
+      run: echo "path=$(pnpm store path)" >> $GITHUB_OUTPUT
 
     - uses: docker/setup-buildx-action@v3
 
@@ -101,8 +96,9 @@ jobs:
         file: nexusrh_ci/apps/${{ matrix.app }}/Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.tags }}
-        cache-from: type=gha,scope=ci-${{ matrix.app }}-v4
-        cache-to: type=gha,mode=min,scope=ci-${{ matrix.app }}-v4
+        cache-from: type=gha,scope=ci-${{ matrix.app }}-v5
+        cache-to: type=gha,mode=min,scope=ci-${{ matrix.app }}-v5
+        build-contexts: pnpmstore=${{ steps.pnpm-store.outputs.path }}
 
     - name: Trivy scan
       uses: aquasecurity/trivy-action@master
