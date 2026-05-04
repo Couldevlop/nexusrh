@@ -71,7 +71,7 @@ jobs:
       working-directory: nexusrh_ci
       run: |
         pnpm fetch --frozen-lockfile
-        echo "v3=$(pnpm store path)/v3" >> $GITHUB_OUTPUT
+        echo "v3=$(pnpm store path)" >> $GITHUB_OUTPUT
 
     - uses: docker/setup-buildx-action@v3
 
