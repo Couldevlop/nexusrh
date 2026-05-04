@@ -122,7 +122,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ docker ]
     environment: preprod
-    if: secrets.KUBECONFIG_PREPROD != ''
     steps:
     - uses: actions/checkout@v4
 

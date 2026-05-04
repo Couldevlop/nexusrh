@@ -25,7 +25,6 @@ jobs:
     name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'preprod' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'preprod' }}
-    if: secrets.KUBECONFIG_PREPROD != ''
     concurrency:
       group: deploy-k8s-${{ github.event.inputs.environment || 'preprod' }}
       cancel-in-progress: false
