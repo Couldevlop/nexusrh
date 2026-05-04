@@ -1,14 +1,4 @@
 # syntax=docker/dockerfile:1
-# ── NexusRH API — Dockerfile multi-arch (amd64 + arm64) ────────────────────────
-# Build : docker buildx build --platform linux/amd64,linux/arm64 -t nexusrh/api:latest .
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
-# syntax=docker/dockerfile:1
 ARG NODE_VERSION=20
 
 # ── ÉTAPE 1 : BUILDER (Compilation) ───────────────────────────
