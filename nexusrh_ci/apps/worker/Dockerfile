@@ -1,17 +1,24 @@
+# ── pnpmstore: overridden in CI via --build-contexts pnpmstore=<pnpm-store-v3> ────────────
+FROM node:20-alpine AS pnpmstore
+
 # ── Stage 1 : build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /build
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm install -g pnpm@9.4.0 --quiet
+RUN npm install -g pnpm@9.4.0 --quiet
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/worker/package.json ./apps/worker/
 
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm config set network-timeout 600000 --global \
- && pnpm config set node-linker hoisted --global \
- && pnpm install --frozen-lockfile --ignore-scripts
+# Populate pnpm store from pre-fetched packages (CI). No-op on local builds.
+RUN mkdir -p /root/.local/share/pnpm/store/v3
+RUN --mount=from=pnpmstore,target=/mnt/pnpmstore \
+    [ -d /mnt/pnpmstore/files ] && cp -a /mnt/pnpmstore/. /root/.local/share/pnpm/store/v3/ || true
+
+RUN pnpm config set network-timeout 600000 --global \
+ && pnpm config set fetch-retries 5 --global \
+ && pnpm config set fetch-retry-mintimeout 5000 --global \
+ && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
 
 COPY tsconfig.base.json ./
 COPY apps/worker/ ./apps/worker/
