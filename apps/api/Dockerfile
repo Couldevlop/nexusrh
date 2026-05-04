@@ -8,42 +8,33 @@
 # syntax=docker/dockerfile:1
 # syntax=docker/dockerfile:1
 # syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1
 ARG NODE_VERSION=20
 
-# ── 1. BASE : Configuration de pnpm ───────────────────────────
-FROM node:${NODE_VERSION}-alpine AS base
-WORKDIR /app
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
-
-# ── 2. BUILDER : Compilation du code (tsc) ────────────────────
-FROM base AS builder
+# ── ÉTAPE 1 : BUILDER (Compilation) ───────────────────────────
+FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 
-# On copie les fichiers de configuration racine
+# Installation de pnpm
+RUN npm install -g pnpm@9.4.0
+
+# 1. Copie des fichiers de configuration racine
+# On en a besoin pour que pnpm comprenne le monorepo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig*.json ./
-# On copie le code source nécessaire (API + Shared si besoin)
+
+# 2. Copie du code source nécessaire
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 
-# Installation de TOUTES les dépendances (y compris devDeps comme tsc)
+# 3. Installation de TOUTES les dépendances (y compris tsc)
 RUN pnpm install --frozen-lockfile
 
-# Génération du dossier dist/ via le script build de ton package.json
+# 4. GÉNÉRATION DU DIST (L'étape qui te manquait)
+# Cette commande crée le dossier apps/api/dist à l'intérieur de l'image builder
+RUN pnpm --filter @nexusrh/shared build
 RUN pnpm --filter @nexusrhci/api run build
 
-# ── 3. PROD-DEPS : Installation propre des libs de prod ──────
-FROM base AS prod-deps
-WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY apps/api/package.json ./apps/api/
-COPY packages/shared/package.json ./packages/shared/
-
-# Installation uniquement des dépendances de production
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
-
-# ── 4. RUNNER : L'image finale légère ─────────────────────────
+# ── ÉTAPE 2 : RUNNER (Exécution) ──────────────────────────────
 FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -51,12 +42,15 @@ ENV NODE_ENV=production
 # Sécurité : utilisateur non-root
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-# RÉCUPÉRATION DES FICHIERS DEPUIS LES ÉTAPES PRÉCÉDENTES
-# On prend le dossier 'dist' généré par le builder
+# 5. RÉCUPÉRATION DU DIST DEPUIS LE BUILDER
+# On ne copie plus depuis la machine locale, mais depuis l'étape 'builder'
 COPY --from=builder --chown=1001:1001 /app/apps/api/dist ./dist
-# On prend les node_modules propres de prod-deps
-COPY --from=prod-deps --chown=1001:1001 /app/node_modules ./node_modules
 COPY --from=builder --chown=1001:1001 /app/apps/api/package.json ./package.json
+
+# 6. Installation des dépendances de prod uniquement pour que l'image soit légère
+RUN npm install -g pnpm@9.4.0
+COPY --from=builder /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/package.json ./
+RUN pnpm install --prod --frozen-lockfile
 
 USER 1001
 EXPOSE 4001
