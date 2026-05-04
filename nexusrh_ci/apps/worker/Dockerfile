@@ -17,6 +17,7 @@ RUN --mount=from=pnpmstore,target=/mnt/pnpmstore \
 RUN pnpm config set network-timeout 600000 --global \
  && pnpm config set fetch-retries 5 --global \
  && pnpm config set fetch-retry-mintimeout 5000 --global \
+ && pnpm config set node-linker hoisted --global \
  && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
 
 COPY tsconfig.base.json ./
