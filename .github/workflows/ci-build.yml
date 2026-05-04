@@ -114,12 +114,19 @@ jobs:
         output: sarif-results/trivy-web.sarif
         severity: CRITICAL,HIGH
 
-    - name: Upload SARIF results
+    - name: Upload SARIF — API
       uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
-        sarif_file: 'sarif-results'
-        category: trivy-images
+        sarif_file: sarif-results/trivy-api.sarif
+        category: trivy-api
+
+    - name: Upload SARIF — Web
+      uses: github/codeql-action/upload-sarif@v4
+      if: always()
+      with:
+        sarif_file: sarif-results/trivy-web.sarif
+        category: trivy-web
 
   deploy:
     name: Deploy → ${{ github.event.inputs.target || 'preprod' }}
