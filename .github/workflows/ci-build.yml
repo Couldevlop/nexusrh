@@ -74,7 +74,6 @@ jobs:
       if: matrix.app != 'web'
       working-directory: nexusrh_ci
       run: |
-        printf 'node-linker=hoisted\n' > .npmrc
         pnpm --filter @nexusrhci/${{ matrix.app }} deploy --prod \
           "$GITHUB_WORKSPACE/nexusrh_ci/apps/${{ matrix.app }}/.deploy"
 
