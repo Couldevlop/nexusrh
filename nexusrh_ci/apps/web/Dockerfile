@@ -21,7 +21,8 @@ RUN --mount=from=pnpmstore,target=/mnt/store \
 RUN pnpm config set network-timeout 600000 --global \
  && pnpm config set fetch-retries 5 --global \
  && printf 'node-linker=hoisted\n' > .npmrc \
- && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
+ && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline \
+    --filter @nexusrhci/web
 
 COPY tsconfig.base.json ./
 COPY apps/web/ ./apps/web/
