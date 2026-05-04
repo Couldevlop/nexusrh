@@ -24,6 +24,7 @@ jobs:
   deploy-k8s:
     name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'preprod' }}
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'preprod' }}
     concurrency:
       group: deploy-k8s-${{ github.event.inputs.environment || 'preprod' }}
       cancel-in-progress: false
@@ -45,13 +46,10 @@ jobs:
             printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
           fi
           chmod 600 ~/.kube/config
-          # Set current-context if not defined
-          CURRENT=$(kubectl config current-context 2>/dev/null || true)
-          if [ -z "$CURRENT" ]; then
-            FIRST=$(kubectl config get-contexts -o name | head -1)
-            kubectl config use-context "$FIRST"
+          if ! kubectl config current-context 2>/dev/null; then
+            CTX=$(kubectl config get-contexts -o name 2>/dev/null | head -1)
+            [ -n "$CTX" ] && kubectl config use-context "$CTX"
           fi
-          kubectl config view
           kubectl cluster-info
 
       - name: Get short SHA

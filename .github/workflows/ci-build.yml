@@ -121,6 +121,7 @@ jobs:
     name: Deploy → preprod (nexusrh-ci)
     runs-on: ubuntu-latest
     needs: [ docker ]
+    environment: preprod
     steps:
     - uses: actions/checkout@v4
 
@@ -137,12 +138,11 @@ jobs:
           printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
         fi
         chmod 600 ~/.kube/config
-        CURRENT=$(kubectl config current-context 2>/dev/null || true)
-        if [ -z "$CURRENT" ]; then
-          FIRST=$(kubectl config get-contexts -o name | head -1)
-          kubectl config use-context "$FIRST"
+        # Set current-context to first available if missing
+        if ! kubectl config current-context 2>/dev/null; then
+          CTX=$(kubectl config get-contexts -o name 2>/dev/null | head -1)
+          [ -n "$CTX" ] && kubectl config use-context "$CTX"
         fi
-        kubectl config view
         kubectl cluster-info
 
     - name: Get short SHA
