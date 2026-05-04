@@ -26,6 +26,9 @@ COPY apps/worker/ ./apps/worker/
 WORKDIR /build/apps/worker
 RUN /build/node_modules/.bin/tsc -p tsconfig.json
 
+WORKDIR /build
+RUN pnpm prune --prod --ignore-scripts
+
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app

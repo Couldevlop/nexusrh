@@ -26,6 +26,9 @@ COPY apps/web/ ./apps/web/
 WORKDIR /build/apps/web
 RUN /build/node_modules/.bin/vite build
 
+WORKDIR /build
+RUN pnpm prune --prod --ignore-scripts
+
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
 
