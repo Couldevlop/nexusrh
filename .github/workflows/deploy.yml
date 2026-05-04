@@ -25,6 +25,7 @@ jobs:
     name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'preprod' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'preprod' }}
+    if: secrets.KUBECONFIG_PREPROD != ''
     concurrency:
       group: deploy-k8s-${{ github.event.inputs.environment || 'preprod' }}
       cancel-in-progress: false
@@ -39,9 +40,11 @@ jobs:
         with: { version: 'latest' }
 
       - name: Configure kubectl
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
+          printf '%s' "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Get short SHA
@@ -75,7 +78,7 @@ jobs:
             --set infra.enabled=false \
             --timeout 10m \
             --wait \
-            --atomic
+            --rollback-on-failure
 
       - name: Vérifier le déploiement
         run: |

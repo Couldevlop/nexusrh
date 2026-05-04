@@ -24,8 +24,8 @@ replicaCount:
 config:
   nodeEnv: production
   appName: NexusRH
-  appUrl: https://nexusrh.example.com
-  apiUrl: https://api.nexusrh.example.com
+  appUrl: https://nexusrh.openlabconsulting.com
+  apiUrl: https://api.openlabconsulting.com
   logLevel: info
   features:
     aiAssistant: true
@@ -108,12 +108,12 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: nexusrh.example.com
+    - host: nexusrh.openlabconsulting.com
       paths:
         - path: /
           pathType: Prefix
           service: web
-    - host: api.nexusrh.example.com
+    - host: api.openlabconsulting.com
       paths:
         - path: /
           pathType: Prefix
@@ -121,8 +121,8 @@ ingress:
   tls:
     - secretName: nexusrh-tls
       hosts:
-        - nexusrh.example.com
-        - api.nexusrh.example.com
+        - nexusrh.openlabconsulting.com
+        - api.openlabconsulting.com
 
 # ── PostgreSQL (Bitnami chart) ────────────────────────────────────────────────
 postgresql:
