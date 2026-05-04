@@ -75,7 +75,8 @@ jobs:
       working-directory: nexusrh_ci
       run: |
         printf 'node-linker=hoisted\n' > .npmrc
-        pnpm --filter @nexusrhci/${{ matrix.app }} deploy --prod apps/${{ matrix.app }}/.deploy
+        pnpm --filter @nexusrhci/${{ matrix.app }} deploy --prod \
+          "$GITHUB_WORKSPACE/nexusrh_ci/apps/${{ matrix.app }}/.deploy"
 
     - uses: docker/setup-buildx-action@v3
 
