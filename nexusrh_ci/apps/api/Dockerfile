@@ -21,6 +21,8 @@ RUN printf 'node-linker=hoisted\n' > .npmrc \
 # ── build : compilation TypeScript (@nexusrhci/api) ───────────────────────────
 FROM base AS build
 WORKDIR /app
+# Serialise stages: build waits for prod-deps so both never compete for RAM
+COPY --from=prod-deps /app/node_modules/.modules.yaml /tmp/.serialized
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 RUN --mount=from=pnpmstore,target=/mnt/store \
