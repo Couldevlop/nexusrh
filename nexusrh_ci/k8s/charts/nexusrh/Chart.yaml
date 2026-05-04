@@ -13,14 +13,14 @@ maintainers:
 dependencies:
   # ── PostgreSQL 16 (Bitnami) ────────────────────────────────────────────────
   - name: postgresql
-    version: "16.3.3"
+    version: "16.7.2"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     alias: postgres
     condition: postgres.enabled
 
   # ── Redis 7 (Bitnami) ─────────────────────────────────────────────────────
   - name: redis
-    version: "20.6.3"
+    version: "21.2.7"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     alias: redis
     condition: redis.enabled
