@@ -1,61 +1,19 @@
-# Dependencies
+# Dépendances et builds
 node_modules/
-.pnp
-.pnp.js
-
-# Build outputs
 dist/
 build/
 .next/
-out/
 .turbo/
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# IDE
-.vscode/
-.idea/
-.claude/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# TypeScript
 *.tsbuildinfo
 
-# Test coverage
-coverage/
-.nyc_output/
-playwright-report/
-test-results/
+# ISOLATION : On ignore le dossier de la version Côte d'Ivoire
+nexusrh_ci/
 
-# Docker
-.docker/
+# Docker & CI
+.git/
+.github/
+.dockerignore
 
-# Drizzle
-drizzle/
-
-# Uploads (local dev)
-uploads/
-
-# Secrets Helm (ne jamais committer)
+# Environnement et secrets
+.env*
 **/values.secret.yaml
-**/values.secrets.yaml
-
-# Misc
-*.tmp
-*.temp
