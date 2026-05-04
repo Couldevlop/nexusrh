@@ -142,9 +142,10 @@ jobs:
         KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
       run: |
         mkdir -p ~/.kube
-        echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config 2>/dev/null \
-          || echo "$KUBECONFIG_DATA" > ~/.kube/config
+        echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
+        echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+        kubectl cluster-info
 
     - name: Helm upgrade
       # Seuls les tags d'image et le domaine transitent par le CI.
