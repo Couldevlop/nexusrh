@@ -27,7 +27,7 @@ dependencies:
 
   # ── MinIO (Bitnami) ───────────────────────────────────────────────────────
   - name: minio
-    version: "14.9.3"
+    version: "17.0.21"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     alias: minio
     condition: minio.enabled

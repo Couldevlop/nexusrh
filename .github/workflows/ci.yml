@@ -103,7 +103,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @nexusrh/web exec playwright install --with-deps chromium
       - name: Seed test DB
         run: pnpm --filter api run db:seed
         env:

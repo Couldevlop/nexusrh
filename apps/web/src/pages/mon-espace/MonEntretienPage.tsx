@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, CheckCircle, Clock, PenLine, ChevronDown, ChevronUp,
-  Star, FileText, Info, Award, AlertTriangle, BookOpen
+  Star, FileText, Info, Award, AlertTriangle, BookOpen, Target
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
