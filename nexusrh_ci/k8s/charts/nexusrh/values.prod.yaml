@@ -3,20 +3,20 @@
 # Remplacer YOUR_DOMAIN et ghcr.io/YOUR_ORG
 
 global:
-  domain: nexusrh.openlabconsulting.com
-  apiDomain: api.nexusrh.openlabconsulting.com
+  domain: nexusrh-ci.openlabconsulting.com
+  apiDomain: api.nexusrh-ci.openlabconsulting.com
   imagePullPolicy: Always
 
 images:
   api:
-    repository: ghcr.io/YOUR_ORG/nexusrh-api
-    tag: "1.0.0"
+    repository: ghcr.io/couldevlop/nexusrh-ci-api
+    tag: latest
   web:
-    repository: ghcr.io/YOUR_ORG/nexusrh-web
-    tag: "1.0.0"
+    repository: ghcr.io/couldevlop/nexusrh-ci-web
+    tag: latest
   worker:
-    repository: ghcr.io/YOUR_ORG/nexusrh-worker
-    tag: "1.0.0"
+    repository: ghcr.io/couldevlop/nexusrh-ci-worker
+    tag: latest
 
 ingress:
   certIssuer: letsencrypt-prod

@@ -157,25 +157,16 @@ jobs:
       env:
         OWNER: ${{ needs.build.outputs.owner }}
         SHA:   ${{ needs.build.outputs.short-sha }}
-        DOMAIN:     ${{ vars.DOMAIN }}
-        API_DOMAIN: ${{ vars.API_DOMAIN }}
       run: |
-        echo "Domain    : ${DOMAIN}"
-        echo "API Domain: ${API_DOMAIN}"
-        if [ -z "${DOMAIN}" ] || [ -z "${API_DOMAIN}" ]; then
-          echo "❌ DOMAIN ou API_DOMAIN non défini dans GitHub Variables"
-          exit 1
-        fi
         helm dependency update nexusrh_ci/k8s/charts/nexusrh
         helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
           --namespace nexusrh-ci --create-namespace \
           -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
+          -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
           --set images.api.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-api \
           --set images.api.tag=${SHA} \
           --set images.web.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-web \
           --set images.web.tag=${SHA} \
-          --set global.domain="${DOMAIN}" \
-          --set global.apiDomain="${API_DOMAIN}" \
           --set api.secrets.existingSecret="nexusrh-app-secrets" \
           --set postgres.auth.existingSecret="nexusrh-postgres-secret" \
           --set redis.auth.existingSecret="nexusrh-redis-secret" \
