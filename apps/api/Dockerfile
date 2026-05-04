@@ -7,46 +7,61 @@
 # syntax=docker/dockerfile:1
 # syntax=docker/dockerfile:1
 # syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1
 ARG NODE_VERSION=20
 
-# ── ÉTAPE 1 : BUILDER
-FROM node:${NODE_VERSION}-alpine AS builder
+# ── 1. BASE : Configuration de pnpm ───────────────────────────
+FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /app
-RUN npm install -g pnpm@9.1.0
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
 
-# Copie des fichiers de configuration
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
+# ── 2. BUILDER : Compilation du code (tsc) ────────────────────
+FROM base AS builder
+WORKDIR /app
+
+# On copie les fichiers de configuration racine
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig*.json ./
+# On copie le code source nécessaire (API + Shared si besoin)
+COPY apps/api ./apps/api
+COPY packages/shared ./packages/shared
+
+# Installation de TOUTES les dépendances (y compris devDeps comme tsc)
+RUN pnpm install --frozen-lockfile
+
+# Génération du dossier dist/ via le script build de ton package.json
+RUN pnpm --filter @nexusrhci/api run build
+
+# ── 3. PROD-DEPS : Installation propre des libs de prod ──────
+FROM base AS prod-deps
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
-# Installation
-RUN pnpm install --frozen-lockfile
+# Installation uniquement des dépendances de production
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
-# Copie du code source
-COPY . .
-
-# Build
-RUN pnpm --filter @nexusrh/shared build
-RUN pnpm --filter @nexusrh/api run build
-
-# ── ÉTAPE 2 : FINAL (Renommée pour forcer Docker à rafraîchir le cache)
-FROM node:${NODE_VERSION}-alpine AS final_image
+# ── 4. RUNNER : L'image finale légère ─────────────────────────
+FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Sécurité : utilisateur non-root
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
-RUN npm install -g pnpm@9.1.0
 
-# Récupération des fichiers de structure
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-
-# LA CORRECTION CRITIQUE : Ajout de --from=builder et vérification du chemin
+# RÉCUPÉRATION DES FICHIERS DEPUIS LES ÉTAPES PRÉCÉDENTES
+# On prend le dossier 'dist' généré par le builder
 COPY --from=builder --chown=1001:1001 /app/apps/api/dist ./dist
+# On prend les node_modules propres de prod-deps
+COPY --from=prod-deps --chown=1001:1001 /app/node_modules ./node_modules
+COPY --from=builder --chown=1001:1001 /app/apps/api/package.json ./package.json
 
-RUN pnpm install --prod --frozen-lockfile
+USER 1001
+EXPOSE 4001
 
-USER nodejs
-EXPOSE 4000
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:4001/health || exit 1
+
 CMD ["node", "dist/index.js"]
