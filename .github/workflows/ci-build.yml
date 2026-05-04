@@ -57,21 +57,25 @@ jobs:
       with: { version: '9.4.0' }
 
     - uses: actions/setup-node@v4
-      with: { node-version: '20' }
-
-    - name: Restore pnpm store cache
-      uses: actions/cache@v4
       with:
-        path: ~/.local/share/pnpm/store
-        key: pnpm-store-${{ runner.os }}-${{ hashFiles('nexusrh_ci/pnpm-lock.yaml') }}
-        restore-keys: pnpm-store-${{ runner.os }}-
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: nexusrh_ci/pnpm-lock.yaml
 
-    - name: Pre-fetch packages into pnpm store
-      id: pnpm-fetch
+    - name: Install dependencies
+      working-directory: nexusrh_ci
+      run: pnpm install --frozen-lockfile
+
+    - name: Build ${{ matrix.app }}
+      working-directory: nexusrh_ci
+      run: pnpm --filter @nexusrhci/${{ matrix.app }} run build
+
+    - name: Deploy prod deps
+      if: matrix.app != 'web'
       working-directory: nexusrh_ci
       run: |
-        pnpm fetch --frozen-lockfile
-        echo "v3=$(pnpm store path)" >> $GITHUB_OUTPUT
+        printf 'node-linker=hoisted\n' > .npmrc
+        pnpm --filter @nexusrhci/${{ matrix.app }} deploy --prod apps/${{ matrix.app }}/.deploy
 
     - uses: docker/setup-buildx-action@v3
 
@@ -90,9 +94,6 @@ jobs:
           type=sha,prefix=sha-,format=short
           type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Verify build context
-      run: ls -la nexusrh_ci/apps/${{ matrix.app }}/
-
     - name: Build & Push
       uses: docker/build-push-action@v6
       with:
@@ -100,9 +101,8 @@ jobs:
         file: nexusrh_ci/apps/${{ matrix.app }}/Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.tags }}
-        cache-from: type=gha,scope=ci-${{ matrix.app }}-v2
-        cache-to: type=gha,mode=min,scope=ci-${{ matrix.app }}-v2
-        build-contexts: pnpmstore=${{ steps.pnpm-fetch.outputs.v3 }}
+        cache-from: type=gha,scope=ci-${{ matrix.app }}-v4
+        cache-to: type=gha,mode=min,scope=ci-${{ matrix.app }}-v4
 
     - name: Trivy scan
       uses: aquasecurity/trivy-action@master
