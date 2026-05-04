@@ -1,35 +1,37 @@
-# ── pnpmstore: overridden in CI via --build-contexts pnpmstore=<pnpm-store-v3> ────────────
+# syntax=docker/dockerfile:1.7
+# Pattern officiel pnpm + Docker : https://pnpm.io/docker
+
 FROM node:20-alpine AS pnpmstore
 
-# ── Stage 1 : build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
-WORKDIR /build
+FROM node:20-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
 
-RUN npm install -g pnpm@9.4.0 --quiet
+FROM base AS build
+WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 
-RUN mkdir -p /root/.local/share/pnpm/store/v3
-RUN --mount=from=pnpmstore,target=/mnt/pnpmstore \
-    [ -d /mnt/pnpmstore/files ] && cp -a /mnt/pnpmstore/. /root/.local/share/pnpm/store/v3/ || true
+RUN --mount=from=pnpmstore,target=/mnt/store \
+    mkdir -p /pnpm/store/v3 \
+ && ([ -d /mnt/store/files ] && cp -a /mnt/store/. /pnpm/store/v3/ || true)
 
 RUN pnpm config set network-timeout 600000 --global \
  && pnpm config set fetch-retries 5 --global \
- && pnpm config set fetch-retry-mintimeout 5000 --global \
- && pnpm config set node-linker hoisted --global \
+ && printf 'node-linker=hoisted\n' > .npmrc \
  && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
 
 COPY tsconfig.base.json ./
 COPY apps/web/ ./apps/web/
 
-WORKDIR /build/apps/web
-RUN /build/node_modules/.bin/vite build
+RUN node_modules/.bin/vite build --outDir apps/web/dist
 
-# ── Stage 2 : runner ─────────────────────────────────────────────────────────
+# ── Runner : nginx sert les fichiers statiques, pas besoin de node_modules ───
 FROM nginx:1.27-alpine AS runner
 
-COPY --from=builder /build/apps/web/dist /usr/share/nginx/html
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 
 RUN chown -R 101:101 /usr/share/nginx/html \
