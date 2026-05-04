@@ -139,13 +139,17 @@ jobs:
 
     - name: Configure kubectl
       env:
-        KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }} # Adapte selon tes secrets
+        KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
       run: |
         mkdir -p ~/.kube
-        echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config || echo "$KUBECONFIG_DATA" > ~/.kube/config
+        echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config 2>/dev/null \
+          || echo "$KUBECONFIG_DATA" > ~/.kube/config
         chmod 600 ~/.kube/config
 
     - name: Helm upgrade
+      # Seuls les tags d'image et le domaine transitent par le CI.
+      # Les secrets applicatifs (JWT, DB, SMTP…) sont pré-créés directement
+      # dans le cluster (kubectl create secret) et référencés via existingSecret.
       run: |
         OWNER=${{ needs.build.outputs.owner }}
         SHA=${{ needs.build.outputs.short-sha }}
@@ -157,4 +161,11 @@ jobs:
           --set images.api.tag=sha-${SHA} \
           --set images.web.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-web \
           --set images.web.tag=sha-${SHA} \
+          --set global.domain="${{ vars.DOMAIN }}" \
+          --set global.apiDomain="${{ vars.API_DOMAIN }}" \
+          --set api.secrets.existingSecret="nexusrh-app-secrets" \
+          --set postgres.auth.existingSecret="nexusrh-postgres-secret" \
+          --set redis.auth.existingSecret="nexusrh-redis-secret" \
+          --set minio.auth.existingSecret="nexusrh-minio-secret" \
+          --set meilisearch.auth.existingMasterKeySecret="nexusrh-meilisearch-secret" \
           --wait --timeout=10m
