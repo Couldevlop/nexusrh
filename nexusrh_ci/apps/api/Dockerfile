@@ -28,7 +28,8 @@ RUN /build/node_modules/.bin/tsc -p tsconfig.build.json
 
 # Crée un bundle prod plat (sans devDeps, sans .pnpm virtual store)
 WORKDIR /build
-RUN pnpm deploy --filter @nexusrhci/api --prod /deploy
+RUN printf 'node-linker=hoisted\n' > .npmrc \
+ && pnpm deploy --filter @nexusrhci/api --prod /deploy
 
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
