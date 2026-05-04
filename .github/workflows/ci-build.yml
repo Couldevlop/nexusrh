@@ -149,10 +149,10 @@ jobs:
       run: |
         OWNER=${{ needs.build.outputs.owner }}
         SHA=${{ needs.build.outputs.short-sha }}
-        helm dependency update nexusrh_ci/helm/nexusrh
-        helm upgrade --install nexusrh-ci nexusrh_ci/helm/nexusrh \
+        helm dependency update nexusrh_ci/k8s/charts/nexusrh
+        helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
           --namespace nexusrh-ci --create-namespace \
-          -f nexusrh_ci/helm/nexusrh/values.yaml \
+          -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
           --set images.api.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-api \
           --set images.api.tag=sha-${SHA} \
           --set images.web.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-web \
