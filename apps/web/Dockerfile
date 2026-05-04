@@ -3,20 +3,21 @@
 # Build : docker buildx build --platform linux/amd64,linux/arm64 -t nexusrh/web:latest .
 # syntax=docker/dockerfile:1
 # syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1
 ARG NODE_VERSION=20
 
-FROM node:${NODE_VERSION}-alpine AS base
+# ── Étape 1 : Build ──────────────────────────────────────────
+FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@9.1.0
 
-# ── Build ─────────────────────────────────────────────────────
-FROM base AS builder
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
-COPY apps/web ./apps/web
 COPY packages/shared ./packages/shared
 COPY packages/ui ./packages/ui
+COPY apps/web/package.json ./apps/web/
 
 RUN pnpm install --frozen-lockfile
+COPY apps/web ./apps/web
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
@@ -25,23 +26,12 @@ RUN pnpm --filter @nexusrh/shared build && \
     pnpm --filter @nexusrh/ui build && \
     pnpm --filter web build
 
-# ── Production ────────────────────────────────────────────────
+# ── Étape 2 : Production (Nginx) ──────────────────────────────
 FROM nginx:1.25-alpine AS production
-RUN addgroup -g 1001 -S nginx-app && adduser -S nginx-app -u 1001
 
+# CORRECTION : On récupère le 'dist' du builder vers le dossier Nginx
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 
-# OWASP : Droits restreints sur les dossiers Nginx
-RUN chown -R nginx-app:nginx-app /usr/share/nginx/html && \
-    chown -R nginx-app:nginx-app /var/cache/nginx && \
-    touch /var/run/nginx.pid && \
-    chown -R nginx-app:nginx-app /var/run/nginx.pid
-
-USER nginx-app
 EXPOSE 80
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:80/ || exit 1
-
 CMD ["nginx", "-g", "daemon off;"]
