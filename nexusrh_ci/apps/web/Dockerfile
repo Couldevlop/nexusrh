@@ -10,7 +10,6 @@ RUN npm install -g pnpm@9.4.0 --quiet
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 
-# Populate pnpm store from pre-fetched packages (CI). No-op on local builds.
 RUN mkdir -p /root/.local/share/pnpm/store/v3
 RUN --mount=from=pnpmstore,target=/mnt/pnpmstore \
     [ -d /mnt/pnpmstore/files ] && cp -a /mnt/pnpmstore/. /root/.local/share/pnpm/store/v3/ || true
@@ -25,9 +24,6 @@ COPY apps/web/ ./apps/web/
 
 WORKDIR /build/apps/web
 RUN /build/node_modules/.bin/vite build
-
-WORKDIR /build
-RUN pnpm prune --prod --ignore-scripts
 
 # ── Stage 2 : runner ─────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
