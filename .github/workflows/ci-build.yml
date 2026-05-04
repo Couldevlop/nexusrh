@@ -132,8 +132,13 @@ jobs:
         KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
       run: |
         mkdir -p ~/.kube
-        printf '%s' "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+        if printf '%s' "$KUBECONFIG_DATA" | base64 -d 2>/dev/null | grep -q 'apiVersion:'; then
+          printf '%s' "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+        else
+          printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
+        fi
         chmod 600 ~/.kube/config
+        kubectl config view
 
     - name: Get short SHA
       id: sha
