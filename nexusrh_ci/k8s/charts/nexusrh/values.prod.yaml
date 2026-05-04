@@ -22,42 +22,15 @@ ingress:
   certIssuer: letsencrypt-prod
 
 api:
-  replicas: 3
+  replicas: 1
   env:
     NODE_ENV: production
-    LOG_LEVEL: warn
+    LOG_LEVEL: info
   autoscaling:
-    enabled: true
-    minReplicas: 3
-    maxReplicas: 10
+    enabled: false
 
 web:
-  replicas: 3
+  replicas: 1
 
 worker:
-  replicas: 2
-
-postgres:
-  primary:
-    persistence:
-      size: 50Gi
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "1Gi"
-      limits:
-        cpu: "4"
-        memory: "8Gi"
-
-redis:
-  master:
-    persistence:
-      size: 5Gi
-
-minio:
-  persistence:
-    size: 100Gi
-
-meilisearch:
-  persistence:
-    size: 20Gi
+  replicas: 1
