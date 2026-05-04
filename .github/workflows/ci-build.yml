@@ -41,9 +41,13 @@ jobs:
       id: owner
       run: echo "name=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+    - name: Prepare SARIF directory
+      if: always()
+      run: mkdir -p sarif-results
+
     - uses: pnpm/action-setup@v4
       with:
-        version: 9.4.0
+        package_json_file: nexusrh_ci/package.json
 
     - uses: actions/setup-node@v4
       with:
@@ -74,9 +78,6 @@ jobs:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Prepare SARIF directory
-      run: mkdir -p sarif-results
 
     # --- Build & Scan API ---
     - name: Build & Push API
@@ -114,7 +115,7 @@ jobs:
         severity: CRITICAL,HIGH
 
     - name: Upload SARIF results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: 'sarif-results'
