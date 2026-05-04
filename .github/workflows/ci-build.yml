@@ -80,11 +80,15 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Lowercase owner
+      id: owner
+      run: echo "name=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
     - name: Metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh-ci-${{ matrix.app }}
+        images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-${{ matrix.app }}
         tags: |
           type=sha,prefix=sha-,format=short
           type=raw,value=latest,enable={{is_default_branch}}
@@ -103,7 +107,7 @@ jobs:
     - name: Trivy scan
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh-ci-${{ matrix.app }}:latest
+        image-ref: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-${{ matrix.app }}:latest
         format: sarif
         output: trivy-${{ matrix.app }}.sarif
         severity: CRITICAL,HIGH
