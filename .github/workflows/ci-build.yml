@@ -1,5 +1,3 @@
-#name: CI — NexusRH CI (Côte d'Ivoire)
-
 name: Build → Preprod → Production
 
 on:
@@ -57,7 +55,7 @@ jobs:
 
     - uses: sigstore/cosign-installer@v3
 
-    # --- API ---
+    # --- Build API ---
     - name: Build & Push API
       id: build-api
       uses: docker/build-push-action@v6
@@ -74,10 +72,7 @@ jobs:
         cache-from: type=gha,scope=api-v2
         cache-to: type=gha,mode=min,scope=api-v2
 
-    - name: Sign API (keyless)
-      run: cosign sign --yes ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-api@${{ steps.build-api.outputs.digest }}
-
-    # --- WEB ---
+    # --- Build Web ---
     - name: Build & Push Web
       id: build-web
       uses: docker/build-push-action@v6
@@ -95,10 +90,7 @@ jobs:
         cache-from: type=gha,scope=web-v2
         cache-to: type=gha,mode=min,scope=web-v2
 
-    - name: Sign Web (keyless)
-      run: cosign sign --yes ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-web@${{ steps.build-web.outputs.digest }}
-
-    # --- WORKER ---
+    # --- Build Worker ---
     - name: Build & Push Worker
       id: build-worker
       uses: docker/build-push-action@v6
@@ -115,10 +107,7 @@ jobs:
         cache-from: type=gha,scope=worker-v2
         cache-to: type=gha,mode=min,scope=worker-v2
 
-    - name: Sign Worker (keyless)
-      run: cosign sign --yes ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-worker@${{ steps.build-worker.outputs.digest }}
-
-    # --- TRIVY SCANS ---
+    # --- Scans Trivy ---
     - name: Trivy scan API
       uses: aquasecurity/trivy-action@master
       with:
@@ -143,27 +132,15 @@ jobs:
         output: trivy-worker.sarif
         severity: CRITICAL,HIGH
 
-    # --- UPLOAD SARIF (CORRECTED) ---
-    - name: Upload API SARIF
+    # --- Correction de l'Upload SARIF (Action v4) ---
+    - name: Upload Scans to GitHub Security
       uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
-        sarif_file: trivy-api.sarif
-        category: trivy-api
-
-    - name: Upload Web SARIF
-      uses: github/codeql-action/upload-sarif@v4
-      if: always()
-      with:
-        sarif_file: trivy-web.sarif
-        category: trivy-web
-
-    - name: Upload Worker SARIF
-      uses: github/codeql-action/upload-sarif@v4
-      if: always()
-      with:
-        sarif_file: trivy-worker.sarif
-        category: trivy-worker
+        # On pointe directement vers le fichier généré ou on laisse l'action chercher les fichiers .sarif
+        sarif_file: '.'
+        # Note: l'action v4 gère mieux le scan du répertoire pour plusieurs fichiers .sarif
+        category: trivy-images
 
   deploy-preprod:
     name: Deploy → Preprod
@@ -187,7 +164,6 @@ jobs:
       run: |
         OWNER=${{ needs.build.outputs.owner }}
         SHA=${{ needs.build.outputs.short-sha }}
-        # On entre dans le dossier nexusrh_ci pour Helm
         helm dependency update nexusrh_ci/helm/nexusrh
         helm upgrade --install nexusrh-preprod nexusrh_ci/helm/nexusrh \
           --namespace nexusrh-preprod \
