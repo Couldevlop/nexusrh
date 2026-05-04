@@ -26,8 +26,7 @@ COPY apps/api/package.json ./apps/api/
 RUN --mount=from=pnpmstore,target=/mnt/store \
     mkdir -p /pnpm/store/v3 \
  && ([ -d /mnt/store/files ] && cp -a /mnt/store/. /pnpm/store/v3/ || true)
-RUN printf 'node-linker=hoisted\n' > .npmrc \
- && pnpm install --frozen-lockfile --ignore-scripts --prefer-offline \
+RUN pnpm install --frozen-lockfile --ignore-scripts --prefer-offline \
     --filter @nexusrhci/api
 COPY tsconfig.base.json ./
 COPY apps/api/ ./apps/api/
