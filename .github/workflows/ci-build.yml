@@ -121,7 +121,6 @@ jobs:
     name: Deploy → preprod (nexusrh-ci)
     runs-on: ubuntu-latest
     needs: [ docker ]
-    environment: preprod
     steps:
     - uses: actions/checkout@v4
 

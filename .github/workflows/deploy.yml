@@ -24,16 +24,12 @@ jobs:
   deploy-k8s:
     name: Deploy Kubernetes → ${{ github.event.inputs.environment || 'preprod' }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'preprod' }}
     concurrency:
       group: deploy-k8s-${{ github.event.inputs.environment || 'preprod' }}
       cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
-        with: { version: 'latest' }
 
       - uses: azure/setup-helm@v4
         with: { version: 'latest' }
@@ -43,14 +39,14 @@ jobs:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
         run: |
           mkdir -p ~/.kube
-          # Detect base64 or raw YAML
           if printf '%s' "$KUBECONFIG_DATA" | base64 -d 2>/dev/null | grep -q 'apiVersion:'; then
             printf '%s' "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           else
             printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
           fi
           chmod 600 ~/.kube/config
-          kubectl config view
+          echo "=== Cluster server ===" && kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          kubectl cluster-info
 
       - name: Get short SHA
         id: sha
@@ -70,7 +66,7 @@ jobs:
             --set images.web.tag=sha-${{ steps.sha.outputs.short }} \
             --set images.worker.repository=${{ env.REGISTRY }}/${{ github.repository_owner }}/nexusrh/worker \
             --set images.worker.tag=sha-${{ steps.sha.outputs.short }} \
-            --set postgres.auth.password=${{ secrets.DB_PASSWORD }} \
+            --set postgresql.auth.password=${{ secrets.DB_PASSWORD }} \
             --set redis.auth.password=${{ secrets.REDIS_PASSWORD }} \
             --set minio.auth.rootPassword=${{ secrets.MINIO_PASSWORD }} \
             --set meilisearch.auth.masterKey=${{ secrets.MEILI_MASTER_KEY }} \
