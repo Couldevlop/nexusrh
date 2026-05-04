@@ -137,7 +137,13 @@ jobs:
           printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
         fi
         chmod 600 ~/.kube/config
+        CURRENT=$(kubectl config current-context 2>/dev/null || true)
+        if [ -z "$CURRENT" ]; then
+          FIRST=$(kubectl config get-contexts -o name | head -1)
+          kubectl config use-context "$FIRST"
+        fi
         kubectl config view
+        kubectl cluster-info
 
     - name: Get short SHA
       id: sha

@@ -45,7 +45,13 @@ jobs:
             printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
           fi
           chmod 600 ~/.kube/config
-          echo "=== Cluster server ===" && kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          # Set current-context if not defined
+          CURRENT=$(kubectl config current-context 2>/dev/null || true)
+          if [ -z "$CURRENT" ]; then
+            FIRST=$(kubectl config get-contexts -o name | head -1)
+            kubectl config use-context "$FIRST"
+          fi
+          kubectl config view
           kubectl cluster-info
 
       - name: Get short SHA
