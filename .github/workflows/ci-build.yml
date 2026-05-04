@@ -141,10 +141,16 @@ jobs:
       env:
         KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
       run: |
+        if [ -z "$KUBECONFIG_DATA" ]; then
+          echo "❌ KUBECONFIG_PREPROD secret is empty"
+          exit 1
+        fi
         mkdir -p ~/.kube
         echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
         echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+        echo "── Server URL dans le kubeconfig ──"
+        grep "server:" ~/.kube/config
         kubectl cluster-info
 
     - name: Helm upgrade
