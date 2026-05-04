@@ -59,6 +59,7 @@ jobs:
         context: ./nexusrh_ci
         file: ./nexusrh_ci/apps/api/Dockerfile
         push: true
+        no-cache: true
         tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-api:sha-${{ steps.sha.outputs.short }}
 
     - name: Trivy scan API
