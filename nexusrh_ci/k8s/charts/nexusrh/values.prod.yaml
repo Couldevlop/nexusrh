@@ -6,6 +6,7 @@ global:
   domain: nexusrh-ci.openlabconsulting.com
   apiDomain: api.nexusrh-ci.openlabconsulting.com
   imagePullPolicy: Always
+  imageRegistry: ghcr.io
 
 images:
   api:

@@ -164,9 +164,9 @@ jobs:
           -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
           --set images.api.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-api \
-          --set images.api.tag=${SHA} \
+          --set images.api.tag=sha-${SHA} \
           --set images.web.repository=${{ env.REGISTRY }}/${OWNER}/nexusrh-ci-web \
-          --set images.web.tag=${SHA} \
+          --set images.web.tag=sha-${SHA} \
           --set api.secrets.existingSecret="nexusrh-app-secrets" \
           --set postgres.auth.existingSecret="nexusrh-postgres-secret" \
           --set redis.auth.existingSecret="nexusrh-redis-secret" \
