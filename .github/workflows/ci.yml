@@ -32,7 +32,7 @@ jobs:
 
     - run: pnpm install --frozen-lockfile
     - run: pnpm --filter @nexusrh/shared build
-    - run: pnpm run type-check
+    - run: pnpm run typecheck
     - run: pnpm run test
 
   security-scan:
