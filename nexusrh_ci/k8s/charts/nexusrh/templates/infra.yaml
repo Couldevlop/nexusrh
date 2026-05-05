@@ -31,6 +31,7 @@ spec:
     metadata:
       labels:
         app: nexusrh-infra-postgres
+        app.kubernetes.io/name: postgresql
     spec:
       containers:
       - name: postgres
@@ -101,6 +102,7 @@ spec:
     metadata:
       labels:
         app: nexusrh-infra-redis
+        app.kubernetes.io/name: redis
     spec:
       containers:
       - name: redis
@@ -159,6 +161,7 @@ spec:
     metadata:
       labels:
         app: nexusrh-infra-minio
+        app.kubernetes.io/name: minio
     spec:
       containers:
       - name: minio
@@ -228,6 +231,7 @@ spec:
     metadata:
       labels:
         app: nexusrh-infra-meilisearch
+        app.kubernetes.io/name: meilisearch
     spec:
       containers:
       - name: meilisearch
