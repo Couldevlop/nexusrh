@@ -20,7 +20,7 @@ images:
 
 ingress:
   certIssuer: letsencrypt-prod
-  className: traefik
+  className: nginx
 
 api:
   replicas: 1
