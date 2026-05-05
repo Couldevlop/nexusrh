@@ -147,7 +147,7 @@ pss:
 
 # ── NetworkPolicies ───────────────────────────────────────────────────────────
 networkPolicies:
-  enabled: true
+  enabled: false
   defaultDenyIngress: true
   defaultDenyEgress: true
 
