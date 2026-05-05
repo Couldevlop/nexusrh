@@ -144,7 +144,7 @@ export default function LoginPage() {
         <img
           src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80"
           alt="Équipe professionnelle"
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover grayscale"
         />
         {/* Overlay gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/70 to-black/60" />
