@@ -171,5 +171,4 @@ jobs:
           --set postgres.auth.existingSecret="nexusrh-postgres-secret" \
           --set redis.auth.existingSecret="nexusrh-redis-secret" \
           --set minio.auth.existingSecret="nexusrh-minio-secret" \
-          --set meilisearch.auth.existingMasterKeySecret="nexusrh-meilisearch-secret" \
-          --wait --timeout=10m
+          --set meilisearch.auth.existingMasterKeySecret="nexusrh-meilisearch-secret"
