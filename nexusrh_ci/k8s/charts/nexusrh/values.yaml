@@ -142,8 +142,8 @@ containerSecurityContext:
 
 # ── Pod Security Standards ────────────────────────────────────────────────────
 pss:
-  enforceLevel: restricted   # restricted | baseline | privileged
-  warnLevel: restricted
+  enforceLevel: baseline   # restricted | baseline | privileged
+  warnLevel: baseline
 
 # ── NetworkPolicies ───────────────────────────────────────────────────────────
 networkPolicies:
