@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/api'
-import { Loader2, ArrowLeft } from 'lucide-react'
+import { Loader2, ArrowLeft, Database } from 'lucide-react'
 
 const schema = z.object({
   name:           z.string().min(2, 'Nom requis'),
@@ -20,6 +20,7 @@ const schema = z.object({
   adminPhone:     z.string().optional(),
   primaryColor:   z.string().default('#E85D04'),
   secondaryColor: z.string().default('#F48C06'),
+  seedDemoData:   z.boolean().default(false),
 })
 type FormData = z.infer<typeof schema>
 
@@ -41,11 +42,11 @@ const CITIES = ['Abidjan', 'Bouaké', 'San-Pédro', 'Daloa', 'Man', 'Yamoussoukr
 export default function PlatformTenantNew() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ tempPassword: string; adminEmail: string } | null>(null)
+  const [result, setResult] = useState<{ tempPassword: string; adminEmail: string; seeded?: boolean } | null>(null)
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { planType: 'trial', sector: 'services', city: 'Abidjan', primaryColor: '#E85D04', secondaryColor: '#F48C06' },
+    defaultValues: { planType: 'trial', sector: 'services', city: 'Abidjan', primaryColor: '#E85D04', secondaryColor: '#F48C06', seedDemoData: false },
   })
 
   const selectedSector = watch('sector')
@@ -55,7 +56,7 @@ export default function PlatformTenantNew() {
     setError(null)
     try {
       const res = await api.post('/platform/tenants', data)
-      setResult({ tempPassword: res.data.tempPassword, adminEmail: res.data.adminEmail })
+      setResult({ tempPassword: res.data.tempPassword, adminEmail: res.data.adminEmail, seeded: data.seedDemoData })
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
       setError(e.response?.data?.error ?? 'Erreur lors de la création')
@@ -72,6 +73,7 @@ export default function PlatformTenantNew() {
           <h2 className="text-lg font-bold text-green-800 mb-2">Tenant créé avec succès</h2>
           <p className="text-sm text-green-700 mb-4">
             L'admin a été créé avec un mot de passe temporaire.
+            {result.seeded && ' Des données de démonstration sont en cours d\'injection.'}
           </p>
           <div className="rounded-lg bg-white p-4 text-left text-sm mb-4 border border-green-200">
             <p><strong>Email admin :</strong> {result.adminEmail}</p>
@@ -197,6 +199,28 @@ export default function PlatformTenantNew() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* Données de démonstration */}
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="font-semibold mb-3">4. Options avancées</h2>
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              {...register('seedDemoData')}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium group-hover:text-primary transition-colors">
+                <Database className="h-4 w-4 shrink-0" />
+                Injecter des données de démonstration
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Crée automatiquement 8 employés ivoiriens, 3 mois de bulletins de paie,
+                des absences et des formations dans ce tenant.
+              </p>
+            </div>
+          </label>
         </section>
 
         {error && (

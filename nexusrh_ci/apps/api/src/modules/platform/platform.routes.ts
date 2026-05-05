@@ -5,6 +5,7 @@ import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
 import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/email.js'
 import { maintenanceCache } from '../../cache.js'
+import { seedDemoTenant } from '../../db/seed-demo.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -87,7 +88,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         cnpsNumber?: string; dgiNumber?: string; rccm?: string
         primaryColor?: string; secondaryColor?: string; logoUrl?: string
         adminEmail: string; adminFirstName: string; adminLastName: string
-        adminPhone?: string
+        adminPhone?: string; seedDemoData?: boolean
       }
 
       if (!body.name || !body.slug || !body.adminEmail) {
@@ -150,7 +151,14 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         [body.adminEmail, passwordHash, body.adminFirstName, body.adminLastName]
       )
 
-      // 5. Email de bienvenue (non bloquant)
+      // 5. Données de démonstration (optionnel, non bloquant)
+      if (body.seedDemoData === true) {
+        seedDemoTenant(pool, schemaName, atRate).catch(err =>
+          fastify.log.warn({ err }, 'Seed démo non terminé')
+        )
+      }
+
+      // 6. Email de bienvenue (non bloquant)
       sendWelcomeTenantEmail({
         to:           body.adminEmail,
         firstName:    body.adminFirstName,
