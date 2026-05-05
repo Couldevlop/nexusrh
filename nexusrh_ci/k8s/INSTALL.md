@@ -1,160 +1,213 @@
-# NexusRH CI — Guide d'installation K8s (kind)
+# NexusRH CI — Guide d'installation K8s
 
-## PHASE 1 — DESTRUCTION
+---
 
-```powershell
-# 1. Supprimer le déploiement Helm
-helm uninstall nexusrh -n nexusrh
+## INFRASTRUCTURE EXISTANTE (k3s @ 62.238.11.20)
 
-# 2. Supprimer les namespaces
-kubectl delete namespace nexusrh
-kubectl delete namespace cert-manager
-kubectl delete namespace ingress-nginx
+Le cluster k3s héberge déjà :
+- **cert-manager** (namespace `cert-manager`)
+- **ingress-nginx** (namespace `ingress-nginx`) — IP publique `62.238.11.20`
+- **NexusRH CI** (namespace `nexusrh-ci`) — `nexusrh.openlabconsulting.com`
 
-# 3. Détruire le cluster
-$env:PATH = "$env:PATH;$env:LOCALAPPDATA\bin-k8s"
-kind delete cluster --name nexusrh
+---
 
-# 4. Vérifier — doit retourner vide
-kind get clusters
-kubectl config get-contexts
+## DÉPLOYER UNE NOUVELLE APPLICATION (ex: sygescom)
+
+### Pré-requis
+
+1. **DNS** — Ajouter chez votre registrar (LWS) :
+   ```
+   sygescom.openlabconsulting.com  A  62.238.11.20
+   ```
+   Vérifier la propagation :
+   ```bash
+   nslookup sygescom.openlabconsulting.com
+   ```
+
+2. **Images Docker** — Pousser vers GHCR ou Docker Hub
+
+---
+
+### Étape 1 — Créer le namespace + secrets sur le VPS
+
+```bash
+ssh root@62.238.11.20
+
+NAMESPACE=sygescom
+
+kubectl create namespace $NAMESPACE
+
+# Adapter les valeurs selon l'application
+kubectl create secret generic sygescom-secrets \
+  --from-literal=jwt-secret="CHANGE_ME_32chars_minimum" \
+  --from-literal=db-password="CHANGE_ME" \
+  -n $NAMESPACE
 ```
 
 ---
 
-## PHASE 2 — REPRODUCTION
+### Étape 2 — Créer un Ingress + ClusterIssuer Let's Encrypt
 
-### A. Construire les images Docker
-```powershell
-cd D:\OPENLAB\nexusrh\nexusrh_ci
+Créer le fichier `/tmp/sygescom-ingress.yaml` sur le VPS :
 
-docker build -t nexusrh/api:local -f apps/api/Dockerfile .
-docker build -t nexusrh/web:local -f apps/web/Dockerfile .
-```
-
-### B. Créer le cluster kind
-```powershell
-$env:PATH = "$env:PATH;$env:LOCALAPPDATA\bin-k8s"
-
-kind create cluster --name nexusrh --config k8s\kind-config.yaml
-
-# Vérifier — tous les nœuds doivent être Ready
-kubectl get nodes
-```
-
-### C. Installer cert-manager
-```powershell
-helm repo add jetstack https://charts.jetstack.io --force-update
-
-helm upgrade --install cert-manager jetstack/cert-manager `
-  --namespace cert-manager --create-namespace `
-  --set crds.enabled=true --wait --timeout 3m
-
-# Vérifier
-kubectl get pods -n cert-manager
-```
-
-### D. Installer ingress-nginx
-```powershell
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
-
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
-  --namespace ingress-nginx --create-namespace `
-  --set controller.allowSnippetAnnotations=true `
-  --timeout 8m
-
-kubectl wait deployment ingress-nginx-controller `
-  -n ingress-nginx --for=condition=Available --timeout=480s
-```
-
-### E. Charger les images dans kind
-> kind ne tire pas depuis Docker Hub — toutes les images doivent être chargées manuellement.
-
-```powershell
-kind load docker-image `
-  nexusrh/api:local `
-  nexusrh/web:local `
-  postgres:16-alpine `
-  redis:7-alpine `
-  "minio/minio:RELEASE.2024-10-02T17-50-41Z" `
-  busybox:1.36 `
-  --name nexusrh
-```
-
-### F. Déployer avec Helm
-
-```powershell
-# Préparer le namespace pour Helm
-kubectl create namespace nexusrh
-kubectl annotate namespace nexusrh `
-  "meta.helm.sh/release-name=nexusrh" `
-  "meta.helm.sh/release-namespace=nexusrh"
-kubectl label namespace nexusrh "app.kubernetes.io/managed-by=Helm"
-
-# Déployer
-cd D:\OPENLAB\nexusrh\nexusrh_ci\k8s
-
-helm upgrade --install nexusrh charts/nexusrh `
-  --namespace nexusrh `
-  -f charts/nexusrh/values.yaml `
-  -f charts/nexusrh/values.local.yaml `
-  -f charts/nexusrh/values.secret.yaml
-
-# Désactiver le worker (image non construite en local)
-kubectl scale deployment nexusrh-worker -n nexusrh --replicas=0
-
-# Surveiller le démarrage
-kubectl get pods -n nexusrh -w
-```
-
-### G. Seed base de données
-```powershell
-$pod = kubectl get pod -n nexusrh `
-  -l "app.kubernetes.io/component=api" `
-  -o jsonpath="{.items[0].metadata.name}"
-
-kubectl exec -n nexusrh $pod -- node dist/db/seed.js
+```bash
+cat <<'EOF' > /tmp/sygescom-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sygescom-ingress
+  namespace: sygescom
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sygescom.openlabconsulting.com
+    secretName: sygescom-tls
+  rules:
+  - host: sygescom.openlabconsulting.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sygescom-web-svc
+            port:
+              number: 3000
+EOF
+kubectl apply -f /tmp/sygescom-ingress.yaml
 ```
 
 ---
 
-## Comptes de connexion
+### Étape 3 — Déployer l'application via Helm ou manifests
+
+**Option A — Chart Helm dédié** (recommandé) :
+```bash
+helm upgrade --install sygescom ./charts/sygescom \
+  --namespace sygescom \
+  -f values.prod.yaml
+```
+
+**Option B — Manifests directs** :
+```bash
+kubectl apply -f k8s/sygescom/ -n sygescom
+```
+
+---
+
+### Étape 4 — Vérifier le certificat TLS
+
+```bash
+kubectl get certificate -n sygescom
+# Attendre READY: True (1-2 min)
+```
+
+---
+
+### Étape 5 — Seed / initialisation
+
+```bash
+kubectl exec -n sygescom deploy/sygescom-api -- node dist/db/seed.js
+```
+
+---
+
+### Vérification finale
+
+```bash
+kubectl get pods,ingress,certificate -n sygescom
+```
+Puis ouvrir `https://sygescom.openlabconsulting.com` dans le navigateur.
+
+---
+
+## RÉINSTALLER NEXUSRH CI (cluster existant)
+
+```bash
+ssh root@62.238.11.20
+
+# 1. Créer les secrets (si absents)
+kubectl create secret generic nexusrh-app-secrets \
+  --from-literal=jwt-secret="..." \
+  --from-literal=anthropic-api-key="..." \
+  --from-literal=smtp-user="..." \
+  --from-literal=smtp-pass="..." \
+  --from-literal=smtp-from="NexusRH <noreply@...>" \
+  -n nexusrh-ci
+
+kubectl create secret generic nexusrh-postgres-secret \
+  --from-literal=postgres-password="..." -n nexusrh-ci
+
+kubectl create secret generic nexusrh-redis-secret \
+  --from-literal=redis-password="..." -n nexusrh-ci
+
+kubectl create secret generic nexusrh-minio-secret \
+  --from-literal=root-password="..." -n nexusrh-ci
+
+kubectl create secret generic nexusrh-meilisearch-secret \
+  --from-literal=master-key="..." -n nexusrh-ci
+
+# Secret pull GHCR
+kubectl create secret docker-registry ghcr-pull-secret \
+  --docker-server=ghcr.io \
+  --docker-username=Couldevlop \
+  --docker-password=GITHUB_TOKEN \
+  -n nexusrh-ci
+
+# 2. Déployer via le pipeline GitHub Actions (push sur main)
+# OU manuellement :
+helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
+  --namespace nexusrh-ci --create-namespace \
+  -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
+  -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml
+
+# 3. Seed
+kubectl exec -n nexusrh-ci deploy/nexusrh-api -- node dist/db/seed.js
+```
+
+---
+
+## COMMANDES UTILES
+
+```bash
+# État global
+kubectl get pods -A
+
+# Logs API
+kubectl logs -n nexusrh-ci -l app.kubernetes.io/component=api -f
+
+# Logs Worker
+kubectl logs -n nexusrh-ci -l app.kubernetes.io/component=worker -f
+
+# Redémarrer un déploiement
+kubectl rollout restart deployment/nexusrh-api -n nexusrh-ci
+
+# Certificats
+kubectl get certificate -A
+
+# Supprimer NetworkPolicies si blocage réseau
+kubectl delete networkpolicy --all -n nexusrh-ci
+```
+
+---
+
+## COMPTES DE CONNEXION — NexusRH CI
 
 | Email | Mot de passe | Rôle |
 |-------|-------------|------|
 | `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin |
-| `admin@sotra.ci` | `Admin1234!` | admin |
-| `drh@sotra.ci` | `Admin1234!` | hr_manager |
-| `manager@sotra.ci` | `Admin1234!` | manager |
-| `employe@sotra.ci` | `Admin1234!` | employee |
+| `admin@sotra-ci.com` | `Admin1234!` | admin |
+| `drh@sotra-ci.com` | `Admin1234!` | hr_manager |
+| `manager@sotra-ci.com` | `Admin1234!` | manager |
+| `employe@sotra-ci.com` | `Admin1234!` | employee |
 | `admin@cabinet-expertise.ci` | `Admin1234!` | admin |
-| `coulwao@gmail.com` | `Openlab2025!` | admin |
-
-## Accès local
-
-Ajouter dans `C:\Windows\System32\drivers\etc\hosts` :
-```
-127.0.0.1  nexusrh.local api.nexusrh.local
-```
 
 | Service | URL |
 |---------|-----|
-| Frontend | https://nexusrh.local |
-| API | https://api.nexusrh.local |
-| Swagger | https://api.nexusrh.local/docs |
-
-## Commandes utiles
-
-```powershell
-# État des pods
-kubectl get pods -n nexusrh
-
-# Logs API en temps réel
-kubectl logs -n nexusrh -l app.kubernetes.io/component=api -f
-
-# Relancer le seed
-kubectl exec -n nexusrh $pod -- node dist/db/seed.js
-
-# Désinstaller sans détruire le cluster
-helm uninstall nexusrh -n nexusrh
-```
+| Frontend | https://nexusrh.openlabconsulting.com |
+| API | https://api.nexusrh.openlabconsulting.com |
+| Swagger | https://api.nexusrh.openlabconsulting.com/docs |
