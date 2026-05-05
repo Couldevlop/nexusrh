@@ -52,8 +52,8 @@ spec:
       terminationGracePeriodSeconds: 30
       initContainers:
         - name: wait-postgres
-          image: postgres:16-alpine
-          command: [sh, -c, "until pg_isready -h {{ .Release.Name }}-postgres-postgresql -p 5432; do sleep 2; done"]
+          image: busybox:1.36
+          command: [sh, -c, "until nc -z {{ .Release.Name }}-postgres-postgresql 5432; do sleep 2; done"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
