@@ -168,12 +168,12 @@ async function main() {
   const employeeHash = await bcrypt.hash('Admin1234!', 12)
 
   await pool.query(`
-    INSERT INTO "${sotraSchema}".users (email, password_hash, first_name, last_name, role, is_active)
+    INSERT INTO "${sotraSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES
-      ('admin@sotra.ci',    $1, 'Directeur', 'RH SOTRA',   'admin',      true),
-      ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true),
-      ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true),
-      ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true)
+      ('admin@sotra.ci',    $1, 'Directeur', 'RH SOTRA',   'admin',      true, now()),
+      ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true, now()),
+      ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
+      ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now())
     ON CONFLICT (email) DO NOTHING
   `, [adminHash, managerHash, employeeHash])
 
@@ -586,10 +586,10 @@ async function main() {
   // Utilisateurs Cabinet
   const cabAdminHash = await bcrypt.hash('Admin1234!', 12)
   await pool.query(`
-    INSERT INTO "${cabinetSchema}".users (email, password_hash, first_name, last_name, role, is_active)
+    INSERT INTO "${cabinetSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES
-      ('admin@cabinet-expertise.ci',   $1, 'Directeur', 'Associé',   'admin',    true),
-      ('employe2@cabinet-expertise.ci', $1, 'Amenan',    'Traoré',    'employee', true)
+      ('admin@cabinet-expertise.ci',   $1, 'Directeur', 'Associé',   'admin',    true, now()),
+      ('employe2@cabinet-expertise.ci', $1, 'Amenan',    'Traoré',    'employee', true, now())
     ON CONFLICT (email) DO NOTHING
   `, [cabAdminHash])
 
@@ -759,8 +759,8 @@ async function main() {
 
   const openlabHash = await bcrypt.hash('Openlab2025!', 12)
   await pool.query(`
-    INSERT INTO "${openlabSchema}".users (email, password_hash, first_name, last_name, role, is_active)
-    VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true)
+    INSERT INTO "${openlabSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
+    VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true, now())
     ON CONFLICT (email) DO NOTHING
   `, [openlabHash])
 

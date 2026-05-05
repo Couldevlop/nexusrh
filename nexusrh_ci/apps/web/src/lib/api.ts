@@ -22,11 +22,17 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 503 && error.response?.data?.maintenance) {
-      // Déclencher un event global pour afficher la bannière maintenance
       window.dispatchEvent(new CustomEvent('nexusrh:maintenance'))
     }
+
     if (error.response?.status === 401) {
-      // Tenter refresh
+      // Ne pas intercepter les routes /auth/* — le composant gère l'erreur lui-même
+      const url: string = error.config?.url ?? ''
+      if (url.includes('/auth/')) {
+        return Promise.reject(error)
+      }
+
+      // Tenter refresh si refreshToken disponible
       const refreshToken = useAuthStore.getState().refreshToken
       if (refreshToken && error.config && !error.config._retry) {
         error.config._retry = true
@@ -40,7 +46,8 @@ api.interceptors.response.use(
           useAuthStore.getState().logout()
           window.location.href = '/login'
         }
-      } else {
+      } else if (useAuthStore.getState().token) {
+        // Token présent mais rejeté (expiré) → déconnecter
         useAuthStore.getState().logout()
         window.location.href = '/login'
       }
