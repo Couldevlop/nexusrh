@@ -90,6 +90,7 @@ jobs:
         tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-api:sha-${{ steps.sha.outputs.short }}
 
     - name: Trivy scan API
+      id: trivy-api
       uses: aquasecurity/trivy-action@master
       continue-on-error: true
       with:
@@ -108,6 +109,7 @@ jobs:
         tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-web:sha-${{ steps.sha.outputs.short }}
 
     - name: Trivy scan Web
+      id: trivy-web
       uses: aquasecurity/trivy-action@master
       continue-on-error: true
       with:
@@ -116,24 +118,16 @@ jobs:
         output: sarif-results/trivy-web.sarif
         severity: CRITICAL,HIGH
 
-    - name: Create SARIF stubs for missing reports
-      if: always()
-      run: |
-        STUB='{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[]}'
-        for f in sarif-results/trivy-api.sarif sarif-results/trivy-web.sarif; do
-          [ -f "$f" ] || echo "$STUB" > "$f"
-        done
-
     - name: Upload SARIF — API
       uses: github/codeql-action/upload-sarif@v4
-      if: always()
+      if: always() && steps.trivy-api.outcome == 'success'
       with:
         sarif_file: sarif-results/trivy-api.sarif
         category: trivy-api
 
     - name: Upload SARIF — Web
       uses: github/codeql-action/upload-sarif@v4
-      if: always()
+      if: always() && steps.trivy-web.outcome == 'success'
       with:
         sarif_file: sarif-results/trivy-web.sarif
         category: trivy-web
