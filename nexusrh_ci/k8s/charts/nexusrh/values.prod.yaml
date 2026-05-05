@@ -9,6 +9,8 @@ global:
   imageRegistry: ghcr.io
   security:
     allowInsecureImages: true
+  imagePullSecrets:
+    - name: ghcr-pull-secret
 
 images:
   api:
