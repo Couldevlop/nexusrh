@@ -142,7 +142,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         {/* Photo de fond */}
         <img
-          src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80"
+          src="https://images.unsplash.com/photo-1531482615713-2afd69097998?w=1200&q=80"
           alt="Équipe professionnelle"
           className="absolute inset-0 h-full w-full object-cover grayscale"
         />
