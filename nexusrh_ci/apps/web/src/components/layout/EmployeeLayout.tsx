@@ -129,14 +129,10 @@ export default function EmployeeLayout() {
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )}
             >
-              {({ isActive }) => (
-                <>
-                  <div className={cn('rounded-lg p-1', isActive && 'bg-primary/10')}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span>{label}</span>
-                </>
-              )}
+              <div className="rounded-lg p-1">
+                <Icon className="h-5 w-5" />
+              </div>
+              <span>{label}</span>
             </NavLink>
           ))}
         </div>

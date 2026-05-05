@@ -139,22 +139,35 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen bg-background">
       {/* Panel gauche — branding (desktop uniquement) */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-gradient-to-br from-primary via-primary/90 to-secondary p-12 text-white">
-        <div className="max-w-sm text-center">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white/20 backdrop-blur text-3xl font-black text-white shadow-xl">
-            N
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        {/* Photo de fond */}
+        <img
+          src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80"
+          alt="Équipe professionnelle"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        {/* Overlay gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/70 to-black/60" />
+        {/* Contenu */}
+        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur font-black text-lg">N</div>
+            <span className="text-xl font-black">NexusRH CI</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tight mb-3">NexusRH CI</h1>
-          <p className="text-lg text-white/80 mb-8">La RH Intelligente, au service de l'Afrique qui avance</p>
-          <div className="space-y-3 text-left">
-            {['Conformité CNPS & ITS/DGI native', 'Paiement salaires Mobile Money', 'Assistant IA Anthropic intégré', 'Multi-tenant · Multi-entreprise'].map(f => (
-              <div key={f} className="flex items-center gap-3 text-sm text-white/90">
-                <div className="h-1.5 w-1.5 rounded-full bg-white/70 shrink-0" />
-                {f}
-              </div>
-            ))}
+          <div>
+            <h2 className="text-4xl font-black leading-tight mb-4">
+              La RH Intelligente,<br />au service de<br />l'Afrique qui avance
+            </h2>
+            <div className="space-y-3 mb-8">
+              {['Conformité CNPS & ITS/DGI native', 'Paiement salaires Mobile Money', 'Assistant IA Anthropic intégré', 'Multi-tenant · Multi-entreprise'].map(f => (
+                <div key={f} className="flex items-center gap-3 text-sm text-white/90">
+                  <div className="h-1.5 w-1.5 rounded-full bg-white shrink-0" />
+                  {f}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-white/50">OpenLab Consulting · Abidjan, Côte d'Ivoire</p>
           </div>
-          <p className="mt-10 text-xs text-white/50">OpenLab Consulting · Abidjan, Côte d'Ivoire</p>
         </div>
       </div>
 

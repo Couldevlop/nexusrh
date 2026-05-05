@@ -33,10 +33,7 @@ export default function MainLayout() {
       <MaintenanceBanner />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar (desktop: always visible, mobile: drawer) */}
-        <div className="hidden lg:flex">
-          <Sidebar />
-        </div>
+        {/* Sidebar (desktop: toujours visible via lg:translate-x-0, mobile: drawer) */}
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Main content */}
