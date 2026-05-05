@@ -43,8 +43,8 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: nexusrh-app-secrets
-              key: POSTGRES_PASSWORD
+              name: nexusrh-postgres-secret
+              key: postgres-password
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
         ports:
@@ -54,6 +54,13 @@ spec:
             command: [pg_isready, -U, nexusrh]
           initialDelaySeconds: 5
           periodSeconds: 5
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -64,7 +71,7 @@ spec:
       accessModes: [ReadWriteOnce]
       resources:
         requests:
-          storage: 2Gi
+          storage: 10Gi
 # ── Redis (official image) ────────────────────────────────────────────────────
 ---
 apiVersion: v1
@@ -103,8 +110,8 @@ spec:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: nexusrh-app-secrets
-              key: REDIS_PASSWORD
+              name: nexusrh-redis-secret
+              key: redis-password
         ports:
         - containerPort: 6379
         readinessProbe:
@@ -112,6 +119,13 @@ spec:
             command: [sh, -c, "redis-cli -a $REDIS_PASSWORD ping"]
           initialDelaySeconds: 5
           periodSeconds: 5
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
 # ── MinIO (official image) ────────────────────────────────────────────────────
 ---
 apiVersion: v1
@@ -131,11 +145,12 @@ spec:
     targetPort: 9001
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ $rel }}-infra-minio
   namespace: {{ $ns }}
 spec:
+  serviceName: {{ $rel }}-minio
   replicas: 1
   selector:
     matchLabels:
@@ -155,8 +170,8 @@ spec:
         - name: MINIO_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: nexusrh-app-secrets
-              key: S3_SECRET_KEY
+              name: nexusrh-minio-secret
+              key: root-password
         ports:
         - containerPort: 9000
         - containerPort: 9001
@@ -166,9 +181,83 @@ spec:
             port: 9000
           initialDelaySeconds: 10
           periodSeconds: 10
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
         volumeMounts:
         - name: data
           mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 20Gi
+# ── Meilisearch (official image) ─────────────────────────────────────────────
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $rel }}-meilisearch
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app: nexusrh-infra-meilisearch
+  ports:
+  - name: http
+    port: 7700
+    targetPort: 7700
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $rel }}-infra-meilisearch
+  namespace: {{ $ns }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexusrh-infra-meilisearch
+  template:
+    metadata:
+      labels:
+        app: nexusrh-infra-meilisearch
+    spec:
+      containers:
+      - name: meilisearch
+        image: getmeili/meilisearch:v1.10
+        env:
+        - name: MEILI_ENV
+          value: production
+        - name: MEILI_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nexusrh-meilisearch-secret
+              key: master-key
+        ports:
+        - containerPort: 7700
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 7700
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: data
+          mountPath: /meili_data
       volumes:
       - name: data
         emptyDir: {}

@@ -7,6 +7,7 @@ global:
   domain: nexusrh.example.com
   apiDomain: api.nexusrh.example.com
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
   # Labels communs injectés sur toutes les ressources
   labels:
     app.kubernetes.io/part-of: nexusrh
@@ -169,9 +170,9 @@ limitRange:
     defaultRequestCpu: "100m"
     defaultRequestMemory: "128Mi"
 
-# ── PostgreSQL (Bitnami sub-chart) ────────────────────────────────────────────
+# ── PostgreSQL (Bitnami sub-chart) — désactivé, utiliser infra.enabled: true ──
 postgres:
-  enabled: true
+  enabled: false
   auth:
     username: nexusrh
     database: nexusrh
@@ -208,9 +209,9 @@ postgres:
   metrics:
     enabled: false
 
-# ── Redis (Bitnami sub-chart) ─────────────────────────────────────────────────
+# ── Redis (Bitnami sub-chart) — désactivé, utiliser infra.enabled: true ───────
 redis:
-  enabled: true
+  enabled: false
   architecture: standalone
   auth:
     enabled: true
@@ -230,9 +231,9 @@ redis:
   metrics:
     enabled: false
 
-# ── MinIO (Bitnami sub-chart) ─────────────────────────────────────────────────
+# ── MinIO (Bitnami sub-chart) — désactivé, utiliser infra.enabled: true ───────
 minio:
-  enabled: true
+  enabled: false
   auth:
     rootUser: nexusrh-minio
     rootPassword: ""
@@ -253,9 +254,9 @@ minio:
   ingress:
     enabled: false
 
-# ── Meilisearch (sub-chart) ───────────────────────────────────────────────────
+# ── Meilisearch (sub-chart) — désactivé, utiliser infra.enabled: true ─────────
 meilisearch:
-  enabled: true
+  enabled: false
   environment:
     MEILI_ENV: production
   auth:
@@ -285,6 +286,6 @@ meilisearch:
     seccompProfile:
       type: RuntimeDefault
 
-# ── Infra officielle (remplace Bitnami en local si enabled: true) ─────────────
+# ── Infra officielle (images officielles — remplace Bitnami) ─────────────────
 infra:
-  enabled: false
+  enabled: true

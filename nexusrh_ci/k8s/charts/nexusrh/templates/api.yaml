@@ -25,11 +25,14 @@ spec:
         app.kubernetes.io/component: api
         {{- include "nexusrh.labels" . | nindent 8 }}
       annotations:
-        # Redéploiement auto si secret modifié
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: nexusrh-api
       automountServiceAccountToken: false
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -69,8 +72,63 @@ spec:
           envFrom:
             - configMapRef:
                 name: nexusrh-config
-            - secretRef:
-                name: nexusrh-app-secrets
+          env:
+            # PostgreSQL — password from cluster secret, URL built with $(VAR) substitution
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-postgres-secret
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "{{ include "nexusrh.postgresUrl" . }}"
+            # Redis
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-redis-secret
+                  key: redis-password
+            - name: REDIS_URL
+              value: "{{ include "nexusrh.redisUrl" . }}"
+            # MinIO / S3
+            - name: S3_ACCESS_KEY
+              value: nexusrh-minio
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-minio-secret
+                  key: root-password
+            # Meilisearch
+            - name: MEILISEARCH_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-meilisearch-secret
+                  key: master-key
+            # App secrets (key names match what setup-cluster-ci.sh creates)
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: jwt-secret
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: anthropic-api-key
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: smtp-user
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: smtp-pass
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: smtp-from
           resources: {{ toYaml .Values.api.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false

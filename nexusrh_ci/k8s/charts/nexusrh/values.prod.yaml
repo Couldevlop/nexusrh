@@ -1,14 +1,9 @@
-# values.prod.yaml — Surcharges production
-# Usage : helm upgrade --install nexusrh . -f values.prod.yaml -f values.secret.yaml
-# Remplacer YOUR_DOMAIN et ghcr.io/YOUR_ORG
+# values.prod.yaml — Surcharges production k3s / Hetzner
 
 global:
   domain: nexusrh-ci.openlabconsulting.com
   apiDomain: api.nexusrh-ci.openlabconsulting.com
   imagePullPolicy: Always
-  imageRegistry: ghcr.io
-  security:
-    allowInsecureImages: true
   imagePullSecrets:
     - name: ghcr-pull-secret
 
@@ -33,9 +28,28 @@ api:
     LOG_LEVEL: info
   autoscaling:
     enabled: false
+  secrets:
+    existingSecret: nexusrh-app-secrets
 
 web:
   replicas: 1
 
 worker:
   replicas: 1
+
+# Infra officielle activée (postgres, redis, minio, meilisearch via images officielles)
+infra:
+  enabled: true
+
+# Bitnami sub-charts désactivés
+postgres:
+  enabled: false
+
+redis:
+  enabled: false
+
+minio:
+  enabled: false
+
+meilisearch:
+  enabled: false

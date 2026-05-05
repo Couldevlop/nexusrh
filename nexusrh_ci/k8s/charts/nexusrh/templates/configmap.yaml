@@ -16,8 +16,6 @@ data:
   DATABASE_HOST: "{{ $rel }}-postgres-postgresql.{{ $ns }}.svc.cluster.local"
   DATABASE_PORT: "5432"
   DATABASE_NAME: "nexusrh"
-  DATABASE_URL: "postgresql://nexusrh:$(POSTGRES_PASSWORD)@{{ $rel }}-postgres-postgresql.{{ $ns }}.svc.cluster.local:5432/nexusrh"
-  REDIS_URL: "redis://:$(REDIS_PASSWORD)@{{ $rel }}-redis-master.{{ $ns }}.svc.cluster.local:6379"
   S3_ENDPOINT: "http://{{ $rel }}-minio.{{ $ns }}.svc.cluster.local:9000"
   S3_BUCKET: "nexusrh"
   S3_REGION: "eu-west-1"
