@@ -170,3 +170,17 @@ jobs:
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
           --set images.api.tag=sha-${SHA} \
           --set images.web.tag=sha-${SHA}
+
+    - name: Seed database (idempotent)
+      run: |
+        echo "⏳ Attente démarrage API (60s)..."
+        sleep 60
+        API_POD=$(kubectl get pods -n nexusrh-ci -l app=api --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+        if [ -z "$API_POD" ]; then
+          echo "⚠️  Aucun pod API Running trouvé, attente 30s supplémentaires..."
+          sleep 30
+          API_POD=$(kubectl get pods -n nexusrh-ci -l app=api -o jsonpath='{.items[0].metadata.name}')
+        fi
+        echo "🌱 Seed sur pod: $API_POD"
+        kubectl exec -n nexusrh-ci "$API_POD" -- node dist/db/seed.js
+        echo "✅ Seed terminé"
