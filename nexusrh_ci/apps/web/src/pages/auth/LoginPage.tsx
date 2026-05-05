@@ -137,21 +137,41 @@ export default function LoginPage() {
   // ── Rendu ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    <div className="flex min-h-screen bg-background">
+      {/* Panel gauche — branding (desktop uniquement) */}
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-gradient-to-br from-primary via-primary/90 to-secondary p-12 text-white">
+        <div className="max-w-sm text-center">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white/20 backdrop-blur text-3xl font-black text-white shadow-xl">
+            N
+          </div>
+          <h1 className="text-4xl font-black tracking-tight mb-3">NexusRH CI</h1>
+          <p className="text-lg text-white/80 mb-8">La RH Intelligente, au service de l'Afrique qui avance</p>
+          <div className="space-y-3 text-left">
+            {['Conformité CNPS & ITS/DGI native', 'Paiement salaires Mobile Money', 'Assistant IA Anthropic intégré', 'Multi-tenant · Multi-entreprise'].map(f => (
+              <div key={f} className="flex items-center gap-3 text-sm text-white/90">
+                <div className="h-1.5 w-1.5 rounded-full bg-white/70 shrink-0" />
+                {f}
+              </div>
+            ))}
+          </div>
+          <p className="mt-10 text-xs text-white/50">OpenLab Consulting · Abidjan, Côte d'Ivoire</p>
+        </div>
+      </div>
+
+      {/* Panel droit — formulaire */}
+      <div className="flex flex-1 items-center justify-center px-4 py-8 lg:px-12">
       <div className="w-full max-w-sm">
 
-        {/* Logo */}
-        <div className="mb-8 text-center">
+        {/* Logo mobile uniquement */}
+        <div className="mb-8 text-center lg:hidden">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
             N
           </div>
           <h1 className="text-2xl font-bold">NexusRH CI</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            La RH Intelligente, au service de l'Afrique qui avance
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">La RH Intelligente, au service de l'Afrique qui avance</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm">
 
           {/* ── Formulaire connexion ── */}
           {!mustChange && (
@@ -245,11 +265,11 @@ export default function LoginPage() {
         </div>
 
         {!mustChange && (
-          <div className="mt-6 rounded-xl border bg-card p-4 text-xs text-muted-foreground">
+          <div className="mt-5 rounded-xl border bg-muted/50 p-4 text-xs text-muted-foreground">
             <p className="mb-2 font-medium text-foreground">Comptes de démonstration :</p>
             <div className="space-y-1">
-              <p>SOTRA admin : <span className="font-mono text-foreground">admin@sotra.ci / Admin1234!</span></p>
-              <p>SOTRA employé : <span className="font-mono text-foreground">employe@sotra.ci / Admin1234!</span></p>
+              <p>SOTRA admin : <span className="font-mono text-foreground">admin@sotra-ci.com / Admin1234!</span></p>
+              <p>SOTRA employé : <span className="font-mono text-foreground">employe@sotra-ci.com / Admin1234!</span></p>
               <p>Super admin : <span className="font-mono text-foreground">superadmin@nexusrh-ci.com / SuperAdmin1234!</span></p>
             </div>
           </div>
@@ -258,6 +278,7 @@ export default function LoginPage() {
         <p className="mt-4 text-center text-xs text-muted-foreground">
           Propulsé par <span className="font-medium">OpenLab Consulting</span> · Abidjan, CI
         </p>
+      </div>
       </div>
     </div>
   )

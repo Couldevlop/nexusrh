@@ -57,8 +57,39 @@
   }
 }
 
-/* Scrollbar personnalisé */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { @apply bg-muted; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground; }
+
+/* Smooth scroll */
+html { scroll-behavior: smooth; }
+
+/* Focus visible amélioré */
+*:focus-visible { @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background; }
+
+/* Page content padding responsive */
+.page-container {
+  @apply px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 max-w-7xl mx-auto;
+}
+
+/* Cards avec hover subtil */
+.card-hover {
+  @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+}
+
+/* KPI grid responsive */
+.kpi-grid {
+  @apply grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4;
+}
+
+/* Section title */
+.section-title {
+  @apply text-lg font-semibold tracking-tight text-foreground;
+}
+
+/* Gradient de fond subtil pour les cartes importantes */
+.card-gradient {
+  @apply bg-gradient-to-br from-primary/5 to-transparent border border-primary/20;
+}

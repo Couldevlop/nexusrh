@@ -162,31 +162,31 @@ export default function DashboardPage() {
         }
       `}</style>
 
-      <div id="dashboard-print" ref={printRef} className="p-6 space-y-6 bg-background min-h-full">
+      <div id="dashboard-print" ref={printRef} className="px-4 py-4 sm:px-6 sm:py-5 lg:p-8 space-y-5 bg-background min-h-full">
 
         {/* ── En-tête ──────────────────────────────────────────── */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Tableau de bord</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
               {tenantConfig?.name ?? 'NexusRH CI'} · {roleLabel[user?.role ?? ''] ?? user?.role}
-              · {new Date().toLocaleDateString('fr-CI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              · {new Date().toLocaleDateString('fr-CI', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
           <div className="no-print flex items-center gap-2">
             <button onClick={handleExportXLSX}
-              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-              <Download className="h-4 w-4 text-green-600" /> Excel
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium hover:bg-muted">
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" /> Excel
             </button>
             <button onClick={handlePrint}
-              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-              <Printer className="h-4 w-4 text-red-500" /> PDF
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium hover:bg-muted">
+              <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" /> PDF
             </button>
           </div>
         </div>
 
         {/* ── KPI Cards ────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard
             label="Effectifs actifs"
             value={employees.length > 0 ? String(employees.length) : '—'}
