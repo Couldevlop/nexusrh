@@ -7,6 +7,8 @@ global:
   apiDomain: api.nexusrh-ci.openlabconsulting.com
   imagePullPolicy: Always
   imageRegistry: ghcr.io
+  security:
+    allowInsecureImages: true
 
 images:
   api:
