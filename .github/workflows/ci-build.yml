@@ -163,7 +163,8 @@ jobs:
         SHA:   ${{ needs.build.outputs.short-sha }}
       run: |
         helm dependency update nexusrh_ci/k8s/charts/nexusrh
-        helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh --force \
+        kubectl delete deployment nexusrh-ci-infra-redis -n nexusrh-ci --ignore-not-found=true
+        helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
           --namespace nexusrh-ci --create-namespace \
           -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
