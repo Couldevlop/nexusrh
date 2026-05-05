@@ -72,9 +72,6 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
     employeeIds.push(r.rows[0].id)
   }
 
-  // ── Règles de paie ── (déjà créées par provisionTenantSchema, on récupère leur id)
-  const rules = await pool.query(`SELECT * FROM "${s}".payroll_rules ORDER BY code`)
-
   // ── 3 mois de bulletins ──
   for (let mo = 2; mo >= 0; mo--) {
     const { year, month, label } = pastMonth(mo + 1)
@@ -88,14 +85,13 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
     for (let i = 0; i < employeeIds.length; i++) {
       const emp = EMPLOYEES[i]!
       const result = calculatePayrollCI({
-        grossSalary: emp.salary,
+        baseSalary: emp.salary,
         atRate,
         maritalStatus: 'married',
         childrenCount: 1,
-        workingDays: 26,
-        totalDays: 26,
-        variableElements: [],
-        payrollRules: rules.rows,
+        workedDays: 26,
+        workingDaysMonth: 26,
+        variableElements: {},
       })
       await pool.query(
         `INSERT INTO "${s}".pay_slips
@@ -106,8 +102,8 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
         [
           employeeIds[i], periodId,
           result.grossSalary, result.netPayable,
-          result.totalEmployeeContributions, result.totalEmployerContributions,
-          result.incomeTax, result.employerCost,
+          result.totalCnpsSal, result.totalCnpsPat,
+          result.its, result.employerCost,
           JSON.stringify(result.lines),
         ]
       )
