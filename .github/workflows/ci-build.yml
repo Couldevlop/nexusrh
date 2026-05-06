@@ -160,25 +160,37 @@ jobs:
     - name: Helm upgrade
       env:
         OWNER: ${{ needs.build.outputs.owner }}
-        SHA:   ${{ needs.build.outputs.short-sha }}
+        SHA: ${{ needs.build.outputs.short-sha }}
       run: |
         helm dependency update nexusrh_ci/k8s/charts/nexusrh
         kubectl delete deployment nexusrh-ci-infra-redis -n nexusrh-ci --ignore-not-found=true
+
+        # Ajout du flag --force pour résoudre les conflits de propriété (Server-Side Apply)
         helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
           --namespace nexusrh-ci --create-namespace \
           -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
           --set images.api.tag=sha-${SHA} \
-          --set images.web.tag=sha-${SHA}
+          --set images.web.tag=sha-${SHA} \
+          --force --wait
 
     - name: Seed database (idempotent)
       run: |
         echo "⏳ Rollout API en cours..."
         kubectl rollout status deployment/nexusrh-api -n nexusrh-ci --timeout=180s
+
+        # Sélection robuste du dernier pod API démarré
         API_POD=$(kubectl get pods -n nexusrh-ci \
           -l app.kubernetes.io/component=api \
           --field-selector=status.phase=Running \
-          -o jsonpath='{.items[0].metadata.name}')
+          --sort-by=.metadata.creationTimestamp \
+          -o jsonpath='{.items[-1].metadata.name}')
+
+        if [ -z "$API_POD" ]; then
+          echo "❌ Impossible de trouver un pod API valide pour le seed"
+          exit 1
+        fi
+
         echo "🌱 Seed sur pod: $API_POD"
         kubectl exec -n nexusrh-ci "$API_POD" -- node dist/db/seed.js
         echo "✅ Seed terminé"
