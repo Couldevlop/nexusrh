@@ -1,39 +1,39 @@
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { motion } from 'framer-motion'
-import { Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react'
-import { useLogin } from '@/hooks/useAuth'
-import { useAuthStore } from '@/stores/authStore'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { motion } from "framer-motion";
+import { Eye, EyeOff, Sparkles, Loader2 } from "lucide-react";
+import { useLogin } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
+import { useNavigate } from "react-router-dom";
 
 const loginSchema = z.object({
-  email: z.string().email('Email invalide'),
-  password: z.string().min(1, 'Mot de passe requis'),
+  email: z.string().email("Email invalide"),
+  password: z.string().min(1, "Mot de passe requis"),
   mfaCode: z.string().optional(),
-})
+});
 
-type LoginFormData = z.infer<typeof loginSchema>
+type LoginFormData = z.infer<typeof loginSchema>;
 
 function getRedirectPath(role?: string): string {
-  if (role === 'super_admin') return '/platform/dashboard'
-  if (role === 'employee') return '/mon-espace'
-  return '/dashboard'
+  if (role === "super_admin") return "/platform/dashboard";
+  if (role === "employee") return "/mon-espace";
+  return "/dashboard";
 }
 
 export function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false)
-  const [requiresMfa, setRequiresMfa] = useState(false)
-  const login = useLogin()
-  const navigate = useNavigate()
-  const { isAuthenticated, user } = useAuthStore()
+  const [showPassword, setShowPassword] = useState(false);
+  const [requiresMfa, setRequiresMfa] = useState(false);
+  const login = useLogin();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuthStore();
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      navigate(getRedirectPath(user.role), { replace: true })
+      navigate(getRedirectPath(user.role), { replace: true });
     }
-  }, [isAuthenticated, user, navigate])
+  }, [isAuthenticated, user, navigate]);
 
   const {
     register,
@@ -43,21 +43,21 @@ export function LoginPage() {
     setError,
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-  })
+  });
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      const result = await login.mutateAsync(data)
+      const result = await login.mutateAsync(data);
       if ((result as { requiresMfa?: boolean }).requiresMfa) {
-        setRequiresMfa(true)
+        setRequiresMfa(true);
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } }
-      setError('root', {
-        message: error.response?.data?.message ?? 'Erreur de connexion',
-      })
+      const error = err as { response?: { data?: { message?: string } } };
+      setError("root", {
+        message: error.response?.data?.message ?? "Erreur de connexion",
+      });
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-purple-900 flex items-center justify-center p-4">
@@ -120,12 +120,14 @@ export function LoginPage() {
               </label>
               <input
                 type="email"
-                {...register('email')}
+                {...register("email")}
                 placeholder="admin@nexusrh.com"
                 className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
               />
               {errors.email && (
-                <p className="text-xs text-red-400 mt-1">{errors.email.message}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
@@ -136,8 +138,8 @@ export function LoginPage() {
               </label>
               <div className="relative">
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  {...register('password')}
+                  type={showPassword ? "text" : "password"}
+                  {...register("password")}
                   placeholder="••••••••"
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all pr-12"
                 />
@@ -154,7 +156,9 @@ export function LoginPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs text-red-400 mt-1">{errors.password.message}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -162,7 +166,7 @@ export function LoginPage() {
             {requiresMfa && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
+                animate={{ opacity: 1, height: "auto" }}
               >
                 <label className="block text-sm font-medium text-indigo-100 mb-1">
                   Code d'authentification (6 chiffres)
@@ -171,7 +175,7 @@ export function LoginPage() {
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
-                  {...register('mfaCode')}
+                  {...register("mfaCode")}
                   placeholder="000000"
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center text-2xl tracking-widest"
                 />
@@ -186,7 +190,7 @@ export function LoginPage() {
               {login.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : null}
-              {login.isPending ? 'Connexion...' : 'Se connecter'}
+              {login.isPending ? "Connexion..." : "Se connecter"}
             </button>
 
             <div className="text-center">
@@ -201,8 +205,10 @@ export function LoginPage() {
 
           {/* Demo accounts */}
           <div className="mt-6 pt-6 border-t border-white/10">
-            <p className="text-xs text-white/40 text-center mb-3">Comptes démo</p>
-            <div className="grid grid-cols-2 gap-2">
+            <p className="text-xs text-white/40 text-center mb-3">
+              Comptes démo
+            </p>
+            {/* <div className="grid grid-cols-2 gap-2">
               {[
                 { label: 'Super Admin', email: 'superadmin@nexusrh.com', tenant: 'Plateforme' },
                 { label: 'Admin', email: 'admin@techcorp.com', tenant: 'TechCorp' },
@@ -225,10 +231,10 @@ export function LoginPage() {
                   <span className="opacity-50">{acc.tenant}</span>
                 </button>
               ))}
-            </div>
+            </div> */}
           </div>
         </div>
       </motion.div>
     </div>
-  )
+  );
 }
