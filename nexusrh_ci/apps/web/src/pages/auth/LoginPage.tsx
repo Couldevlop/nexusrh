@@ -289,8 +289,8 @@ export default function LoginPage() {
           <div className="mt-5 rounded-xl border bg-muted/50 p-4 text-xs text-muted-foreground">
             <p className="mb-2 font-medium text-foreground">Comptes de démonstration :</p>
             <div className="space-y-1">
-              <p>SOTRA admin : <span className="font-mono text-foreground">admin@sotra-ci.com / Admin1234!</span></p>
-              <p>SOTRA employé : <span className="font-mono text-foreground">employe@sotra-ci.com / Admin1234!</span></p>
+              <p>SOTRA admin : <span className="font-mono text-foreground">admin@sotra.ci / Admin1234!</span></p>
+              <p>SOTRA employé : <span className="font-mono text-foreground">employe@sotra.ci / Admin1234!</span></p>
               <p>Super admin : <span className="font-mono text-foreground">superadmin@nexusrh-ci.com / SuperAdmin1234!</span></p>
             </div>
           </div>
