@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import openlabLogo from '@/assets/OPENLAB.png'
 import {
   LayoutDashboard, Users, CreditCard, Calendar,
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
@@ -108,6 +109,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </NavLink>
           ))}
         </nav>
+
+        {/* OpenLab signature */}
+        <div className="px-3 pb-2 flex items-center justify-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+          <img src={openlabLogo} alt="OpenLab Consulting" className="h-5 w-auto object-contain" />
+          <span className="text-[10px] text-muted-foreground leading-tight">by OpenLab Consulting</span>
+        </div>
 
         {/* User footer */}
         <div className="border-t border-border p-3">

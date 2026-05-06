@@ -1,3 +1,4 @@
+import openlabLogo from '@/assets/OPENLAB.png'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -166,7 +167,10 @@ export default function LoginPage() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-white/50">OpenLab Consulting · Abidjan, Côte d'Ivoire</p>
+            <div className="flex items-center gap-2">
+              <img src={openlabLogo} alt="OpenLab Consulting" className="h-7 w-auto object-contain brightness-0 invert opacity-70" />
+              <span className="text-xs text-white/50">OpenLab Consulting · Abidjan, Côte d'Ivoire</span>
+            </div>
           </div>
         </div>
       </div>
@@ -182,6 +186,10 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold">NexusRH CI</h1>
           <p className="mt-1 text-sm text-muted-foreground">La RH Intelligente, au service de l'Afrique qui avance</p>
+          <div className="mt-3 flex items-center justify-center gap-1.5 opacity-60">
+            <img src={openlabLogo} alt="OpenLab" className="h-5 w-auto object-contain" />
+            <span className="text-xs text-muted-foreground">by OpenLab Consulting</span>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm">
@@ -288,9 +296,10 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Propulsé par <span className="font-medium">OpenLab Consulting</span> · Abidjan, CI
-        </p>
+        <div className="mt-4 flex items-center justify-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+          <img src={openlabLogo} alt="OpenLab Consulting" className="h-6 w-auto object-contain" />
+          <span className="text-xs text-muted-foreground">by OpenLab Consulting · Abidjan, CI</span>
+        </div>
       </div>
       </div>
     </div>
