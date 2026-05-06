@@ -208,21 +208,51 @@ export function LoginPage() {
             <p className="text-xs text-white/40 text-center mb-3">
               Comptes démo
             </p>
-            {/* <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Super Admin', email: 'superadmin@nexusrh.com', tenant: 'Plateforme' },
-                { label: 'Admin', email: 'admin@techcorp.com', tenant: 'TechCorp' },
-                { label: 'RH Manager', email: 'rh@techcorp.com', tenant: 'TechCorp' },
-                { label: 'Manager', email: 'manager@techcorp.com', tenant: 'TechCorp' },
-                { label: 'Employé', email: 'employe@techcorp.com', tenant: 'TechCorp' },
-                { label: 'Admin AP', email: 'admin@artisanpro.com', tenant: 'ArtisanPro' },
+                {
+                  label: "Super Admin",
+                  email: "superadmin@nexusrh.com",
+                  tenant: "Plateforme",
+                },
+                {
+                  label: "Admin",
+                  email: "admin@techcorp.com",
+                  tenant: "TechCorp",
+                },
+                {
+                  label: "RH Manager",
+                  email: "rh@techcorp.com",
+                  tenant: "TechCorp",
+                },
+                {
+                  label: "Manager",
+                  email: "manager@techcorp.com",
+                  tenant: "TechCorp",
+                },
+                {
+                  label: "Employé",
+                  email: "employe@techcorp.com",
+                  tenant: "TechCorp",
+                },
+                {
+                  label: "Admin AP",
+                  email: "admin@artisanpro.com",
+                  tenant: "ArtisanPro",
+                },
               ].map((acc) => (
                 <button
                   key={acc.email}
                   type="button"
                   onClick={() => {
-                    setValue('email', acc.email, { shouldValidate: true })
-                    setValue('password', acc.email === 'superadmin@nexusrh.com' ? 'SuperAdmin1234!' : 'Admin1234!', { shouldValidate: true })
+                    setValue("email", acc.email, { shouldValidate: true });
+                    setValue(
+                      "password",
+                      acc.email === "superadmin@nexusrh.com"
+                        ? "SuperAdmin1234!"
+                        : "Admin1234!",
+                      { shouldValidate: true },
+                    );
                   }}
                   className="text-xs px-2 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/60 hover:text-white transition-all text-left"
                 >
@@ -231,7 +261,7 @@ export function LoginPage() {
                   <span className="opacity-50">{acc.tenant}</span>
                 </button>
               ))}
-            </div> */}
+            </div>
           </div>
         </div>
       </motion.div>
