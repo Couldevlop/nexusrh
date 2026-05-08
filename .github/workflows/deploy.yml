@@ -1,0 +1,183 @@
+name: Deploy — NexusRH CI
+
+# develop  → staging k3s (automatique après CI vert)
+# main     → production k3s (automatique après CI vert)
+
+on:
+  workflow_run:
+    workflows: ["Quality & Security — NexusRH CI"]
+    types: [completed]
+    branches: [develop, main]
+
+permissions:
+  contents: read
+  packages: write   # push vers GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/couldevlop
+
+jobs:
+  # ── Garde-fou : ne déployer que si le CI a réussi ──────────────────────────
+  check-ci:
+    name: CI passé ?
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      branch: ${{ github.event.workflow_run.head_branch }}
+      sha:    ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - run: echo "CI success on ${{ github.event.workflow_run.head_branch }}"
+
+  # ── Build & push images Docker vers GHCR ───────────────────────────────────
+  build:
+    name: Build & Push Docker images
+    needs: check-ci
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, web, worker]
+    outputs:
+      tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-ci.outputs.sha }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tag
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/nexusrh-${{ matrix.service }}
+          tags: |
+            type=raw,value=${{ needs.check-ci.outputs.branch == 'main' && 'prod' || 'staging' }}
+            type=sha,prefix=${{ needs.check-ci.outputs.branch == 'main' && 'prod-' || 'staging-' }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v5
+        with:
+          context: nexusrh_ci/apps/${{ matrix.service }}
+          file: nexusrh_ci/apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Déploiement Staging (develop) ──────────────────────────────────────────
+  deploy-staging:
+    name: Deploy → Staging k3s
+    needs: [check-ci, build]
+    if: ${{ needs.check-ci.outputs.branch == 'develop' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.nexusrh-ci.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-ci.outputs.sha }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig (staging)
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Create namespace if absent
+        run: kubectl create namespace nexusrh-staging --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply k8s manifests (staging overlay)
+        run: |
+          cd nexusrh_ci/k8s
+          kustomize build overlays/staging | kubectl apply -f -
+
+      - name: Update image tags
+        run: |
+          SHA=${{ needs.check-ci.outputs.sha }}
+          TAG="staging-${SHA:0:7}"
+          kubectl set image deployment/nexusrh-api  api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}  -n nexusrh-staging
+          kubectl set image deployment/nexusrh-web  web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}  -n nexusrh-staging
+          kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh-staging
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/nexusrh-api    -n nexusrh-staging --timeout=180s
+          kubectl rollout status deployment/nexusrh-web    -n nexusrh-staging --timeout=180s
+          kubectl rollout status deployment/nexusrh-worker -n nexusrh-staging --timeout=120s
+
+      - name: Smoke test staging
+        run: |
+          sleep 10
+          curl -sf https://api.staging.nexusrh-ci.com/health || echo "⚠️  health check non disponible encore"
+
+  # ── Déploiement Production (main) ──────────────────────────────────────────
+  deploy-production:
+    name: Deploy → Production k3s
+    needs: [check-ci, build]
+    if: ${{ needs.check-ci.outputs.branch == 'main' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.nexusrh-ci.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-ci.outputs.sha }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig (production)
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Create namespace if absent
+        run: kubectl create namespace nexusrh --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply k8s manifests (prod overlay)
+        run: |
+          cd nexusrh_ci/k8s
+          kustomize build overlays/prod | kubectl apply -f -
+
+      - name: Update image tags
+        run: |
+          SHA=${{ needs.check-ci.outputs.sha }}
+          TAG="prod-${SHA:0:7}"
+          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}    -n nexusrh
+          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}    -n nexusrh
+          kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/nexusrh-api    -n nexusrh --timeout=300s
+          kubectl rollout status deployment/nexusrh-web    -n nexusrh --timeout=300s
+          kubectl rollout status deployment/nexusrh-worker -n nexusrh --timeout=180s
+
+      - name: Production health check
+        run: |
+          sleep 15
+          curl -sf https://api.nexusrh-ci.com/health
+          echo "✅ Production déployée — SHA ${{ needs.check-ci.outputs.sha }}"

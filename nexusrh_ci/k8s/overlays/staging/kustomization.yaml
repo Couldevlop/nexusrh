@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+namePrefix: ""
+namespace: nexusrh-staging
+
+patches:
+  - path: patches.yaml
+    target:
+      kind: Ingress
+      name: nexusrh-ingress
+
+images:
+  - name: nexusrh/api
+    newName: ghcr.io/couldevlop/nexusrh-api
+    newTag: staging
+  - name: nexusrh/web
+    newName: ghcr.io/couldevlop/nexusrh-web
+    newTag: staging
+  - name: nexusrh/worker
+    newName: ghcr.io/couldevlop/nexusrh-worker
+    newTag: staging
+
+configMapGenerator:
+  - name: nexusrh-config
+    behavior: merge
+    literals:
+      - NODE_ENV=staging
+      - LOG_LEVEL=debug
+      - APP_URL=https://staging.nexusrh-ci.com
+      - API_URL=https://api.staging.nexusrh-ci.com

@@ -1,0 +1,16 @@
+# Patch Ingress staging : Let's Encrypt staging
+- op: replace
+  path: /metadata/annotations/cert-manager.io~1cluster-issuer
+  value: letsencrypt-staging
+- op: replace
+  path: /spec/tls/0/hosts/0
+  value: staging.nexusrh-ci.com
+- op: replace
+  path: /spec/tls/0/hosts/1
+  value: api.staging.nexusrh-ci.com
+- op: replace
+  path: /spec/rules/0/host
+  value: staging.nexusrh-ci.com
+- op: replace
+  path: /spec/rules/1/host
+  value: api.staging.nexusrh-ci.com

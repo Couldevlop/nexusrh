@@ -2,8 +2,8 @@ name: Quality & Security — NexusRH CI
 
 on:
   push:
-    branches: [ main, develop, 'feat/**' ]
-    paths: [ 'nexusrh_ci/**' ]
+    branches: [ main, develop, 'feat/**', 'fix/**', 'hotfix/**' ]
+    paths: [ 'nexusrh_ci/**', '.github/workflows/**' ]
   pull_request:
     branches: [ main, develop ]
     paths: [ 'nexusrh_ci/**' ]
