@@ -42,7 +42,7 @@ import careersRoutes      from './modules/careers/careers.routes.js'
 import settingsRoutes     from './modules/settings/settings.routes.js'
 import contractsRoutes    from './modules/contracts/contracts.routes.js'
 import aiRoutes           from './modules/ai/ai.routes.js'
-import referentielsRoutes  from './modules/referentiels/referentiels.routes.js'
+import { referentielsRoutes } from './modules/referentiels/referentiels.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
