@@ -10,7 +10,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   await ensureIndex().catch(err => app.log.warn('[ES] index non dispo:', err.message))
 
   // ── Recherche full-text ──────────────────────────────────────────────────────
-  app.get('/referentiels/search', {
+  app.get('/search', {
     schema: {
       querystring: {
         type: 'object',
@@ -35,7 +35,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Arborescence / Sommaire ──────────────────────────────────────────────────
-  app.get('/referentiels/tree', {
+  app.get('/tree', {
     preHandler: [app.authenticate],
   }, async (_req, reply) => {
     try {
@@ -44,7 +44,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Article par ID ───────────────────────────────────────────────────────────
-  app.get<{ Params: { id: string } }>('/referentiels/articles/:id', {
+  app.get<{ Params: { id: string } }>('/articles/:id', {
     schema: { params: { type: 'object', properties: { id: { type: 'string', maxLength: 50 } } } },
     preHandler: [app.authenticate],
   }, async (req, reply) => {
@@ -54,7 +54,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Liaison bulletin ↔ loi (icône ℹ sur chaque ligne de paie) ─────────────
-  app.get<{ Params: { code: string } }>('/referentiels/payroll/:code', {
+  app.get<{ Params: { code: string } }>('/payroll/:code', {
     schema: { params: { type: 'object', properties: { code: { type: 'string', maxLength: 10 } } } },
     preHandler: [app.authenticate],
   }, async (req, reply) => {
@@ -64,14 +64,14 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Stats admin ──────────────────────────────────────────────────────────────
-  app.get('/referentiels/stats', {
+  app.get('/stats', {
     preHandler: [app.authenticate, app.authorize('admin', 'hr_manager')],
   }, async (_req, reply) => {
     return reply.send(await getReferentielStats())
   })
 
   // ── Seed : data file → PostgreSQL → Elasticsearch (admin uniquement) ─────────
-  app.post('/referentiels/seed', {
+  app.post('/seed', {
     preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
   }, async (_req, reply) => {
     try {
@@ -83,7 +83,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Réindexation ES depuis PG (admin uniquement, sans re-seed) ──────────────
-  app.post('/referentiels/reindex', {
+  app.post('/reindex', {
     preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
   }, async (_req, reply) => {
     try {
