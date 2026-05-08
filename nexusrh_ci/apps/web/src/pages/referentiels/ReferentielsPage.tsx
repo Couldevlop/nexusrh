@@ -130,7 +130,7 @@ export default function ReferentielsPage() {
   const { data, isLoading, isError } = useQuery<{ total: number; hits: ArticleHit[] }>({
     queryKey: ['referentiels', dq, source],
     queryFn: () => api.get('/referentiels/search', {
-      params: { q: dq, ...(source !== 'all' && { source }), size: 20 },
+      params: { q: dq, ...(source !== 'all' && { source }), size: 100 },
     }).then((r: { data: { total: number; hits: ArticleHit[] } }) => r.data),
     enabled: dq.length >= 2,
     staleTime: 30_000,
@@ -327,7 +327,7 @@ export default function ReferentielsPage() {
 
           {/* Results */}
           {!isLoading && data?.hits && data.hits.length > 0 && (
-            <div className="space-y-2.5">
+            <div className={`space-y-2.5 ${data.hits.length > 5 ? 'max-h-[62vh] overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-track]:bg-transparent' : ''}`}>
               {data.hits.map((hit, i) => {
                 const cfg = SRC[hit.source as keyof typeof SRC]
                 const Icon = cfg?.Icon ?? FileText
