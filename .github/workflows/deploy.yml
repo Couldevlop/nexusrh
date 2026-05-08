@@ -105,7 +105,7 @@ jobs:
       - name: Build & push
         uses: docker/build-push-action@v5
         with:
-          context: nexusrh_ci/apps/${{ matrix.service }}
+          context: nexusrh_ci
           file: nexusrh_ci/apps/${{ matrix.service }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
