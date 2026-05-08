@@ -149,13 +149,17 @@ export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit
  * Étape 2 : réindexer ES depuis PG
  */
 export async function seedReferentiel(): Promise<{ persisted: number; indexed: number }> {
-  await ensureIndex()
-
-  // Étape 1 — Persist PG
+  // Étape 1 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
   const persisted = await upsertArticles(ALL_ARTICLES as ArticleInput[])
 
-  // Étape 2 — Sync ES depuis PG (source de vérité, pas depuis le fichier)
-  const indexed = await reindexFromDb()
+  // Étape 2 — ES si disponible (non bloquant)
+  let indexed = 0
+  try {
+    await ensureIndex()
+    indexed = await reindexFromDb()
+  } catch {
+    // ES indisponible — les articles sont en PG, le fallback PG sera utilisé
+  }
 
   return { persisted, indexed }
 }
