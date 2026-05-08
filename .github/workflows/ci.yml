@@ -31,7 +31,6 @@ jobs:
       with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm, cache-dependency-path: nexusrh_ci/pnpm-lock.yaml }
 
     - run: pnpm install --frozen-lockfile
-    - run: pnpm --filter @nexusrh/shared build
     - run: pnpm run typecheck
     - run: pnpm run test
 
