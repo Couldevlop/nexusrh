@@ -46,7 +46,7 @@ spec:
       containers:
         - name: web
           image: nexusrh/web:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
               name: http

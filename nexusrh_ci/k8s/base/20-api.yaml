@@ -68,7 +68,7 @@ spec:
         - name: api
           # En prod : remplacer par votre registry (ex: ghcr.io/org/nexusrh-api:v1.0.0)
           image: nexusrh/api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 4000
               name: http

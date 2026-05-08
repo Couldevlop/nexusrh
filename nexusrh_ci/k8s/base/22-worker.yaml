@@ -54,7 +54,7 @@ spec:
       containers:
         - name: worker
           image: nexusrh/worker:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: nexusrh-config
