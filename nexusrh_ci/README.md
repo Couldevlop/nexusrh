@@ -1,7 +1,7 @@
 # NexusRH CI
 
 **SIRH SaaS Multi-Tenant · Côte d'Ivoire**
-*La RH Intelligente, au service de l'Afrique qui avance*
+_La RH Intelligente, au service de l'Afrique qui avance_
 
 Développé par **OpenLab Consulting** · Cocody, Rivièra Faya Lauriers 8, Abidjan
 Propulsé par **Claude AI** (Anthropic)
@@ -10,18 +10,18 @@ Propulsé par **Claude AI** (Anthropic)
 
 ## Spécificités CI
 
-| Conformité | Détail                                                                 |
-|-----------|------------------------------------------------------------------------|
-| **CNPS 2024** | Retraite 6,3% sal. / 7,7% pat. · PF 5,75% pat. · AT 2–5% selon secteur |
-| **ITS / DGI** | Barème progressif · abattement 15% · crédits famille                   |
-| **SMIG** | 75 000 FCFA / mois                                                     |
-| **Congés** | 2,5 jours ouvrables / mois travaillé (Code du Travail CI)              |
-| **DISA** | Génération automatique (loi 99-477)                                    |
-| **e-CNPS** | Export compatible plateforme e-CNPS · avant le 15/mois                 |
+| Conformité       | Détail                                                                 |
+| ---------------- | ---------------------------------------------------------------------- |
+| **CNPS 2024**    | Retraite 6,3% sal. / 7,7% pat. · PF 5,75% pat. · AT 2–5% selon secteur |
+| **ITS / DGI**    | Barème progressif · abattement 15% · crédits famille                   |
+| **SMIG**         | 75 000 FCFA / mois                                                     |
+| **Congés**       | 2,5 jours ouvrables / mois travaillé (Code du Travail CI)              |
+| **DISA**         | Génération automatique (loi 99-477)                                    |
+| **e-CNPS**       | Export compatible plateforme e-CNPS · avant le 15/mois                 |
 | **Mobile Money** | Wave · MTN MoMo · Orange Money CI · COFINA                             |
-| **OHADA** | Contrats conformes droit OHADA                                         |
-| **FDFP** | Module formation · contribution 0,4% masse salariale                   |
-| **Hébergement** | Option souverain CI (conformité ARTCI)                                 |
+| **OHADA**        | Contrats conformes droit OHADA                                         |
+| **FDFP**         | Module formation · contribution 0,4% masse salariale                   |
+| **Hébergement**  | Option souverain CI (conformité ARTCI)                                 |
 
 ---
 
@@ -43,40 +43,69 @@ pnpm --filter api run db:seed
 pnpm run dev
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3001 |
+| Service       | URL                        |
+| ------------- | -------------------------- |
+| Frontend      | http://localhost:3001      |
 | API + Swagger | http://localhost:4001/docs |
-| MinIO | http://localhost:9003 |
+| MinIO         | http://localhost:9003      |
 
 ---
 
 ## Comptes de test
 
-| Email | Mot de passe | Rôle |
-|-------|-------------|------|
+### Plateforme
+
+| Email                       | Mot de passe      | Rôle        |
+| --------------------------- | ----------------- | ----------- |
 | `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin |
-| `admin@sotra-ci.com` | `Admin1234!` | admin (SOTRA) |
-| `drh@sotra-ci.com` | `Admin1234!` | hr_manager |
-| `employe@sotra-ci.com` | `Admin1234!` | employee |
-| `admin@cabinet-expertise.ci` | `Admin1234!` | admin (Cabinet) |
+
+### SOTRA — thème orange `#E85D04`
+
+| Email                | Mot de passe | Rôle       | Accès          |
+| -------------------- | ------------ | ---------- | -------------- |
+| `admin@sotra.ci`     | `Admin1234!` | admin      | `/dashboard`   |
+| `rh@sotra.ci`        | `Admin1234!` | hr_manager | `/dashboard`   |
+| `manager@sotra.ci`   | `Admin1234!` | manager    | `/dashboard`   |
+| `employe@sotra.ci`   | `Admin1234!` | employee   | `/mon-espace`  |
+
+### Cabinet Expertise CI — thème bleu `#1D4ED8`
+
+| Email                            | Mot de passe | Rôle     | Accès         |
+| -------------------------------- | ------------ | -------- | ------------- |
+| `admin@cabinet-expertise.ci`     | `Admin1234!` | admin    | `/dashboard`  |
+| `employe2@cabinet-expertise.ci`  | `Admin1234!` | employee | `/mon-espace` |
+
+### OpenLab Consulting (tenant créé via portail)
+
+| Email               | Mot de passe   | Rôle  | Accès        |
+| ------------------- | -------------- | ----- | ------------ |
+| `coulwao@gmail.com` | `Openlab2025!` | admin | `/dashboard` |
 
 ---
 
 ## Mode sans echec
- Mode maintenance — comportement attendu                                                                                                                                                                       
-  Oui, le super_admin doit garder l'accès. Voici la logique correcte :                                                                                                                                          
-  ┌────────────────────────────────┬──────────────────────┬─────────────────────────────────────────┐
-  │            Requête             │ Mode maintenance OFF │           Mode maintenance ON           │
-  ├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
-  │ POST /auth/login               │ ✅                   │ ✅ (sinon plus personne ne peut entrer)│
-  ├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
-  │ GET /platform/* (super_admin)  │ ✅                   │ ✅                                     │
-  ├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
-  │ GET/POST /api/* (tous tenants) │ ✅                   │ ❌ 503                                 │
-  ├────────────────────────────────┼────────────────────── ┼─────────────────────────────────────────┤
-  │ Frontend tenants               │ ✅                   │ 🔴 Bannière "Maintenance"              │
-  └────────────────────────────────┴──────────────────────-┴─────────────────────────────────────────┘
+
+Mode maintenance — comportement attendu  
+ Oui, le super_admin doit garder l'accès. Voici la logique correcte :  
+ ┌────────────────────────────────┬──────────────────────┬─────────────────────────────────────────┐
+│ Requête │ Mode maintenance OFF │ Mode maintenance ON │
+├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
+│ POST /auth/login │ ✅ │ ✅ (sinon plus personne ne peut entrer)│
+├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
+│ GET /platform/_ (super_admin) │ ✅ │ ✅ │
+├────────────────────────────────┼──────────────────────┼─────────────────────────────────────────┤
+│ GET/POST /api/_ (tous tenants) │ ✅ │ ❌ 503 │
+├────────────────────────────────┼────────────────────── ┼─────────────────────────────────────────┤
+│ Frontend tenants │ ✅ │ 🔴 Bannière "Maintenance" │
+└────────────────────────────────┴──────────────────────-┴─────────────────────────────────────────┘
+
+## Sécurisation de l'application depuis le kuster k8
+
+lancer le scan: https://securityheaders.com/
+
+ensuite en fonction des recommandations, chercher à corriger
+
+-
 
 ## Contact
 
@@ -88,4 +117,4 @@ pnpm run dev
 
 ---
 
-*NexusRH CI — Conforme Code du Travail ivoirien & CNPS 2024*
+_NexusRH CI — Conforme Code du Travail ivoirien & CNPS 2024_
