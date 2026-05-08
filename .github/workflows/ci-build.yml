@@ -178,6 +178,12 @@ jobs:
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
           --force --wait
 
+        # Forcer le redémarrage pour que imagePullPolicy:Always tire la nouvelle image :latest
+        kubectl rollout restart deployment/nexusrh-api -n nexusrh-ci
+        kubectl rollout restart deployment/nexusrh-web -n nexusrh-ci
+        kubectl rollout status deployment/nexusrh-api -n nexusrh-ci --timeout=180s
+        kubectl rollout status deployment/nexusrh-web -n nexusrh-ci --timeout=180s
+
     - name: Seed database (idempotent)
       run: |
         echo "⏳ Rollout API en cours..."
