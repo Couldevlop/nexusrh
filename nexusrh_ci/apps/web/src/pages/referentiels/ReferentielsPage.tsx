@@ -127,7 +127,7 @@ export default function ReferentielsPage() {
   }, [])
 
   /* Recherche principale */
-  const { data, isLoading } = useQuery<{ total: number; hits: ArticleHit[] }>({
+  const { data, isLoading, isError } = useQuery<{ total: number; hits: ArticleHit[] }>({
     queryKey: ['referentiels', dq, source],
     queryFn: () => api.get('/referentiels/search', {
       params: { q: dq, ...(source !== 'all' && { source }), size: 20 },
@@ -301,6 +301,13 @@ export default function ReferentielsPage() {
               </motion.p>
             )}
           </AnimatePresence>
+
+          {/* Erreur API */}
+          {isError && dq.length >= 2 && (
+            <div className="text-center py-10 text-sm text-red-400">
+              Impossible de charger les résultats — vérifiez votre connexion ou rechargez la page.
+            </div>
+          )}
 
           {/* Skeletons */}
           {isLoading && (
