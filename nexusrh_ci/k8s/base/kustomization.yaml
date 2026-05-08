@@ -10,6 +10,8 @@ resources:
   - 21-web.yaml
   - 22-worker.yaml
   - 30-ingress.yaml
-commonLabels:
-  app.kubernetes.io/part-of: nexusrh
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: nexusrh
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
