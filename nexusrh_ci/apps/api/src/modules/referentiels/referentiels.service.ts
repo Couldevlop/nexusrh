@@ -15,6 +15,8 @@ import {
   getArticleByIdFromDb,
   getArticlesByPayrollCodeFromDb,
   countArticles,
+  searchArticlesFromDb,
+  getHierarchyTreeFromDb,
 } from './legal-articles.repository.js'
 import type { ArticleInput } from './legal-articles.repository.js'
 
@@ -39,66 +41,62 @@ export interface ArticleHit {
 export async function searchReferentiel(params: SearchParams): Promise<{ total: number; hits: ArticleHit[] }> {
   const { q, source, convention, payrollCode, from = 0, size = 10 } = params
 
-  // OWASP A01 : filtre access_level obligatoire
-  const filterArr: object[] = [{ term: { access_level: 'public' } }]
-  if (source)      filterArr.push({ term: { source } })
-  if (convention)  filterArr.push({ term: { convention_slug: convention } })
-  if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
+  try {
+    const filterArr: object[] = [{ term: { access_level: 'public' } }]
+    if (source)      filterArr.push({ term: { source } })
+    if (convention)  filterArr.push({ term: { convention_slug: convention } })
+    if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
 
-  const response = await esClient.search({
-    index: ES_INDEX,
-    from,
-    size,
-    query: {
-      bool: {
-        must: {
-          multi_match: {
-            query: q,
-            fields: ['titre_article^3', 'texte', 'keywords^2'],
-            fuzziness: 'AUTO',
-            type: 'best_fields',
-          },
+    const response = await esClient.search({
+      index: ES_INDEX,
+      from,
+      size,
+      query: {
+        bool: {
+          must: { multi_match: { query: q, fields: ['titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } },
+          filter: filterArr,
         },
-        filter: filterArr,
-      },
-    } as any,
-    highlight: {
-      fields: {
-        texte:         { fragment_size: 200, number_of_fragments: 2 },
-        titre_article: { number_of_fragments: 1 },
-      },
-    } as any,
-  })
+      } as any,
+      highlight: { fields: { texte: { fragment_size: 200, number_of_fragments: 2 }, titre_article: { number_of_fragments: 1 } } } as any,
+    })
 
-  const hits: ArticleHit[] = response.hits.hits.map((h: any) => ({
-    ...(h._source as ArticleHit),
-    score: h._score ?? 0,
-    highlight: h.highlight,
-  }))
-
-  return {
-    total: typeof response.hits.total === 'object'
-      ? response.hits.total.value
-      : (response.hits.total ?? 0),
-    hits,
+    const hits: ArticleHit[] = response.hits.hits.map((h: any) => ({
+      ...(h._source as ArticleHit),
+      score: h._score ?? 0,
+      highlight: h.highlight,
+    }))
+    return {
+      total: typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0),
+      hits,
+    }
+  } catch {
+    // Fallback PostgreSQL si Elasticsearch indisponible
+    const result = await searchArticlesFromDb({ q, source, from, size })
+    return {
+      total: result.total,
+      hits: result.hits.map(a => ({ ...a, score: 1 }) as ArticleHit),
+    }
   }
 }
 
 export async function getHierarchyTree(): Promise<unknown> {
-  const response = await esClient.search({
-    index: ES_INDEX,
-    size: 0,
-    query: { term: { access_level: 'public' } } as any,
-    aggs: {
-      by_source: {
-        terms: { field: 'source', size: 10 },
-        aggs: {
-          by_livre: { terms: { field: 'livre', size: 20, missing: 'Général' } },
+  try {
+    const response = await esClient.search({
+      index: ES_INDEX,
+      size: 0,
+      query: { term: { access_level: 'public' } } as any,
+      aggs: {
+        by_source: {
+          terms: { field: 'source', size: 10 },
+          aggs: { by_livre: { terms: { field: 'livre', size: 20, missing: 'Général' } } },
         },
-      },
-    } as any,
-  })
-  return (response.aggregations as any)?.by_source?.buckets ?? []
+      } as any,
+    })
+    return (response.aggregations as any)?.by_source?.buckets ?? []
+  } catch {
+    // Fallback PostgreSQL si Elasticsearch indisponible
+    return getHierarchyTreeFromDb()
+  }
 }
 
 /** Cherche dans ES, fallback PG si ES indisponible */
