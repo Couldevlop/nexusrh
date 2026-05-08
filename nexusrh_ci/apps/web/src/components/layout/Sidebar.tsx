@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CreditCard, Calendar,
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
-  Calculator, ClipboardCheck, X,
+  Calculator, ClipboardCheck, X, Scale,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,7 @@ const HR_NAV: NavItem[] = [
   { to: '/cnps',          label: 'CNPS & DISA',      icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/cnps/audit',    label: 'Audit social',     icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
   { to: '/mobile-money',  label: 'Mobile Money',     icon: Smartphone, end: true, roles: ['admin','hr_manager'] },
+  { to: '/referentiels',  label: 'Référentiel Droit CI', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/reporting',     label: 'Reporting',        icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/settings',      label: 'Paramètres',       icon: Settings,   end: true, roles: ['admin'] },
 ]
