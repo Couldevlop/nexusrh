@@ -7,6 +7,8 @@
  */
 import { createHash } from 'crypto'
 import { eq, and, inArray } from 'drizzle-orm'
+
+export interface SearchResult { total: number; hits: ArticleInput[] }
 import { droitCiDb } from '../../db/client.js'
 import { legalArticles } from '../../db/schema/droit-ci.js'
 
@@ -134,4 +136,46 @@ export async function getArticlesByPayrollCodeFromDb(code: string): Promise<Arti
 export async function countArticles(): Promise<number> {
   const rows = await droitCiDb.select().from(legalArticles).where(eq(legalArticles.isActive, true))
   return rows.length
+}
+
+/** Recherche full-text basique via LIKE PostgreSQL (fallback sans Elasticsearch) */
+export async function searchArticlesFromDb(params: {
+  q: string; source?: string; from?: number; size?: number
+}): Promise<SearchResult> {
+  const { q, source, from = 0, size = 10 } = params
+  const conditions = [eq(legalArticles.isActive, true), eq(legalArticles.accessLevel, 'public')]
+  if (source) conditions.push(eq(legalArticles.source as any, source))
+
+  const all = await droitCiDb.select().from(legalArticles).where(and(...conditions))
+  const ql = q.toLowerCase()
+  const filtered = all.filter(r =>
+    r.titreArticle.toLowerCase().includes(ql) ||
+    r.texte.toLowerCase().includes(ql) ||
+    (r.keywords as string[] ?? []).some(k => k.toLowerCase().includes(ql))
+  )
+  return { total: filtered.length, hits: filtered.slice(from, from + size).map(toInput) }
+}
+
+/** Arborescence source → livre depuis PostgreSQL (fallback sans Elasticsearch) */
+export async function getHierarchyTreeFromDb(): Promise<unknown> {
+  const all = await droitCiDb
+    .select()
+    .from(legalArticles)
+    .where(and(eq(legalArticles.isActive, true), eq(legalArticles.accessLevel, 'public')))
+
+  const grouped: Record<string, Record<string, number>> = {}
+  for (const a of all) {
+    if (!grouped[a.source]) grouped[a.source] = {}
+    const livre = a.livre ?? 'Général'
+    const bucket = grouped[a.source]!
+    bucket[livre] = (bucket[livre] ?? 0) + 1
+  }
+
+  return Object.entries(grouped).map(([source, livres]) => ({
+    key: source,
+    doc_count: Object.values(livres).reduce((s, c) => s + c, 0),
+    by_livre: {
+      buckets: Object.entries(livres).map(([livre, count]) => ({ key: livre, doc_count: count })),
+    },
+  }))
 }
