@@ -1,6 +1,8 @@
 import { buildApp } from './app.js'
 import { config } from './config.js'
 import { createPlatformSchema } from './db/provisioning.js'
+import { countArticles } from './modules/referentiels/legal-articles.repository.js'
+import { seedReferentiel } from './modules/referentiels/referentiels.service.js'
 
 async function main() {
   // ── Initialiser le schéma platform si absent ───────────────────────────────
@@ -21,6 +23,15 @@ async function main() {
     console.log(`  API:     http://localhost:${config.port}`)
     console.log(`  Swagger: http://localhost:${config.port}/docs`)
     console.log(`  Health:  http://localhost:${config.port}/health\n`)
+
+    // Seed automatique des articles juridiques si table vide
+    const artCount = await countArticles().catch(() => 0)
+    if (artCount === 0) {
+      console.log('[Référentiel] Table vide — seed automatique des articles...')
+      seedReferentiel()
+        .then(r => console.log(`[Référentiel] ${r.persisted} articles seedés, ${r.indexed} indexés`))
+        .catch(e => console.error('[Référentiel] Seed auto échoué:', e))
+    }
   } catch (err) {
     app.log.error(err)
     process.exit(1)
