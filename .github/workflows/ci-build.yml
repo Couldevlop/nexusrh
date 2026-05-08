@@ -87,7 +87,9 @@ jobs:
         file: ./nexusrh_ci/apps/api/Dockerfile
         push: true
         no-cache: true
-        tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-api:sha-${{ steps.sha.outputs.short }}
+        tags: |
+          ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-api:sha-${{ steps.sha.outputs.short }}
+          ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-api:latest
 
     - name: Trivy scan API
       id: trivy-api
@@ -106,7 +108,10 @@ jobs:
         context: ./nexusrh_ci
         file: ./nexusrh_ci/apps/web/Dockerfile
         push: true
-        tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-web:sha-${{ steps.sha.outputs.short }}
+        no-cache: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-web:sha-${{ steps.sha.outputs.short }}
+          ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/nexusrh-ci-web:latest
 
     - name: Trivy scan Web
       id: trivy-web
@@ -165,13 +170,12 @@ jobs:
         helm dependency update nexusrh_ci/k8s/charts/nexusrh
         kubectl delete deployment nexusrh-ci-infra-redis -n nexusrh-ci --ignore-not-found=true
 
-        # Ajout du flag --force pour résoudre les conflits de propriété (Server-Side Apply)
+        # values.prod.yaml utilise tag: latest + imagePullPolicy: Always
+        # Le build pousse toujours :latest en plus du sha — pas besoin de --set
         helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
           --namespace nexusrh-ci --create-namespace \
           -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
           -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
-          --set images.api.tag=sha-${SHA} \
-          --set images.web.tag=sha-${SHA} \
           --force --wait
 
     - name: Seed database (idempotent)
