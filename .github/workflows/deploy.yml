@@ -99,6 +99,9 @@ jobs:
             type=raw,value=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod' || 'staging' }}
             type=sha,prefix=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod-' || 'staging-' }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build & push
         uses: docker/build-push-action@v5
         with:
