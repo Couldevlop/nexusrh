@@ -1,340 +1,78 @@
-name: Deploy — NexusRH CI
+name: Deploy — NexusRH CI (manuel)
 
-# develop  → staging k3s (automatique après CI vert)
-# main     → production k3s (automatique après CI vert)
-# workflow_dispatch → seed manuel (staging ou prod)
+# Déclenchement uniquement manuel.
+# Le build et le déploiement automatique sont gérés par ci-build.yml.
+# Ce workflow sert uniquement aux actions ponctuelles sur le cluster nexusrh-ci.
 
 on:
-  workflow_run:
-    workflows: ["Quality & Security — NexusRH CI"]
-    types: [completed]
-    branches: [develop, main]
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Environnement cible"
-        required: true
-        type: choice
-        options: [staging, production]
       action:
         description: "Action à exécuter"
         required: true
         type: choice
-        options: [deploy-only, seed-only, deploy-and-seed]
+        options:
+          - seed          # (Re)jouer le seed de données de démo
+          - rollout-restart  # Forcer le redémarrage des pods
 
 permissions:
   contents: read
-  packages: write   # push vers GHCR
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/couldevlop
-
-# ── Helpers : résolution env/branch selon le déclencheur ─────────────────────
-# workflow_run  → branch depuis github.event.workflow_run.head_branch
-# workflow_dispatch → branch depuis github.ref_name
+  NAMESPACE: nexusrh-ci
 
 jobs:
-  # ── Garde-fou : ne déployer que si le CI a réussi (workflow_run uniquement) ──
-  check-ci:
-    name: CI passé ?
+  run:
+    name: "${{ github.event.inputs.action }} → nexusrh-ci"
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
-    outputs:
-      branch: ${{ github.event.workflow_run.head_branch }}
-      sha:    ${{ github.event.workflow_run.head_sha }}
-    steps:
-      - run: echo "CI success on ${{ github.event.workflow_run.head_branch }}"
-
-  # ── Résolution manuelle (workflow_dispatch) ───────────────────────────────
-  resolve-dispatch:
-    name: Résolution dispatch manuel
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    outputs:
-      branch: ${{ github.ref_name }}
-      sha:    ${{ github.sha }}
-    steps:
-      - run: |
-          echo "Déclenchement manuel"
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Action: ${{ github.event.inputs.action }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "SHA: ${{ github.sha }}"
-
-  # ── Build & push images Docker vers GHCR ─────────────────────────────────
-  build:
-    name: Build & Push Docker images
-    needs: [check-ci, resolve-dispatch]
-    if: |
-      always() && (
-        (needs.check-ci.result == 'success') ||
-        (needs.resolve-dispatch.result == 'success' &&
-         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
-      )
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [api, web, worker]
-    outputs:
-      tag: ${{ steps.meta.outputs.version }}
+    environment: preprod
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Image tag
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/nexusrh-${{ matrix.service }}
-          tags: |
-            type=raw,value=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod' || 'staging' }}
-            type=sha,prefix=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod-' || 'staging-' }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build & push
-        uses: docker/build-push-action@v5
-        with:
-          context: nexusrh_ci
-          file: nexusrh_ci/apps/${{ matrix.service }}/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ── Déploiement Staging (develop) ────────────────────────────────────────
-  deploy-staging:
-    name: Deploy → Staging k3s
-    needs: [check-ci, resolve-dispatch, build]
-    if: |
-      always() && (
-        (needs.check-ci.result == 'success' && needs.check-ci.outputs.branch == 'develop') ||
-        (needs.resolve-dispatch.result == 'success' &&
-         github.event.inputs.environment == 'staging' &&
-         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
-      )
-    runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: https://staging.nexusrh-ci.com
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0'
-
-      - name: Configure kubeconfig (staging)
+      - name: Configure kubectl
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
         run: |
+          if [ -z "$KUBECONFIG_DATA" ]; then
+            echo "❌ Le secret KUBECONFIG_PREPROD est vide"
+            exit 1
+          fi
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
+          echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
+          kubectl cluster-info
 
-      - name: Setup Kustomize
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Create namespace if absent
-        run: kubectl create namespace nexusrh-staging --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply k8s manifests (staging overlay)
+      # ── Rollout restart ──────────────────────────────────────────────────────
+      - name: Rollout restart API + Web
+        if: github.event.inputs.action == 'rollout-restart'
         run: |
-          cd nexusrh_ci/k8s
-          kustomize build overlays/staging | kubectl apply -f -
+          kubectl rollout restart deployment/nexusrh-api -n ${{ env.NAMESPACE }}
+          kubectl rollout restart deployment/nexusrh-web -n ${{ env.NAMESPACE }}
+          kubectl rollout status deployment/nexusrh-api -n ${{ env.NAMESPACE }} --timeout=180s
+          kubectl rollout status deployment/nexusrh-web -n ${{ env.NAMESPACE }} --timeout=180s
+          echo "✅ Pods redémarrés"
 
-      - name: Update image tags
+      # ── Seed ────────────────────────────────────────────────────────────────
+      - name: Attendre que l'API soit prête
+        if: github.event.inputs.action == 'seed'
         run: |
-          SHA=${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
-          TAG="staging-${SHA:0:7}"
-          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}       -n nexusrh-staging
-          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}       -n nexusrh-staging
-          kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh-staging
+          kubectl rollout status deployment/nexusrh-api \
+            -n ${{ env.NAMESPACE }} --timeout=180s
 
-      - name: Wait for rollout
+      - name: Exécuter le seed
+        if: github.event.inputs.action == 'seed'
         run: |
-          kubectl rollout status deployment/nexusrh-api    -n nexusrh-staging --timeout=180s
-          kubectl rollout status deployment/nexusrh-web    -n nexusrh-staging --timeout=180s
-          kubectl rollout status deployment/nexusrh-worker -n nexusrh-staging --timeout=120s
+          API_POD=$(kubectl get pods -n ${{ env.NAMESPACE }} \
+            -l app.kubernetes.io/component=api \
+            --field-selector=status.phase=Running \
+            --sort-by=.metadata.creationTimestamp \
+            -o jsonpath='{.items[-1].metadata.name}')
 
-      - name: Smoke test staging
-        run: |
-          sleep 10
-          curl -sf https://api.staging.nexusrh-ci.com/health || echo "health check non disponible encore"
+          if [ -z "$API_POD" ]; then
+            echo "❌ Aucun pod API Running trouvé"
+            exit 1
+          fi
 
-  # ── Seed staging (après deploy ou manuel) ────────────────────────────────
-  seed-staging:
-    name: Seed données démo → Staging
-    needs: [check-ci, resolve-dispatch, deploy-staging]
-    # Auto : seulement sur le 1er déploiement (variable SEED_ON_FIRST_DEPLOY=true dans l'env GitHub)
-    # Manuel : workflow_dispatch avec action=seed-only ou deploy-and-seed
-    if: |
-      always() && (
-        (needs.deploy-staging.result == 'success' && vars.SEED_STAGING_ON_DEPLOY == 'true') ||
-        (needs.resolve-dispatch.result == 'success' &&
-         github.event.inputs.environment == 'staging' &&
-         (github.event.inputs.action == 'seed-only' || github.event.inputs.action == 'deploy-and-seed'))
-      )
-    runs-on: ubuntu-latest
-    environment:
-      name: staging
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0'
-
-      - name: Configure kubeconfig (staging)
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Supprimer ancien job seed si existant
-        run: |
-          kubectl delete job nexusrh-seed -n nexusrh-staging --ignore-not-found=true
-          sleep 5
-
-      - name: Lancer le seed job (staging)
-        run: |
-          # Patch la date dans le manifest pour forcer recréation
-          sed "s/FILL_WITH_DATE/$(date -u +%Y-%m-%dT%H:%M:%SZ)/" \
-            nexusrh_ci/k8s/jobs/seed-job.yaml | kubectl apply -f -
-
-      - name: Attendre fin du seed
-        run: |
-          kubectl wait --for=condition=complete job/nexusrh-seed \
-            -n nexusrh-staging --timeout=300s
-
-      - name: Logs du seed
-        if: always()
-        run: |
-          kubectl logs job/nexusrh-seed -n nexusrh-staging --tail=100 || true
-
-      - name: Vérification post-seed
-        run: |
-          sleep 5
-          curl -sf https://api.staging.nexusrh-ci.com/health || echo "API non joignable"
-
-  # ── Déploiement Production (main) ─────────────────────────────────────────
-  deploy-production:
-    name: Deploy → Production k3s
-    needs: [check-ci, resolve-dispatch, build]
-    if: |
-      always() && (
-        (needs.check-ci.result == 'success' && needs.check-ci.outputs.branch == 'main') ||
-        (needs.resolve-dispatch.result == 'success' &&
-         github.event.inputs.environment == 'production' &&
-         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
-      )
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://app.nexusrh-ci.com
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0'
-
-      - name: Configure kubeconfig (production)
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Setup Kustomize
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Create namespace if absent
-        run: kubectl create namespace nexusrh --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply k8s manifests (prod overlay)
-        run: |
-          cd nexusrh_ci/k8s
-          kustomize build overlays/prod | kubectl apply -f -
-
-      - name: Update image tags
-        run: |
-          SHA=${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
-          TAG="prod-${SHA:0:7}"
-          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}       -n nexusrh
-          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}       -n nexusrh
-          kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh
-
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/nexusrh-api    -n nexusrh --timeout=300s
-          kubectl rollout status deployment/nexusrh-web    -n nexusrh --timeout=300s
-          kubectl rollout status deployment/nexusrh-worker -n nexusrh --timeout=180s
-
-      - name: Production health check
-        run: |
-          sleep 15
-          curl -sf https://api.nexusrh-ci.com/health
-          echo "Production déployée — SHA ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}"
-
-  # ── Seed production (UNIQUEMENT manuel, avec confirmation environment) ─────
-  seed-production:
-    name: "SEED PROD — Données initiales (DESTRUCTIF)"
-    needs: [resolve-dispatch, deploy-production]
-    # Jamais automatique. Toujours déclenché manuellement.
-    if: |
-      always() &&
-      needs.resolve-dispatch.result == 'success' &&
-      github.event.inputs.environment == 'production' &&
-      (github.event.inputs.action == 'seed-only' || github.event.inputs.action == 'deploy-and-seed')
-    runs-on: ubuntu-latest
-    environment:
-      name: production   # requiert approbation manuelle si configuré sur GitHub
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0'
-
-      - name: Configure kubeconfig (production)
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PREPROD }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Supprimer ancien job seed si existant
-        run: |
-          kubectl delete job nexusrh-seed -n nexusrh --ignore-not-found=true
-          sleep 5
-
-      - name: Lancer le seed job (production)
-        run: |
-          sed "s/FILL_WITH_DATE/$(date -u +%Y-%m-%dT%H:%M:%SZ)/" \
-            nexusrh_ci/k8s/jobs/seed-job-prod.yaml | kubectl apply -f -
-
-      - name: Attendre fin du seed
-        run: |
-          kubectl wait --for=condition=complete job/nexusrh-seed \
-            -n nexusrh --timeout=300s
-
-      - name: Logs du seed
-        if: always()
-        run: |
-          kubectl logs job/nexusrh-seed -n nexusrh --tail=100 || true
+          echo "🌱 Seed sur pod: $API_POD"
+          kubectl exec -n ${{ env.NAMESPACE }} "$API_POD" -- node dist/db/seed.js
+          echo "✅ Seed terminé"
