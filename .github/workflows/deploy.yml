@@ -2,12 +2,25 @@ name: Deploy — NexusRH CI
 
 # develop  → staging k3s (automatique après CI vert)
 # main     → production k3s (automatique après CI vert)
+# workflow_dispatch → seed manuel (staging ou prod)
 
 on:
   workflow_run:
     workflows: ["Quality & Security — NexusRH CI"]
     types: [completed]
     branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement cible"
+        required: true
+        type: choice
+        options: [staging, production]
+      action:
+        description: "Action à exécuter"
+        required: true
+        type: choice
+        options: [deploy-only, seed-only, deploy-and-seed]
 
 permissions:
   contents: read
@@ -17,22 +30,48 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/couldevlop
 
+# ── Helpers : résolution env/branch selon le déclencheur ─────────────────────
+# workflow_run  → branch depuis github.event.workflow_run.head_branch
+# workflow_dispatch → branch depuis github.ref_name
+
 jobs:
-  # ── Garde-fou : ne déployer que si le CI a réussi ──────────────────────────
+  # ── Garde-fou : ne déployer que si le CI a réussi (workflow_run uniquement) ──
   check-ci:
     name: CI passé ?
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     outputs:
       branch: ${{ github.event.workflow_run.head_branch }}
       sha:    ${{ github.event.workflow_run.head_sha }}
     steps:
       - run: echo "CI success on ${{ github.event.workflow_run.head_branch }}"
 
-  # ── Build & push images Docker vers GHCR ───────────────────────────────────
+  # ── Résolution manuelle (workflow_dispatch) ───────────────────────────────
+  resolve-dispatch:
+    name: Résolution dispatch manuel
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    outputs:
+      branch: ${{ github.ref_name }}
+      sha:    ${{ github.sha }}
+    steps:
+      - run: |
+          echo "Déclenchement manuel"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Action: ${{ github.event.inputs.action }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "SHA: ${{ github.sha }}"
+
+  # ── Build & push images Docker vers GHCR ─────────────────────────────────
   build:
     name: Build & Push Docker images
-    needs: check-ci
+    needs: [check-ci, resolve-dispatch]
+    if: |
+      always() && (
+        (needs.check-ci.result == 'success') ||
+        (needs.resolve-dispatch.result == 'success' &&
+         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
+      )
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -42,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.check-ci.outputs.sha }}
+          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -57,8 +96,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/nexusrh-${{ matrix.service }}
           tags: |
-            type=raw,value=${{ needs.check-ci.outputs.branch == 'main' && 'prod' || 'staging' }}
-            type=sha,prefix=${{ needs.check-ci.outputs.branch == 'main' && 'prod-' || 'staging-' }}
+            type=raw,value=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod' || 'staging' }}
+            type=sha,prefix=${{ (needs.check-ci.outputs.branch || needs.resolve-dispatch.outputs.branch) == 'main' && 'prod-' || 'staging-' }}
 
       - name: Build & push
         uses: docker/build-push-action@v5
@@ -71,11 +110,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Déploiement Staging (develop) ──────────────────────────────────────────
+  # ── Déploiement Staging (develop) ────────────────────────────────────────
   deploy-staging:
     name: Deploy → Staging k3s
-    needs: [check-ci, build]
-    if: ${{ needs.check-ci.outputs.branch == 'develop' }}
+    needs: [check-ci, resolve-dispatch, build]
+    if: |
+      always() && (
+        (needs.check-ci.result == 'success' && needs.check-ci.outputs.branch == 'develop') ||
+        (needs.resolve-dispatch.result == 'success' &&
+         github.event.inputs.environment == 'staging' &&
+         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
+      )
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -83,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.check-ci.outputs.sha }}
+          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -109,10 +154,10 @@ jobs:
 
       - name: Update image tags
         run: |
-          SHA=${{ needs.check-ci.outputs.sha }}
+          SHA=${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
           TAG="staging-${SHA:0:7}"
-          kubectl set image deployment/nexusrh-api  api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}  -n nexusrh-staging
-          kubectl set image deployment/nexusrh-web  web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}  -n nexusrh-staging
+          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}       -n nexusrh-staging
+          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}       -n nexusrh-staging
           kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh-staging
 
       - name: Wait for rollout
@@ -124,13 +169,75 @@ jobs:
       - name: Smoke test staging
         run: |
           sleep 10
-          curl -sf https://api.staging.nexusrh-ci.com/health || echo "⚠️  health check non disponible encore"
+          curl -sf https://api.staging.nexusrh-ci.com/health || echo "health check non disponible encore"
 
-  # ── Déploiement Production (main) ──────────────────────────────────────────
+  # ── Seed staging (après deploy ou manuel) ────────────────────────────────
+  seed-staging:
+    name: Seed données démo → Staging
+    needs: [check-ci, resolve-dispatch, deploy-staging]
+    # Auto : seulement sur le 1er déploiement (variable SEED_ON_FIRST_DEPLOY=true dans l'env GitHub)
+    # Manuel : workflow_dispatch avec action=seed-only ou deploy-and-seed
+    if: |
+      always() && (
+        (needs.deploy-staging.result == 'success' && vars.SEED_STAGING_ON_DEPLOY == 'true') ||
+        (needs.resolve-dispatch.result == 'success' &&
+         github.event.inputs.environment == 'staging' &&
+         (github.event.inputs.action == 'seed-only' || github.event.inputs.action == 'deploy-and-seed'))
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig (staging)
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Supprimer ancien job seed si existant
+        run: |
+          kubectl delete job nexusrh-seed -n nexusrh-staging --ignore-not-found=true
+          sleep 5
+
+      - name: Lancer le seed job (staging)
+        run: |
+          # Patch la date dans le manifest pour forcer recréation
+          sed "s/FILL_WITH_DATE/$(date -u +%Y-%m-%dT%H:%M:%SZ)/" \
+            nexusrh_ci/k8s/jobs/seed-job.yaml | kubectl apply -f -
+
+      - name: Attendre fin du seed
+        run: |
+          kubectl wait --for=condition=complete job/nexusrh-seed \
+            -n nexusrh-staging --timeout=300s
+
+      - name: Logs du seed
+        if: always()
+        run: |
+          kubectl logs job/nexusrh-seed -n nexusrh-staging --tail=100 || true
+
+      - name: Vérification post-seed
+        run: |
+          sleep 5
+          curl -sf https://api.staging.nexusrh-ci.com/health || echo "API non joignable"
+
+  # ── Déploiement Production (main) ─────────────────────────────────────────
   deploy-production:
     name: Deploy → Production k3s
-    needs: [check-ci, build]
-    if: ${{ needs.check-ci.outputs.branch == 'main' }}
+    needs: [check-ci, resolve-dispatch, build]
+    if: |
+      always() && (
+        (needs.check-ci.result == 'success' && needs.check-ci.outputs.branch == 'main') ||
+        (needs.resolve-dispatch.result == 'success' &&
+         github.event.inputs.environment == 'production' &&
+         (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'deploy-and-seed'))
+      )
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -138,7 +245,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.check-ci.outputs.sha }}
+          ref: ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -164,10 +271,10 @@ jobs:
 
       - name: Update image tags
         run: |
-          SHA=${{ needs.check-ci.outputs.sha }}
+          SHA=${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}
           TAG="prod-${SHA:0:7}"
-          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}    -n nexusrh
-          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}    -n nexusrh
+          kubectl set image deployment/nexusrh-api    api=${{ env.IMAGE_PREFIX }}/nexusrh-api:${TAG}       -n nexusrh
+          kubectl set image deployment/nexusrh-web    web=${{ env.IMAGE_PREFIX }}/nexusrh-web:${TAG}       -n nexusrh
           kubectl set image deployment/nexusrh-worker worker=${{ env.IMAGE_PREFIX }}/nexusrh-worker:${TAG} -n nexusrh
 
       - name: Wait for rollout
@@ -180,4 +287,51 @@ jobs:
         run: |
           sleep 15
           curl -sf https://api.nexusrh-ci.com/health
-          echo "✅ Production déployée — SHA ${{ needs.check-ci.outputs.sha }}"
+          echo "Production déployée — SHA ${{ needs.check-ci.outputs.sha || needs.resolve-dispatch.outputs.sha }}"
+
+  # ── Seed production (UNIQUEMENT manuel, avec confirmation environment) ─────
+  seed-production:
+    name: "SEED PROD — Données initiales (DESTRUCTIF)"
+    needs: [resolve-dispatch, deploy-production]
+    # Jamais automatique. Toujours déclenché manuellement.
+    if: |
+      always() &&
+      needs.resolve-dispatch.result == 'success' &&
+      github.event.inputs.environment == 'production' &&
+      (github.event.inputs.action == 'seed-only' || github.event.inputs.action == 'deploy-and-seed')
+    runs-on: ubuntu-latest
+    environment:
+      name: production   # requiert approbation manuelle si configuré sur GitHub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig (production)
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Supprimer ancien job seed si existant
+        run: |
+          kubectl delete job nexusrh-seed -n nexusrh --ignore-not-found=true
+          sleep 5
+
+      - name: Lancer le seed job (production)
+        run: |
+          sed "s/FILL_WITH_DATE/$(date -u +%Y-%m-%dT%H:%M:%SZ)/" \
+            nexusrh_ci/k8s/jobs/seed-job-prod.yaml | kubectl apply -f -
+
+      - name: Attendre fin du seed
+        run: |
+          kubectl wait --for=condition=complete job/nexusrh-seed \
+            -n nexusrh --timeout=300s
+
+      - name: Logs du seed
+        if: always()
+        run: |
+          kubectl logs job/nexusrh-seed -n nexusrh --tail=100 || true
