@@ -61,6 +61,9 @@ const ContractsPage    = lazy(() => import('@/pages/contracts/ContractsPage'))
 // ── Mobile Money ─────────────────────────────────────────────────────────────
 const MobileMoneyPage  = lazy(() => import('@/pages/mobile-money/MobileMoneyPage'))
 
+// ── Référentiel Droit CI ──────────────────────────────────────────────────────
+const ReferentielsPage = lazy(() => import('@/pages/referentiels/ReferentielsPage'))
+
 // ── Espace employé ────────────────────────────────────────────────────────────
 const MonEspace        = lazy(() => import('@/pages/mon-espace/MonEspace'))
 const MesAbsences      = lazy(() => import('@/pages/mon-espace/MesAbsences'))
@@ -206,6 +209,12 @@ export default function App() {
             <Route path="mobile-money" element={
               <RoleGuard allowedRoles={['admin','hr_manager']}>
                 <MobileMoneyPage />
+              </RoleGuard>
+            } />
+
+            <Route path="referentiels" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ReferentielsPage />
               </RoleGuard>
             } />
           </Route>
