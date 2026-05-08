@@ -52,7 +52,7 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
 
     const mustClause = isBrowse
       ? { match_all: {} }
-      : { multi_match: { query: q, fields: ['titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } }
+      : { multi_match: { query: q, fields: ['article_numero^5', 'titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } }
 
     const response = await esClient.search({
       index: ES_INDEX,
@@ -72,10 +72,14 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
       score: h._score ?? 0,
       highlight: h.highlight,
     }))
-    return {
-      total: typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0),
-      hits,
+    const total = typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0)
+
+    // Si ES répond mais index vide, tenter PG
+    if (hits.length === 0) {
+      const pg = await searchArticlesFromDb({ q, source, livre, from, size })
+      if (pg.total > 0) return { total: pg.total, hits: pg.hits.map(a => ({ ...a, score: 1 }) as ArticleHit) }
     }
+    return { total, hits }
   } catch {
     // Fallback PostgreSQL si Elasticsearch indisponible
     const result = await searchArticlesFromDb({ q, source, livre, from, size })

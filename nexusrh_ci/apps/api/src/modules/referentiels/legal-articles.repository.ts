@@ -151,6 +151,7 @@ export async function searchArticlesFromDb(params: {
   const isBrowse = !q || q === '*'
   const ql = q?.toLowerCase() ?? ''
   const filtered = isBrowse ? all : all.filter(r =>
+    r.articleNumero.toLowerCase().includes(ql) ||
     r.titreArticle.toLowerCase().includes(ql) ||
     r.texte.toLowerCase().includes(ql) ||
     (r.keywords as string[] ?? []).some(k => k.toLowerCase().includes(ql))
