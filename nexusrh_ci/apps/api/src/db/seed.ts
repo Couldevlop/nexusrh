@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs'
 import { config } from '../config.js'
 import {
   createPlatformSchema,
+  createDroitCiSchema,
   provisionTenantSchema,
   seedPayrollRulesCI,
   seedAbsenceTypesCI,
@@ -121,7 +122,17 @@ async function main() {
   }
 
   await createPlatformSchema()
-  console.log('[1/10] Schema platform créé')
+  await createDroitCiSchema()
+  console.log('[1/10] Schémas platform + droit_ci créés')
+
+  // Seed référentiel juridique (PostgreSQL → Elasticsearch)
+  try {
+    const { seedReferentiel } = await import('../modules/referentiels/referentiels.service.js')
+    const { persisted, indexed } = await seedReferentiel()
+    console.log(`[1b] Référentiel juridique : ${persisted} articles PG, ${indexed} indexés ES`)
+  } catch (e: any) {
+    console.warn('[1b] Référentiel ES indisponible (non bloquant):', e.message)
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // SUPER ADMIN

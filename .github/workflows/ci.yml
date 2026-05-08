@@ -2,7 +2,7 @@ name: Quality & Security — NexusRH CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'feat/**' ]
     paths: [ 'nexusrh_ci/**' ]
   pull_request:
     branches: [ main, develop ]

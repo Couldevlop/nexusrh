@@ -22,14 +22,27 @@ const TRANCHES_ITS = [
   { min: 2_000_001,  max: Infinity,  taux: 0.150 },
 ] as const
 
+/** Informations d'absence à appliquer sur le bulletin du mois */
+export interface AbsencePayrollInfo {
+  type: 'maternite' | 'maladie_sans_at' | 'accident_travail'
+  /** Nombre de jours d'absence dans le mois (hors jours travaillés) */
+  absenceDays: number
+  /** Maladie sans AT : taux de maintien (1.0 = 100%, 0.5 = 50%). Défaut : 1.0 */
+  maintienTaux?: number
+  /** AT : le jour de l'accident (J) tombe-t-il dans ce mois ? (payé par l'employeur) */
+  atJourAccidentInMonth?: boolean
+}
+
 export interface PayrollContext {
   baseSalary:      number  // FCFA brut mensuel
-  workedDays:      number  // jours travaillés dans le mois
+  workedDays:      number  // jours travaillés dans le mois (hors jours absence)
   workingDaysMonth: number // jours ouvrables théoriques du mois
   atRate:          number  // taux AT CNPS secteur (ex: 0.03 pour BTP)
   maritalStatus:   string  // 'single' | 'married' | 'divorced' | 'widowed'
   childrenCount:   number
   variableElements: Record<string, number> // {'PRIME_TRANSPORT': 30000, ...}
+  /** Absence du mois (optionnel — sans ce champ, calcul normal) */
+  absence?: AbsencePayrollInfo
 }
 
 export interface PayrollLine {
@@ -40,11 +53,17 @@ export interface PayrollLine {
   amount: number // FCFA entier
 }
 
+export interface BordereauCnps {
+  motif: 'maternite' | 'accident_travail'
+  montant: number  // FCFA — montant à récupérer auprès de la CNPS
+  label: string
+}
+
 export interface PayrollResult {
   lines:          PayrollLine[]
   baseSalary:     number
   brutProrata:    number
-  grossSalary:    number  // = brutProrata + primes
+  grossSalary:    number  // = brutProrata + primes + indemnités
   // CNPS
   cnpsRetraiteSal: number
   cnpsRetraitePat: number
@@ -62,6 +81,9 @@ export interface PayrollResult {
   currency:        'XOF'
   smigCompliant:   boolean
   workingDays:     number
+  // Absences
+  indemniteAbsence?: number      // montant indemnité (maternité / maladie / AT)
+  bordereauCnps?:    BordereauCnps  // bordereau remboursement CNPS (maternité / AT)
 }
 
 /**
@@ -118,21 +140,31 @@ function evalFormule(formula: string, vars: Record<string, number>): number {
   }
 }
 
+// Primes liées à la présence physique — suspendues automatiquement en cas d'absence
+const PRIMES_PRESENCE = new Set(['PRIME_TRANSPORT', 'PRIME_PANIER'])
+
 /**
  * Moteur principal de calcul de paie CI
  */
 export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const {
     baseSalary, workedDays, workingDaysMonth,
-    atRate, maritalStatus, childrenCount, variableElements,
+    atRate, maritalStatus, childrenCount, absence,
   } = ctx
 
-  // ── ÉTAPE 1 : Variables de base ────────────────────────────────────────────
-  const brutProrata = Math.floor(baseSalary * (workedDays / workingDaysMonth))
-  const baseAtPf    = Math.min(brutProrata, PLAFOND_CNPS_AT_PF)
+  // Suspension automatique des primes de présence si absence déclarée
+  const variableElements = { ...ctx.variableElements }
+  if (absence) {
+    for (const prime of PRIMES_PRESENCE) delete variableElements[prime]
+  }
+
+  // ── ÉTAPE 1 : Variables de base ─────────────────────────────────────────────
+  // brutProrata = salaire des jours de PRÉSENCE RÉELLE (hors jours d'absence)
+  const brutProrata  = Math.floor(baseSalary * (workedDays / workingDaysMonth))
+  const baseAtPf     = Math.min(brutProrata, PLAFOND_CNPS_AT_PF)
   const baseRetraite = Math.min(brutProrata, PLAFOND_CNPS_RETRAITE)
 
-  // ── ÉTAPE 2 : Cotisations CNPS ─────────────────────────────────────────────
+  // ── ÉTAPE 2 : Cotisations CNPS (sur présence uniquement) ────────────────────
   const cnpsRetraiteSal = Math.floor(baseRetraite * TAUX_CNPS_RETRAITE_SAL)
   const cnpsRetraitePat = Math.floor(baseRetraite * TAUX_CNPS_RETRAITE_PAT)
   const cnpsPfPat       = Math.floor(baseAtPf * (TAUX_CNPS_PF_PAT + TAUX_CNPS_MAT_PAT))
@@ -140,85 +172,100 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const totalCnpsSal    = cnpsRetraiteSal
   const totalCnpsPat    = cnpsRetraitePat + cnpsPfPat + cnpsAtPat
 
-  // ── ÉTAPE 3 : ITS/DGI ──────────────────────────────────────────────────────
-  const salaireNetImposable = Math.floor(brutProrata * (1 - ABATTEMENT_ITS))
-  const baseImposable       = Math.max(0, salaireNetImposable - totalCnpsSal)
-  const itsBrut             = calculerBaremeITS(baseImposable)
-  const creditImpot         = getCreditImpot(maritalStatus, childrenCount)
-  const its                 = Math.max(0, itsBrut - creditImpot)
+  // ── PRÉ-CALCUL ABSENCE : avant ITS pour déterminer la base imposable ────────
+  // Indemnités maternité et AT sont exonérées d'ITS ; maladie est taxée normalement
+  let indemniteAbsence    = 0
+  let indemniteExoneree   = 0   // portion exonérée ITS (maternité + AT)
+  let bordereauCnps: BordereauCnps | undefined
 
-  // ── ÉTAPE 4 : Gains variables ──────────────────────────────────────────────
-  const vars: Record<string, number> = {
-    BRUT_MENSUEL:       baseSalary,
-    BRUT_PRORATA:       brutProrata,
-    BASE_AT_PF:         baseAtPf,
-    BASE_RETRAITE:      baseRetraite,
-    ITS:                its,
-    SMIG:               SMIG_MENSUEL,
-    ...variableElements,
+  if (absence && absence.absenceDays > 0) {
+    const tauxJour = baseSalary / workingDaysMonth
+
+    if (absence.type === 'maternite') {
+      indemniteAbsence  = Math.floor(tauxJour * absence.absenceDays)
+      indemniteExoneree = indemniteAbsence
+      bordereauCnps = {
+        motif: 'maternite',
+        montant: indemniteAbsence,
+        label: 'Bordereau remboursement CNPS — Congé maternité',
+      }
+    } else if (absence.type === 'maladie_sans_at') {
+      const taux = absence.maintienTaux ?? 1.0
+      indemniteAbsence = Math.floor(tauxJour * absence.absenceDays * taux)
+      // Maladie : soumise à ITS — indemniteExoneree reste 0
+    } else if (absence.type === 'accident_travail') {
+      // Jour J payé par l'employeur = inclus dans brutProrata via workedDays
+      const joursIjCnps = absence.atJourAccidentInMonth
+        ? Math.max(0, absence.absenceDays - 1)
+        : absence.absenceDays
+      if (joursIjCnps > 0) {
+        indemniteAbsence  = Math.floor(tauxJour * joursIjCnps)
+        indemniteExoneree = indemniteAbsence
+        bordereauCnps = {
+          motif: 'accident_travail',
+          montant: indemniteAbsence,
+          label: 'Bordereau remboursement CNPS — Accident du travail',
+        }
+      }
+    }
   }
 
+  // ── ÉTAPE 3 : ITS/DGI ───────────────────────────────────────────────────────
+  // Base taxable = (présence + indemnité maladie) × abattement — CNPS sal
+  // Indemnités maternité et AT sont exclues de la base imposable
+  const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree
+  const salaireAbattu   = Math.floor(brutTaxable * (1 - ABATTEMENT_ITS))
+  const baseImposable   = Math.max(0, salaireAbattu - totalCnpsSal)
+  const itsBrut         = calculerBaremeITS(baseImposable)
+  const creditImpot     = getCreditImpot(maritalStatus, childrenCount)
+  const its             = Math.max(0, itsBrut - creditImpot)
+
+  // ── ÉTAPE 4 : Construction des lignes du bulletin ───────────────────────────
   const lines: PayrollLine[] = []
 
-  // Salaire de base (toujours en premier)
   lines.push({
     code: '1000', label: 'Salaire de base',
     type: 'earning', base: baseSalary, amount: brutProrata,
   })
 
-  // Éléments variables earning
-  const varEarnings: Array<{ code: string; label: string; varKey: string }> = [
-    { code: '1100', label: "Prime d'ancienneté",          varKey: 'PRIME_ANCIENNETE' },
-    { code: '1200', label: 'Prime de rendement',           varKey: 'PRIME_RENDEMENT' },
-    { code: '1300', label: 'Prime de transport',           varKey: 'PRIME_TRANSPORT' },
-    { code: '1400', label: 'Heures supp. +15%',           varKey: 'HEURES_SUPP_NORM' },
-    { code: '1500', label: 'Heures supp. +50% (nuit/dim)', varKey: 'HEURES_SUPP_NUIT' },
-    { code: '1600', label: 'Indemnité congés payés',       varKey: 'ICP' },
+  const varEarnings = [
+    { code: '1100', label: "Prime d'ancienneté",           varKey: 'PRIME_ANCIENNETE'  },
+    { code: '1200', label: 'Prime de rendement',            varKey: 'PRIME_RENDEMENT'   },
+    { code: '1300', label: 'Prime de transport',            varKey: 'PRIME_TRANSPORT'   },
+    { code: '1400', label: 'Heures supp. +15%',            varKey: 'HEURES_SUPP_NORM'  },
+    { code: '1500', label: 'Heures supp. +50% (nuit/dim)', varKey: 'HEURES_SUPP_NUIT'  },
+    { code: '1600', label: 'Indemnité congés payés',        varKey: 'ICP'               },
   ]
   for (const e of varEarnings) {
     const amount = variableElements[e.varKey] ?? 0
-    if (amount > 0) {
-      lines.push({ code: e.code, label: e.label, type: 'earning', base: brutProrata, amount })
+    if (amount > 0) lines.push({ code: e.code, label: e.label, type: 'earning', base: brutProrata, amount })
+  }
+
+  // Ligne indemnité absence (si applicable)
+  if (indemniteAbsence > 0 && absence) {
+    if (absence.type === 'maternite') {
+      lines.push({ code: '1700', label: 'Indemnités de congé maternité', type: 'earning', base: baseSalary, amount: indemniteAbsence })
+    } else if (absence.type === 'maladie_sans_at') {
+      lines.push({ code: '1800', label: 'Indemnité de maladie',           type: 'earning', base: baseSalary, amount: indemniteAbsence })
+    } else if (absence.type === 'accident_travail') {
+      lines.push({ code: '1900', label: 'Indemnité journalière AT (CNPS)', type: 'earning', base: baseSalary, amount: indemniteAbsence })
     }
   }
 
   const grossSalary = lines.filter(l => l.type === 'earning').reduce((s, l) => s + l.amount, 0)
 
-  // CNPS salarié
-  lines.push({
-    code: '2000', label: 'CNPS Retraite salarié (6,3%)',
-    type: 'employee_contribution', base: baseRetraite, amount: cnpsRetraiteSal,
-  })
-  lines.push({
-    code: '2100', label: 'ITS — Impôt sur Traitements et Salaires',
-    type: 'employee_contribution', base: baseImposable, amount: its,
-  })
+  lines.push({ code: '2000', label: 'CNPS Retraite salarié (6,3%)',               type: 'employee_contribution', base: baseRetraite, amount: cnpsRetraiteSal })
+  lines.push({ code: '2100', label: 'ITS — Impôt sur Traitements et Salaires',    type: 'employee_contribution', base: baseImposable, amount: its })
 
-  // Avance / retenues
   const avance = variableElements['AVANCE'] ?? 0
-  if (avance > 0) {
-    lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
-  }
+  if (avance > 0) lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
 
-  // CNPS patronal
-  lines.push({
-    code: '3000', label: 'CNPS Retraite patronal (7,7%)',
-    type: 'employer_contribution', base: baseRetraite, amount: cnpsRetraitePat,
-  })
-  lines.push({
-    code: '3100', label: 'CNPS Prestations familiales (5%)',
-    type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_PF_PAT),
-  })
-  lines.push({
-    code: '3200', label: 'CNPS Assurance maternité (0,75%)',
-    type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_MAT_PAT),
-  })
-  lines.push({
-    code: '3300', label: `CNPS Accidents du travail (${(atRate * 100).toFixed(2)}%)`,
-    type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat,
-  })
+  lines.push({ code: '3000', label: 'CNPS Retraite patronal (7,7%)',              type: 'employer_contribution', base: baseRetraite, amount: cnpsRetraitePat })
+  lines.push({ code: '3100', label: 'CNPS Prestations familiales (5%)',           type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_PF_PAT) })
+  lines.push({ code: '3200', label: 'CNPS Assurance maternité (0,75%)',           type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_MAT_PAT) })
+  lines.push({ code: '3300', label: `CNPS Accidents du travail (${(atRate * 100).toFixed(2)}%)`, type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat })
 
-  // ── ÉTAPE 5 : Totaux ───────────────────────────────────────────────────────
+  // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
   const totalRetenues = totalCnpsSal + its + avance
   const netPayable    = Math.max(0, grossSalary - totalRetenues)
   const employerCost  = grossSalary + totalCnpsPat
@@ -242,5 +289,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     currency: 'XOF',
     smigCompliant: netPayable >= SMIG_MENSUEL,
     workingDays: workedDays,
+    indemniteAbsence: indemniteAbsence > 0 ? indemniteAbsence : undefined,
+    bordereauCnps,
   }
 }

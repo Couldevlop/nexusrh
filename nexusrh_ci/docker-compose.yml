@@ -81,11 +81,31 @@ services:
       - '1026:1025'  # SMTP
       - '8026:8025'  # UI web
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: nexusrhci_elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ES_PASSWORD:-nexusrhci-es-dev}
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - '9201:9200'  # Port distinct (NexusRH parent : 9200)
+    volumes:
+      - nexusrhci_elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -s -u elastic:${ES_PASSWORD:-nexusrhci-es-dev} http://localhost:9200/_cluster/health | grep -q "status"']
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
 volumes:
   nexusrhci_postgres_data:
   nexusrhci_redis_data:
   nexusrhci_meilisearch_data:
   nexusrhci_minio_data:
+  nexusrhci_elasticsearch_data:
 
 networks:
   default:
