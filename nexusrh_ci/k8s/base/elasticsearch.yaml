@@ -1,0 +1,151 @@
+# Elasticsearch — NexusRH CI — K3s / Hetzner
+# Image: bitnami/elasticsearch (stable sur K3s, sécurité xpack activée)
+# OWASP A07 : mTLS intra-cluster, secret K8s pour credentials
+# Accès: interne uniquement — http://elasticsearch.nexusrh-system:9200
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-credentials
+  namespace: nexusrh-system
+type: Opaque
+stringData:
+  # Remplacer par de vraies valeurs en production (kubectl create secret ou Sealed Secrets)
+  ELASTIC_PASSWORD: "CHANGE_ME_IN_PRODUCTION"
+  ES_USER: "elastic"
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: nexusrh-system
+  labels:
+    app: elasticsearch
+    component: search
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: elasticsearch
+          image: bitnami/elasticsearch:8.12.0
+          ports:
+            - containerPort: 9200
+              name: http
+            - containerPort: 9300
+              name: transport
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: ELASTICSEARCH_CLUSTER_NAME
+              value: "nexusrhci-cluster"
+            - name: ELASTICSEARCH_NODE_NAME
+              value: "nexusrhci-node-1"
+            # Nœud unique (K3s léger)
+            - name: ELASTICSEARCH_IS_DEDICATED_NODE
+              value: "no"
+            # OWASP A07 : sécurité xpack activée
+            - name: ELASTICSEARCH_ENABLE_SECURITY
+              value: "true"
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-credentials
+                  key: ELASTIC_PASSWORD
+            # Heap JVM adapté K3s (nœud léger)
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /bitnami/elasticsearch/data
+          resources:
+            requests:
+              memory: "768Mi"
+              cpu: "250m"
+            limits:
+              memory: "1.5Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+              scheme: HTTP
+              httpHeaders:
+                - name: Authorization
+                  value: "Basic ZWxhc3RpYzpDSEFOR0VfTUVfSU5fUFJPRFVDVElPTg=="  # elastic:CHANGE_ME (base64)
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+              scheme: HTTP
+              httpHeaders:
+                - name: Authorization
+                  value: "Basic ZWxhc3RpYzpDSEFOR0VfTUVfSU5fUFJPRFVDVElPTg=="
+            initialDelaySeconds: 60
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path   # Classe de stockage K3s par défaut (Hetzner)
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+# Service interne — jamais exposé sur Internet (OWASP A07)
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: nexusrh-system
+  labels:
+    app: elasticsearch
+spec:
+  type: ClusterIP   # interne uniquement
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+    - name: transport
+      port: 9300
+      targetPort: 9300
+
+---
+# NetworkPolicy — OWASP A01 : seule l'API NexusRH peut joindre ES
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: elasticsearch-allow-api-only
+  namespace: nexusrh-system
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: nexusrhci-api   # seule l'API est autorisée
+      ports:
+        - protocol: TCP
+          port: 9200
