@@ -4,6 +4,46 @@ import { config } from '../config.js'
 const pool = new Pool({ connectionString: config.database.url })
 
 /**
+ * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
+ * OWASP A01 : schéma dédié isolé des données opérationnelles
+ */
+export async function createDroitCiSchema(): Promise<void> {
+  await pool.query(`CREATE SCHEMA IF NOT EXISTS droit_ci`)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS droit_ci.articles (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      article_id      varchar(50) NOT NULL UNIQUE,
+      article_numero  varchar(50) NOT NULL,
+      source          varchar(30) NOT NULL,
+      convention_slug varchar(100),
+      livre           varchar(200),
+      titre           varchar(300),
+      chapitre        varchar(300),
+      section         varchar(300),
+      titre_article   text NOT NULL,
+      texte           text NOT NULL,
+      keywords        text[] DEFAULT '{}',
+      payroll_codes   text[] DEFAULT '{}',
+      access_level    varchar(20) NOT NULL DEFAULT 'public',
+      is_active       boolean NOT NULL DEFAULT true,
+      checksum_sha256 varchar(64),
+      last_verified_at timestamptz,
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      updated_at      timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_droit_ci_source ON droit_ci.articles(source)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_droit_ci_payroll ON droit_ci.articles USING GIN(payroll_codes)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_droit_ci_access ON droit_ci.articles(access_level, is_active)
+  `)
+}
+
+/**
  * Crée le schéma platform avec ses tables (idempotent)
  */
 export async function createPlatformSchema(): Promise<void> {

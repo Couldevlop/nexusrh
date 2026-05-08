@@ -1,20 +1,22 @@
 import type { FastifyInstance } from 'fastify'
 import {
   searchReferentiel, getHierarchyTree,
-  getArticleById, getArticlesByPayrollCode, seedReferentiel,
+  getArticleById, getArticlesByPayrollCode,
+  seedReferentiel, reindexFromDb, getReferentielStats,
 } from './referentiels.service.js'
 import { ensureIndex } from '../../services/elasticsearch.js'
 
 export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   await ensureIndex().catch(err => app.log.warn('[ES] index non dispo:', err.message))
 
+  // ── Recherche full-text ──────────────────────────────────────────────────────
   app.get('/referentiels/search', {
     schema: {
       querystring: {
         type: 'object',
         required: ['q'],
         properties: {
-          q:          { type: 'string', minLength: 1, maxLength: 200 },
+          q:          { type: 'string', minLength: 2, maxLength: 200 },
           source:     { type: 'string', enum: ['code_travail_ci', 'convention_collective'] },
           convention: { type: 'string', maxLength: 50 },
           from:       { type: 'integer', minimum: 0, default: 0 },
@@ -24,15 +26,15 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     },
     preHandler: [app.authenticate, app.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly')],
   }, async (req, reply) => {
-    const params = req.query as any
     try {
-      return reply.send(await searchReferentiel(params))
+      return reply.send(await searchReferentiel(req.query as any))
     } catch (err: any) {
       app.log.error('[referentiels search]', err.message)
       return reply.status(503).send({ error: 'Service de recherche temporairement indisponible' })
     }
   })
 
+  // ── Arborescence / Sommaire ──────────────────────────────────────────────────
   app.get('/referentiels/tree', {
     preHandler: [app.authenticate],
   }, async (_req, reply) => {
@@ -41,6 +43,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     } catch { return reply.status(503).send({ error: 'Service indisponible' }) }
   })
 
+  // ── Article par ID ───────────────────────────────────────────────────────────
   app.get<{ Params: { id: string } }>('/referentiels/articles/:id', {
     schema: { params: { type: 'object', properties: { id: { type: 'string', maxLength: 50 } } } },
     preHandler: [app.authenticate],
@@ -50,7 +53,7 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(article)
   })
 
-  // Liaison bulletin ↔ loi : icône (i) sur chaque ligne de paie
+  // ── Liaison bulletin ↔ loi (icône ℹ sur chaque ligne de paie) ─────────────
   app.get<{ Params: { code: string } }>('/referentiels/payroll/:code', {
     schema: { params: { type: 'object', properties: { code: { type: 'string', maxLength: 10 } } } },
     preHandler: [app.authenticate],
@@ -60,13 +63,32 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     } catch { return reply.status(503).send({ error: 'Service indisponible' }) }
   })
 
-  // Seed — admin uniquement
+  // ── Stats admin ──────────────────────────────────────────────────────────────
+  app.get('/referentiels/stats', {
+    preHandler: [app.authenticate, app.authorize('admin', 'hr_manager')],
+  }, async (_req, reply) => {
+    return reply.send(await getReferentielStats())
+  })
+
+  // ── Seed : data file → PostgreSQL → Elasticsearch (admin uniquement) ─────────
   app.post('/referentiels/seed', {
     preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
   }, async (_req, reply) => {
     try {
       await ensureIndex()
       return reply.send({ success: true, ...(await seedReferentiel()) })
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message })
+    }
+  })
+
+  // ── Réindexation ES depuis PG (admin uniquement, sans re-seed) ──────────────
+  app.post('/referentiels/reindex', {
+    preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
+  }, async (_req, reply) => {
+    try {
+      const indexed = await reindexFromDb()
+      return reply.send({ success: true, indexed })
     } catch (err: any) {
       return reply.status(500).send({ error: err.message })
     }

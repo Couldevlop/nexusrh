@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { config } from '../config.js'
 import { platformSchema, tenants, platformUsers, tenantInvitations } from './schema/platform.js'
+import { legalArticles } from './schema/droit-ci.js'
 import { createTenantSchema } from './schema/tenant.js'
 import type { FastifyRequest } from 'fastify'
 
@@ -16,6 +17,9 @@ export const pool = new Pool({
 export const platformDb = drizzle(pool, {
   schema: { tenants, platformUsers, tenantInvitations },
 })
+
+// ── Client droit_ci — schéma PostgreSQL dédié aux articles juridiques ─────────
+export const droitCiDb = drizzle(pool, { schema: { legalArticles } })
 
 // ── Cache des clients tenant (un par schemaName) ──────────────────────────────
 const tenantClients = new Map<string, ReturnType<typeof drizzle>>()
