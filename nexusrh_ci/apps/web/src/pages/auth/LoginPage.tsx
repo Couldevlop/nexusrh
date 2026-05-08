@@ -241,210 +241,154 @@ export default function LoginPage() {
       </div>
 
       {/* Panel droit — formulaire */}
-      <div className="flex flex-1 items-center justify-center px-4 py-8 lg:px-12">
-        <div className="w-full max-w-sm">
-          {/* Logo mobile uniquement */}
-          <div className="mb-8 text-center lg:hidden">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
-              N
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-gray-50 lg:bg-white">
+        <div className="w-full max-w-md">
+
+          {/* En-tête */}
+          <div className="mb-8">
+            <div className="lg:hidden flex items-center gap-3 mb-6">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-black text-sm text-primary-foreground">N</div>
+              <span className="font-black text-lg">NexusRH CI</span>
             </div>
-            <h1 className="text-2xl font-bold">NexusRH CI</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              La RH Intelligente, au service de l'Afrique qui avance
-            </p>
-            <div className="mt-3 flex items-center justify-center gap-1.5 opacity-60">
-              <img
-                src={openlabLogo}
-                alt="OpenLab"
-                className="h-5 w-auto object-contain"
-              />
-              <span className="text-xs text-muted-foreground">
-                by OpenLab Consulting
-              </span>
-            </div>
+            {!mustChange ? (
+              <>
+                <h1 className="text-2xl font-bold text-gray-900">Bienvenue</h1>
+                <p className="mt-1 text-sm text-gray-500">Connectez-vous à votre espace RH</p>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
+                  <ShieldCheck className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900">Sécurisation du compte</h1>
+                  <p className="text-xs text-gray-500">Première connexion — changement requis</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm">
-            {/* ── Formulaire connexion ── */}
+          {/* Carte formulaire */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+
+            {/* ── Connexion ── */}
             {!mustChange && (
-              <>
-                <h2 className="mb-6 text-center text-lg font-semibold">
-                  Connexion
-                </h2>
-                <form
-                  onSubmit={loginForm.handleSubmit(onLogin)}
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">
-                      Email
-                    </label>
-                    <input
-                      {...loginForm.register("email")}
-                      type="email"
-                      placeholder="vous@entreprise.ci"
-                      className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    {loginForm.formState.errors.email && (
-                      <p className="mt-1 text-xs text-destructive">
-                        {loginForm.formState.errors.email.message}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">
-                      Mot de passe
-                    </label>
-                    <div className="relative">
-                      <input
-                        {...loginForm.register("password")}
-                        type={showPwd ? "text" : "password"}
-                        placeholder="••••••••"
-                        className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showPwd ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                    {loginForm.formState.errors.password && (
-                      <p className="mt-1 text-xs text-destructive">
-                        {loginForm.formState.errors.password.message}
-                      </p>
-                    )}
-                  </div>
-                  {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                      {error}
-                    </div>
+              <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Adresse email
+                  </label>
+                  <input
+                    {...loginForm.register("email")}
+                    type="email"
+                    placeholder="vous@entreprise.ci"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  {loginForm.formState.errors.email && (
+                    <p className="mt-1.5 text-xs text-red-500">{loginForm.formState.errors.email.message}</p>
                   )}
-                  <button
-                    type="submit"
-                    disabled={loginForm.formState.isSubmitting}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
-                  >
-                    {loginForm.formState.isSubmitting && (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    )}
-                    {loginForm.formState.isSubmitting
-                      ? "Connexion…"
-                      : "Se connecter"}
-                  </button>
-                </form>
-              </>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Mot de passe
+                  </label>
+                  <div className="relative">
+                    <input
+                      {...loginForm.register("password")}
+                      type={showPwd ? "text" : "password"}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <button type="button" onClick={() => setShowPwd(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {loginForm.formState.errors.password && (
+                    <p className="mt-1.5 text-xs text-red-500">{loginForm.formState.errors.password.message}</p>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                    <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                    <p className="text-xs text-red-700">{error}</p>
+                  </div>
+                )}
+
+                <button type="submit" disabled={loginForm.formState.isSubmitting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.98] disabled:opacity-60">
+                  {loginForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {loginForm.formState.isSubmitting ? "Connexion…" : "Se connecter"}
+                </button>
+              </form>
             )}
 
-            {/* ── Formulaire première connexion ── */}
+            {/* ── Première connexion ── */}
             {mustChange && (
-              <>
-                <div className="flex items-center gap-2 mb-5">
-                  <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
-                  <div>
-                    <h2 className="text-base font-semibold">
-                      Sécurisation du compte
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Première connexion détectée — changement requis
-                    </p>
-                  </div>
+              <form onSubmit={changeForm.handleSubmit(onChangePassword)} className="space-y-5">
+                <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
+                  Définissez un mot de passe fort : <strong>12 caractères minimum</strong>, majuscule, chiffre et caractère spécial.
                 </div>
-                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                  Pour sécuriser votre compte, définissez un nouveau mot de
-                  passe fort de <strong>12 caractères minimum</strong> avec
-                  majuscule, minuscule, chiffre et caractère spécial.
-                </div>
-                <form
-                  onSubmit={changeForm.handleSubmit(onChangePassword)}
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">
-                      Nouveau mot de passe
-                    </label>
-                    <div className="relative">
-                      <input
-                        {...changeForm.register("newPassword")}
-                        type={showNewPwd ? "text" : "password"}
-                        placeholder="Minimum 12 caractères"
-                        className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPwd((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showNewPwd ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                    {pwdValue && <PasswordStrength value={pwdValue} />}
-                    {changeForm.formState.errors.newPassword && (
-                      <p className="mt-1 text-xs text-destructive">
-                        {changeForm.formState.errors.newPassword.message}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">
-                      Confirmer le mot de passe
-                    </label>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Nouveau mot de passe
+                  </label>
+                  <div className="relative">
                     <input
-                      {...changeForm.register("confirmPassword")}
-                      type="password"
-                      placeholder="••••••••••••"
-                      className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      {...changeForm.register("newPassword")}
+                      type={showNewPwd ? "text" : "password"}
+                      placeholder="Minimum 12 caractères"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
-                    {changeForm.formState.errors.confirmPassword && (
-                      <p className="mt-1 text-xs text-destructive">
-                        {changeForm.formState.errors.confirmPassword.message}
-                      </p>
-                    )}
+                    <button type="button" onClick={() => setShowNewPwd(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showNewPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
-                  {error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                      {error}
-                    </div>
+                  {pwdValue && <PasswordStrength value={pwdValue} />}
+                  {changeForm.formState.errors.newPassword && (
+                    <p className="mt-1.5 text-xs text-red-500">{changeForm.formState.errors.newPassword.message}</p>
                   )}
-                  <button
-                    type="submit"
-                    disabled={changeForm.formState.isSubmitting}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
-                  >
-                    {changeForm.formState.isSubmitting && (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    )}
-                    {changeForm.formState.isSubmitting
-                      ? "Enregistrement…"
-                      : "Valider et accéder"}
-                  </button>
-                </form>
-              </>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Confirmer
+                  </label>
+                  <input
+                    {...changeForm.register("confirmPassword")}
+                    type="password"
+                    placeholder="••••••••••••"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  {changeForm.formState.errors.confirmPassword && (
+                    <p className="mt-1.5 text-xs text-red-500">{changeForm.formState.errors.confirmPassword.message}</p>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                    <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                    <p className="text-xs text-red-700">{error}</p>
+                  </div>
+                )}
+
+                <button type="submit" disabled={changeForm.formState.isSubmitting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.98] disabled:opacity-60">
+                  {changeForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {changeForm.formState.isSubmitting ? "Enregistrement…" : "Valider et accéder"}
+                </button>
+              </form>
             )}
           </div>
 
-          {!mustChange && (
-            <div className="mt-5 rounded-xl border bg-muted/50 p-4 text-xs text-muted-foreground"></div>
-          )}
-
-          <div className="mt-4 flex items-center justify-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-            <img
-              src={openlabLogo}
-              alt="OpenLab Consulting"
-              className="h-6 w-auto object-contain"
-            />
-            <span className="text-xs text-muted-foreground">
-              by OpenLab Consulting · Abidjan, CI
-            </span>
+          {/* Footer */}
+          <div className="mt-6 flex items-center justify-center gap-2 opacity-50 hover:opacity-80 transition-opacity">
+            <img src={openlabLogo} alt="OpenLab" className="h-5 w-auto object-contain" />
+            <span className="text-xs text-gray-400">OpenLab Consulting · Abidjan, Côte d'Ivoire</span>
           </div>
         </div>
       </div>
