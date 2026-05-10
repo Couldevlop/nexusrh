@@ -10,6 +10,7 @@ type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
 
 const connection = createClient()
+connection.on('error', (err: Error) => logger.error({ err }, 'Redis connection error'))
 const workers: Worker<unknown, void>[] = []
 
 function createWorker(queueName: string, handler: JobHandler): Worker<unknown, void> {
