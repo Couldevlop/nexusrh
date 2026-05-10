@@ -10,6 +10,14 @@ export async function blacklistToken(jti: string, ttlSeconds: number): Promise<v
 }
 
 export async function isTokenBlacklisted(jti: string): Promise<boolean> {
-  const val = await redis.get(`${TOKEN_BLACKLIST_PREFIX}${jti}`)
-  return val !== null
+  try {
+    const val = await redis.get(`${TOKEN_BLACKLIST_PREFIX}${jti}`)
+    return val !== null
+  } catch {
+    return false // Redis indisponible → on laisse passer (fail open)
+  }
+}
+
+export async function blacklistTokenSafe(jti: string, ttlSeconds: number): Promise<void> {
+  try { await blacklistToken(jti, ttlSeconds) } catch { /* Redis indisponible */ }
 }

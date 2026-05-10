@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { config } from '../../config.js'
-import { blacklistToken } from '../../services/redis.js'
+import { blacklistTokenSafe } from '../../services/redis.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -225,7 +225,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       // TTL = temps restant jusqu'à expiration du token (max 7j = 604800s)
       const exp = (user as unknown as { exp?: number }).exp
       const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
-      await blacklistToken(jti, ttl)
+      await blacklistTokenSafe(jti, ttl)
       return reply.send({ message: 'Déconnecté avec succès' })
     },
   })
