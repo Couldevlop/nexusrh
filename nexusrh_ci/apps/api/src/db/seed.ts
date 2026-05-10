@@ -506,6 +506,11 @@ async function main() {
     { title: 'Leadership & Management', description: 'Encadrement, motivation, gestion des conflits en contexte ivoirien.', duration: 12, format: 'presentiel', is_fdfp_eligible: true },
     { title: 'Excel Avancé & Tableaux de bord', description: 'Maîtrise Excel pour le reporting RH et financier.', duration: 8, format: 'e-learning', is_fdfp_eligible: false },
     { title: 'RGPD & Protection des données (ARTCI)', description: 'Conformité ARTCI, protection données personnelles en CI.', duration: 6, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Mécanique et Maintenance Bus', description: 'Diagnostic panne, entretien préventif, outils.', duration: 16, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Gestion des conflits & relation client', description: 'Techniques de médiation, communication bienveillante.', duration: 8, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Secourisme & Premiers Secours', description: 'PSC1 — Prévention et Secours Civiques niveau 1.', duration: 7, format: 'presentiel', is_fdfp_eligible: false },
+    { title: 'Informatique & Outils bureautiques', description: 'Word, Excel, email, gestion documentaire.', duration: 6, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Sensibilisation à la Sécurité au travail', description: 'Risques professionnels, EPI, procédures d\'urgence.', duration: 4, format: 'presentiel', is_fdfp_eligible: true },
   ]
   const trainingIds: string[] = []
   for (const tr of trainingData) {
@@ -813,6 +818,37 @@ async function main() {
     ])
   }
   console.log(`[9b/10] ${cabinetEmployees.length} contrats OHADA Cabinet créés`)
+
+  // ─── Formations Cabinet Expertise CI ─────────────────────────────────────────
+  const cabTrainings = [
+    { title: 'Audit & Comptabilité OHADA', description: 'Normes OHADA, états financiers, audit légal CI.', duration: 16, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Fiscalité des entreprises en CI', description: 'Impôts DGI : BIC, TVA, patente, ITS. Optimisation fiscale légale.', duration: 12, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Excel & Power BI pour consultants', description: 'Analyse de données, dashboards, modèles financiers.', duration: 8, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Gestion RH & Paie CI', description: 'CNPS, ITS/DGI, contrats OHADA, DISA.', duration: 8, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Leadership & Communication', description: 'Management, prise de parole, gestion des équipes.', duration: 6, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'RGPD & ARTCI — Protection des données', description: 'Conformité données personnelles en Côte d\'Ivoire.', duration: 4, format: 'e-learning', is_fdfp_eligible: false },
+  ]
+  const cabTrainingIds: string[] = []
+  for (const tr of cabTrainings) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${cabinetSchema}".trainings
+        (title, description, duration, format, is_fdfp_eligible, is_active)
+      VALUES ($1,$2,$3,$4,$5,true)
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [tr.title, tr.description, tr.duration, tr.format, tr.is_fdfp_eligible])
+    if (res.rows[0]) cabTrainingIds.push(res.rows[0].id)
+  }
+  // Sessions planifiées pour Cabinet
+  for (let i = 0; i < Math.min(cabTrainingIds.length, 3); i++) {
+    const futureDay = (d: number) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0] }
+    await pool.query(`
+      INSERT INTO "${cabinetSchema}".training_sessions
+        (training_id, start_date, end_date, location, trainer, max_places, status)
+      VALUES ($1,$2,$3,'Plateau — Salle Conférence','Expert FDFP',15,'planned')
+      ON CONFLICT DO NOTHING
+    `, [cabTrainingIds[i]!, futureDay(20 + i * 14), futureDay(21 + i * 14)])
+  }
+  console.log(`[9c/10] ${cabTrainings.length} formations + sessions Cabinet CI créées`)
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 3 — OpenLab Consulting (tenant créé via portail)
