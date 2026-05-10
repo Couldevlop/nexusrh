@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import Fastify from 'fastify'
+import Fastify, { type FastifyRequest } from 'fastify'
 import authPlugin from '../../plugins/auth.js'
 
 // Mock du pool PG et Redis pour les tests unitaires
@@ -32,7 +32,7 @@ describe('Auth plugin — JWT + RBAC', () => {
     app = Fastify()
     await app.register(authPlugin)
 
-    app.get('/protected', { preHandler: [app.authenticate] }, async (req) => ({ user: req.user }))
+    app.get('/protected', { preHandler: [app.authenticate] }, async (req: FastifyRequest) => ({ user: req.user }))
     app.get('/admin-only', { preHandler: [app.authorize('admin')] }, async () => ({ ok: true }))
     app.get('/multi-role', { preHandler: [app.authorize('admin', 'hr_manager')] }, async () => ({ ok: true }))
 
