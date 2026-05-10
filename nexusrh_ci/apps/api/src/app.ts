@@ -65,6 +65,29 @@ export async function buildApp() {
   await fastify.register(swaggerPlugin)
   await fastify.register(authPlugin)
 
+  // ── Rate limiting (OWASP A07 — Brute-force protection) ───────────────────────
+  await fastify.register(import('@fastify/rate-limit'), {
+    global:     true,
+    max:        200,
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.ip,
+    errorResponseBuilder: () => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Trop de requêtes. Veuillez patienter.',
+    }),
+  })
+
+  // ── Security headers (OWASP A05 — Security Misconfiguration) ─────────────────
+  fastify.addHook('onSend', async (_req, reply) => {
+    reply.header('X-Content-Type-Options',  'nosniff')
+    reply.header('X-Frame-Options',          'SAMEORIGIN')
+    reply.header('X-XSS-Protection',         '0')
+    reply.header('Strict-Transport-Security','max-age=31536000; includeSubDomains; preload')
+    reply.header('Referrer-Policy',          'strict-origin-when-cross-origin')
+    reply.header('Permissions-Policy',       'geolocation=(), microphone=(), camera=()')
+  })
+
   // ── Multipart (upload fichiers) ──────────────────────────────────────────────
   await fastify.register(import('@fastify/multipart'), {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB

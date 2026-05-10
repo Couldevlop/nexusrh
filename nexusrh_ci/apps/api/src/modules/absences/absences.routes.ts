@@ -125,23 +125,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         if (r.rows[0]) {
           employeeId = r.rows[0].id as string
         } else {
-          // Auto-créer un dossier employé minimal depuis les infos du compte utilisateur
-          const userRow = await rawPool.query(
-            `SELECT first_name, last_name, email FROM "${schema}".users WHERE email = $1 LIMIT 1`,
-            [request.user.email]
-          )
-          if (!userRow.rows[0]) return reply.status(422).send({ error: 'Utilisateur introuvable dans ce tenant' })
-          const u = userRow.rows[0] as { first_name: string; last_name: string; email: string }
-          const created = await rawPool.query(
-            `INSERT INTO "${schema}".employees (first_name, last_name, email, hire_date, is_active, job_title, base_salary, contract_type)
-             VALUES ($1,$2,$3,NOW(),true,'Employé',75000,'cdi') RETURNING id`,
-            [u.first_name, u.last_name, u.email]
-          )
-          employeeId = created.rows[0].id as string
-          await rawPool.query(
-            `UPDATE "${schema}".users SET employee_id = $1 WHERE email = $2`,
-            [employeeId, request.user.email]
-          )
+          return reply.status(422).send({ error: 'Aucun dossier employé associé à ce compte. Contactez votre RH.' })
         }
       }
 

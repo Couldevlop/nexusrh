@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { config } from '../../config.js'
+import { blacklistToken } from '../../services/redis.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -52,18 +53,18 @@ async function findTenantAndUser(
   }
 
   if (candidates.length === 0) {
-    log?.warn(`[auth] no user found for ${email} across ${tenantsRes.rows.length} tenants`)
+    log?.warn(`[auth] no user found across ${tenantsRes.rows.length} tenants`)
     return null
   }
 
   for (const c of candidates) {
     if (!c.user.is_active) {
-      log?.warn(`[auth] user ${email} in ${c.tenant.schema_name} is inactive`)
+      log?.warn(`[auth] inactive user in ${c.tenant.schema_name}`)
       continue
     }
     const valid = await bcrypt.compare(password, c.user.password_hash)
     if (valid) return c
-    log?.warn(`[auth] password mismatch for ${email} in ${c.tenant.schema_name}`)
+    log?.warn(`[auth] password mismatch in ${c.tenant.schema_name}`)
   }
 
   return null
@@ -73,6 +74,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /auth/login
   fastify.post('/login', {
     schema: { tags: ['auth'], summary: 'Connexion unifiée (super_admin + tenant)' },
+    config: { rateLimit: { max: 10, timeWindow: '5 minutes' } },
     handler: async (request, reply) => {
       const { email, password } = request.body as { email: string; password: string }
 
@@ -217,7 +219,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/logout', {
     preHandler: [fastify.authenticate],
     schema: { tags: ['auth'], summary: 'Déconnexion' },
-    handler: async (_request, reply) => {
+    handler: async (request, reply) => {
+      const user = request.user
+      const jti = (user as unknown as { jti?: string }).jti ?? user.sub
+      // TTL = temps restant jusqu'à expiration du token (max 7j = 604800s)
+      const exp = (user as unknown as { exp?: number }).exp
+      const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
+      await blacklistToken(jti, ttl)
       return reply.send({ message: 'Déconnecté avec succès' })
     },
   })
