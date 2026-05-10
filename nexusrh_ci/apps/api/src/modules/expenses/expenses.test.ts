@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import Fastify from 'fastify'
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify'
 import authPlugin from '../../plugins/auth.js'
 
 vi.mock('pg', () => {
@@ -35,7 +35,7 @@ describe('Expenses — IDOR protection', () => {
     app = Fastify()
     await app.register(authPlugin)
 
-    app.get('/expenses/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    app.get('/expenses/:id', { preHandler: [app.authenticate] }, async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string }
       const schema = req.user.schemaName
 
