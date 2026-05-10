@@ -768,14 +768,14 @@ async function main() {
   await seedPayrollRulesCI(openlabSchema, openlabAtRate)
   await seedAbsenceTypesCI(openlabSchema)
 
-  const openlabHash = await bcrypt.hash('Openlab2025!', 12)
+  const openlabHash = await bcrypt.hash('Openlab1234!', 12)
   await pool.query(`
     INSERT INTO "${openlabSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
   `, [openlabHash])
 
-  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab2025!')
+  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
@@ -796,7 +796,7 @@ async function main() {
   console.log('  employe2@cabinet-expertise.ci /  Admin1234!  (employee)')
   console.log()
   console.log('  [OpenLab Consulting]')
-  console.log('  coulwao@gmail.com     /  Openlab2025!  (admin)')
+  console.log('  coulwao@gmail.com     /  Openlab1234!  (admin)')
   console.log()
   console.log(`  SOTRA       : ${sotraEmployees.length} employés, ${sotraPeriods.length} mois de bulletins`)
   console.log(`  Cabinet CI  : ${cabinetEmployees.length} employés, ${cabinetPeriods.length} mois de bulletins`)
