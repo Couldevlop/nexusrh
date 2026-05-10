@@ -370,6 +370,40 @@ async function main() {
   }
   console.log(`[7/10] ${sotraEmployees.length * sotraPeriods.length} bulletins SOTRA générés (6 mois)`)
 
+  // ─── Contrats OHADA pour tous les employés SOTRA ─────────────────────────────
+  const contractTypes = ['cdi','cdi','cdi','cdi','cdd'] // 80% CDI, 20% CDD
+  for (let ci = 0; ci < sotraEmployees.length; ci++) {
+    const emp = sotraEmployees[ci]!
+    const ctype = contractTypes[ci % contractTypes.length]!
+    const startDate = new Date(2020 + Math.floor(ci / 20), ci % 12, 1)
+    const endDate   = ctype === 'cdd'
+      ? new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate())
+      : null
+    const isManager = ci < 5
+    const trialDays = isManager ? 30 : 15
+    const trialEnd  = new Date(startDate)
+    trialEnd.setDate(trialEnd.getDate() + trialDays)
+    await pool.query(`
+      INSERT INTO "${sotraSchema}".contracts
+        (employee_id, type, start_date, end_date, trial_end_date, base_salary,
+         working_hours, convention, job_title, job_level,
+         cnps_affiliation, ohada_clause, non_competition_clause,
+         telecommuting_days, status)
+      VALUES ($1,$2,$3,$4,$5,$6,40,'Transport urbain CI',
+              $7,$8,true,true,false,0,'active')
+      ON CONFLICT DO NOTHING
+    `, [
+      emp.id, ctype,
+      startDate.toISOString().split('T')[0],
+      endDate ? endDate.toISOString().split('T')[0] : null,
+      trialEnd.toISOString().split('T')[0],
+      emp.baseSalary,
+      isManager ? 'Chef de service' : ci % 3 === 0 ? 'Technicien' : 'Agent',
+      isManager ? 'Cadre' : 'Agent de maîtrise',
+    ])
+  }
+  console.log(`[7b/10] ${sotraEmployees.length} contrats OHADA SOTRA créés`)
+
   // Absences pour l'employé Kouassi (employe@sotra.ci)
   if (sotraEmployees[0] && absTypeMap['CP']) {
     const empId = sotraEmployees[0].id
@@ -745,6 +779,40 @@ async function main() {
     }
   }
   console.log(`[9/10] ${cabinetEmployees.length * cabinetPeriods.length} bulletins Cabinet créés (3 mois)`)
+
+  // ─── Contrats OHADA pour tous les employés Cabinet Expertise ─────────────────
+  const cabContractTypes = ['cdi','cdi','cdi','cdd'] // 75% CDI, 25% CDD
+  for (let ci = 0; ci < cabinetEmployees.length; ci++) {
+    const emp    = cabinetEmployees[ci]!
+    const ctype  = cabContractTypes[ci % cabContractTypes.length]!
+    const startDate = new Date(2021 + Math.floor(ci / 12), ci % 12, 1)
+    const endDate   = ctype === 'cdd'
+      ? new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate())
+      : null
+    const isManager = ci < 3
+    const trialDays = isManager ? 30 : 15
+    const trialEnd  = new Date(startDate)
+    trialEnd.setDate(trialEnd.getDate() + trialDays)
+    await pool.query(`
+      INSERT INTO "${cabinetSchema}".contracts
+        (employee_id, type, start_date, end_date, trial_end_date, base_salary,
+         working_hours, convention, job_title, job_level,
+         cnps_affiliation, ohada_clause, non_competition_clause,
+         telecommuting_days, status)
+      VALUES ($1,$2,$3,$4,$5,$6,40,'Services (audit, conseil)',
+              $7,$8,true,true,true,1,'active')
+      ON CONFLICT DO NOTHING
+    `, [
+      emp.id, ctype,
+      startDate.toISOString().split('T')[0],
+      endDate ? endDate.toISOString().split('T')[0] : null,
+      trialEnd.toISOString().split('T')[0],
+      emp.baseSalary,
+      isManager ? 'Manager' : ci % 2 === 0 ? 'Auditeur' : 'Consultant',
+      isManager ? 'Cadre supérieur' : 'Cadre',
+    ])
+  }
+  console.log(`[9b/10] ${cabinetEmployees.length} contrats OHADA Cabinet créés`)
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 3 — OpenLab Consulting (tenant créé via portail)
