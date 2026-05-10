@@ -116,7 +116,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       try {
         const tempPassword = generateTempPassword()
-        const hash = await bcrypt.hash(tempPassword, 10)
+        const hash = await bcrypt.hash(tempPassword, 12)
         const isActive = body.is_active !== false
 
         // Si un département est fourni, créer/lier un employé
@@ -686,7 +686,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (!user) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
         const tempPassword = generateTempPassword()
-        const hash = await bcrypt.hash(tempPassword, 10)
+        const hash = await bcrypt.hash(tempPassword, 12)
         await pool.query(
           `UPDATE "${schema}".users SET password_hash = $1, last_login_at = NULL, updated_at = now() WHERE id = $2`,
           [hash, id]
@@ -792,7 +792,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
           for (const emp of batch) {
             const tempPassword = generateTempPassword()
-            const passwordHash = await bcrypt.hash(tempPassword, 10)
+            const passwordHash = await bcrypt.hash(tempPassword, 12)
             try {
               await pool.query(`
                 INSERT INTO "${schema}".users (email, password_hash, first_name, last_name, role, is_active, employee_id)

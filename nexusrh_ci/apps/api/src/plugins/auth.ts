@@ -1,6 +1,8 @@
 import fp from 'fastify-plugin'
 import fastifyJwt from '@fastify/jwt'
+import type { FastifyRequest, FastifyReply } from 'fastify'
 import { config } from '../config.js'
+import { isTokenBlacklisted } from '../services/redis.js'
 
 export interface JwtSignPayload {
   sub:        string
@@ -39,20 +41,24 @@ export default fp(async (fastify) => {
     sign:   { expiresIn: config.jwt.expiresIn },
   })
 
-  fastify.decorate('authenticate', async (request: any, reply: any) => {
+  async function verifyAndCheckBlacklist(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     try {
       await request.jwtVerify()
     } catch {
-      return reply.status(401).send({ error: 'Token invalide ou expiré' })
+      reply.status(401).send({ error: 'Token invalide ou expiré' })
+      return
     }
-  })
+    const jti = (request.user as unknown as { jti?: string }).jti ?? request.user.sub
+    if (await isTokenBlacklisted(jti)) {
+      reply.status(401).send({ error: 'Token révoqué' })
+    }
+  }
 
-  fastify.decorate('authorize', (...roles: string[]) => async (request: any, reply: any) => {
-    try {
-      await request.jwtVerify()
-    } catch {
-      return reply.status(401).send({ error: 'Token invalide ou expiré' })
-    }
+  fastify.decorate('authenticate', verifyAndCheckBlacklist)
+
+  fastify.decorate('authorize', (...roles: string[]) => async (request: FastifyRequest, reply: FastifyReply) => {
+    await verifyAndCheckBlacklist(request, reply)
+    if (reply.sent) return
     if (!roles.includes(request.user.role)) {
       return reply.status(403).send({ error: 'Accès interdit — rôle insuffisant' })
     }

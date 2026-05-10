@@ -1,8 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { eq, and, isNull, like, or } from 'drizzle-orm'
+import { Pool } from 'pg'
 import { getTenantDbForRequest } from '../../plugins/tenant.js'
 import { createTenantSchema } from '../../db/schema/tenant.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { config } from '../../config.js'
+import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
+
+const pool = new Pool({ connectionString: config.database.url })
 
 const employeesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', async (request) => {
@@ -16,9 +21,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Liste des employés' },
     handler: async (request, reply) => {
       const { search, departmentId, isActive = 'true' } = request.query as Record<string, string>
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
 
       let sql = `SELECT e.*, d.name AS department_name
@@ -45,7 +48,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       sql += ` ORDER BY e.last_name, e.first_name`
       const res = await pool.query(sql, params)
-      await pool.end()
+
       return reply.send({ data: res.rows, total: res.rowCount })
     },
   })
@@ -56,9 +59,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Détail d\'un employé' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
 
       const res = await pool.query(
@@ -70,7 +71,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
          WHERE e.id = $1 AND e.deleted_at IS NULL LIMIT 1`,
         [id]
       )
-      await pool.end()
+
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       // employee ne peut voir que son propre profil
@@ -78,7 +79,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(403).send({ error: 'Accès interdit' })
       }
 
-      return reply.send({ data: res.rows[0] })
+      const emp = res.rows[0]
+      if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
+      return reply.send({ data: emp })
     },
   })
 
@@ -104,9 +107,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(422).send({ error: 'Le salaire ne peut pas être inférieur au SMIG (75 000 FCFA)' })
       }
 
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
 
       const res = await pool.query(
@@ -120,7 +121,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         [
           body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
           body.birthDate ?? null, body.gender ?? null,
-          body.nni ?? null, body.cnpsNumber ?? null,
+          encryptIfPresent(body.nni), body.cnpsNumber ?? null,
           body.mobileMoneyProvider ?? null, body.mobileMoneyPhone ?? null,
           body.departmentId ?? null, body.managerId ?? null,
           body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
@@ -128,7 +129,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
         ]
       )
-      await pool.end()
+
       return reply.status(201).send({ data: res.rows[0] })
     },
   })
@@ -153,14 +154,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const allowed = request.user.role === 'employee' ? allowedForEmployee : allowedForHR
 
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
 
       // Vérification SMIG si modification salaire
       if (body.base_salary != null && Number(body.base_salary) < 75000) {
-        await pool.end()
+  
         return reply.status(422).send({ error: 'Salaire inférieur au SMIG (75 000 FCFA)' })
       }
 
@@ -171,7 +170,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         const dbKey = k.replace(/([A-Z])/g, '_$1').toLowerCase()
         if (allowed.includes(dbKey)) {
           sets.push(`${dbKey} = $${idx++}`)
-          vals.push(v)
+          vals.push(dbKey === 'nni' ? encryptIfPresent(v as string) : v)
         }
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
@@ -181,7 +180,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
         vals
       )
-      await pool.end()
+
       return reply.send({ data: res.rows[0] })
     },
   })
@@ -192,9 +191,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Vérifier si un employé peut être supprimé' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
       try {
         const pending: Array<{ type: string; label: string; path: string; count: number }> = []
@@ -211,11 +208,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         const expCount = parseInt(expRes.rows[0].count)
         if (expCount > 0) pending.push({ type: 'expenses', label: `${expCount} note(s) de frais non clôturée(s)`, path: '/expenses', count: expCount })
 
-        await pool.end()
+  
         return reply.send({ canDelete: pending.length === 0, pendingActions: pending })
       } catch (err) {
         fastify.log.error(err)
-        await pool.end()
+  
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
     },
@@ -227,19 +224,17 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Archiver un employé (soft delete)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
       try {
         await pool.query(
           `UPDATE "${schema}".employees SET deleted_at = now(), is_active = false WHERE id = $1`, [id]
         )
-        await pool.end()
+  
         return reply.send({ message: 'Employé archivé' })
       } catch (err) {
         fastify.log.error(err)
-        await pool.end()
+  
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
     },
@@ -250,9 +245,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','readonly')],
     schema: { tags: ['employees'], summary: 'Liste des départements' },
     handler: async (request, reply) => {
-      const { Pool } = await import('pg')
-      const { config } = await import('../../config.js')
-      const pool = new (Pool as any)({ connectionString: config.database.url })
+      // pool module-level
       const schema = request.user.schemaName
       const res = await pool.query(
         `SELECT d.*, e.first_name AS manager_first_name, e.last_name AS manager_last_name
@@ -260,7 +253,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
          LEFT JOIN "${schema}".employees e ON e.id = d.manager_id
          ORDER BY d.name`
       )
-      await pool.end()
+
       return reply.send({ data: res.rows })
     },
   })

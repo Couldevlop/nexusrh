@@ -74,15 +74,20 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      const role = request.user.role
       try {
         const reportRes = await pool.query(`
-          SELECT er.*, e.first_name, e.last_name, d.name AS department_name
+          SELECT er.*, e.first_name, e.last_name, e.email AS employee_email, d.name AS department_name
           FROM "${schema}".expense_reports er
           JOIN "${schema}".employees e ON e.id = er.employee_id
           LEFT JOIN "${schema}".departments d ON d.id = e.department_id
           WHERE er.id = $1
         `, [id])
         if (!reportRes.rows[0]) return reply.status(404).send({ error: 'Note introuvable' })
+        // Vérification ownership : employee ne peut accéder qu'à ses propres notes
+        if (role === 'employee' && reportRes.rows[0].employee_email !== request.user.email) {
+          return reply.status(403).send({ error: 'Accès interdit' })
+        }
         const linesRes = await pool.query(
           `SELECT * FROM "${schema}".expense_lines WHERE report_id = $1 ORDER BY date`, [id]
         )
@@ -109,22 +114,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           if (emp.rows[0]) {
             employeeId = emp.rows[0].id as string
           } else {
-            const userRow = await pool.query(
-              `SELECT first_name, last_name, email FROM "${schema}".users WHERE email = $1 LIMIT 1`,
-              [request.user.email]
-            )
-            if (!userRow.rows[0]) return reply.status(400).send({ error: 'Utilisateur introuvable dans ce tenant' })
-            const u = userRow.rows[0] as { first_name: string; last_name: string; email: string }
-            const created = await pool.query(
-              `INSERT INTO "${schema}".employees (first_name, last_name, email, hire_date, is_active, job_title, base_salary, contract_type)
-               VALUES ($1,$2,$3,NOW(),true,'Employé',75000,'cdi') RETURNING id`,
-              [u.first_name, u.last_name, u.email]
-            )
-            employeeId = created.rows[0].id as string
-            await pool.query(
-              `UPDATE "${schema}".users SET employee_id = $1 WHERE email = $2`,
-              [employeeId, request.user.email]
-            )
+            return reply.status(422).send({ error: 'Aucun dossier employé associé à ce compte. Contactez votre RH.' })
           }
         }
         const lines = (body.lines as Array<Record<string, unknown>>) ?? []
@@ -155,6 +145,18 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
+        // Vérifier l'ownership avant la mise à jour
+        if (request.user.role === 'employee') {
+          const ownerCheck = await pool.query(
+            `SELECT e.email FROM "${schema}".expense_reports er
+             JOIN "${schema}".employees e ON e.id = er.employee_id
+             WHERE er.id = $1 LIMIT 1`,
+            [id]
+          )
+          if (!ownerCheck.rows[0] || ownerCheck.rows[0].email !== request.user.email) {
+            return reply.status(403).send({ error: 'Accès interdit' })
+          }
+        }
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
           SET status = 'submitted', submitted_at = now(), updated_at = now()

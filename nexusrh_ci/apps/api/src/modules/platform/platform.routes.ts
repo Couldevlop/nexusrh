@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
+import { randomBytes } from 'crypto'
 import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
 import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/email.js'
@@ -38,16 +39,17 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { page = '1', limit = '20', status } = request.query as Record<string, string>
       const offset = (parseInt(page) - 1) * parseInt(limit)
-      const conditions = status ? `WHERE status = '${status}'` : ''
+      const VALID_STATUSES = ['active', 'suspended', 'trial']
+      const safeStatus = status && VALID_STATUSES.includes(status) ? status : null
+      const params: unknown[] = [parseInt(limit), offset]
+      const whereClause = safeStatus ? `WHERE t.status = $3` : ''
+      if (safeStatus) params.push(safeStatus)
       const rows = await pool.query(
-        `SELECT t.*,
-          (SELECT count(*) FROM "${'"' + 't' + '"'}".schema_name.users) AS user_count
-         FROM platform.tenants t ${conditions}
+        `SELECT * FROM platform.tenants t ${whereClause}
          ORDER BY t.created_at DESC
          LIMIT $1 OFFSET $2`,
-        [parseInt(limit), offset]
+        params
       ).catch(async () => {
-        // Requête simplifiée si cross-schema impossible
         return pool.query(
           `SELECT * FROM platform.tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
           [parseInt(limit), offset]
@@ -141,7 +143,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       await seedAbsenceTypesCI(schemaName)
 
       // 4. Créer l'admin
-      const tempPassword = `CI_${Math.random().toString(36).slice(2, 10).toUpperCase()}!`
+      const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
       const passwordHash = await bcrypt.hash(tempPassword, 12)
 
       await pool.query(
@@ -254,7 +256,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const admin = adminRes.rows[0]
       if (!admin) return reply.status(404).send({ error: 'Admin introuvable' })
 
-      const tempPassword = `CI_${Math.random().toString(36).slice(2, 10).toUpperCase()}!`
+      const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
       const passwordHash = await bcrypt.hash(tempPassword, 12)
       await pool.query(
         `UPDATE "${tenant.schema_name}".users SET password_hash = $1, updated_at = now() WHERE id = $2`,

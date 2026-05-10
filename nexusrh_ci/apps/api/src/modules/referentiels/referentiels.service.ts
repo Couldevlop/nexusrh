@@ -25,6 +25,7 @@ export interface SearchParams {
   source?: 'code_travail_ci' | 'convention_collective'
   convention?: string
   payrollCode?: string
+  livre?: string
   from?: number
   size?: number
 }
@@ -39,13 +40,19 @@ export interface ArticleHit {
 
 // OWASP A03 : Query DSL typé, jamais de string concat
 export async function searchReferentiel(params: SearchParams): Promise<{ total: number; hits: ArticleHit[] }> {
-  const { q, source, convention, payrollCode, from = 0, size = 10 } = params
+  const { q, source, convention, payrollCode, livre, from = 0, size = 10 } = params
+  const isBrowse = !q || q === '*'
 
   try {
     const filterArr: object[] = [{ term: { access_level: 'public' } }]
     if (source)      filterArr.push({ term: { source } })
     if (convention)  filterArr.push({ term: { convention_slug: convention } })
     if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
+    if (livre)       filterArr.push({ term: { livre } })
+
+    const mustClause = isBrowse
+      ? { match_all: {} }
+      : { multi_match: { query: q, fields: ['article_numero^5', 'titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } }
 
     const response = await esClient.search({
       index: ES_INDEX,
@@ -53,7 +60,7 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
       size,
       query: {
         bool: {
-          must: { multi_match: { query: q, fields: ['titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } },
+          must: mustClause,
           filter: filterArr,
         },
       } as any,
@@ -65,13 +72,17 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
       score: h._score ?? 0,
       highlight: h.highlight,
     }))
-    return {
-      total: typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0),
-      hits,
+    const total = typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0)
+
+    // Si ES répond mais index vide, tenter PG
+    if (hits.length === 0) {
+      const pg = await searchArticlesFromDb({ q, source, livre, from, size })
+      if (pg.total > 0) return { total: pg.total, hits: pg.hits.map(a => ({ ...a, score: 1 }) as ArticleHit) }
     }
+    return { total, hits }
   } catch {
     // Fallback PostgreSQL si Elasticsearch indisponible
-    const result = await searchArticlesFromDb({ q, source, from, size })
+    const result = await searchArticlesFromDb({ q, source, livre, from, size })
     return {
       total: result.total,
       hits: result.hits.map(a => ({ ...a, score: 1 }) as ArticleHit),

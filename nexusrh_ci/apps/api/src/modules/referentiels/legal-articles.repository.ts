@@ -140,19 +140,21 @@ export async function countArticles(): Promise<number> {
 
 /** Recherche full-text basique via LIKE PostgreSQL (fallback sans Elasticsearch) */
 export async function searchArticlesFromDb(params: {
-  q: string; source?: string; from?: number; size?: number
+  q: string; source?: string; livre?: string; from?: number; size?: number
 }): Promise<SearchResult> {
-  const { q, source, from = 0, size = 10 } = params
+  const { q, source, livre, from = 0, size = 10 } = params
   const conditions = [eq(legalArticles.isActive, true), eq(legalArticles.accessLevel, 'public')]
   if (source) conditions.push(eq(legalArticles.source as any, source))
+  if (livre)  conditions.push(eq(legalArticles.livre as any, livre))
 
   const all = await droitCiDb.select().from(legalArticles).where(and(...conditions))
-  const ql = q.toLowerCase()
-  const filtered = all.filter(r =>
-    r.titreArticle.toLowerCase().includes(ql) ||
-    r.texte.toLowerCase().includes(ql) ||
-    (r.keywords as string[] ?? []).some(k => k.toLowerCase().includes(ql))
-  )
+  const isBrowse = !q || q === '*'
+  // Normalise les alias fréquents (ex: smic → smig en contexte CI)
+  const ql = (q ?? '').toLowerCase().replace(/\bsmic\b/g, 'smig')
+  const filtered = isBrowse ? all : all.filter(r => {
+    const hay = [r.articleNumero, r.titreArticle, r.texte, ...(r.keywords as string[] ?? [])].join(' ').toLowerCase()
+    return hay.includes(ql)
+  })
   return { total: filtered.length, hits: filtered.slice(from, from + size).map(toInput) }
 }
 
