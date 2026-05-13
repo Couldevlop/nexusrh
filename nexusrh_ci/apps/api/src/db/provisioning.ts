@@ -623,6 +623,26 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
 
+  // ── Workflow paie centralisé multi-sites (Palier 3) ──────────────────────────
+  // Étend pay_periods pour supporter le cycle draft_central → sent_to_sites →
+  // completed_by_sites → validated_central → closed. Une période globale
+  // (parent_period_id NULL) peut être déclinée en sous-périodes par filiale
+  // (parent_period_id = id de la période parente).
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS parent_period_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS raf_user_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS sent_to_sites_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS completed_by_site_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS validated_central_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS validated_by uuid`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON ${s}.pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_le_status ON ${s}.pay_periods(legal_entity_id, status) WHERE legal_entity_id IS NOT NULL`)
+
+  // Ajout du nouveau rôle raf_site dans la table users : c'est porté par
+  // une simple chaîne dans users.role — pas de schema à changer. Le RBAC
+  // côté API doit accepter ce rôle pour les opérations de site.
+
   // ── Recrutement : colonnes additives (migration lazy idempotente) ────────────
   // Offres : visibilité (interne/externe) + critères de ciblage interne
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS visibility varchar(20) DEFAULT 'external'`)
