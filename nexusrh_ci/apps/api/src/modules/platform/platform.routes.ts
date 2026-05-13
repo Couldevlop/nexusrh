@@ -91,6 +91,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         primaryColor?: string; secondaryColor?: string; logoUrl?: string
         adminEmail: string; adminFirstName: string; adminLastName: string
         adminPhone?: string; seedDemoData?: boolean
+        // Option multi-pays : opt-in explicite, défaut single_country
+        hasSubsidiaries?: boolean
+        payrollMode?: 'single_country' | 'multi_country'
+        defaultCountryCode?: string
       }
 
       if (!body.name || !body.slug || !body.adminEmail) {
@@ -111,14 +115,22 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(409).send({ error: `Le slug "${slug}" est déjà utilisé` })
       }
 
+      // Validation : si hasSubsidiaries=true, payrollMode doit suivre
+      const hasSubsidiaries = body.hasSubsidiaries === true
+      const payrollMode = hasSubsidiaries
+        ? (body.payrollMode === 'multi_country' ? 'multi_country' : 'multi_country')
+        : 'single_country'
+      const defaultCountryCode = (body.defaultCountryCode ?? 'CIV').toUpperCase().slice(0, 3)
+
       // 1. Créer le tenant dans platform
       const tenantRes = await pool.query<{ id: string }>(
         `INSERT INTO platform.tenants
            (name, slug, schema_name, plan_type, status, sector, city,
             cnps_number, dgi_number, rccm, at_rate,
             max_users, max_employees, primary_color, secondary_color, logo_url,
-            trial_ends_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            trial_ends_at,
+            has_subsidiaries, payroll_mode, default_country_code)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          RETURNING id`,
         [
           body.name, slug, schemaName, planType,
@@ -130,6 +142,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           body.primaryColor ?? '#E85D04', body.secondaryColor ?? '#F48C06',
           body.logoUrl ?? null,
           planType === 'trial' ? new Date(Date.now() + 30 * 24 * 3600 * 1000) : null,
+          hasSubsidiaries, payrollMode, defaultCountryCode,
         ]
       )
       const tenantId = tenantRes.rows[0]?.id
@@ -190,7 +203,8 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const body = request.body as Record<string, unknown>
       const allowed = ['name','plan_type','status','primary_color','secondary_color',
-                       'logo_url','max_users','max_employees','trial_ends_at','city','sector']
+                       'logo_url','max_users','max_employees','trial_ends_at','city','sector',
+                       'has_subsidiaries','payroll_mode','default_country_code']
       const sets: string[] = []
       const vals: unknown[] = []
       let idx = 1

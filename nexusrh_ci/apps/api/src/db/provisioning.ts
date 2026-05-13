@@ -101,6 +101,13 @@ export async function createPlatformSchema(): Promise<void> {
       created_at  timestamptz NOT NULL DEFAULT now()
     )
   `)
+
+  // ── Option multi-pays / filiales (migration lazy idempotente) ────────────────
+  // Par défaut : has_subsidiaries=false, payroll_mode='single_country', pays=CIV.
+  // Comportement actuel inchangé tant que l'option n'est pas activée.
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS has_subsidiaries boolean NOT NULL DEFAULT false`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payroll_mode varchar(30) NOT NULL DEFAULT 'single_country'`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS default_country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
 }
 
 /**
