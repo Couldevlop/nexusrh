@@ -9,6 +9,10 @@
  */
 import { esClient, ES_INDEX, ensureIndex } from '../../services/elasticsearch.js'
 import { ALL_ARTICLES } from '../../data/code-travail-ci.js'
+import { CODE_TRAVAIL_BEN, CONVENTIONS_COLLECTIVES_BEN } from '../../data/code-travail-ben.js'
+import { CODE_TRAVAIL_TGO, CONVENTIONS_COLLECTIVES_TGO } from '../../data/code-travail-tgo.js'
+import { CODE_TRAVAIL_TCD } from '../../data/code-travail-tcd.js'
+import { CODE_TRAVAIL_NGA } from '../../data/code-travail-nga.js'
 import {
   upsertArticles,
   getAllActiveArticles,
@@ -19,6 +23,22 @@ import {
   getHierarchyTreeFromDb,
 } from './legal-articles.repository.js'
 import type { ArticleInput } from './legal-articles.repository.js'
+
+/**
+ * Corpus juridique multi-pays. CIV par défaut (rétro-compat), enrichi avec
+ * les pays UEMOA + Tchad + Nigeria. La source de vérité reste PostgreSQL ;
+ * ces fichiers sont uniquement utilisés au seed initial.
+ */
+const ALL_COUNTRIES_ARTICLES: ArticleInput[] = [
+  // CI — articles existants : on injecte country_code='CIV' explicitement
+  ...ALL_ARTICLES.map(a => ({ ...a, country_code: a.country_code ?? 'CIV' }) as ArticleInput),
+  ...CODE_TRAVAIL_BEN as ArticleInput[],
+  ...CONVENTIONS_COLLECTIVES_BEN as ArticleInput[],
+  ...CODE_TRAVAIL_TGO as ArticleInput[],
+  ...CONVENTIONS_COLLECTIVES_TGO as ArticleInput[],
+  ...CODE_TRAVAIL_TCD as ArticleInput[],
+  ...CODE_TRAVAIL_NGA as ArticleInput[],
+]
 
 export interface SearchParams {
   q: string
@@ -166,7 +186,8 @@ export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit
  */
 export async function seedReferentiel(): Promise<{ persisted: number; indexed: number }> {
   // Étape 1 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
-  const persisted = await upsertArticles(ALL_ARTICLES as ArticleInput[])
+  // Inclut désormais CIV + BEN + TGO + TCD + NGA (multi-pays)
+  const persisted = await upsertArticles(ALL_COUNTRIES_ARTICLES)
 
   // Étape 2 — ES si disponible (non bloquant)
   let indexed = 0
@@ -195,6 +216,7 @@ export async function reindexFromDb(): Promise<number> {
     {
       article_id:      a.article_id,
       article_numero:  a.article_numero,
+      country_code:    a.country_code ?? 'CIV',
       source:          a.source,
       convention_slug: a.convention_slug,
       livre:           a.livre,

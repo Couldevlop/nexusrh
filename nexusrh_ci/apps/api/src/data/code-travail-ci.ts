@@ -8,7 +8,9 @@
  */
 export interface ArticleDroit {
   article_id: string; article_numero: string
-  source: 'code_travail_ci' | 'convention_collective'
+  /** ISO-3 pays (CIV par défaut). Indispensable pour le filtre multi-pays. */
+  country_code?: string
+  source: string  // code_travail_civ, code_travail_ben, convention_collective_*
   convention_slug?: string; livre?: string; titre?: string
   chapitre?: string; section?: string; titre_article: string
   texte: string; access_level: 'public'; tenant_id: 'public'

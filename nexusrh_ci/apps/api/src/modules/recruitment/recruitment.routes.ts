@@ -427,8 +427,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── ANALYSE IA d'un CV (choix du modèle dans la requête) ───────────────────
+  // Rate limit dédié : l'appel IA est coûteux (~$0.01-0.05 par analyse).
+  // 10 req/min/IP empêche les abus de quota et la facture surprise.
   fastify.post('/applications/:id/analyze-cv', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
@@ -491,11 +494,29 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           result.modelUsed,
           id,
         ])
+
+        // OWASP A09 : trace de l'usage IA (qui, sur qui, avec quel modèle,
+        // quel score). Non-bloquant si audit_log absent.
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.analyze_cv', 'application', $2, $3, $4)`,
+          [request.user.sub, id,
+           JSON.stringify({ model: result.modelUsed, score: result.score, recommendation: result.recommendation }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
         return reply.send({ data: upd.rows[0], analysis: result })
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erreur IA'
+        // OWASP A10 : ne pas exposer les détails internes au client.
+        // On loge le message complet côté serveur, on retourne un message
+        // générique safe — sauf cas explicitement utiles à l'utilisateur
+        // (clé manquante / CV trop court / modèle non configuré).
+        const raw = err instanceof Error ? err.message : ''
         fastify.log.error({ err }, 'analyze-cv failed')
-        return reply.status(500).send({ error: message })
+        const isUserActionable = /CV trop court|configurée|inconnu|stub/i.test(raw)
+        return reply.status(500).send({
+          error: isUserActionable ? raw : 'Erreur lors de l\'analyse IA. Réessayez plus tard.',
+        })
       }
     },
   })

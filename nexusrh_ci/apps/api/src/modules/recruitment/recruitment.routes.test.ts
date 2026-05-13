@@ -243,6 +243,8 @@ describe('POST /recruitment/applications/:id/analyze-cv', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', job_id: 'job-1', cv_text: longCv, cover_letter: null }] })
       .mockResolvedValueOnce({ rows: [{ title: 'Chargé RH', description: '…', requirements: '…', salaryMin: 400000, salaryMax: 600000 }] })
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', ai_score: 85, ai_recommendation: 'yes' }] })
+      // 4e appel : INSERT audit_log (non bloquant, OWASP A09)
+      .mockResolvedValueOnce({ rows: [] })
 
     vi.mocked(analyzeCV).mockResolvedValueOnce({
       score: 85,

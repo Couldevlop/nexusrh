@@ -23,6 +23,32 @@ import { LEGISLATION_PACKS } from '../../services/legislation-packs.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
+/**
+ * OWASP A09 — Trace structurée pour chaque transition d'état du workflow
+ * paie. Insert dans tenant_schema.audit_log si la table existe (sinon log
+ * Pino uniquement). Non-bloquant : un échec audit n'empêche pas l'action.
+ */
+async function auditWorkflow(opts: {
+  schema: string; userId: string; action: string
+  entity: string; entityId: string; changes?: Record<string, unknown>
+  ipAddress?: string
+}): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO "${opts.schema}".audit_log
+         (user_id, action, entity, entity_id, changes, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        opts.userId, opts.action, opts.entity, opts.entityId,
+        JSON.stringify(opts.changes ?? {}),
+        opts.ipAddress ?? null,
+      ],
+    )
+  } catch {
+    // Non-bloquant : tenant pré-migration peut ne pas avoir audit_log
+  }
+}
+
 type PeriodStatus =
   | 'draft_central'
   | 'sent_to_sites'
@@ -165,6 +191,13 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           [id],
         )
 
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.send_to_sites', entity: 'pay_period', entityId: id,
+          changes: { sitesCount: sites.length },
+          ipAddress: request.ip,
+        })
+
         return reply.status(201).send({ data: { parent: id, sites: created } })
       } catch (err) {
         fastify.log.error(err)
@@ -206,6 +239,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
            WHERE id = $1 RETURNING *`,
           [id],
         )
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.submit_by_raf', entity: 'pay_period', entityId: id,
+          ipAddress: request.ip,
+        })
         return reply.send({ data: upd.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -251,6 +289,12 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
            WHERE id = $2 OR parent_period_id = $2`,
           [request.user.sub, id],
         )
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.validate_central', entity: 'pay_period', entityId: id,
+          changes: { sitesCount: children.rows.length },
+          ipAddress: request.ip,
+        })
         return reply.send({ data: { id, status: 'validated_central' } })
       } catch (err) {
         fastify.log.error(err)
@@ -283,6 +327,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
            WHERE id = $2 OR parent_period_id = $2`,
           [String(request.user.sub), id],
         )
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.close', entity: 'pay_period', entityId: id,
+          ipAddress: request.ip,
+        })
         return reply.send({ data: { id, status: 'closed' } })
       } catch (err) {
         fastify.log.error(err)
