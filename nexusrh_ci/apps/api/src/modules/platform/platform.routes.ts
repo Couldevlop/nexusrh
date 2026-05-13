@@ -7,6 +7,7 @@ import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '.
 import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/email.js'
 import { maintenanceCache } from '../../cache.js'
 import { seedDemoTenant } from '../../db/seed-demo.js'
+import { listLegislationPacks } from '../../services/legislation-packs.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -32,6 +33,16 @@ const AT_RATE_BY_SECTOR: Record<string, number> = {
 }
 
 const platformRoutes: FastifyPluginAsync = async (fastify) => {
+  // ── GET /platform/legislation-packs ───────────────────────────────────────
+  // Liste les packs législatifs disponibles (CIV-2024 active, autres stub).
+  fastify.get('/legislation-packs', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Liste des packs législatifs (multi-pays)' },
+    handler: async (_request, reply) => {
+      return reply.send({ data: listLegislationPacks() })
+    },
+  })
+
   // ── GET /platform/tenants ─────────────────────────────────────────────────
   fastify.get('/tenants', {
     preHandler: [fastify.authorize('super_admin')],

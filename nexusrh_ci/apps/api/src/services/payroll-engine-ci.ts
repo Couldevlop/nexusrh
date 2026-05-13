@@ -1,26 +1,18 @@
 /**
- * PayrollEngineCi — Moteur de paie Côte d'Ivoire
- * Conforme Code du Travail CI + CNPS 2024 + ITS/DGI
- * Devise : FCFA (entiers, zéro décimale)
+ * PayrollEngineCi — Moteur de paie multi-pays (UEMOA et au-delà)
+ *
+ * Par défaut : utilise le pack CIV-2024 (Côte d'Ivoire, CNPS 2024, ITS/DGI)
+ * — comportement identique à la version pré-Palier 2.
+ *
+ * Pour les filiales (Palier 2 multi-pays) : passer `legislationPack` dans
+ * le PayrollContext. Le moteur refuse les packs `status: 'stub'` (sécurité).
+ *
+ * Devise : entiers (XOF/XAF/GNF, zéro décimale).
  */
-
-// ─── Constantes légales CI 2024 ───────────────────────────────────────────────
-const SMIG_MENSUEL          = 75_000   // FCFA (revalorisation 2026)
-const PLAFOND_CNPS_AT_PF    = 70_000   // FCFA / mois
-const PLAFOND_CNPS_RETRAITE = 1_647_315 // FCFA / mois
-const ABATTEMENT_ITS        = 0.15     // 15% du salaire brut
-const TAUX_CNPS_RETRAITE_SAL = 0.063
-const TAUX_CNPS_RETRAITE_PAT = 0.077
-const TAUX_CNPS_PF_PAT       = 0.050
-const TAUX_CNPS_MAT_PAT      = 0.0075
-
-const TRANCHES_ITS = [
-  { min: 0,          max: 75_000,    taux: 0.000 },
-  { min: 75_001,     max: 240_000,   taux: 0.015 },
-  { min: 240_001,    max: 800_000,   taux: 0.050 },
-  { min: 800_001,    max: 2_000_000, taux: 0.100 },
-  { min: 2_000_001,  max: Infinity,  taux: 0.150 },
-] as const
+import {
+  DEFAULT_LEGISLATION_PACK,
+  type LegislationPack,
+} from './legislation-packs.js'
 
 /** Informations d'absence à appliquer sur le bulletin du mois */
 export interface AbsencePayrollInfo {
@@ -43,6 +35,12 @@ export interface PayrollContext {
   variableElements: Record<string, number> // {'PRIME_TRANSPORT': 30000, ...}
   /** Absence du mois (optionnel — sans ce champ, calcul normal) */
   absence?: AbsencePayrollInfo
+  /**
+   * Pack législatif à appliquer (optionnel — défaut : CIV-2024).
+   * Permet le multi-pays UEMOA (Palier 2). Un pack `status: 'stub'`
+   * fait lever une erreur explicite (refus de calcul).
+   */
+  legislationPack?: LegislationPack
 }
 
 export interface PayrollLine {
@@ -87,26 +85,34 @@ export interface PayrollResult {
 }
 
 /**
- * Applique le barème ITS progressif DGI CI
+ * Applique le barème progressif d'impôt sur les salaires défini par le pack.
+ * Si le pack utilise un barème annuel, on multiplie la base par 12 pour appliquer
+ * le barème, puis on divise le résultat par 12 (approximation linéaire — la
+ * régularisation annuelle reste à la charge du tenant).
  */
-function calculerBaremeITS(baseImposable: number): number {
-  let its = 0
-  for (const tranche of TRANCHES_ITS) {
-    if (baseImposable <= tranche.min) break
-    const montant = Math.min(baseImposable, tranche.max) - tranche.min
-    its += montant * tranche.taux
+function calculerBaremeImpot(baseImposable: number, pack: LegislationPack): number {
+  const annuel = pack.bracketScale === 'annual'
+  const baseProjetee = annuel ? baseImposable * 12 : baseImposable
+  let impot = 0
+  for (const tranche of pack.tranchesImpotSalaire) {
+    if (baseProjetee <= tranche.min) break
+    const montant = Math.min(baseProjetee, tranche.max) - tranche.min
+    impot += montant * tranche.taux
   }
-  return Math.floor(its)
+  if (annuel) impot /= 12
+  return Math.floor(impot)
 }
 
 /**
- * Crédit d'impôt famille selon situation CI
+ * Crédit d'impôt famille — valeurs définies par le pack
  */
-function getCreditImpot(maritalStatus: string, childrenCount: number): number {
-  let credit = maritalStatus === 'married' ? 5_500 : 0
-  if (childrenCount === 1)      credit += 3_000
-  else if (childrenCount === 2) credit += 6_000
-  else if (childrenCount >= 3)  credit += 9_000
+function getCreditImpot(
+  maritalStatus: string, childrenCount: number, pack: LegislationPack,
+): number {
+  let credit = maritalStatus === 'married' ? pack.creditImpotMarieSansEnfant : 0
+  if (childrenCount === 1)      credit += pack.creditImpotParEnfant[0]
+  else if (childrenCount === 2) credit += pack.creditImpotParEnfant[1]
+  else if (childrenCount >= 3)  credit += pack.creditImpotParEnfant[2]
   return credit
 }
 
@@ -144,13 +150,23 @@ function evalFormule(formula: string, vars: Record<string, number>): number {
 const PRIMES_PRESENCE = new Set(['PRIME_TRANSPORT', 'PRIME_PANIER'])
 
 /**
- * Moteur principal de calcul de paie CI
+ * Moteur principal de calcul de paie multi-pays.
+ * Sans `legislationPack` : applique CIV-2024 (comportement historique).
  */
 export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const {
     baseSalary, workedDays, workingDaysMonth,
     atRate, maritalStatus, childrenCount, absence,
   } = ctx
+
+  // Pack actif : défaut CIV-2024
+  const pack = ctx.legislationPack ?? DEFAULT_LEGISLATION_PACK
+  if (pack.status === 'stub') {
+    throw new Error(
+      `Pack législatif "${pack.code}" (status=stub) — les valeurs n'ont pas ` +
+      `été validées par un expert paie local. Refus de calcul pour sécurité.`,
+    )
+  }
 
   // Suspension automatique des primes de présence si absence déclarée
   const variableElements = { ...ctx.variableElements }
@@ -161,13 +177,13 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   // ── ÉTAPE 1 : Variables de base ─────────────────────────────────────────────
   // brutProrata = salaire des jours de PRÉSENCE RÉELLE (hors jours d'absence)
   const brutProrata  = Math.floor(baseSalary * (workedDays / workingDaysMonth))
-  const baseAtPf     = Math.min(brutProrata, PLAFOND_CNPS_AT_PF)
-  const baseRetraite = Math.min(brutProrata, PLAFOND_CNPS_RETRAITE)
+  const baseAtPf     = Math.min(brutProrata, pack.plafondCnpsAtPf)
+  const baseRetraite = Math.min(brutProrata, pack.plafondCnpsRetraite)
 
-  // ── ÉTAPE 2 : Cotisations CNPS (sur présence uniquement) ────────────────────
-  const cnpsRetraiteSal = Math.floor(baseRetraite * TAUX_CNPS_RETRAITE_SAL)
-  const cnpsRetraitePat = Math.floor(baseRetraite * TAUX_CNPS_RETRAITE_PAT)
-  const cnpsPfPat       = Math.floor(baseAtPf * (TAUX_CNPS_PF_PAT + TAUX_CNPS_MAT_PAT))
+  // ── ÉTAPE 2 : Cotisations sécurité sociale (sur présence uniquement) ────────
+  const cnpsRetraiteSal = Math.floor(baseRetraite * pack.tauxCotisationRetraiteSalarie)
+  const cnpsRetraitePat = Math.floor(baseRetraite * pack.tauxCotisationRetraitePatronal)
+  const cnpsPfPat       = Math.floor(baseAtPf * (pack.tauxCotisationPfPatronal + pack.tauxCotisationMaternitePatronal))
   const cnpsAtPat       = Math.floor(baseAtPf * atRate)
   const totalCnpsSal    = cnpsRetraiteSal
   const totalCnpsPat    = cnpsRetraitePat + cnpsPfPat + cnpsAtPat
@@ -210,14 +226,14 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     }
   }
 
-  // ── ÉTAPE 3 : ITS/DGI ───────────────────────────────────────────────────────
-  // Base taxable = (présence + indemnité maladie) × abattement — CNPS sal
+  // ── ÉTAPE 3 : Impôt sur les salaires (ITS CI / IUTS BF / IR SN / …) ─────────
+  // Base taxable = (présence + indemnité maladie) × abattement - cotisations sal.
   // Indemnités maternité et AT sont exclues de la base imposable
   const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree
-  const salaireAbattu   = Math.floor(brutTaxable * (1 - ABATTEMENT_ITS))
+  const salaireAbattu   = Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
   const baseImposable   = Math.max(0, salaireAbattu - totalCnpsSal)
-  const itsBrut         = calculerBaremeITS(baseImposable)
-  const creditImpot     = getCreditImpot(maritalStatus, childrenCount)
+  const itsBrut         = calculerBaremeImpot(baseImposable, pack)
+  const creditImpot     = getCreditImpot(maritalStatus, childrenCount, pack)
   const its             = Math.max(0, itsBrut - creditImpot)
 
   // ── ÉTAPE 4 : Construction des lignes du bulletin ───────────────────────────
@@ -254,16 +270,24 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
 
   const grossSalary = lines.filter(l => l.type === 'earning').reduce((s, l) => s + l.amount, 0)
 
-  lines.push({ code: '2000', label: 'CNPS Retraite salarié (6,3%)',               type: 'employee_contribution', base: baseRetraite, amount: cnpsRetraiteSal })
-  lines.push({ code: '2100', label: 'ITS — Impôt sur Traitements et Salaires',    type: 'employee_contribution', base: baseImposable, amount: its })
+  const tauxRetSalPct  = (pack.tauxCotisationRetraiteSalarie * 100).toFixed(1)
+  const tauxRetPatPct  = (pack.tauxCotisationRetraitePatronal * 100).toFixed(1)
+  const tauxPfPatPct   = (pack.tauxCotisationPfPatronal * 100).toFixed(1)
+  const tauxMatPatPct  = (pack.tauxCotisationMaternitePatronal * 100).toFixed(2)
+  const caisse = pack.labelCaisseSociale
+
+  lines.push({ code: '2000', label: `${caisse} Retraite salarié (${tauxRetSalPct}%)`, type: 'employee_contribution', base: baseRetraite, amount: cnpsRetraiteSal })
+  lines.push({ code: '2100', label: pack.labelImpotSalaire,                          type: 'employee_contribution', base: baseImposable, amount: its })
 
   const avance = variableElements['AVANCE'] ?? 0
   if (avance > 0) lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
 
-  lines.push({ code: '3000', label: 'CNPS Retraite patronal (7,7%)',              type: 'employer_contribution', base: baseRetraite, amount: cnpsRetraitePat })
-  lines.push({ code: '3100', label: 'CNPS Prestations familiales (5%)',           type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_PF_PAT) })
-  lines.push({ code: '3200', label: 'CNPS Assurance maternité (0,75%)',           type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * TAUX_CNPS_MAT_PAT) })
-  lines.push({ code: '3300', label: `CNPS Accidents du travail (${(atRate * 100).toFixed(2)}%)`, type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat })
+  lines.push({ code: '3000', label: `${caisse} Retraite patronal (${tauxRetPatPct}%)`, type: 'employer_contribution', base: baseRetraite, amount: cnpsRetraitePat })
+  lines.push({ code: '3100', label: `${caisse} Prestations familiales (${tauxPfPatPct}%)`, type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * pack.tauxCotisationPfPatronal) })
+  if (pack.tauxCotisationMaternitePatronal > 0) {
+    lines.push({ code: '3200', label: `${caisse} Assurance maternité (${tauxMatPatPct}%)`, type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * pack.tauxCotisationMaternitePatronal) })
+  }
+  lines.push({ code: '3300', label: `${caisse} Accidents du travail (${(atRate * 100).toFixed(2)}%)`, type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat })
 
   // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
   const totalRetenues = totalCnpsSal + its + avance
@@ -287,7 +311,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     netPayable,
     employerCost,
     currency: 'XOF',
-    smigCompliant: netPayable >= SMIG_MENSUEL,
+    smigCompliant: netPayable >= pack.smigMensuel,
     workingDays: workedDays,
     indemniteAbsence: indemniteAbsence > 0 ? indemniteAbsence : undefined,
     bordereauCnps,
