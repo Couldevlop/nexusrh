@@ -463,40 +463,155 @@ async function main() {
   }
 
   // ─── Recrutement ─────────────────────────────────────────────────────────────
+  // Récupération d'un département "Administration" pour cibler des offres internes
+  const adminDeptRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".departments
+       WHERE name ILIKE '%administration%' OR name ILIKE '%direction%'
+       ORDER BY name LIMIT 1`,
+  )
+  const adminDeptId = adminDeptRes.rows[0]?.id ?? null
+  const explDeptRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".departments
+       WHERE name ILIKE '%exploitation%' OR name ILIKE '%maintenance%'
+       ORDER BY name LIMIT 1`,
+  )
+  const explDeptId = explDeptRes.rows[0]?.id ?? null
+
   const jobIds: string[] = []
   const jobsData = [
-    { title: 'Chauffeur Bus Senior', location: 'Abidjan', contract_type: 'cdi', salary_min: 220000, salary_max: 280000, description: 'Recherchons chauffeur expérimenté pour ligne C8 Abobo-Plateau. Permis D obligatoire, 5 ans minimum.', status: 'open' },
-    { title: 'Technicien Mécanique Auto', location: 'Abidjan (Garage principal)', contract_type: 'cdi', salary_min: 250000, salary_max: 350000, description: 'Maintenance préventive et corrective de la flotte SOTRA. BEP/CAP mécanique auto exigé.', status: 'open' },
-    { title: 'Chargé(e) RH', location: 'Abidjan (Siège Treichville)', contract_type: 'cdi', salary_min: 400000, salary_max: 600000, description: 'Gestion administration du personnel, CNPS, paie. Licence RH ou gestion.', status: 'open' },
+    {
+      title: 'Chauffeur Bus Senior', location: 'Abidjan',
+      contract_type: 'cdi', salary_min: 220000, salary_max: 280000,
+      description: 'Recherchons chauffeur expérimenté pour ligne C8 Abobo-Plateau. Permis D obligatoire, 5 ans minimum.',
+      requirements: 'Permis D, 5 ans d\'expérience minimum, casier judiciaire vierge.',
+      status: 'open', visibility: 'external',
+      target_departments: [] as string[], target_job_levels: [] as string[],
+      target_min_seniority_months: null as number | null,
+    },
+    {
+      title: 'Technicien Mécanique Auto', location: 'Abidjan (Garage principal)',
+      contract_type: 'cdi', salary_min: 250000, salary_max: 350000,
+      description: 'Maintenance préventive et corrective de la flotte SOTRA. BEP/CAP mécanique auto exigé.',
+      requirements: 'BEP/CAP mécanique automobile, expérience véhicules lourds appréciée.',
+      status: 'open', visibility: 'both',
+      target_departments: explDeptId ? [explDeptId] : [],
+      target_job_levels: ['agent_maitrise', 'ouvrier'],
+      target_min_seniority_months: 12,
+    },
+    {
+      title: 'Chargé(e) RH', location: 'Abidjan (Siège Treichville)',
+      contract_type: 'cdi', salary_min: 400000, salary_max: 600000,
+      description: 'Gestion administration du personnel, CNPS, paie. Licence RH ou gestion.',
+      requirements: 'Licence RH ou gestion, maîtrise CNPS et ITS, Excel avancé.',
+      status: 'open', visibility: 'external',
+      target_departments: [], target_job_levels: [], target_min_seniority_months: null,
+    },
+    {
+      title: 'Chef d\'équipe Exploitation (mobilité interne)',
+      location: 'Abidjan (Treichville)',
+      contract_type: 'cdi', salary_min: 350000, salary_max: 500000,
+      description: 'Poste de promotion interne : encadrement d\'une équipe de 8 chauffeurs sur la ligne Plateau-Abobo. Réservé aux collaborateurs SOTRA.',
+      requirements: 'Minimum 24 mois d\'ancienneté, expérience terrain en exploitation.',
+      status: 'open', visibility: 'internal',
+      target_departments: explDeptId ? [explDeptId] : [],
+      target_job_levels: ['agent_maitrise', 'employe'],
+      target_min_seniority_months: 24,
+    },
+    {
+      title: 'Responsable Administratif (mobilité cadre)',
+      location: 'Abidjan (Siège)',
+      contract_type: 'cdi', salary_min: 800000, salary_max: 1200000,
+      description: 'Poste de cadre ouvert en mobilité interne pour préparer la relève. Conduite de projets transverses.',
+      requirements: 'Cadre SOTRA, minimum 36 mois d\'ancienneté, profil RH/finance/juridique.',
+      status: 'open', visibility: 'internal',
+      target_departments: adminDeptId ? [adminDeptId] : [],
+      target_job_levels: ['cadre'],
+      target_min_seniority_months: 36,
+    },
   ]
   for (const job of jobsData) {
     const res = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".recruitment_jobs
-        (title, location, contract_type, salary_min, salary_max, description, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+        (title, location, contract_type, salary_min, salary_max,
+         description, requirements, status, visibility,
+         target_departments, target_job_levels, target_min_seniority_months,
+         published_at, public_slug)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),$13)
       ON CONFLICT DO NOTHING RETURNING id
-    `, [job.title, job.location, job.contract_type, job.salary_min, job.salary_max, job.description, job.status])
+    `, [
+      job.title, job.location, job.contract_type,
+      job.salary_min, job.salary_max,
+      job.description, job.requirements, job.status, job.visibility,
+      job.target_departments, job.target_job_levels, job.target_min_seniority_months,
+      job.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80),
+    ])
     if (res.rows[0]) jobIds.push(res.rows[0].id)
   }
 
-  // Applications pour les offres
+  // Applications pour les offres externes
   const stages = ['new', 'screening', 'interview', 'offer', 'hired']
   const candidateNames = [
     ['Konan', 'Yves'], ['Bah', 'Fatoumata'], ['Kouamé', 'Eric'], ['Diallo', 'Moussa'],
     ['Abe', 'Céleste'], ['Touré', 'Ibrahima'], ['Kra', 'Hermann'], ['Soro', 'Mariam'],
     ['Dème', 'Serge'], ['Assouman', 'Laure'],
   ]
+  // Seul les 3 premiers jobs (externe + mixte + externe) reçoivent les candidatures externes
+  const externalJobIds = jobIds.slice(0, 3)
   for (let i = 0; i < candidateNames.length; i++) {
-    const jobId = jobIds[i % jobIds.length]
+    const jobId = externalJobIds[i % Math.max(externalJobIds.length, 1)]
     if (!jobId) continue
     const [ln, fn] = candidateNames[i]!
     const stage = stages[i % stages.length]!
+    // Quelques candidats ont déjà un scoring IA pré-rempli (illustration)
+    const hasAi = i < 4
+    const aiScore = hasAi ? randInt(55, 92) : null
+    const aiRec = hasAi
+      ? (aiScore! >= 85 ? 'strong_yes' : aiScore! >= 70 ? 'yes' : aiScore! >= 55 ? 'maybe' : 'no')
+      : null
     await pool.query(`
       INSERT INTO "${sotraSchema}".applications
-        (job_id, first_name, last_name, email, phone, stage)
-      VALUES ($1,$2,$3,$4,$5,$6)
+        (job_id, first_name, last_name, email, phone, stage,
+         source, ai_score, ai_recommendation, ai_match_percentage,
+         ai_summary, ai_strengths, ai_gaps, ai_model_used, ai_analyzed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'careers_page',$7,$8,$9,$10,$11,$12,$13,
+              CASE WHEN $7 IS NULL THEN NULL ELSE now() END)
       ON CONFLICT DO NOTHING
-    `, [jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`, ciPhone('wave'), stage])
+    `, [
+      jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`,
+      ciPhone('wave'), stage,
+      aiScore, aiRec, aiScore,
+      hasAi ? `Profil ${aiRec === 'strong_yes' ? 'très aligné' : aiRec === 'yes' ? 'aligné' : 'à étudier'} avec les prérequis du poste.` : null,
+      hasAi ? JSON.stringify(['Expérience locale CI', 'Maîtrise CNPS/ITS', 'Anglais courant']) : JSON.stringify([]),
+      hasAi ? JSON.stringify(['Pas d\'expérience secteur transport']) : JSON.stringify([]),
+      hasAi ? 'claude' : null,
+    ])
+  }
+
+  // 2 candidatures internes pré-seedées sur l'offre "Chef d'équipe" (4e offre = index 3)
+  if (jobIds[3]) {
+    const internalEmps = await pool.query<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null }>(
+      `SELECT id, first_name, last_name, email, phone
+         FROM "${sotraSchema}".employees
+         WHERE department_id = $1 AND is_active = true
+         ORDER BY hire_date NULLS LAST
+         LIMIT 2`,
+      [explDeptId],
+    )
+    for (const emp of internalEmps.rows) {
+      await pool.query(`
+        INSERT INTO "${sotraSchema}".applications
+          (job_id, first_name, last_name, email, phone, cover_letter,
+           stage, source, internal_employee_id)
+        VALUES ($1,$2,$3,$4,$5,$6,'screening','internal',$7)
+        ON CONFLICT DO NOTHING
+      `, [
+        jobIds[3], emp.first_name, emp.last_name,
+        emp.email ?? `${emp.first_name.toLowerCase()}@sotra-ci.com`,
+        emp.phone ?? null,
+        `Bonjour, je souhaite postuler à ce poste de promotion interne. Mon expérience terrain en exploitation me permet de prendre la relève.`,
+        emp.id,
+      ])
+    }
   }
 
   // ─── Formations ──────────────────────────────────────────────────────────────

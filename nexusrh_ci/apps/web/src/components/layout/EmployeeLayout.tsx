@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X } from 'lucide-react'
+import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/mon-espace/frais',        label: 'Frais',       icon: Receipt },
   { to: '/mon-espace/formation',    label: 'Formation',   icon: BookOpen },
   { to: '/mon-espace/carriere',     label: 'Carrière',    icon: TrendingUp },
+  { to: '/mon-espace/offres',       label: 'Offres',      icon: Briefcase },
   { to: '/mon-espace/profil',       label: 'Profil',      icon: User },
 ]
 
@@ -21,6 +22,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/mon-espace/frais': 'Mes notes de frais',
   '/mon-espace/formation': 'Ma formation',
   '/mon-espace/carriere': 'Ma carrière',
+  '/mon-espace/offres': 'Offres internes',
   '/mon-espace/profil': 'Mon profil',
 }
 
