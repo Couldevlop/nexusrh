@@ -32,6 +32,8 @@ export async function createDroitCiSchema(): Promise<void> {
       updated_at      timestamptz NOT NULL DEFAULT now()
     )
   `)
+  // Extension multi-pays : country_code (CIV par défaut pour les articles existants)
+  await pool.query(`ALTER TABLE droit_ci.articles ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_source ON droit_ci.articles(source)
   `)
@@ -40,6 +42,9 @@ export async function createDroitCiSchema(): Promise<void> {
   `)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_access ON droit_ci.articles(access_level, is_active)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_droit_ci_country ON droit_ci.articles(country_code, source, is_active)
   `)
 }
 
@@ -602,6 +607,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now()
   )`)
+  // Pays + pack législatif de la filiale (multi-pays — Palier 3)
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`)
 
   // Colonne month sur variable_elements (migration lazy)
   await q(`ALTER TABLE ${s}.variable_elements ADD COLUMN IF NOT EXISTS month varchar(7)`)

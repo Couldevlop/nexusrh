@@ -15,6 +15,8 @@ import { legalArticles } from '../../db/schema/droit-ci.js'
 export interface ArticleInput {
   article_id: string
   article_numero: string
+  /** ISO-3 pays (CIV par défaut). Permet le filtre par filiale. */
+  country_code?: string
   source: string
   convention_slug?: string
   livre?: string
@@ -36,6 +38,7 @@ function toInput(r: typeof legalArticles.$inferSelect): ArticleInput {
   return {
     article_id:      r.articleId,
     article_numero:  r.articleNumero,
+    country_code:    r.countryCode ?? 'CIV',
     source:          r.source,
     convention_slug: r.conventionSlug ?? undefined,
     livre:           r.livre ?? undefined,
@@ -60,6 +63,7 @@ export async function upsertArticles(articles: ArticleInput[]): Promise<number> 
       .values({
         articleId:      art.article_id,
         articleNumero:  art.article_numero,
+        countryCode:    art.country_code ?? 'CIV',
         source:         art.source,
         conventionSlug: art.convention_slug,
         livre:          art.livre,
@@ -77,6 +81,7 @@ export async function upsertArticles(articles: ArticleInput[]): Promise<number> 
       .onConflictDoUpdate({
         target: legalArticles.articleId,
         set: {
+          countryCode:    art.country_code ?? 'CIV',
           titreArticle:   art.titre_article,
           texte:          art.texte,
           keywords:       art.keywords ?? [],
@@ -140,12 +145,14 @@ export async function countArticles(): Promise<number> {
 
 /** Recherche full-text basique via LIKE PostgreSQL (fallback sans Elasticsearch) */
 export async function searchArticlesFromDb(params: {
-  q: string; source?: string; livre?: string; from?: number; size?: number
+  q: string; source?: string; livre?: string; countryCode?: string
+  from?: number; size?: number
 }): Promise<SearchResult> {
-  const { q, source, livre, from = 0, size = 10 } = params
+  const { q, source, livre, countryCode, from = 0, size = 10 } = params
   const conditions = [eq(legalArticles.isActive, true), eq(legalArticles.accessLevel, 'public')]
-  if (source) conditions.push(eq(legalArticles.source as any, source))
-  if (livre)  conditions.push(eq(legalArticles.livre as any, livre))
+  if (source)      conditions.push(eq(legalArticles.source as any, source))
+  if (livre)       conditions.push(eq(legalArticles.livre as any, livre))
+  if (countryCode) conditions.push(eq(legalArticles.countryCode as any, countryCode))
 
   const all = await droitCiDb.select().from(legalArticles).where(and(...conditions))
   const isBrowse = !q || q === '*'

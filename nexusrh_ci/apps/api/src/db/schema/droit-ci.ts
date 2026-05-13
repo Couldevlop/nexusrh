@@ -15,7 +15,9 @@ export const legalArticles = droitCiSchema.table('articles', {
   // Identifiant métier stable (ex: 'art-11-1', 'cc-tp-15')
   articleId:      varchar('article_id', { length: 50 }).notNull().unique(),
   articleNumero:  varchar('article_numero', { length: 50 }).notNull(),
-  // 'code_travail_ci' | 'convention_collective' | 'fiscal_its' | 'ohada'
+  // Code pays ISO-3 (CIV par défaut pour rétro-compat — étend le schéma au multi-pays)
+  countryCode:    varchar('country_code', { length: 3 }).notNull().default('CIV'),
+  // 'code_travail_ci' | 'code_travail_ben' | 'convention_collective_*' | 'fiscal_its' | 'ohada' ...
   source:         varchar('source', { length: 30 }).notNull(),
   conventionSlug: varchar('convention_slug', { length: 100 }),
   livre:          varchar('livre', { length: 200 }),

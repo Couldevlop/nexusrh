@@ -143,3 +143,53 @@ describe('LegislationPack — barèmes annuels vs mensuels', () => {
     expect(BFA_2024.bracketScale).toBe('monthly')
   })
 })
+
+describe('LegislationPack — leaveRules par pays', () => {
+  it('CIV-2024 a les règles CT CI exactes (14 sem mat + 10 j pat + AT jour J employeur)', () => {
+    const r = CIV_2024.leaveRules!
+    expect(r.maternityWeeks).toBe(14)
+    expect(r.maternitySplit).toEqual({ before: 6, after: 8 })
+    expect(r.maternityPayRate).toBe(1.0)
+    expect(r.paternityDays).toBe(10)
+    expect(r.workAccidentDayJEmployer).toBe(true)
+    expect(r.annualLeaveDaysPerMonth).toBe(2.5)
+    expect(r.workingDaysPerWeek).toBe(6)
+    expect(r.sickLeaveMaintien).toEqual([
+      { minYears: 0, rate: 0.5 },
+      { minYears: 1, rate: 0.75 },
+      { minYears: 5, rate: 1.0 },
+    ])
+  })
+
+  it('Nigeria : maternité 12 sem à 50% (Labour Act CAP L1)', () => {
+    const r = NGA_2024.leaveRules!
+    expect(r.maternityWeeks).toBe(12)
+    expect(r.maternityPayRate).toBe(0.5)
+    expect(r.workingDaysPerWeek).toBe(5)   // semaine de 40h lun-ven
+  })
+
+  it('Sénégal : semaine de 5 jours (40h)', () => {
+    expect(SEN_2024.leaveRules!.workingDaysPerWeek).toBe(5)
+  })
+
+  it('Bénin : maternité 100% co-financée (50/50 employeur+CNSS)', () => {
+    const r = BEN_2024.leaveRules!
+    expect(r.maternityWeeks).toBe(14)
+    expect(r.maternityFunding).toBe('shared')
+    expect(r.maternityPayRate).toBe(1.0)
+    expect(r.paternityDays).toBe(3)
+  })
+
+  it('chaque pack hors CIV a un leaveRules renseigné', () => {
+    for (const pack of [BEN_2024, TGO_2024, BFA_2024, SEN_2024, MLI_2024, NER_2024, TCD_2024, NGA_2024]) {
+      expect(pack.leaveRules, `pack ${pack.code}`).toBeDefined()
+      expect(pack.leaveRules!.maternityWeeks).toBeGreaterThan(0)
+      expect([5, 6]).toContain(pack.leaveRules!.workingDaysPerWeek)
+    }
+  })
+
+  it('Tchad : barème ancienneté maladie étendu (12 mois plein si ≥10 ans)', () => {
+    const r = TCD_2024.leaveRules!
+    expect(r.sickLeaveMaintien.length).toBeGreaterThanOrEqual(3)
+  })
+})

@@ -107,15 +107,45 @@ function LivreNode({ srcKey, livre, onOpen }: {
   )
 }
 
+const COUNTRY_LABELS: Record<string, string> = {
+  CIV: 'Côte d\'Ivoire', BEN: 'Bénin', TGO: 'Togo', BFA: 'Burkina Faso',
+  SEN: 'Sénégal', MLI: 'Mali', NER: 'Niger', TCD: 'Tchad', NGA: 'Nigeria',
+}
+
+interface MyCountry {
+  countryCode: string | null
+  hasSubsidiaries: boolean
+  scope: 'platform' | 'single_country' | 'multi_country' | 'unknown' | 'fallback'
+  defaultCountryCode?: string
+}
+
 /* ─── Page principale ────────────────────────────────────────────────────── */
 export default function ReferentielsPage() {
   const [query, setQuery]   = useState('')
   const [source, setSource] = useState<'all' | 'code_travail_ci' | 'convention_collective'>('all')
+  const [countryFilter, setCountryFilter] = useState<string | null>(null)
   const [modal, setModal]   = useState<ArticleHit | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['code_travail_ci']))
   const [drawer, setDrawer] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const dq = useDebounce(query, 200)
+
+  // Pays applicable au user connecté (silencieux si endpoint indisponible)
+  const { data: myCountry } = useQuery<MyCountry>({
+    queryKey: ['referentiels-my-country'],
+    queryFn: () => api.get('/referentiels/my-country').then(r => r.data),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+
+  // Initialise le filtre pays au pays applicable du user
+  useEffect(() => {
+    if (myCountry && countryFilter === null) {
+      setCountryFilter(myCountry.countryCode)
+    }
+  }, [myCountry, countryFilter])
+
+  const isMultiCountry = myCountry?.hasSubsidiaries === true
 
   /* Ctrl/Cmd+K → focus */
   useEffect(() => {
@@ -128,9 +158,14 @@ export default function ReferentielsPage() {
 
   /* Recherche principale */
   const { data, isLoading, isError } = useQuery<{ total: number; hits: ArticleHit[] }>({
-    queryKey: ['referentiels', dq, source],
+    queryKey: ['referentiels', dq, source, countryFilter],
     queryFn: () => api.get('/referentiels/search', {
-      params: { q: dq, ...(source !== 'all' && { source }), size: 100 },
+      params: {
+        q: dq,
+        ...(source !== 'all' && { source }),
+        ...(countryFilter && { countryCode: countryFilter }),
+        size: 100,
+      },
     }).then((r: { data: { total: number; hits: ArticleHit[] } }) => r.data),
     enabled: dq.length >= 2,
     staleTime: 30_000,
@@ -252,11 +287,40 @@ export default function ReferentielsPage() {
             <button onClick={() => setDrawer(true)} className="lg:hidden p-2 rounded-xl hover:bg-white text-gray-500 hover:shadow-sm transition-all">
               <Menu className="h-4 w-4" />
             </button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Référentiel Juridique CI</h1>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-bold text-gray-900">
+                Référentiel Juridique{countryFilter ? ` — ${COUNTRY_LABELS[countryFilter] ?? countryFilter}` : ''}
+              </h1>
               <p className="text-xs text-gray-400">Code du Travail · Conventions Collectives · Recherche plein texte</p>
             </div>
           </div>
+
+          {/* Bandeau filiale (uniquement si tenant multi-pays) */}
+          {isMultiCountry && (
+            <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50/50 px-3 py-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-purple-700">
+                Articles applicables à votre filiale :
+              </span>
+              <select
+                value={countryFilter ?? ''}
+                onChange={e => setCountryFilter(e.target.value || null)}
+                className="rounded-md border border-purple-200 bg-white px-2 py-1 text-xs font-medium text-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              >
+                <option value="">Tous les pays</option>
+                {Object.entries(COUNTRY_LABELS).map(([code, label]) => (
+                  <option key={code} value={code}>{label} ({code})</option>
+                ))}
+              </select>
+              {myCountry?.countryCode && countryFilter !== myCountry.countryCode && (
+                <button
+                  onClick={() => setCountryFilter(myCountry.countryCode)}
+                  className="text-[11px] text-purple-700 underline hover:text-purple-900"
+                >
+                  Revenir au pays de ma filiale ({myCountry.countryCode})
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Search */}
           <div className="relative mb-3">

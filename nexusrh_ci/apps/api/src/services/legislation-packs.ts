@@ -82,8 +82,70 @@ export interface LegislationPack {
   /** Libellé local de la caisse de sécurité sociale */
   labelCaisseSociale: string  // CNPS / CNSS / IPRES / INPS
 
+  /**
+   * Règles légales relatives aux congés et absences (durées, indemnisation).
+   * Champ optionnel — le moteur de calcul actuel n'en dépend pas (utilise les
+   * absenceDays saisis), mais ces règles servent :
+   *   - à la validation côté API (durée maxi acceptée)
+   *   - à l'UI (affichage des droits du salarié)
+   *   - aux futurs calculs automatisés
+   */
+  leaveRules?: LeaveRules
+
   /** Note pour les administrateurs */
   notes?: string
+}
+
+export interface LeaveRules {
+  /** Congé maternité : nombre de semaines de droit légal */
+  maternityWeeks: number
+  /** Congé maternité : semaines avant accouchement / après */
+  maternitySplit?: { before: number; after: number }
+  /** Pourcentage du salaire maintenu pendant maternité (1.0 = 100%) */
+  maternityPayRate: number
+  /** Source du paiement : 'employer' (employeur seul) | 'social' (caisse seule) | 'shared' (50/50 ou autre) */
+  maternityFunding: 'employer' | 'social' | 'shared'
+
+  /** Congé paternité : jours ouvrables */
+  paternityDays: number
+  /** Source du paiement paternité */
+  paternityFunding?: 'employer' | 'social' | 'shared'
+
+  /** AT : le jour J est-il payé par l'employeur (true CI) ou par la caisse (false) */
+  workAccidentDayJEmployer: boolean
+  /** AT : taux IJSS de la caisse (ex: 0.6666 = 2/3) pour les jours suivants */
+  workAccidentIjssRate: number
+  /** AT : durée maxi en mois de prise en charge incapacité temporaire */
+  workAccidentMaxMonths: number
+
+  /**
+   * Maladie sans AT : maintien employeur selon ancienneté.
+   * Liste ordonnée par ancienneté minimum (en années) → taux maintien.
+   * Le moteur applique le palier dont l'ancienneté est ≤ celle du salarié.
+   * Exemple CI : [{minYears: 0, rate: 0.5}, {minYears: 1, rate: 0.75}, {minYears: 5, rate: 1.0}]
+   */
+  sickLeaveMaintien: Array<{ minYears: number; rate: number }>
+
+  /** Congés payés : nombre de jours ouvrables acquis par mois travaillé */
+  annualLeaveDaysPerMonth: number
+
+  /** Congé deuil familial : jours ouvrables (parent, conjoint, enfant) */
+  bereavementDays?: number
+
+  /** Jours ouvrables par semaine (CI = 6 lun-sam, SEN = 5 lun-ven, etc.) */
+  workingDaysPerWeek: 5 | 6
+
+  /** Majorations heures supplémentaires (taux à AJOUTER au taux normal) */
+  overtimeRates?: {
+    /** 41-48h hebdomadaires */
+    weekly?: number
+    /** Travail de nuit (20h-5h) */
+    night?: number
+    /** Dimanche */
+    sunday?: number
+    /** Jour férié */
+    holiday?: number
+  }
 }
 
 // ─── Pack CI 2024 — référence stable, ne pas modifier ─────────────────────────
@@ -117,6 +179,27 @@ export const CIV_2024: LegislationPack = {
   creditImpotParEnfant: [3_000, 6_000, 9_000],
   labelImpotSalaire: 'ITS — Impôt sur Traitements et Salaires',
   labelCaisseSociale: 'CNPS',
+  // Règles légales de congés CI 2024 (Code du Travail CI + CNPS)
+  leaveRules: {
+    maternityWeeks: 14,
+    maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0,
+    maternityFunding: 'social',           // CNPS rembourse 100% via bordereau
+    paternityDays: 10,
+    paternityFunding: 'employer',
+    workAccidentDayJEmployer: true,       // Jour J payé employeur
+    workAccidentIjssRate: 1.0,            // IJSS CNPS = salaire journalier (selon décret)
+    workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 0.5 },
+      { minYears: 1, rate: 0.75 },
+      { minYears: 5, rate: 1.0 },
+    ],
+    annualLeaveDaysPerMonth: 2.5,         // Art. 25 CT CI
+    bereavementDays: 3,
+    workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
 }
 
 // ─── Packs autres pays — STATUS = 'stub' ─────────────────────────────────────
@@ -158,9 +241,29 @@ export const BEN_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'ITS — Impôt sur Traitements et Salaires',
   labelCaisseSociale: 'CNSS',
+  // Règles légales Bénin (Code du Travail Bénin, Loi 98-004)
+  leaveRules: {
+    maternityWeeks: 14,
+    maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0,
+    maternityFunding: 'shared',            // 50% CNSS + 50% employeur
+    paternityDays: 3,
+    paternityFunding: 'employer',
+    workAccidentDayJEmployer: false,
+    workAccidentIjssRate: 0.6667,          // 2/3 du salaire journalier (CNSS Bénin)
+    workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 0.5 },
+      { minYears: 1, rate: 1.0 },           // convention collective interprof.
+    ],
+    annualLeaveDaysPerMonth: 2.0,
+    bereavementDays: 3,
+    workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.12, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
   notes: 'Sources: CLEISS (cleiss.fr/docs/cotisations/benin.html), CGI Bénin 2024 ' +
-         '(api.impots.bj). À valider avec un expert paie local avant activation. ' +
-         'Note : la réforme 2025 a supprimé les déductions familiales.',
+         '(api.impots.bj), wageindicator.org/fr-bj. À valider avec un expert paie ' +
+         'local avant activation. Note : réforme 2025 a supprimé les déductions familiales.',
 }
 
 // Togo — CNSS + IRPP 2024 (source : CNSS.tg, Code général des impôts Togo)
@@ -197,6 +300,25 @@ export const TGO_2024: LegislationPack = {
   creditImpotParEnfant: [10_000, 20_000, 30_000],
   labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
   labelCaisseSociale: 'CNSS',
+  leaveRules: {
+    maternityWeeks: 14,
+    maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0,
+    maternityFunding: 'social',           // CNSS Togo couvre 100% via IJSS
+    paternityDays: 3,
+    paternityFunding: 'employer',
+    workAccidentDayJEmployer: false,
+    workAccidentIjssRate: 0.6667,
+    workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 0.5 },
+      { minYears: 1, rate: 1.0 },
+    ],
+    annualLeaveDaysPerMonth: 2.5,
+    bereavementDays: 3,
+    workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.20, night: 0.5, sunday: 0.65, holiday: 1.0 },
+  },
   notes: 'Sources: CNSS.tg (cnss.tg/employeurs/cotisations-sociales/), togofirst.com, ' +
          'Code général des impôts Togo. Barème IRPP ANNUEL — déduction familiale ' +
          '10 000 FCFA/mois/personne (max 6). À valider avant activation.',
@@ -233,7 +355,17 @@ export const BFA_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'IUTS — Impôt Unique sur Traitements et Salaires',
   labelCaisseSociale: 'CNSS',
-  notes: 'Sources : CNSS Burkina, Code général des impôts BF. À valider expert local.',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 4, after: 10 },
+    maternityPayRate: 1.0, maternityFunding: 'shared',
+    paternityDays: 3, paternityFunding: 'employer',
+    workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }, { minYears: 1, rate: 1.0 }],
+    annualLeaveDaysPerMonth: 2.5, bereavementDays: 3, workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'Sources : CNSS Burkina, Code général des impôts BF, ' +
+         'Code du Travail BF (Loi 028-2008). À valider expert local.',
 }
 
 // Sénégal — IPRES + CSS + IR 2024
@@ -266,8 +398,21 @@ export const SEN_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'IR — Impôt sur le Revenu',
   labelCaisseSociale: 'IPRES + CSS',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0, maternityFunding: 'social',         // CSS Sénégal
+    paternityDays: 1, paternityFunding: 'employer',
+    workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 0.5 }, { minYears: 1, rate: 0.75 }, { minYears: 3, rate: 1.0 },
+    ],
+    annualLeaveDaysPerMonth: 2.0, bereavementDays: 3,
+    workingDaysPerWeek: 5,                                       // ⚠️ Sénégal : 40h lun-ven
+    overtimeRates: { weekly: 0.15, night: 0.6, sunday: 0.6, holiday: 1.0 },
+  },
   notes: 'Régime sénégalais avec parts familiales (système complexe à implémenter ' +
-         'séparément). À valider expert local.',
+         'séparément). Sources : IPRES, CSS, Code du Travail SN (Loi 97-17). ' +
+         'À valider expert local.',
 }
 
 // Mali — INPS + ITS 2024
@@ -298,7 +443,16 @@ export const MLI_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'ITS — Impôt sur Traitements et Salaires',
   labelCaisseSociale: 'INPS',
-  notes: 'Valeurs indicatives Mali. À valider expert local.',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0, maternityFunding: 'social',
+    paternityDays: 3, paternityFunding: 'employer',
+    workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }, { minYears: 1, rate: 1.0 }],
+    annualLeaveDaysPerMonth: 2.5, bereavementDays: 3, workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.10, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'Sources : INPS Mali, Code du Travail ML (Loi 92-020). À valider expert local.',
 }
 
 // Niger — CNSS + ITS 2024
@@ -332,7 +486,16 @@ export const NER_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'ITS — Impôt sur Traitements et Salaires',
   labelCaisseSociale: 'CNSS',
-  notes: 'Valeurs indicatives Niger. À valider expert local.',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 0.5, maternityFunding: 'shared',           // 50% CNSS / 50% employeur
+    paternityDays: 1, paternityFunding: 'employer',
+    workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }, { minYears: 1, rate: 1.0 }],
+    annualLeaveDaysPerMonth: 2.5, bereavementDays: 3, workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.10, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'Sources : CNSS Niger, Code du Travail NE (Loi 2012-45). À valider expert local.',
 }
 
 // Tchad — CNPS + IRPP 2024 (CEMAC, devise XAF)
@@ -367,9 +530,32 @@ export const TCD_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
   labelCaisseSociale: 'CNPS Tchad',
+  leaveRules: {
+    maternityWeeks: 14,
+    maternitySplit: { before: 6, after: 8 },
+    maternityPayRate: 1.0,
+    maternityFunding: 'social',
+    paternityDays: 1,                      // Tchad : pas explicite, 1 j. conventionnel
+    paternityFunding: 'employer',
+    workAccidentDayJEmployer: false,
+    workAccidentIjssRate: 0.6667,
+    workAccidentMaxMonths: 12,
+    // Tchad : barème ancienneté étendu (source : rivermate.com/guides/chad/leave)
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 1.0 },          // <5 ans : 6 mois plein
+      { minYears: 5, rate: 1.0 },          // 5-10 ans : 6 mois plein + 6 mois 50%
+      { minYears: 10, rate: 1.0 },         // >10 ans : 12 mois plein
+    ],
+    annualLeaveDaysPerMonth: 2.0,          // 24 j/an = 2 j/mois
+    bereavementDays: 3,
+    workingDaysPerWeek: 6,
+    overtimeRates: { weekly: 0.30, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
   notes: 'Sources : CNPS Tchad (cnps-tchad.com), PwC Worldwide Tax Summaries Chad ' +
-         '(mise à jour août 2024). Devise XAF (CEMAC, pas UEMOA). SMIG stagnant ' +
-         'à 60 000 XAF depuis 2011. À valider avec expert paie local.',
+         '(mise à jour août 2024), rivermate.com/guides/chad/leave. Devise XAF ' +
+         '(CEMAC, pas UEMOA). SMIG stagnant à 60 000 XAF depuis 2011. À valider ' +
+         'avec expert paie local. Note : maintien maladie complexe (durées par ' +
+         'palier ancienneté) — leaveRules.sickLeaveMaintien simplifié.',
 }
 
 // Nigeria — PAYE + Pension 2024 (devise NGN, hors zone franc)
@@ -404,12 +590,32 @@ export const NGA_2024: LegislationPack = {
   creditImpotParEnfant: [0, 0, 0],
   labelImpotSalaire: 'PAYE — Pay As You Earn (PIT)',
   labelCaisseSociale: 'PenCom / NHF',
-  notes: 'Sources : PwC Worldwide Tax Summaries Nigeria, FIRS, PenCom. ' +
-         'Barème PAYE ANNUEL en NGN. Le Nigeria Tax Act (NTA) 2025 introduit ' +
-         'un barème plus progressif applicable à partir de 2026 ' +
-         '(0/7/11/15/25% — à intégrer dans NGA-2026). Le calcul réel inclut ' +
-         'la Consolidated Relief Allowance (CRA = 200 000 NGN + 20% du brut) ' +
-         'non encore implémentée dans le moteur générique. À valider avant activation.',
+  // Nigeria Labour Act (CAP L1) + PRA 2014
+  leaveRules: {
+    maternityWeeks: 12,                    // Labour Act CAP L1 — minimum 12 sem.
+    maternitySplit: { before: 6, after: 6 },
+    maternityPayRate: 0.5,                 // 50% au minimum si ancienneté ≥ 6 mois
+    maternityFunding: 'employer',
+    paternityDays: 14,                     // Federal civil service uniquement
+    paternityFunding: 'employer',
+    workAccidentDayJEmployer: false,
+    workAccidentIjssRate: 1.0,             // ECS — Employee Compensation Scheme
+    workAccidentMaxMonths: 24,
+    sickLeaveMaintien: [
+      { minYears: 0, rate: 1.0 },          // up to 12 working days/year full pay
+    ],
+    annualLeaveDaysPerMonth: 0.5,          // 6 j ouvrables/an (12 mois service)
+    bereavementDays: 3,
+    workingDaysPerWeek: 5,                 // ⚠️ Nigeria : lun-ven (40h)
+    overtimeRates: { weekly: 0.50, night: 0.5, sunday: 1.0, holiday: 1.0 },
+  },
+  notes: 'Sources : PwC Worldwide Tax Summaries Nigeria, FIRS, PenCom, ' +
+         'Labour Act CAP L1, africa-hr.com. Barème PAYE ANNUEL en NGN. ' +
+         'NTA 2025 introduit un barème plus progressif applicable 2026 ' +
+         '(à intégrer dans NGA-2026). Le calcul réel inclut la Consolidated ' +
+         'Relief Allowance (CRA = 200 000 NGN + 20% du brut) non encore ' +
+         'implémentée dans le moteur générique. Paternité : Labour Act ne la ' +
+         'prévoit pas — 14 jours appliqués au civil service fédéral. À valider.',
 }
 
 export const LEGISLATION_PACKS: Record<string, LegislationPack> = {

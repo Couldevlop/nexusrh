@@ -22,7 +22,10 @@ import type { ArticleInput } from './legal-articles.repository.js'
 
 export interface SearchParams {
   q: string
-  source?: 'code_travail_ci' | 'convention_collective'
+  /** Source du texte (élargi multi-pays) : code_travail_ci, code_travail_ben, … */
+  source?: string
+  /** Filtre par pays ISO-3 (CIV, BEN, TGO, …). NULL = tous. */
+  countryCode?: string
   convention?: string
   payrollCode?: string
   livre?: string
@@ -32,6 +35,7 @@ export interface SearchParams {
 
 export interface ArticleHit {
   article_id: string; article_numero: string; source: string
+  country_code?: string
   convention_slug?: string; livre?: string; titre?: string
   chapitre?: string; titre_article: string; texte: string
   payroll_codes?: string[]; score: number
@@ -40,12 +44,13 @@ export interface ArticleHit {
 
 // OWASP A03 : Query DSL typé, jamais de string concat
 export async function searchReferentiel(params: SearchParams): Promise<{ total: number; hits: ArticleHit[] }> {
-  const { q, source, convention, payrollCode, livre, from = 0, size = 10 } = params
+  const { q, source, countryCode, convention, payrollCode, livre, from = 0, size = 10 } = params
   const isBrowse = !q || q === '*'
 
   try {
     const filterArr: object[] = [{ term: { access_level: 'public' } }]
     if (source)      filterArr.push({ term: { source } })
+    if (countryCode) filterArr.push({ term: { country_code: countryCode } })
     if (convention)  filterArr.push({ term: { convention_slug: convention } })
     if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
     if (livre)       filterArr.push({ term: { livre } })
@@ -76,13 +81,13 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
 
     // Si ES répond mais index vide, tenter PG
     if (hits.length === 0) {
-      const pg = await searchArticlesFromDb({ q, source, livre, from, size })
+      const pg = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
       if (pg.total > 0) return { total: pg.total, hits: pg.hits.map(a => ({ ...a, score: 1 }) as ArticleHit) }
     }
     return { total, hits }
   } catch {
     // Fallback PostgreSQL si Elasticsearch indisponible
-    const result = await searchArticlesFromDb({ q, source, livre, from, size })
+    const result = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
     return {
       total: result.total,
       hits: result.hits.map(a => ({ ...a, score: 1 }) as ArticleHit),
