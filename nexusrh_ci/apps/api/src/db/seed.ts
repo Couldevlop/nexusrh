@@ -587,6 +587,65 @@ async function main() {
     ])
   }
 
+  // ─── Profils sourcés (cache de visualisation pour l'onglet Sourcing IA) ─────
+  // Pré-remplit la table sourced_profiles pour permettre de visualiser le rendu
+  // visuel sans avoir besoin d'appeler l'IA. L'utilisateur peut les transférer
+  // vers le pipeline Kanban en un clic (1 par 1 ou tous d'un coup).
+  type SourcedSeed = {
+    fn: string; ln: string; pos: string; company: string; loc: string
+    yrs: number; skills: string[]; score: number
+    avail: 'immediate' | '1month' | '3months' | 'passive'
+    platform: string; salary: number; phone?: string
+    approach: string
+  }
+  async function seedSourced(schema: string, jobId: string, profiles: SourcedSeed[], countries: string[]) {
+    for (const p of profiles) {
+      const email = `${p.fn.toLowerCase().replace(/[^a-z]/g, '')}.${p.ln.toLowerCase().replace(/[^a-z]/g, '')}@sourcing.example`
+      const linkedinSearch = `${p.fn} ${p.ln} ${p.company} ${p.pos}`
+      await pool.query(`
+        INSERT INTO "${schema}".sourced_profiles
+          (job_id, first_name, last_name, current_position, current_company,
+           location, experience_years, key_skills, match_score,
+           availability_estimate, suggested_platform, linkedin_search,
+           approach_strategy, estimated_salary, estimated_salary_currency,
+           email, phone, source_provider, source_model, countries)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'XOF',$15,$16,'seed','demo-seed',$17::varchar[])
+        ON CONFLICT DO NOTHING
+      `, [
+        jobId, p.fn, p.ln, p.pos, p.company, p.loc, p.yrs,
+        JSON.stringify(p.skills), p.score, p.avail, p.platform,
+        linkedinSearch, p.approach, p.salary, email, p.phone ?? null,
+        countries,
+      ])
+    }
+  }
+
+  // 8 profils pour "Chauffeur Bus Senior" (jobIds[0], externe)
+  if (jobIds[0]) {
+    await seedSourced(sotraSchema, jobIds[0], [
+      { fn: 'Yao',       ln: 'Kouassi',   pos: 'Chauffeur Bus longue distance', company: 'UTB Côte d\'Ivoire', loc: 'Abidjan, CI', yrs: 12, skills: ['Permis D', 'Conduite défensive', 'Mécanique de base'], score: 92, avail: 'immediate', platform: 'Emploi.ci',    salary: 280000, phone: '+225 0707111201', approach: 'Forte expérience longue distance, recommandé par un ancien collègue SOTRA.' },
+      { fn: 'Adama',     ln: 'Diabaté',   pos: 'Chauffeur Bus urbain',           company: 'STL Bouaké',         loc: 'Bouaké, CI',  yrs: 8,  skills: ['Permis D', 'Connaissance Abidjan', 'Service client'],     score: 86, avail: '1month',    platform: 'RMO Côte d\'Ivoire', salary: 240000, phone: '+225 0505222302', approach: 'Veut revenir à Abidjan, parfaitement bilingue dioula/français.' },
+      { fn: 'Salif',     ln: 'Traoré',    pos: 'Chauffeur PL international',     company: 'Transrail',          loc: 'Yamoussoukro, CI', yrs: 15, skills: ['Permis D', 'Permis EC', 'Sécurité routière'], score: 88, avail: 'passive', platform: 'LinkedIn', salary: 260000, phone: '+225 0102333403', approach: 'Profil senior, ouvert à un changement pour un poste plus stable.' },
+      { fn: 'Bakary',    ln: 'Coulibaly', pos: 'Chauffeur Bus de tourisme',      company: 'TCA Abidjan',         loc: 'Abidjan, CI', yrs: 7,  skills: ['Permis D', 'Anglais professionnel', 'Premiers secours'], score: 82, avail: 'immediate', platform: 'Emploi.ci',    salary: 230000, phone: '+225 0707444504', approach: 'Cherche poste avec horaires fixes pour raisons familiales.' },
+      { fn: 'Issa',      ln: 'Konaté',    pos: 'Conducteur SOTRA (ex)',          company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 10, skills: ['Permis D', 'Connaissance réseau SOTRA', 'Maintenance niveau 1'], score: 90, avail: 'immediate', platform: 'RMO Côte d\'Ivoire', salary: 250000, phone: '+225 0505555605', approach: 'Ancien chauffeur SOTRA, souhaite réintégrer après période indépendante.' },
+      { fn: 'Mamadou',   ln: 'Bamba',     pos: 'Chauffeur véhicules lourds',     company: 'Bolloré Transport',   loc: 'San-Pédro, CI', yrs: 9, skills: ['Permis D', 'Permis EC', 'Logistique'],                  score: 78, avail: '3months',   platform: 'LinkedIn', salary: 270000, phone: '+225 0102666706', approach: 'Profil polyvalent, accepterait poste basé Abidjan avec déplacements.' },
+      { fn: 'Hamed',     ln: 'Touré',     pos: 'Chauffeur taxi-bus',             company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 6,  skills: ['Permis D', 'Connaissance Abidjan', 'Service client'], score: 74, avail: 'immediate', platform: 'Emploi.ci',    salary: 200000, phone: '+225 0707777807', approach: 'Veut un statut salarié après plusieurs années en auto-entrepreneur.' },
+      { fn: 'Souleymane', ln: 'Cissé',    pos: 'Chauffeur Bus scolaire',          company: 'Lycée français Jean Mermoz', loc: 'Abidjan, CI', yrs: 11, skills: ['Permis D', 'Sécurité enfants', 'Bilingue FR/EN'], score: 85, avail: '1month',    platform: 'LinkedIn', salary: 245000, phone: '+225 0505888908', approach: 'Cherche évolution salariale, références employeur disponibles.' },
+    ], ['CI'])
+  }
+
+  // 6 profils pour "Chargé(e) RH" (jobIds[2], externe)
+  if (jobIds[2]) {
+    await seedSourced(sotraSchema, jobIds[2], [
+      { fn: 'Aminata',   ln: 'Sangaré', pos: 'Chargée RH & Paie',          company: 'Orange CI',          loc: 'Abidjan, CI', yrs: 6, skills: ['Sage Paie', 'CNPS', 'ITS/DGI', 'Excel avancé'],          score: 94, avail: '1month',    platform: 'LinkedIn',     salary: 520000, phone: '+225 0707101201', approach: 'Profil très aligné, expérience CNPS et ITS confirmée. Ouvre à offre.' },
+      { fn: 'Patrick',   ln: 'N\'Guessan', pos: 'Responsable Administration RH', company: 'Cabinet Audit ECC', loc: 'Abidjan, CI', yrs: 8, skills: ['Contrats OHADA', 'DISA', 'Gestion conflits', 'Sage Paie'], score: 91, avail: 'passive',   platform: 'LinkedIn',     salary: 580000, phone: '+225 0505202302', approach: 'Senior, intéressé par poste opérationnel terrain plutôt que conseil.' },
+      { fn: 'Fatou',     ln: 'Bamba',     pos: 'HR Officer',                  company: 'PwC Côte d\'Ivoire', loc: 'Abidjan, CI', yrs: 4, skills: ['HRIS', 'Recrutement', 'Anglais professionnel'],     score: 78, avail: 'immediate', platform: 'Africawork',  salary: 460000, phone: '+225 0102303403', approach: 'Veut quitter cabinet conseil pour entreprise. Profil junior+ qualifié.' },
+      { fn: 'Christelle', ln: 'Diallo',    pos: 'Assistante RH polyvalente',   company: 'NSIA Banque',         loc: 'Abidjan, CI', yrs: 5, skills: ['Paie', 'Onboarding', 'Excel', 'Communication'],     score: 81, avail: '1month',    platform: 'RMO Côte d\'Ivoire', salary: 480000, phone: '+225 0707404504', approach: 'Profil très organisé, recommandée pour la gestion administrative.' },
+      { fn: 'Hermann',   ln: 'Kra',       pos: 'Consultant RH freelance',     company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 9, skills: ['Audit social', 'Formations', 'CNPS', 'OHADA'],       score: 76, avail: 'immediate', platform: 'LinkedIn',     salary: 550000, phone: '+225 0505505605', approach: 'Profil senior cherchant à se sédentariser. Bonne expérience secteur transport.' },
+      { fn: 'Sylvie',    ln: 'Anoh',      pos: 'Chargée Paie & Reporting',    company: 'SIFCA',               loc: 'Abidjan, CI', yrs: 7, skills: ['Sage Paie', 'Power BI', 'CNPS', 'Comptabilité'],     score: 87, avail: '3months',  platform: 'LinkedIn',     salary: 530000, phone: '+225 0102606706', approach: 'Profil paie technique très solide, expérience agro-industrie.' },
+    ], ['CI'])
+  }
+
   // 2 candidatures internes pré-seedées sur l'offre "Chef d'équipe" (4e offre = index 3)
   if (jobIds[3]) {
     const internalEmps = await pool.query<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null }>(
@@ -993,6 +1052,33 @@ async function main() {
     VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true, now())
     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
   `, [openlabHash])
+
+  // Offre + profils sourcés pour OpenLab — démo multi-pays Afrique
+  const openlabJob = await pool.query<{ id: string }>(`
+    INSERT INTO "${openlabSchema}".recruitment_jobs
+      (title, location, contract_type, salary_min, salary_max, currency,
+       description, requirements, status, visibility, published_at, public_slug)
+    VALUES
+      ('Consultant Senior Transformation Digitale',
+       'Abidjan (avec déplacements régionaux)',
+       'cdi', 1500000, 2500000, 'XOF',
+       'Conduite de missions de transformation digitale pour clients OHADA. Filiales CI, SN, BJ, TG.',
+       'Bac+5, 6+ ans en conseil/transformation, anglais professionnel, mobilité Afrique de l''Ouest.',
+       'open', 'external', now(), 'consultant-senior-transformation-digitale')
+    ON CONFLICT DO NOTHING
+    RETURNING id
+  `)
+  const openlabJobId = openlabJob.rows[0]?.id
+  if (openlabJobId) {
+    await seedSourced(openlabSchema, openlabJobId, [
+      { fn: 'Olivia',   ln: 'Ndiaye',    pos: 'Senior Manager Digital',      company: 'Deloitte Dakar',     loc: 'Dakar, SN',    yrs: 9,  skills: ['Transformation digitale', 'Change management', 'Anglais courant'], score: 92, avail: '1month',    platform: 'LinkedIn',     salary: 2_200_000, phone: '+221 7700001111', approach: 'Profil très sénior, ouverte à mobilité Abidjan pour cabinet panafricain en croissance.' },
+      { fn: 'Kofi',     ln: 'Mensah',    pos: 'Lead Consultant Tech',         company: 'PwC Accra',           loc: 'Accra, GH',    yrs: 7,  skills: ['Cloud AWS/Azure', 'Agile@Scale', 'Anglais natif'],                score: 85, avail: 'passive',   platform: 'LinkedIn',     salary: 2_100_000, phone: '+233 244000111',  approach: 'Bilingue anglais/français basique, intéressé par contexte francophone régional.' },
+      { fn: 'Yannick',  ln: 'Mballa',    pos: 'Consultant transformation',    company: 'EY Cameroun',          loc: 'Douala, CM',   yrs: 6,  skills: ['Process design', 'SAP', 'OHADA'],                                  score: 80, avail: '3months',   platform: 'Africawork',  salary: 1_800_000, phone: '+237 690001112',  approach: 'Connaissance solide du droit OHADA, intéressé par CI ou SN.' },
+      { fn: 'Laëtitia', ln: 'Boni',      pos: 'Manager Digital Strategy',    company: 'Société Générale CI', loc: 'Abidjan, CI',  yrs: 8,  skills: ['Stratégie digitale', 'Banking', 'Data viz'],                       score: 89, avail: 'immediate', platform: 'LinkedIn',     salary: 2_300_000, phone: '+225 0707010203', approach: 'Cherche évolution rapide vers poste de direction. Profil banque-finance.' },
+      { fn: 'Adama',    ln: 'Diop',      pos: 'Principal Consultant',         company: 'Sopra Steria Paris',   loc: 'Paris, FR (diaspora SN)', yrs: 11, skills: ['Architecture SI', 'PMO', 'Anglais courant'],            score: 88, avail: '3months',   platform: 'LinkedIn',     salary: 2_500_000, phone: '+33 612345678',   approach: 'Diaspora sénégalaise envisageant retour Afrique. Très expérimenté projets multi-sites.' },
+    ], ['CI', 'SN', 'BJ', 'CM', 'GH', 'FR'])
+    console.log('  [OpenLab] Offre + 5 profils sourcés multi-pays')
+  }
 
   console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
 

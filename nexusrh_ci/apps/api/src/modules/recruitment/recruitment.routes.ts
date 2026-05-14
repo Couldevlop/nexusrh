@@ -38,6 +38,14 @@ function slugifyTitle(title: string): string {
     .slice(0, 80)
 }
 
+function scoreToRecommendation(score: number | null): string | null {
+  if (score === null || score === undefined) return null
+  if (score >= 85) return 'strong_yes'
+  if (score >= 70) return 'yes'
+  if (score >= 55) return 'maybe'
+  return 'no'
+}
+
 const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Capabilités IA (pour le sélecteur UI) ──────────────────────────────────
@@ -676,6 +684,220 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({
           error: isUserActionable ? raw : 'Erreur lors du sourcing IA. Réessayez plus tard.',
         })
+      }
+    },
+  })
+
+  // ── SOURCING IA — liste des profils en cache (pour visualisation) ──────────
+  // Retourne tous les profils sourced stockés pour cette offre, transférés ou non.
+  // Permet d'avoir un visuel immédiat sans devoir relancer l'IA.
+  fastify.get('/jobs/:id/sourced-profiles', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      try {
+        const res = await pool.query(
+          `SELECT id, job_id, first_name, last_name, current_position, current_company,
+                  location, experience_years, key_skills, match_score,
+                  availability_estimate, suggested_platform, linkedin_search,
+                  approach_strategy, estimated_salary, estimated_salary_currency,
+                  email, phone, source_provider, source_model, countries,
+                  transferred_to_application_id, transferred_at, created_at
+             FROM "${schema}".sourced_profiles
+            WHERE job_id = $1
+            ORDER BY match_score DESC NULLS LAST, created_at DESC`,
+          [id],
+        )
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── SOURCING IA — transfert d'un profil vers le pipeline (Kanban) ──────────
+  // Crée une candidature (applications) avec source='sourced_ai' stage='new'
+  // et marque le profil sourced comme transféré. Idempotent : si déjà transféré,
+  // retourne 409 avec le pointeur vers l'application existante.
+  fastify.post('/jobs/:id/sourced-profiles/:profileId/transfer', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id, profileId } = request.params as { id: string; profileId: string }
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+
+        const sp = await client.query<{
+          id: string; job_id: string; first_name: string; last_name: string
+          email: string | null; phone: string | null
+          match_score: number | null; current_position: string | null
+          current_company: string | null; key_skills: unknown
+          transferred_to_application_id: string | null
+        }>(
+          `SELECT id, job_id, first_name, last_name, email, phone, match_score,
+                  current_position, current_company, key_skills,
+                  transferred_to_application_id
+             FROM "${schema}".sourced_profiles
+            WHERE id = $1 AND job_id = $2
+            FOR UPDATE`,
+          [profileId, id],
+        )
+        const profile = sp.rows[0]
+        if (!profile) {
+          await client.query('ROLLBACK')
+          return reply.status(404).send({ error: 'Profil introuvable pour cette offre' })
+        }
+        if (profile.transferred_to_application_id) {
+          await client.query('ROLLBACK')
+          return reply.status(409).send({
+            error: 'Profil déjà transféré',
+            applicationId: profile.transferred_to_application_id,
+          })
+        }
+
+        // Email synthétique si absent (pour respecter applications.email NOT NULL)
+        const email = profile.email ??
+          `${profile.first_name}.${profile.last_name}.sourced@example.com`
+            .toLowerCase().replace(/[^a-z0-9.@]/g, '')
+
+        const summary = `Profil sourcé par IA · ${profile.current_position ?? 'poste actuel inconnu'}` +
+          (profile.current_company ? ` chez ${profile.current_company}` : '')
+
+        const appRes = await client.query<{ id: string }>(
+          `INSERT INTO "${schema}".applications
+             (job_id, first_name, last_name, email, phone, stage, source,
+              ai_score, ai_recommendation, ai_match_percentage, ai_summary,
+              ai_strengths, ai_model_used, ai_analyzed_at)
+           VALUES ($1, $2, $3, $4, $5, 'new', 'sourced_ai',
+                   $6, $7, $6, $8,
+                   $9, 'sourced', now())
+           RETURNING id`,
+          [
+            profile.job_id, profile.first_name, profile.last_name, email, profile.phone,
+            profile.match_score, scoreToRecommendation(profile.match_score), summary,
+            JSON.stringify(Array.isArray(profile.key_skills) ? profile.key_skills : []),
+          ],
+        )
+        const applicationId = appRes.rows[0]!.id
+
+        await client.query(
+          `UPDATE "${schema}".sourced_profiles
+              SET transferred_to_application_id = $1,
+                  transferred_at = now(),
+                  transferred_by = $2
+            WHERE id = $3`,
+          [applicationId, request.user.sub, profileId],
+        )
+
+        await client.query('COMMIT')
+
+        // Audit log (non bloquant)
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.sourced_transfer', 'application', $2, $3, $4)`,
+          [request.user.sub, applicationId,
+           JSON.stringify({ profileId, jobId: id, match: profile.match_score }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        return reply.status(201).send({ data: { applicationId, profileId } })
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {})
+        fastify.log.error({ err }, 'recruitment.sourced.transfer failed')
+        return reply.status(500).send({ error: 'Erreur lors du transfert' })
+      } finally {
+        client.release()
+      }
+    },
+  })
+
+  // ── SOURCING IA — transfert en masse des profils non encore transférés ────
+  fastify.post('/jobs/:id/sourced-profiles/transfer-all', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+
+        const pending = await client.query<{
+          id: string; first_name: string; last_name: string
+          email: string | null; phone: string | null; match_score: number | null
+          current_position: string | null; current_company: string | null
+          key_skills: unknown
+        }>(
+          `SELECT id, first_name, last_name, email, phone, match_score,
+                  current_position, current_company, key_skills
+             FROM "${schema}".sourced_profiles
+            WHERE job_id = $1 AND transferred_to_application_id IS NULL
+            ORDER BY match_score DESC NULLS LAST
+            FOR UPDATE`,
+          [id],
+        )
+
+        const transferred: Array<{ profileId: string; applicationId: string }> = []
+        for (const profile of pending.rows) {
+          const email = profile.email ??
+            `${profile.first_name}.${profile.last_name}.sourced@example.com`
+              .toLowerCase().replace(/[^a-z0-9.@]/g, '')
+          const summary = `Profil sourcé par IA · ${profile.current_position ?? 'poste actuel inconnu'}` +
+            (profile.current_company ? ` chez ${profile.current_company}` : '')
+
+          const appRes = await client.query<{ id: string }>(
+            `INSERT INTO "${schema}".applications
+               (job_id, first_name, last_name, email, phone, stage, source,
+                ai_score, ai_recommendation, ai_match_percentage, ai_summary,
+                ai_strengths, ai_model_used, ai_analyzed_at)
+             VALUES ($1, $2, $3, $4, $5, 'new', 'sourced_ai',
+                     $6, $7, $6, $8,
+                     $9, 'sourced', now())
+             RETURNING id`,
+            [
+              id, profile.first_name, profile.last_name, email, profile.phone,
+              profile.match_score, scoreToRecommendation(profile.match_score), summary,
+              JSON.stringify(Array.isArray(profile.key_skills) ? profile.key_skills : []),
+            ],
+          )
+          const applicationId = appRes.rows[0]!.id
+
+          await client.query(
+            `UPDATE "${schema}".sourced_profiles
+                SET transferred_to_application_id = $1,
+                    transferred_at = now(),
+                    transferred_by = $2
+              WHERE id = $3`,
+            [applicationId, request.user.sub, profile.id],
+          )
+
+          transferred.push({ profileId: profile.id, applicationId })
+        }
+
+        await client.query('COMMIT')
+
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.sourced_transfer_all', 'recruitment_job', $2, $3, $4)`,
+          [request.user.sub, id,
+           JSON.stringify({ count: transferred.length }),
+           request.ip ?? null],
+        ).catch(() => { /* non bloquant */ })
+
+        return reply.send({
+          data: { transferred: transferred.length, items: transferred },
+        })
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {})
+        fastify.log.error({ err }, 'recruitment.sourced.transfer_all failed')
+        return reply.status(500).send({ error: 'Erreur lors du transfert en masse' })
+      } finally {
+        client.release()
       }
     },
   })
