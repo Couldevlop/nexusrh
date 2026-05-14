@@ -417,6 +417,51 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
   })
 })
 
+describe('GET /recruitment/jobs/:id/sourced-profiles — liste cache', () => {
+  it('refuse un employee (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/job-1/sourced-profiles',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('retourne la liste des profils en cache ordonnés par match_score DESC', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        { id: 'sp-1', job_id: 'job-1', first_name: 'A', last_name: 'X', match_score: 92, transferred_to_application_id: null },
+        { id: 'sp-2', job_id: 'job-1', first_name: 'B', last_name: 'Y', match_score: 85, transferred_to_application_id: 'app-7' },
+      ],
+    })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/job-1/sourced-profiles',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data).toHaveLength(2)
+    expect(body.data[0].first_name).toBe('A')
+    expect(body.data[1].transferred_to_application_id).toBe('app-7')
+  })
+})
+
+describe('POST /recruitment/jobs/:id/sourced-profiles/:profileId/transfer', () => {
+  it('refuse un employee (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/sourced-profiles/sp-1/transfer',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+  })
+})
+
 describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () => {
   it('refuse un employee (403)', async () => {
     const token = tokenFor(app, 'employee')

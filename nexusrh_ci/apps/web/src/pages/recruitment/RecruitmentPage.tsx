@@ -366,7 +366,19 @@ export default function RecruitmentPage() {
       )}
 
       {tab === 'ai-sourcing' && (
-        <SourcingTab jobs={jobs} aiCaps={aiCaps ?? { claude: false, mistral: false }} />
+        <SourcingTab
+          jobs={jobs}
+          aiCaps={aiCaps ?? { claude: false, mistral: false }}
+          onTransferred={() => {
+            queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
+            queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] })
+          }}
+          onGoToKanban={(jobIdToSelect) => {
+            const job = jobs.find(j => j.id === jobIdToSelect) ?? null
+            setSelectedJob(job)
+            setTab('pipeline')
+          }}
+        />
       )}
 
       {showNewJob && (
@@ -418,10 +430,15 @@ function NewJobModal({
   const isInternal = form.visibility !== 'external'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="rounded-xl border border-border bg-card p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-        <h3 className="font-semibold mb-4">Nouvelle offre d'emploi</h3>
-        <div className="space-y-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="rounded-xl border border-border bg-card w-full max-w-2xl max-h-[min(90vh,720px)] flex flex-col shadow-xl my-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
+          <h3 className="font-semibold">Nouvelle offre d'emploi</h3>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-accent" aria-label="Fermer">
+            <XCircle className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Titre du poste *</label>
             <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
@@ -557,7 +574,7 @@ function NewJobModal({
           )}
         </div>
 
-        <div className="mt-5 flex gap-2 justify-end">
+        <div className="sticky bottom-0 z-10 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
           <button onClick={onClose}
             className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
           <button onClick={onSubmit} disabled={!form.title || submitting}
@@ -859,9 +876,57 @@ const AVAILABILITY_COLOR: Record<string, string> = {
   passive:   'bg-gray-100 text-gray-600',
 }
 
-function SourcingTab({ jobs, aiCaps }: {
+// Profil sourcing tel que retourné par l'API /sourced-profiles (snake_case)
+interface SourcedProfileRow {
+  id: string; job_id: string
+  first_name: string; last_name: string
+  current_position: string | null; current_company: string | null
+  location: string | null; experience_years: number | null
+  key_skills: string[] | string | null
+  match_score: number | null
+  availability_estimate: string | null
+  suggested_platform: string | null
+  linkedin_search: string | null
+  approach_strategy: string | null
+  estimated_salary: number | string | null
+  estimated_salary_currency: string | null
+  email: string | null; phone: string | null
+  source_provider: string | null; source_model: string | null
+  countries: string[] | null
+  transferred_to_application_id: string | null
+  transferred_at: string | null
+  created_at: string
+}
+
+function rowToProfile(row: SourcedProfileRow): SourcingProfile {
+  const skills = Array.isArray(row.key_skills)
+    ? row.key_skills
+    : typeof row.key_skills === 'string'
+      ? (() => { try { return JSON.parse(row.key_skills) as string[] } catch { return [] } })()
+      : []
+  return {
+    firstName:               row.first_name,
+    lastName:                row.last_name,
+    currentPosition:         row.current_position ?? '',
+    currentCompany:          row.current_company ?? '',
+    location:                row.location ?? '',
+    experienceYears:         row.experience_years ?? 0,
+    keySkills:               skills,
+    matchScore:              row.match_score ?? 0,
+    availabilityEstimate:    (row.availability_estimate as SourcingProfile['availabilityEstimate']) ?? 'passive',
+    suggestedPlatform:       row.suggested_platform ?? '',
+    linkedinSearch:          row.linkedin_search ?? '',
+    approachStrategy:        row.approach_strategy ?? '',
+    estimatedSalary:         Number(row.estimated_salary ?? 0),
+    estimatedSalaryCurrency: row.estimated_salary_currency ?? 'XOF',
+  }
+}
+
+function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   jobs: Job[]
   aiCaps: { claude: boolean; mistral: boolean }
+  onTransferred: () => void
+  onGoToKanban: (jobId: string) => void
 }) {
   const [jobId, setJobId] = useState('')
   const [countries, setCountries] = useState<string[]>(['CI'])
@@ -875,6 +940,18 @@ function SourcingTab({ jobs, aiCaps }: {
   const [single, setSingle] = useState<SourcingResponse | null>(null)
   const [compare, setCompare] = useState<CompareResponse | null>(null)
   const [contactProfile, setContactProfile] = useState<SourcingProfile | null>(null)
+  const [transferringId, setTransferringId] = useState<string | null>(null)
+  const [transferringAll, setTransferringAll] = useState(false)
+  const [transferMsg, setTransferMsg] = useState<string | null>(null)
+
+  // Profils en cache (seedés ou générés) : chargés automatiquement à la sélection
+  const sourcedQuery = useQuery<{ data: SourcedProfileRow[] }>({
+    queryKey: ['sourced-profiles', jobId],
+    queryFn: () => api.get(`/recruitment/jobs/${jobId}/sourced-profiles`).then(r => r.data),
+    enabled: !!jobId,
+  })
+  const sourcedRows = sourcedQuery.data?.data ?? []
+  const pendingCount = sourcedRows.filter(r => !r.transferred_to_application_id).length
 
   const suggestedPlatforms = useMemo(() => {
     const locals = countries.flatMap(c => PLATFORMS_LOCAL[c] ?? [])
@@ -888,6 +965,41 @@ function SourcingTab({ jobs, aiCaps }: {
   const toggleCountry = (c: string) => setCountries(prev =>
     prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c],
   )
+
+  const transferOne = async (profileRowId: string) => {
+    if (!jobId) return
+    setTransferringId(profileRowId)
+    setTransferMsg(null)
+    try {
+      await api.post(`/recruitment/jobs/${jobId}/sourced-profiles/${profileRowId}/transfer`)
+      await sourcedQuery.refetch()
+      onTransferred()
+      setTransferMsg('Profil transféré dans le pipeline')
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setTransferMsg(msg ?? 'Erreur lors du transfert')
+    } finally {
+      setTransferringId(null)
+    }
+  }
+
+  const transferAll = async () => {
+    if (!jobId || pendingCount === 0) return
+    setTransferringAll(true)
+    setTransferMsg(null)
+    try {
+      const res = await api.post(`/recruitment/jobs/${jobId}/sourced-profiles/transfer-all`)
+      await sourcedQuery.refetch()
+      onTransferred()
+      const n = res.data?.data?.transferred ?? 0
+      setTransferMsg(`${n} profil(s) transféré(s) dans le pipeline`)
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setTransferMsg(msg ?? 'Erreur lors du transfert en masse')
+    } finally {
+      setTransferringAll(false)
+    }
+  }
 
   const run = async () => {
     if (!jobId) { setError('Sélectionnez une offre'); return }
@@ -1044,18 +1156,83 @@ function SourcingTab({ jobs, aiCaps }: {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          {!single && !compare && !loading && (
-            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              <Sparkles className="mx-auto mb-2 h-8 w-8 opacity-40" />
-              Configurez les paramètres à gauche et lancez le sourcing pour voir apparaître les profils générés.
+          {/* Profils en cache (seedés ou générés précédemment) */}
+          {jobId && sourcedRows.length > 0 && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900">
+                    Profils sourcés pour cette offre · {sourcedRows.length}
+                  </p>
+                  <p className="text-xs text-emerald-700">
+                    {pendingCount > 0
+                      ? `${pendingCount} à transférer · ${sourcedRows.length - pendingCount} déjà dans le pipeline`
+                      : `Tous les profils ont déjà été transférés vers le pipeline`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pendingCount > 0 && (
+                    <button
+                      onClick={transferAll}
+                      disabled={transferringAll}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                      {transferringAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                      Tout transférer ({pendingCount})
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onGoToKanban(jobId)}
+                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">
+                    Voir le pipeline <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              {transferMsg && (
+                <p className="mt-2 text-xs text-emerald-800 italic">{transferMsg}</p>
+              )}
             </div>
           )}
 
+          {jobId && sourcedQuery.isLoading && (
+            <div className="rounded-xl border border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+              Chargement des profils sourcés…
+            </div>
+          )}
+
+          {sourcedRows.map(row => (
+            <ProfileCard
+              key={row.id}
+              profile={rowToProfile(row)}
+              onContact={() => setContactProfile(rowToProfile(row))}
+              transferable={{
+                state: row.transferred_to_application_id
+                  ? 'transferred'
+                  : transferringId === row.id ? 'transferring' : 'pending',
+                onTransfer: () => transferOne(row.id),
+              }}
+            />
+          ))}
+
+          {!single && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+              <Sparkles className="mx-auto mb-2 h-8 w-8 opacity-40" />
+              Aucun profil sourcé pour cette offre. Lancez une génération à gauche pour en créer.
+            </div>
+          )}
+
+          {!jobId && (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+              <Sparkles className="mx-auto mb-2 h-8 w-8 opacity-40" />
+              Sélectionnez une offre à gauche pour voir les profils sourcés et lancer une nouvelle génération.
+            </div>
+          )}
+
+          {/* Résultats de la dernière génération (en mémoire, pas encore persistés) */}
           {single?.data && (
             <SourcingStrategyCard strategy={single.data.strategy} meta={single.meta} />
           )}
           {single?.data?.profiles.map((p, i) => (
-            <ProfileCard key={i} profile={p} onContact={() => setContactProfile(p)} />
+            <ProfileCard key={`gen-${i}`} profile={p} onContact={() => setContactProfile(p)} />
           ))}
 
           {compare && (
@@ -1137,15 +1314,28 @@ function SourcingStrategyCard({ strategy, meta }: {
   )
 }
 
-function ProfileCard({ profile, onContact }: {
+function ProfileCard({ profile, onContact, transferable }: {
   profile: SourcingProfile
   onContact: () => void
+  transferable?: {
+    state: 'pending' | 'transferring' | 'transferred'
+    onTransfer: () => void
+  }
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-colors">
+    <div className={`rounded-xl border bg-card p-4 hover:border-primary/40 transition-colors ${
+      transferable?.state === 'transferred' ? 'border-emerald-300 bg-emerald-50/30' : 'border-border'
+    }`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-medium">{profile.firstName} {profile.lastName}</p>
+          <p className="font-medium flex items-center gap-2">
+            {profile.firstName} {profile.lastName}
+            {transferable?.state === 'transferred' && (
+              <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                Dans le pipeline
+              </span>
+            )}
+          </p>
           <p className="text-sm text-muted-foreground">
             {profile.currentPosition}{profile.currentCompany ? ` · ${profile.currentCompany}` : ''}
           </p>
@@ -1180,10 +1370,23 @@ function ProfileCard({ profile, onContact }: {
             ~ {profile.estimatedSalary.toLocaleString('fr-FR')} {profile.estimatedSalaryCurrency}
           </span>
         )}
-        <button onClick={onContact}
-          className="ml-auto flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-primary hover:bg-primary/20">
-          <Mail className="h-3 w-3" /> Préparer un message
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={onContact}
+            className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-primary hover:bg-primary/20">
+            <Mail className="h-3 w-3" /> Message
+          </button>
+          {transferable && transferable.state !== 'transferred' && (
+            <button
+              onClick={transferable.onTransfer}
+              disabled={transferable.state === 'transferring'}
+              className="flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              {transferable.state === 'transferring'
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <ArrowRight className="h-3 w-3" />}
+              Transférer
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

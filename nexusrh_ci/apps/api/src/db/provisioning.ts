@@ -677,6 +677,36 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // Index utiles pour le filtrage interne et la consultation pipeline
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_jobs_visibility ON ${s}.recruitment_jobs(visibility, status)`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_apps_internal_emp ON ${s}.applications(internal_employee_id)`)
+
+  // Sourcing IA — cache des profils générés (visualisation + transfert vers pipeline)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    first_name                  varchar(100) NOT NULL,
+    last_name                   varchar(100) NOT NULL,
+    current_position            varchar(200),
+    current_company             varchar(200),
+    location                    varchar(150),
+    experience_years            int,
+    key_skills                  jsonb DEFAULT '[]',
+    match_score                 int,
+    availability_estimate       varchar(20),
+    suggested_platform          varchar(100),
+    linkedin_search             text,
+    approach_strategy           text,
+    estimated_salary            bigint,
+    estimated_salary_currency   varchar(3) DEFAULT 'XOF',
+    email                       varchar(255),
+    phone                       varchar(30),
+    source_provider             varchar(30),
+    source_model                varchar(50),
+    countries                   varchar(3)[] DEFAULT '{}',
+    transferred_to_application_id uuid,
+    transferred_at              timestamptz,
+    transferred_by              uuid,
+    created_at                  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
 }
 
 /**
@@ -705,6 +735,36 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_model_used varchar(30)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_analyzed_at timestamptz`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_text text`)
+
+  // Sourcing IA — table cache des profils générés (migration lazy idempotente)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    first_name                  varchar(100) NOT NULL,
+    last_name                   varchar(100) NOT NULL,
+    current_position            varchar(200),
+    current_company             varchar(200),
+    location                    varchar(150),
+    experience_years            int,
+    key_skills                  jsonb DEFAULT '[]',
+    match_score                 int,
+    availability_estimate       varchar(20),
+    suggested_platform          varchar(100),
+    linkedin_search             text,
+    approach_strategy           text,
+    estimated_salary            bigint,
+    estimated_salary_currency   varchar(3) DEFAULT 'XOF',
+    email                       varchar(255),
+    phone                       varchar(30),
+    source_provider             varchar(30),
+    source_model                varchar(50),
+    countries                   varchar(3)[] DEFAULT '{}',
+    transferred_to_application_id uuid,
+    transferred_at              timestamptz,
+    transferred_by              uuid,
+    created_at                  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
 }
 
 /**
