@@ -21,6 +21,9 @@ const schema = z.object({
   primaryColor:   z.string().default('#E85D04'),
   secondaryColor: z.string().default('#F48C06'),
   seedDemoData:   z.boolean().default(false),
+  // Option filiales multi-pays (opt-in, désactivée par défaut)
+  hasSubsidiaries: z.boolean().default(false),
+  defaultCountryCode: z.string().length(3).default('CIV'),
 })
 type FormData = z.infer<typeof schema>
 
@@ -46,16 +49,28 @@ export default function PlatformTenantNew() {
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { planType: 'trial', sector: 'services', city: 'Abidjan', primaryColor: '#E85D04', secondaryColor: '#F48C06', seedDemoData: false },
+    defaultValues: {
+      planType: 'trial', sector: 'services', city: 'Abidjan',
+      primaryColor: '#E85D04', secondaryColor: '#F48C06',
+      seedDemoData: false,
+      hasSubsidiaries: false, defaultCountryCode: 'CIV',
+    },
   })
 
   const selectedSector = watch('sector')
+  const hasSubsidiaries = watch('hasSubsidiaries')
   const atRate = SECTORS.find(s => s.value === selectedSector)?.atRate ?? '2%'
 
   const onSubmit = async (data: FormData) => {
     setError(null)
     try {
-      const res = await api.post('/platform/tenants', data)
+      // Si hasSubsidiaries=true → payrollMode='multi_country' (côté API c'est garanti
+      // aussi, mais l'expliciter ici facilite le débogage réseau)
+      const payload = {
+        ...data,
+        payrollMode: data.hasSubsidiaries ? 'multi_country' : 'single_country',
+      }
+      const res = await api.post('/platform/tenants', payload)
       setResult({ tempPassword: res.data.tempPassword, adminEmail: res.data.adminEmail, seeded: data.seedDemoData })
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
@@ -221,6 +236,52 @@ export default function PlatformTenantNew() {
               </p>
             </div>
           </label>
+        </section>
+
+        {/* Multi-pays / filiales — opt-in */}
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="font-semibold mb-1">5. Structure de l'entreprise</h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Par défaut : entreprise mono-pays Côte d'Ivoire. Activer cette option si
+            l'entreprise possède des filiales dans plusieurs pays UEMOA / hors UEMOA
+            et souhaite une paie centralisée avec déclinaison locale par filiale.
+          </p>
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              {...register('hasSubsidiaries')}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium group-hover:text-primary transition-colors">
+                Entreprise multi-pays avec filiales
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Active la gestion des packs législatifs par pays (CI, BF, SN, ML, TG, BJ, NE…),
+                le workflow paie centralisé draft → RAF site → central, et l'onglet
+                « Filiales & législations » dans les paramètres du tenant.
+              </p>
+            </div>
+          </label>
+          {hasSubsidiaries && (
+            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <label className="text-xs font-medium text-muted-foreground">Pays principal (siège)</label>
+              <select {...register('defaultCountryCode')} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-background">
+                <option value="CIV">Côte d'Ivoire (CIV)</option>
+                <option value="BFA">Burkina Faso (BFA)</option>
+                <option value="SEN">Sénégal (SEN)</option>
+                <option value="MLI">Mali (MLI)</option>
+                <option value="TGO">Togo (TGO)</option>
+                <option value="BEN">Bénin (BEN)</option>
+                <option value="NER">Niger (NER)</option>
+                <option value="GNB">Guinée-Bissau (GNB)</option>
+              </select>
+              <p className="mt-2 text-[11px] text-primary/80">
+                Les autres filiales pourront être ajoutées après création depuis
+                « Paramètres → Filiales & législations ».
+              </p>
+            </div>
+          )}
         </section>
 
         {error && (

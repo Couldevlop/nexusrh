@@ -11,6 +11,9 @@ interface Tenant {
   max_users: number; max_employees: number
   primary_color: string; secondary_color: string
   created_at: string; trial_ends_at: string | null
+  has_subsidiaries?: boolean
+  payroll_mode?: 'single_country' | 'multi_country'
+  default_country_code?: string
 }
 
 export default function PlatformTenantDetail() {
@@ -62,13 +65,20 @@ export default function PlatformTenantDetail() {
             <p className="text-sm text-muted-foreground">{tenant.slug} · {tenant.schema_name}</p>
           </div>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-          tenant.status === 'active' ? 'bg-green-100 text-green-700' :
-          tenant.status === 'trial'  ? 'bg-yellow-100 text-yellow-700' :
-          'bg-red-100 text-red-700'
-        }`}>
-          {tenant.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {tenant.has_subsidiaries && (
+            <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+              Multi-pays · {tenant.default_country_code ?? 'CIV'}
+            </span>
+          )}
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+            tenant.status === 'active' ? 'bg-green-100 text-green-700' :
+            tenant.status === 'trial'  ? 'bg-yellow-100 text-yellow-700' :
+            'bg-red-100 text-red-700'
+          }`}>
+            {tenant.status}
+          </span>
+        </div>
       </div>
 
       {/* Infos */}
@@ -82,12 +92,38 @@ export default function PlatformTenantDetail() {
           ['N° DGI', tenant.dgi_number ?? '—'],
           ['Max utilisateurs', String(tenant.max_users)],
           ['Max employés', String(tenant.max_employees)],
+          ['Mode paie', tenant.payroll_mode === 'multi_country' ? 'Multi-pays (centralisée)' : 'Mono-pays (CI)'],
+          ['Pays principal', tenant.default_country_code ?? 'CIV'],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border border-border bg-card p-3">
             <p className="text-xs text-muted-foreground">{label}</p>
             <p className="text-sm font-medium mt-0.5">{value}</p>
           </div>
         ))}
+      </div>
+
+      {/* Toggle filiales (réactif) */}
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h2 className="font-semibold mb-3">Structure multi-pays</h2>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={tenant.has_subsidiaries ?? false}
+            onChange={(e) => api.patch(`/platform/tenants/${id}`, {
+              has_subsidiaries: e.target.checked,
+              payroll_mode: e.target.checked ? 'multi_country' : 'single_country',
+            }).then(() => queryClient.invalidateQueries({ queryKey: ['tenant', id] }))}
+            className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium">Activer la gestion multi-pays / filiales</div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {tenant.has_subsidiaries
+                ? 'Le tenant utilise des packs législatifs par pays et le workflow paie centralisé draft → RAF site → central.'
+                : 'Tenant mono-pays Côte d\'Ivoire : moteur paie CI 2024 standard, pas d\'onglet « Filiales & législations ».'}
+            </p>
+          </div>
+        </label>
       </div>
 
       {/* Actions */}

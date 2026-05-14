@@ -72,6 +72,7 @@ const MesNotesDesFrais = lazy(() => import('@/pages/mon-espace/MesNotesDesFrais'
 const MaFormation      = lazy(() => import('@/pages/mon-espace/MaFormation'))
 const MaCarriere       = lazy(() => import('@/pages/mon-espace/MaCarriere'))
 const MonProfil        = lazy(() => import('@/pages/mon-espace/MonProfil'))
+const MesOffresInternes = lazy(() => import('@/pages/mon-espace/MesOffresInternes'))
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -231,6 +232,7 @@ export default function App() {
             <Route path="frais"        element={<MesNotesDesFrais />} />
             <Route path="formation"    element={<MaFormation />} />
             <Route path="carriere"     element={<MaCarriere />} />
+            <Route path="offres"       element={<MesOffresInternes />} />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 

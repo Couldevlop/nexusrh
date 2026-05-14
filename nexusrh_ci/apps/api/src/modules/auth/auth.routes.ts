@@ -11,6 +11,9 @@ interface TenantCandidate {
     id: string; schema_name: string; name: string; slug: string
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
+    has_subsidiaries: boolean
+    payroll_mode: string
+    default_country_code: string
   }
   user: {
     id: string; email: string; password_hash: string; role: string
@@ -28,7 +31,9 @@ async function findTenantAndUser(
     id: string; schema_name: string; name: string; slug: string
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
-  }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city
+    has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
+  }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city,
+             has_subsidiaries, payroll_mode, default_country_code
       FROM platform.tenants WHERE status IN ('active', 'trial')`)
 
   const candidates: TenantCandidate[] = []
@@ -189,6 +194,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: tenant.secondary_color,
           logoUrl:        tenant.logo_url,
           city:           tenant.city,
+          hasSubsidiaries:    tenant.has_subsidiaries,
+          payrollMode:        tenant.payroll_mode,
+          defaultCountryCode: tenant.default_country_code,
         },
         redirectTo,
       })
@@ -243,8 +251,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string; name: string; slug: string
           primary_color: string; secondary_color: string
           logo_url: string | null; city: string | null
+          has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
         }>(
-          `SELECT id, name, slug, primary_color, secondary_color, logo_url, city
+          `SELECT id, name, slug, primary_color, secondary_color, logo_url, city,
+                  has_subsidiaries, payroll_mode, default_country_code
            FROM platform.tenants WHERE id = $1 LIMIT 1`,
           [user.tenantId]
         )
@@ -258,6 +268,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             secondaryColor: t.secondary_color,
             logoUrl:        t.logo_url,
             city:           t.city,
+            hasSubsidiaries:    t.has_subsidiaries,
+            payrollMode:        t.payroll_mode,
+            defaultCountryCode: t.default_country_code,
           }
         }
       }

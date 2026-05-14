@@ -9,6 +9,10 @@
  */
 import { esClient, ES_INDEX, ensureIndex } from '../../services/elasticsearch.js'
 import { ALL_ARTICLES } from '../../data/code-travail-ci.js'
+import { CODE_TRAVAIL_BEN, CONVENTIONS_COLLECTIVES_BEN } from '../../data/code-travail-ben.js'
+import { CODE_TRAVAIL_TGO, CONVENTIONS_COLLECTIVES_TGO } from '../../data/code-travail-tgo.js'
+import { CODE_TRAVAIL_TCD } from '../../data/code-travail-tcd.js'
+import { CODE_TRAVAIL_NGA } from '../../data/code-travail-nga.js'
 import {
   upsertArticles,
   getAllActiveArticles,
@@ -20,9 +24,28 @@ import {
 } from './legal-articles.repository.js'
 import type { ArticleInput } from './legal-articles.repository.js'
 
+/**
+ * Corpus juridique multi-pays. CIV par défaut (rétro-compat), enrichi avec
+ * les pays UEMOA + Tchad + Nigeria. La source de vérité reste PostgreSQL ;
+ * ces fichiers sont uniquement utilisés au seed initial.
+ */
+const ALL_COUNTRIES_ARTICLES: ArticleInput[] = [
+  // CI — articles existants : on injecte country_code='CIV' explicitement
+  ...ALL_ARTICLES.map(a => ({ ...a, country_code: a.country_code ?? 'CIV' }) as ArticleInput),
+  ...CODE_TRAVAIL_BEN as ArticleInput[],
+  ...CONVENTIONS_COLLECTIVES_BEN as ArticleInput[],
+  ...CODE_TRAVAIL_TGO as ArticleInput[],
+  ...CONVENTIONS_COLLECTIVES_TGO as ArticleInput[],
+  ...CODE_TRAVAIL_TCD as ArticleInput[],
+  ...CODE_TRAVAIL_NGA as ArticleInput[],
+]
+
 export interface SearchParams {
   q: string
-  source?: 'code_travail_ci' | 'convention_collective'
+  /** Source du texte (élargi multi-pays) : code_travail_ci, code_travail_ben, … */
+  source?: string
+  /** Filtre par pays ISO-3 (CIV, BEN, TGO, …). NULL = tous. */
+  countryCode?: string
   convention?: string
   payrollCode?: string
   livre?: string
@@ -32,6 +55,7 @@ export interface SearchParams {
 
 export interface ArticleHit {
   article_id: string; article_numero: string; source: string
+  country_code?: string
   convention_slug?: string; livre?: string; titre?: string
   chapitre?: string; titre_article: string; texte: string
   payroll_codes?: string[]; score: number
@@ -40,12 +64,13 @@ export interface ArticleHit {
 
 // OWASP A03 : Query DSL typé, jamais de string concat
 export async function searchReferentiel(params: SearchParams): Promise<{ total: number; hits: ArticleHit[] }> {
-  const { q, source, convention, payrollCode, livre, from = 0, size = 10 } = params
+  const { q, source, countryCode, convention, payrollCode, livre, from = 0, size = 10 } = params
   const isBrowse = !q || q === '*'
 
   try {
     const filterArr: object[] = [{ term: { access_level: 'public' } }]
     if (source)      filterArr.push({ term: { source } })
+    if (countryCode) filterArr.push({ term: { country_code: countryCode } })
     if (convention)  filterArr.push({ term: { convention_slug: convention } })
     if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
     if (livre)       filterArr.push({ term: { livre } })
@@ -76,13 +101,13 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
 
     // Si ES répond mais index vide, tenter PG
     if (hits.length === 0) {
-      const pg = await searchArticlesFromDb({ q, source, livre, from, size })
+      const pg = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
       if (pg.total > 0) return { total: pg.total, hits: pg.hits.map(a => ({ ...a, score: 1 }) as ArticleHit) }
     }
     return { total, hits }
   } catch {
     // Fallback PostgreSQL si Elasticsearch indisponible
-    const result = await searchArticlesFromDb({ q, source, livre, from, size })
+    const result = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
     return {
       total: result.total,
       hits: result.hits.map(a => ({ ...a, score: 1 }) as ArticleHit),
@@ -161,7 +186,8 @@ export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit
  */
 export async function seedReferentiel(): Promise<{ persisted: number; indexed: number }> {
   // Étape 1 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
-  const persisted = await upsertArticles(ALL_ARTICLES as ArticleInput[])
+  // Inclut désormais CIV + BEN + TGO + TCD + NGA (multi-pays)
+  const persisted = await upsertArticles(ALL_COUNTRIES_ARTICLES)
 
   // Étape 2 — ES si disponible (non bloquant)
   let indexed = 0
@@ -190,6 +216,7 @@ export async function reindexFromDb(): Promise<number> {
     {
       article_id:      a.article_id,
       article_numero:  a.article_numero,
+      country_code:    a.country_code ?? 'CIV',
       source:          a.source,
       convention_slug: a.convention_slug,
       livre:           a.livre,

@@ -37,6 +37,7 @@ export async function ensureIndex(): Promise<void> {
       properties: {
         access_level:    { type: 'keyword' },
         tenant_id:       { type: 'keyword' },
+        country_code:    { type: 'keyword' },
         source:          { type: 'keyword' },
         convention_slug: { type: 'keyword' },
         livre:           { type: 'keyword' },

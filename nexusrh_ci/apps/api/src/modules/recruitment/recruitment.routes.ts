@@ -1,17 +1,60 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { config } from '../../config.js'
+import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
+import {
+  analyzeCV, isModelAvailable,
+  type AiModelChoice, type JobContext,
+} from '../../services/recruitment-ai.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
+type JobBody = {
+  title?: string
+  department_id?: string | null
+  location?: string
+  contract_type?: string
+  salary_min?: number | string | null
+  salary_max?: number | string | null
+  description?: string | null
+  requirements?: string | null
+  status?: string
+  visibility?: 'external' | 'internal' | 'both'
+  target_departments?: string[]
+  target_job_levels?: string[]
+  target_min_seniority_months?: number | null
+  target_legal_entity_id?: string | null
+  hiring_manager_id?: string | null
+}
+
+const STAGES = ['new', 'screening', 'interview', 'test', 'offer', 'hired', 'rejected']
+const VISIBILITIES = ['external', 'internal', 'both']
+
+function slugifyTitle(title: string): string {
+  return title.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    .slice(0, 80)
+}
+
 const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
-  // GET /recruitment/jobs
+  // ── Capabilités IA (pour le sélecteur UI) ──────────────────────────────────
+  fastify.get('/ai/capabilities', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (_req, reply) => reply.send({
+      claude:  isModelAvailable('claude'),
+      mistral: isModelAvailable('mistral'),
+    }),
+  })
+
+  // ── OFFRES ─────────────────────────────────────────────────────────────────
   fastify.get('/jobs', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','readonly')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { status, limit = '50', offset = '0' } = request.query as Record<string, string>
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { status, visibility, limit = '50', offset = '0' } = request.query as Record<string, string>
       let sql = `SELECT rj.*, d.name AS department_name,
                    COUNT(a.id)::int AS applications_count
                  FROM "${schema}".recruitment_jobs rj
@@ -21,6 +64,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const params: unknown[] = []
       let idx = 1
       if (status) { sql += ` AND rj.status = $${idx++}`; params.push(status) }
+      if (visibility) { sql += ` AND rj.visibility = $${idx++}`; params.push(visibility) }
       sql += ` GROUP BY rj.id, d.name ORDER BY rj.created_at DESC`
       sql += ` LIMIT $${idx++} OFFSET $${idx++}`
       params.push(parseInt(limit), parseInt(offset))
@@ -34,26 +78,40 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // POST /recruitment/jobs
   fastify.post('/jobs', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as Record<string, unknown>
+      await ensureRecruitmentSchemaMigrated(schema)
+      const body = request.body as JobBody
+      if (!body.title) return reply.status(400).send({ error: 'Titre requis' })
+      const visibility = VISIBILITIES.includes(body.visibility ?? '')
+        ? body.visibility! : 'external'
+      const status = body.status || 'open'
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".recruitment_jobs
             (title, department_id, location, contract_type, salary_min, salary_max,
-             description, requirements, status, published_at, created_by)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+             description, requirements, status, published_at, created_by,
+             visibility, target_departments, target_job_levels,
+             target_min_seniority_months, target_legal_entity_id, hiring_manager_id,
+             public_slug)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          RETURNING *
         `, [
           body.title, body.department_id || null,
           body.location || 'Abidjan', body.contract_type || 'cdi',
           body.salary_min || null, body.salary_max || null,
           body.description || null, body.requirements || null,
-          body.status || 'open',
-          body.status === 'open' ? new Date() : null,
+          status, status === 'open' ? new Date() : null,
           request.user.sub,
+          visibility,
+          body.target_departments && body.target_departments.length ? body.target_departments : [],
+          body.target_job_levels && body.target_job_levels.length ? body.target_job_levels : [],
+          body.target_min_seniority_months ?? null,
+          body.target_legal_entity_id || null,
+          body.hiring_manager_id || null,
+          slugifyTitle(body.title),
         ])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
@@ -63,11 +121,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // GET /recruitment/jobs/:id
   fastify.get('/jobs/:id', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','readonly')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
       try {
         const jobRes = await pool.query(`
@@ -88,19 +146,34 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // PATCH /recruitment/jobs/:id
   fastify.patch('/jobs/:id', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
-      const body = request.body as Record<string, unknown>
-      const fields = ['title','department_id','location','contract_type',
-        'salary_min','salary_max','description','requirements','status']
+      const body = request.body as JobBody
+      const scalarFields: Array<keyof JobBody> = [
+        'title', 'department_id', 'location', 'contract_type',
+        'salary_min', 'salary_max', 'description', 'requirements', 'status',
+        'target_min_seniority_months', 'target_legal_entity_id', 'hiring_manager_id',
+      ]
       const updates: string[] = []
       const values: unknown[] = []
-      for (const f of fields) {
-        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(body[f]) }
+      for (const f of scalarFields) {
+        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(body[f] ?? null) }
+      }
+      if ('visibility' in body && VISIBILITIES.includes(body.visibility ?? '')) {
+        updates.push(`visibility = $${values.length + 1}`)
+        values.push(body.visibility)
+      }
+      if ('target_departments' in body) {
+        updates.push(`target_departments = $${values.length + 1}`)
+        values.push(body.target_departments ?? [])
+      }
+      if ('target_job_levels' in body) {
+        updates.push(`target_job_levels = $${values.length + 1}`)
+        values.push(body.target_job_levels ?? [])
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       updates.push(`updated_at = now()`)
@@ -108,7 +181,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(
           `UPDATE "${schema}".recruitment_jobs SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
-          values
+          values,
         )
         return reply.send({ data: res.rows[0] })
       } catch (err) {
@@ -118,9 +191,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // DELETE /recruitment/jobs/:id
   fastify.delete('/jobs/:id', {
-    preHandler: [fastify.authorize('admin','hr_manager')],
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
@@ -134,11 +206,125 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // GET /recruitment/applications
-  fastify.get('/applications', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','readonly')],
+  // ── OFFRES INTERNES (côté employé) ─────────────────────────────────────────
+  // Filtre les offres visibility ∈ {internal, both} dont les critères matchent
+  // le profil de l'employé connecté.
+  fastify.get('/internal-jobs', {
+    preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      try {
+        // Récupère l'employé lié au user connecté
+        const empRes = await pool.query<{
+          id: string
+          department_id: string | null
+          job_level: string | null
+          hire_date: string | null
+          legal_entity_id: string | null
+        }>(
+          `SELECT id, department_id, job_level, hire_date, legal_entity_id
+             FROM "${schema}".employees
+             WHERE user_id = $1 OR email = $2
+             ORDER BY user_id IS NOT NULL DESC
+             LIMIT 1`,
+          [request.user.sub, request.user.email],
+        )
+        const emp = empRes.rows[0]
+        if (!emp) return reply.send({ data: [] })
+
+        const seniorityMonths = emp.hire_date
+          ? Math.max(0, Math.floor(
+              (Date.now() - new Date(emp.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375),
+            ))
+          : 0
+
+        const res = await pool.query(`
+          SELECT rj.*, d.name AS department_name,
+                 COUNT(a.id) FILTER (WHERE a.internal_employee_id = $1)::int AS already_applied
+          FROM "${schema}".recruitment_jobs rj
+          LEFT JOIN "${schema}".departments d ON d.id = rj.department_id
+          LEFT JOIN "${schema}".applications a ON a.job_id = rj.id
+          WHERE rj.visibility IN ('internal','both')
+            AND rj.status = 'open'
+            AND (COALESCE(cardinality(rj.target_departments), 0) = 0
+                 OR ($2::uuid IS NOT NULL AND $2::uuid = ANY(rj.target_departments)))
+            AND (COALESCE(cardinality(rj.target_job_levels), 0) = 0
+                 OR ($3::varchar IS NOT NULL AND $3::varchar = ANY(rj.target_job_levels)))
+            AND (rj.target_min_seniority_months IS NULL
+                 OR rj.target_min_seniority_months <= $4::int)
+            AND (rj.target_legal_entity_id IS NULL
+                 OR rj.target_legal_entity_id = $5::uuid)
+          GROUP BY rj.id, d.name
+          ORDER BY rj.created_at DESC
+        `, [emp.id, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id])
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // POST /recruitment/internal-jobs/:id/apply — postulation interne par l'employé
+  fastify.post('/internal-jobs/:id/apply', {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const body = request.body as { cover_letter?: string; phone?: string }
+      try {
+        const empRes = await pool.query<{
+          id: string; first_name: string; last_name: string
+          email: string | null; phone: string | null
+        }>(
+          `SELECT id, first_name, last_name, email, phone
+             FROM "${schema}".employees
+             WHERE user_id = $1 OR email = $2
+             LIMIT 1`,
+          [request.user.sub, request.user.email],
+        )
+        const emp = empRes.rows[0]
+        if (!emp) return reply.status(403).send({ error: 'Profil employé introuvable' })
+
+        // Empêcher les doublons
+        const dup = await pool.query(
+          `SELECT id FROM "${schema}".applications
+            WHERE job_id = $1 AND internal_employee_id = $2`,
+          [id, emp.id],
+        )
+        if (dup.rows[0]) {
+          return reply.status(409).send({ error: 'Vous avez déjà postulé à cette offre' })
+        }
+
+        const res = await pool.query(`
+          INSERT INTO "${schema}".applications
+            (job_id, first_name, last_name, email, phone, cover_letter,
+             stage, source, internal_employee_id)
+          VALUES ($1,$2,$3,$4,$5,$6,'new','internal',$7)
+          RETURNING *
+        `, [
+          id, emp.first_name, emp.last_name,
+          emp.email ?? request.user.email,
+          body.phone ?? emp.phone,
+          body.cover_letter ?? null,
+          emp.id,
+        ])
+        return reply.status(201).send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── CANDIDATURES ───────────────────────────────────────────────────────────
+  fastify.get('/applications', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
       const { job_id, stage } = request.query as Record<string, string>
       let sql = `SELECT a.*, rj.title AS job_title
                  FROM "${schema}".applications a
@@ -159,19 +345,25 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // POST /recruitment/applications
   fastify.post('/applications', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
       const body = request.body as Record<string, unknown>
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".applications
-            (job_id, first_name, last_name, email, phone, cover_letter, stage)
-          VALUES ($1,$2,$3,$4,$5,$6,'new') RETURNING *
-        `, [body.job_id, body.first_name, body.last_name, body.email,
-            body.phone || null, body.cover_letter || null])
+            (job_id, first_name, last_name, email, phone, cover_letter,
+             cv_text, stage, source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,'new',$8)
+          RETURNING *
+        `, [
+          body.job_id, body.first_name, body.last_name, body.email,
+          body.phone || null, body.cover_letter || null,
+          body.cv_text || null,
+          body.source || 'manual',
+        ])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -180,14 +372,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // PATCH /recruitment/applications/:id/stage
   fastify.patch('/applications/:id/stage', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
       const { stage, notes } = request.body as { stage: string; notes?: string }
-      const STAGES = ['new','screening','interview','test','offer','hired','rejected']
       if (!STAGES.includes(stage)) return reply.status(400).send({ error: 'Stage invalide' })
       try {
         const res = await pool.query(`
@@ -196,6 +387,210 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE id = $3 RETURNING *
         `, [stage, notes || null, id])
         return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── UPLOAD CV (multipart) ──────────────────────────────────────────────────
+  // Stocke le texte brut du CV dans la candidature. Pour l'analyse IA, le texte
+  // est le minimum nécessaire — un stockage binaire MinIO peut être ajouté ensuite.
+  fastify.post('/applications/:id/upload-cv', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      try {
+        const file = await request.file()
+        if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
+        const buf = await file.toBuffer()
+        // Extraction texte minimaliste : on lit en UTF-8. Les PDF binaires
+        // donneront un texte partiel ; pour aller plus loin, ajouter pdf-parse.
+        const cvText = buf.toString('utf-8').replace(/ /g, '').slice(0, 50000)
+        const filename = file.filename || 'cv.txt'
+        const cvUrl = `local://${filename}`
+        const res = await pool.query(`
+          UPDATE "${schema}".applications
+          SET cv_url = $1, cv_text = $2, updated_at = now()
+          WHERE id = $3 RETURNING *
+        `, [cvUrl, cvText, id])
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Candidature introuvable' })
+        return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur upload CV' })
+      }
+    },
+  })
+
+  // ── ANALYSE IA d'un CV (choix du modèle dans la requête) ───────────────────
+  // Rate limit dédié : l'appel IA est coûteux (~$0.01-0.05 par analyse).
+  // 10 req/min/IP empêche les abus de quota et la facture surprise.
+  fastify.post('/applications/:id/analyze-cv', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const { model: rawModel, cv_text: overrideCv } =
+        (request.body ?? {}) as { model?: string; cv_text?: string }
+      const model: AiModelChoice = rawModel === 'mistral' ? 'mistral' : 'claude'
+
+      try {
+        const appRes = await pool.query<{
+          id: string; job_id: string; cv_text: string | null; cover_letter: string | null
+        }>(
+          `SELECT id, job_id, cv_text, cover_letter
+             FROM "${schema}".applications WHERE id = $1`,
+          [id],
+        )
+        const app = appRes.rows[0]
+        if (!app) return reply.status(404).send({ error: 'Candidature introuvable' })
+
+        const cvText = overrideCv ?? app.cv_text ?? app.cover_letter ?? ''
+        if (!cvText || cvText.trim().length < 50) {
+          return reply.status(400).send({
+            error: 'CV trop court ou manquant. Téléversez un CV avant l\'analyse.',
+          })
+        }
+
+        const jobRes = await pool.query<JobContext>(
+          `SELECT title, description, requirements, contract_type, location,
+                  salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
+                  contract_type AS "contractType"
+             FROM "${schema}".recruitment_jobs WHERE id = $1`,
+          [app.job_id],
+        )
+        const job = jobRes.rows[0]
+        if (!job) return reply.status(404).send({ error: 'Offre liée introuvable' })
+
+        const result = await analyzeCV(model, job, cvText)
+
+        const upd = await pool.query(`
+          UPDATE "${schema}".applications
+          SET ai_score = $1,
+              ai_summary = $2,
+              ai_recommendation = $3,
+              ai_match_percentage = $4,
+              ai_strengths = $5,
+              ai_gaps = $6,
+              ai_red_flags = $7,
+              ai_interview_questions = $8,
+              ai_model_used = $9,
+              ai_analyzed_at = now(),
+              updated_at = now()
+          WHERE id = $10 RETURNING *
+        `, [
+          result.score, result.summary, result.recommendation,
+          result.matchPercentage,
+          JSON.stringify(result.strengths),
+          JSON.stringify(result.gaps),
+          JSON.stringify(result.redFlags),
+          JSON.stringify(result.interviewQuestions),
+          result.modelUsed,
+          id,
+        ])
+
+        // OWASP A09 : trace de l'usage IA (qui, sur qui, avec quel modèle,
+        // quel score). Non-bloquant si audit_log absent.
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.analyze_cv', 'application', $2, $3, $4)`,
+          [request.user.sub, id,
+           JSON.stringify({ model: result.modelUsed, score: result.score, recommendation: result.recommendation }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        return reply.send({ data: upd.rows[0], analysis: result })
+      } catch (err) {
+        // OWASP A10 : ne pas exposer les détails internes au client.
+        // On loge le message complet côté serveur, on retourne un message
+        // générique safe — sauf cas explicitement utiles à l'utilisateur
+        // (clé manquante / CV trop court / modèle non configuré).
+        const raw = err instanceof Error ? err.message : ''
+        fastify.log.error({ err }, 'analyze-cv failed')
+        const isUserActionable = /CV trop court|configurée|inconnu|stub/i.test(raw)
+        return reply.status(500).send({
+          error: isUserActionable ? raw : 'Erreur lors de l\'analyse IA. Réessayez plus tard.',
+        })
+      }
+    },
+  })
+
+  // ── PAGE CARRIÈRES PUBLIQUE (sans auth) ────────────────────────────────────
+  // Liste des offres externes/both d'un tenant. Le tenant est résolu par slug.
+  fastify.get('/public/:tenantSlug/jobs', {
+    handler: async (request, reply) => {
+      const { tenantSlug } = request.params as { tenantSlug: string }
+      try {
+        const tenant = await pool.query<{ schema_name: string; name: string }>(
+          `SELECT schema_name, name FROM platform.tenants
+            WHERE slug = $1 AND status IN ('active','trial') LIMIT 1`,
+          [tenantSlug],
+        )
+        if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
+        const schema = tenant.rows[0].schema_name
+        await ensureRecruitmentSchemaMigrated(schema)
+        const jobs = await pool.query(`
+          SELECT id, title, location, contract_type, salary_min, salary_max,
+                 currency, description, requirements, public_slug, created_at, published_at
+            FROM "${schema}".recruitment_jobs
+            WHERE status = 'open' AND visibility IN ('external','both')
+            ORDER BY published_at DESC NULLS LAST, created_at DESC
+        `)
+        return reply.send({
+          tenant: { name: tenant.rows[0].name, slug: tenantSlug },
+          data:   jobs.rows,
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  fastify.post('/public/:tenantSlug/jobs/:jobId/apply', {
+    handler: async (request, reply) => {
+      const { tenantSlug, jobId } = request.params as { tenantSlug: string; jobId: string }
+      const body = request.body as {
+        first_name?: string; last_name?: string; email?: string
+        phone?: string; cover_letter?: string; cv_text?: string
+      }
+      if (!body.first_name || !body.last_name || !body.email) {
+        return reply.status(400).send({ error: 'Prénom, nom et email obligatoires' })
+      }
+      try {
+        const tenant = await pool.query<{ schema_name: string }>(
+          `SELECT schema_name FROM platform.tenants
+            WHERE slug = $1 AND status IN ('active','trial') LIMIT 1`,
+          [tenantSlug],
+        )
+        if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
+        const schema = tenant.rows[0].schema_name
+        await ensureRecruitmentSchemaMigrated(schema)
+        // Vérifie que l'offre est bien publique
+        const job = await pool.query(
+          `SELECT id FROM "${schema}".recruitment_jobs
+            WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')`,
+          [jobId],
+        )
+        if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+
+        const res = await pool.query(`
+          INSERT INTO "${schema}".applications
+            (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
+             stage, source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,'new','careers_page')
+          RETURNING id
+        `, [
+          jobId, body.first_name, body.last_name, body.email,
+          body.phone ?? null, body.cover_letter ?? null, body.cv_text ?? null,
+        ])
+        return reply.status(201).send({ data: { id: res.rows[0].id } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

@@ -8,6 +8,10 @@ export interface TenantConfig {
   name: string
   slug: string
   city?: string
+  // Option multi-pays (Palier 1) — désactivée par défaut
+  hasSubsidiaries?: boolean
+  payrollMode?: 'single_country' | 'multi_country'
+  defaultCountryCode?: string
 }
 
 export interface AuthUser {
