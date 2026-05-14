@@ -4,7 +4,8 @@ import { config } from '../../config.js'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import {
   analyzeCV, isModelAvailable,
-  type AiModelChoice, type JobContext,
+  sourceProfiles, sourceProfilesCompare,
+  type AiModelChoice, type JobContext, type SourcingContext,
 } from '../../services/recruitment-ai.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
@@ -594,6 +595,193 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── SOURCING IA — génération de profils synthétiques pour une offre ────────
+  // Génère N profils candidats réalistes + stratégie de sourcing pour le poste.
+  // Calibré multi-pays africains (filiales / groupes panafricains). Rate-limité
+  // car l'appel IA est coûteux (~$0.05–0.20 selon le nombre de profils).
+  fastify.post('/jobs/:id/source', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: { rateLimit: { max: 6, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const body = (request.body ?? {}) as {
+        model?:        string
+        platforms?:    string[]
+        countries?:    string[]
+        max_profiles?: number
+      }
+      const model: AiModelChoice = body.model === 'mistral' ? 'mistral' : 'claude'
+      const platforms = Array.isArray(body.platforms) && body.platforms.length
+        ? body.platforms
+        : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
+      const countries = Array.isArray(body.countries) && body.countries.length
+        ? body.countries
+        : ['CI']
+      const maxProfiles = Math.max(1, Math.min(Number(body.max_profiles) || 10, 20))
+
+      try {
+        const jobRes = await pool.query<SourcingContext>(
+          `SELECT title, description, requirements, contract_type AS "contractType",
+                  location,
+                  salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
+                  currency
+             FROM "${schema}".recruitment_jobs WHERE id = $1`,
+          [id],
+        )
+        const job = jobRes.rows[0]
+        if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+        const result = await sourceProfiles(model, job, platforms, maxProfiles, countries)
+
+        // OWASP A09 : trace de l'usage IA (qui, sur quelle offre, modèle, profils)
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.source_profiles', 'recruitment_job', $2, $3, $4)`,
+          [request.user.sub, id,
+           JSON.stringify({
+             model:    result.model,
+             provider: result.provider,
+             profiles: result.profilesGenerated,
+             cost:     result.estimatedCostEur,
+             countries,
+             platforms,
+           }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        return reply.send({
+          data: result.data,
+          meta: {
+            provider:         result.provider,
+            model:            result.model,
+            latencyMs:        result.latencyMs,
+            inputTokens:      result.inputTokens,
+            outputTokens:     result.outputTokens,
+            estimatedCostEur: result.estimatedCostEur,
+            richnessScore:    result.richnessScore,
+            jsonValid:        result.jsonValid,
+          },
+          jobId: id,
+        })
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : ''
+        fastify.log.error({ err }, 'recruitment.source failed')
+        const isUserActionable = /configurée|configuré|introuvable/i.test(raw)
+        return reply.status(500).send({
+          error: isUserActionable ? raw : 'Erreur lors du sourcing IA. Réessayez plus tard.',
+        })
+      }
+    },
+  })
+
+  // ── SOURCING IA — comparaison Claude vs Mistral (appels parallèles) ─────────
+  // Lance les deux modèles en parallèle et retourne un rapport comparatif avec
+  // métriques (latence, tokens, coût, richesse). Limité à 10 profils max.
+  fastify.post('/jobs/:id/source/compare', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: { rateLimit: { max: 3, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const body = (request.body ?? {}) as {
+        platforms?:    string[]
+        countries?:    string[]
+        max_profiles?: number
+      }
+      const platforms = Array.isArray(body.platforms) && body.platforms.length
+        ? body.platforms
+        : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
+      const countries = Array.isArray(body.countries) && body.countries.length
+        ? body.countries
+        : ['CI']
+      const maxProfiles = Math.max(1, Math.min(Number(body.max_profiles) || 5, 10))
+
+      try {
+        if (!isModelAvailable('mistral')) {
+          return reply.status(422).send({
+            error: 'MISTRAL_API_KEY non configurée — comparaison impossible',
+            hint:  'Ajoutez MISTRAL_API_KEY=... dans votre .env pour activer la comparaison.',
+          })
+        }
+
+        const jobRes = await pool.query<SourcingContext>(
+          `SELECT title, description, requirements, contract_type AS "contractType",
+                  location,
+                  salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
+                  currency
+             FROM "${schema}".recruitment_jobs WHERE id = $1`,
+          [id],
+        )
+        const job = jobRes.rows[0]
+        if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+        const result = await sourceProfilesCompare(job, platforms, maxProfiles, countries)
+
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.source_compare', 'recruitment_job', $2, $3, $4)`,
+          [request.user.sub, id,
+           JSON.stringify({
+             winner:         result.winner,
+             claudeCost:     result.claude.estimatedCostEur,
+             mistralCost:    result.mistral.estimatedCostEur,
+             claudeRichness: result.claude.richnessScore,
+             mistralRichness: result.mistral.richnessScore,
+             countries,
+             platforms,
+           }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        return reply.send({
+          comparison: {
+            winner:         result.winner,
+            ratios:         result.ratios,
+            recommendation: result.recommendation,
+            summary: {
+              claude: {
+                latencyMs:         result.claude.latencyMs,
+                inputTokens:       result.claude.inputTokens,
+                outputTokens:      result.claude.outputTokens,
+                estimatedCostEur:  result.claude.estimatedCostEur,
+                profilesGenerated: result.claude.profilesGenerated,
+                jsonValid:         result.claude.jsonValid,
+                richnessScore:     result.claude.richnessScore,
+                error:             result.claude.error,
+              },
+              mistral: {
+                latencyMs:         result.mistral.latencyMs,
+                inputTokens:       result.mistral.inputTokens,
+                outputTokens:      result.mistral.outputTokens,
+                estimatedCostEur:  result.mistral.estimatedCostEur,
+                profilesGenerated: result.mistral.profilesGenerated,
+                jsonValid:         result.mistral.jsonValid,
+                richnessScore:     result.mistral.richnessScore,
+                error:             result.mistral.error,
+              },
+            },
+          },
+          results: {
+            claude:  result.claude.data,
+            mistral: result.mistral.data,
+          },
+          jobId:             id,
+          requestedProfiles: maxProfiles,
+        })
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : ''
+        fastify.log.error({ err }, 'recruitment.source.compare failed')
+        const isUserActionable = /configurée|configuré|introuvable/i.test(raw)
+        return reply.status(500).send({
+          error: isUserActionable ? raw : 'Erreur lors de la comparaison IA. Réessayez plus tard.',
+        })
       }
     },
   })
