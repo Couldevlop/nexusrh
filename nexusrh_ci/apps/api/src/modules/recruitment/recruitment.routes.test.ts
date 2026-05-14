@@ -30,12 +30,18 @@ vi.mock('../../db/provisioning.js', () => ({
 
 vi.mock('../../services/recruitment-ai.service.js', () => ({
   analyzeCV: vi.fn(),
-  isModelAvailable: (m: string) => m === 'claude',
+  sourceProfiles: vi.fn(),
+  sourceProfilesCompare: vi.fn(),
+  // Par défaut : claude OK, mistral KO (préserve le test capabilities existant).
+  // Les tests de compare réécrivent ce mock à la volée si besoin.
+  isModelAvailable: vi.fn((m: string) => m === 'claude'),
 }))
 
 import authPlugin from '../../plugins/auth.js'
 import recruitmentRoutes from './recruitment.routes.js'
-import { analyzeCV } from '../../services/recruitment-ai.service.js'
+import {
+  analyzeCV, sourceProfiles, sourceProfilesCompare, isModelAvailable,
+} from '../../services/recruitment-ai.service.js'
 
 const TENANT_SCHEMA = 'tenant_sotra'
 
@@ -66,7 +72,12 @@ beforeAll(async () => {
 
 afterAll(async () => { await app.close() })
 
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => {
+  queryMock.mockReset()
+  vi.mocked(analyzeCV).mockReset()
+  vi.mocked(sourceProfiles).mockReset()
+  vi.mocked(sourceProfilesCompare).mockReset()
+})
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 describe('POST /recruitment/jobs — visibility & ciblage', () => {
@@ -282,5 +293,192 @@ describe('GET /recruitment/ai/capabilities', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body)).toEqual({ claude: true, mistral: false })
+  })
+})
+
+describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
+  it('refuse un employee (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 5 },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('retourne 404 si l\'offre est introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/missing/source',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 5 },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('appelle sourceProfiles avec les bons paramètres et persiste un log audit', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          title: 'Lead Dev', description: 'Build cool stuff',
+          requirements: 'TS', contractType: 'cdi',
+          location: 'Abidjan', salaryMin: 800_000, salaryMax: 1_200_000,
+          currency: 'XOF',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // audit_log INSERT
+
+    vi.mocked(sourceProfiles).mockResolvedValueOnce({
+      provider: 'claude', model: 'claude-sonnet-4-test',
+      data: {
+        strategy: {
+          summary: 's', bestPlatforms: [], searchKeywords: [],
+          booleanSearch: '', estimatedTimeToFill: '',
+          salaryBenchmark: { min: 0, max: 0, median: 0, currency: 'XOF' },
+          tips: [],
+        },
+        profiles: [{
+          firstName: 'A', lastName: 'B', currentPosition: '', currentCompany: '',
+          location: '', experienceYears: 0, keySkills: [], matchScore: 80,
+          availabilityEstimate: 'passive', suggestedPlatform: '', linkedinSearch: '',
+          approachStrategy: '', estimatedSalary: 0, estimatedSalaryCurrency: 'XOF',
+        }],
+      },
+      jsonValid: true, richnessScore: 60, profilesGenerated: 1,
+      latencyMs: 1500, inputTokens: 1000, outputTokens: 2000,
+      estimatedCostEur: 0.034, error: null,
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { model: 'claude', countries: ['CI', 'SN'], platforms: ['LinkedIn'], max_profiles: 8 },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(vi.mocked(sourceProfiles)).toHaveBeenCalledWith(
+      'claude', expect.objectContaining({ title: 'Lead Dev' }),
+      ['LinkedIn'], 8, ['CI', 'SN'],
+    )
+    const body = JSON.parse(res.body)
+    expect(body.meta.provider).toBe('claude')
+    expect(body.meta.richnessScore).toBe(60)
+    expect(body.data.profiles[0].firstName).toBe('A')
+  })
+
+  it('cappe max_profiles à 20', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'X' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(sourceProfiles).mockResolvedValueOnce({
+      provider: 'claude', model: 'm', data: null, jsonValid: false,
+      richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
+      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 999 },
+    })
+    const call = vi.mocked(sourceProfiles).mock.calls[0]!
+    expect(call[3]).toBe(20)
+  })
+
+  it('utilise des valeurs par défaut si countries/platforms absents', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'X' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(sourceProfiles).mockResolvedValueOnce({
+      provider: 'claude', model: 'm', data: null, jsonValid: false,
+      richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
+      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    const call = vi.mocked(sourceProfiles).mock.calls[0]!
+    expect(call[4]).toEqual(['CI'])
+    expect(call[2]).toContain('LinkedIn')
+  })
+})
+
+describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () => {
+  it('refuse un employee (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source/compare',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('retourne 422 si MISTRAL_API_KEY absente', async () => {
+    // isModelAvailable est mocké : claude=true, mistral=false → comparaison KO
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source/compare',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 3 },
+    })
+    expect(res.statusCode).toBe(422)
+    expect(JSON.parse(res.body).error).toMatch(/MISTRAL/i)
+  })
+
+  it('appelle sourceProfilesCompare quand les deux modèles sont disponibles', async () => {
+    vi.mocked(isModelAvailable).mockImplementation(() => true)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Lead', description: 'd', requirements: 'r' }] })
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
+      winner: 'claude',
+      claude: {
+        provider: 'claude', model: 'c', data: null, jsonValid: true,
+        richnessScore: 75, profilesGenerated: 3, latencyMs: 2000,
+        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.025, error: null,
+      },
+      mistral: {
+        provider: 'mistral', model: 'm', data: null, jsonValid: true,
+        richnessScore: 60, profilesGenerated: 3, latencyMs: 1500,
+        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.011, error: null,
+      },
+      ratios: { latency: 'l', cost: 'c', richness: 'r' },
+      recommendation: 'Claude recommandé',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source/compare',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 5, countries: ['NG'] },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.comparison.winner).toBe('claude')
+    expect(body.comparison.recommendation).toContain('Claude')
+    expect(body.comparison.summary.claude.richnessScore).toBe(75)
+    expect(body.comparison.summary.mistral.richnessScore).toBe(60)
+
+    // Restaure le mock par défaut
+    vi.mocked(isModelAvailable).mockImplementation((m: string) => m === 'claude')
   })
 })
