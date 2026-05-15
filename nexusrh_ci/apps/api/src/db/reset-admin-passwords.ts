@@ -96,43 +96,82 @@ async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }
   }
 }
 
+function maskedDbUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    if (u.password) u.password = '***'
+    return u.toString()
+  } catch { return '<URL invalide>' }
+}
+
 async function main(): Promise<void> {
-  console.log('=== Reset admin passwords (OWASP A02 — bcrypt 12 rounds) ===\n')
+  console.log('=== Reset admin passwords (OWASP A02 — bcrypt 12 rounds) ===')
+  console.log(`DB URL : ${maskedDbUrl(config.database.url)}`)
+  console.log(`Targets : ${TARGETS.length} comptes (1 super_admin + 7 tenant)\n`)
 
   const dryRun = process.argv.includes('--dry-run')
   if (dryRun) {
     console.log('Mode DRY-RUN — aucun changement DB.\n')
   }
 
+  // Test de connexion DB dès le début (fail-fast si DATABASE_URL invalide)
+  try {
+    await pool.query('SELECT 1')
+    console.log('✓ Connexion DB OK\n')
+  } catch (err) {
+    console.error('✗ Impossible de se connecter à la DB :', (err as Error).message)
+    console.error('   Vérifier DATABASE_URL côté ConfigMap nexusrh-config + secret postgres.')
+    await pool.end().catch(() => {})
+    // Exit 1 : pas la peine de continuer si on ne joint pas la DB.
+    process.exit(1)
+  }
+
   let okCount = 0
   let koCount = 0
+  let skippedCount = 0  // tenant_* schémas absents (cas premier déploiement)
 
   for (const target of TARGETS) {
-    const prefix = `[${target.scope}/${target.schema}] ${target.email}`
+    const prefix = `[${target.scope}/${target.schema}] ${target.email.padEnd(35)}`
     if (dryRun) {
-      console.log(`${prefix} — DRY-RUN (password "${target.password}")`)
+      console.log(`${prefix} DRY-RUN (password "${target.password}")`)
       continue
     }
     const r = await resetOne(target)
     if (r.ok) {
-      console.log(`✓ ${prefix} — ${r.reason}`)
+      console.log(`✓ ${prefix} ${r.reason}`)
       okCount++
+    } else if (/does not exist|relation .* does not exist/i.test(r.reason)) {
+      // Schéma ou table absent → tenant pas encore seedé. Non-bloquant.
+      console.log(`⏭  ${prefix} schéma/table absent — sera créé au prochain seed`)
+      skippedCount++
     } else {
-      console.log(`✗ ${prefix} — ${r.reason}`)
+      console.log(`✗ ${prefix} ${r.reason}`)
       koCount++
     }
   }
 
-  console.log(`\n${okCount} succès · ${koCount} échec(s)\n`)
-  console.log('Comptes utilisables :')
+  console.log(`\n${okCount} succès · ${skippedCount} ignoré(s) (tenant absent) · ${koCount} échec(s)\n`)
+  console.log('Comptes documentés :')
   for (const t of TARGETS) {
     console.log(`  ${t.email.padEnd(35)} ${t.password.padEnd(20)} (${t.label})`)
   }
 
-  await pool.end()
+  await pool.end().catch(() => {})
+
+  // Politique de sortie :
+  //  - Au moins 1 succès et 0 échec dur → exit 0
+  //  - Tout est ignoré (premier déploiement, aucun tenant existe) → exit 0
+  //    (non-bloquant : le seed initial les créera)
+  //  - Au moins 1 vrai échec → exit 1 (helm rollback)
+  if (koCount > 0) {
+    console.error(`\n❌ ${koCount} reset(s) en échec — voir détails ci-dessus`)
+    process.exit(1)
+  }
+  console.log(`\n✓ Reset terminé proprement`)
+  process.exit(0)
 }
 
 main().catch((err) => {
-  console.error('Erreur reset:', err)
+  console.error('Erreur fatale reset:', err)
   process.exit(1)
 })
