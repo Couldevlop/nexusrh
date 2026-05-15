@@ -237,7 +237,15 @@ function MultiLegTab() {
 
   const configs = data?.data ?? []
 
-  const FLAG: Record<string, string> = { CI: '🇨🇮', SN: '🇸🇳', BF: '🇧🇫', ML: '🇲🇱', TG: '🇹🇬' }
+  const FLAG: Record<string, string> = {
+    CI: '🇨🇮', SN: '🇸🇳', BJ: '🇧🇯', TG: '🇹🇬', BF: '🇧🇫', ML: '🇲🇱',
+    NE: '🇳🇪', CM: '🇨🇲', TD: '🇹🇩', NG: '🇳🇬', GH: '🇬🇭',
+  }
+  const ZONE_BADGE: Record<string, string> = {
+    UEMOA:  'bg-orange-50 text-orange-700 border-orange-200',
+    CEMAC:  'bg-emerald-50 text-emerald-700 border-emerald-200',
+    ECOWAS: 'bg-blue-50 text-blue-700 border-blue-200',
+  }
   const STATUS_COLOR: Record<string, string> = {
     active: 'bg-green-100 text-green-700',
     beta: 'bg-blue-100 text-blue-700',
@@ -246,65 +254,86 @@ function MultiLegTab() {
 
   if (isLoading) return <div className="flex justify-center p-8"><div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
 
+  const activeCount  = configs.filter(c => c.is_active).length
+  const uemoaCount   = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'UEMOA').length
+  const cemacCount   = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'CEMAC').length
+  const ecowasCount  = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'ECOWAS').length
+
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-semibold">Multi-législatif — Expansion UEMOA</h2>
+        <h2 className="font-semibold">Multi-législatif — Couverture Afrique</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Moteurs de paie par pays. Chaque pays a ses propres taux CNPS/SECU, barèmes fiscaux et constantes légales.
+          Moteurs de paie par pays. Chaque pays a ses propres taux sociaux, barèmes fiscaux et constantes légales.
+          <span className="ml-2 inline-flex items-center gap-2 text-xs">
+            <span className="rounded bg-green-100 px-1.5 py-0.5 font-medium text-green-700">{activeCount} actifs</span>
+            <span className="rounded bg-orange-50 px-1.5 py-0.5 font-medium text-orange-700">UEMOA {uemoaCount}</span>
+            <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">CEMAC {cemacCount}</span>
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">ECOWAS {ecowasCount}</span>
+          </span>
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {configs.map(c => (
-          <div key={c.country_code} className={`rounded-xl border p-4 ${c.is_active ? 'border-border bg-card' : 'border-border/50 bg-muted/20 opacity-70'}`}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{FLAG[c.country_code] ?? '🌍'}</span>
-                <div>
-                  <p className="font-semibold text-sm">{c.country_name}</p>
-                  <p className="text-xs text-muted-foreground">{c.country_code} · {c.currency} · {c.timezone}</p>
+        {configs.map(c => {
+          const zone = (c.config as { zone?: string } | undefined)?.zone
+          return (
+            <div key={c.country_code} className={`rounded-xl border p-4 ${c.is_active ? 'border-border bg-card' : 'border-border/50 bg-muted/20 opacity-70'}`}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{FLAG[c.country_code] ?? '🌍'}</span>
+                  <div>
+                    <p className="font-semibold text-sm">{c.country_name}</p>
+                    <p className="text-xs text-muted-foreground">{c.country_code} · {c.currency} · {c.timezone}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c.is_active ? STATUS_COLOR['active'] : STATUS_COLOR['planned']}`}>
+                    {c.is_active ? 'Actif' : 'Planifié'}
+                  </span>
+                  {zone && (
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${ZONE_BADGE[zone] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                      {zone}
+                    </span>
+                  )}
                 </div>
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c.is_active ? STATUS_COLOR['active'] : STATUS_COLOR['planned']}`}>
-                {c.is_active ? 'Actif' : 'Planifié'}
-              </span>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Moteur de paie</span>
+                  <code className="bg-muted px-1.5 rounded">{c.payroll_engine}</code>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">SMIG mensuel</span>
+                  <span className="font-mono font-semibold">
+                    {(c.config?.smig ?? 0).toLocaleString('fr-FR')} {c.currency}
+                  </span>
+                </div>
+              </div>
+              {!c.is_active && (
+                <div className="mt-3 rounded bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+                  Disponible sur demande — contactez OpenLab Consulting
+                </div>
+              )}
             </div>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Moteur de paie</span>
-                <code className="bg-muted px-1.5 rounded">{c.payroll_engine}</code>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">SMIG mensuel</span>
-                <span className="font-mono font-semibold">
-                  {(c.config?.smig ?? 0).toLocaleString('fr-FR')} {c.currency}
-                </span>
-              </div>
-            </div>
-            {!c.is_active && (
-              <div className="mt-3 rounded bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
-                Disponible sur demande — contactez OpenLab Consulting
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm">
-        <p className="font-semibold text-blue-800 mb-2">Feuille de route UEMOA</p>
+        <p className="font-semibold text-blue-800 mb-2">Couverture régionale Afrique</p>
         <div className="space-y-1 text-blue-700 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-green-600 font-bold">✓</span>
-            <span><strong>Côte d'Ivoire</strong> — Moteur complet CNPS + ITS/DGI · Production</span>
+            <span><strong>UEMOA</strong> — Côte d'Ivoire (prod), Sénégal, Bénin, Togo, Burkina Faso, Mali, Niger · XOF</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-blue-600 font-bold">~</span>
-            <span><strong>Sénégal</strong> — IPRES + IR · En développement (Q3 2025)</span>
+            <span className="text-emerald-600 font-bold">✓</span>
+            <span><strong>CEMAC</strong> — Cameroun, Tchad · XAF</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-400">○</span>
-            <span><strong>Burkina Faso, Mali, Togo</strong> — Planifié 2026</span>
+            <span className="text-blue-600 font-bold">✓</span>
+            <span><strong>CEDEAO hors UEMOA</strong> — Nigeria (NGN), Ghana (GHS)</span>
           </div>
         </div>
       </div>

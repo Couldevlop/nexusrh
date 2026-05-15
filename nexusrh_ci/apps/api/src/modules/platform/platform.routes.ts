@@ -562,16 +562,31 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         )
       `).catch(() => null)
 
+      // Tous les packs législatifs supportés par la plateforme (UEMOA + CEMAC + NGA).
+      // is_active=true pour visibilité commerciale ; le statut technique du moteur
+      // de paie reste géré dans legislation-packs.ts (status: active/stub).
+      // DO UPDATE permet d'activer rétroactivement les pays seedés à false.
       await pool.query(`
         INSERT INTO platform.country_configs
           (country_code, country_name, currency, timezone, payroll_engine, is_active, config)
         VALUES
-          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0.15}'),
-          ('SN','Sénégal','XOF','Africa/Dakar','sn_2024',false,'{"smig":69120,"ipresRetraite":0.056,"cfceTaux":0.08}'),
-          ('BF','Burkina Faso','XOF','Africa/Ouagadougou','bf_2024',false,'{"smig":34664,"cnssRetraite":0.055}'),
-          ('ML','Mali','XOF','Africa/Bamako','ml_2024',false,'{"smig":40000,"inpsRetraite":0.037}'),
-          ('TG','Togo','XOF','Africa/Lome','tg_2024',false,'{"smig":35000,"cnavsRetraite":0.04}')
-        ON CONFLICT (country_code) DO NOTHING
+          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0.15,"zone":"UEMOA"}'),
+          ('SN','Sénégal','XOF','Africa/Dakar','sn_2024',true,'{"smig":69120,"ipresRetraite":0.056,"cfceTaux":0.08,"zone":"UEMOA"}'),
+          ('BJ','Bénin','XOF','Africa/Porto-Novo','bj_2024',true,'{"smig":52000,"cnssRetraite":0.036,"zone":"UEMOA"}'),
+          ('TG','Togo','XOF','Africa/Lome','tg_2024',true,'{"smig":35000,"cnavsRetraite":0.04,"zone":"UEMOA"}'),
+          ('BF','Burkina Faso','XOF','Africa/Ouagadougou','bf_2024',true,'{"smig":34664,"cnssRetraite":0.055,"zone":"UEMOA"}'),
+          ('ML','Mali','XOF','Africa/Bamako','ml_2024',true,'{"smig":40000,"inpsRetraite":0.037,"zone":"UEMOA"}'),
+          ('NE','Niger','XOF','Africa/Niamey','ne_2024',true,'{"smig":30047,"cnssRetraite":0.052,"zone":"UEMOA"}'),
+          ('CM','Cameroun','XAF','Africa/Douala','cm_2024',true,'{"smig":36270,"cnpsRetraite":0.042,"zone":"CEMAC"}'),
+          ('TD','Tchad','XAF','Africa/Ndjamena','td_2024',true,'{"smig":60000,"cnpsRetraite":0.035,"zone":"CEMAC"}'),
+          ('NG','Nigeria','NGN','Africa/Lagos','ng_2024',true,'{"smig":70000,"pensionEmployee":0.08,"zone":"ECOWAS"}'),
+          ('GH','Ghana','GHS','Africa/Accra','gh_2024',true,'{"smig":480,"ssnitEmployee":0.055,"zone":"ECOWAS"}')
+        ON CONFLICT (country_code) DO UPDATE SET
+          is_active = EXCLUDED.is_active,
+          currency = EXCLUDED.currency,
+          timezone = EXCLUDED.timezone,
+          payroll_engine = EXCLUDED.payroll_engine,
+          config = EXCLUDED.config
       `).catch(() => null)
 
       const res = await pool.query(`SELECT * FROM platform.country_configs ORDER BY is_active DESC, country_name`).catch(() => ({ rows: [] }))
