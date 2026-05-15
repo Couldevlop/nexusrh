@@ -119,6 +119,12 @@ web:
 
 # ── Worker ────────────────────────────────────────────────────────────────────
 worker:
+  # Désactivé temporairement : image GHCR worker pointe vers code historique
+  # qui contient une livenessProbe `require('./dist/health-check.js')` mais le
+  # fichier health-check.ts n'existe pas dans src/ → pod ne devient jamais
+  # ready → helm upgrade timeout. Sera ré-activé après fix dans une PR dédiée
+  # (création de health-check.ts + ajout du worker au workflow ci-build.yml).
+  enabled: false
   replicas: 1
   resources:
     requests:
