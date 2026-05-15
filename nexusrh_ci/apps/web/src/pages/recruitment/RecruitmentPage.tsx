@@ -782,6 +782,16 @@ function Block({ title, items, tone }: {
 // plateformes, puis lance soit une génération simple (Claude) soit une
 // comparaison parallèle Claude vs Mistral.
 
+// Mapping pays → drapeau (utilisé pour enrichir le catalogue dynamique
+// chargé depuis platform.country_configs). Les pays absents reçoivent 🌍.
+const COUNTRY_FLAGS: Record<string, string> = {
+  CI: '🇨🇮', SN: '🇸🇳', BJ: '🇧🇯', TG: '🇹🇬', CM: '🇨🇲', BF: '🇧🇫',
+  ML: '🇲🇱', NE: '🇳🇪', NG: '🇳🇬', GH: '🇬🇭', GA: '🇬🇦', CG: '🇨🇬',
+  CD: '🇨🇩', KE: '🇰🇪', TD: '🇹🇩', FR: '🇫🇷',
+  CIV: '🇨🇮', SEN: '🇸🇳', BEN: '🇧🇯', TGO: '🇹🇬', BFA: '🇧🇫', MLI: '🇲🇱',
+  NER: '🇳🇪', CMR: '🇨🇲', TCD: '🇹🇩', NGA: '🇳🇬', GHA: '🇬🇭',
+}
+
 const COUNTRIES: Array<{ code: string; label: string; flag: string }> = [
   { code: 'CI', label: 'Côte d\'Ivoire', flag: '🇨🇮' },
   { code: 'SN', label: 'Sénégal',        flag: '🇸🇳' },
@@ -953,10 +963,43 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   const sourcedRows = sourcedQuery.data?.data ?? []
   const pendingCount = sourcedRows.filter(r => !r.transferred_to_application_id).length
 
+  // Catalogue dynamique des pays (depuis platform.country_configs) avec fallback
+  // hardcodé si l'API n'est pas disponible (zéro régression UX).
+  const countriesQuery = useQuery<{ data: Array<{ country_code: string; country_name: string; currency: string }> }>({
+    queryKey: ['platform-country-configs'],
+    queryFn: () => api.get('/platform/country-configs').then(r => r.data).catch(() => ({ data: [] })),
+    staleTime: 5 * 60_000,
+  })
+  const countryCatalog = useMemo(() => {
+    const fromApi = countriesQuery.data?.data ?? []
+    if (fromApi.length > 0) {
+      return fromApi.map(c => ({
+        code:  c.country_code,
+        label: c.country_name,
+        flag:  COUNTRY_FLAGS[c.country_code] ?? '🌍',
+      }))
+    }
+    return COUNTRIES // fallback hardcodé
+  }, [countriesQuery.data])
+
+  // Plateformes dynamiques (depuis platform.sourcing_platforms), filtrées par pays
+  const platformsQuery = useQuery<{ data: Array<{ code: string; name: string; country_code: string | null; is_panafrican: boolean }> }>({
+    queryKey: ['platform-sourcing-platforms'],
+    queryFn: () => api.get('/platform/sourcing/platforms').then(r => r.data).catch(() => ({ data: [] })),
+    staleTime: 5 * 60_000,
+  })
+
   const suggestedPlatforms = useMemo(() => {
+    const fromApi = platformsQuery.data?.data ?? []
+    if (fromApi.length > 0) {
+      const pana = fromApi.filter(p => p.is_panafrican).map(p => p.name)
+      const local = fromApi.filter(p => !p.is_panafrican && p.country_code && countries.includes(p.country_code)).map(p => p.name)
+      return Array.from(new Set([...pana, ...local]))
+    }
+    // Fallback hardcodé
     const locals = countries.flatMap(c => PLATFORMS_LOCAL[c] ?? [])
     return [...PLATFORMS_PANAFRICAN, ...locals]
-  }, [countries])
+  }, [platformsQuery.data, countries])
 
   const [platforms, setPlatforms] = useState<string[]>(['LinkedIn', 'Africawork'])
   const togglePlatform = (p: string) => setPlatforms(prev =>
@@ -1073,7 +1116,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
               Pays cibles ({countries.length})
             </label>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {COUNTRIES.map(c => {
+              {countryCatalog.map(c => {
                 const active = countries.includes(c.code)
                 return (
                   <button key={c.code} type="button" onClick={() => toggleCountry(c.code)}

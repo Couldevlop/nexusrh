@@ -8,6 +8,7 @@ import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/e
 import { maintenanceCache } from '../../cache.js'
 import { seedDemoTenant } from '../../db/seed-demo.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
+import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -544,8 +545,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /platform/country-configs — Multi-législatif : configurations par pays
+  // Lecture ouverte aux super_admin + admins/RH tenant (catalogue pays non sensible).
   fastify.get('/country-configs', {
-    preHandler: [fastify.authorize('super_admin')],
+    preHandler: [fastify.authorize('super_admin', 'admin', 'hr_manager', 'hr_officer')],
     schema: { tags: ['platform'], summary: 'Configurations multi-pays (UEMOA/OHADA)' },
     handler: async (_request, reply) => {
       await pool.query(`
@@ -616,6 +618,249 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           totalCount:     parseInt(row?.total_count ?? '0'),
         },
       })
+    },
+  })
+
+  // ── Sourcing IA : configuration paramétrable (super_admin only) ────────────
+  // OWASP A01 : authorize('super_admin') sur tous les endpoints.
+  // Invalidation du cache après chaque mutation pour propager immédiatement.
+
+  // ─── GET /platform/sourcing/models ─── liste des modèles IA
+  fastify.get('/sourcing/models', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (_req, reply) => {
+      const res = await pool.query(`
+        SELECT id, provider, model_id, display_name, max_tokens,
+               input_cost_per_1m_eur::float AS input_cost_per_1m_eur,
+               output_cost_per_1m_eur::float AS output_cost_per_1m_eur,
+               is_active, sort_order
+          FROM platform.ai_models
+         ORDER BY sort_order, provider, model_id
+      `).catch(() => ({ rows: [] }))
+      return reply.send({ data: res.rows })
+    },
+  })
+
+  fastify.post('/sourcing/models', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as {
+        provider?: string; model_id?: string; display_name?: string
+        max_tokens?: number; input_cost_per_1m_eur?: number
+        output_cost_per_1m_eur?: number; is_active?: boolean; sort_order?: number
+      }
+      if (!body.provider || !body.model_id || !body.display_name) {
+        return reply.status(400).send({ error: 'provider, model_id et display_name obligatoires' })
+      }
+      try {
+        const res = await pool.query(`
+          INSERT INTO platform.ai_models
+            (provider, model_id, display_name, max_tokens,
+             input_cost_per_1m_eur, output_cost_per_1m_eur, is_active, sort_order)
+          VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,true),COALESCE($8,0))
+          RETURNING *
+        `, [
+          body.provider, body.model_id, body.display_name,
+          body.max_tokens ?? 4000,
+          body.input_cost_per_1m_eur ?? 0,
+          body.output_cost_per_1m_eur ?? 0,
+          body.is_active, body.sort_order,
+        ])
+        invalidateConfigCache()
+        return reply.status(201).send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.create failed')
+        return reply.status(500).send({ error: 'Erreur création modèle' })
+      }
+    },
+  })
+
+  fastify.patch('/sourcing/models/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const body = request.body as Record<string, unknown>
+      const allowed = ['provider','model_id','display_name','max_tokens',
+        'input_cost_per_1m_eur','output_cost_per_1m_eur','is_active','sort_order']
+      const sets: string[] = []
+      const vals: unknown[] = []
+      for (const k of allowed) {
+        if (k in body) { sets.push(`${k} = $${vals.length + 1}`); vals.push(body[k]) }
+      }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ à mettre à jour' })
+      sets.push(`updated_at = now()`)
+      vals.push(id)
+      try {
+        const res = await pool.query(
+          `UPDATE platform.ai_models SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+          vals,
+        )
+        invalidateConfigCache()
+        return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour' })
+      }
+    },
+  })
+
+  fastify.delete('/sourcing/models/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      try {
+        await pool.query(`DELETE FROM platform.ai_models WHERE id = $1`, [id])
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.delete failed')
+        return reply.status(500).send({ error: 'Erreur suppression' })
+      }
+    },
+  })
+
+  // ─── GET /platform/sourcing/platforms ─── plateformes de sourcing
+  fastify.get('/sourcing/platforms', {
+    preHandler: [fastify.authorize('super_admin', 'admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const { country_code } = request.query as { country_code?: string }
+      const where: string[] = []
+      const params: unknown[] = []
+      if (country_code) {
+        where.push(`(country_code = $${params.length + 1} OR is_panafrican = true)`)
+        params.push(country_code)
+      }
+      const sql = `SELECT id, code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order
+                     FROM platform.sourcing_platforms
+                    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                    ORDER BY sort_order, name`
+      const res = await pool.query(sql, params).catch(() => ({ rows: [] }))
+      return reply.send({ data: res.rows })
+    },
+  })
+
+  fastify.post('/sourcing/platforms', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as {
+        code?: string; name?: string; country_code?: string | null
+        url?: string | null; est_pool?: number | null
+        is_active?: boolean; is_panafrican?: boolean; sort_order?: number
+      }
+      if (!body.code || !body.name) {
+        return reply.status(400).send({ error: 'code et name obligatoires' })
+      }
+      try {
+        const res = await pool.query(`
+          INSERT INTO platform.sourcing_platforms
+            (code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order)
+          VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),COALESCE($7,false),COALESCE($8,0))
+          RETURNING *
+        `, [
+          body.code, body.name, body.country_code ?? null, body.url ?? null,
+          body.est_pool ?? null, body.is_active, body.is_panafrican, body.sort_order,
+        ])
+        invalidateConfigCache()
+        return reply.status(201).send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.create failed')
+        return reply.status(500).send({ error: 'Erreur création plateforme' })
+      }
+    },
+  })
+
+  fastify.patch('/sourcing/platforms/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const body = request.body as Record<string, unknown>
+      const allowed = ['code','name','country_code','url','est_pool','is_active','is_panafrican','sort_order']
+      const sets: string[] = []
+      const vals: unknown[] = []
+      for (const k of allowed) {
+        if (k in body) { sets.push(`${k} = $${vals.length + 1}`); vals.push(body[k]) }
+      }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ à mettre à jour' })
+      sets.push(`updated_at = now()`)
+      vals.push(id)
+      try {
+        const res = await pool.query(
+          `UPDATE platform.sourcing_platforms SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+          vals,
+        )
+        invalidateConfigCache()
+        return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour' })
+      }
+    },
+  })
+
+  fastify.delete('/sourcing/platforms/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      try {
+        await pool.query(`DELETE FROM platform.sourcing_platforms WHERE id = $1`, [id])
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.delete failed')
+        return reply.status(500).send({ error: 'Erreur suppression' })
+      }
+    },
+  })
+
+  // ─── GET/PATCH /platform/sourcing/settings ─── singleton clé/valeur ────────
+  fastify.get('/sourcing/settings', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (_req, reply) => {
+      const res = await pool.query(
+        `SELECT key, value, description, updated_at FROM platform.sourcing_settings`,
+      ).catch(() => ({ rows: [] }))
+      // Retour sous forme d'objet aplati : { max_profiles_min: 1, ... }
+      const obj: Record<string, unknown> = {}
+      for (const r of res.rows) {
+        obj[r.key] = (r.value && typeof r.value === 'object' && 'value' in r.value)
+          ? (r.value as { value: unknown }).value
+          : r.value
+      }
+      return reply.send({ data: obj })
+    },
+  })
+
+  fastify.patch('/sourcing/settings', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as Record<string, unknown>
+      const allowed = [
+        'max_profiles_min', 'max_profiles_max', 'max_profiles_default',
+        'max_cost_eur_per_request', 'claude_system_prompt', 'mistral_system_prompt',
+        'richness_weights',
+      ]
+      try {
+        for (const key of Object.keys(body)) {
+          if (!allowed.includes(key)) continue
+          const value = body[key]
+          // Sérialiser proprement : nombres/strings → JSON value, objets → JSONB
+          const jsonValue = JSON.stringify({ value })
+          await pool.query(
+            `INSERT INTO platform.sourcing_settings (key, value, updated_at, updated_by)
+             VALUES ($1, $2::jsonb, now(), $3)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,
+                                              updated_at = now(),
+                                              updated_by = EXCLUDED.updated_by`,
+            [key, key === 'richness_weights' ? JSON.stringify(value) : jsonValue,
+             request.user.sub],
+          )
+        }
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.settings.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour settings' })
+      }
     },
   })
 }

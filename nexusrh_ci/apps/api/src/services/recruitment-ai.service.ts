@@ -1,4 +1,10 @@
 import { config } from '../config.js'
+import {
+  loadAiModels,
+  loadSourcingSettings,
+  defaultRichnessWeights,
+  type RichnessWeights,
+} from './sourcing-config.service.js'
 
 export type AiModelChoice = 'claude' | 'mistral'
 
@@ -436,26 +442,33 @@ function normalizeSourcing(raw: unknown): SourcingResult | null {
   return { strategy: normalizedStrategy, profiles: normalizedProfiles }
 }
 
-export function computeSourcingRichness(result: SourcingResult | null): number {
+// Calcul de richesse basé sur des pondérations paramétrables. Si aucun objet
+// weights n'est fourni, on utilise les pondérations par défaut (= comportement
+// historique : 20, 10, 2, 10, 10, 10, 10, 5, 5, 5, 5). Les tests existants
+// continuent de fonctionner.
+export function computeSourcingRichness(
+  result: SourcingResult | null,
+  weights: RichnessWeights = defaultRichnessWeights(),
+): number {
   if (!result) return 0
   let score = 0
   const { profiles, strategy } = result
 
-  if (profiles.length > 0) score += 20
-  if (profiles.length >= 5) score += 10
-  score += Math.min(profiles.length, 10) * 2
+  if (profiles.length > 0)  score += weights.hasProfiles
+  if (profiles.length >= 5) score += weights.fiveProfiles
+  score += Math.min(profiles.length, 10) * weights.perProfile
 
-  if (strategy.booleanSearch) score += 10
-  if (strategy.searchKeywords.length >= 3) score += 10
-  if (strategy.salaryBenchmark.median > 0) score += 10
-  if (strategy.bestPlatforms.length >= 2) score += 10
-  if (strategy.tips.length >= 2) score += 5
+  if (strategy.booleanSearch)              score += weights.hasBooleanSearch
+  if (strategy.searchKeywords.length >= 3) score += weights.hasKeywords
+  if (strategy.salaryBenchmark.median > 0) score += weights.hasSalaryBenchmark
+  if (strategy.bestPlatforms.length >= 2)  score += weights.hasBestPlatforms
+  if (strategy.tips.length >= 2)           score += weights.hasTips
 
   const first = profiles[0]
   if (first) {
-    if (first.linkedinSearch) score += 5
-    if (first.approachStrategy) score += 5
-    if (first.keySkills.length > 0) score += 5
+    if (first.linkedinSearch)        score += weights.firstProfileLinkedin
+    if (first.approachStrategy)      score += weights.firstProfileApproach
+    if (first.keySkills.length > 0)  score += weights.firstProfileSkills
   }
 
   return Math.min(score, 100)
@@ -525,12 +538,19 @@ async function callMistralRaw(prompt: string, maxTokens: number): Promise<AIRawR
   }
 }
 
-// Tarifs au 2026-05 — convertis en EUR (×0.92 depuis USD pour Anthropic)
-function costClaudeEur(inputTokens: number, outputTokens: number): number {
-  return ((inputTokens * 3 + outputTokens * 15) / 1_000_000) * 0.92
-}
-function costMistralEur(inputTokens: number, outputTokens: number): number {
-  return ((inputTokens * 2 + outputTokens * 6) / 1_000_000) * 0.92
+// Tarifs token : chargés depuis platform.ai_models avec fallback aux valeurs
+// par défaut (Sonnet 3$/15$ × 0.92, Mistral Large 2$/6$ × 0.92). Le
+// super_admin peut modifier les tarifs via /platform/sourcing/models.
+async function costEur(provider: AiModelChoice, inputTokens: number, outputTokens: number): Promise<number> {
+  const models = await loadAiModels()
+  const m = models.find(x => x.provider === provider && x.is_active)
+  if (m) {
+    return ((inputTokens * m.input_cost_per_1m_eur) + (outputTokens * m.output_cost_per_1m_eur)) / 1_000_000
+  }
+  // Fallback : valeurs historiques
+  return provider === 'claude'
+    ? ((inputTokens * 3 + outputTokens * 15) / 1_000_000) * 0.92
+    : ((inputTokens * 2 + outputTokens * 6) / 1_000_000) * 0.92
 }
 
 async function sourceWithProvider(
@@ -541,6 +561,7 @@ async function sourceWithProvider(
   countries: string[],
 ): Promise<SourcingProviderResult> {
   const prompt = buildSourcingPrompt(ctx, platforms, maxProfiles, countries)
+  const settings = await loadSourcingSettings().catch(() => null)
   try {
     const raw = provider === 'claude'
       ? await callClaudeRaw(prompt, 4000)
@@ -553,15 +574,22 @@ async function sourceWithProvider(
     } catch {
       data = null
     }
-    const cost = provider === 'claude'
-      ? costClaudeEur(raw.inputTokens, raw.outputTokens)
-      : costMistralEur(raw.inputTokens, raw.outputTokens)
+    const cost = await costEur(provider, raw.inputTokens, raw.outputTokens)
+
+    // Budget max par requête (configurable) — log warning si dépassé.
+    // Pas de rejet à ce stade (la requête est déjà payée) ; documente pour
+    // alerter le super_admin via audit_log dans une étape ultérieure.
+    if (settings && settings.maxCostEurPerRequest > 0 && cost > settings.maxCostEurPerRequest) {
+      // eslint-disable-next-line no-console
+      console.warn(`[sourcing] coût IA ${cost.toFixed(4)}€ > budget ${settings.maxCostEurPerRequest}€`)
+    }
+
     return {
       provider,
       model:            raw.model,
       data,
       jsonValid:        data !== null,
-      richnessScore:    computeSourcingRichness(data),
+      richnessScore:    computeSourcingRichness(data, settings?.richnessWeights),
       profilesGenerated: data?.profiles.length ?? 0,
       latencyMs:        raw.latencyMs,
       inputTokens:      raw.inputTokens,
