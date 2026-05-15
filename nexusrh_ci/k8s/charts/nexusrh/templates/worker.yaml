@@ -1,3 +1,4 @@
+{{- if .Values.worker.enabled -}}
 {{- $ns := include "nexusrh.namespace" . -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -125,3 +126,4 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+{{- end }}
