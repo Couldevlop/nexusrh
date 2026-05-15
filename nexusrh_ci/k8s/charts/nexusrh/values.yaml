@@ -286,6 +286,13 @@ meilisearch:
     seccompProfile:
       type: RuntimeDefault
 
+# ── Maintenance hooks ────────────────────────────────────────────────────────
+# Relance automatiquement reset-admin-passwords après chaque rollout API pour
+# garantir que les hashes bcrypt des comptes démo (admin@sotra.ci etc.) restent
+# valides. Désactiver pour les envs où les passwords sont pilotés depuis Vault.
+maintenance:
+  autoResetPasswordsAfterUpgrade: true
+
 # ── Infra officielle (images officielles — remplace Bitnami) ─────────────────
 infra:
   enabled: true
