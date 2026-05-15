@@ -185,7 +185,7 @@ async function main() {
       ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true, now()),
       ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
       ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [adminHash, managerHash, employeeHash])
 
   // Workflow config
@@ -814,7 +814,7 @@ async function main() {
     VALUES
       ('admin@cabinet-expertise.ci',   $1, 'Directeur', 'Associé',   'admin',    true, now()),
       ('employe2@cabinet-expertise.ci', $1, 'Amenan',    'Traoré',    'employee', true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [cabAdminHash])
 
   await pool.query(`
