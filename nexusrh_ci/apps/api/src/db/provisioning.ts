@@ -113,6 +113,59 @@ export async function createPlatformSchema(): Promise<void> {
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS has_subsidiaries boolean NOT NULL DEFAULT false`)
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payroll_mode varchar(30) NOT NULL DEFAULT 'single_country'`)
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS default_country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
+
+  // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
+  // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.ai_models (
+      id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider                 varchar(30)  NOT NULL,
+      model_id                 varchar(100) NOT NULL,
+      display_name             varchar(150) NOT NULL,
+      max_tokens               int          NOT NULL DEFAULT 4000,
+      input_cost_per_1m_eur    numeric(10,4) NOT NULL DEFAULT 0,
+      output_cost_per_1m_eur   numeric(10,4) NOT NULL DEFAULT 0,
+      is_active                boolean      NOT NULL DEFAULT true,
+      sort_order               int          NOT NULL DEFAULT 0,
+      created_at               timestamptz  NOT NULL DEFAULT now(),
+      updated_at               timestamptz  NOT NULL DEFAULT now(),
+      UNIQUE (provider, model_id)
+    )
+  `)
+
+  // Plateformes de sourcing (LinkedIn, Africawork, Emploi.ci, etc.) avec
+  // rattachement optionnel à un pays (FK lâche sur country_code).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.sourcing_platforms (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      code            varchar(50)  NOT NULL UNIQUE,
+      name            varchar(150) NOT NULL,
+      country_code    varchar(5),
+      url             text,
+      est_pool        int,
+      is_active       boolean      NOT NULL DEFAULT true,
+      is_panafrican   boolean      NOT NULL DEFAULT false,
+      sort_order      int          NOT NULL DEFAULT 0,
+      created_at      timestamptz  NOT NULL DEFAULT now(),
+      updated_at      timestamptz  NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_sourcing_platforms_country
+      ON platform.sourcing_platforms(country_code, is_active)
+  `)
+
+  // Settings clé/valeur (JSONB) pour : prompts système, slider, budget,
+  // pondérations richesse, templates email, etc.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.sourcing_settings (
+      key         varchar(80) PRIMARY KEY,
+      value       jsonb       NOT NULL DEFAULT '{}',
+      description text,
+      updated_at  timestamptz NOT NULL DEFAULT now(),
+      updated_by  uuid
+    )
+  `)
 }
 
 /**

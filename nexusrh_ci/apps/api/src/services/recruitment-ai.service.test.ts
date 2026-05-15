@@ -16,6 +16,30 @@ vi.mock('@anthropic-ai/sdk', () => ({
   })),
 }))
 
+// Mock sourcing-config pour éviter les appels DB (timeout) en tests unitaires.
+// Retourne directement les valeurs par défaut.
+vi.mock('./sourcing-config.service.js', () => ({
+  loadAiModels:     vi.fn().mockResolvedValue([]),
+  loadSourcingSettings: vi.fn().mockResolvedValue({
+    maxProfilesMin: 1, maxProfilesMax: 20, maxProfilesDefault: 8,
+    maxCostEurPerRequest: 0,
+    claudeSystemPrompt: '', mistralSystemPrompt: '',
+    richnessWeights: {
+      hasProfiles: 20, fiveProfiles: 10, perProfile: 2,
+      hasBooleanSearch: 10, hasKeywords: 10, hasSalaryBenchmark: 10,
+      hasBestPlatforms: 10, hasTips: 5,
+      firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
+    },
+  }),
+  defaultRichnessWeights: () => ({
+    hasProfiles: 20, fiveProfiles: 10, perProfile: 2,
+    hasBooleanSearch: 10, hasKeywords: 10, hasSalaryBenchmark: 10,
+    hasBestPlatforms: 10, hasTips: 5,
+    firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
+  }),
+  invalidateSourcingConfigCache: vi.fn(),
+}))
+
 import {
   analyzeCV, isModelAvailable,
   sourceProfiles, sourceProfilesCompare,

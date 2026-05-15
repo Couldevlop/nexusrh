@@ -146,6 +146,90 @@ async function main() {
   console.log('[2/10] Super admin créé: superadmin@nexusrh-ci.com / SuperAdmin1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Sourcing IA — Configuration paramétrable initiale
+  // (idempotent, DO UPDATE pour permettre rafraîchissement après modif tarifs)
+  // ─────────────────────────────────────────────────────────────────────────────
+  await pool.query(`
+    INSERT INTO platform.ai_models
+      (provider, model_id, display_name, max_tokens,
+       input_cost_per_1m_eur, output_cost_per_1m_eur, is_active, sort_order)
+    VALUES
+      ('claude',  'claude-sonnet-4-20250514', 'Claude Sonnet 4',  4000, 2.76, 13.80, true, 10),
+      ('claude',  'claude-opus-4-20250514',   'Claude Opus 4',    4000, 13.80, 69.00, false, 11),
+      ('claude',  'claude-haiku-4-5-20251001','Claude Haiku 4.5', 4000, 0.74, 3.68, false, 12),
+      ('mistral', 'mistral-large-latest',     'Mistral Large',    4000, 1.84, 5.52,  true, 20),
+      ('mistral', 'mistral-small-latest',     'Mistral Small',    4000, 0.18, 0.55,  false, 21)
+    ON CONFLICT (provider, model_id) DO UPDATE SET
+      display_name           = EXCLUDED.display_name,
+      max_tokens             = EXCLUDED.max_tokens,
+      input_cost_per_1m_eur  = EXCLUDED.input_cost_per_1m_eur,
+      output_cost_per_1m_eur = EXCLUDED.output_cost_per_1m_eur,
+      sort_order             = EXCLUDED.sort_order,
+      updated_at             = now()
+  `)
+
+  await pool.query(`
+    INSERT INTO platform.sourcing_platforms
+      (code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order)
+    VALUES
+      ('linkedin',      'LinkedIn',      NULL, 'https://linkedin.com', 50000, true, true, 1),
+      ('africawork',    'Africawork',    NULL, 'https://africawork.com', 8000, true, true, 2),
+      ('jobnetafrica',  'JobnetAfrica',  NULL, 'https://jobnetafrica.com', 3000, true, true, 3),
+      ('indeed',        'Indeed',        NULL, 'https://indeed.com', 20000, true, true, 4),
+      ('glassdoor',     'Glassdoor',     NULL, 'https://glassdoor.com', 5000, true, true, 5),
+      ('emploi_ci',     'Emploi.ci',     'CI', 'https://www.emploi.ci', 1500, true, false, 10),
+      ('rmo_ci',        'RMO Côte d''Ivoire', 'CI', NULL, 800, true, false, 11),
+      ('novojob',       'Novojob',       'CI', 'https://www.novojob.com', 600, true, false, 12),
+      ('emploi_sn',     'Emploi.sn',     'SN', 'https://www.emploi.sn', 1200, true, false, 20),
+      ('senjob',        'Senjob',        'SN', 'https://www.senjob.com', 700, true, false, 21),
+      ('emploi_bj',     'EmploiBénin',   'BJ', NULL, 400, true, false, 30),
+      ('emploi_tg',     'Emploi-Togo',   'TG', NULL, 300, true, false, 40),
+      ('minajobs',      'MinaJobs',      'CM', NULL, 900, true, false, 50),
+      ('jobberman',     'Jobberman',     'NG', 'https://www.jobberman.com', 4000, true, false, 60),
+      ('myjobmag',      'MyJobMag',      'NG', 'https://www.myjobmag.com', 2500, true, false, 61),
+      ('jobberman_gh',  'Jobberman Ghana', 'GH', NULL, 1200, true, false, 70),
+      ('wttj',          'Welcome to the Jungle', 'FR', 'https://welcometothejungle.com', 8000, true, false, 99),
+      ('apec',          'Apec',          'FR', 'https://www.apec.fr', 4000, true, false, 98)
+    ON CONFLICT (code) DO UPDATE SET
+      name          = EXCLUDED.name,
+      country_code  = EXCLUDED.country_code,
+      url           = EXCLUDED.url,
+      est_pool      = EXCLUDED.est_pool,
+      is_active     = EXCLUDED.is_active,
+      is_panafrican = EXCLUDED.is_panafrican,
+      sort_order    = EXCLUDED.sort_order,
+      updated_at    = now()
+  `)
+
+  // Settings clé/valeur — valeurs initiales (slider, budget, pondérations)
+  const sourcingSettings: Array<[string, unknown, string]> = [
+    ['max_profiles_min',          { value: 1 },   'Slider min de profils par requête'],
+    ['max_profiles_max',          { value: 20 },  'Slider max de profils par requête'],
+    ['max_profiles_default',      { value: 8 },   'Valeur par défaut du slider'],
+    ['max_cost_eur_per_request',  { value: 0.50 }, 'Budget max IA par requête (EUR, 0 = pas de limite)'],
+    ['claude_system_prompt',      { value: '' },  'Prompt système Claude (vide = défaut)'],
+    ['mistral_system_prompt',     { value: '' },  'Prompt système Mistral (vide = défaut)'],
+    ['richness_weights', {
+      hasProfiles: 20, fiveProfiles: 10, perProfile: 2,
+      hasBooleanSearch: 10, hasKeywords: 10, hasSalaryBenchmark: 10,
+      hasBestPlatforms: 10, hasTips: 5,
+      firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
+    }, 'Pondérations du score de richesse Claude vs Mistral'],
+  ]
+  for (const [key, value, description] of sourcingSettings) {
+    await pool.query(
+      `INSERT INTO platform.sourcing_settings (key, value, description, updated_at)
+       VALUES ($1, $2::jsonb, $3, now())
+       ON CONFLICT (key) DO UPDATE SET
+         value = EXCLUDED.value,
+         description = EXCLUDED.description,
+         updated_at = now()`,
+      [key, JSON.stringify(value), description],
+    )
+  }
+  console.log('[2b] Sourcing IA seedé : 5 modèles, 18 plateformes, 7 settings')
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 1 — SOTRA (Société des Transports Abidjanais)
   // ─────────────────────────────────────────────────────────────────────────────
   const sotraSlug   = 'sotra'
