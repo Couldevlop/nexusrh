@@ -5,6 +5,8 @@ import {
   Briefcase, Plus, Users, MapPin, ChevronRight, Eye,
   CheckCircle, XCircle, ArrowRight, Sparkles, Upload, Globe, Lock,
   Wand2, Mail, Linkedin, Loader2,
+  Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
+  Star, Award, Send, ExternalLink,
 } from 'lucide-react'
 
 interface Department { id: string; name: string }
@@ -932,6 +934,96 @@ function rowToProfile(row: SourcedProfileRow): SourcingProfile {
   }
 }
 
+// ─── Helpers UI : avatars, badges, gradients déterministes ──────────────────
+
+// Hash déterministe → couleur stable pour un nom donné (pas de couleur
+// aléatoire qui change à chaque render).
+function nameToGradient(firstName: string, lastName: string): string {
+  const palette = [
+    'from-orange-400 to-pink-500',
+    'from-emerald-400 to-teal-500',
+    'from-blue-400 to-indigo-500',
+    'from-purple-400 to-fuchsia-500',
+    'from-amber-400 to-orange-500',
+    'from-rose-400 to-red-500',
+    'from-cyan-400 to-blue-500',
+    'from-lime-400 to-emerald-500',
+    'from-violet-400 to-purple-500',
+    'from-sky-400 to-cyan-500',
+  ]
+  const seed = (firstName + lastName).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  return palette[seed % palette.length]!
+}
+
+function initials(firstName: string, lastName: string): string {
+  const a = (firstName || '').trim().charAt(0).toUpperCase()
+  const b = (lastName || '').trim().charAt(0).toUpperCase()
+  return (a + b) || '?'
+}
+
+// Badge match score sémantique : excellent (90+) / très bon (75+) / bon (60+) / faible
+function matchTier(score: number): { label: string; classes: string; ringClasses: string } {
+  if (score >= 90) return {
+    label: 'Excellent', classes: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    ringClasses: 'ring-emerald-400 text-emerald-700',
+  }
+  if (score >= 75) return {
+    label: 'Très bon', classes: 'bg-green-100 text-green-800 border-green-300',
+    ringClasses: 'ring-green-400 text-green-700',
+  }
+  if (score >= 60) return {
+    label: 'Correct', classes: 'bg-amber-100 text-amber-800 border-amber-300',
+    ringClasses: 'ring-amber-400 text-amber-700',
+  }
+  return {
+    label: 'Faible', classes: 'bg-rose-100 text-rose-800 border-rose-300',
+    ringClasses: 'ring-rose-400 text-rose-700',
+  }
+}
+
+// Composant avatar circulaire avec initiales sur gradient.
+function Avatar({ firstName, lastName, size = 'md' }: {
+  firstName: string; lastName: string; size?: 'sm' | 'md' | 'lg'
+}) {
+  const sizeClasses = {
+    sm: 'h-10 w-10 text-sm',
+    md: 'h-12 w-12 text-base',
+    lg: 'h-16 w-16 text-lg',
+  }[size]
+  return (
+    <div className={`${sizeClasses} flex-shrink-0 rounded-full bg-gradient-to-br ${nameToGradient(firstName, lastName)}
+      text-white font-semibold flex items-center justify-center shadow-md ring-2 ring-white`}>
+      {initials(firstName, lastName)}
+    </div>
+  )
+}
+
+// Cercle de score (ring SVG) — composant visuellement fort.
+function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
+  const tier = matchTier(score)
+  const stroke = 4
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const offset = c - (Math.min(Math.max(score, 0), 100) / 100) * c
+  const color = score >= 90 ? '#10b981' : score >= 75 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444'
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg className="-rotate-90" width={size} height={size}>
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="currentColor" strokeWidth={stroke}
+          fill="none" className="text-muted/30" />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke}
+          fill="none" strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+          className="transition-[stroke-dashoffset] duration-700" />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className={`text-sm font-bold ${tier.ringClasses.split(' ').filter(c => c.startsWith('text-')).join(' ')}`}>
+          {score}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   jobs: Job[]
   aiCaps: { claude: boolean; mistral: boolean }
@@ -1076,207 +1168,338 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
 
   const hasAnyModel = aiCaps.claude || aiCaps.mistral
   const canCompare  = aiCaps.claude && aiCaps.mistral
+  const selectedJobObj = jobs.find(j => j.id === jobId)
+  const openJobs = jobs.filter(j => j.status === 'open')
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-        <div className="flex items-start gap-3">
-          <Sparkles className="h-5 w-5 flex-shrink-0 text-primary" />
+    <div className="space-y-6">
+      {/* ── Hero header ────────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6 shadow-sm">
+        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-gradient-to-br from-purple-300/30 to-pink-300/30 blur-3xl" />
+        <div className="relative flex items-start gap-4">
+          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-purple-500/30">
+            <Wand2 className="h-7 w-7 text-white" />
+          </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold">Sourcing automatique — multi-pays Afrique</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              L'IA génère des profils synthétiques réalistes pour cibler vos plateformes (LinkedIn, Africawork, Emploi.ci, Jobberman…).
-              Calibré pour les groupes opérant en Afrique : filiales, OHADA, devises locales (XOF, XAF, NGN…).
+            <h2 className="text-xl font-bold text-slate-900">Sourcing IA · Multi-pays Afrique</h2>
+            <p className="mt-1 text-sm text-slate-600 max-w-2xl">
+              Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn, Africawork, Emploi.ci, Jobberman et d'autres plateformes locales.
+              Conforme OHADA, devises FCFA / XAF / NGN.
             </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
+                <Globe className="h-3.5 w-3.5" /> {countryCatalog.length} pays
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-purple-700 border border-purple-200">
+                <Layers className="h-3.5 w-3.5" /> {(platformsQuery.data?.data?.length ?? suggestedPlatforms.length)} plateformes
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-pink-700 border border-pink-200">
+                <Sparkles className="h-3.5 w-3.5" />
+                {hasAnyModel ? (canCompare ? 'Claude + Mistral' : (aiCaps.claude ? 'Claude' : 'Mistral')) : 'Aucun modèle IA'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {!hasAnyModel && (
-        <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          Aucun modèle IA configuré (ANTHROPIC_API_KEY / MISTRAL_API_KEY). Contactez votre administrateur.
-        </p>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
+          <ShieldCheck className="h-5 w-5 flex-shrink-0 text-rose-600" />
+          <div>
+            <p className="text-sm font-semibold text-rose-900">Aucun modèle IA configuré</p>
+            <p className="text-xs text-rose-700 mt-0.5">
+              Définir ANTHROPIC_API_KEY ou MISTRAL_API_KEY côté API. Contactez votre administrateur plateforme.
+            </p>
+          </div>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-1 space-y-4 rounded-xl border border-border bg-card p-4">
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">Offre à sourcer</label>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* ── Panneau de configuration (gauche) ──────────────────────── */}
+        <div className="lg:col-span-4 space-y-4">
+          {/* Card 1 : Offre */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100">
+                <Briefcase className="h-4 w-4 text-indigo-700" />
+              </div>
+              <label className="text-sm font-semibold">Offre à sourcer</label>
+            </div>
             <select value={jobId} onChange={e => setJobId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none">
               <option value="">— Choisir une offre —</option>
-              {jobs.filter(j => j.status === 'open').map(j => (
+              {openJobs.map(j => (
                 <option key={j.id} value={j.id}>{j.title} · {j.location}</option>
               ))}
             </select>
+            {selectedJobObj && (
+              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="h-3 w-3" />{selectedJobObj.location}
+                <span className="text-muted-foreground/50">·</span>
+                <span className="uppercase">{selectedJobObj.contract_type}</span>
+              </div>
+            )}
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">
-              Pays cibles ({countries.length})
-            </label>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {/* Card 2 : Pays cibles */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
+                  <Globe className="h-4 w-4 text-purple-700" />
+                </div>
+                <label className="text-sm font-semibold">Pays cibles</label>
+              </div>
+              <span className="text-xs font-semibold text-purple-700">{countries.length} actif{countries.length > 1 ? 's' : ''}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
               {countryCatalog.map(c => {
                 const active = countries.includes(c.code)
                 return (
                   <button key={c.code} type="button" onClick={() => toggleCountry(c.code)}
-                    className={`rounded-full border px-2 py-1 text-xs ${active ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
-                    <span className="mr-1">{c.flag}</span>{c.code}
+                    title={c.label}
+                    className={`group relative flex flex-col items-center gap-0.5 rounded-lg border-2 px-1 py-2 transition-all
+                      ${active
+                        ? 'border-purple-400 bg-gradient-to-br from-purple-50 to-pink-50 shadow-sm scale-105'
+                        : 'border-border bg-card hover:border-purple-300 hover:bg-purple-50/30'}`}>
+                    <span className="text-xl leading-none">{c.flag}</span>
+                    <span className={`text-[10px] font-medium ${active ? 'text-purple-900' : 'text-muted-foreground'}`}>{c.code}</span>
+                    {active && (
+                      <CheckCircle className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 text-purple-600 bg-white rounded-full" />
+                    )}
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">
-              Plateformes ({platforms.length})
-            </label>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {/* Card 3 : Plateformes */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100">
+                  <Layers className="h-4 w-4 text-blue-700" />
+                </div>
+                <label className="text-sm font-semibold">Plateformes</label>
+              </div>
+              <span className="text-xs font-semibold text-blue-700">{platforms.length} cochée{platforms.length > 1 ? 's' : ''}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
               {suggestedPlatforms.map(p => {
                 const active = platforms.includes(p)
                 return (
                   <button key={p} type="button" onClick={() => togglePlatform(p)}
-                    className={`rounded-md border px-2 py-1 text-xs ${active ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
-                    {active ? '✓ ' : ''}{p}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
+                      ${active
+                        ? 'border-blue-400 bg-blue-50 text-blue-800'
+                        : 'border-border bg-card text-muted-foreground hover:border-blue-300 hover:bg-blue-50/50'}`}>
+                    {active && <CheckCircle className="h-3 w-3" />}
+                    {p}
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">
-              Nombre de profils : {maxProfiles}
-            </label>
+          {/* Card 4 : Nombre profils */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100">
+                  <Users className="h-4 w-4 text-amber-700" />
+                </div>
+                <label className="text-sm font-semibold">Nombre de profils</label>
+              </div>
+              <span className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+                {maxProfiles}
+              </span>
+            </div>
             <input type="range" min="3" max="20" value={maxProfiles}
               onChange={e => setMaxProfiles(Number(e.target.value))}
-              className="mt-2 w-full accent-primary" />
+              className="mt-2 w-full accent-amber-500" />
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+              <span>3</span><span>10</span><span>20</span>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">Mode</label>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
+          {/* Card 5 : Mode + Modèle */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100">
+                <Zap className="h-4 w-4 text-pink-700" />
+              </div>
+              <label className="text-sm font-semibold">Mode de génération</label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setMode('single')}
-                className={`rounded-lg border px-2 py-2 text-xs font-medium ${mode === 'single' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
+                className={`rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition-all
+                  ${mode === 'single'
+                    ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-rose-50 text-pink-900 shadow-sm'
+                    : 'border-border hover:border-pink-300'}`}>
+                <Sparkles className="h-4 w-4 mx-auto mb-1" />
                 Simple
               </button>
               <button type="button" onClick={() => setMode('compare')}
                 disabled={!canCompare}
-                title={!canCompare ? 'MISTRAL_API_KEY requis' : ''}
-                className={`rounded-lg border px-2 py-2 text-xs font-medium ${mode === 'compare' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'} ${!canCompare ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                Compare Claude vs Mistral
+                title={!canCompare ? 'MISTRAL_API_KEY requis pour la comparaison' : ''}
+                className={`rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition-all
+                  ${mode === 'compare'
+                    ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-rose-50 text-pink-900 shadow-sm'
+                    : 'border-border hover:border-pink-300'}
+                  ${!canCompare ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                <TrendingUp className="h-4 w-4 mx-auto mb-1" />
+                Comparer
               </button>
             </div>
+
+            {mode === 'single' && hasAnyModel && (
+              <div className="mt-3">
+                <label className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">Modèle IA</label>
+                <div className="mt-1 flex gap-2">
+                  {(['claude', 'mistral'] as const).map(m => (
+                    <button key={m} type="button" disabled={!aiCaps[m]}
+                      onClick={() => setModel(m)}
+                      className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors
+                        ${model === m ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-border hover:bg-accent'}
+                        ${!aiCaps[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                      {m === 'claude' ? 'Claude' : 'Mistral'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {mode === 'single' && hasAnyModel && (
-            <div>
-              <label className="text-xs font-semibold uppercase text-muted-foreground">Modèle</label>
-              <div className="mt-1.5 flex gap-2">
-                {(['claude', 'mistral'] as const).map(m => (
-                  <button key={m} type="button" disabled={!aiCaps[m]}
-                    onClick={() => setModel(m)}
-                    className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium ${model === m ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'} ${!aiCaps[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                    {m === 'claude' ? 'Claude' : 'Mistral'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* CTA principal */}
           <button onClick={run} disabled={loading || !jobId || !hasAnyModel}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            className="group relative w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 transition-all hover:shadow-xl hover:shadow-purple-500/40 hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg">
             {loading
-              ? (mode === 'compare' ? 'Comparaison en cours…' : 'Génération…')
-              : (mode === 'compare' ? 'Lancer la comparaison' : 'Générer les profils')}
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'compare' ? 'Comparaison en cours…' : 'Génération en cours…'}</>
+              : <><Wand2 className="h-4 w-4 group-hover:rotate-12 transition-transform" /> {mode === 'compare' ? 'Lancer la comparaison IA' : 'Générer les profils IA'}</>}
           </button>
 
           {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</p>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 flex items-start gap-2">
+              <XCircle className="h-4 w-4 flex-shrink-0 text-rose-600 mt-0.5" />
+              <p className="text-xs text-rose-700">{error}</p>
+            </div>
           )}
         </div>
 
-        <div className="lg:col-span-2 space-y-4">
-          {/* Profils en cache (seedés ou générés précédemment) */}
+        {/* ── Résultats (droite) ──────────────────────────────────────── */}
+        <div className="lg:col-span-8 space-y-4">
+          {/* Bannière profils sourcés en cache */}
           {jobId && sourcedRows.length > 0 && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-emerald-900">
-                    Profils sourcés pour cette offre · {sourcedRows.length}
-                  </p>
-                  <p className="text-xs text-emerald-700">
-                    {pendingCount > 0
-                      ? `${pendingCount} à transférer · ${sourcedRows.length - pendingCount} déjà dans le pipeline`
-                      : `Tous les profils ont déjà été transférés vers le pipeline`}
-                  </p>
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 p-5 shadow-sm">
+              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-300/20 blur-2xl" />
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md">
+                    <Award className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-emerald-900">
+                      {sourcedRows.length} profil{sourcedRows.length > 1 ? 's' : ''} sourcé{sourcedRows.length > 1 ? 's' : ''}
+                    </h3>
+                    <p className="text-xs text-emerald-700/90 mt-0.5">
+                      {pendingCount > 0
+                        ? <><strong>{pendingCount}</strong> à transférer · <strong>{sourcedRows.length - pendingCount}</strong> déjà dans le pipeline</>
+                        : 'Tous transférés vers le pipeline ✓'}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {pendingCount > 0 && (
-                    <button
-                      onClick={transferAll}
-                      disabled={transferringAll}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-                      {transferringAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                    <button onClick={transferAll} disabled={transferringAll}
+                      className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50">
+                      {transferringAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Tout transférer ({pendingCount})
                     </button>
                   )}
-                  <button
-                    onClick={() => onGoToKanban(jobId)}
-                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">
-                    Voir le pipeline <ChevronRight className="h-3.5 w-3.5" />
+                  <button onClick={() => onGoToKanban(jobId)}
+                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white/90 px-3.5 py-2 text-xs font-semibold text-emerald-700 hover:bg-white">
+                    Voir Kanban <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
               {transferMsg && (
-                <p className="mt-2 text-xs text-emerald-800 italic">{transferMsg}</p>
+                <div className="relative mt-3 flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs text-emerald-800">
+                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  {transferMsg}
+                </div>
               )}
             </div>
           )}
 
           {jobId && sourcedQuery.isLoading && (
-            <div className="rounded-xl border border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
-              Chargement des profils sourcés…
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-4 animate-pulse">
+                  <div className="flex gap-3">
+                    <div className="h-12 w-12 rounded-full bg-muted" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-muted rounded w-3/4" />
+                      <div className="h-2 bg-muted rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="h-2 bg-muted rounded" />
+                    <div className="h-2 bg-muted rounded w-5/6" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {sourcedRows.map(row => (
-            <ProfileCard
-              key={row.id}
-              profile={rowToProfile(row)}
-              onContact={() => setContactProfile(rowToProfile(row))}
-              transferable={{
-                state: row.transferred_to_application_id
-                  ? 'transferred'
-                  : transferringId === row.id ? 'transferring' : 'pending',
-                onTransfer: () => transferOne(row.id),
-              }}
-            />
-          ))}
-
-          {!single && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
-            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              <Sparkles className="mx-auto mb-2 h-8 w-8 opacity-40" />
-              Aucun profil sourcé pour cette offre. Lancez une génération à gauche pour en créer.
+          {/* Grid de profils sourcés (en cache) */}
+          {sourcedRows.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {sourcedRows.map(row => (
+                <ProfileCard
+                  key={row.id}
+                  profile={rowToProfile(row)}
+                  onContact={() => setContactProfile(rowToProfile(row))}
+                  transferable={{
+                    state: row.transferred_to_application_id
+                      ? 'transferred'
+                      : transferringId === row.id ? 'transferring' : 'pending',
+                    onTransfer: () => transferOne(row.id),
+                  }}
+                />
+              ))}
             </div>
+          )}
+
+          {/* Empty states */}
+          {!single && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
+            <EmptyState
+              icon={Target}
+              title="Aucun profil sourcé pour cette offre"
+              hint="Lancez une génération à gauche pour créer les premiers profils."
+              tone="info"
+            />
           )}
 
           {!jobId && (
-            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              <Sparkles className="mx-auto mb-2 h-8 w-8 opacity-40" />
-              Sélectionnez une offre à gauche pour voir les profils sourcés et lancer une nouvelle génération.
-            </div>
+            <EmptyState
+              icon={Briefcase}
+              title="Sélectionnez une offre"
+              hint="Choisissez une offre à sourcer dans le panneau de gauche pour démarrer."
+              tone="indigo"
+            />
           )}
 
-          {/* Résultats de la dernière génération (en mémoire, pas encore persistés) */}
+          {/* Résultats de la dernière génération */}
           {single?.data && (
             <SourcingStrategyCard strategy={single.data.strategy} meta={single.meta} />
           )}
-          {single?.data?.profiles.map((p, i) => (
-            <ProfileCard key={`gen-${i}`} profile={p} onContact={() => setContactProfile(p)} />
-          ))}
+          {single?.data && single.data.profiles.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {single.data.profiles.map((p, i) => (
+                <ProfileCard key={`gen-${i}`} profile={p} onContact={() => setContactProfile(p)} />
+              ))}
+            </div>
+          )}
 
           {compare && (
             <CompareReport compare={compare} onContact={setContactProfile} />
@@ -1291,72 +1514,134 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   )
 }
 
+// ─── Empty state stylisé ────────────────────────────────────────────────────
+function EmptyState({ icon: Icon, title, hint, tone = 'info' }: {
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  hint: string
+  tone?: 'info' | 'indigo' | 'emerald'
+}) {
+  const styles = {
+    info:    { ring: 'from-slate-200 to-slate-300', icon: 'text-slate-500',   bg: 'bg-slate-50/50',    border: 'border-slate-200' },
+    indigo:  { ring: 'from-indigo-200 to-purple-300', icon: 'text-indigo-600', bg: 'bg-indigo-50/40',   border: 'border-indigo-200' },
+    emerald: { ring: 'from-emerald-200 to-teal-300', icon: 'text-emerald-600', bg: 'bg-emerald-50/40', border: 'border-emerald-200' },
+  }[tone]
+  return (
+    <div className={`rounded-2xl border-2 border-dashed ${styles.border} ${styles.bg} p-10 text-center`}>
+      <div className={`mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${styles.ring}`}>
+        <Icon className={`h-8 w-8 ${styles.icon}`} />
+      </div>
+      <h3 className="text-base font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">{hint}</p>
+    </div>
+  )
+}
+
+// ─── Stratégie de sourcing ──────────────────────────────────────────────────
 function SourcingStrategyCard({ strategy, meta }: {
   strategy: SourcingStrategy
   meta: SourcingResponse['meta']
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Stratégie de sourcing
-        </h3>
-        <div className="flex flex-wrap items-center gap-2 text-[10px]">
-          <span className="rounded bg-muted px-2 py-0.5 uppercase">{meta.provider}</span>
-          <span className="rounded bg-muted px-2 py-0.5">Richesse {meta.richnessScore}</span>
-          <span className="rounded bg-muted px-2 py-0.5">{meta.latencyMs}ms</span>
-          <span className="rounded bg-muted px-2 py-0.5">{meta.estimatedCostEur.toFixed(4)} €</span>
-        </div>
-      </div>
-      <p className="text-sm">{strategy.summary}</p>
-
-      {strategy.bestPlatforms.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-1.5">Plateformes recommandées</p>
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {strategy.bestPlatforms.map((p, i) => (
-              <div key={i} className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">{p.name}</span>
-                  <span className="text-[10px] text-muted-foreground">~{p.estimatedPool} profils</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">{p.rationale}</p>
-              </div>
-            ))}
+    <div className="overflow-hidden rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50/30 to-purple-50/30 shadow-sm">
+      {/* Header gradient */}
+      <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-indigo-100/70 to-purple-100/70 px-5 py-3 border-b border-indigo-200">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-indigo-900">Stratégie de sourcing IA</h3>
+            <p className="text-[11px] text-indigo-700/70">Généré par {meta.provider === 'claude' ? 'Claude (Anthropic)' : 'Mistral'}</p>
           </div>
         </div>
-      )}
-
-      {strategy.booleanSearch && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-1.5">Requête booléenne LinkedIn</p>
-          <code className="block rounded-md bg-muted px-2 py-1.5 text-xs">{strategy.booleanSearch}</code>
-        </div>
-      )}
-
-      {strategy.salaryBenchmark.median > 0 && (
-        <div className="flex items-center gap-3 rounded-md bg-emerald-50/50 border border-emerald-200 px-2 py-1.5">
-          <span className="text-xs font-semibold text-emerald-800">Benchmark salarial</span>
-          <span className="text-xs text-emerald-700">
-            {strategy.salaryBenchmark.min.toLocaleString('fr-FR')} – {strategy.salaryBenchmark.max.toLocaleString('fr-FR')} {strategy.salaryBenchmark.currency}
-            <span className="ml-1 opacity-70">(médiane : {strategy.salaryBenchmark.median.toLocaleString('fr-FR')})</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-indigo-700 border border-indigo-200">
+            <Star className="h-3 w-3" /> {meta.richnessScore}/100
+          </span>
+          <span className="rounded-md bg-white px-2 py-1 text-[10px] font-mono text-indigo-700 border border-indigo-200">
+            ⏱ {meta.latencyMs}ms
+          </span>
+          <span className="rounded-md bg-white px-2 py-1 text-[10px] font-mono text-indigo-700 border border-indigo-200">
+            💰 {meta.estimatedCostEur.toFixed(4)} €
           </span>
         </div>
-      )}
+      </div>
 
-      {strategy.tips.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-1.5">Conseils</p>
-          <ul className="space-y-0.5 text-xs">
-            {strategy.tips.map((t, i) => <li key={i}>• {t}</li>)}
-          </ul>
-        </div>
-      )}
+      <div className="p-5 space-y-4">
+        <p className="text-sm text-slate-700 leading-relaxed">{strategy.summary}</p>
+
+        {strategy.bestPlatforms.length > 0 && (
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5" /> Plateformes recommandées
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {strategy.bestPlatforms.map((p, i) => (
+                <div key={i} className="rounded-lg border border-indigo-100 bg-white px-3 py-2 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">{p.name}</span>
+                    <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                      ~{p.estimatedPool}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">{p.rationale}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {strategy.booleanSearch && (
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
+              <Target className="h-3.5 w-3.5" /> Requête booléenne LinkedIn
+            </p>
+            <code className="block rounded-lg bg-slate-900 px-3 py-2 text-xs text-emerald-300 font-mono border border-slate-700 overflow-x-auto">
+              {strategy.booleanSearch}
+            </code>
+          </div>
+        )}
+
+        {strategy.salaryBenchmark.median > 0 && (
+          <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="h-4 w-4 text-emerald-700" />
+              <span className="text-xs font-bold text-emerald-900">Benchmark salarial</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold text-emerald-700 font-mono">
+                {strategy.salaryBenchmark.median.toLocaleString('fr-FR')}
+              </span>
+              <span className="text-xs text-emerald-700/70">{strategy.salaryBenchmark.currency} · médiane</span>
+            </div>
+            <div className="text-[11px] text-emerald-700/80 mt-0.5">
+              Fourchette : {strategy.salaryBenchmark.min.toLocaleString('fr-FR')} – {strategy.salaryBenchmark.max.toLocaleString('fr-FR')} {strategy.salaryBenchmark.currency}
+            </div>
+          </div>
+        )}
+
+        {strategy.tips.length > 0 && (
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
+              <Quote className="h-3.5 w-3.5" /> Conseils
+            </p>
+            <ul className="space-y-1.5">
+              {strategy.tips.map((t, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                  <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
+// ─── ProfileCard refondue ───────────────────────────────────────────────────
 function ProfileCard({ profile, onContact, transferable }: {
   profile: SourcingProfile
   onContact: () => void
@@ -1365,135 +1650,248 @@ function ProfileCard({ profile, onContact, transferable }: {
     onTransfer: () => void
   }
 }) {
+  const tier = matchTier(profile.matchScore)
+  const isTransferred = transferable?.state === 'transferred'
+
   return (
-    <div className={`rounded-xl border bg-card p-4 hover:border-primary/40 transition-colors ${
-      transferable?.state === 'transferred' ? 'border-emerald-300 bg-emerald-50/30' : 'border-border'
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium flex items-center gap-2">
-            {profile.firstName} {profile.lastName}
-            {transferable?.state === 'transferred' && (
-              <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                Dans le pipeline
-              </span>
-            )}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {profile.currentPosition}{profile.currentCompany ? ` · ${profile.currentCompany}` : ''}
-          </p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <MapPin className="h-3 w-3" />{profile.location} · {profile.experienceYears} ans d'expérience
-          </p>
+    <div className={`group relative overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:shadow-lg
+      ${isTransferred
+        ? 'border-emerald-300 bg-gradient-to-br from-emerald-50/40 to-teal-50/30 shadow-emerald-100'
+        : 'border-border hover:border-indigo-300'}`}>
+      {/* Bandeau "Dans le pipeline" si transféré */}
+      {isTransferred && (
+        <div className="absolute top-0 right-0 z-10 rounded-bl-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-md">
+          <CheckCircle className="inline h-3 w-3 mr-0.5" /> Dans le pipeline
         </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <span className="text-2xl font-bold text-primary">{profile.matchScore}%</span>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${AVAILABILITY_COLOR[profile.availabilityEstimate] ?? 'bg-muted'}`}>
+      )}
+
+      <div className="p-4">
+        {/* Header : Avatar + identité + score */}
+        <div className="flex items-start gap-3">
+          <Avatar firstName={profile.firstName} lastName={profile.lastName} size="md" />
+
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-bold text-slate-900 truncate">
+              {profile.firstName} {profile.lastName}
+            </h4>
+            <p className="text-xs text-slate-600 truncate">
+              {profile.currentPosition}
+            </p>
+            {profile.currentCompany && (
+              <p className="text-[11px] text-slate-500 truncate">
+                @ {profile.currentCompany}
+              </p>
+            )}
+          </div>
+
+          <ScoreRing score={profile.matchScore} size={48} />
+        </div>
+
+        {/* Méta : disponibilité + localisation + expérience */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${AVAILABILITY_COLOR[profile.availabilityEstimate] ?? 'bg-muted'}`}>
             {AVAILABILITY_LABEL[profile.availabilityEstimate] ?? profile.availabilityEstimate}
           </span>
-        </div>
-      </div>
-
-      {profile.keySkills.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {profile.keySkills.map((s, i) => (
-            <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px]">{s}</span>
-          ))}
-        </div>
-      )}
-
-      {profile.approachStrategy && (
-        <p className="mt-2 text-xs text-muted-foreground italic">"{profile.approachStrategy}"</p>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs">
-        <span className="rounded bg-muted px-1.5 py-0.5">{profile.suggestedPlatform}</span>
-        {profile.estimatedSalary > 0 && (
-          <span className="text-muted-foreground">
-            ~ {profile.estimatedSalary.toLocaleString('fr-FR')} {profile.estimatedSalaryCurrency}
+          <span className="inline-flex items-center gap-1 text-slate-600">
+            <MapPin className="h-3 w-3" /> {profile.location}
           </span>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <button onClick={onContact}
-            className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-primary hover:bg-primary/20">
-            <Mail className="h-3 w-3" /> Message
-          </button>
-          {transferable && transferable.state !== 'transferred' && (
-            <button
-              onClick={transferable.onTransfer}
-              disabled={transferable.state === 'transferring'}
-              className="flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-              {transferable.state === 'transferring'
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <ArrowRight className="h-3 w-3" />}
-              Transférer
-            </button>
+          {profile.experienceYears > 0 && (
+            <span className="inline-flex items-center gap-1 text-slate-600">
+              <Briefcase className="h-3 w-3" /> {profile.experienceYears} ans
+            </span>
           )}
+        </div>
+
+        {/* Skills */}
+        {profile.keySkills.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1">
+            {profile.keySkills.slice(0, 6).map((s, i) => (
+              <span key={i} className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 border border-indigo-100">
+                {s}
+              </span>
+            ))}
+            {profile.keySkills.length > 6 && (
+              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                +{profile.keySkills.length - 6}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Approche : citation stylisée */}
+        {profile.approachStrategy && (
+          <div className="mt-3 rounded-lg bg-gradient-to-r from-indigo-50/50 to-purple-50/50 border border-indigo-100 p-2.5">
+            <div className="flex items-start gap-1.5">
+              <Quote className="h-3 w-3 mt-0.5 flex-shrink-0 text-indigo-400" />
+              <p className="text-[11px] text-slate-700 italic leading-relaxed line-clamp-3">
+                {profile.approachStrategy}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Footer : plateforme + salaire + actions */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
+          {profile.suggestedPlatform && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+              <Layers className="h-2.5 w-2.5" /> {profile.suggestedPlatform}
+            </span>
+          )}
+          {profile.estimatedSalary > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              {profile.estimatedSalary.toLocaleString('fr-FR')} {profile.estimatedSalaryCurrency}
+            </span>
+          )}
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <button onClick={onContact}
+              className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">
+              <Mail className="h-3 w-3" /> Message
+            </button>
+            {transferable && !isTransferred && (
+              <button onClick={transferable.onTransfer}
+                disabled={transferable.state === 'transferring'}
+                className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
+                {transferable.state === 'transferring'
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <Send className="h-3 w-3" />}
+                Transférer
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+// ─── Rapport comparatif Claude vs Mistral ───────────────────────────────────
 function CompareReport({ compare, onContact }: {
   compare: CompareResponse
   onContact: (p: SourcingProfile) => void
 }) {
   const [view, setView] = useState<'claude' | 'mistral'>(compare.comparison.winner)
-  const winnerLabel = compare.comparison.winner === 'claude' ? 'Claude' : 'Mistral'
+  const winnerLabel = compare.comparison.winner === 'claude' ? 'Claude (Anthropic)' : 'Mistral AI'
   const result = view === 'claude' ? compare.results.claude : compare.results.mistral
   const summary = view === 'claude' ? compare.comparison.summary.claude : compare.comparison.summary.mistral
 
   return (
-    <>
-      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-amber-600" />
-          <h3 className="font-semibold text-amber-900">Comparatif Claude vs Mistral</h3>
-          <span className="ml-auto rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-            Gagnant : {winnerLabel}
-          </span>
-        </div>
-        <p className="text-sm text-amber-900">{compare.comparison.recommendation}</p>
-
-        {compare.comparison.ratios && (
-          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-            <div className="rounded bg-white px-2 py-1.5 border border-amber-200">⏱ {compare.comparison.ratios.latency}</div>
-            <div className="rounded bg-white px-2 py-1.5 border border-amber-200">💰 {compare.comparison.ratios.cost}</div>
-            <div className="rounded bg-white px-2 py-1.5 border border-amber-200">⭐ {compare.comparison.ratios.richness}</div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-200">
-          {(['claude', 'mistral'] as const).map(m => {
-            const s = compare.comparison.summary[m]
-            return (
-              <div key={m} className="rounded-md bg-white p-2 border border-amber-200 space-y-1 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold uppercase">{m}</span>
-                  {s.jsonValid
-                    ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">OK</span>
-                    : <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">KO</span>}
-                </div>
-                <div>Latence : {s.latencyMs}ms</div>
-                <div>Coût : {s.estimatedCostEur.toFixed(4)} €</div>
-                <div>Profils : {s.profilesGenerated}</div>
-                <div>Richesse : {s.richnessScore}</div>
-                {s.error && <div className="text-red-600 italic">{s.error.slice(0, 80)}</div>}
+    <div className="space-y-4">
+      {/* Hero comparatif */}
+      <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 shadow-sm">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-orange-300/20 blur-3xl" />
+        <div className="relative p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-md">
+                <TrendingUp className="h-6 w-6 text-white" />
               </div>
-            )
-          })}
+              <div>
+                <h3 className="text-base font-bold text-amber-900">Comparatif IA</h3>
+                <p className="text-xs text-amber-700">Claude vs Mistral · génération parallèle</p>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
+              <Award className="h-4 w-4" />
+              Gagnant : {winnerLabel}
+            </div>
+          </div>
+
+          <p className="text-sm text-amber-900 leading-relaxed rounded-xl bg-white/60 border border-amber-200 p-3">
+            {compare.comparison.recommendation}
+          </p>
+
+          {/* Métriques côte à côte */}
+          <div className="grid grid-cols-2 gap-3">
+            {(['claude', 'mistral'] as const).map(m => {
+              const s = compare.comparison.summary[m]
+              const isWinner = compare.comparison.winner === m
+              return (
+                <div key={m}
+                  className={`relative rounded-xl border-2 bg-white p-3 transition-all ${
+                    isWinner
+                      ? 'border-amber-400 shadow-md shadow-amber-200/50 ring-2 ring-amber-100'
+                      : 'border-slate-200'
+                  }`}>
+                  {isWinner && (
+                    <div className="absolute -top-2 right-3 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                      ✨ Gagnant
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold uppercase tracking-wide text-slate-800">{m}</span>
+                    {s.jsonValid
+                      ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          <CheckCircle className="h-2.5 w-2.5" /> OK
+                        </span>
+                      : <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                          <XCircle className="h-2.5 w-2.5" /> KO
+                        </span>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Latence</div>
+                      <div className="font-bold text-slate-800 font-mono">{s.latencyMs}ms</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Coût</div>
+                      <div className="font-bold text-slate-800 font-mono">{s.estimatedCostEur.toFixed(4)}€</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Profils</div>
+                      <div className="font-bold text-slate-800 font-mono">{s.profilesGenerated}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Richesse</div>
+                      <div className="font-bold text-slate-800 font-mono">{s.richnessScore}/100</div>
+                    </div>
+                  </div>
+                  {s.error && (
+                    <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-[10px] text-rose-700 italic line-clamp-2">
+                      {s.error.slice(0, 120)}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Ratios visuels */}
+          {compare.comparison.ratios && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="flex items-center gap-2 rounded-lg bg-white border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100">⏱</span>
+                {compare.comparison.ratios.latency}
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-white border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100">💰</span>
+                {compare.comparison.ratios.cost}
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-white border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100">⭐</span>
+                {compare.comparison.ratios.richness}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
-        {(['claude', 'mistral'] as const).map(m => (
-          <button key={m} onClick={() => setView(m)}
-            disabled={!compare.results[m]}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${view === m ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'} ${!compare.results[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
-            Voir résultats {m}
-          </button>
-        ))}
+      {/* Toggle vue résultats */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-muted-foreground">Voir les résultats de :</span>
+        <div className="inline-flex gap-1 rounded-lg border border-border bg-card p-1">
+          {(['claude', 'mistral'] as const).map(m => (
+            <button key={m} onClick={() => setView(m)}
+              disabled={!compare.results[m]}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors
+                ${view === m
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'}
+                ${!compare.results[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
+              {m === 'claude' ? 'Claude' : 'Mistral'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {result && (
@@ -1505,19 +1903,26 @@ function CompareReport({ compare, onContact }: {
             richnessScore: summary.richnessScore,
             jsonValid: summary.jsonValid,
           }} />
-          {result.profiles.map((p, i) => (
-            <ProfileCard key={i} profile={p} onContact={() => onContact(p)} />
-          ))}
+          {result.profiles.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {result.profiles.map((p, i) => (
+                <ProfileCard key={i} profile={p} onContact={() => onContact(p)} />
+              ))}
+            </div>
+          )}
         </>
       )}
-    </>
+    </div>
   )
 }
 
+// ─── Dialog de contact — design pro ─────────────────────────────────────────
 function ContactDialog({ profile, onClose }: {
   profile: SourcingProfile
   onClose: () => void
 }) {
+  const [copied, setCopied] = useState<'subject' | 'body' | null>(null)
+
   const subject = `Opportunité chez nous — ${profile.currentPosition || 'votre profil'}`
   const body = `Bonjour ${profile.firstName},
 
@@ -1527,49 +1932,97 @@ Seriez-vous ouvert(e) à un premier échange (15-20 min) pour explorer cette opp
 
 Bonne journée,`
 
-  const copy = (text: string) => navigator.clipboard.writeText(text).catch(() => {})
+  const copy = (text: string, type: 'subject' | 'body') => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(type)
+      setTimeout(() => setCopied(null), 2000)
+    }).catch(() => {})
+  }
+
   const linkedinUrl = profile.linkedinSearch
     ? `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(profile.linkedinSearch)}`
     : `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${profile.firstName} ${profile.lastName} ${profile.currentCompany}`)}`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="rounded-xl border border-border bg-card p-6 w-full max-w-xl shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="font-semibold">Contacter {profile.firstName} {profile.lastName}</h3>
-            <p className="text-xs text-muted-foreground">{profile.currentPosition} · {profile.currentCompany}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card w-full max-w-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header avec avatar + identité */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 px-6 py-5 border-b border-border">
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-purple-300/20 blur-3xl" />
+          <div className="relative flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <Avatar firstName={profile.firstName} lastName={profile.lastName} size="lg" />
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  {profile.firstName} {profile.lastName}
+                </h3>
+                <p className="text-sm text-slate-700">{profile.currentPosition}</p>
+                {profile.currentCompany && (
+                  <p className="text-xs text-slate-500">@ {profile.currentCompany} · {profile.location}</p>
+                )}
+              </div>
+            </div>
+            <button onClick={onClose}
+              className="rounded-full p-1.5 hover:bg-white/60 transition-colors"
+              aria-label="Fermer">
+              <XCircle className="h-5 w-5 text-slate-500" />
+            </button>
           </div>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-accent">
-            <XCircle className="h-5 w-5 text-muted-foreground" />
-          </button>
         </div>
 
-        <div className="space-y-3">
+        {/* Body : champs */}
+        <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">Objet</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Objet</label>
+              <button onClick={() => copy(subject, 'subject')}
+                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
+                {copied === 'subject' ? <><CheckCircle className="h-3 w-3" /> Copié</> : 'Copier'}
+              </button>
+            </div>
             <input readOnly value={subject}
               onClick={e => (e.target as HTMLInputElement).select()}
-              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+              className="w-full rounded-lg border border-input bg-slate-50 px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" />
           </div>
+
           <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">Message</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Message d'approche</label>
+              <button onClick={() => copy(body, 'body')}
+                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
+                {copied === 'body' ? <><CheckCircle className="h-3 w-3" /> Copié</> : 'Copier'}
+              </button>
+            </div>
             <textarea readOnly value={body} rows={8}
               onClick={e => (e.target as HTMLTextAreaElement).select()}
-              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+              className="w-full rounded-lg border border-input bg-slate-50 px-3 py-2.5 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none resize-none" />
           </div>
+
+          {profile.linkedinSearch && (
+            <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <Linkedin className="h-4 w-4 text-blue-700" />
+                <span className="text-xs font-semibold text-blue-900">Recherche LinkedIn suggérée</span>
+              </div>
+              <code className="text-[11px] text-blue-800 font-mono break-all">{profile.linkedinSearch}</code>
+            </div>
+          )}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button onClick={() => copy(body)}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">
-            <Mail className="h-3.5 w-3.5" /> Copier le message
+        {/* Footer actions */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-slate-50 px-6 py-3">
+          <button onClick={() => copy(body, 'body')}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
+            <Mail className="h-3.5 w-3.5" />
+            Copier le message
           </button>
           <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-accent">
-            <Linkedin className="h-3.5 w-3.5" /> Rechercher sur LinkedIn
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-4 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition-colors">
+            <Linkedin className="h-3.5 w-3.5" />
+            Rechercher sur LinkedIn
+            <ExternalLink className="h-3 w-3 opacity-60" />
           </a>
-          <button onClick={onClose} className="ml-auto text-xs text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} className="ml-auto text-xs font-medium text-slate-500 hover:text-slate-700">
             Fermer
           </button>
         </div>
