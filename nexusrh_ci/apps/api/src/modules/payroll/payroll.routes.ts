@@ -380,12 +380,18 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const { month } = request.params as { month: string }
       const schema = request.user.schemaName
       const period = await rawPool.query<{
-        id: string; status: string; initiated_at: string | null; initiated_by: string | null
+        id: string; month: string; status: string
+        initiated_at: string | null; initiated_by: string | null
         rejection_reason: string | null; closed_at: string | null; closed_by: string | null
+        initiator_first_name: string | null; initiator_last_name: string | null
       }>(
-        `SELECT id, status, initiated_at, initiated_by, rejection_reason, closed_at, closed_by
-           FROM "${schema}".pay_periods
-           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+        `SELECT p.id, p.month, p.status, p.initiated_at, p.initiated_by,
+                p.rejection_reason, p.closed_at, p.closed_by,
+                ui.first_name AS initiator_first_name,
+                ui.last_name  AS initiator_last_name
+           FROM "${schema}".pay_periods p
+           LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
+           WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
         [month],
       )
       if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
@@ -410,14 +416,27 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         [p.id],
       )
 
+      const initiatorName = [p.initiator_first_name, p.initiator_last_name].filter(Boolean).join(' ') || null
+
       return reply.send({
-        data: {
-          period: p,
-          requiredLevels,
-          currentLevel: approvals.rows.length,
-          isComplete: approvals.rows.length >= requiredLevels,
-          approvals: approvals.rows,
+        period: {
+          id: p.id, month: p.month, status: p.status,
+          initiatedAt: p.initiated_at, initiatedBy: p.initiated_by,
+          initiatorName,
+          rejectionReason: p.rejection_reason,
+          closedAt: p.closed_at, closedBy: p.closed_by,
         },
+        requiredLevels,
+        currentLevel: approvals.rows.length,
+        isComplete: approvals.rows.length >= requiredLevels,
+        approvals: approvals.rows.map(a => ({
+          level: a.level,
+          approverId: a.approver_id,
+          approverRole: a.approver_role,
+          approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+          approvedAt: a.approved_at,
+          notes: a.notes,
+        })),
       })
     },
   })
