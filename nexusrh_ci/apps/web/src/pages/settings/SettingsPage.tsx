@@ -823,16 +823,28 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<LegalEntityForm>(EMPTY_LE_FORM)
 
+  // Source de vérité : flag has_subsidiaries du tenant (défini par super_admin
+  // lors de la création), pas l'heuristique "plus d'1 entité". Permet à un
+  // tenant mono-pays de ne JAMAIS voir le vocabulaire "filiale".
+  const tenantConfig = useAuthStore((s) => s.tenantConfig)
+  const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+  const tenantDefaultCountry = tenantConfig?.defaultCountryCode ?? 'CIV'
+
   const { data } = useQuery<{ data: LegalEntity[] }>({
     queryKey: ['settings-legal-entities'],
     queryFn: () => api.get('/settings/legal-entities').then(r => r.data),
   })
   const entities = data?.data ?? []
-  const hasSubsidiaries = entities.length > 1
 
   const openCreate = () => {
     setEditingId(null)
-    setForm(EMPTY_LE_FORM)
+    // Pré-remplit avec le pays par défaut du tenant pour éviter erreurs.
+    const country = COUNTRY_OPTIONS.find(c => c.code === tenantDefaultCountry) ?? COUNTRY_OPTIONS[0]!
+    setForm({
+      ...EMPTY_LE_FORM,
+      country_code: country.code,
+      legislation_pack_code: country.pack,
+    })
     setShowModal(true)
   }
   const openEdit = (e: LegalEntity) => {
@@ -870,29 +882,44 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const LEGAL_FORMS = ['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'GIE', 'Association', 'ONG', 'Établissement public']
   const selectedCountry = COUNTRY_OPTIONS.find(c => c.code === form.country_code)
 
+  // Mono-tenant : pas de bouton "Nouvelle entité" si l'entité principale existe
+  // déjà (une seule autorisée). Multi-pays : bouton libellé "Nouvelle filiale".
+  const canCreateMore = hasSubsidiaries || entities.length === 0
+
   return (
     <div className="space-y-4">
-      {/* Bloc d'aide : mécanisme de rattachement */}
+      {/* Bloc d'aide adapté au mode du tenant */}
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 text-sm text-blue-900">
         <p className="font-semibold mb-1">
-          {hasSubsidiaries ? 'Filiales du groupe' : 'Entité juridique principale'}
+          {hasSubsidiaries ? 'Filiales du groupe' : 'Entité juridique'}
         </p>
-        <p className="text-xs text-blue-800/90">
-          Chaque entité représente une filiale ou un établissement avec ses propres
-          N° CNPS, RCCM, pays et pack législatif. <strong>Les employés sont rattachés
-          à une entité via leur champ « Filiale »</strong> dans leur fiche. Le moteur
-          de paie applique alors le pack législatif de l'entité du salarié
-          (CNPS/CSS/IPRES/etc. selon le pays). La conformité CNPS/DISA peut être
-          générée par filiale ou consolidée au niveau du groupe.
-        </p>
+        {hasSubsidiaries ? (
+          <p className="text-xs text-blue-800/90">
+            Chaque filiale représente un établissement avec ses propres N° CNPS,
+            RCCM, pays et pack législatif. <strong>Les employés sont rattachés à
+            une filiale via leur fiche</strong>. Le moteur de paie applique alors
+            le pack législatif de la filiale du salarié (CNPS, IPRES, etc. selon
+            le pays). CNPS/DISA peut être générée par filiale ou consolidée.
+          </p>
+        ) : (
+          <p className="text-xs text-blue-800/90">
+            Renseignez ici les informations légales de votre entreprise
+            (N° CNPS employeur, RCCM, taux AT, convention collective). Ces
+            informations sont utilisées sur les bulletins de paie, contrats
+            et déclarations sociales.
+          </p>
+        )}
       </div>
 
-      <div className="flex justify-end">
-        <button onClick={openCreate}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Nouvelle entité / filiale
-        </button>
-      </div>
+      {canCreateMore && (
+        <div className="flex justify-end">
+          <button onClick={openCreate}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+            <Plus className="h-4 w-4" />
+            {hasSubsidiaries ? 'Nouvelle filiale' : 'Renseigner l\'entité'}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {entities.map(e => {
@@ -962,7 +989,9 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
               <h3 className="font-semibold">
-                {editingId ? 'Modifier la filiale / entité juridique' : 'Nouvelle filiale / entité juridique'}
+                {editingId
+                  ? (hasSubsidiaries ? 'Modifier la filiale' : 'Modifier l\'entité juridique')
+                  : (hasSubsidiaries ? 'Nouvelle filiale' : 'Entité juridique principale')}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
@@ -972,10 +1001,11 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <label className="text-xs font-medium text-muted-foreground">Raison sociale *</label>
                 <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Ex: SOTRA Bouaké" />
+                  placeholder={hasSubsidiaries ? "Ex: SOTRA Bouaké" : "Ex: OpenLab Consulting"} />
               </div>
 
-              {/* Pays + Pack législatif — section multi-pays */}
+              {/* Pays + Pack législatif — visible uniquement si tenant multi-pays */}
+              {hasSubsidiaries && (
               <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
                 <p className="text-xs font-semibold text-blue-900">Conformité légale par pays</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -1006,11 +1036,12 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </div>
                 {selectedCountry && (
                   <p className="text-[11px] text-blue-700">
-                    Moteur de paie appliqué aux employés de cette filiale : <code className="bg-blue-100 px-1 rounded">{form.legislation_pack_code}</code>
+                    Moteur de paie appliqué : <code className="bg-blue-100 px-1 rounded">{form.legislation_pack_code}</code>
                     {' '}({selectedCountry.currency})
                   </p>
                 )}
               </div>
+              )}
 
               {/* Identité OHADA */}
               <div className="grid grid-cols-2 gap-3">
@@ -1068,7 +1099,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {save.isPending
                   ? (editingId ? 'Mise à jour...' : 'Création...')
-                  : (editingId ? 'Enregistrer' : 'Créer la filiale')}
+                  : (editingId ? 'Enregistrer' : (hasSubsidiaries ? 'Créer la filiale' : 'Enregistrer'))}
               </button>
             </div>
           </div>
