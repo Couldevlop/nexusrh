@@ -757,6 +757,35 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON ${s}.pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_le_status ON ${s}.pay_periods(legal_entity_id, status) WHERE legal_entity_id IS NOT NULL`)
 
+  // ── Workflow paie paramétrable (OWASP A04 — Segregation of Duties) ───────
+  // workflow_configs.levels_count (module='payroll') pilote le nombre de
+  // validations requises. Chaque validation = 1 row dans pay_period_approvals.
+  // Quand count(approvals) >= levels_count → status = 'closed'.
+  // Garde-fous : approver ≠ initiateur, et chaque approver différent.
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS initiated_at  timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS initiated_by  uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS rejection_reason text`)
+
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.pay_period_approvals (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_id     uuid NOT NULL REFERENCES ${s}.pay_periods(id) ON DELETE CASCADE,
+    level         int NOT NULL,
+    approver_id   uuid NOT NULL,
+    approver_role varchar(30),
+    approved_at   timestamptz NOT NULL DEFAULT now(),
+    notes         text,
+    UNIQUE (period_id, level),
+    UNIQUE (period_id, approver_id)  -- même approver ne peut pas valider 2 niveaux
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_ppa_period ON ${s}.pay_period_approvals(period_id, level)`)
+
+  // Workflow par défaut pour 'payroll' : 2 niveaux (initiateur + N+1)
+  await q(`
+    INSERT INTO ${s}.workflow_configs (module, levels_count)
+    VALUES ('payroll', 2)
+    ON CONFLICT (module) DO NOTHING
+  `)
+
   // Ajout du nouveau rôle raf_site dans la table users : c'est porté par
   // une simple chaîne dans users.role — pas de schema à changer. Le RBAC
   // côté API doit accepter ce rôle pour les opérations de site.

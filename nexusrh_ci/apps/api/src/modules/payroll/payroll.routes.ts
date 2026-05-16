@@ -335,9 +335,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Workflow 2-yeux OBLIGATOIRE (OWASP A04 — Segregation of Duties) :
+      // L'initiateur calcule et clôture en `pending_validation`. Un VALIDATEUR
+      // différent (POST /periods/:month/validate) confirme pour passer à `closed`.
+      // Aucun bypass possible — l'initiateur ne peut PAS auto-valider.
       await rawPool.query(
         `UPDATE "${schema}".pay_periods SET
-           status = 'closed', closed_at = now(), closed_by = $1,
+           status = 'pending_validation',
+           initiated_at = now(), initiated_by = $1,
            total_gross = $2, total_net = $3, total_cnps = $4, total_its = $5
          WHERE id = $6`,
         [request.user.sub, totalGross, totalNet, totalCnps, totalIts, periodId]
@@ -347,8 +352,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const bordereauCount = paySlips.filter((s: any) => s.hasBordereauCnps).length
 
       return reply.send({
-        message: `Période ${month} clôturée — ${emps.rows.length} bulletins générés`,
+        message: `Période ${month} en attente de validation — ${emps.rows.length} bulletins générés. Demandez à un autre admin/hr_manager de valider via POST /payroll/periods/${month}/validate.`,
         periodId,
+        status: 'pending_validation',
         employeesCount: emps.rows.length,
         absencesIntegrées: absenceCount,
         bordereauCnpsCount: bordereauCount,
@@ -359,6 +365,208 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         },
         paySlips,
       })
+    },
+  })
+
+  // ── Workflow paramétrable de validation paie ────────────────────────────
+  // Cycle : open → pending_validation (via /close) → N approvals → closed
+  // OWASP A04 : Segregation of Duties strictement appliquée.
+  // workflow_configs.levels_count détermine le nombre d'approbations requises.
+
+  // GET /payroll/periods/:month/workflow — état du workflow (timeline)
+  fastify.get('/periods/:month/workflow', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const schema = request.user.schemaName
+      const period = await rawPool.query<{
+        id: string; month: string; status: string
+        initiated_at: string | null; initiated_by: string | null
+        rejection_reason: string | null; closed_at: string | null; closed_by: string | null
+        initiator_first_name: string | null; initiator_last_name: string | null
+      }>(
+        `SELECT p.id, p.month, p.status, p.initiated_at, p.initiated_by,
+                p.rejection_reason, p.closed_at, p.closed_by,
+                ui.first_name AS initiator_first_name,
+                ui.last_name  AS initiator_last_name
+           FROM "${schema}".pay_periods p
+           LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
+           WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+
+      const cfg = await rawPool.query<{ levels_count: number }>(
+        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
+      )
+      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
+
+      const approvals = await rawPool.query<{
+        level: number; approver_id: string; approver_role: string | null
+        approved_at: string; notes: string | null
+        first_name: string | null; last_name: string | null
+      }>(
+        `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
+                u.first_name, u.last_name
+           FROM "${schema}".pay_period_approvals a
+           LEFT JOIN "${schema}".users u ON u.id = a.approver_id
+          WHERE a.period_id = $1
+          ORDER BY a.level ASC`,
+        [p.id],
+      )
+
+      const initiatorName = [p.initiator_first_name, p.initiator_last_name].filter(Boolean).join(' ') || null
+
+      return reply.send({
+        period: {
+          id: p.id, month: p.month, status: p.status,
+          initiatedAt: p.initiated_at, initiatedBy: p.initiated_by,
+          initiatorName,
+          rejectionReason: p.rejection_reason,
+          closedAt: p.closed_at, closedBy: p.closed_by,
+        },
+        requiredLevels,
+        currentLevel: approvals.rows.length,
+        isComplete: approvals.rows.length >= requiredLevels,
+        approvals: approvals.rows.map(a => ({
+          level: a.level,
+          approverId: a.approver_id,
+          approverRole: a.approver_role,
+          approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+          approvedAt: a.approved_at,
+          notes: a.notes,
+        })),
+      })
+    },
+  })
+
+  // POST /payroll/periods/:month/approve — N+1 (ou plus) valide
+  fastify.post('/periods/:month/approve', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const { notes } = (request.body ?? {}) as { notes?: string }
+      const schema = request.user.schemaName
+
+      const period = await rawPool.query<{
+        id: string; status: string; initiated_by: string | null
+      }>(
+        `SELECT id, status, initiated_by FROM "${schema}".pay_periods
+           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+
+      if (p.status !== 'pending_validation') {
+        return reply.status(409).send({
+          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+        })
+      }
+      // OWASP A04 SoD : l'initiateur ne peut PAS approuver
+      if (p.initiated_by === request.user.sub) {
+        return reply.status(403).send({
+          error: 'Vous avez initié cette paie. Un autre approbateur est requis (séparation des tâches).',
+        })
+      }
+      // L'approver ne doit pas avoir déjà approuvé à un niveau précédent
+      const dup = await rawPool.query(
+        `SELECT 1 FROM "${schema}".pay_period_approvals
+           WHERE period_id = $1 AND approver_id = $2 LIMIT 1`,
+        [p.id, request.user.sub],
+      )
+      if (dup.rows[0]) {
+        return reply.status(403).send({
+          error: 'Vous avez déjà approuvé un niveau précédent. Un autre approbateur est requis.',
+        })
+      }
+
+      const cfg = await rawPool.query<{ levels_count: number }>(
+        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
+      )
+      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
+
+      const currentCount = await rawPool.query<{ cnt: number }>(
+        `SELECT count(*)::int AS cnt FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
+        [p.id],
+      )
+      const nextLevel = (currentCount.rows[0]?.cnt ?? 0) + 1
+
+      await rawPool.query(
+        `INSERT INTO "${schema}".pay_period_approvals
+           (period_id, level, approver_id, approver_role, notes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [p.id, nextLevel, request.user.sub, request.user.role, notes ?? null],
+      )
+
+      // Si on a atteint le nombre requis → clôture définitive
+      if (nextLevel >= requiredLevels) {
+        await rawPool.query(
+          `UPDATE "${schema}".pay_periods
+             SET status = 'closed', closed_at = now(), closed_by = $1
+             WHERE id = $2`,
+          [request.user.sub, p.id],
+        )
+        // Audit log (non bloquant)
+        rawPool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'payroll.closed', 'pay_period', $2, $3, $4)`,
+          [request.user.sub, p.id, JSON.stringify({ month, finalLevel: nextLevel, requiredLevels }), request.ip ?? null],
+        ).catch(() => {})
+        return reply.send({
+          data: { status: 'closed', level: nextLevel, requiredLevels },
+          message: `Paie ${month} validée à tous les niveaux requis et clôturée.`,
+        })
+      }
+
+      return reply.send({
+        data: { status: 'pending_validation', level: nextLevel, requiredLevels },
+        message: `Validation niveau ${nextLevel}/${requiredLevels} enregistrée. ${requiredLevels - nextLevel} validation(s) restante(s).`,
+      })
+    },
+  })
+
+  // POST /payroll/periods/:month/reject — rejette et retour à open
+  fastify.post('/periods/:month/reject', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const { reason } = (request.body ?? {}) as { reason?: string }
+      if (!reason || reason.trim().length < 5) {
+        return reply.status(400).send({ error: 'Motif de rejet requis (min 5 caractères)' })
+      }
+      const schema = request.user.schemaName
+      const period = await rawPool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM "${schema}".pay_periods
+           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+      if (p.status !== 'pending_validation') {
+        return reply.status(409).send({
+          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+        })
+      }
+      // Reset : status → open, supprimer toutes les approbations partielles
+      await rawPool.query(
+        `DELETE FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
+        [p.id],
+      )
+      await rawPool.query(
+        `UPDATE "${schema}".pay_periods
+           SET status = 'open', rejection_reason = $1,
+               initiated_at = NULL, initiated_by = NULL
+           WHERE id = $2`,
+        [reason, p.id],
+      )
+      rawPool.query(
+        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+         VALUES ($1, 'payroll.rejected', 'pay_period', $2, $3, $4)`,
+        [request.user.sub, p.id, JSON.stringify({ month, reason }), request.ip ?? null],
+      ).catch(() => {})
+      return reply.send({ data: { status: 'open' }, message: 'Paie rejetée — retour à open. Re-calculer la paie après corrections.' })
     },
   })
 
