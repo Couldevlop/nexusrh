@@ -1170,8 +1170,22 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   onTransferred: () => void
   onGoToKanban: (jobId: string) => void
 }) {
+  // Pays par défaut = celui du tenant (CIV→CI, etc.). Si tenant mono-pays,
+  // on force ce pays et on masque le sélecteur (UI plus simple et adaptée).
+  const tenantConfig = useAuthStore((s) => s.tenantConfig)
+  const tenantHasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+  const tenantDefaultCountry = useMemo(() => {
+    const raw = (tenantConfig?.defaultCountryCode ?? 'CIV').toUpperCase()
+    // Map ISO-3 vers ISO-2 commun pour le sourcing (CIV → CI, SEN → SN, etc.)
+    const ISO3_TO_ISO2: Record<string, string> = {
+      CIV: 'CI', SEN: 'SN', BEN: 'BJ', TGO: 'TG', BFA: 'BF', MLI: 'ML',
+      NER: 'NE', CMR: 'CM', TCD: 'TD', NGA: 'NG', GHA: 'GH', FRA: 'FR',
+    }
+    return ISO3_TO_ISO2[raw] ?? raw.slice(0, 2)
+  }, [tenantConfig?.defaultCountryCode])
+
   const [jobId, setJobId] = useState('')
-  const [countries, setCountries] = useState<string[]>(['CI'])
+  const [countries, setCountries] = useState<string[]>([tenantDefaultCountry])
   const [maxProfiles, setMaxProfiles] = useState(8)
   const [mode, setMode] = useState<'single' | 'compare'>('single')
   const [model, setModel] = useState<'claude' | 'mistral'>(
@@ -1321,15 +1335,24 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
             <Wand2 className="h-7 w-7 text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-900">Sourcing IA · Multi-pays Afrique</h2>
+            <h2 className="text-xl font-bold text-slate-900">
+              {tenantHasSubsidiaries ? 'Sourcing IA · Multi-pays Afrique' : 'Sourcing IA'}
+            </h2>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-              Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn, Africawork, Emploi.ci, Jobberman et d'autres plateformes locales.
-              Conforme OHADA, devises FCFA / XAF / NGN.
+              {tenantHasSubsidiaries
+                ? "Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn, Africawork, Emploi.ci, Jobberman et d'autres plateformes locales. Conforme OHADA, devises FCFA / XAF / NGN."
+                : "Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn et les principales plateformes d'emploi de votre pays."}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
-                <Globe className="h-3.5 w-3.5" /> {countryCatalog.length} pays
-              </span>
+              {tenantHasSubsidiaries ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
+                  <Globe className="h-3.5 w-3.5" /> {countryCatalog.length} pays disponibles
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
+                  {COUNTRY_FLAGS[tenantDefaultCountry] ?? '🌍'} {countryCatalog.find(c => c.code === tenantDefaultCountry)?.label ?? tenantDefaultCountry}
+                </span>
+              )}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-purple-700 border border-purple-200">
                 <Layers className="h-3.5 w-3.5" /> {(platformsQuery.data?.data?.length ?? suggestedPlatforms.length)} plateformes
               </span>
@@ -1381,37 +1404,54 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
             )}
           </div>
 
-          {/* Card 2 : Pays cibles */}
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+          {/* Card 2 : Pays cibles — visible si tenant multi-pays uniquement */}
+          {tenantHasSubsidiaries ? (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
+                    <Globe className="h-4 w-4 text-purple-700" />
+                  </div>
+                  <label className="text-sm font-semibold">Pays cibles</label>
+                </div>
+                <span className="text-xs font-semibold text-purple-700">{countries.length} actif{countries.length > 1 ? 's' : ''}</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {countryCatalog.map(c => {
+                  const active = countries.includes(c.code)
+                  return (
+                    <button key={c.code} type="button" onClick={() => toggleCountry(c.code)}
+                      title={c.label}
+                      className={`group relative flex flex-col items-center gap-0.5 rounded-lg border-2 px-1 py-2 transition-all
+                        ${active
+                          ? 'border-purple-400 bg-gradient-to-br from-purple-50 to-pink-50 shadow-sm scale-105'
+                          : 'border-border bg-card hover:border-purple-300 hover:bg-purple-50/30'}`}>
+                      <span className="text-xl leading-none">{c.flag}</span>
+                      <span className={`text-[10px] font-medium ${active ? 'text-purple-900' : 'text-muted-foreground'}`}>{c.code}</span>
+                      {active && (
+                        <CheckCircle className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 text-purple-600 bg-white rounded-full" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            // Mono-pays : indicateur compact non-éditable
+            <div className="rounded-xl border border-border bg-muted/30 p-3 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
                   <Globe className="h-4 w-4 text-purple-700" />
                 </div>
-                <label className="text-sm font-semibold">Pays cibles</label>
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Sourcing ciblé</p>
+                  <p className="text-sm font-semibold">
+                    {COUNTRY_FLAGS[tenantDefaultCountry] ?? '🌍'} {countryCatalog.find(c => c.code === tenantDefaultCountry)?.label ?? tenantDefaultCountry}
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-semibold text-purple-700">{countries.length} actif{countries.length > 1 ? 's' : ''}</span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {countryCatalog.map(c => {
-                const active = countries.includes(c.code)
-                return (
-                  <button key={c.code} type="button" onClick={() => toggleCountry(c.code)}
-                    title={c.label}
-                    className={`group relative flex flex-col items-center gap-0.5 rounded-lg border-2 px-1 py-2 transition-all
-                      ${active
-                        ? 'border-purple-400 bg-gradient-to-br from-purple-50 to-pink-50 shadow-sm scale-105'
-                        : 'border-border bg-card hover:border-purple-300 hover:bg-purple-50/30'}`}>
-                    <span className="text-xl leading-none">{c.flag}</span>
-                    <span className={`text-[10px] font-medium ${active ? 'text-purple-900' : 'text-muted-foreground'}`}>{c.code}</span>
-                    {active && (
-                      <CheckCircle className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 text-purple-600 bg-white rounded-full" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          )}
 
           {/* Card 3 : Plateformes */}
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
