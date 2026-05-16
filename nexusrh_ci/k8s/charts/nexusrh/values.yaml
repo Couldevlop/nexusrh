@@ -293,11 +293,19 @@ meilisearch:
       type: RuntimeDefault
 
 # ── Maintenance hooks ────────────────────────────────────────────────────────
-# Relance automatiquement reset-admin-passwords après chaque rollout API pour
-# garantir que les hashes bcrypt des comptes démo (admin@sotra.ci etc.) restent
-# valides. Désactiver pour les envs où les passwords sont pilotés depuis Vault.
+# Hook post-upgrade qui relance reset-admin-passwords automatiquement.
+# DÉFAUT: false (sécurité). À activer uniquement après avoir validé que le
+# Job standalone debug-reset-passwords.yaml fonctionne. Sinon, un Job hook
+# qui échoue bloque tout le helm upgrade (mauvaise UX).
+#
+# Pour activer :
+#   helm upgrade … --set maintenance.autoResetPasswordsAfterUpgrade=true
+#
+# Pour valider manuellement avant activation :
+#   kubectl apply -f nexusrh_ci/k8s/jobs/debug-reset-passwords.yaml
+#   kubectl logs -n nexusrh-ci job/debug-reset-passwords --follow
 maintenance:
-  autoResetPasswordsAfterUpgrade: true
+  autoResetPasswordsAfterUpgrade: false
 
 # ── Infra officielle (images officielles — remplace Bitnami) ─────────────────
 infra:
