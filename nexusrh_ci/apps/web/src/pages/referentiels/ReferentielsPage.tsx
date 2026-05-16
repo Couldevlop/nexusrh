@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
+import { useAuthStore } from '@/stores/authStore'
 import {
   Search, BookOpen, Scale, ChevronDown, ChevronRight,
   Info, X, Menu, FileText, Loader2, FolderOpen,
@@ -145,7 +147,37 @@ export default function ReferentielsPage() {
     }
   }, [myCountry, countryFilter])
 
-  const isMultiCountry = myCountry?.hasSubsidiaries === true
+  // Source de vérité : flag du tenant (cohérent avec Settings + Sourcing).
+  // Fallback sur l'endpoint /my-country qui repose sur la même donnée serveur.
+  const tenantConfig = useAuthStore((s) => s.tenantConfig)
+  const isMultiCountry = (tenantConfig?.hasSubsidiaries ?? myCountry?.hasSubsidiaries) === true
+
+  // Synchronisation avec le query param ?q=... : permet à la page d'afficher
+  // un article spécifique quand on arrive depuis ArticleModal ou un lien externe.
+  // Si on est DÉJÀ sur la page, le navigate met juste à jour searchParams →
+  // ce useEffect déclenche setQuery → re-search avec le numéro article.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q && q !== query) {
+      setQuery(q)
+      inputRef.current?.focus()
+    }
+    // Pas de dep sur `query` pour ne pas relancer en boucle quand l'utilisateur
+    // édite ensuite manuellement le champ.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+  // Quand l'utilisateur édite manuellement le champ après une navigation,
+  // on retire le query param pour ne pas re-déclencher au prochain render.
+  useEffect(() => {
+    const current = searchParams.get('q')
+    if (current && current !== query) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('q')
+      setSearchParams(next, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
   /* Ctrl/Cmd+K → focus */
   useEffect(() => {
