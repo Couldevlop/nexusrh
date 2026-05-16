@@ -591,6 +591,161 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // GET /payroll/payslips/:id/transparency — drill-down complet d'un bulletin
+  // Inspiration : Workday "Pay Explained" + PayFit Smart Lines + Gusto Pay Insights
+  // Accessible par : admin/hr_manager/hr_officer/readonly (tous bulletins du tenant)
+  //                 + employee (uniquement SES bulletins)
+  fastify.get('/payslips/:id/transparency', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['payroll'], summary: 'Bulletin transparent — formules, comparaison, audit' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const schema = request.user.schemaName
+      const role = request.user.role
+
+      const slipRes = await rawPool.query<{
+        id: string; employee_id: string; period_id: string; month: string
+        base_salary: string; gross_salary: string; net_payable: string
+        total_cnps_sal: string; total_cnps_pat: string; its: string
+        employer_cost: string; total_deductions: string
+        lines: unknown
+        first_name: string; last_name: string; cnps_number: string | null
+        nni: string | null; job_title: string | null
+        period_status: string; initiated_at: string | null; closed_at: string | null
+        generated_at: string | null; viewed_by_employee_at: string | null
+        payment_status: string; payment_method: string; payment_reference: string | null
+        paid_at: string | null
+      }>(
+        `SELECT ps.id, ps.employee_id, ps.period_id, ps.month,
+                ps.base_salary, ps.gross_salary, ps.net_payable,
+                ps.total_cnps_sal, ps.total_cnps_pat, ps.its,
+                ps.employer_cost, ps.total_deductions, ps.lines,
+                ps.generated_at, ps.viewed_by_employee_at,
+                ps.payment_status, ps.payment_method, ps.payment_reference, ps.paid_at,
+                e.first_name, e.last_name, e.cnps_number, e.nni, e.job_title,
+                pp.status AS period_status, pp.initiated_at, pp.closed_at
+           FROM "${schema}".pay_slips ps
+           JOIN "${schema}".employees e ON e.id = ps.employee_id
+           LEFT JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id
+          WHERE ps.id = $1 LIMIT 1`,
+        [id],
+      )
+      if (!slipRes.rows[0]) return reply.status(404).send({ error: 'Bulletin introuvable' })
+      const slip = slipRes.rows[0]
+
+      // Garde-fou employee : ne peut voir que son propre bulletin
+      if (role === 'employee') {
+        let myEmployeeId = request.user.employeeId ?? null
+        if (!myEmployeeId) {
+          const me = await rawPool.query(
+            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          )
+          myEmployeeId = (me.rows[0] as { id?: string } | undefined)?.id ?? null
+        }
+        if (myEmployeeId !== slip.employee_id) {
+          return reply.status(403).send({ error: 'Accès refusé à ce bulletin' })
+        }
+      } else if (!['admin','hr_manager','hr_officer','readonly','manager'].includes(role)) {
+        return reply.status(403).send({ error: 'Rôle non autorisé' })
+      }
+
+      // Enrichir les lignes via le service explainer
+      const { explainLines } = await import('../../services/payroll-explainer.service.js')
+      const rawLines = Array.isArray(slip.lines) ? slip.lines : []
+      const explained = explainLines(rawLines as never)
+
+      // Comparaison : 3 mois précédents pour le même employé
+      const compRes = await rawPool.query<{
+        month: string; gross_salary: string; net_payable: string
+        total_cnps_sal: string; its: string
+      }>(
+        `SELECT month, gross_salary, net_payable, total_cnps_sal, its
+           FROM "${schema}".pay_slips
+          WHERE employee_id = $1 AND id <> $2 AND month < $3
+          ORDER BY month DESC LIMIT 3`,
+        [slip.employee_id, id, slip.month],
+      )
+
+      // Audit : événements liés au bulletin ou à sa période
+      const auditRes = await rawPool.query<{
+        action: string; entity: string; created_at: string
+        first_name: string | null; last_name: string | null
+        changes: unknown
+      }>(
+        `SELECT a.action, a.entity, a.created_at, a.changes,
+                u.first_name, u.last_name
+           FROM "${schema}".audit_log a
+           LEFT JOIN "${schema}".users u ON u.id = a.user_id
+          WHERE (a.entity = 'payslip' AND a.entity_id = $1)
+             OR (a.entity = 'pay_period' AND a.entity_id = $2)
+          ORDER BY a.created_at DESC LIMIT 20`,
+        [id, slip.period_id],
+      )
+
+      // Totaux gains / cotisations / retenues
+      const totals = {
+        earnings: explained.filter(l => l.type === 'earning').reduce((s, l) => s + Number(l.amount), 0),
+        employeeContributions: explained
+          .filter(l => l.type === 'employee_contribution' || l.type === 'deduction')
+          .reduce((s, l) => s + Math.abs(Number(l.amount)), 0),
+        employerContributions: explained
+          .filter(l => l.type === 'employer_contribution')
+          .reduce((s, l) => s + Number(l.amount), 0),
+      }
+
+      return reply.send({
+        slip: {
+          id: slip.id,
+          month: slip.month,
+          baseSalary: Number(slip.base_salary),
+          grossSalary: Number(slip.gross_salary),
+          netPayable: Number(slip.net_payable),
+          totalCnpsSal: Number(slip.total_cnps_sal),
+          totalCnpsPat: Number(slip.total_cnps_pat),
+          its: Number(slip.its),
+          employerCost: Number(slip.employer_cost),
+          totalDeductions: Number(slip.total_deductions),
+          generatedAt: slip.generated_at,
+          viewedAt: slip.viewed_by_employee_at,
+          paymentStatus: slip.payment_status,
+          paymentMethod: slip.payment_method,
+          paymentReference: slip.payment_reference,
+          paidAt: slip.paid_at,
+        },
+        employee: {
+          id: slip.employee_id,
+          firstName: slip.first_name,
+          lastName: slip.last_name,
+          cnpsNumber: slip.cnps_number,
+          nni: slip.nni,
+          jobTitle: slip.job_title,
+        },
+        period: {
+          id: slip.period_id,
+          status: slip.period_status,
+          initiatedAt: slip.initiated_at,
+          closedAt: slip.closed_at,
+        },
+        lines: explained,
+        totals,
+        comparison: compRes.rows.map(r => ({
+          month: r.month,
+          grossSalary: Number(r.gross_salary),
+          netPayable: Number(r.net_payable),
+          totalCnpsSal: Number(r.total_cnps_sal),
+          its: Number(r.its),
+        })),
+        audit: auditRes.rows.map(a => ({
+          action: a.action,
+          entity: a.entity,
+          createdAt: a.created_at,
+          actorName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+          changes: a.changes,
+        })),
+      })
+    },
+  })
+
   // GET /payroll/my-payslips — self-service employé
   fastify.get('/my-payslips', {
     preHandler: [fastify.authenticate],
