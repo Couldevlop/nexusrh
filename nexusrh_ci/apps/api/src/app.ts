@@ -29,6 +29,7 @@ import swaggerPlugin from './plugins/swagger.js'
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
 import platformRoutes   from './modules/platform/platform.routes.js'
+import legalWatchRoutes from './modules/platform/legal-watch.routes.js'
 import employeesRoutes  from './modules/employees/employees.routes.js'
 import absencesRoutes   from './modules/absences/absences.routes.js'
 import payrollRoutes    from './modules/payroll/payroll.routes.js'
@@ -134,6 +135,7 @@ export async function buildApp() {
   // ── Routes applicatives ───────────────────────────────────────────────────────
   await fastify.register(authRoutes,         { prefix: '/auth' })
   await fastify.register(platformRoutes,     { prefix: '/platform' })
+  await fastify.register(legalWatchRoutes,   { prefix: '/platform/legal-watch' })
   await fastify.register(employeesRoutes,    { prefix: '/employees' })
   await fastify.register(absencesRoutes,     { prefix: '/absences' })
   await fastify.register(payrollRoutes,      { prefix: '/payroll' })

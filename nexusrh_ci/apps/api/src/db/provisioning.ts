@@ -46,6 +46,63 @@ export async function createDroitCiSchema(): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_country ON droit_ci.articles(country_code, source, is_active)
   `)
+
+  // ── Veille réglementaire — propositions de mise à jour (review workflow) ──
+  // OWASP A07 : workflow draft → pending → approved/rejected piloté par
+  // super_admin uniquement. OWASP A09 : historique complet via articles_history.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS droit_ci.article_proposals (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      article_id      varchar(50),  -- FK lâche vers articles.article_id (peut être NULL si nouvel article)
+      country_code    varchar(3) NOT NULL DEFAULT 'CIV',
+      source          varchar(30) NOT NULL,           -- code_travail | convention_collective | jo | dgi | cnps
+      source_url      text,                            -- URL d'origine (JO, DGI, etc.)
+      source_type     varchar(30) NOT NULL DEFAULT 'manual',  -- manual | scraper | upload
+      proposed_at     timestamptz NOT NULL DEFAULT now(),
+      proposed_by     varchar(80),                     -- 'ai_watcher' | uuid super_admin | 'manual'
+      current_text    text,                            -- texte actuel (NULL si nouvel article)
+      proposed_text   text NOT NULL,                   -- texte proposé en remplacement
+      diff_summary    text,                            -- résumé IA des changements clés
+      ai_confidence   int CHECK (ai_confidence BETWEEN 0 AND 100),
+      ai_reasoning    text,                            -- explication IA du changement
+      ai_model        varchar(50),
+      status          varchar(20) NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','approved','rejected','superseded')),
+      reviewed_at     timestamptz,
+      reviewed_by     uuid,                            -- uuid du super_admin qui a tranché
+      review_notes    text,
+      created_at      timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_proposals_status ON droit_ci.article_proposals(status, proposed_at DESC)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_proposals_article ON droit_ci.article_proposals(article_id) WHERE article_id IS NOT NULL
+  `)
+
+  // Historique des versions d'articles (audit + reversibilité)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS droit_ci.articles_history (
+      id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      article_id            varchar(50) NOT NULL,
+      version               int NOT NULL,
+      titre_article         text NOT NULL,
+      texte                 text NOT NULL,
+      keywords              text[] DEFAULT '{}',
+      payroll_codes         text[] DEFAULT '{}',
+      checksum_sha256       varchar(64),
+      valid_from            timestamptz NOT NULL DEFAULT now(),
+      valid_until           timestamptz,                -- NULL = version active
+      replaced_by_proposal_id uuid,
+      archived_at           timestamptz NOT NULL DEFAULT now(),
+      archived_by           uuid,
+      UNIQUE (article_id, version)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_history_article ON droit_ci.articles_history(article_id, version DESC)
+  `)
 }
 
 /**
