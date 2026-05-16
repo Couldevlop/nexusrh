@@ -104,10 +104,10 @@ function MyCareerView() {
   return (
     <div className="p-6 space-y-5">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6 shadow-sm">
-        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-purple-300/30 blur-3xl" />
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-secondary/10 p-6 shadow-sm">
+        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
         <div className="relative flex items-start gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-purple-500/30">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/30">
             <Award className="h-7 w-7 text-white" />
           </div>
           <div>
@@ -248,7 +248,7 @@ function MyCareerView() {
       {myEvals.length > 1 && (
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-purple-500" />
+            <Sparkles className="h-4 w-4 text-primary" />
             <h2 className="font-semibold">Historique de mes entretiens</h2>
           </div>
           <ul className="divide-y divide-border">
@@ -484,17 +484,17 @@ function HRView() {
       <div className={`relative overflow-hidden rounded-2xl border p-6 shadow-sm ${
         isManager
           ? 'border-indigo-200/60 bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50'
-          : 'border-purple-200/60 bg-gradient-to-br from-purple-50 via-fuchsia-50 to-pink-50'
+          : 'border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-secondary/10'
       }`}>
         <div className={`absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl ${
-          isManager ? 'bg-blue-300/30' : 'bg-purple-300/30'
+          isManager ? 'bg-blue-300/30' : 'bg-primary/20'
         }`} />
         <div className="relative flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-4">
             <div className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg ${
               isManager
                 ? 'bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-500/30'
-                : 'bg-gradient-to-br from-purple-500 to-fuchsia-600 shadow-purple-500/30'
+                : 'bg-gradient-to-br from-primary to-secondary shadow-primary/30'
             }`}>
               {isManager ? <Users className="h-7 w-7 text-white" /> : <Award className="h-7 w-7 text-white" />}
             </div>
@@ -518,7 +518,7 @@ function HRView() {
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all ${
                 isManager
                   ? 'bg-gradient-to-r from-indigo-600 to-blue-600'
-                  : 'bg-gradient-to-r from-purple-600 to-fuchsia-600'
+                  : 'bg-gradient-to-r from-primary to-secondary'
               }`}>
               <Plus className="h-4 w-4" /> Nouvel entretien
             </button>
