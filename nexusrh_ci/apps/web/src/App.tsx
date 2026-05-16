@@ -18,6 +18,7 @@ const PlatformTenants     = lazy(() => import('@/pages/platform/PlatformTenants'
 const PlatformTenantNew   = lazy(() => import('@/pages/platform/PlatformTenantNew'))
 const PlatformTenantDetail  = lazy(() => import('@/pages/platform/PlatformTenantDetail'))
 const PlatformSettings      = lazy(() => import('@/pages/platform/PlatformSettings'))
+const PlatformLegalWatch    = lazy(() => import('@/pages/platform/PlatformLegalWatch'))
 
 // ── RH Dashboard ─────────────────────────────────────────────────────────────
 const DashboardPage    = lazy(() => import('@/pages/dashboard/DashboardPage'))
@@ -117,6 +118,7 @@ export default function App() {
             <Route path="tenants/new"  element={<PlatformTenantNew />} />
             <Route path="tenants/:id"  element={<PlatformTenantDetail />} />
             <Route path="settings"     element={<PlatformSettings />} />
+            <Route path="legal-watch"  element={<PlatformLegalWatch />} />
           </Route>
 
           {/* ── Application RH (admin, hr_manager, hr_officer, manager, readonly) ── */}
