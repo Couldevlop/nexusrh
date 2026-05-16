@@ -9,6 +9,34 @@ import { maintenanceCache } from '../../cache.js'
 import { seedDemoTenant } from '../../db/seed-demo.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
+import { z } from 'zod'
+
+// ─── Schémas Zod (OWASP A03 Injection + A05 Misconfiguration) ───────────────
+// Validation systématique des bodies. Le error handler global mappe ZodError
+// vers 400 avec issues exploitables côté client.
+
+const createTenantBodySchema = z.object({
+  name: z.string().min(1, 'Nom requis').max(200),
+  slug: z.string().min(2).max(50)
+    .regex(/^[a-z0-9-]+$/, 'Slug : lettres minuscules, chiffres, tirets uniquement'),
+  planType: z.enum(['trial', 'starter', 'business', 'enterprise', 'public_sector']).optional(),
+  sector: z.string().max(50).optional(),
+  city: z.string().max(100).optional(),
+  cnpsNumber: z.string().max(50).optional(),
+  dgiNumber: z.string().max(50).optional(),
+  rccm: z.string().max(100).optional(),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur hex requise').optional(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  logoUrl: z.string().url().or(z.literal('')).optional(),
+  adminEmail: z.string().email('Email admin invalide'),
+  adminFirstName: z.string().min(1).max(100).optional().default('Admin'),
+  adminLastName: z.string().min(1).max(100).optional().default('Tenant'),
+  adminPhone: z.string().max(30).optional(),
+  seedDemoData: z.boolean().optional(),
+  hasSubsidiaries: z.boolean().optional(),
+  payrollMode: z.enum(['single_country', 'multi_country']).optional(),
+  defaultCountryCode: z.string().length(3).optional(),
+})
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -96,22 +124,15 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     schema: { tags: ['platform'], summary: 'Créer un nouveau tenant CI' },
     handler: async (request, reply) => {
-      const body = request.body as {
-        name: string; slug: string; planType?: string
-        sector?: string; city?: string
-        cnpsNumber?: string; dgiNumber?: string; rccm?: string
-        primaryColor?: string; secondaryColor?: string; logoUrl?: string
-        adminEmail: string; adminFirstName: string; adminLastName: string
-        adminPhone?: string; seedDemoData?: boolean
-        // Option multi-pays : opt-in explicite, défaut single_country
-        hasSubsidiaries?: boolean
-        payrollMode?: 'single_country' | 'multi_country'
-        defaultCountryCode?: string
+      // OWASP A03 (Injection) + A05 : validation Zod systématique
+      const parsed = createTenantBodySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
       }
-
-      if (!body.name || !body.slug || !body.adminEmail) {
-        return reply.status(400).send({ error: 'name, slug et adminEmail sont requis' })
-      }
+      const body = parsed.data
 
       const slug = body.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')
       const schemaName = `tenant_${slug}`

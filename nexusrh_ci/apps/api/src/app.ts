@@ -156,9 +156,47 @@ export async function buildApp() {
   })
 
   // ── Error handler ─────────────────────────────────────────────────────────────
+  // OWASP A05 : pas de stack trace exposée en production.
+  // OWASP A09 : log complet côté serveur pour audit.
   fastify.setErrorHandler((error, _request, reply) => {
     const statusCode = error.statusCode ?? 500
     fastify.log.error({ err: error, statusCode }, error.message)
+
+    // ZodError (validation body/params) → 400 avec issues exploitables
+    if (error.name === 'ZodError' && 'issues' in error) {
+      const issues = (error as unknown as { issues: Array<{ path: (string|number)[]; message: string }> }).issues
+      return reply.status(400).send({
+        error: 'Validation échouée',
+        issues: issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        statusCode: 400,
+      })
+    }
+
+    // Erreurs PostgreSQL fréquentes — mapping vers codes HTTP appropriés
+    const pgCode = (error as unknown as { code?: string }).code
+    if (pgCode === '23505') {
+      // unique_violation
+      return reply.status(409).send({ error: 'Conflit — ressource déjà existante', statusCode: 409 })
+    }
+    if (pgCode === '23503') {
+      // foreign_key_violation
+      return reply.status(422).send({ error: 'Référence invalide (FK)', statusCode: 422 })
+    }
+    if (pgCode === '23502') {
+      // not_null_violation
+      return reply.status(400).send({ error: 'Champ requis manquant', statusCode: 400 })
+    }
+    if (pgCode === '22P02') {
+      // invalid_text_representation (ex: cast UUID invalide)
+      return reply.status(400).send({ error: 'Format de donnée invalide', statusCode: 400 })
+    }
+    if (pgCode === '42P01' || pgCode === '42703') {
+      // undefined_table / undefined_column — bug serveur, masquer en prod
+      return reply.status(500).send({
+        error: config.env === 'production' ? 'Erreur interne du serveur' : `Schema DB: ${error.message}`,
+        statusCode: 500,
+      })
+    }
 
     if (statusCode === 401) {
       return reply.status(401).send({ error: 'Non authentifié', statusCode: 401 })

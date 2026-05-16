@@ -51,35 +51,50 @@ pnpm run dev
 
 ---
 
-## Comptes de test
+## Comptes de démo
 
-### Plateforme
+> Tous les comptes ci-dessous sont créés par `pnpm --filter @nexusrhci/api run db:seed` (idempotent, DO UPDATE password_hash à chaque run).
+> En cas de login 401 après un déploiement, voir [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) → procédure « Reset des passwords démo ».
 
-| Email                       | Mot de passe      | Rôle        |
-| --------------------------- | ----------------- | ----------- |
-| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin |
+### Super Admin (plateforme)
 
-### SOTRA — thème orange `#E85D04`
+| Email                       | Mot de passe      | Rôle        | Redirige vers          |
+| --------------------------- | ----------------- | ----------- | ---------------------- |
+| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin | `/platform/dashboard`  |
 
-| Email                | Mot de passe | Rôle       | Accès          |
-| -------------------- | ------------ | ---------- | -------------- |
-| `admin@sotra.ci`     | `Admin1234!` | admin      | `/dashboard`   |
-| `rh@sotra.ci`        | `Admin1234!` | hr_manager | `/dashboard`   |
-| `manager@sotra.ci`   | `Admin1234!` | manager    | `/dashboard`   |
-| `employe@sotra.ci`   | `Admin1234!` | employee   | `/mon-espace`  |
+### SOTRA — Société des Transports Abidjanais · thème orange `#E85D04`
 
-### Cabinet Expertise CI — thème bleu `#1D4ED8`
+| Email                | Mot de passe | Rôle       | Redirige vers   |
+| -------------------- | ------------ | ---------- | --------------- |
+| `admin@sotra.ci`     | `Admin1234!` | admin      | `/dashboard`    |
+| `rh@sotra.ci`        | `Admin1234!` | hr_manager | `/dashboard`    |
+| `manager@sotra.ci`   | `Admin1234!` | manager    | `/dashboard`    |
+| `employe@sotra.ci`   | `Admin1234!` | employee   | `/mon-espace`   |
 
-| Email                            | Mot de passe | Rôle     | Accès         |
+### Cabinet Expertise CI · thème bleu `#1D4ED8`
+
+| Email                            | Mot de passe | Rôle     | Redirige vers |
 | -------------------------------- | ------------ | -------- | ------------- |
 | `admin@cabinet-expertise.ci`     | `Admin1234!` | admin    | `/dashboard`  |
 | `employe2@cabinet-expertise.ci`  | `Admin1234!` | employee | `/mon-espace` |
 
-### OpenLab Consulting (tenant créé via portail)
+### OpenLab Consulting · thème violet `#7C3AED`
 
-| Email               | Mot de passe   | Rôle  | Accès        |
-| ------------------- | -------------- | ----- | ------------ |
-| `coulwao@gmail.com` | `Openlab2025!` | admin | `/dashboard` |
+| Email               | Mot de passe   | Rôle  | Redirige vers |
+| ------------------- | -------------- | ----- | ------------- |
+| `coulwao@gmail.com` | `Openlab1234!` | admin | `/dashboard`  |
+
+> **Procédure de reset si login 401** :
+> ```bash
+> # Workflow GitHub Actions (recommandé)
+> # → Actions → "Reset Demo Passwords — NexusRH CI" → Run workflow
+> #   target: nexusrh-ci · mode: apply · confirmation: RESET
+>
+> # OU SQL direct (urgence)
+> kubectl exec -i -n nexusrh-ci nexusrh-ci-postgres-postgresql-0 \
+>   -- psql -U nexusrh -d nexusrh \
+>   < nexusrh_ci/scripts/reset-admin-passwords.sql
+> ```
 
 ---
 
