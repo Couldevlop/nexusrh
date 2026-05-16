@@ -1,12 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
 import { api, formatFCFA } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import {
   Briefcase, Plus, Users, MapPin, ChevronRight, Eye,
   CheckCircle, XCircle, ArrowRight, Sparkles, Upload, Globe, Lock,
   Wand2, Mail, Linkedin, Loader2,
   Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
-  Star, Award, Send, ExternalLink,
+  Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
+  Link2, Share2, Copy, MoreHorizontal,
 } from 'lucide-react'
 
 interface Department { id: string; name: string }
@@ -159,6 +161,23 @@ export default function RecruitmentPage() {
     },
   })
 
+  // ── Mutations CRUD Jobs (style Greenhouse/Lever) ────────────────────────
+  const tenantSlug = useAuthStore((s) => s.tenantConfig?.slug ?? '')
+
+  const updateJob = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<NewJobForm> & { status?: string } }) =>
+      api.patch(`/recruitment/jobs/${id}`, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] }),
+  })
+  const deleteJob = useMutation({
+    mutationFn: (id: string) => api.delete(`/recruitment/jobs/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] }),
+  })
+  const [editingJob, setEditingJob] = useState<Job | null>(null)
+  const [sharingJob, setSharingJob] = useState<Job | null>(null)
+  const [jobFilter, setJobFilter] = useState<'all' | 'external' | 'internal' | 'both' | 'closed'>('all')
+  const [copyToast, setCopyToast] = useState<string | null>(null)
+
   const updateStage = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
       api.patch(`/recruitment/applications/${id}/stage`, { stage }),
@@ -194,85 +213,174 @@ export default function RecruitmentPage() {
         ))}
       </div>
 
-      {tab === 'jobs' && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          {isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      {tab === 'jobs' && (() => {
+        // ── Filtres style Greenhouse/Lever ────────────────────────────
+        const visibleJobs = jobs.filter(j => {
+          if (jobFilter === 'all') return true
+          if (jobFilter === 'closed') return j.status !== 'open'
+          return (j.visibility ?? 'external') === jobFilter && j.status === 'open'
+        })
+        const counts = {
+          all: jobs.length,
+          external: jobs.filter(j => (j.visibility ?? 'external') === 'external' && j.status === 'open').length,
+          internal: jobs.filter(j => j.visibility === 'internal' && j.status === 'open').length,
+          both: jobs.filter(j => j.visibility === 'both' && j.status === 'open').length,
+          closed: jobs.filter(j => j.status !== 'open').length,
+        }
+        const FILTER_LABELS = {
+          all: 'Toutes', external: 'Externes', internal: 'Internes',
+          both: 'Mixtes', closed: 'Fermées',
+        }
+        return (
+          <div className="space-y-3">
+            {/* Filtres pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(FILTER_LABELS) as Array<keyof typeof FILTER_LABELS>).map(k => (
+                <button key={k} onClick={() => setJobFilter(k)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    jobFilter === k
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'border border-border bg-card text-muted-foreground hover:bg-accent'
+                  }`}>
+                  {FILTER_LABELS[k]}
+                  <span className={`rounded-full px-1.5 text-[10px] font-bold ${jobFilter === k ? 'bg-white/30' : 'bg-muted'}`}>
+                    {counts[k]}
+                  </span>
+                </button>
+              ))}
             </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                  <th className="p-4">Poste</th>
-                  <th className="p-4">Visibilité</th>
-                  <th className="p-4">Localisation</th>
-                  <th className="p-4">Contrat</th>
-                  <th className="p-4">Salaire</th>
-                  <th className="p-4 text-center">Candidatures</th>
-                  <th className="p-4">Statut</th>
-                  <th className="p-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {jobs.map(job => {
-                  const vis = VISIBILITY_CONFIG[job.visibility ?? 'external']
-                  const VisIcon = vis?.icon ?? Globe
-                  return (
-                  <tr key={job.id} className="hover:bg-muted/30">
-                    <td className="p-4">
-                      <p className="font-medium">{job.title}</p>
-                      {job.department_name && (
-                        <p className="text-xs text-muted-foreground">{job.department_name}</p>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${vis?.color ?? ''}`}>
-                        <VisIcon className="h-3 w-3" /> {vis?.label ?? job.visibility}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <MapPin className="h-3 w-3" />{job.location}
-                      </div>
-                    </td>
-                    <td className="p-4 uppercase text-xs font-medium">{job.contract_type}</td>
-                    <td className="p-4">
-                      {job.salary_min && job.salary_max
-                        ? `${formatFCFA(parseInt(job.salary_min))} – ${formatFCFA(parseInt(job.salary_max))}`
-                        : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className="inline-flex items-center justify-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                        <Users className="h-3 w-3" />{job.applications_count}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[job.status] ?? 'bg-muted'}`}>
-                        {job.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <button onClick={() => { setSelectedJob(job); setTab('pipeline') }}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline">
-                        Voir pipeline <ChevronRight className="h-3 w-3" />
-                      </button>
-                    </td>
-                  </tr>
-                )})}
-                {jobs.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                      <Briefcase className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                      Aucune offre de recrutement
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {isLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                      <th className="p-3">Poste</th>
+                      <th className="p-3">Visibilité</th>
+                      <th className="p-3">Localisation</th>
+                      <th className="p-3">Contrat</th>
+                      <th className="p-3">Salaire</th>
+                      <th className="p-3 text-center">Cand.</th>
+                      <th className="p-3">Statut</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {visibleJobs.map(job => {
+                      const vis = VISIBILITY_CONFIG[job.visibility ?? 'external']
+                      const VisIcon = vis?.icon ?? Globe
+                      const isPublic = job.visibility !== 'internal' && job.status === 'open'
+                      const publicUrl = tenantSlug
+                        ? `${window.location.origin}/careers/${tenantSlug}`
+                        : ''
+                      return (
+                        <tr key={job.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="p-3">
+                            <p className="font-semibold text-slate-900">{job.title}</p>
+                            {job.department_name && (
+                              <p className="text-xs text-muted-foreground">{job.department_name}</p>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${vis?.color ?? ''}`}>
+                              <VisIcon className="h-3 w-3" /> {vis?.label ?? job.visibility}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3" />{job.location}
+                            </div>
+                          </td>
+                          <td className="p-3 uppercase text-xs font-medium text-slate-600">{job.contract_type}</td>
+                          <td className="p-3 text-xs">
+                            {job.salary_min && job.salary_max
+                              ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">
+                                  {formatFCFA(parseInt(job.salary_min))} – {formatFCFA(parseInt(job.salary_max))}
+                                </span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="p-3 text-center">
+                            <button onClick={() => { setSelectedJob(job); setTab('pipeline') }}
+                              className="inline-flex items-center justify-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary hover:bg-primary/20"
+                              title="Voir pipeline">
+                              <Users className="h-3 w-3" />{job.applications_count}
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[job.status] ?? 'bg-muted'}`}>
+                              {job.status === 'open' ? 'Ouverte' : job.status === 'closed' ? 'Fermée' : job.status === 'paused' ? 'En pause' : job.status}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-end gap-0.5">
+                              {isPublic && (
+                                <a href={publicUrl} target="_blank" rel="noopener noreferrer"
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                  title="Aperçu page carrières publique">
+                                  <Eye className="h-4 w-4" />
+                                </a>
+                              )}
+                              {isPublic && (
+                                <button onClick={() => setSharingJob(job)}
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                                  title="Partager l'offre">
+                                  <Share2 className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => updateJob.mutate({
+                                  id: job.id,
+                                  body: { status: job.status === 'open' ? 'paused' : 'open' },
+                                })}
+                                className={`rounded-md p-1.5 transition-colors ${
+                                  job.status === 'open'
+                                    ? 'text-slate-500 hover:bg-amber-50 hover:text-amber-600'
+                                    : 'text-slate-500 hover:bg-emerald-50 hover:text-emerald-600'
+                                }`}
+                                title={job.status === 'open' ? 'Mettre en pause' : 'Réouvrir'}>
+                                {job.status === 'open' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                              </button>
+                              <button onClick={() => setEditingJob(job)}
+                                className="rounded-md p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                title="Modifier">
+                                <Edit3 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Supprimer définitivement "${job.title}" ?\nLes candidatures associées seront perdues.`)) {
+                                    deleteJob.mutate(job.id)
+                                  }
+                                }}
+                                className="rounded-md p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                title="Supprimer">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {visibleJobs.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                          <Briefcase className="mx-auto mb-2 h-10 w-10 opacity-30" />
+                          <p className="text-sm">
+                            {jobFilter === 'all' ? 'Aucune offre de recrutement' : `Aucune offre "${FILTER_LABELS[jobFilter]}"`}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'pipeline' && (
         <div className="space-y-4">
@@ -392,6 +500,38 @@ export default function RecruitmentPage() {
           onSubmit={() => createJob.mutate(newJob)}
           submitting={createJob.isPending}
         />
+      )}
+
+      {editingJob && (
+        <EditJobModal
+          job={editingJob}
+          departments={departments}
+          submitting={updateJob.isPending}
+          onClose={() => setEditingJob(null)}
+          onSubmit={(patch) => updateJob.mutate(
+            { id: editingJob.id, body: patch },
+            { onSuccess: () => setEditingJob(null) },
+          )}
+        />
+      )}
+
+      {sharingJob && tenantSlug && (
+        <ShareJobModal
+          job={sharingJob}
+          publicUrl={`${window.location.origin}/careers/${tenantSlug}`}
+          onClose={() => setSharingJob(null)}
+          onCopied={(msg) => {
+            setCopyToast(msg)
+            setTimeout(() => setCopyToast(null), 2000)
+          }}
+        />
+      )}
+
+      {copyToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle className="h-4 w-4 text-emerald-400" />
+          {copyToast}
+        </div>
       )}
 
       {selectedApp && (
@@ -2025,6 +2165,188 @@ Bonne journée,`
           <button onClick={onClose} className="ml-auto text-xs font-medium text-slate-500 hover:text-slate-700">
             Fermer
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modale d'édition d'une offre ───────────────────────────────────────────
+function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
+  job: Job
+  departments: Department[]
+  submitting: boolean
+  onClose: () => void
+  onSubmit: (patch: Partial<NewJobForm> & { status?: string }) => void
+}) {
+  const [form, setForm] = useState({
+    title: job.title,
+    department_id: job.department_id ?? '',
+    location: job.location,
+    contract_type: job.contract_type,
+    salary_min: job.salary_min ?? '',
+    salary_max: job.salary_max ?? '',
+    status: job.status,
+    visibility: (job.visibility ?? 'external') as 'external' | 'internal' | 'both',
+  })
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="rounded-xl border border-border bg-card w-full max-w-xl shadow-xl my-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h3 className="font-semibold">Modifier l'offre</h3>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-accent"><XCircle className="h-5 w-5 text-muted-foreground" /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Titre du poste *</label>
+            <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Département</label>
+              <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                <option value="">— Aucun —</option>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Localisation</label>
+              <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Contrat</label>
+              <select value={form.contract_type} onChange={e => setForm(p => ({ ...p, contract_type: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                <option value="cdi">CDI</option>
+                <option value="cdd">CDD</option>
+                <option value="stage">Stage</option>
+                <option value="apprentissage">Apprentissage</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Statut</label>
+              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                <option value="open">Ouverte</option>
+                <option value="paused">En pause</option>
+                <option value="closed">Fermée</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Salaire min</label>
+              <input type="number" value={form.salary_min} onChange={e => setForm(p => ({ ...p, salary_min: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Salaire max</label>
+              <input type="number" value={form.salary_max} onChange={e => setForm(p => ({ ...p, salary_max: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Visibilité</label>
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {(['external', 'internal', 'both'] as const).map(v => {
+                const cfg = VISIBILITY_CONFIG[v]!
+                const Icon = cfg.icon
+                return (
+                  <button key={v} type="button" onClick={() => setForm(p => ({ ...p, visibility: v }))}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.visibility === v ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
+                    <Icon className="h-4 w-4" /> {cfg.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end border-t border-border px-5 py-3">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={() => onSubmit({
+            title: form.title, department_id: form.department_id || undefined,
+            location: form.location, contract_type: form.contract_type,
+            salary_min: form.salary_min, salary_max: form.salary_max,
+            status: form.status, visibility: form.visibility,
+          })} disabled={!form.title || submitting}
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modale de partage (style Greenhouse) ───────────────────────────────────
+function ShareJobModal({ job, publicUrl, onClose, onCopied }: {
+  job: Job
+  publicUrl: string
+  onClose: () => void
+  onCopied: (msg: string) => void
+}) {
+  const fullUrl = publicUrl  // Page carrières du tenant (l'offre est listée dedans)
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => onCopied(label)).catch(() => {})
+  }
+  const sharePayload = encodeURIComponent(`Découvrez cette offre — ${job.title} — ${fullUrl}`)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="rounded-2xl border border-border bg-card w-full max-w-md shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-4 flex items-start justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider opacity-80">Partager l'offre</p>
+            <h3 className="text-base font-bold leading-tight mt-0.5">{job.title}</h3>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-white/20">
+            <XCircle className="h-5 w-5 text-white" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Lien public</label>
+            <div className="mt-1 flex gap-2">
+              <input readOnly value={fullUrl}
+                onClick={e => (e.target as HTMLInputElement).select()}
+                className="flex-1 rounded-lg border border-input bg-slate-50 px-3 py-2 text-xs font-mono" />
+              <button onClick={() => copy(fullUrl, 'Lien copié dans le presse-papier')}
+                className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700">
+                <Copy className="h-3.5 w-3.5" /> Copier
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Partager sur</label>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(fullUrl)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:border-blue-300">
+                <Linkedin className="h-4 w-4 text-blue-600" /> LinkedIn
+              </a>
+              <a href={`https://wa.me/?text=${sharePayload}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:border-emerald-300">
+                <Send className="h-4 w-4 text-emerald-600" /> WhatsApp
+              </a>
+              <a href={`https://twitter.com/intent/tweet?text=${sharePayload}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:border-sky-300">
+                <Share2 className="h-4 w-4 text-sky-500" /> Twitter / X
+              </a>
+              <a href={`mailto:?subject=${encodeURIComponent('Offre — ' + job.title)}&body=${sharePayload}`}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:border-amber-300">
+                <Mail className="h-4 w-4 text-amber-600" /> Email
+              </a>
+            </div>
+          </div>
+
+          <a href={fullUrl} target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg">
+            <ExternalLink className="h-4 w-4" /> Aperçu de la page publique
+          </a>
         </div>
       </div>
     </div>
