@@ -292,20 +292,17 @@ meilisearch:
     seccompProfile:
       type: RuntimeDefault
 
-# ── Maintenance hooks ────────────────────────────────────────────────────────
-# Hook post-upgrade qui relance reset-admin-passwords automatiquement.
-# DÉFAUT: false (sécurité). À activer uniquement après avoir validé que le
-# Job standalone debug-reset-passwords.yaml fonctionne. Sinon, un Job hook
-# qui échoue bloque tout le helm upgrade (mauvaise UX).
+# ── Maintenance ──────────────────────────────────────────────────────────────
+# Le hook helm post-upgrade auto-reset a été retiré (commit 9XXXXXX) car il
+# couplait dangereusement le rollout et la rotation des credentials.
 #
-# Pour activer :
-#   helm upgrade … --set maintenance.autoResetPasswordsAfterUpgrade=true
+# La rotation des passwords démo se fait désormais via :
+#   1. GitHub Actions workflow_dispatch "Reset Demo Passwords" (recommandé)
+#   2. Job K8s standalone : kubectl apply -f k8s/jobs/reset-admin-passwords-job.yaml
+#   3. SQL direct : scripts/reset-admin-passwords.sql (cas urgence)
 #
-# Pour valider manuellement avant activation :
-#   kubectl apply -f nexusrh_ci/k8s/jobs/debug-reset-passwords.yaml
-#   kubectl logs -n nexusrh-ci job/debug-reset-passwords --follow
-maintenance:
-  autoResetPasswordsAfterUpgrade: false
+# Voir nexusrh_ci/docs/MAINTENANCE.md pour la procédure complète.
+maintenance: {}
 
 # ── Infra officielle (images officielles — remplace Bitnami) ─────────────────
 infra:

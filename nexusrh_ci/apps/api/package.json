@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "admin:reset-passwords": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts",
-    "admin:reset-passwords:dry-run": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --dry-run"
+    "admin:reset-passwords:dry-run": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --dry-run",
+    "admin:reset-passwords:health-check": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --health-check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",

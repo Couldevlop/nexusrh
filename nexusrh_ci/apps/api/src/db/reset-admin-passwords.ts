@@ -109,9 +109,27 @@ async function main(): Promise<void> {
   console.log(`DB URL : ${maskedDbUrl(config.database.url)}`)
   console.log(`Targets : ${TARGETS.length} comptes (1 super_admin + 7 tenant)\n`)
 
-  const dryRun = process.argv.includes('--dry-run')
+  const dryRun        = process.argv.includes('--dry-run')
+  const healthCheck   = process.argv.includes('--health-check')
+  // OWASP A07 (Identification & Authentication) : interdit en production sans
+  // override explicite, pour éviter qu'un reset accidentel n'écrase les
+  // credentials de production. La variable d'env FORCE_RESET_PROD doit être
+  // positionnée à "true" pour autoriser le reset en environnement prod.
+  const isProd        = (process.env['NODE_ENV'] ?? '').toLowerCase() === 'production'
+  const forceProd     = (process.env['FORCE_RESET_PROD'] ?? '').toLowerCase() === 'true'
+
+  if (healthCheck) {
+    console.log('Mode HEALTH-CHECK — teste juste la connexion DB.\n')
+  }
   if (dryRun) {
     console.log('Mode DRY-RUN — aucun changement DB.\n')
+  }
+  if (isProd && !forceProd && !dryRun && !healthCheck) {
+    console.error('✗ NODE_ENV=production détecté SANS FORCE_RESET_PROD=true.')
+    console.error('   Refuser de toucher aux credentials prod sans confirmation explicite.')
+    console.error('   Pour forcer : FORCE_RESET_PROD=true node dist/db/reset-admin-passwords.js')
+    await pool.end().catch(() => {})
+    process.exit(2)  // exit 2 = refus pour sécurité (distinct de 1 = échec technique)
   }
 
   // Test de connexion DB dès le début (fail-fast si DATABASE_URL invalide)
@@ -124,6 +142,13 @@ async function main(): Promise<void> {
     await pool.end().catch(() => {})
     // Exit 1 : pas la peine de continuer si on ne joint pas la DB.
     process.exit(1)
+  }
+
+  // Mode health-check : on s'arrête après la connexion DB (succès = exit 0)
+  if (healthCheck) {
+    console.log('✓ Health-check OK — DB joignable, secret/configmap injectés correctement.')
+    await pool.end().catch(() => {})
+    process.exit(0)
   }
 
   let okCount = 0
