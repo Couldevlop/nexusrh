@@ -20,6 +20,7 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { config } from '../../config.js'
 import { analyzeLegalDiff } from '../../services/legal-diff.service.js'
+import { LEGAL_SOURCES_CATALOG } from '../../data/legal-sources-catalog.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -319,6 +320,20 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
         'Proposition rejetée',
       )
       return reply.send({ data: { id, status: 'rejected' } })
+    },
+  })
+
+  // ── GET /sources-catalog : sites officiels par pays ─────────────────────
+  // Catalogue statique des sources juridiques officielles (gouv, ministères,
+  // CNPS, DGI...) pour aider le super_admin à configurer LEGAL_WATCH_SOURCES.
+  fastify.get('/sources-catalog', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { country } = request.query as { country?: string }
+      const data = country
+        ? LEGAL_SOURCES_CATALOG.filter(s => s.countryCode === country.toUpperCase())
+        : LEGAL_SOURCES_CATALOG
+      return reply.send({ data, total: data.length })
     },
   })
 
