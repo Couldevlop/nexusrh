@@ -10,6 +10,7 @@ const EmployeeLayout   = lazy(() => import('@/components/layout/EmployeeLayout')
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const LoginPage        = lazy(() => import('@/pages/auth/LoginPage'))
+const PublicCareersPage = lazy(() => import('@/pages/public/PublicCareersPage'))
 
 // ── Platform (super_admin) ────────────────────────────────────────────────────
 const PlatformDashboard   = lazy(() => import('@/pages/platform/PlatformDashboard'))
@@ -102,6 +103,9 @@ export default function App() {
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
+
+          {/* ── Page carrières publique (sans auth) ───────────────── */}
+          <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />
 
           {/* ── Portail super_admin ─────────────────────────────── */}
           <Route path="/platform" element={
