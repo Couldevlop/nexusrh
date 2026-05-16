@@ -141,7 +141,91 @@ mais en production, ne pas le relancer sans backup DB préalable.
 
 ---
 
-## Backup / Restore DB
+## Veille réglementaire (legal-watch)
+
+Module de détection automatique des mises à jour d'articles juridiques.
+Architecture en 3 couches :
+
+1. **Worker BullMQ** (`legal-watch` queue)
+   - Fetch les sources configurées
+   - Compare SHA-256 avec texte actuel
+   - Insert proposition `pending` si changement
+
+2. **API super_admin** (`/platform/legal-watch/*`)
+   - `POST /analyze` : analyse Claude on-demand (super_admin colle texte)
+   - `GET /proposals` : liste paginée
+   - `POST /proposals/:id/approve` : transaction archive + update + checksum
+   - `POST /proposals/:id/reject` : marque rejected
+
+3. **UI** (`/platform/legal-watch`)
+   - Diff viewer side-by-side ou unified
+   - Notes de revue obligatoires en production recommandées
+
+### Activation du cron worker
+
+Par défaut **désactivé** (zéro fetch sortant). Pour activer :
+
+```bash
+# Variables d'env worker (ConfigMap nexusrh-config + Secret optionnel)
+LEGAL_WATCH_ENABLED=true
+LEGAL_WATCH_CRON="0 3 * * *"   # cron format, défaut 3h Africa/Abidjan
+LEGAL_WATCH_SOURCES='[
+  {
+    "articleId": "ct_ci_art_36",
+    "sourceUrl": "https://www.cnps.ci/article-36-cotisation",
+    "source": "cnps",
+    "countryCode": "CIV",
+    "sourceType": "scraper"
+  },
+  ...
+]'
+```
+
+### Sources officielles recommandées (catalogue)
+
+Le catalogue complet est exposé via `GET /platform/legal-watch/sources-catalog`
+(filtrable par `?country=CIV`). Voir aussi `apps/api/src/data/legal-sources-catalog.ts`.
+
+**Priorité absolue aux sites gouvernementaux officiels** :
+
+| Pays | Source clé | URL principale |
+|---|---|---|
+| 🇨🇮 Côte d'Ivoire | SGG (Journal Officiel) | https://www.sgg.gouv.ci/ |
+| 🇨🇮 Côte d'Ivoire | DGI | https://www.dgi.gouv.ci/ |
+| 🇨🇮 Côte d'Ivoire | CNPS | https://www.cnps.ci/ |
+| 🇨🇮 Côte d'Ivoire | Ministère Travail | https://www.emploi.gouv.ci/ |
+| 🇸🇳 Sénégal | JO | http://www.jo.gouv.sn/ |
+| 🇸🇳 Sénégal | DGID | https://www.impotsetdomaines.gouv.sn/ |
+| 🇸🇳 Sénégal | IPRES | https://www.ipres.sn/ |
+| 🇸🇳 Sénégal | CSS | https://www.css.sn/ |
+| 🇧🇯 Bénin | Min. Travail | https://travail.gouv.bj/ |
+| 🇧🇯 Bénin | CNSS | https://www.cnss.bj/ |
+| 🇹🇬 Togo | CNSS | https://www.cnss.tg/ |
+| 🇧🇫 Burkina | CNSS | https://www.cnssbf.com/ |
+| 🇲🇱 Mali | INPS | https://www.inps.ml/ |
+| 🇳🇪 Niger | CNSS | https://www.cnss.ne/ |
+| 🇨🇲 Cameroun | CNPS | https://www.cnps.cm/ |
+| 🇨🇲 Cameroun | DGI | https://www.impots.cm/ |
+| 🇹🇩 Tchad | CNPS | https://www.cnpstchad.org/ |
+| 🇳🇬 Nigeria | NSITF | https://nsitf.gov.ng/ |
+| 🇳🇬 Nigeria | FIRS | https://www.firs.gov.ng/ |
+| 🇳🇬 Nigeria | PenCom | https://www.pencom.gov.ng/ |
+| 🇬🇭 Ghana | SSNIT | https://ssnit.org.gh/ |
+| 🇬🇭 Ghana | GRA | https://gra.gov.gh/ |
+
+⚠️ **Ne jamais** scraper des agrégateurs tiers (Blog RH, Doctrine.fr, etc.) :
+les sources officielles sont la SEULE source de vérité juridique.
+
+### Audit OWASP
+
+- **A02** : SHA-256 checksum stocké sur chaque version (`articles.checksum_sha256` + `articles_history`)
+- **A04** : fetch limité à 1MB + timeout 30s (anti-DoS) ; `proposed_text` max 30k chars
+- **A07** : `authorize('super_admin')` sur toutes les routes
+- **A08** : transaction `approve` = archive + update atomique avec rollback
+- **A09** : audit applicatif via `fastify.log.info` (actor, action, proposal_id, article_id, checksum)
+- **A10 SSRF** : ⚠️ en production, configurer une allowlist d'URLs sources via reverse-proxy ou Network Policy K8s
+
+### Backup / Restore DB
 
 À documenter dans une PR ultérieure. Pour l'instant, utiliser `pg_dump` /
 `pg_restore` standard via un Job kubectl.
