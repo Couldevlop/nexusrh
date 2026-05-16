@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import {
@@ -9,6 +10,17 @@ import {
 } from '../../services/recruitment-ai.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
+
+// Schéma Zod pour la candidature publique — OWASP A03 (Injection) + A04
+// (Insecure Design). Limites stricts pour éviter spam et XSS.
+const publicApplySchema = z.object({
+  first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
+  last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
+  email:        z.string().email('Email invalide').max(255).toLowerCase(),
+  phone:        z.string().max(30).optional(),
+  cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
+  cv_text:      z.string().max(50000).optional(),
+})
 
 type JobBody = {
   title?: string
@@ -531,79 +543,159 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── PAGE CARRIÈRES PUBLIQUE (sans auth) ────────────────────────────────────
-  // Liste des offres externes/both d'un tenant. Le tenant est résolu par slug.
+  // Liste des offres externes/both d'un tenant. Tenant résolu par slug.
+  // Retourne aussi le branding (logo, couleurs, ville) pour thématiser la page.
   fastify.get('/public/:tenantSlug/jobs', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const { tenantSlug } = request.params as { tenantSlug: string }
-      try {
-        const tenant = await pool.query<{ schema_name: string; name: string }>(
-          `SELECT schema_name, name FROM platform.tenants
-            WHERE slug = $1 AND status IN ('active','trial') LIMIT 1`,
-          [tenantSlug],
-        )
-        if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
-        const schema = tenant.rows[0].schema_name
-        await ensureRecruitmentSchemaMigrated(schema)
-        const jobs = await pool.query(`
-          SELECT id, title, location, contract_type, salary_min, salary_max,
-                 currency, description, requirements, public_slug, created_at, published_at
-            FROM "${schema}".recruitment_jobs
-            WHERE status = 'open' AND visibility IN ('external','both')
-            ORDER BY published_at DESC NULLS LAST, created_at DESC
-        `)
-        return reply.send({
-          tenant: { name: tenant.rows[0].name, slug: tenantSlug },
-          data:   jobs.rows,
-        })
-      } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
-      }
+      const tenant = await pool.query<{
+        schema_name: string; name: string; slug: string
+        primary_color: string | null; secondary_color: string | null
+        logo_url: string | null; city: string | null; sector: string | null
+      }>(
+        `SELECT schema_name, name, slug, primary_color, secondary_color,
+                logo_url, city, sector
+           FROM platform.tenants
+          WHERE slug = $1 AND status IN ('active','trial')
+          LIMIT 1`,
+        [tenantSlug],
+      )
+      if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
+      const t = tenant.rows[0]
+      await ensureRecruitmentSchemaMigrated(t.schema_name)
+      const jobs = await pool.query(`
+        SELECT id, title, location, contract_type, salary_min, salary_max,
+               currency, description, requirements, public_slug,
+               created_at, published_at,
+               (SELECT count(*)::int FROM "${t.schema_name}".applications a
+                  WHERE a.job_id = rj.id) AS applications_count
+          FROM "${t.schema_name}".recruitment_jobs rj
+          WHERE status = 'open' AND visibility IN ('external','both')
+          ORDER BY published_at DESC NULLS LAST, created_at DESC
+      `)
+      return reply.send({
+        tenant: {
+          name: t.name, slug: t.slug, city: t.city, sector: t.sector,
+          primaryColor: t.primary_color ?? '#E85D04',
+          secondaryColor: t.secondary_color ?? '#F48C06',
+          logoUrl: t.logo_url,
+        },
+        data: jobs.rows,
+        count: jobs.rowCount ?? 0,
+      })
     },
   })
 
-  fastify.post('/public/:tenantSlug/jobs/:jobId/apply', {
+  // GET /public/:tenantSlug/jobs/:jobId — détail offre (page dédiée)
+  fastify.get('/public/:tenantSlug/jobs/:jobId', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const { tenantSlug, jobId } = request.params as { tenantSlug: string; jobId: string }
-      const body = request.body as {
-        first_name?: string; last_name?: string; email?: string
-        phone?: string; cover_letter?: string; cv_text?: string
-      }
-      if (!body.first_name || !body.last_name || !body.email) {
-        return reply.status(400).send({ error: 'Prénom, nom et email obligatoires' })
-      }
-      try {
-        const tenant = await pool.query<{ schema_name: string }>(
-          `SELECT schema_name FROM platform.tenants
-            WHERE slug = $1 AND status IN ('active','trial') LIMIT 1`,
-          [tenantSlug],
-        )
-        if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
-        const schema = tenant.rows[0].schema_name
-        await ensureRecruitmentSchemaMigrated(schema)
-        // Vérifie que l'offre est bien publique
-        const job = await pool.query(
-          `SELECT id FROM "${schema}".recruitment_jobs
-            WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')`,
-          [jobId],
-        )
-        if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+      const tenant = await pool.query<{
+        schema_name: string; name: string; slug: string
+        primary_color: string | null; secondary_color: string | null
+        logo_url: string | null; city: string | null
+      }>(
+        `SELECT schema_name, name, slug, primary_color, secondary_color,
+                logo_url, city
+           FROM platform.tenants
+          WHERE slug = $1 AND status IN ('active','trial')
+          LIMIT 1`,
+        [tenantSlug],
+      )
+      if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
+      const t = tenant.rows[0]
+      await ensureRecruitmentSchemaMigrated(t.schema_name)
+      const job = await pool.query(`
+        SELECT id, title, location, contract_type, salary_min, salary_max,
+               currency, description, requirements,
+               created_at, published_at
+          FROM "${t.schema_name}".recruitment_jobs
+          WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')
+          LIMIT 1
+      `, [jobId])
+      if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+      return reply.send({
+        tenant: {
+          name: t.name, slug: t.slug, city: t.city,
+          primaryColor: t.primary_color ?? '#E85D04',
+          secondaryColor: t.secondary_color ?? '#F48C06',
+          logoUrl: t.logo_url,
+        },
+        data: job.rows[0],
+      })
+    },
+  })
 
-        const res = await pool.query(`
-          INSERT INTO "${schema}".applications
-            (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
-             stage, source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,'new','careers_page')
-          RETURNING id
-        `, [
-          jobId, body.first_name, body.last_name, body.email,
-          body.phone ?? null, body.cover_letter ?? null, body.cv_text ?? null,
-        ])
-        return reply.status(201).send({ data: { id: res.rows[0].id } })
-      } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+  // POST candidature publique — OWASP A05 : rate-limit anti-spam (5/IP/h)
+  fastify.post('/public/:tenantSlug/jobs/:jobId/apply', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    handler: async (request, reply) => {
+      const { tenantSlug, jobId } = request.params as { tenantSlug: string; jobId: string }
+      // Zod validation stricte (OWASP A03 Injection + A04 Insecure Design)
+      const parsed = publicApplySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
       }
+      const body = parsed.data
+
+      const tenant = await pool.query<{ schema_name: string; name: string }>(
+        `SELECT schema_name, name FROM platform.tenants
+          WHERE slug = $1 AND status IN ('active','trial') LIMIT 1`,
+        [tenantSlug],
+      )
+      if (!tenant.rows[0]) return reply.status(404).send({ error: 'Entreprise introuvable' })
+      const schema = tenant.rows[0].schema_name
+      await ensureRecruitmentSchemaMigrated(schema)
+
+      const job = await pool.query(
+        `SELECT id, title FROM "${schema}".recruitment_jobs
+          WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')`,
+        [jobId],
+      )
+      if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+
+      // Anti-doublon : si même email a déjà postulé à cette offre, refuser
+      const dup = await pool.query(
+        `SELECT id FROM "${schema}".applications
+          WHERE job_id = $1 AND lower(email) = lower($2) LIMIT 1`,
+        [jobId, body.email],
+      )
+      if (dup.rows[0]) {
+        return reply.status(409).send({
+          error: 'Vous avez déjà postulé à cette offre',
+          applicationId: dup.rows[0].id,
+        })
+      }
+
+      const res = await pool.query<{ id: string }>(`
+        INSERT INTO "${schema}".applications
+          (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
+           stage, source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'new','careers_page')
+        RETURNING id
+      `, [
+        jobId, body.first_name, body.last_name, body.email,
+        body.phone ?? null, body.cover_letter ?? null, body.cv_text ?? null,
+      ])
+
+      // Audit log non-bloquant (OWASP A09)
+      pool.query(
+        `INSERT INTO "${schema}".audit_log (action, entity, entity_id, changes, ip_address)
+         VALUES ('public.application_submitted', 'application', $1, $2, $3)`,
+        [res.rows[0]!.id,
+         JSON.stringify({ jobId, jobTitle: job.rows[0].title, source: 'careers_page' }),
+         request.ip ?? null],
+      ).catch(() => { /* table absente → ignore */ })
+
+      return reply.status(201).send({
+        data: { id: res.rows[0]!.id, jobTitle: job.rows[0].title, companyName: tenant.rows[0].name },
+        message: 'Candidature envoyée — vous serez recontacté(e) si votre profil correspond.',
+      })
     },
   })
 

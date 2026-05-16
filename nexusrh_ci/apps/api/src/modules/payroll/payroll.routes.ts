@@ -7,6 +7,20 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 const rawPool = new Pool({ connectionString: config.database.url })
 
 // ── Helper : calcul des jours ouvrables d'un mois (lundi–samedi, hors dimanche) ──
+// Parse 'YYYY-MM' avec validation stricte → évite NaN dans les calculs paie.
+// OWASP A04 (Insecure Design) : refuser dès l'entrée plutôt que produire des
+// résultats corrompus en aval.
+function parseMonth(month: string): { year: number; monthNum: number } | null {
+  if (!month || typeof month !== 'string') return null
+  const m = month.match(/^(\d{4})-(\d{2})$/)
+  if (!m) return null
+  const year = parseInt(m[1]!, 10)
+  const monthNum = parseInt(m[2]!, 10)
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) return null
+  if (!Number.isFinite(monthNum) || monthNum < 1 || monthNum > 12) return null
+  return { year, monthNum }
+}
+
 function getWorkingDays(year: number, month: number): number {
   const daysInMonth = new Date(year, month, 0).getDate()
   let count = 0
@@ -167,8 +181,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
       }
 
-      const [year, monthNum] = month.split('-').map(Number)
-      const workingDaysMonth = getWorkingDays(year!, monthNum!)
+      const parsed = parseMonth(month)
+      if (!parsed) {
+        return reply.status(400).send({ error: 'Format mois invalide (attendu : YYYY-MM)' })
+      }
+      const { year, monthNum } = parsed
+      const workingDaysMonth = getWorkingDays(year, monthNum)
 
       // Résolution absence du mois
       const absenceCtx = await resolveAbsenceForPayroll(schema, employeeId, month, emp.hire_date)
@@ -237,8 +255,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       )
       const atRate = parseFloat(tenantRes.rows[0]?.at_rate ?? '0.020')
 
-      const [year, monthNum] = month.split('-').map(Number)
-      const workingDaysMonth = getWorkingDays(year!, monthNum!)
+      const parsed = parseMonth(month)
+      if (!parsed) {
+        return reply.status(400).send({ error: 'Format mois invalide (attendu : YYYY-MM)' })
+      }
+      const { year, monthNum } = parsed
+      const workingDaysMonth = getWorkingDays(year, monthNum)
 
       let periodId: string
       if (existing.rows[0]) {
