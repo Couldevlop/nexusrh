@@ -293,6 +293,64 @@ function KpiCard({ icon: Icon, label, value, hint, color }: {
   )
 }
 
+// Card collaborateur (vue manager) — avatar coloré + dernier entretien
+function TeamMemberCard({ member }: { member: {
+  employee_id: string; first_name: string; last_name: string; job_title: string | null
+  lastEval: Evaluation | null; evalCount: number
+} }) {
+  const gradients = [
+    'from-orange-400 to-pink-500', 'from-emerald-400 to-teal-500',
+    'from-blue-400 to-indigo-500', 'from-purple-400 to-fuchsia-500',
+    'from-amber-400 to-orange-500', 'from-rose-400 to-red-500',
+    'from-cyan-400 to-blue-500', 'from-lime-400 to-emerald-500',
+  ]
+  const seed = (member.first_name + member.last_name).split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  const gradient = gradients[seed % gradients.length]
+  const initials = ((member.first_name?.[0] ?? '') + (member.last_name?.[0] ?? '')).toUpperCase()
+  const score = member.lastEval?.global_score ? parseFloat(member.lastEval.global_score) : null
+  const scoreColor = score === null ? 'text-slate-400'
+    : score >= 4 ? 'text-emerald-600'
+    : score >= 3 ? 'text-amber-600'
+    : 'text-rose-600'
+  const statusCfg = member.lastEval ? STATUS_CONFIG[member.lastEval.status] : null
+
+  return (
+    <div className="group rounded-xl border border-border bg-card p-3 hover:border-indigo-300 hover:shadow-md transition-all">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-white text-sm font-bold shadow-sm ring-2 ring-white`}>
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900 truncate">
+            {member.first_name} {member.last_name}
+          </p>
+          {member.job_title && (
+            <p className="text-xs text-muted-foreground truncate">{member.job_title}</p>
+          )}
+        </div>
+        {score !== null && (
+          <div className="flex-shrink-0 text-right">
+            <p className={`text-lg font-bold ${scoreColor}`}>{score}<span className="text-xs text-slate-400">/5</span></p>
+          </div>
+        )}
+      </div>
+      {member.lastEval && statusCfg && (
+        <div className="mt-2 flex items-center justify-between text-[11px]">
+          <span className={`rounded-full px-2 py-0.5 font-medium ${statusCfg.color}`}>
+            {statusCfg.label}
+          </span>
+          <span className="text-muted-foreground">
+            {member.lastEval.year} · {member.evalCount} entretien{member.evalCount > 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
+      {!member.lastEval && (
+        <p className="mt-2 text-[11px] text-slate-400 italic">Aucun entretien {/* fallback */}</p>
+      )}
+    </div>
+  )
+}
+
 function ScoreBlock({ label, value }: { label: string; value: string | null }) {
   const num = value ? parseFloat(value) : null
   return (
@@ -311,6 +369,11 @@ function ScoreBlock({ label, value }: { label: string; value: string | null }) {
 // ─── Vue admin/RH/manager : entretiens + 9-box (existant inchangé) ───────────
 function HRView() {
   const queryClient = useQueryClient()
+  // Détecte le rôle pour adapter hero/onglets. L'API filtre déjà les data
+  // (manager → ses subordonnés ; admin/RH → tout le tenant).
+  const role = useAuthStore((s) => s.user?.role)
+  const isManager = role === 'manager'
+  const canSeeNineBox = role === 'admin' || role === 'hr_manager'
   const [tab, setTab] = useState<'evaluations' | 'ninebox'>('evaluations')
   const [year, setYear] = useState(new Date().getFullYear())
   const [showNewEval, setShowNewEval] = useState(false)
@@ -377,28 +440,132 @@ function HRView() {
     risk:        { label: '🔴 À risque', color: 'bg-red-50 border-red-200' },
   }
 
+  // KPIs équipe pour manager (computed sur les évaluations filtrées API)
+  const completedCount = evaluations.filter(e => e.status === 'completed').length
+  const draftCount = evaluations.filter(e => e.status === 'draft' || e.status === 'in_progress').length
+  const teamSize = new Set(evaluations.map(e => e.employee_id)).size
+  // Pour l'affichage du tab 9-box : caché si rôle non autorisé (évite 403 visible)
+  const availableTabs = canSeeNineBox ? (['evaluations', 'ninebox'] as const) : (['evaluations'] as const)
+
+  // Stats supplémentaires admin/RH
+  const completionRate = evaluations.length > 0
+    ? Math.round((completedCount / evaluations.length) * 100) : 0
+  const avgScore = (() => {
+    const scores = evaluations.map(e => parseFloat(e.global_score ?? '0')).filter(s => s > 0)
+    return scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '—'
+  })()
+
+  // Synthèse par collaborateur (pour la card "Mon équipe" du manager)
+  const teamMembers = (() => {
+    const map = new Map<string, {
+      employee_id: string; first_name: string; last_name: string; job_title: string | null
+      lastEval: Evaluation | null; evalCount: number
+    }>()
+    for (const e of evaluations) {
+      const existing = map.get(e.employee_id)
+      if (!existing) {
+        map.set(e.employee_id, {
+          employee_id: e.employee_id, first_name: e.first_name, last_name: e.last_name,
+          job_title: e.job_title, lastEval: e, evalCount: 1,
+        })
+      } else {
+        existing.evalCount++
+        if (!existing.lastEval || new Date(e.created_at) > new Date(existing.lastEval.created_at)) {
+          existing.lastEval = e
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`))
+  })()
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Carrières & Compétences</h1>
-          <p className="text-sm text-muted-foreground mt-1">{evaluations.length} entretien(s) · {year}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select value={year} onChange={e => setYear(parseInt(e.target.value))}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-            {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <button onClick={() => setShowNewEval(true)}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Nouvel entretien
-          </button>
+    <div className="p-6 space-y-5">
+      {/* Hero gradient adaptatif par rôle */}
+      <div className={`relative overflow-hidden rounded-2xl border p-6 shadow-sm ${
+        isManager
+          ? 'border-indigo-200/60 bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50'
+          : 'border-purple-200/60 bg-gradient-to-br from-purple-50 via-fuchsia-50 to-pink-50'
+      }`}>
+        <div className={`absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl ${
+          isManager ? 'bg-blue-300/30' : 'bg-purple-300/30'
+        }`} />
+        <div className="relative flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-4">
+            <div className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg ${
+              isManager
+                ? 'bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-500/30'
+                : 'bg-gradient-to-br from-purple-500 to-fuchsia-600 shadow-purple-500/30'
+            }`}>
+              {isManager ? <Users className="h-7 w-7 text-white" /> : <Award className="h-7 w-7 text-white" />}
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">
+                {isManager ? 'Mon équipe — Talents & Performance' : 'Carrières & Compétences'}
+              </h1>
+              <p className="mt-1 text-sm text-slate-600 max-w-xl">
+                {isManager
+                  ? 'Pilotez la performance et la progression de votre équipe directe. Tous les entretiens et compétences sont filtrés selon votre périmètre managérial.'
+                  : 'Vue d\'ensemble des entretiens, scores et 9-box matrice pour tout le tenant. Identifiez les talents et planifiez la mobilité.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+              className="rounded-lg border border-white bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm outline-none">
+              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button onClick={() => setShowNewEval(true)}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all ${
+                isManager
+                  ? 'bg-gradient-to-r from-indigo-600 to-blue-600'
+                  : 'bg-gradient-to-r from-purple-600 to-fuchsia-600'
+              }`}>
+              <Plus className="h-4 w-4" /> Nouvel entretien
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* KPI cards adaptés au rôle */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {isManager ? (
+          <>
+            <KpiCard icon={Users}      label="Équipe directe"  value={teamSize}       hint="Collaborateurs" color="indigo" />
+            <KpiCard icon={Star}       label="Entretiens menés" value={completedCount} hint={`${year}`}      color="emerald" />
+            <KpiCard icon={Target}     label="À finaliser"     value={draftCount}     hint="Brouillons / en cours" color="amber" />
+            <KpiCard icon={TrendingUp} label="Note moyenne"    value={`${avgScore}/5`} hint="Performance équipe" color="rose" />
+          </>
+        ) : (
+          <>
+            <KpiCard icon={Star}       label="Total entretiens" value={evaluations.length} hint={`${year}`}     color="amber" />
+            <KpiCard icon={TrendingUp} label="Note moyenne"    value={`${avgScore}/5`}    hint="Global tenant" color="emerald" />
+            <KpiCard icon={Target}     label="Taux complétion" value={`${completionRate}%`} hint={`${completedCount} finalisés`} color="indigo" />
+            <KpiCard icon={Sparkles}   label="Brouillons"       value={draftCount}        hint="À traiter"      color="rose" />
+          </>
+        )}
+      </div>
+
+      {/* Section "Mon équipe" : cards membres avec dernier entretien */}
+      {isManager && teamMembers.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-indigo-500" />
+              <h2 className="font-semibold">Membres de l'équipe</h2>
+            </div>
+            <span className="text-xs text-muted-foreground">{teamMembers.length} collaborateur(s)</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teamMembers.map(m => (
+              <TeamMemberCard key={m.employee_id} member={m} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs (9-box masqué pour les rôles non admin/hr_manager) */}
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
-        {(['evaluations', 'ninebox'] as const).map(t => (
+        {availableTabs.map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             {t === 'evaluations' ? <span className="flex items-center gap-1.5"><Star className="h-3.5 w-3.5" />Entretiens</span>
