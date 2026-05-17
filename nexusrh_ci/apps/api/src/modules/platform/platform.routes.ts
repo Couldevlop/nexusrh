@@ -291,38 +291,56 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['platform'], summary: 'Réinitialiser le mot de passe admin d\'un tenant' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const res = await pool.query<{ schema_name: string }>(
-        `SELECT schema_name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
-      )
-      const tenant = res.rows[0]
-      if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
+      try {
+        const res = await pool.query<{ schema_name: string; name: string }>(
+          `SELECT schema_name, name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
+        )
+        const tenant = res.rows[0]
+        if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
+        if (!tenant.schema_name) {
+          request.log.error({ tenantId: id }, 'reset-admin: schema_name vide pour ce tenant')
+          return reply.status(409).send({ error: 'Tenant mal provisionné : schema_name absent' })
+        }
 
-      const adminRes = await pool.query<{ id: string; email: string }>(
-        `SELECT id, email FROM "${tenant.schema_name}".users WHERE role = 'admin' LIMIT 1`
-      )
-      const admin = adminRes.rows[0]
-      if (!admin) return reply.status(404).send({ error: 'Admin introuvable' })
+        // Vérifier que le schema existe vraiment en base
+        const schemaCheck = await pool.query<{ exists: boolean }>(
+          `SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1) AS exists`,
+          [tenant.schema_name],
+        )
+        if (!schemaCheck.rows[0]?.exists) {
+          request.log.error({ tenantId: id, schemaName: tenant.schema_name }, 'reset-admin: schema introuvable en base')
+          return reply.status(409).send({
+            error: `Schéma "${tenant.schema_name}" introuvable. Le tenant n'a pas été provisionné correctement.`,
+          })
+        }
 
-      const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
-      const passwordHash = await bcrypt.hash(tempPassword, 12)
-      await pool.query(
-        `UPDATE "${tenant.schema_name}".users SET password_hash = $1, updated_at = now() WHERE id = $2`,
-        [passwordHash, admin.id]
-      )
+        const adminRes = await pool.query<{ id: string; email: string }>(
+          `SELECT id, email FROM "${tenant.schema_name}".users WHERE role = 'admin' LIMIT 1`
+        )
+        const admin = adminRes.rows[0]
+        if (!admin) return reply.status(404).send({ error: 'Aucun utilisateur admin trouvé dans ce tenant' })
 
-      // Envoyer email de réinitialisation (non bloquant)
-      const tenantName = (await pool.query<{ name: string }>(
-        `SELECT name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
-      )).rows[0]?.name ?? ''
+        const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
+        const passwordHash = await bcrypt.hash(tempPassword, 12)
+        await pool.query(
+          `UPDATE "${tenant.schema_name}".users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2`,
+          [passwordHash, admin.id]
+        )
 
-      sendPasswordResetEmail({
-        to:           admin.email,
-        firstName:    admin.email.split('@')[0] ?? 'Admin',
-        tempPassword,
-        loginUrl:     `${config.appUrl}/login`,
-      }).catch(() => null)
+        sendPasswordResetEmail({
+          to:           admin.email,
+          firstName:    admin.email.split('@')[0] ?? 'Admin',
+          tempPassword,
+          loginUrl:     `${config.appUrl}/login`,
+        }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
 
-      return reply.send({ adminEmail: admin.email, tempPassword, tenantName })
+        return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name })
+      } catch (err) {
+        request.log.error({ err, tenantId: id }, 'reset-admin: erreur interne')
+        return reply.status(500).send({
+          error: 'Erreur interne lors de la réinitialisation. Vérifiez les logs API ou utilisez le diagnostic /admin-status.',
+        })
+      }
     },
   })
 
