@@ -1,6 +1,6 @@
 import { buildApp } from './app.js'
 import { config } from './config.js'
-import { createPlatformSchema } from './db/provisioning.js'
+import { createPlatformSchema, createDroitCiSchema } from './db/provisioning.js'
 import { countArticles } from './modules/referentiels/legal-articles.repository.js'
 import { seedReferentiel } from './modules/referentiels/referentiels.service.js'
 
@@ -11,6 +11,16 @@ async function main() {
     console.log('[DB] Schéma platform vérifié/créé')
   } catch (err) {
     console.error('[DB] Erreur initialisation schéma platform:', err)
+    process.exit(1)
+  }
+
+  // Schéma droit_ci : référentiel juridique + tables veille réglementaire
+  // (article_proposals, articles_history). Idempotent grâce à CREATE IF NOT EXISTS.
+  try {
+    await createDroitCiSchema()
+    console.log('[DB] Schéma droit_ci vérifié/créé')
+  } catch (err) {
+    console.error('[DB] Erreur initialisation schéma droit_ci:', err)
     process.exit(1)
   }
 
