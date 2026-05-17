@@ -286,44 +286,93 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /platform/tenants/:id/reset-admin ───────────────────────────────
+  // Body optionnel : { adminEmail, firstName, lastName } pour mode auto-réparation
+  // (re-provisionne le schéma si manquant + crée l'admin si manquant).
   fastify.post('/tenants/:id/reset-admin', {
     preHandler: [fastify.authorize('super_admin')],
-    schema: { tags: ['platform'], summary: 'Réinitialiser le mot de passe admin d\'un tenant' },
+    schema: { tags: ['platform'], summary: 'Réinitialiser le mot de passe admin d\'un tenant (+ auto-repair si body fourni)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      const body = (request.body ?? {}) as { adminEmail?: string; firstName?: string; lastName?: string }
+      const repairMode = Boolean(body.adminEmail && body.firstName && body.lastName)
+
       try {
-        const res = await pool.query<{ schema_name: string; name: string }>(
-          `SELECT schema_name, name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
+        const res = await pool.query<{ schema_name: string; name: string; slug: string; at_rate: string | null }>(
+          `SELECT schema_name, name, slug, at_rate FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
         )
         const tenant = res.rows[0]
         if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
-        if (!tenant.schema_name) {
-          request.log.error({ tenantId: id }, 'reset-admin: schema_name vide pour ce tenant')
-          return reply.status(409).send({ error: 'Tenant mal provisionné : schema_name absent' })
+
+        // Calculer schema_name effectif (auto-réparer si vide)
+        let schemaName = tenant.schema_name
+        if (!schemaName) {
+          if (!repairMode) {
+            request.log.error({ tenantId: id }, 'reset-admin: schema_name vide')
+            return reply.status(409).send({
+              error: 'Tenant mal provisionné : schema_name absent. Utilisez le mode réparation (fournir adminEmail/firstName/lastName).',
+            })
+          }
+          schemaName = `tenant_${tenant.slug.replace(/[^a-z0-9_]/g, '_')}`
+          await pool.query(`UPDATE platform.tenants SET schema_name = $1, updated_at = now() WHERE id = $2`, [schemaName, id])
+          request.log.warn({ tenantId: id, schemaName }, 'reset-admin: schema_name réparé')
         }
 
-        // Vérifier que le schema existe vraiment en base
+        // Vérifier présence du schéma en base
         const schemaCheck = await pool.query<{ exists: boolean }>(
           `SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1) AS exists`,
-          [tenant.schema_name],
+          [schemaName],
         )
         if (!schemaCheck.rows[0]?.exists) {
-          request.log.error({ tenantId: id, schemaName: tenant.schema_name }, 'reset-admin: schema introuvable en base')
-          return reply.status(409).send({
-            error: `Schéma "${tenant.schema_name}" introuvable. Le tenant n'a pas été provisionné correctement.`,
-          })
+          if (!repairMode) {
+            request.log.error({ tenantId: id, schemaName }, 'reset-admin: schéma absent en base')
+            return reply.status(409).send({
+              error: `Schéma "${schemaName}" introuvable. Utilisez le mode réparation (fournir adminEmail/firstName/lastName) pour le provisionner.`,
+            })
+          }
+          request.log.warn({ schemaName }, 'reset-admin: provisionnement du schéma manquant')
+          await provisionTenantSchema(schemaName)
+          const atRate = tenant.at_rate ? parseFloat(tenant.at_rate) : 0.02
+          await seedPayrollRulesCI(schemaName, atRate)
+          await seedAbsenceTypesCI(schemaName)
         }
 
+        // Chercher admin existant
         const adminRes = await pool.query<{ id: string; email: string }>(
-          `SELECT id, email FROM "${tenant.schema_name}".users WHERE role = 'admin' LIMIT 1`
+          `SELECT id, email FROM "${schemaName}".users WHERE role = 'admin' LIMIT 1`
         )
-        const admin = adminRes.rows[0]
-        if (!admin) return reply.status(404).send({ error: 'Aucun utilisateur admin trouvé dans ce tenant' })
+        let admin = adminRes.rows[0]
 
+        // Créer admin si absent (mode repair) — sinon 409
+        if (!admin) {
+          if (!repairMode) {
+            return reply.status(409).send({
+              error: 'Aucun utilisateur admin dans ce tenant. Utilisez le mode réparation pour en créer un.',
+            })
+          }
+          const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
+          const passwordHash = await bcrypt.hash(tempPassword, 12)
+          const inserted = await pool.query<{ id: string; email: string }>(
+            `INSERT INTO "${schemaName}".users (email, password_hash, first_name, last_name, role, is_active)
+             VALUES ($1, $2, $3, $4, 'admin', true)
+             RETURNING id, email`,
+            [body.adminEmail!.toLowerCase(), passwordHash, body.firstName!, body.lastName!],
+          )
+          admin = inserted.rows[0]!
+          request.log.warn({ tenantId: id, email: admin.email }, 'reset-admin: admin créé via mode réparation')
+
+          sendPasswordResetEmail({
+            to: admin.email, firstName: body.firstName!, tempPassword,
+            loginUrl: `${config.appUrl}/login`,
+          }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
+
+          return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name, repaired: true })
+        }
+
+        // Cas nominal : reset password d'un admin existant
         const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
         const passwordHash = await bcrypt.hash(tempPassword, 12)
         await pool.query(
-          `UPDATE "${tenant.schema_name}".users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2`,
+          `UPDATE "${schemaName}".users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2`,
           [passwordHash, admin.id]
         )
 
@@ -336,9 +385,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
 
         return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name })
       } catch (err) {
-        request.log.error({ err, tenantId: id }, 'reset-admin: erreur interne')
+        request.log.error({ err, tenantId: id, repairMode }, 'reset-admin: erreur interne')
         return reply.status(500).send({
-          error: 'Erreur interne lors de la réinitialisation. Vérifiez les logs API ou utilisez le diagnostic /admin-status.',
+          error: 'Erreur interne lors de la réinitialisation. Consultez les logs API.',
         })
       }
     },
