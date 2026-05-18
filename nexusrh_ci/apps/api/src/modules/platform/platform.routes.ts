@@ -297,8 +297,11 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const repairMode = Boolean(body.adminEmail && body.firstName && body.lastName)
 
       try {
-        const res = await pool.query<{ schema_name: string; name: string; slug: string; at_rate: string | null }>(
-          `SELECT schema_name, name, slug, at_rate FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
+        const res = await pool.query<{
+          schema_name: string; name: string; slug: string; at_rate: string | null
+          primary_color: string | null; city: string | null
+        }>(
+          `SELECT schema_name, name, slug, at_rate, primary_color, city FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
         )
         const tenant = res.rows[0]
         if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
@@ -363,6 +366,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           sendPasswordResetEmail({
             to: admin.email, firstName: body.firstName!, tempPassword,
             loginUrl: `${config.appUrl}/login`,
+            tenantName: tenant.name,
+            primaryColor: tenant.primary_color ?? '#E85D04',
+            tenantCity: tenant.city,
           }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
 
           return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name, repaired: true })
@@ -381,6 +387,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           firstName:    admin.email.split('@')[0] ?? 'Admin',
           tempPassword,
           loginUrl:     `${config.appUrl}/login`,
+          tenantName:   tenant.name,
+          primaryColor: tenant.primary_color ?? '#E85D04',
+          tenantCity:   tenant.city,
         }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
 
         return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name })
