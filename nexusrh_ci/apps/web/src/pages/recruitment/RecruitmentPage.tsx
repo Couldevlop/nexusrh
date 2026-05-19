@@ -121,6 +121,8 @@ export default function RecruitmentPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_FORM)
+  const [showCriteria, setShowCriteria] = useState(false)
+  const [criteriaFocus, setCriteriaFocus] = useState('')
 
   const { data: jobsData, isLoading } = useQuery<{ data: Job[] }>({
     queryKey: ['recruitment-jobs'],
@@ -399,24 +401,56 @@ export default function RecruitmentPage() {
       {tab === 'pipeline' && (
         <div className="space-y-4">
           {selectedJob && (
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-sm">
-                <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
-                  Toutes les offres
-                </button>
-                <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                <span className="font-medium">{selectedJob.title}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-sm">
+                  <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
+                    Toutes les offres
+                  </button>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{selectedJob.title}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCriteria((v) => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    title="Ajouter des critères pour orienter l'analyse IA"
+                  >
+                    {showCriteria ? '− Masquer critères' : '+ Critères du recruteur'}
+                  </button>
+                  <button
+                    onClick={() => preselect.mutate({
+                      jobId: selectedJob.id,
+                      criteria: criteriaFocus.trim() || undefined,
+                    })}
+                    disabled={preselect.isPending}
+                    title="Analyse toutes les candidatures nouvelles avec l'IA et les classe par score"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {preselect.isPending
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Pré-sélection en cours…</>
+                      : <><Sparkles className="h-3.5 w-3.5" /> Pré-sélectionner avec IA</>}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => preselect.mutate({ jobId: selectedJob.id })}
-                disabled={preselect.isPending}
-                title="Analyse toutes les candidatures nouvelles avec l'IA et les classe par score"
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {preselect.isPending
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Pré-sélection en cours…</>
-                  : <><Sparkles className="h-3.5 w-3.5" /> Pré-sélectionner avec IA</>}
-              </button>
+              {showCriteria && (
+                <div className="rounded-lg border border-border bg-muted/20 p-3">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Priorités du recruteur (optionnel, max 500 caractères)
+                  </label>
+                  <textarea
+                    value={criteriaFocus}
+                    onChange={(e) => setCriteriaFocus(e.target.value)}
+                    placeholder="Ex : Privilégier les profils avec expérience SAP et anglais courant. Pénaliser les changements d'emploi fréquents (< 1 an)."
+                    rows={3}
+                    maxLength={500}
+                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Ce texte est injecté dans les exigences de l'offre avant l'analyse IA — il guide le scoring sans remplacer les requirements existants.
+                  </p>
+                </div>
+              )}
             </div>
           )}
           {!selectedJob && (
