@@ -1,0 +1,48 @@
+{
+  "id": "02-cadre-marie-2-enfants-500k",
+  "description": "Cadre marié 2 enfants, plein temps, brut 500 000 FCFA — test du crédit d'impôt familial (annule l'ITS)",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-19",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 500000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "married",
+    "childrenCount": 2,
+    "variableElements": {}
+  },
+  "expected": {
+    "baseSalary": 500000,
+    "brutProrata": 500000,
+    "grossSalary": 500000,
+    "cnpsRetraiteSal": 31500,
+    "cnpsRetraitePat": 38500,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 31500,
+    "totalCnpsPat": 43925,
+    "baseImposable": 393500,
+    "its": 0,
+    "totalDeductions": 31500,
+    "netPayable": 468500,
+    "employerCost": 543925,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 500000 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  31500 },
+      { "code": "2100", "type": "employee_contribution",   "amount":      0 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  38500 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}

@@ -16,7 +16,11 @@
     "db:studio": "drizzle-kit studio",
     "admin:reset-passwords": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts",
     "admin:reset-passwords:dry-run": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --dry-run",
-    "admin:reset-passwords:health-check": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --health-check"
+    "admin:reset-passwords:health-check": "tsx --env-file=../../.env src/db/reset-admin-passwords.ts --health-check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:golden": "vitest run src/services/golden",
+    "payroll:fixtures:approve": "tsx src/services/golden/approve-fixture.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
