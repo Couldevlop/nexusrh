@@ -812,6 +812,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_model_used varchar(30)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_analyzed_at timestamptz`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_text text`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_signals_used jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_demographic_risk_note text`)
 
   // Index utiles pour le filtrage interne et la consultation pipeline
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_jobs_visibility ON ${s}.recruitment_jobs(visibility, status)`)
@@ -863,6 +865,7 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_legal_entity_id uuid`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS hiring_manager_id uuid`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS public_slug varchar(120)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS ai_focus_text text`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
@@ -874,6 +877,8 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_model_used varchar(30)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_analyzed_at timestamptz`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_text text`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_signals_used jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_demographic_risk_note text`)
 
   // Sourcing IA — table cache des profils générés (migration lazy idempotente)
   await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (

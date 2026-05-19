@@ -502,9 +502,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               ai_red_flags = $7,
               ai_interview_questions = $8,
               ai_model_used = $9,
+              ai_signals_used = $10,
+              ai_demographic_risk_note = $11,
               ai_analyzed_at = now(),
               updated_at = now()
-          WHERE id = $10 RETURNING *
+          WHERE id = $12 RETURNING *
         `, [
           result.score, result.summary, result.recommendation,
           result.matchPercentage,
@@ -513,6 +515,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           JSON.stringify(result.redFlags),
           JSON.stringify(result.interviewQuestions),
           result.modelUsed,
+          JSON.stringify(result.signalsUsed ?? []),
+          result.demographicRiskNote ?? null,
           id,
         ])
 
@@ -537,6 +541,195 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const isUserActionable = /CV trop court|configurée|inconnu|stub/i.test(raw)
         return reply.status(500).send({
           error: isUserActionable ? raw : 'Erreur lors de l\'analyse IA. Réessayez plus tard.',
+        })
+      }
+    },
+  })
+
+  // ── PRÉ-SÉLECTION EN LOT (batch) ───────────────────────────────────────────
+  // Analyse en série toutes les candidatures non encore traitées d'une offre
+  // (par défaut stage='new'). Coût IA borné par maxCandidates (≤ 50/appel) et
+  // par le rate-limit (3 req/min). Audit log par lot, pas par CV individuel.
+  // Optionnel : `criteria.focus` injecté dans les requirements de l'offre pour
+  // orienter le scoring IA selon les priorités du recruteur.
+  fastify.post('/jobs/:id/preselect', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 3, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id: jobId } = request.params as { id: string }
+      const body = (request.body ?? {}) as {
+        model?: string
+        stages?: string[]
+        force?: boolean
+        maxCandidates?: number
+        criteria?: { focus?: string }
+      }
+
+      const model: AiModelChoice = body.model === 'mistral' ? 'mistral' : 'claude'
+      const requestedStages = Array.isArray(body.stages) && body.stages.length > 0
+        ? body.stages : ['new']
+      const invalidStage = requestedStages.find((s) => !STAGES.includes(s))
+      if (invalidStage) {
+        return reply.status(400).send({ error: `Stage invalide : ${invalidStage}` })
+      }
+      const force = body.force === true
+      const maxCandidatesRaw = typeof body.maxCandidates === 'number' ? body.maxCandidates : 20
+      const maxCandidates = Math.min(Math.max(Math.floor(maxCandidatesRaw), 1), 50)
+      const criteriaFocus = body.criteria?.focus?.trim() || null
+
+      try {
+        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null }>(
+          `SELECT title, description, requirements, contract_type, location,
+                  salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
+                  contract_type AS "contractType",
+                  ai_focus_text
+             FROM "${schema}".recruitment_jobs WHERE id = $1`,
+          [jobId],
+        )
+        const job = jobRes.rows[0]
+        if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+        // Critère effectif : si body.criteria.focus fourni → écrit ai_focus_text
+        // dans le job (persistance). Sinon, fallback sur la valeur stockée.
+        const effectiveFocus = criteriaFocus ?? job.ai_focus_text?.trim() ?? null
+        if (criteriaFocus !== null && criteriaFocus !== job.ai_focus_text) {
+          await pool.query(
+            `UPDATE "${schema}".recruitment_jobs
+                SET ai_focus_text = $1, updated_at = now()
+              WHERE id = $2`,
+            [criteriaFocus, jobId],
+          )
+        }
+
+        const appsRes = await pool.query<{
+          id: string
+          cv_text: string | null
+          cover_letter: string | null
+          first_name: string
+          last_name: string
+        }>(
+          `SELECT id, cv_text, cover_letter, first_name, last_name
+             FROM "${schema}".applications
+            WHERE job_id = $1
+              AND stage = ANY($2::text[])
+              ${force ? '' : 'AND ai_analyzed_at IS NULL'}
+            ORDER BY created_at ASC
+            LIMIT $3`,
+          [jobId, requestedStages, maxCandidates],
+        )
+        const candidates = appsRes.rows
+
+        if (candidates.length === 0) {
+          return reply.send({
+            total: 0,
+            analyzed: 0,
+            skipped: 0,
+            failed: 0,
+            top: [],
+            model,
+            message: 'Aucune candidature à analyser pour ces stages.',
+          })
+        }
+
+        const enrichedJob: JobContext = effectiveFocus
+          ? {
+              ...job,
+              requirements: [job.requirements?.trim(), `Priorité du recruteur : ${effectiveFocus}`]
+                .filter(Boolean).join('\n\n'),
+            }
+          : job
+
+        let analyzed = 0
+        let skipped = 0
+        let failed = 0
+        const results: Array<{
+          id: string
+          score: number
+          recommendation: string
+          firstName: string
+          lastName: string
+        }> = []
+
+        for (const c of candidates) {
+          const cvText = c.cv_text ?? c.cover_letter ?? ''
+          if (!cvText || cvText.trim().length < 50) {
+            skipped++
+            continue
+          }
+          try {
+            const result = await analyzeCV(model, enrichedJob, cvText)
+            await pool.query(`
+              UPDATE "${schema}".applications
+              SET ai_score = $1,
+                  ai_summary = $2,
+                  ai_recommendation = $3,
+                  ai_match_percentage = $4,
+                  ai_strengths = $5,
+                  ai_gaps = $6,
+                  ai_red_flags = $7,
+                  ai_interview_questions = $8,
+                  ai_model_used = $9,
+                  ai_signals_used = $10,
+                  ai_demographic_risk_note = $11,
+                  ai_analyzed_at = now(),
+                  updated_at = now()
+              WHERE id = $12
+            `, [
+              result.score, result.summary, result.recommendation,
+              result.matchPercentage,
+              JSON.stringify(result.strengths),
+              JSON.stringify(result.gaps),
+              JSON.stringify(result.redFlags),
+              JSON.stringify(result.interviewQuestions),
+              result.modelUsed,
+              JSON.stringify(result.signalsUsed ?? []),
+              result.demographicRiskNote ?? null,
+              c.id,
+            ])
+            analyzed++
+            results.push({
+              id: c.id,
+              score: result.score,
+              recommendation: result.recommendation,
+              firstName: c.first_name,
+              lastName: c.last_name,
+            })
+          } catch (err) {
+            fastify.log.error({ err, candidateId: c.id }, 'preselect: analyze failed for candidate')
+            failed++
+          }
+        }
+
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.preselect_batch', 'recruitment_job', $2, $3, $4)`,
+          [request.user.sub, jobId,
+           JSON.stringify({
+             model, stages: requestedStages, force,
+             analyzed, skipped, failed,
+             effectiveFocus,
+             focusSource: criteriaFocus !== null ? 'request' : (job.ai_focus_text ? 'job-stored' : null),
+           }),
+           request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        const top = results.sort((a, b) => b.score - a.score).slice(0, 10)
+
+        return reply.send({
+          total: candidates.length,
+          analyzed,
+          skipped,
+          failed,
+          top,
+          model,
+          effectiveFocus,
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'preselect-batch failed')
+        return reply.status(500).send({
+          error: 'Erreur lors de la pré-sélection en lot. Réessayez plus tard.',
         })
       }
     },

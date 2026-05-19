@@ -128,6 +128,39 @@ describe('recruitment-ai.service — analyzeCV (Claude)', () => {
     })
     await expect(analyzeCV('claude', JOB, CV_SAMPLE)).rejects.toThrow()
   })
+
+  it('parse les signaux utilisés et la note de biais démographique', async () => {
+    const withAudit = JSON.stringify({
+      ...JSON.parse(VALID_ANALYSIS),
+      signalsUsed: ['5 ans RH', 'CNPS confirmé', 'Excel avancé', 'leadership équipe 12 pers'],
+      demographicRiskNote: 'Score légèrement influencé par l\'école citée (HEC Côte d\'Ivoire) — à pondérer.',
+    })
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: withAudit }] })
+    const result = await analyzeCV('claude', JOB, CV_SAMPLE)
+    expect(result.signalsUsed).toHaveLength(4)
+    expect(result.signalsUsed?.[0]).toContain('5 ans')
+    expect(result.demographicRiskNote).toContain('HEC')
+  })
+
+  it('demographicRiskNote = null quand aucun biais détecté', async () => {
+    const noRisk = JSON.stringify({
+      ...JSON.parse(VALID_ANALYSIS),
+      signalsUsed: ['CNPS', 'Excel'],
+      demographicRiskNote: null,
+    })
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: noRisk }] })
+    const result = await analyzeCV('claude', JOB, CV_SAMPLE)
+    expect(result.demographicRiskNote).toBeNull()
+  })
+
+  it('rétro-compat : sans signalsUsed ni demographicRiskNote dans la réponse IA', async () => {
+    // Anciennes fixtures / réponses partielles ne doivent pas casser le parsing
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: VALID_ANALYSIS }] })
+    const result = await analyzeCV('claude', JOB, CV_SAMPLE)
+    expect(result.signalsUsed).toEqual([])
+    expect(result.demographicRiskNote).toBeNull()
+    expect(result.score).toBe(87)
+  })
 })
 
 describe('recruitment-ai.service — analyzeCV (Mistral)', () => {

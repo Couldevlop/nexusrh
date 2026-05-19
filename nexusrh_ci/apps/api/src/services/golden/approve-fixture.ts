@@ -46,7 +46,12 @@ if (candidates.length > 1) {
   process.exit(1)
 }
 
-const filePath = resolve(FIXTURES_DIR, candidates[0])
+const [candidateFile] = candidates
+if (!candidateFile) {
+  console.error('État inattendu : aucun fichier candidat')
+  process.exit(1)
+}
+const filePath = resolve(FIXTURES_DIR, candidateFile)
 const fixture = JSON.parse(readFileSync(filePath, 'utf8')) as GoldenFixture
 const result = calculatePayrollCI(fixture.input)
 

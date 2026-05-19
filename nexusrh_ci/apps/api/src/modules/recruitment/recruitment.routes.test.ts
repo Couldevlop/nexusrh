@@ -527,3 +527,189 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
     vi.mocked(isModelAvailable).mockImplementation((m: string) => m === 'claude')
   })
 })
+
+describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () => {
+  it('retourne 404 si l\'offre n\'existe pas', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/unknown-job/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { model: 'claude' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('refuse un stage invalide (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { stages: ['NOT_A_REAL_STAGE'] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('retourne total=0 quand aucune candidature à analyser', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Test', description: null, requirements: null }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.total).toBe(0)
+    expect(body.analyzed).toBe(0)
+    expect(body.top).toEqual([])
+  })
+
+  it('analyse plusieurs candidatures, ignore les CV trop courts, retourne top trié par score', async () => {
+    const longCv = 'Excellent profil ivoirien avec 8 ans d\'expérience RH et certifications.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Chargé RH', description: 'desc', requirements: 'CNPS ITS' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 'app-1', cv_text: 'court', cover_letter: null, first_name: 'A', last_name: 'B' },
+          { id: 'app-2', cv_text: longCv, cover_letter: null, first_name: 'C', last_name: 'D' },
+          { id: 'app-3', cv_text: longCv, cover_letter: null, first_name: 'E', last_name: 'F' },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(analyzeCV)
+      .mockResolvedValueOnce({
+        score: 70, recommendation: 'maybe', summary: 'ok', strengths: [], gaps: [], redFlags: [],
+        interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 65, modelUsed: 'claude',
+      })
+      .mockResolvedValueOnce({
+        score: 90, recommendation: 'strong_yes', summary: 'top', strengths: [], gaps: [], redFlags: [],
+        interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 95, modelUsed: 'claude',
+      })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { model: 'claude' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.total).toBe(3)
+    expect(body.analyzed).toBe(2)
+    expect(body.skipped).toBe(1)
+    expect(body.failed).toBe(0)
+    expect(body.top).toHaveLength(2)
+    expect(body.top[0].score).toBe(90)
+    expect(body.top[1].score).toBe(70)
+  })
+
+  it('injecte criteria.focus dans les requirements de l\'offre passés à analyzeCV', async () => {
+    const longCv = 'Candidat avec expérience SAP solide et anglais bilingue.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Consultant', description: 'desc', requirements: 'CNPS, OHADA', ai_focus_text: null }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs (persistance ai_focus_text)
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'C', last_name: 'D' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 80, recommendation: 'yes', summary: 'ok', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 80, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { criteria: { focus: 'Privilégier les profils SAP avec anglais courant' } },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const callArgs = vi.mocked(analyzeCV).mock.calls[0]
+    expect(callArgs?.[1].requirements).toContain('Priorité du recruteur : Privilégier les profils SAP avec anglais courant')
+    expect(callArgs?.[1].requirements).toContain('CNPS, OHADA')
+  })
+
+  it('non-régression RBAC : un employee ne peut pas déclencher la pré-sélection (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('persistance : sauvegarde criteria.focus dans recruitment_jobs.ai_focus_text', async () => {
+    const longCv = 'Candidat solide avec expérience confirmée.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: '', ai_focus_text: null }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs.ai_focus_text
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'X', last_name: 'Y' }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 75, recommendation: 'yes', summary: '', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 75, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { criteria: { focus: 'Profils bilingues uniquement' } },
+    })
+
+    // Vérifie que la requête UPDATE ai_focus_text a bien été émise (2e call queryMock)
+    const updateCall = queryMock.mock.calls[1]
+    expect(updateCall?.[0]).toContain('UPDATE')
+    expect(updateCall?.[0]).toContain('ai_focus_text')
+    expect(updateCall?.[1]).toEqual(['Profils bilingues uniquement', 'job-1'])
+  })
+
+  it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {
+    const longCv = 'Profil confirmé avec dossier solide.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: 'CNPS', ai_focus_text: 'Critère sauvegardé pour cette offre' }] })
+      // PAS d'UPDATE recruitment_jobs car criteriaFocus=null (rien à persister)
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'A', last_name: 'B' }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 80, recommendation: 'yes', summary: '', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 80, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {}, // pas de criteria
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.effectiveFocus).toBe('Critère sauvegardé pour cette offre')
+    // analyzeCV doit avoir reçu un job dont requirements contient le focus sauvegardé
+    const callArgs = vi.mocked(analyzeCV).mock.calls[0]
+    expect(callArgs?.[1].requirements).toContain('Critère sauvegardé pour cette offre')
+  })
+})

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { api, formatFCFA } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -22,6 +22,7 @@ interface Job {
   target_departments?: string[]
   target_job_levels?: string[]
   target_min_seniority_months?: number | null
+  ai_focus_text?: string | null
   created_at: string
 }
 
@@ -35,6 +36,8 @@ interface Application {
   ai_strengths?: string[]
   ai_gaps?: string[]
   ai_red_flags?: string[]
+  ai_signals_used?: string[]
+  ai_demographic_risk_note?: string | null
   ai_model_used?: string | null
   cv_text?: string | null
   source?: string | null
@@ -121,6 +124,14 @@ export default function RecruitmentPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_FORM)
+  const [showCriteria, setShowCriteria] = useState(false)
+  const [criteriaFocus, setCriteriaFocus] = useState('')
+  const [compareTop3, setCompareTop3] = useState(false)
+
+  useEffect(() => {
+    setCriteriaFocus(selectedJob?.ai_focus_text ?? '')
+    if (selectedJob?.ai_focus_text) setShowCriteria(true)
+  }, [selectedJob?.id, selectedJob?.ai_focus_text])
 
   const { data: jobsData, isLoading } = useQuery<{ data: Job[] }>({
     queryKey: ['recruitment-jobs'],
@@ -182,6 +193,24 @@ export default function RecruitmentPage() {
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
       api.patch(`/recruitment/applications/${id}/stage`, { stage }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] }),
+  })
+
+  const preselect = useMutation({
+    mutationFn: ({ jobId, criteria }: { jobId: string; criteria?: string }) =>
+      api.post(`/recruitment/jobs/${jobId}/preselect`, {
+        model: 'claude',
+        stages: ['new'],
+        criteria: criteria ? { focus: criteria } : undefined,
+      }).then((r) => r.data as {
+        total: number; analyzed: number; skipped: number; failed: number
+        top: Array<{ id: string; score: number; recommendation: string; firstName: string; lastName: string }>
+        effectiveFocus?: string | null
+        message?: string
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
+      queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] })
+    },
   })
 
   const jobs = jobsData?.data ?? []
@@ -385,18 +414,237 @@ export default function RecruitmentPage() {
       {tab === 'pipeline' && (
         <div className="space-y-4">
           {selectedJob && (
-            <div className="flex items-center gap-2 text-sm">
-              <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
-                Toutes les offres
-              </button>
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium">{selectedJob.title}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-sm">
+                  <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
+                    Toutes les offres
+                  </button>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{selectedJob.title}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCriteria((v) => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    title="Ajouter des critères pour orienter l'analyse IA"
+                  >
+                    {showCriteria ? '− Masquer critères' : '+ Critères du recruteur'}
+                  </button>
+                  <button
+                    onClick={() => preselect.mutate({
+                      jobId: selectedJob.id,
+                      criteria: criteriaFocus.trim() || undefined,
+                    })}
+                    disabled={preselect.isPending}
+                    title="Analyse toutes les candidatures nouvelles avec l'IA et les classe par score"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {preselect.isPending
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Pré-sélection en cours…</>
+                      : <><Sparkles className="h-3.5 w-3.5" /> Pré-sélectionner avec IA</>}
+                  </button>
+                </div>
+              </div>
+              {showCriteria && (
+                <div className="rounded-lg border border-border bg-muted/20 p-3">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Priorités du recruteur (optionnel, max 500 caractères)
+                  </label>
+                  <textarea
+                    value={criteriaFocus}
+                    onChange={(e) => setCriteriaFocus(e.target.value)}
+                    placeholder="Ex : Privilégier les profils avec expérience SAP et anglais courant. Pénaliser les changements d'emploi fréquents (< 1 an)."
+                    rows={3}
+                    maxLength={500}
+                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Ce texte est injecté dans les exigences de l'offre avant l'analyse IA — il guide le scoring sans remplacer les requirements existants.
+                    {' '}<span className="font-medium text-primary">Sauvegardé automatiquement sur l'offre au lancement de la pré-sélection.</span>
+                  </p>
+                </div>
+              )}
             </div>
           )}
           {!selectedJob && (
             <p className="text-sm text-muted-foreground">
               Toutes les candidatures — sélectionnez une offre pour filtrer
             </p>
+          )}
+          {preselect.data && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium">
+                  Pré-sélection terminée — {preselect.data.analyzed} analysés
+                  {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
+                  {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
+                </p>
+                <button onClick={() => preselect.reset()}
+                  className="text-xs text-muted-foreground hover:text-foreground">
+                  Fermer
+                </button>
+              </div>
+              {preselect.data.top.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {preselect.data.top.map((t) => (
+                    <li key={t.id} className="text-xs flex items-center gap-2">
+                      <span className="font-semibold text-foreground">{t.firstName} {t.lastName}</span>
+                      <span className="rounded bg-primary/20 px-1.5 py-0.5 text-primary font-medium">{t.score}/100</span>
+                      <span className="text-muted-foreground">{t.recommendation}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {preselect.data.top.length >= 2 && !compareTop3 && (
+                <button
+                  onClick={() => setCompareTop3(true)}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Layers className="h-3 w-3" /> Comparer le top {Math.min(3, preselect.data.top.length)} côte à côte
+                </button>
+              )}
+              {preselect.data.message && (
+                <p className="text-xs text-muted-foreground italic mt-1">{preselect.data.message}</p>
+              )}
+            </div>
+          )}
+          {preselect.data && compareTop3 && preselect.data.top.length >= 2 && (
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Comparaison — Top {Math.min(3, preselect.data.top.length)}
+                </h3>
+                <button
+                  onClick={() => setCompareTop3(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Masquer
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {preselect.data.top.slice(0, 3).map((t) => {
+                  const app = applications.find((a) => a.id === t.id)
+                  if (!app) return null
+                  const strengths = normalizeJsonArray(app.ai_strengths).slice(0, 4)
+                  const gaps = normalizeJsonArray(app.ai_gaps).slice(0, 3)
+                  const redFlags = normalizeJsonArray(app.ai_red_flags)
+                  const signalsUsed = normalizeJsonArray(app.ai_signals_used).slice(0, 4)
+                  const biasNote = app.ai_demographic_risk_note?.trim() || null
+                  const recoColor = {
+                    strong_yes: 'bg-green-100 text-green-700',
+                    yes: 'bg-blue-100 text-blue-700',
+                    maybe: 'bg-yellow-100 text-yellow-700',
+                    no: 'bg-red-100 text-red-700',
+                  }[t.recommendation] ?? 'bg-gray-100 text-gray-600'
+                  return (
+                    <div key={t.id} className="rounded-lg border border-border bg-background p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{t.firstName} {t.lastName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{app.email}</p>
+                        </div>
+                        <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-bold text-primary flex-shrink-0">
+                          {t.score}/100
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${recoColor}`}>
+                          {t.recommendation.replace('_', ' ')}
+                        </span>
+                        {app.ai_match_percentage != null && (
+                          <span className="text-[10px] text-muted-foreground">
+                            adéquation {app.ai_match_percentage}%
+                          </span>
+                        )}
+                      </div>
+                      {strengths.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">Forces</p>
+                          <ul className="text-xs space-y-0.5">
+                            {strengths.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <CheckCircle className="h-3 w-3 text-green-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {gaps.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">Manques</p>
+                          <ul className="text-xs space-y-0.5">
+                            {gaps.map((g, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-orange-500 flex-shrink-0">·</span>
+                                <span className="text-muted-foreground">{g}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {redFlags.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">Alertes</p>
+                          <ul className="text-xs space-y-0.5">
+                            {redFlags.map((r, i) => (
+                              <li key={i} className="flex gap-1">
+                                <XCircle className="h-3 w-3 text-red-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {signalsUsed.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Signaux utilisés par l'IA
+                          </p>
+                          <ul className="text-xs space-y-0.5">
+                            {signalsUsed.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-blue-500 flex-shrink-0">›</span>
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {biasNote && (
+                        <div className="rounded border border-amber-300 bg-amber-50 p-2">
+                          <p className="text-[10px] font-semibold text-amber-800 mb-0.5 flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Audit de biais
+                          </p>
+                          <p className="text-[11px] text-amber-900 leading-snug">{biasNote}</p>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t flex gap-1.5">
+                        <button
+                          onClick={() => setSelectedApp(app)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-primary hover:bg-primary/5 rounded py-1"
+                        >
+                          <Eye className="h-3 w-3" /> Détail
+                        </button>
+                        <button
+                          onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
+                        >
+                          Entretien
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          {preselect.isError && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+              Erreur lors de la pré-sélection. Réessayez plus tard.
+            </div>
           )}
           <div className="flex gap-3 overflow-x-auto pb-4">
             {PIPELINE_STAGES.map(stage => {
