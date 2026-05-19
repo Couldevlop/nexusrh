@@ -123,6 +123,7 @@ export default function RecruitmentPage() {
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_FORM)
   const [showCriteria, setShowCriteria] = useState(false)
   const [criteriaFocus, setCriteriaFocus] = useState('')
+  const [compareTop3, setCompareTop3] = useState(false)
 
   const { data: jobsData, isLoading } = useQuery<{ data: Job[] }>({
     queryKey: ['recruitment-jobs'],
@@ -482,9 +483,124 @@ export default function RecruitmentPage() {
                   ))}
                 </ul>
               )}
+              {preselect.data.top.length >= 2 && !compareTop3 && (
+                <button
+                  onClick={() => setCompareTop3(true)}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Layers className="h-3 w-3" /> Comparer le top {Math.min(3, preselect.data.top.length)} côte à côte
+                </button>
+              )}
               {preselect.data.message && (
                 <p className="text-xs text-muted-foreground italic mt-1">{preselect.data.message}</p>
               )}
+            </div>
+          )}
+          {preselect.data && compareTop3 && preselect.data.top.length >= 2 && (
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Comparaison — Top {Math.min(3, preselect.data.top.length)}
+                </h3>
+                <button
+                  onClick={() => setCompareTop3(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Masquer
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {preselect.data.top.slice(0, 3).map((t) => {
+                  const app = applications.find((a) => a.id === t.id)
+                  if (!app) return null
+                  const strengths = normalizeJsonArray(app.ai_strengths).slice(0, 4)
+                  const gaps = normalizeJsonArray(app.ai_gaps).slice(0, 3)
+                  const redFlags = normalizeJsonArray(app.ai_red_flags)
+                  const recoColor = {
+                    strong_yes: 'bg-green-100 text-green-700',
+                    yes: 'bg-blue-100 text-blue-700',
+                    maybe: 'bg-yellow-100 text-yellow-700',
+                    no: 'bg-red-100 text-red-700',
+                  }[t.recommendation] ?? 'bg-gray-100 text-gray-600'
+                  return (
+                    <div key={t.id} className="rounded-lg border border-border bg-background p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{t.firstName} {t.lastName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{app.email}</p>
+                        </div>
+                        <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-bold text-primary flex-shrink-0">
+                          {t.score}/100
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${recoColor}`}>
+                          {t.recommendation.replace('_', ' ')}
+                        </span>
+                        {app.ai_match_percentage != null && (
+                          <span className="text-[10px] text-muted-foreground">
+                            adéquation {app.ai_match_percentage}%
+                          </span>
+                        )}
+                      </div>
+                      {strengths.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">Forces</p>
+                          <ul className="text-xs space-y-0.5">
+                            {strengths.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <CheckCircle className="h-3 w-3 text-green-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {gaps.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">Manques</p>
+                          <ul className="text-xs space-y-0.5">
+                            {gaps.map((g, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-orange-500 flex-shrink-0">·</span>
+                                <span className="text-muted-foreground">{g}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {redFlags.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">Alertes</p>
+                          <ul className="text-xs space-y-0.5">
+                            {redFlags.map((r, i) => (
+                              <li key={i} className="flex gap-1">
+                                <XCircle className="h-3 w-3 text-red-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t flex gap-1.5">
+                        <button
+                          onClick={() => setSelectedApp(app)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-primary hover:bg-primary/5 rounded py-1"
+                        >
+                          <Eye className="h-3 w-3" /> Détail
+                        </button>
+                        <button
+                          onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
+                        >
+                          Entretien
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
           {preselect.isError && (
