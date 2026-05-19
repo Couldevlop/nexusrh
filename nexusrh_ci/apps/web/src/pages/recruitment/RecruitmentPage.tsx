@@ -184,6 +184,20 @@ export default function RecruitmentPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] }),
   })
 
+  const preselect = useMutation({
+    mutationFn: ({ jobId, criteria }: { jobId: string; criteria?: string }) =>
+      api.post(`/recruitment/jobs/${jobId}/preselect`, {
+        model: 'claude',
+        stages: ['new'],
+        criteria: criteria ? { focus: criteria } : undefined,
+      }).then((r) => r.data as {
+        total: number; analyzed: number; skipped: number; failed: number
+        top: Array<{ id: string; score: number; recommendation: string; firstName: string; lastName: string }>
+        message?: string
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] }),
+  })
+
   const jobs = jobsData?.data ?? []
   const applications = appsData?.data ?? []
   const departments = deptData?.data ?? []
@@ -385,18 +399,64 @@ export default function RecruitmentPage() {
       {tab === 'pipeline' && (
         <div className="space-y-4">
           {selectedJob && (
-            <div className="flex items-center gap-2 text-sm">
-              <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
-                Toutes les offres
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
+                  Toutes les offres
+                </button>
+                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                <span className="font-medium">{selectedJob.title}</span>
+              </div>
+              <button
+                onClick={() => preselect.mutate({ jobId: selectedJob.id })}
+                disabled={preselect.isPending}
+                title="Analyse toutes les candidatures nouvelles avec l'IA et les classe par score"
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {preselect.isPending
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Pré-sélection en cours…</>
+                  : <><Sparkles className="h-3.5 w-3.5" /> Pré-sélectionner avec IA</>}
               </button>
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium">{selectedJob.title}</span>
             </div>
           )}
           {!selectedJob && (
             <p className="text-sm text-muted-foreground">
               Toutes les candidatures — sélectionnez une offre pour filtrer
             </p>
+          )}
+          {preselect.data && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium">
+                  Pré-sélection terminée — {preselect.data.analyzed} analysés
+                  {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
+                  {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
+                </p>
+                <button onClick={() => preselect.reset()}
+                  className="text-xs text-muted-foreground hover:text-foreground">
+                  Fermer
+                </button>
+              </div>
+              {preselect.data.top.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {preselect.data.top.map((t) => (
+                    <li key={t.id} className="text-xs flex items-center gap-2">
+                      <span className="font-semibold text-foreground">{t.firstName} {t.lastName}</span>
+                      <span className="rounded bg-primary/20 px-1.5 py-0.5 text-primary font-medium">{t.score}/100</span>
+                      <span className="text-muted-foreground">{t.recommendation}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {preselect.data.message && (
+                <p className="text-xs text-muted-foreground italic mt-1">{preselect.data.message}</p>
+              )}
+            </div>
+          )}
+          {preselect.isError && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+              Erreur lors de la pré-sélection. Réessayez plus tard.
+            </div>
           )}
           <div className="flex gap-3 overflow-x-auto pb-4">
             {PIPELINE_STAGES.map(stage => {
