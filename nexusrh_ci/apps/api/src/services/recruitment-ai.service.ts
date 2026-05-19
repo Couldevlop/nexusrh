@@ -28,6 +28,11 @@ export interface CvAnalysisResult {
   interviewQuestions: string[]
   matchPercentage:   number
   modelUsed:         AiModelChoice
+  /** Signaux concrets du CV qui ont influencé le score (transparence + audit de biais) */
+  signalsUsed?:      string[]
+  /** Note d'alerte si le score est influencé par un signal potentiellement biaisé
+   *  (école précise, région d'origine, prénom, genre, âge estimé, etc.). null si RAS. */
+  demographicRiskNote?: string | null
 }
 
 const SYSTEM_PROMPT = `Tu es un expert RH ivoirien chargé de pré-sélectionner des candidats.
@@ -42,7 +47,9 @@ valide (sans balises markdown, sans texte avant/après) avec exactement cette st
   "gaps": ["<manque 1>", "<manque 2>", ...],
   "redFlags": ["<alerte 1>", ...],
   "interviewQuestions": ["<question 1>", "<question 2>", "<question 3>"],
-  "matchPercentage": <entier 0-100>
+  "matchPercentage": <entier 0-100>,
+  "signalsUsed": ["<élément concret du CV qui a influencé le score 1>", "<élément 2>", "<élément 3>", "<élément 4>"],
+  "demographicRiskNote": "<note d'alerte si le score est influencé par un signal démographique (école précise, région, prénom, genre, âge estimé) ; null si aucun signal de ce type n'a pesé>"
 }
 
 Règles :
@@ -50,7 +57,9 @@ Règles :
 - Tiens compte du contexte ivoirien (Code du Travail CI, conventions OHADA, marché Abidjan)
 - redFlags = uniquement signaux objectifs (trous de carrière > 12 mois, incohérence, etc.)
 - Rends 3 questions d'entretien spécifiques et pratiques
-- N'invente jamais d'informations absentes du CV`
+- N'invente jamais d'informations absentes du CV
+- signalsUsed : 3 à 6 éléments concrets et CITABLES du CV (compétences, années d'expérience, certifications, projets) — pas d'éléments démographiques ici
+- demographicRiskNote : OBLIGATOIRE de signaler si tu as pondéré le score à cause de l'école, la région d'origine, le prénom, le genre ou l'âge — c'est un AUDIT DE BIAIS. Si aucun de ces signaux n'a influencé ton jugement, renvoie null.`
 
 function buildUserPrompt(job: JobContext, cvText: string): string {
   const reqs = job.requirements?.trim() || '(non précisés)'
@@ -93,6 +102,12 @@ function normalize(raw: unknown, model: AiModelChoice): CvAnalysisResult {
     .find(v => v === r.recommendation) ?? 'maybe'
   const arr = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, 10) : []
+  const demographicRiskRaw = r.demographicRiskNote
+  const demographicRiskNote =
+    typeof demographicRiskRaw === 'string' && demographicRiskRaw.trim().length > 0
+      && demographicRiskRaw.trim().toLowerCase() !== 'null'
+      ? demographicRiskRaw.trim()
+      : null
   return {
     score,
     recommendation,
@@ -103,6 +118,8 @@ function normalize(raw: unknown, model: AiModelChoice): CvAnalysisResult {
     interviewQuestions: arr(r.interviewQuestions),
     matchPercentage,
     modelUsed:         model,
+    signalsUsed:       arr(r.signalsUsed),
+    demographicRiskNote,
   }
 }
 

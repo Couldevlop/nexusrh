@@ -36,6 +36,8 @@ interface Application {
   ai_strengths?: string[]
   ai_gaps?: string[]
   ai_red_flags?: string[]
+  ai_signals_used?: string[]
+  ai_demographic_risk_note?: string | null
   ai_model_used?: string | null
   cv_text?: string | null
   source?: string | null
@@ -528,6 +530,8 @@ export default function RecruitmentPage() {
                   const strengths = normalizeJsonArray(app.ai_strengths).slice(0, 4)
                   const gaps = normalizeJsonArray(app.ai_gaps).slice(0, 3)
                   const redFlags = normalizeJsonArray(app.ai_red_flags)
+                  const signalsUsed = normalizeJsonArray(app.ai_signals_used).slice(0, 4)
+                  const biasNote = app.ai_demographic_risk_note?.trim() || null
                   const recoColor = {
                     strong_yes: 'bg-green-100 text-green-700',
                     yes: 'bg-blue-100 text-blue-700',
@@ -592,6 +596,29 @@ export default function RecruitmentPage() {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+                      {signalsUsed.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Signaux utilisés par l'IA
+                          </p>
+                          <ul className="text-xs space-y-0.5">
+                            {signalsUsed.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-blue-500 flex-shrink-0">›</span>
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {biasNote && (
+                        <div className="rounded border border-amber-300 bg-amber-50 p-2">
+                          <p className="text-[10px] font-semibold text-amber-800 mb-0.5 flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Audit de biais
+                          </p>
+                          <p className="text-[11px] text-amber-900 leading-snug">{biasNote}</p>
                         </div>
                       )}
                       <div className="pt-2 border-t flex gap-1.5">

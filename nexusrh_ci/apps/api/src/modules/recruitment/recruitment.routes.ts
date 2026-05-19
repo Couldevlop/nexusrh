@@ -502,9 +502,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               ai_red_flags = $7,
               ai_interview_questions = $8,
               ai_model_used = $9,
+              ai_signals_used = $10,
+              ai_demographic_risk_note = $11,
               ai_analyzed_at = now(),
               updated_at = now()
-          WHERE id = $10 RETURNING *
+          WHERE id = $12 RETURNING *
         `, [
           result.score, result.summary, result.recommendation,
           result.matchPercentage,
@@ -513,6 +515,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           JSON.stringify(result.redFlags),
           JSON.stringify(result.interviewQuestions),
           result.modelUsed,
+          JSON.stringify(result.signalsUsed ?? []),
+          result.demographicRiskNote ?? null,
           id,
         ])
 
@@ -667,9 +671,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                   ai_red_flags = $7,
                   ai_interview_questions = $8,
                   ai_model_used = $9,
+                  ai_signals_used = $10,
+                  ai_demographic_risk_note = $11,
                   ai_analyzed_at = now(),
                   updated_at = now()
-              WHERE id = $10
+              WHERE id = $12
             `, [
               result.score, result.summary, result.recommendation,
               result.matchPercentage,
@@ -678,6 +684,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               JSON.stringify(result.redFlags),
               JSON.stringify(result.interviewQuestions),
               result.modelUsed,
+              JSON.stringify(result.signalsUsed ?? []),
+              result.demographicRiskNote ?? null,
               c.id,
             ])
             analyzed++
