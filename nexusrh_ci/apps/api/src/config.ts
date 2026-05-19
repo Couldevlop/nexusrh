@@ -17,6 +17,7 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().default('redis://localhost:6380'),
 
+  ENCRYPTION_KEY:        z.string().length(64, 'ENCRYPTION_KEY doit être 64 caractères hex (32 bytes)').optional(),
   JWT_SECRET:            z.string().min(32),
   JWT_EXPIRES_IN:        z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
@@ -30,6 +31,11 @@ const envSchema = z.object({
   AI_MODEL:          z.string().default('claude-sonnet-4-20250514'),
   AI_MAX_TOKENS:     z.coerce.number().default(4096),
   AI_TEMPERATURE:    z.coerce.number().default(0.3),
+
+  // Mistral (option alternative pour scoring CV — au choix dans l'UI)
+  MISTRAL_API_KEY:   z.string().optional(),
+  MISTRAL_MODEL:     z.string().default('mistral-large-latest'),
+  MISTRAL_API_URL:   z.string().default('https://api.mistral.ai/v1'),
 
   SMTP_HOST:   z.string().default('smtp.gmail.com'),
   SMTP_PORT:   z.coerce.number().default(587),
@@ -116,6 +122,12 @@ export const config = {
     model:       env.AI_MODEL,
     maxTokens:   env.AI_MAX_TOKENS,
     temperature: env.AI_TEMPERATURE,
+  },
+
+  mistral: {
+    apiKey: env.MISTRAL_API_KEY,
+    model:  env.MISTRAL_MODEL,
+    apiUrl: env.MISTRAL_API_URL,
   },
 
   smtp: {

@@ -146,6 +146,90 @@ async function main() {
   console.log('[2/10] Super admin créé: superadmin@nexusrh-ci.com / SuperAdmin1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Sourcing IA — Configuration paramétrable initiale
+  // (idempotent, DO UPDATE pour permettre rafraîchissement après modif tarifs)
+  // ─────────────────────────────────────────────────────────────────────────────
+  await pool.query(`
+    INSERT INTO platform.ai_models
+      (provider, model_id, display_name, max_tokens,
+       input_cost_per_1m_eur, output_cost_per_1m_eur, is_active, sort_order)
+    VALUES
+      ('claude',  'claude-sonnet-4-20250514', 'Claude Sonnet 4',  4000, 2.76, 13.80, true, 10),
+      ('claude',  'claude-opus-4-20250514',   'Claude Opus 4',    4000, 13.80, 69.00, false, 11),
+      ('claude',  'claude-haiku-4-5-20251001','Claude Haiku 4.5', 4000, 0.74, 3.68, false, 12),
+      ('mistral', 'mistral-large-latest',     'Mistral Large',    4000, 1.84, 5.52,  true, 20),
+      ('mistral', 'mistral-small-latest',     'Mistral Small',    4000, 0.18, 0.55,  false, 21)
+    ON CONFLICT (provider, model_id) DO UPDATE SET
+      display_name           = EXCLUDED.display_name,
+      max_tokens             = EXCLUDED.max_tokens,
+      input_cost_per_1m_eur  = EXCLUDED.input_cost_per_1m_eur,
+      output_cost_per_1m_eur = EXCLUDED.output_cost_per_1m_eur,
+      sort_order             = EXCLUDED.sort_order,
+      updated_at             = now()
+  `)
+
+  await pool.query(`
+    INSERT INTO platform.sourcing_platforms
+      (code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order)
+    VALUES
+      ('linkedin',      'LinkedIn',      NULL, 'https://linkedin.com', 50000, true, true, 1),
+      ('africawork',    'Africawork',    NULL, 'https://africawork.com', 8000, true, true, 2),
+      ('jobnetafrica',  'JobnetAfrica',  NULL, 'https://jobnetafrica.com', 3000, true, true, 3),
+      ('indeed',        'Indeed',        NULL, 'https://indeed.com', 20000, true, true, 4),
+      ('glassdoor',     'Glassdoor',     NULL, 'https://glassdoor.com', 5000, true, true, 5),
+      ('emploi_ci',     'Emploi.ci',     'CI', 'https://www.emploi.ci', 1500, true, false, 10),
+      ('rmo_ci',        'RMO Côte d''Ivoire', 'CI', NULL, 800, true, false, 11),
+      ('novojob',       'Novojob',       'CI', 'https://www.novojob.com', 600, true, false, 12),
+      ('emploi_sn',     'Emploi.sn',     'SN', 'https://www.emploi.sn', 1200, true, false, 20),
+      ('senjob',        'Senjob',        'SN', 'https://www.senjob.com', 700, true, false, 21),
+      ('emploi_bj',     'EmploiBénin',   'BJ', NULL, 400, true, false, 30),
+      ('emploi_tg',     'Emploi-Togo',   'TG', NULL, 300, true, false, 40),
+      ('minajobs',      'MinaJobs',      'CM', NULL, 900, true, false, 50),
+      ('jobberman',     'Jobberman',     'NG', 'https://www.jobberman.com', 4000, true, false, 60),
+      ('myjobmag',      'MyJobMag',      'NG', 'https://www.myjobmag.com', 2500, true, false, 61),
+      ('jobberman_gh',  'Jobberman Ghana', 'GH', NULL, 1200, true, false, 70),
+      ('wttj',          'Welcome to the Jungle', 'FR', 'https://welcometothejungle.com', 8000, true, false, 99),
+      ('apec',          'Apec',          'FR', 'https://www.apec.fr', 4000, true, false, 98)
+    ON CONFLICT (code) DO UPDATE SET
+      name          = EXCLUDED.name,
+      country_code  = EXCLUDED.country_code,
+      url           = EXCLUDED.url,
+      est_pool      = EXCLUDED.est_pool,
+      is_active     = EXCLUDED.is_active,
+      is_panafrican = EXCLUDED.is_panafrican,
+      sort_order    = EXCLUDED.sort_order,
+      updated_at    = now()
+  `)
+
+  // Settings clé/valeur — valeurs initiales (slider, budget, pondérations)
+  const sourcingSettings: Array<[string, unknown, string]> = [
+    ['max_profiles_min',          { value: 1 },   'Slider min de profils par requête'],
+    ['max_profiles_max',          { value: 20 },  'Slider max de profils par requête'],
+    ['max_profiles_default',      { value: 8 },   'Valeur par défaut du slider'],
+    ['max_cost_eur_per_request',  { value: 0.50 }, 'Budget max IA par requête (EUR, 0 = pas de limite)'],
+    ['claude_system_prompt',      { value: '' },  'Prompt système Claude (vide = défaut)'],
+    ['mistral_system_prompt',     { value: '' },  'Prompt système Mistral (vide = défaut)'],
+    ['richness_weights', {
+      hasProfiles: 20, fiveProfiles: 10, perProfile: 2,
+      hasBooleanSearch: 10, hasKeywords: 10, hasSalaryBenchmark: 10,
+      hasBestPlatforms: 10, hasTips: 5,
+      firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
+    }, 'Pondérations du score de richesse Claude vs Mistral'],
+  ]
+  for (const [key, value, description] of sourcingSettings) {
+    await pool.query(
+      `INSERT INTO platform.sourcing_settings (key, value, description, updated_at)
+       VALUES ($1, $2::jsonb, $3, now())
+       ON CONFLICT (key) DO UPDATE SET
+         value = EXCLUDED.value,
+         description = EXCLUDED.description,
+         updated_at = now()`,
+      [key, JSON.stringify(value), description],
+    )
+  }
+  console.log('[2b] Sourcing IA seedé : 5 modèles, 18 plateformes, 7 settings')
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 1 — SOTRA (Société des Transports Abidjanais)
   // ─────────────────────────────────────────────────────────────────────────────
   const sotraSlug   = 'sotra'
@@ -185,7 +269,7 @@ async function main() {
       ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true, now()),
       ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
       ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [adminHash, managerHash, employeeHash])
 
   // Workflow config
@@ -370,6 +454,40 @@ async function main() {
   }
   console.log(`[7/10] ${sotraEmployees.length * sotraPeriods.length} bulletins SOTRA générés (6 mois)`)
 
+  // ─── Contrats OHADA pour tous les employés SOTRA ─────────────────────────────
+  const contractTypes = ['cdi','cdi','cdi','cdi','cdd'] // 80% CDI, 20% CDD
+  for (let ci = 0; ci < sotraEmployees.length; ci++) {
+    const emp = sotraEmployees[ci]!
+    const ctype = contractTypes[ci % contractTypes.length]!
+    const startDate = new Date(2020 + Math.floor(ci / 20), ci % 12, 1)
+    const endDate   = ctype === 'cdd'
+      ? new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate())
+      : null
+    const isManager = ci < 5
+    const trialDays = isManager ? 30 : 15
+    const trialEnd  = new Date(startDate)
+    trialEnd.setDate(trialEnd.getDate() + trialDays)
+    await pool.query(`
+      INSERT INTO "${sotraSchema}".contracts
+        (employee_id, type, start_date, end_date, trial_end_date, base_salary,
+         working_hours, convention, job_title, job_level,
+         cnps_affiliation, ohada_clause, non_competition_clause,
+         telecommuting_days, status)
+      VALUES ($1,$2,$3,$4,$5,$6,40,'Transport urbain CI',
+              $7,$8,true,true,false,0,'active')
+      ON CONFLICT DO NOTHING
+    `, [
+      emp.id, ctype,
+      startDate.toISOString().split('T')[0],
+      endDate ? endDate.toISOString().split('T')[0] : null,
+      trialEnd.toISOString().split('T')[0],
+      emp.baseSalary,
+      isManager ? 'Chef de service' : ci % 3 === 0 ? 'Technicien' : 'Agent',
+      isManager ? 'Cadre' : 'Agent de maîtrise',
+    ])
+  }
+  console.log(`[7b/10] ${sotraEmployees.length} contrats OHADA SOTRA créés`)
+
   // Absences pour l'employé Kouassi (employe@sotra.ci)
   if (sotraEmployees[0] && absTypeMap['CP']) {
     const empId = sotraEmployees[0].id
@@ -429,40 +547,214 @@ async function main() {
   }
 
   // ─── Recrutement ─────────────────────────────────────────────────────────────
+  // Récupération d'un département "Administration" pour cibler des offres internes
+  const adminDeptRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".departments
+       WHERE name ILIKE '%administration%' OR name ILIKE '%direction%'
+       ORDER BY name LIMIT 1`,
+  )
+  const adminDeptId = adminDeptRes.rows[0]?.id ?? null
+  const explDeptRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".departments
+       WHERE name ILIKE '%exploitation%' OR name ILIKE '%maintenance%'
+       ORDER BY name LIMIT 1`,
+  )
+  const explDeptId = explDeptRes.rows[0]?.id ?? null
+
   const jobIds: string[] = []
   const jobsData = [
-    { title: 'Chauffeur Bus Senior', location: 'Abidjan', contract_type: 'cdi', salary_min: 220000, salary_max: 280000, description: 'Recherchons chauffeur expérimenté pour ligne C8 Abobo-Plateau. Permis D obligatoire, 5 ans minimum.', status: 'open' },
-    { title: 'Technicien Mécanique Auto', location: 'Abidjan (Garage principal)', contract_type: 'cdi', salary_min: 250000, salary_max: 350000, description: 'Maintenance préventive et corrective de la flotte SOTRA. BEP/CAP mécanique auto exigé.', status: 'open' },
-    { title: 'Chargé(e) RH', location: 'Abidjan (Siège Treichville)', contract_type: 'cdi', salary_min: 400000, salary_max: 600000, description: 'Gestion administration du personnel, CNPS, paie. Licence RH ou gestion.', status: 'open' },
+    {
+      title: 'Chauffeur Bus Senior', location: 'Abidjan',
+      contract_type: 'cdi', salary_min: 220000, salary_max: 280000,
+      description: 'Recherchons chauffeur expérimenté pour ligne C8 Abobo-Plateau. Permis D obligatoire, 5 ans minimum.',
+      requirements: 'Permis D, 5 ans d\'expérience minimum, casier judiciaire vierge.',
+      status: 'open', visibility: 'external',
+      target_departments: [] as string[], target_job_levels: [] as string[],
+      target_min_seniority_months: null as number | null,
+    },
+    {
+      title: 'Technicien Mécanique Auto', location: 'Abidjan (Garage principal)',
+      contract_type: 'cdi', salary_min: 250000, salary_max: 350000,
+      description: 'Maintenance préventive et corrective de la flotte SOTRA. BEP/CAP mécanique auto exigé.',
+      requirements: 'BEP/CAP mécanique automobile, expérience véhicules lourds appréciée.',
+      status: 'open', visibility: 'both',
+      target_departments: explDeptId ? [explDeptId] : [],
+      target_job_levels: ['agent_maitrise', 'ouvrier'],
+      target_min_seniority_months: 12,
+    },
+    {
+      title: 'Chargé(e) RH', location: 'Abidjan (Siège Treichville)',
+      contract_type: 'cdi', salary_min: 400000, salary_max: 600000,
+      description: 'Gestion administration du personnel, CNPS, paie. Licence RH ou gestion.',
+      requirements: 'Licence RH ou gestion, maîtrise CNPS et ITS, Excel avancé.',
+      status: 'open', visibility: 'external',
+      target_departments: [], target_job_levels: [], target_min_seniority_months: null,
+    },
+    {
+      title: 'Chef d\'équipe Exploitation (mobilité interne)',
+      location: 'Abidjan (Treichville)',
+      contract_type: 'cdi', salary_min: 350000, salary_max: 500000,
+      description: 'Poste de promotion interne : encadrement d\'une équipe de 8 chauffeurs sur la ligne Plateau-Abobo. Réservé aux collaborateurs SOTRA.',
+      requirements: 'Minimum 24 mois d\'ancienneté, expérience terrain en exploitation.',
+      status: 'open', visibility: 'internal',
+      target_departments: explDeptId ? [explDeptId] : [],
+      target_job_levels: ['agent_maitrise', 'employe'],
+      target_min_seniority_months: 24,
+    },
+    {
+      title: 'Responsable Administratif (mobilité cadre)',
+      location: 'Abidjan (Siège)',
+      contract_type: 'cdi', salary_min: 800000, salary_max: 1200000,
+      description: 'Poste de cadre ouvert en mobilité interne pour préparer la relève. Conduite de projets transverses.',
+      requirements: 'Cadre SOTRA, minimum 36 mois d\'ancienneté, profil RH/finance/juridique.',
+      status: 'open', visibility: 'internal',
+      target_departments: adminDeptId ? [adminDeptId] : [],
+      target_job_levels: ['cadre'],
+      target_min_seniority_months: 36,
+    },
   ]
   for (const job of jobsData) {
     const res = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".recruitment_jobs
-        (title, location, contract_type, salary_min, salary_max, description, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+        (title, location, contract_type, salary_min, salary_max,
+         description, requirements, status, visibility,
+         target_departments, target_job_levels, target_min_seniority_months,
+         published_at, public_slug)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),$13)
       ON CONFLICT DO NOTHING RETURNING id
-    `, [job.title, job.location, job.contract_type, job.salary_min, job.salary_max, job.description, job.status])
+    `, [
+      job.title, job.location, job.contract_type,
+      job.salary_min, job.salary_max,
+      job.description, job.requirements, job.status, job.visibility,
+      job.target_departments, job.target_job_levels, job.target_min_seniority_months,
+      job.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80),
+    ])
     if (res.rows[0]) jobIds.push(res.rows[0].id)
   }
 
-  // Applications pour les offres
+  // Applications pour les offres externes
   const stages = ['new', 'screening', 'interview', 'offer', 'hired']
   const candidateNames = [
     ['Konan', 'Yves'], ['Bah', 'Fatoumata'], ['Kouamé', 'Eric'], ['Diallo', 'Moussa'],
     ['Abe', 'Céleste'], ['Touré', 'Ibrahima'], ['Kra', 'Hermann'], ['Soro', 'Mariam'],
     ['Dème', 'Serge'], ['Assouman', 'Laure'],
   ]
+  // Seul les 3 premiers jobs (externe + mixte + externe) reçoivent les candidatures externes
+  const externalJobIds = jobIds.slice(0, 3)
   for (let i = 0; i < candidateNames.length; i++) {
-    const jobId = jobIds[i % jobIds.length]
+    const jobId = externalJobIds[i % Math.max(externalJobIds.length, 1)]
     if (!jobId) continue
     const [ln, fn] = candidateNames[i]!
     const stage = stages[i % stages.length]!
+    // Quelques candidats ont déjà un scoring IA pré-rempli (illustration)
+    const hasAi = i < 4
+    const aiScore = hasAi ? randInt(55, 92) : null
+    const aiRec = hasAi
+      ? (aiScore! >= 85 ? 'strong_yes' : aiScore! >= 70 ? 'yes' : aiScore! >= 55 ? 'maybe' : 'no')
+      : null
     await pool.query(`
       INSERT INTO "${sotraSchema}".applications
-        (job_id, first_name, last_name, email, phone, stage)
-      VALUES ($1,$2,$3,$4,$5,$6)
+        (job_id, first_name, last_name, email, phone, stage,
+         source, ai_score, ai_recommendation, ai_match_percentage,
+         ai_summary, ai_strengths, ai_gaps, ai_model_used, ai_analyzed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'careers_page',$7,$8,$9,$10,$11,$12,$13,
+              CASE WHEN $7 IS NULL THEN NULL ELSE now() END)
       ON CONFLICT DO NOTHING
-    `, [jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`, ciPhone('wave'), stage])
+    `, [
+      jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`,
+      ciPhone('wave'), stage,
+      aiScore, aiRec, aiScore,
+      hasAi ? `Profil ${aiRec === 'strong_yes' ? 'très aligné' : aiRec === 'yes' ? 'aligné' : 'à étudier'} avec les prérequis du poste.` : null,
+      hasAi ? JSON.stringify(['Expérience locale CI', 'Maîtrise CNPS/ITS', 'Anglais courant']) : JSON.stringify([]),
+      hasAi ? JSON.stringify(['Pas d\'expérience secteur transport']) : JSON.stringify([]),
+      hasAi ? 'claude' : null,
+    ])
+  }
+
+  // ─── Profils sourcés (cache de visualisation pour l'onglet Sourcing IA) ─────
+  // Pré-remplit la table sourced_profiles pour permettre de visualiser le rendu
+  // visuel sans avoir besoin d'appeler l'IA. L'utilisateur peut les transférer
+  // vers le pipeline Kanban en un clic (1 par 1 ou tous d'un coup).
+  type SourcedSeed = {
+    fn: string; ln: string; pos: string; company: string; loc: string
+    yrs: number; skills: string[]; score: number
+    avail: 'immediate' | '1month' | '3months' | 'passive'
+    platform: string; salary: number; phone?: string
+    approach: string
+  }
+  async function seedSourced(schema: string, jobId: string, profiles: SourcedSeed[], countries: string[]) {
+    for (const p of profiles) {
+      const email = `${p.fn.toLowerCase().replace(/[^a-z]/g, '')}.${p.ln.toLowerCase().replace(/[^a-z]/g, '')}@sourcing.example`
+      const linkedinSearch = `${p.fn} ${p.ln} ${p.company} ${p.pos}`
+      await pool.query(`
+        INSERT INTO "${schema}".sourced_profiles
+          (job_id, first_name, last_name, current_position, current_company,
+           location, experience_years, key_skills, match_score,
+           availability_estimate, suggested_platform, linkedin_search,
+           approach_strategy, estimated_salary, estimated_salary_currency,
+           email, phone, source_provider, source_model, countries)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'XOF',$15,$16,'seed','demo-seed',$17::varchar[])
+        ON CONFLICT DO NOTHING
+      `, [
+        jobId, p.fn, p.ln, p.pos, p.company, p.loc, p.yrs,
+        JSON.stringify(p.skills), p.score, p.avail, p.platform,
+        linkedinSearch, p.approach, p.salary, email, p.phone ?? null,
+        countries,
+      ])
+    }
+  }
+
+  // 8 profils pour "Chauffeur Bus Senior" (jobIds[0], externe)
+  if (jobIds[0]) {
+    await seedSourced(sotraSchema, jobIds[0], [
+      { fn: 'Yao',       ln: 'Kouassi',   pos: 'Chauffeur Bus longue distance', company: 'UTB Côte d\'Ivoire', loc: 'Abidjan, CI', yrs: 12, skills: ['Permis D', 'Conduite défensive', 'Mécanique de base'], score: 92, avail: 'immediate', platform: 'Emploi.ci',    salary: 280000, phone: '+225 0707111201', approach: 'Forte expérience longue distance, recommandé par un ancien collègue SOTRA.' },
+      { fn: 'Adama',     ln: 'Diabaté',   pos: 'Chauffeur Bus urbain',           company: 'STL Bouaké',         loc: 'Bouaké, CI',  yrs: 8,  skills: ['Permis D', 'Connaissance Abidjan', 'Service client'],     score: 86, avail: '1month',    platform: 'RMO Côte d\'Ivoire', salary: 240000, phone: '+225 0505222302', approach: 'Veut revenir à Abidjan, parfaitement bilingue dioula/français.' },
+      { fn: 'Salif',     ln: 'Traoré',    pos: 'Chauffeur PL international',     company: 'Transrail',          loc: 'Yamoussoukro, CI', yrs: 15, skills: ['Permis D', 'Permis EC', 'Sécurité routière'], score: 88, avail: 'passive', platform: 'LinkedIn', salary: 260000, phone: '+225 0102333403', approach: 'Profil senior, ouvert à un changement pour un poste plus stable.' },
+      { fn: 'Bakary',    ln: 'Coulibaly', pos: 'Chauffeur Bus de tourisme',      company: 'TCA Abidjan',         loc: 'Abidjan, CI', yrs: 7,  skills: ['Permis D', 'Anglais professionnel', 'Premiers secours'], score: 82, avail: 'immediate', platform: 'Emploi.ci',    salary: 230000, phone: '+225 0707444504', approach: 'Cherche poste avec horaires fixes pour raisons familiales.' },
+      { fn: 'Issa',      ln: 'Konaté',    pos: 'Conducteur SOTRA (ex)',          company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 10, skills: ['Permis D', 'Connaissance réseau SOTRA', 'Maintenance niveau 1'], score: 90, avail: 'immediate', platform: 'RMO Côte d\'Ivoire', salary: 250000, phone: '+225 0505555605', approach: 'Ancien chauffeur SOTRA, souhaite réintégrer après période indépendante.' },
+      { fn: 'Mamadou',   ln: 'Bamba',     pos: 'Chauffeur véhicules lourds',     company: 'Bolloré Transport',   loc: 'San-Pédro, CI', yrs: 9, skills: ['Permis D', 'Permis EC', 'Logistique'],                  score: 78, avail: '3months',   platform: 'LinkedIn', salary: 270000, phone: '+225 0102666706', approach: 'Profil polyvalent, accepterait poste basé Abidjan avec déplacements.' },
+      { fn: 'Hamed',     ln: 'Touré',     pos: 'Chauffeur taxi-bus',             company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 6,  skills: ['Permis D', 'Connaissance Abidjan', 'Service client'], score: 74, avail: 'immediate', platform: 'Emploi.ci',    salary: 200000, phone: '+225 0707777807', approach: 'Veut un statut salarié après plusieurs années en auto-entrepreneur.' },
+      { fn: 'Souleymane', ln: 'Cissé',    pos: 'Chauffeur Bus scolaire',          company: 'Lycée français Jean Mermoz', loc: 'Abidjan, CI', yrs: 11, skills: ['Permis D', 'Sécurité enfants', 'Bilingue FR/EN'], score: 85, avail: '1month',    platform: 'LinkedIn', salary: 245000, phone: '+225 0505888908', approach: 'Cherche évolution salariale, références employeur disponibles.' },
+    ], ['CI'])
+  }
+
+  // 6 profils pour "Chargé(e) RH" (jobIds[2], externe)
+  if (jobIds[2]) {
+    await seedSourced(sotraSchema, jobIds[2], [
+      { fn: 'Aminata',   ln: 'Sangaré', pos: 'Chargée RH & Paie',          company: 'Orange CI',          loc: 'Abidjan, CI', yrs: 6, skills: ['Sage Paie', 'CNPS', 'ITS/DGI', 'Excel avancé'],          score: 94, avail: '1month',    platform: 'LinkedIn',     salary: 520000, phone: '+225 0707101201', approach: 'Profil très aligné, expérience CNPS et ITS confirmée. Ouvre à offre.' },
+      { fn: 'Patrick',   ln: 'N\'Guessan', pos: 'Responsable Administration RH', company: 'Cabinet Audit ECC', loc: 'Abidjan, CI', yrs: 8, skills: ['Contrats OHADA', 'DISA', 'Gestion conflits', 'Sage Paie'], score: 91, avail: 'passive',   platform: 'LinkedIn',     salary: 580000, phone: '+225 0505202302', approach: 'Senior, intéressé par poste opérationnel terrain plutôt que conseil.' },
+      { fn: 'Fatou',     ln: 'Bamba',     pos: 'HR Officer',                  company: 'PwC Côte d\'Ivoire', loc: 'Abidjan, CI', yrs: 4, skills: ['HRIS', 'Recrutement', 'Anglais professionnel'],     score: 78, avail: 'immediate', platform: 'Africawork',  salary: 460000, phone: '+225 0102303403', approach: 'Veut quitter cabinet conseil pour entreprise. Profil junior+ qualifié.' },
+      { fn: 'Christelle', ln: 'Diallo',    pos: 'Assistante RH polyvalente',   company: 'NSIA Banque',         loc: 'Abidjan, CI', yrs: 5, skills: ['Paie', 'Onboarding', 'Excel', 'Communication'],     score: 81, avail: '1month',    platform: 'RMO Côte d\'Ivoire', salary: 480000, phone: '+225 0707404504', approach: 'Profil très organisé, recommandée pour la gestion administrative.' },
+      { fn: 'Hermann',   ln: 'Kra',       pos: 'Consultant RH freelance',     company: 'Indépendant',         loc: 'Abidjan, CI', yrs: 9, skills: ['Audit social', 'Formations', 'CNPS', 'OHADA'],       score: 76, avail: 'immediate', platform: 'LinkedIn',     salary: 550000, phone: '+225 0505505605', approach: 'Profil senior cherchant à se sédentariser. Bonne expérience secteur transport.' },
+      { fn: 'Sylvie',    ln: 'Anoh',      pos: 'Chargée Paie & Reporting',    company: 'SIFCA',               loc: 'Abidjan, CI', yrs: 7, skills: ['Sage Paie', 'Power BI', 'CNPS', 'Comptabilité'],     score: 87, avail: '3months',  platform: 'LinkedIn',     salary: 530000, phone: '+225 0102606706', approach: 'Profil paie technique très solide, expérience agro-industrie.' },
+    ], ['CI'])
+  }
+
+  // 2 candidatures internes pré-seedées sur l'offre "Chef d'équipe" (4e offre = index 3)
+  if (jobIds[3]) {
+    const internalEmps = await pool.query<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null }>(
+      `SELECT id, first_name, last_name, email, phone
+         FROM "${sotraSchema}".employees
+         WHERE department_id = $1 AND is_active = true
+         ORDER BY hire_date NULLS LAST
+         LIMIT 2`,
+      [explDeptId],
+    )
+    for (const emp of internalEmps.rows) {
+      await pool.query(`
+        INSERT INTO "${sotraSchema}".applications
+          (job_id, first_name, last_name, email, phone, cover_letter,
+           stage, source, internal_employee_id)
+        VALUES ($1,$2,$3,$4,$5,$6,'screening','internal',$7)
+        ON CONFLICT DO NOTHING
+      `, [
+        jobIds[3], emp.first_name, emp.last_name,
+        emp.email ?? `${emp.first_name.toLowerCase()}@sotra-ci.com`,
+        emp.phone ?? null,
+        `Bonjour, je souhaite postuler à ce poste de promotion interne. Mon expérience terrain en exploitation me permet de prendre la relève.`,
+        emp.id,
+      ])
+    }
   }
 
   // ─── Formations ──────────────────────────────────────────────────────────────
@@ -472,6 +764,11 @@ async function main() {
     { title: 'Leadership & Management', description: 'Encadrement, motivation, gestion des conflits en contexte ivoirien.', duration: 12, format: 'presentiel', is_fdfp_eligible: true },
     { title: 'Excel Avancé & Tableaux de bord', description: 'Maîtrise Excel pour le reporting RH et financier.', duration: 8, format: 'e-learning', is_fdfp_eligible: false },
     { title: 'RGPD & Protection des données (ARTCI)', description: 'Conformité ARTCI, protection données personnelles en CI.', duration: 6, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Mécanique et Maintenance Bus', description: 'Diagnostic panne, entretien préventif, outils.', duration: 16, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Gestion des conflits & relation client', description: 'Techniques de médiation, communication bienveillante.', duration: 8, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Secourisme & Premiers Secours', description: 'PSC1 — Prévention et Secours Civiques niveau 1.', duration: 7, format: 'presentiel', is_fdfp_eligible: false },
+    { title: 'Informatique & Outils bureautiques', description: 'Word, Excel, email, gestion documentaire.', duration: 6, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Sensibilisation à la Sécurité au travail', description: 'Risques professionnels, EPI, procédures d\'urgence.', duration: 4, format: 'presentiel', is_fdfp_eligible: true },
   ]
   const trainingIds: string[] = []
   for (const tr of trainingData) {
@@ -601,7 +898,7 @@ async function main() {
     VALUES
       ('admin@cabinet-expertise.ci',   $1, 'Directeur', 'Associé',   'admin',    true, now()),
       ('employe2@cabinet-expertise.ci', $1, 'Amenan',    'Traoré',    'employee', true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [cabAdminHash])
 
   await pool.query(`
@@ -746,6 +1043,71 @@ async function main() {
   }
   console.log(`[9/10] ${cabinetEmployees.length * cabinetPeriods.length} bulletins Cabinet créés (3 mois)`)
 
+  // ─── Contrats OHADA pour tous les employés Cabinet Expertise ─────────────────
+  const cabContractTypes = ['cdi','cdi','cdi','cdd'] // 75% CDI, 25% CDD
+  for (let ci = 0; ci < cabinetEmployees.length; ci++) {
+    const emp    = cabinetEmployees[ci]!
+    const ctype  = cabContractTypes[ci % cabContractTypes.length]!
+    const startDate = new Date(2021 + Math.floor(ci / 12), ci % 12, 1)
+    const endDate   = ctype === 'cdd'
+      ? new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate())
+      : null
+    const isManager = ci < 3
+    const trialDays = isManager ? 30 : 15
+    const trialEnd  = new Date(startDate)
+    trialEnd.setDate(trialEnd.getDate() + trialDays)
+    await pool.query(`
+      INSERT INTO "${cabinetSchema}".contracts
+        (employee_id, type, start_date, end_date, trial_end_date, base_salary,
+         working_hours, convention, job_title, job_level,
+         cnps_affiliation, ohada_clause, non_competition_clause,
+         telecommuting_days, status)
+      VALUES ($1,$2,$3,$4,$5,$6,40,'Services (audit, conseil)',
+              $7,$8,true,true,true,1,'active')
+      ON CONFLICT DO NOTHING
+    `, [
+      emp.id, ctype,
+      startDate.toISOString().split('T')[0],
+      endDate ? endDate.toISOString().split('T')[0] : null,
+      trialEnd.toISOString().split('T')[0],
+      emp.baseSalary,
+      isManager ? 'Manager' : ci % 2 === 0 ? 'Auditeur' : 'Consultant',
+      isManager ? 'Cadre supérieur' : 'Cadre',
+    ])
+  }
+  console.log(`[9b/10] ${cabinetEmployees.length} contrats OHADA Cabinet créés`)
+
+  // ─── Formations Cabinet Expertise CI ─────────────────────────────────────────
+  const cabTrainings = [
+    { title: 'Audit & Comptabilité OHADA', description: 'Normes OHADA, états financiers, audit légal CI.', duration: 16, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Fiscalité des entreprises en CI', description: 'Impôts DGI : BIC, TVA, patente, ITS. Optimisation fiscale légale.', duration: 12, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Excel & Power BI pour consultants', description: 'Analyse de données, dashboards, modèles financiers.', duration: 8, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Gestion RH & Paie CI', description: 'CNPS, ITS/DGI, contrats OHADA, DISA.', duration: 8, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Leadership & Communication', description: 'Management, prise de parole, gestion des équipes.', duration: 6, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'RGPD & ARTCI — Protection des données', description: 'Conformité données personnelles en Côte d\'Ivoire.', duration: 4, format: 'e-learning', is_fdfp_eligible: false },
+  ]
+  const cabTrainingIds: string[] = []
+  for (const tr of cabTrainings) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${cabinetSchema}".trainings
+        (title, description, duration, format, is_fdfp_eligible, is_active)
+      VALUES ($1,$2,$3,$4,$5,true)
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [tr.title, tr.description, tr.duration, tr.format, tr.is_fdfp_eligible])
+    if (res.rows[0]) cabTrainingIds.push(res.rows[0].id)
+  }
+  // Sessions planifiées pour Cabinet
+  for (let i = 0; i < Math.min(cabTrainingIds.length, 3); i++) {
+    const futureDay = (d: number) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0] }
+    await pool.query(`
+      INSERT INTO "${cabinetSchema}".training_sessions
+        (training_id, start_date, end_date, location, trainer, max_places, status)
+      VALUES ($1,$2,$3,'Plateau — Salle Conférence','Expert FDFP',15,'planned')
+      ON CONFLICT DO NOTHING
+    `, [cabTrainingIds[i]!, futureDay(20 + i * 14), futureDay(21 + i * 14)])
+  }
+  console.log(`[9c/10] ${cabTrainings.length} formations + sessions Cabinet CI créées`)
+
   // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 3 — OpenLab Consulting (tenant créé via portail)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -768,14 +1130,41 @@ async function main() {
   await seedPayrollRulesCI(openlabSchema, openlabAtRate)
   await seedAbsenceTypesCI(openlabSchema)
 
-  const openlabHash = await bcrypt.hash('Openlab2025!', 12)
+  const openlabHash = await bcrypt.hash('Openlab1234!', 12)
   await pool.query(`
     INSERT INTO "${openlabSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true, now())
-    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
   `, [openlabHash])
 
-  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab2025!')
+  // Offre + profils sourcés pour OpenLab — démo multi-pays Afrique
+  const openlabJob = await pool.query<{ id: string }>(`
+    INSERT INTO "${openlabSchema}".recruitment_jobs
+      (title, location, contract_type, salary_min, salary_max, currency,
+       description, requirements, status, visibility, published_at, public_slug)
+    VALUES
+      ('Consultant Senior Transformation Digitale',
+       'Abidjan (avec déplacements régionaux)',
+       'cdi', 1500000, 2500000, 'XOF',
+       'Conduite de missions de transformation digitale pour clients OHADA. Filiales CI, SN, BJ, TG.',
+       'Bac+5, 6+ ans en conseil/transformation, anglais professionnel, mobilité Afrique de l''Ouest.',
+       'open', 'external', now(), 'consultant-senior-transformation-digitale')
+    ON CONFLICT DO NOTHING
+    RETURNING id
+  `)
+  const openlabJobId = openlabJob.rows[0]?.id
+  if (openlabJobId) {
+    await seedSourced(openlabSchema, openlabJobId, [
+      { fn: 'Olivia',   ln: 'Ndiaye',    pos: 'Senior Manager Digital',      company: 'Deloitte Dakar',     loc: 'Dakar, SN',    yrs: 9,  skills: ['Transformation digitale', 'Change management', 'Anglais courant'], score: 92, avail: '1month',    platform: 'LinkedIn',     salary: 2_200_000, phone: '+221 7700001111', approach: 'Profil très sénior, ouverte à mobilité Abidjan pour cabinet panafricain en croissance.' },
+      { fn: 'Kofi',     ln: 'Mensah',    pos: 'Lead Consultant Tech',         company: 'PwC Accra',           loc: 'Accra, GH',    yrs: 7,  skills: ['Cloud AWS/Azure', 'Agile@Scale', 'Anglais natif'],                score: 85, avail: 'passive',   platform: 'LinkedIn',     salary: 2_100_000, phone: '+233 244000111',  approach: 'Bilingue anglais/français basique, intéressé par contexte francophone régional.' },
+      { fn: 'Yannick',  ln: 'Mballa',    pos: 'Consultant transformation',    company: 'EY Cameroun',          loc: 'Douala, CM',   yrs: 6,  skills: ['Process design', 'SAP', 'OHADA'],                                  score: 80, avail: '3months',   platform: 'Africawork',  salary: 1_800_000, phone: '+237 690001112',  approach: 'Connaissance solide du droit OHADA, intéressé par CI ou SN.' },
+      { fn: 'Laëtitia', ln: 'Boni',      pos: 'Manager Digital Strategy',    company: 'Société Générale CI', loc: 'Abidjan, CI',  yrs: 8,  skills: ['Stratégie digitale', 'Banking', 'Data viz'],                       score: 89, avail: 'immediate', platform: 'LinkedIn',     salary: 2_300_000, phone: '+225 0707010203', approach: 'Cherche évolution rapide vers poste de direction. Profil banque-finance.' },
+      { fn: 'Adama',    ln: 'Diop',      pos: 'Principal Consultant',         company: 'Sopra Steria Paris',   loc: 'Paris, FR (diaspora SN)', yrs: 11, skills: ['Architecture SI', 'PMO', 'Anglais courant'],            score: 88, avail: '3months',   platform: 'LinkedIn',     salary: 2_500_000, phone: '+33 612345678',   approach: 'Diaspora sénégalaise envisageant retour Afrique. Très expérimenté projets multi-sites.' },
+    ], ['CI', 'SN', 'BJ', 'CM', 'GH', 'FR'])
+    console.log('  [OpenLab] Offre + 5 profils sourcés multi-pays')
+  }
+
+  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
@@ -796,7 +1185,7 @@ async function main() {
   console.log('  employe2@cabinet-expertise.ci /  Admin1234!  (employee)')
   console.log()
   console.log('  [OpenLab Consulting]')
-  console.log('  coulwao@gmail.com     /  Openlab2025!  (admin)')
+  console.log('  coulwao@gmail.com     /  Openlab1234!  (admin)')
   console.log()
   console.log(`  SOTRA       : ${sotraEmployees.length} employés, ${sotraPeriods.length} mois de bulletins`)
   console.log(`  Cabinet CI  : ${cabinetEmployees.length} employés, ${cabinetPeriods.length} mois de bulletins`)

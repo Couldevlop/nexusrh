@@ -116,7 +116,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       try {
         const tempPassword = generateTempPassword()
-        const hash = await bcrypt.hash(tempPassword, 10)
+        const hash = await bcrypt.hash(tempPassword, 12)
         const isActive = body.is_active !== false
 
         // Si un département est fourni, créer/lier un employé
@@ -481,19 +481,26 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureMigrated(schema)
       const body = request.body as {
         name: string; rccm?: string; cnps_number?: string; dgi_number?: string
         address?: string; city?: string; legal_form?: string
         collective_agreement?: string; at_rate?: number
+        country_code?: string; legislation_pack_code?: string
+      }
+      if (!body.name || body.name.trim().length === 0) {
+        return reply.status(400).send({ error: 'Le nom de la filiale est obligatoire' })
       }
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".legal_entities
-            (name, rccm, cnps_number, dgi_number, address, city, legal_form, collective_agreement, at_rate)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+            (name, rccm, cnps_number, dgi_number, address, city, legal_form,
+             collective_agreement, at_rate, country_code, legislation_pack_code)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
         `, [body.name, body.rccm || null, body.cnps_number || null, body.dgi_number || null,
             body.address || null, body.city || 'Abidjan', body.legal_form || 'SARL',
-            body.collective_agreement || null, body.at_rate || 0.02])
+            body.collective_agreement || null, body.at_rate || 0.02,
+            body.country_code || 'CIV', body.legislation_pack_code || null])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -507,9 +514,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      await ensureMigrated(schema)
       const { id } = request.params as { id: string }
       const body = request.body as Record<string, unknown>
-      const allowed = ['name','rccm','cnps_number','dgi_number','address','city','legal_form','collective_agreement','at_rate']
+      const allowed = ['name','rccm','cnps_number','dgi_number','address','city',
+        'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active']
       const updates: string[] = []
       const values: unknown[] = []
       for (const f of allowed) {
@@ -686,7 +695,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (!user) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
         const tempPassword = generateTempPassword()
-        const hash = await bcrypt.hash(tempPassword, 10)
+        const hash = await bcrypt.hash(tempPassword, 12)
         await pool.query(
           `UPDATE "${schema}".users SET password_hash = $1, last_login_at = NULL, updated_at = now() WHERE id = $2`,
           [hash, id]
@@ -792,7 +801,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
           for (const emp of batch) {
             const tempPassword = generateTempPassword()
-            const passwordHash = await bcrypt.hash(tempPassword, 10)
+            const passwordHash = await bcrypt.hash(tempPassword, 12)
             try {
               await pool.query(`
                 INSERT INTO "${schema}".users (email, password_hash, first_name, last_name, role, is_active, employee_id)

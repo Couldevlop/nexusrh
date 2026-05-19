@@ -37,6 +37,11 @@ export default function TrainingPage() {
   })
   const [fdfpSuccess, setFdfpSuccess] = useState(false)
   const [showNewSession, setShowNewSession] = useState(false)
+  const [showNewTraining, setShowNewTraining] = useState(false)
+  const [newTraining, setNewTraining] = useState({
+    title: '', description: '', duration: '', duration_unit: 'hours',
+    format: 'presentiel', category: '', is_fdfp_eligible: false,
+  })
   const [selectedTraining, setSelectedTraining] = useState<string>('')
   const [newSession, setNewSession] = useState({
     training_id: '', start_date: '', end_date: '', location: '',
@@ -58,6 +63,16 @@ export default function TrainingPage() {
     queryKey: ['training-enrollments'],
     queryFn: () => api.get('/training/enrollments').then(r => r.data),
     enabled: tab === 'enrollments',
+  })
+
+  const createTraining = useMutation({
+    mutationFn: (data: typeof newTraining) =>
+      api.post('/training/catalog', { ...data, duration: data.duration ? parseInt(data.duration) : undefined }),
+    onSuccess: () => {
+      setShowNewTraining(false)
+      setNewTraining({ title: '', description: '', duration: '', duration_unit: 'hours', format: 'presentiel', category: '', is_fdfp_eligible: false })
+      queryClient.invalidateQueries({ queryKey: ['training-catalog'] })
+    },
   })
 
   const createSession = useMutation({
@@ -97,10 +112,16 @@ export default function TrainingPage() {
             {catalog.length} formation(s) · {catalog.filter(t => t.is_fdfp_eligible).length} éligibles FDFP
           </p>
         </div>
-        <button onClick={() => setShowNewSession(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Planifier une session
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowNewTraining(true)}
+            className="flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
+            <Plus className="h-4 w-4" /> Nouvelle formation
+          </button>
+          <button onClick={() => setShowNewSession(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+            <Plus className="h-4 w-4" /> Planifier une session
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -465,6 +486,79 @@ export default function TrainingPage() {
                 disabled={!newSession.training_id || !newSession.start_date || createSession.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {createSession.isPending ? 'Création...' : 'Créer la session'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewTraining && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-background p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">Nouvelle formation</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Titre <span className="text-destructive">*</span></label>
+                <input value={newTraining.title} onChange={e => setNewTraining(p => ({ ...p, title: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Ex : Gestion de la paie CI" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Description</label>
+                <textarea value={newTraining.description} onChange={e => setNewTraining(p => ({ ...p, description: e.target.value }))}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Objectifs, contenu…" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Durée</label>
+                  <input type="number" min="1" value={newTraining.duration}
+                    onChange={e => setNewTraining(p => ({ ...p, duration: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Unité</label>
+                  <select value={newTraining.duration_unit} onChange={e => setNewTraining(p => ({ ...p, duration_unit: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
+                    <option value="hours">Heures</option>
+                    <option value="days">Jours</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Format</label>
+                  <select value={newTraining.format} onChange={e => setNewTraining(p => ({ ...p, format: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
+                    <option value="presentiel">Présentiel</option>
+                    <option value="e-learning">E-learning</option>
+                    <option value="hybride">Hybride</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Catégorie</label>
+                  <input value={newTraining.category} onChange={e => setNewTraining(p => ({ ...p, category: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
+                    placeholder="RH, Technique, Management…" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input type="checkbox" id="fdfp" checked={newTraining.is_fdfp_eligible}
+                  onChange={e => setNewTraining(p => ({ ...p, is_fdfp_eligible: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border accent-primary" />
+                <label htmlFor="fdfp" className="text-sm text-muted-foreground cursor-pointer">
+                  Éligible FDFP (remboursement possible)
+                </label>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2 justify-end">
+              <button onClick={() => setShowNewTraining(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => createTraining.mutate(newTraining)}
+                disabled={!newTraining.title.trim() || createTraining.isPending}
+                className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {createTraining.isPending ? 'Création...' : 'Créer la formation'}
               </button>
             </div>
           </div>

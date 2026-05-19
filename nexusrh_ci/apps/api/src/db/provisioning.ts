@@ -32,6 +32,8 @@ export async function createDroitCiSchema(): Promise<void> {
       updated_at      timestamptz NOT NULL DEFAULT now()
     )
   `)
+  // Extension multi-pays : country_code (CIV par défaut pour les articles existants)
+  await pool.query(`ALTER TABLE droit_ci.articles ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_source ON droit_ci.articles(source)
   `)
@@ -40,6 +42,66 @@ export async function createDroitCiSchema(): Promise<void> {
   `)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_access ON droit_ci.articles(access_level, is_active)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_droit_ci_country ON droit_ci.articles(country_code, source, is_active)
+  `)
+
+  // ── Veille réglementaire — propositions de mise à jour (review workflow) ──
+  // OWASP A07 : workflow draft → pending → approved/rejected piloté par
+  // super_admin uniquement. OWASP A09 : historique complet via articles_history.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS droit_ci.article_proposals (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      article_id      varchar(50),  -- FK lâche vers articles.article_id (peut être NULL si nouvel article)
+      country_code    varchar(3) NOT NULL DEFAULT 'CIV',
+      source          varchar(30) NOT NULL,           -- code_travail | convention_collective | jo | dgi | cnps
+      source_url      text,                            -- URL d'origine (JO, DGI, etc.)
+      source_type     varchar(30) NOT NULL DEFAULT 'manual',  -- manual | scraper | upload
+      proposed_at     timestamptz NOT NULL DEFAULT now(),
+      proposed_by     varchar(80),                     -- 'ai_watcher' | uuid super_admin | 'manual'
+      current_text    text,                            -- texte actuel (NULL si nouvel article)
+      proposed_text   text NOT NULL,                   -- texte proposé en remplacement
+      diff_summary    text,                            -- résumé IA des changements clés
+      ai_confidence   int CHECK (ai_confidence BETWEEN 0 AND 100),
+      ai_reasoning    text,                            -- explication IA du changement
+      ai_model        varchar(50),
+      status          varchar(20) NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','approved','rejected','superseded')),
+      reviewed_at     timestamptz,
+      reviewed_by     uuid,                            -- uuid du super_admin qui a tranché
+      review_notes    text,
+      created_at      timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_proposals_status ON droit_ci.article_proposals(status, proposed_at DESC)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_proposals_article ON droit_ci.article_proposals(article_id) WHERE article_id IS NOT NULL
+  `)
+
+  // Historique des versions d'articles (audit + reversibilité)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS droit_ci.articles_history (
+      id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      article_id            varchar(50) NOT NULL,
+      version               int NOT NULL,
+      titre_article         text NOT NULL,
+      texte                 text NOT NULL,
+      keywords              text[] DEFAULT '{}',
+      payroll_codes         text[] DEFAULT '{}',
+      checksum_sha256       varchar(64),
+      valid_from            timestamptz NOT NULL DEFAULT now(),
+      valid_until           timestamptz,                -- NULL = version active
+      replaced_by_proposal_id uuid,
+      archived_at           timestamptz NOT NULL DEFAULT now(),
+      archived_by           uuid,
+      UNIQUE (article_id, version)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_history_article ON droit_ci.articles_history(article_id, version DESC)
   `)
 }
 
@@ -99,6 +161,66 @@ export async function createPlatformSchema(): Promise<void> {
       expires_at  timestamptz NOT NULL,
       accepted_at timestamptz,
       created_at  timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+
+  // ── Option multi-pays / filiales (migration lazy idempotente) ────────────────
+  // Par défaut : has_subsidiaries=false, payroll_mode='single_country', pays=CIV.
+  // Comportement actuel inchangé tant que l'option n'est pas activée.
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS has_subsidiaries boolean NOT NULL DEFAULT false`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payroll_mode varchar(30) NOT NULL DEFAULT 'single_country'`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS default_country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
+
+  // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
+  // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.ai_models (
+      id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider                 varchar(30)  NOT NULL,
+      model_id                 varchar(100) NOT NULL,
+      display_name             varchar(150) NOT NULL,
+      max_tokens               int          NOT NULL DEFAULT 4000,
+      input_cost_per_1m_eur    numeric(10,4) NOT NULL DEFAULT 0,
+      output_cost_per_1m_eur   numeric(10,4) NOT NULL DEFAULT 0,
+      is_active                boolean      NOT NULL DEFAULT true,
+      sort_order               int          NOT NULL DEFAULT 0,
+      created_at               timestamptz  NOT NULL DEFAULT now(),
+      updated_at               timestamptz  NOT NULL DEFAULT now(),
+      UNIQUE (provider, model_id)
+    )
+  `)
+
+  // Plateformes de sourcing (LinkedIn, Africawork, Emploi.ci, etc.) avec
+  // rattachement optionnel à un pays (FK lâche sur country_code).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.sourcing_platforms (
+      id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      code            varchar(50)  NOT NULL UNIQUE,
+      name            varchar(150) NOT NULL,
+      country_code    varchar(5),
+      url             text,
+      est_pool        int,
+      is_active       boolean      NOT NULL DEFAULT true,
+      is_panafrican   boolean      NOT NULL DEFAULT false,
+      sort_order      int          NOT NULL DEFAULT 0,
+      created_at      timestamptz  NOT NULL DEFAULT now(),
+      updated_at      timestamptz  NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_sourcing_platforms_country
+      ON platform.sourcing_platforms(country_code, is_active)
+  `)
+
+  // Settings clé/valeur (JSONB) pour : prompts système, slider, budget,
+  // pondérations richesse, templates email, etc.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.sourcing_settings (
+      key         varchar(80) PRIMARY KEY,
+      value       jsonb       NOT NULL DEFAULT '{}',
+      description text,
+      updated_at  timestamptz NOT NULL DEFAULT now(),
+      updated_by  uuid
     )
   `)
 }
@@ -595,6 +717,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now()
   )`)
+  // Pays + pack législatif de la filiale (multi-pays — Palier 3)
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`)
 
   // Colonne month sur variable_elements (migration lazy)
   await q(`ALTER TABLE ${s}.variable_elements ADD COLUMN IF NOT EXISTS month varchar(7)`)
@@ -615,6 +740,170 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   `)
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+
+  // ── Workflow paie centralisé multi-sites (Palier 3) ──────────────────────────
+  // Étend pay_periods pour supporter le cycle draft_central → sent_to_sites →
+  // completed_by_sites → validated_central → closed. Une période globale
+  // (parent_period_id NULL) peut être déclinée en sous-périodes par filiale
+  // (parent_period_id = id de la période parente).
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS parent_period_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS raf_user_id uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS sent_to_sites_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS completed_by_site_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS validated_central_at timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS validated_by uuid`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON ${s}.pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_le_status ON ${s}.pay_periods(legal_entity_id, status) WHERE legal_entity_id IS NOT NULL`)
+
+  // ── Workflow paie paramétrable (OWASP A04 — Segregation of Duties) ───────
+  // workflow_configs.levels_count (module='payroll') pilote le nombre de
+  // validations requises. Chaque validation = 1 row dans pay_period_approvals.
+  // Quand count(approvals) >= levels_count → status = 'closed'.
+  // Garde-fous : approver ≠ initiateur, et chaque approver différent.
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS initiated_at  timestamptz`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS initiated_by  uuid`)
+  await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS rejection_reason text`)
+
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.pay_period_approvals (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_id     uuid NOT NULL REFERENCES ${s}.pay_periods(id) ON DELETE CASCADE,
+    level         int NOT NULL,
+    approver_id   uuid NOT NULL,
+    approver_role varchar(30),
+    approved_at   timestamptz NOT NULL DEFAULT now(),
+    notes         text,
+    UNIQUE (period_id, level),
+    UNIQUE (period_id, approver_id)  -- même approver ne peut pas valider 2 niveaux
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_ppa_period ON ${s}.pay_period_approvals(period_id, level)`)
+
+  // Workflow par défaut pour 'payroll' : 2 niveaux (initiateur + N+1)
+  await q(`
+    INSERT INTO ${s}.workflow_configs (module, levels_count)
+    VALUES ('payroll', 2)
+    ON CONFLICT (module) DO NOTHING
+  `)
+
+  // Ajout du nouveau rôle raf_site dans la table users : c'est porté par
+  // une simple chaîne dans users.role — pas de schema à changer. Le RBAC
+  // côté API doit accepter ce rôle pour les opérations de site.
+
+  // ── Recrutement : colonnes additives (migration lazy idempotente) ────────────
+  // Offres : visibilité (interne/externe) + critères de ciblage interne
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS visibility varchar(20) DEFAULT 'external'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_departments uuid[] DEFAULT '{}'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_job_levels varchar(30)[] DEFAULT '{}'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_min_seniority_months int`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS hiring_manager_id uuid`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS public_slug varchar(120)`)
+
+  // Candidatures : enrichissement scoring IA + source + lien employé interne
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_match_percentage int`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_strengths jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_gaps jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_red_flags jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_interview_questions jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_model_used varchar(30)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_analyzed_at timestamptz`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_text text`)
+
+  // Index utiles pour le filtrage interne et la consultation pipeline
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_jobs_visibility ON ${s}.recruitment_jobs(visibility, status)`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_apps_internal_emp ON ${s}.applications(internal_employee_id)`)
+
+  // Sourcing IA — cache des profils générés (visualisation + transfert vers pipeline)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    first_name                  varchar(100) NOT NULL,
+    last_name                   varchar(100) NOT NULL,
+    current_position            varchar(200),
+    current_company             varchar(200),
+    location                    varchar(150),
+    experience_years            int,
+    key_skills                  jsonb DEFAULT '[]',
+    match_score                 int,
+    availability_estimate       varchar(20),
+    suggested_platform          varchar(100),
+    linkedin_search             text,
+    approach_strategy           text,
+    estimated_salary            bigint,
+    estimated_salary_currency   varchar(3) DEFAULT 'XOF',
+    email                       varchar(255),
+    phone                       varchar(30),
+    source_provider             varchar(30),
+    source_model                varchar(50),
+    countries                   varchar(3)[] DEFAULT '{}',
+    transferred_to_application_id uuid,
+    transferred_at              timestamptz,
+    transferred_by              uuid,
+    created_at                  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
+}
+
+/**
+ * Migration lazy idempotente du module recrutement.
+ * À appeler en début de handler pour les tenants seedés avant l'ajout
+ * de la visibilité interne/externe et du scoring IA enrichi.
+ */
+export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promise<void> {
+  const s = `"${schemaName}"`
+  const q = (sql: string) => pool.query(sql)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS visibility varchar(20) DEFAULT 'external'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_departments uuid[] DEFAULT '{}'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_job_levels varchar(30)[] DEFAULT '{}'`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_min_seniority_months int`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS hiring_manager_id uuid`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS public_slug varchar(120)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_match_percentage int`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_strengths jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_gaps jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_red_flags jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_interview_questions jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_model_used varchar(30)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_analyzed_at timestamptz`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_text text`)
+
+  // Sourcing IA — table cache des profils générés (migration lazy idempotente)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    first_name                  varchar(100) NOT NULL,
+    last_name                   varchar(100) NOT NULL,
+    current_position            varchar(200),
+    current_company             varchar(200),
+    location                    varchar(150),
+    experience_years            int,
+    key_skills                  jsonb DEFAULT '[]',
+    match_score                 int,
+    availability_estimate       varchar(20),
+    suggested_platform          varchar(100),
+    linkedin_search             text,
+    approach_strategy           text,
+    estimated_salary            bigint,
+    estimated_salary_currency   varchar(3) DEFAULT 'XOF',
+    email                       varchar(255),
+    phone                       varchar(30),
+    source_provider             varchar(30),
+    source_model                varchar(50),
+    countries                   varchar(3)[] DEFAULT '{}',
+    transferred_to_application_id uuid,
+    transferred_at              timestamptz,
+    transferred_by              uuid,
+    created_at                  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
 }
 
 /**

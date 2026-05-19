@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
-import { FileText, Download, Eye, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, Download, Eye, X, ChevronDown, ChevronUp, Calculator } from 'lucide-react'
+import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
 
 interface PaySlip {
   id: string; month: string
@@ -64,6 +65,7 @@ function PdfViewer({ slipId, onClose }: { slipId: string; onClose: () => void })
 export default function MesBulletins() {
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [explainId, setExplainId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<{ data: PaySlip[]; currency: string }>({
     queryKey: ['my-payslips'],
@@ -76,6 +78,7 @@ export default function MesBulletins() {
   return (
     <>
       {viewingId && <PdfViewer slipId={viewingId} onClose={() => setViewingId(null)} />}
+      {explainId && <PaySlipTransparentModal slipId={explainId} onClose={() => setExplainId(null)} />}
 
       <div className="p-6 space-y-6">
         <div className="flex items-end justify-between">
@@ -147,6 +150,13 @@ export default function MesBulletins() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => setExplainId(slip.id)}
+                        title="Comprendre mon bulletin — formules + références légales"
+                        className="flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Calculator className="h-3.5 w-3.5" /> Comprendre
+                      </button>
                       <button
                         onClick={() => setViewingId(slip.id)}
                         title="Consulter le bulletin PDF"

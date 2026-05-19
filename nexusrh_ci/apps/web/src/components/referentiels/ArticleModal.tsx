@@ -61,7 +61,14 @@ export function ArticleModal({ article, onClose }: Props) {
           <div className="flex justify-between mt-4 pt-3 border-t">
             <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">Fermer</button>
             <button
-              onClick={() => { navigate(`/referentiels?article=${article.article_id}`); onClose() }}
+              onClick={() => {
+                // Navigue avec ?q=<numéro article> : la page Référentiel
+                // lit ce query param, lance la recherche et affiche l'article.
+                // Fonctionne aussi quand on est déjà sur /referentiels grâce
+                // au useEffect qui synchronise searchParams → setQuery.
+                navigate(`/referentiels?q=${encodeURIComponent(article.article_numero)}`)
+                onClose()
+              }}
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
             >
               <ExternalLink className="h-3.5 w-3.5" />Voir dans le référentiel

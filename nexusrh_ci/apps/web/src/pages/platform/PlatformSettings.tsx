@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { api, formatFCFA } from '@/lib/api'
 import {
   Settings, Save, Loader2, Bot, Mail, Shield,
   Bell, Building2, AlertCircle, CheckCircle, Scale, Globe,
+  Sparkles, Plus, Trash2, Edit3, RefreshCw,
 } from 'lucide-react'
 
 interface PlatformSettings {
@@ -28,7 +29,7 @@ interface PlatformSettings {
   environment: string
 }
 
-type TabKey = 'general' | 'security' | 'notifications' | 'ai' | 'legal' | 'store-lois' | 'multi-leg'
+type TabKey = 'general' | 'security' | 'notifications' | 'ai' | 'legal' | 'store-lois' | 'multi-leg' | 'sourcing-ia'
 
 interface LegalConstant {
   key: string
@@ -57,6 +58,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
   { key: 'legal',         label: 'Entreprise',      icon: Building2  },
   { key: 'store-lois',    label: 'Store de Lois',   icon: Scale      },
   { key: 'multi-leg',     label: 'Multi-législatif',icon: Globe      },
+  { key: 'sourcing-ia',   label: 'Sourcing IA',     icon: Sparkles   },
 ]
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -237,7 +239,15 @@ function MultiLegTab() {
 
   const configs = data?.data ?? []
 
-  const FLAG: Record<string, string> = { CI: '🇨🇮', SN: '🇸🇳', BF: '🇧🇫', ML: '🇲🇱', TG: '🇹🇬' }
+  const FLAG: Record<string, string> = {
+    CI: '🇨🇮', SN: '🇸🇳', BJ: '🇧🇯', TG: '🇹🇬', BF: '🇧🇫', ML: '🇲🇱',
+    NE: '🇳🇪', CM: '🇨🇲', TD: '🇹🇩', NG: '🇳🇬', GH: '🇬🇭',
+  }
+  const ZONE_BADGE: Record<string, string> = {
+    UEMOA:  'bg-orange-50 text-orange-700 border-orange-200',
+    CEMAC:  'bg-emerald-50 text-emerald-700 border-emerald-200',
+    ECOWAS: 'bg-blue-50 text-blue-700 border-blue-200',
+  }
   const STATUS_COLOR: Record<string, string> = {
     active: 'bg-green-100 text-green-700',
     beta: 'bg-blue-100 text-blue-700',
@@ -246,65 +256,86 @@ function MultiLegTab() {
 
   if (isLoading) return <div className="flex justify-center p-8"><div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
 
+  const activeCount  = configs.filter(c => c.is_active).length
+  const uemoaCount   = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'UEMOA').length
+  const cemacCount   = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'CEMAC').length
+  const ecowasCount  = configs.filter(c => (c.config as { zone?: string } | undefined)?.zone === 'ECOWAS').length
+
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-semibold">Multi-législatif — Expansion UEMOA</h2>
+        <h2 className="font-semibold">Multi-législatif — Couverture Afrique</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Moteurs de paie par pays. Chaque pays a ses propres taux CNPS/SECU, barèmes fiscaux et constantes légales.
+          Moteurs de paie par pays. Chaque pays a ses propres taux sociaux, barèmes fiscaux et constantes légales.
+          <span className="ml-2 inline-flex items-center gap-2 text-xs">
+            <span className="rounded bg-green-100 px-1.5 py-0.5 font-medium text-green-700">{activeCount} actifs</span>
+            <span className="rounded bg-orange-50 px-1.5 py-0.5 font-medium text-orange-700">UEMOA {uemoaCount}</span>
+            <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">CEMAC {cemacCount}</span>
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">ECOWAS {ecowasCount}</span>
+          </span>
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {configs.map(c => (
-          <div key={c.country_code} className={`rounded-xl border p-4 ${c.is_active ? 'border-border bg-card' : 'border-border/50 bg-muted/20 opacity-70'}`}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{FLAG[c.country_code] ?? '🌍'}</span>
-                <div>
-                  <p className="font-semibold text-sm">{c.country_name}</p>
-                  <p className="text-xs text-muted-foreground">{c.country_code} · {c.currency} · {c.timezone}</p>
+        {configs.map(c => {
+          const zone = (c.config as { zone?: string } | undefined)?.zone
+          return (
+            <div key={c.country_code} className={`rounded-xl border p-4 ${c.is_active ? 'border-border bg-card' : 'border-border/50 bg-muted/20 opacity-70'}`}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{FLAG[c.country_code] ?? '🌍'}</span>
+                  <div>
+                    <p className="font-semibold text-sm">{c.country_name}</p>
+                    <p className="text-xs text-muted-foreground">{c.country_code} · {c.currency} · {c.timezone}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c.is_active ? STATUS_COLOR['active'] : STATUS_COLOR['planned']}`}>
+                    {c.is_active ? 'Actif' : 'Planifié'}
+                  </span>
+                  {zone && (
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${ZONE_BADGE[zone] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                      {zone}
+                    </span>
+                  )}
                 </div>
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c.is_active ? STATUS_COLOR['active'] : STATUS_COLOR['planned']}`}>
-                {c.is_active ? 'Actif' : 'Planifié'}
-              </span>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Moteur de paie</span>
+                  <code className="bg-muted px-1.5 rounded">{c.payroll_engine}</code>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">SMIG mensuel</span>
+                  <span className="font-mono font-semibold">
+                    {(c.config?.smig ?? 0).toLocaleString('fr-FR')} {c.currency}
+                  </span>
+                </div>
+              </div>
+              {!c.is_active && (
+                <div className="mt-3 rounded bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+                  Disponible sur demande — contactez OpenLab Consulting
+                </div>
+              )}
             </div>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Moteur de paie</span>
-                <code className="bg-muted px-1.5 rounded">{c.payroll_engine}</code>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">SMIG mensuel</span>
-                <span className="font-mono font-semibold">
-                  {(c.config?.smig ?? 0).toLocaleString('fr-FR')} {c.currency}
-                </span>
-              </div>
-            </div>
-            {!c.is_active && (
-              <div className="mt-3 rounded bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
-                Disponible sur demande — contactez OpenLab Consulting
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm">
-        <p className="font-semibold text-blue-800 mb-2">Feuille de route UEMOA</p>
+        <p className="font-semibold text-blue-800 mb-2">Couverture régionale Afrique</p>
         <div className="space-y-1 text-blue-700 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-green-600 font-bold">✓</span>
-            <span><strong>Côte d'Ivoire</strong> — Moteur complet CNPS + ITS/DGI · Production</span>
+            <span><strong>UEMOA</strong> — Côte d'Ivoire (prod), Sénégal, Bénin, Togo, Burkina Faso, Mali, Niger · XOF</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-blue-600 font-bold">~</span>
-            <span><strong>Sénégal</strong> — IPRES + IR · En développement (Q3 2025)</span>
+            <span className="text-emerald-600 font-bold">✓</span>
+            <span><strong>CEMAC</strong> — Cameroun, Tchad · XAF</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-400">○</span>
-            <span><strong>Burkina Faso, Mali, Togo</strong> — Planifié 2026</span>
+            <span className="text-blue-600 font-bold">✓</span>
+            <span><strong>CEDEAO hors UEMOA</strong> — Nigeria (NGN), Ghana (GHS)</span>
           </div>
         </div>
       </div>
@@ -585,6 +616,8 @@ export default function PlatformSettings() {
 
           {tab === 'multi-leg' && <MultiLegTab />}
 
+          {tab === 'sourcing-ia' && <SourcingIaConfigTab />}
+
           {tab === 'legal' && (
             <>
               <h2 className="font-semibold">Informations légales — OpenLab Consulting</h2>
@@ -615,6 +648,608 @@ export default function PlatformSettings() {
             </>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onglet Sourcing IA — paramétrage 100% via DB platform.*
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AiModel {
+  id: string; provider: string; model_id: string; display_name: string
+  max_tokens: number; input_cost_per_1m_eur: number; output_cost_per_1m_eur: number
+  is_active: boolean; sort_order: number
+}
+
+interface SourcingPlatform {
+  id: string; code: string; name: string
+  country_code: string | null; url: string | null; est_pool: number | null
+  is_active: boolean; is_panafrican: boolean; sort_order: number
+}
+
+type SourcingSettingsDto = {
+  max_profiles_min?: number; max_profiles_max?: number; max_profiles_default?: number
+  max_cost_eur_per_request?: number
+  claude_system_prompt?: string; mistral_system_prompt?: string
+  richness_weights?: Record<string, number>
+}
+
+function SourcingIaConfigTab() {
+  const queryClient = useQueryClient()
+  const [section, setSection] = useState<'models' | 'platforms' | 'prompts' | 'advanced'>('models')
+
+  const sections: Array<{ key: typeof section; label: string }> = [
+    { key: 'models',    label: 'Modèles IA' },
+    { key: 'platforms', label: 'Plateformes' },
+    { key: 'prompts',   label: 'Prompts système' },
+    { key: 'advanced',  label: 'Paramètres avancés' },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Sourcing IA — Configuration paramétrable
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Tout est paramétrable : modèles IA, plateformes par pays, prompts système, slider profils,
+          budget max, pondérations de richesse. Les changements sont propagés immédiatement (cache invalidé).
+        </p>
+      </div>
+
+      <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
+        {sections.map(s => (
+          <button key={s.key} onClick={() => setSection(s.key)}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${section === s.key ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {section === 'models'    && <ModelsSection qc={queryClient} />}
+      {section === 'platforms' && <PlatformsSection qc={queryClient} />}
+      {section === 'prompts'   && <PromptsSection qc={queryClient} />}
+      {section === 'advanced'  && <AdvancedSection qc={queryClient} />}
+    </div>
+  )
+}
+
+function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const [editing, setEditing] = useState<AiModel | null>(null)
+  const [showNew, setShowNew] = useState(false)
+
+  const { data } = useQuery<{ data: AiModel[] }>({
+    queryKey: ['sourcing-models'],
+    queryFn: () => api.get('/platform/sourcing/models').then(r => r.data),
+  })
+  const models = data?.data ?? []
+
+  const save = useMutation({
+    mutationFn: (m: Partial<AiModel> & { id?: string }) => {
+      return m.id
+        ? api.patch(`/platform/sourcing/models/${m.id}`, m)
+        : api.post('/platform/sourcing/models', m)
+    },
+    onSuccess: () => { setEditing(null); setShowNew(false); qc.invalidateQueries({ queryKey: ['sourcing-models'] }) },
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/platform/sourcing/models/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sourcing-models'] }),
+  })
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <p className="text-sm text-muted-foreground">
+          {models.length} modèle(s) configuré(s). Tarifs en EUR par million de tokens.
+        </p>
+        <button onClick={() => setShowNew(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90">
+          <Plus className="h-3.5 w-3.5" /> Ajouter un modèle
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="p-3">Fournisseur</th>
+              <th className="p-3">Modèle</th>
+              <th className="p-3 text-right">Coût input/1M</th>
+              <th className="p-3 text-right">Coût output/1M</th>
+              <th className="p-3 text-right">Max tokens</th>
+              <th className="p-3 text-center">Actif</th>
+              <th className="p-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {models.map(m => (
+              <tr key={m.id} className="hover:bg-muted/20">
+                <td className="p-3 font-medium uppercase text-xs">{m.provider}</td>
+                <td className="p-3">
+                  <div>{m.display_name}</div>
+                  <code className="text-[10px] text-muted-foreground">{m.model_id}</code>
+                </td>
+                <td className="p-3 text-right font-mono text-xs">{m.input_cost_per_1m_eur.toFixed(2)} €</td>
+                <td className="p-3 text-right font-mono text-xs">{m.output_cost_per_1m_eur.toFixed(2)} €</td>
+                <td className="p-3 text-right font-mono text-xs">{m.max_tokens}</td>
+                <td className="p-3 text-center">
+                  {m.is_active
+                    ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">ON</span>
+                    : <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">OFF</span>}
+                </td>
+                <td className="p-3 text-right space-x-1">
+                  <button onClick={() => setEditing(m)} className="text-muted-foreground hover:text-primary" title="Modifier">
+                    <Edit3 className="inline h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => { if (confirm('Supprimer ce modèle ?')) remove.mutate(m.id) }}
+                    className="text-red-400 hover:text-red-600" title="Supprimer">
+                    <Trash2 className="inline h-3.5 w-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {models.length === 0 && (
+              <tr><td colSpan={7} className="p-6 text-center text-muted-foreground text-sm">Aucun modèle. Le système utilise les valeurs par défaut (Claude Sonnet 4 + Mistral Large).</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {(editing || showNew) && (
+        <ModelEditModal
+          model={editing}
+          onClose={() => { setEditing(null); setShowNew(false) }}
+          onSave={(m) => save.mutate(m)}
+          submitting={save.isPending}
+        />
+      )}
+    </div>
+  )
+}
+
+function ModelEditModal({ model, onClose, onSave, submitting }: {
+  model: AiModel | null
+  onClose: () => void
+  onSave: (m: Partial<AiModel> & { id?: string }) => void
+  submitting: boolean
+}) {
+  const [form, setForm] = useState<Partial<AiModel>>(model ?? {
+    provider: 'claude', model_id: '', display_name: '',
+    max_tokens: 4000, input_cost_per_1m_eur: 0, output_cost_per_1m_eur: 0,
+    is_active: true, sort_order: 0,
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="rounded-xl border border-border bg-card w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-border px-5 py-3 font-semibold">
+          {model ? 'Modifier le modèle' : 'Nouveau modèle IA'}
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Fournisseur</label>
+              <select value={form.provider} onChange={e => setForm(p => ({ ...p, provider: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                <option value="claude">Anthropic (Claude)</option>
+                <option value="mistral">Mistral AI</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Identifiant modèle</label>
+              <input value={form.model_id ?? ''} onChange={e => setForm(p => ({ ...p, model_id: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                placeholder="claude-sonnet-4-20250514" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Nom affiché</label>
+            <input value={form.display_name ?? ''} onChange={e => setForm(p => ({ ...p, display_name: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Max tokens</label>
+              <input type="number" value={form.max_tokens ?? 0}
+                onChange={e => setForm(p => ({ ...p, max_tokens: parseInt(e.target.value) || 0 }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Coût input / 1M (EUR)</label>
+              <input type="number" step="0.01" value={form.input_cost_per_1m_eur ?? 0}
+                onChange={e => setForm(p => ({ ...p, input_cost_per_1m_eur: parseFloat(e.target.value) || 0 }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Coût output / 1M (EUR)</label>
+              <input type="number" step="0.01" value={form.output_cost_per_1m_eur ?? 0}
+                onChange={e => setForm(p => ({ ...p, output_cost_per_1m_eur: parseFloat(e.target.value) || 0 }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.is_active ?? true}
+                onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
+              Actif
+            </label>
+            <div>
+              <label className="text-xs text-muted-foreground mr-2">Ordre</label>
+              <input type="number" value={form.sort_order ?? 0}
+                onChange={e => setForm(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))}
+                className="w-20 rounded border border-input bg-background px-2 py-1 text-sm" />
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-border px-5 py-3 flex gap-2 justify-end">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={() => onSave({ ...form, id: model?.id })}
+            disabled={!form.provider || !form.model_id || !form.display_name || submitting}
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlatformsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const [editing, setEditing] = useState<SourcingPlatform | null>(null)
+  const [showNew, setShowNew] = useState(false)
+
+  const { data } = useQuery<{ data: SourcingPlatform[] }>({
+    queryKey: ['sourcing-platforms-all'],
+    queryFn: () => api.get('/platform/sourcing/platforms').then(r => r.data),
+  })
+  const platforms = data?.data ?? []
+
+  const save = useMutation({
+    mutationFn: (p: Partial<SourcingPlatform> & { id?: string }) => {
+      return p.id
+        ? api.patch(`/platform/sourcing/platforms/${p.id}`, p)
+        : api.post('/platform/sourcing/platforms', p)
+    },
+    onSuccess: () => { setEditing(null); setShowNew(false); qc.invalidateQueries({ queryKey: ['sourcing-platforms-all'] }) },
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/platform/sourcing/platforms/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sourcing-platforms-all'] }),
+  })
+
+  const panafrican = platforms.filter(p => p.is_panafrican)
+  const byCountry = new Map<string, SourcingPlatform[]>()
+  for (const p of platforms.filter(p => !p.is_panafrican)) {
+    const cc = p.country_code ?? '—'
+    if (!byCountry.has(cc)) byCountry.set(cc, [])
+    byCountry.get(cc)!.push(p)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <p className="text-sm text-muted-foreground">
+          {platforms.length} plateforme(s). {panafrican.length} panafricaines + {platforms.length - panafrican.length} locales.
+        </p>
+        <button onClick={() => setShowNew(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90">
+          <Plus className="h-3.5 w-3.5" /> Nouvelle plateforme
+        </button>
+      </div>
+
+      {panafrican.length > 0 && (
+        <PlatformGroup title="Panafricaines / Globales" platforms={panafrican}
+          onEdit={setEditing} onRemove={id => remove.mutate(id)} />
+      )}
+      {Array.from(byCountry.entries()).sort().map(([cc, list]) => (
+        <PlatformGroup key={cc} title={`Pays : ${cc}`} platforms={list}
+          onEdit={setEditing} onRemove={id => remove.mutate(id)} />
+      ))}
+      {platforms.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Aucune plateforme configurée. Le système utilise les valeurs par défaut.
+        </div>
+      )}
+
+      {(editing || showNew) && (
+        <PlatformEditModal platform={editing}
+          onClose={() => { setEditing(null); setShowNew(false) }}
+          onSave={(p) => save.mutate(p)}
+          submitting={save.isPending} />
+      )}
+    </div>
+  )
+}
+
+function PlatformGroup({ title, platforms, onEdit, onRemove }: {
+  title: string
+  platforms: SourcingPlatform[]
+  onEdit: (p: SourcingPlatform) => void
+  onRemove: (id: string) => void
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">
+        {title} ({platforms.length})
+      </div>
+      <div className="divide-y divide-border">
+        {platforms.map(p => (
+          <div key={p.id} className="flex items-center justify-between px-3 py-2 hover:bg-muted/20">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {p.name}
+                {!p.is_active && <span className="text-[10px] text-muted-foreground">(inactif)</span>}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <code>{p.code}</code>
+                {p.url && <> · {p.url}</>}
+                {p.est_pool && <> · ~{p.est_pool} profils</>}
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => onEdit(p)} className="text-muted-foreground hover:text-primary p-1">
+                <Edit3 className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => { if (confirm('Supprimer cette plateforme ?')) onRemove(p.id) }}
+                className="text-red-400 hover:text-red-600 p-1">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PlatformEditModal({ platform, onClose, onSave, submitting }: {
+  platform: SourcingPlatform | null
+  onClose: () => void
+  onSave: (p: Partial<SourcingPlatform> & { id?: string }) => void
+  submitting: boolean
+}) {
+  const [form, setForm] = useState<Partial<SourcingPlatform>>(platform ?? {
+    code: '', name: '', country_code: null, url: null, est_pool: null,
+    is_active: true, is_panafrican: false, sort_order: 0,
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="rounded-xl border border-border bg-card w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-border px-5 py-3 font-semibold">
+          {platform ? 'Modifier la plateforme' : 'Nouvelle plateforme de sourcing'}
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Code (slug)</label>
+              <input value={form.code ?? ''} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                placeholder="emploi_ci" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Nom</label>
+              <input value={form.name ?? ''} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Emploi.ci" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Code pays (CI, SN, NG…)</label>
+              <input value={form.country_code ?? ''}
+                onChange={e => setForm(p => ({ ...p, country_code: e.target.value || null }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                placeholder="CI" maxLength={5} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">URL</label>
+              <input value={form.url ?? ''}
+                onChange={e => setForm(p => ({ ...p, url: e.target.value || null }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 items-center">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Pool estimé</label>
+              <input type="number" value={form.est_pool ?? ''}
+                onChange={e => setForm(p => ({ ...p, est_pool: e.target.value ? parseInt(e.target.value) : null }))}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+            </div>
+            <label className="flex items-center gap-2 text-sm pt-5">
+              <input type="checkbox" checked={form.is_active ?? true}
+                onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
+              Active
+            </label>
+            <label className="flex items-center gap-2 text-sm pt-5">
+              <input type="checkbox" checked={form.is_panafrican ?? false}
+                onChange={e => setForm(p => ({ ...p, is_panafrican: e.target.checked }))} />
+              Panafricaine
+            </label>
+          </div>
+        </div>
+        <div className="border-t border-border px-5 py-3 flex gap-2 justify-end">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={() => onSave({ ...form, id: platform?.id })}
+            disabled={!form.code || !form.name || submitting}
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PromptsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { data } = useQuery<{ data: SourcingSettingsDto }>({
+    queryKey: ['sourcing-settings'],
+    queryFn: () => api.get('/platform/sourcing/settings').then(r => r.data),
+  })
+  const settings = data?.data ?? {}
+  const [claude, setClaude]   = useState('')
+  const [mistral, setMistral] = useState('')
+  const [dirty, setDirty]     = useState(false)
+
+  React.useEffect(() => {
+    setClaude(settings.claude_system_prompt ?? '')
+    setMistral(settings.mistral_system_prompt ?? '')
+  }, [settings.claude_system_prompt, settings.mistral_system_prompt])
+
+  const save = useMutation({
+    mutationFn: (body: SourcingSettingsDto) => api.patch('/platform/sourcing/settings', body),
+    onSuccess: () => { setDirty(false); qc.invalidateQueries({ queryKey: ['sourcing-settings'] }) },
+  })
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 text-xs text-blue-900">
+        <strong>Astuce :</strong> laisser vide pour utiliser le prompt par défaut codé en dur dans le service.
+        Le prompt fourni ici remplace intégralement le prompt par défaut pour le modèle concerné.
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold uppercase text-muted-foreground">
+          Prompt système Claude (Anthropic)
+        </label>
+        <textarea
+          value={claude}
+          onChange={e => { setClaude(e.target.value); setDirty(true) }}
+          rows={10}
+          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono"
+          placeholder="Tu es un expert RH..."
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold uppercase text-muted-foreground">
+          Prompt système Mistral
+        </label>
+        <textarea
+          value={mistral}
+          onChange={e => { setMistral(e.target.value); setDirty(true) }}
+          rows={10}
+          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono"
+          placeholder="Tu es un expert RH..."
+        />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button onClick={() => save.mutate({ claude_system_prompt: claude, mistral_system_prompt: mistral })}
+          disabled={!dirty || save.isPending}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Enregistrer les prompts
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { data } = useQuery<{ data: SourcingSettingsDto }>({
+    queryKey: ['sourcing-settings'],
+    queryFn: () => api.get('/platform/sourcing/settings').then(r => r.data),
+  })
+  const s = data?.data ?? {}
+
+  const [form, setForm] = useState({
+    min: 1, max: 20, def: 8, budget: 0,
+    weights: '{}',
+  })
+  const [dirty, setDirty] = useState(false)
+
+  React.useEffect(() => {
+    setForm({
+      min:    s.max_profiles_min     ?? 1,
+      max:    s.max_profiles_max     ?? 20,
+      def:    s.max_profiles_default ?? 8,
+      budget: s.max_cost_eur_per_request ?? 0,
+      weights: JSON.stringify(s.richness_weights ?? {
+        hasProfiles: 20, fiveProfiles: 10, perProfile: 2,
+        hasBooleanSearch: 10, hasKeywords: 10, hasSalaryBenchmark: 10,
+        hasBestPlatforms: 10, hasTips: 5,
+        firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
+      }, null, 2),
+    })
+  }, [s.max_profiles_min, s.max_profiles_max, s.max_profiles_default, s.max_cost_eur_per_request, s.richness_weights])
+
+  const save = useMutation({
+    mutationFn: (body: SourcingSettingsDto) => api.patch('/platform/sourcing/settings', body),
+    onSuccess: () => { setDirty(false); qc.invalidateQueries({ queryKey: ['sourcing-settings'] }) },
+  })
+
+  const onSave = () => {
+    let weights: Record<string, number>
+    try { weights = JSON.parse(form.weights) }
+    catch { alert('JSON pondérations invalide'); return }
+    save.mutate({
+      max_profiles_min:         form.min,
+      max_profiles_max:         form.max,
+      max_profiles_default:     form.def,
+      max_cost_eur_per_request: form.budget,
+      richness_weights:         weights,
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="font-semibold text-sm mb-3">Slider profils (limite par requête)</h3>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Min</label>
+            <input type="number" value={form.min}
+              onChange={e => { setForm(p => ({ ...p, min: parseInt(e.target.value) || 1 })); setDirty(true) }}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Max</label>
+            <input type="number" value={form.max}
+              onChange={e => { setForm(p => ({ ...p, max: parseInt(e.target.value) || 20 })); setDirty(true) }}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Défaut</label>
+            <input type="number" value={form.def}
+              onChange={e => { setForm(p => ({ ...p, def: parseInt(e.target.value) || 8 })); setDirty(true) }}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="font-semibold text-sm mb-3">Budget max par requête</h3>
+        <div className="flex items-center gap-3">
+          <input type="number" step="0.01" value={form.budget}
+            onChange={e => { setForm(p => ({ ...p, budget: parseFloat(e.target.value) || 0 })); setDirty(true) }}
+            className="w-32 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
+          <span className="text-sm text-muted-foreground">EUR · 0 = pas de limite</span>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Log warning si une requête dépasse ce budget (audit_log à venir). N'interrompt pas la requête.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="font-semibold text-sm mb-3">Pondérations score de richesse (JSON)</h3>
+        <textarea value={form.weights}
+          onChange={e => { setForm(p => ({ ...p, weights: e.target.value })); setDirty(true) }}
+          rows={14}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono" />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button onClick={onSave} disabled={!dirty || save.isPending}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Enregistrer les paramètres
+        </button>
       </div>
     </div>
   )

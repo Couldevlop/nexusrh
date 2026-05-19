@@ -36,8 +36,10 @@ interface PayrollRule {
 }
 interface LegalEntity {
   id: string; name: string; rccm: string | null; cnps_number: string | null
-  dgi_number: string | null; city: string; legal_form: string
+  dgi_number: string | null; address: string | null; city: string; legal_form: string
   collective_agreement: string | null; at_rate: string; employees_count: number
+  country_code: string | null; legislation_pack_code: string | null
+  is_active: boolean
 }
 interface WorkflowConfig { id: string; module: string; levels_count: number }
 
@@ -788,13 +790,45 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 }
 
 // ── Tab: Entités juridiques ───────────────────────────────────────────────────
+const COUNTRY_OPTIONS: Array<{ code: string; label: string; flag: string; pack: string; currency: string }> = [
+  { code: 'CIV', label: 'Côte d\'Ivoire',  flag: '🇨🇮', pack: 'ci_2024', currency: 'XOF' },
+  { code: 'SEN', label: 'Sénégal',         flag: '🇸🇳', pack: 'sn_2024', currency: 'XOF' },
+  { code: 'BEN', label: 'Bénin',           flag: '🇧🇯', pack: 'bj_2024', currency: 'XOF' },
+  { code: 'TGO', label: 'Togo',            flag: '🇹🇬', pack: 'tg_2024', currency: 'XOF' },
+  { code: 'BFA', label: 'Burkina Faso',    flag: '🇧🇫', pack: 'bf_2024', currency: 'XOF' },
+  { code: 'MLI', label: 'Mali',            flag: '🇲🇱', pack: 'ml_2024', currency: 'XOF' },
+  { code: 'NER', label: 'Niger',           flag: '🇳🇪', pack: 'ne_2024', currency: 'XOF' },
+  { code: 'CMR', label: 'Cameroun',        flag: '🇨🇲', pack: 'cm_2024', currency: 'XAF' },
+  { code: 'TCD', label: 'Tchad',           flag: '🇹🇩', pack: 'td_2024', currency: 'XAF' },
+  { code: 'NGA', label: 'Nigeria',         flag: '🇳🇬', pack: 'ng_2024', currency: 'NGN' },
+  { code: 'GHA', label: 'Ghana',           flag: '🇬🇭', pack: 'gh_2024', currency: 'GHS' },
+]
+
+interface LegalEntityForm {
+  name: string; rccm: string; cnps_number: string; dgi_number: string
+  address: string; city: string; legal_form: string
+  collective_agreement: string; at_rate: string
+  country_code: string; legislation_pack_code: string
+}
+
+const EMPTY_LE_FORM: LegalEntityForm = {
+  name: '', rccm: '', cnps_number: '', dgi_number: '',
+  address: '', city: 'Abidjan', legal_form: 'SARL',
+  collective_agreement: '', at_rate: '0.02',
+  country_code: 'CIV', legislation_pack_code: 'ci_2024',
+}
+
 function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
-  const [showNew, setShowNew] = useState(false)
-  const [form, setForm] = useState({
-    name: '', rccm: '', cnps_number: '', dgi_number: '',
-    address: '', city: 'Abidjan', legal_form: 'SARL',
-    collective_agreement: '', at_rate: '0.02',
-  })
+  const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<LegalEntityForm>(EMPTY_LE_FORM)
+
+  // Source de vérité : flag has_subsidiaries du tenant (défini par super_admin
+  // lors de la création), pas l'heuristique "plus d'1 entité". Permet à un
+  // tenant mono-pays de ne JAMAIS voir le vocabulaire "filiale".
+  const tenantConfig = useAuthStore((s) => s.tenantConfig)
+  const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+  const tenantDefaultCountry = tenantConfig?.defaultCountryCode ?? 'CIV'
 
   const { data } = useQuery<{ data: LegalEntity[] }>({
     queryKey: ['settings-legal-entities'],
@@ -802,9 +836,42 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   })
   const entities = data?.data ?? []
 
-  const create = useMutation({
-    mutationFn: (d: typeof form) => api.post('/settings/legal-entities', { ...d, at_rate: parseFloat(d.at_rate) }),
-    onSuccess: () => { setShowNew(false); qc.invalidateQueries({ queryKey: ['settings-legal-entities'] }) },
+  const openCreate = () => {
+    setEditingId(null)
+    // Pré-remplit avec le pays par défaut du tenant pour éviter erreurs.
+    const country = COUNTRY_OPTIONS.find(c => c.code === tenantDefaultCountry) ?? COUNTRY_OPTIONS[0]!
+    setForm({
+      ...EMPTY_LE_FORM,
+      country_code: country.code,
+      legislation_pack_code: country.pack,
+    })
+    setShowModal(true)
+  }
+  const openEdit = (e: LegalEntity) => {
+    setEditingId(e.id)
+    setForm({
+      name: e.name, rccm: e.rccm ?? '', cnps_number: e.cnps_number ?? '',
+      dgi_number: e.dgi_number ?? '', address: e.address ?? '', city: e.city,
+      legal_form: e.legal_form, collective_agreement: e.collective_agreement ?? '',
+      at_rate: e.at_rate, country_code: e.country_code ?? 'CIV',
+      legislation_pack_code: e.legislation_pack_code ?? 'ci_2024',
+    })
+    setShowModal(true)
+  }
+
+  const save = useMutation({
+    mutationFn: (d: LegalEntityForm) => {
+      const payload = { ...d, at_rate: parseFloat(d.at_rate) }
+      return editingId
+        ? api.patch(`/settings/legal-entities/${editingId}`, payload)
+        : api.post('/settings/legal-entities', payload)
+    },
+    onSuccess: () => {
+      setShowModal(false)
+      setEditingId(null)
+      qc.invalidateQueries({ queryKey: ['settings-legal-entities'] })
+    },
+    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? 'Erreur'),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/legal-entities/${id}`),
@@ -813,95 +880,226 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   })
 
   const LEGAL_FORMS = ['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'GIE', 'Association', 'ONG', 'Établissement public']
+  const selectedCountry = COUNTRY_OPTIONS.find(c => c.code === form.country_code)
+
+  // Mono-tenant : pas de bouton "Nouvelle entité" si l'entité principale existe
+  // déjà (une seule autorisée). Multi-pays : bouton libellé "Nouvelle filiale".
+  const canCreateMore = hasSubsidiaries || entities.length === 0
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <button onClick={() => setShowNew(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Nouvelle entité
-        </button>
+      {/* Bloc d'aide adapté au mode du tenant */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 text-sm text-blue-900">
+        <p className="font-semibold mb-1">
+          {hasSubsidiaries ? 'Filiales du groupe' : 'Entité juridique'}
+        </p>
+        {hasSubsidiaries ? (
+          <p className="text-xs text-blue-800/90">
+            Chaque filiale représente un établissement avec ses propres N° CNPS,
+            RCCM, pays et pack législatif. <strong>Les employés sont rattachés à
+            une filiale via leur fiche</strong>. Le moteur de paie applique alors
+            le pack législatif de la filiale du salarié (CNPS, IPRES, etc. selon
+            le pays). CNPS/DISA peut être générée par filiale ou consolidée.
+          </p>
+        ) : (
+          <p className="text-xs text-blue-800/90">
+            Renseignez ici les informations légales de votre entreprise
+            (N° CNPS employeur, RCCM, taux AT, convention collective). Ces
+            informations sont utilisées sur les bulletins de paie, contrats
+            et déclarations sociales.
+          </p>
+        )}
       </div>
 
+      {canCreateMore && (
+        <div className="flex justify-end">
+          <button onClick={openCreate}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+            <Plus className="h-4 w-4" />
+            {hasSubsidiaries ? 'Nouvelle filiale' : 'Renseigner l\'entité'}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {entities.map(e => (
-          <div key={e.id} className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className="font-semibold">{e.name}</h3>
-                <p className="text-xs text-muted-foreground">{e.legal_form} · {e.city}</p>
+        {entities.map(e => {
+          const countryOpt = COUNTRY_OPTIONS.find(c => c.code === e.country_code) ?? COUNTRY_OPTIONS[0]!
+          return (
+            <div key={e.id} className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{countryOpt.flag}</span>
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2">
+                      {e.name}
+                      {hasSubsidiaries && (
+                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+                          Filiale
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {e.legal_form} · {e.city} · {countryOpt.label}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 text-sm font-medium text-primary" title="Employés rattachés">
+                    <Users className="h-3.5 w-3.5" />{e.employees_count}
+                  </span>
+                  <button onClick={() => openEdit(e)}
+                    className="text-muted-foreground hover:text-primary" title="Modifier">
+                    <Settings className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => { if (confirm('Supprimer cette entité ?')) remove.mutate(e.id) }}
+                    className="text-red-400 hover:text-red-600" title="Supprimer">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-sm font-medium text-primary">
-                  <Users className="h-3.5 w-3.5" />{e.employees_count}
-                </span>
-                <button onClick={() => { if (confirm('Supprimer cette entité ?')) remove.mutate(e.id) }}
-                  className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {e.cnps_number && <div><span className="text-muted-foreground">CNPS : </span><span className="font-mono">{e.cnps_number}</span></div>}
+                {e.dgi_number  && <div><span className="text-muted-foreground">DGI : </span><span className="font-mono">{e.dgi_number}</span></div>}
+                {e.rccm        && <div><span className="text-muted-foreground">RCCM : </span><span className="font-mono">{e.rccm}</span></div>}
+                <div><span className="text-muted-foreground">Taux AT : </span><span className="font-medium">{(parseFloat(e.at_rate) * 100).toFixed(2)} %</span></div>
+                {e.legislation_pack_code && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Pack législatif : </span>
+                    <code className="rounded bg-muted px-1.5 py-0.5">{e.legislation_pack_code}</code>
+                    <span className="ml-1 text-muted-foreground">({countryOpt.currency})</span>
+                  </div>
+                )}
+                {e.collective_agreement && <div className="col-span-2"><span className="text-muted-foreground">CCN : </span>{e.collective_agreement}</div>}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {e.cnps_number && <div><span className="text-muted-foreground">CNPS : </span><span className="font-mono">{e.cnps_number}</span></div>}
-              {e.dgi_number  && <div><span className="text-muted-foreground">DGI : </span><span className="font-mono">{e.dgi_number}</span></div>}
-              {e.rccm        && <div><span className="text-muted-foreground">RCCM : </span><span className="font-mono">{e.rccm}</span></div>}
-              <div><span className="text-muted-foreground">Taux AT : </span><span className="font-medium">{(parseFloat(e.at_rate) * 100).toFixed(2)} %</span></div>
-              {e.collective_agreement && <div className="col-span-2"><span className="text-muted-foreground">CCN : </span>{e.collective_agreement}</div>}
-            </div>
-          </div>
-        ))}
+          )
+        })}
         {entities.length === 0 && (
           <div className="col-span-2 rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
-            <Layers className="mx-auto mb-2 h-8 w-8 opacity-30" />Aucune entité juridique
+            <Layers className="mx-auto mb-2 h-8 w-8 opacity-30" />
+            Aucune entité juridique — créez votre première entité (siège social ou filiale).
           </div>
         )}
       </div>
 
-      {showNew && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNew(false)}>
-          <div className="rounded-xl border border-border bg-card p-6 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-4">Nouvelle entité juridique (OHADA)</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto"
+          onClick={() => setShowModal(false)}>
+          <div className="rounded-xl border border-border bg-card w-full max-w-2xl max-h-[min(90vh,720px)] flex flex-col shadow-xl my-auto"
+            onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
+              <h3 className="font-semibold">
+                {editingId
+                  ? (hasSubsidiaries ? 'Modifier la filiale' : 'Modifier l\'entité juridique')
+                  : (hasSubsidiaries ? 'Nouvelle filiale' : 'Entité juridique principale')}
+              </h3>
+              <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div>
                 <label className="text-xs font-medium text-muted-foreground">Raison sociale *</label>
                 <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  placeholder={hasSubsidiaries ? "Ex: SOTRA Bouaké" : "Ex: OpenLab Consulting"} />
               </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Forme juridique</label>
-                <select value={form.legal_form} onChange={e => setForm(p => ({ ...p, legal_form: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                  {LEGAL_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+
+              {/* Pays + Pack législatif — visible uniquement si tenant multi-pays */}
+              {hasSubsidiaries && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
+                <p className="text-xs font-semibold text-blue-900">Conformité légale par pays</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Pays</label>
+                    <select value={form.country_code}
+                      onChange={e => {
+                        const c = COUNTRY_OPTIONS.find(x => x.code === e.target.value)
+                        setForm(p => ({
+                          ...p,
+                          country_code: e.target.value,
+                          legislation_pack_code: c?.pack ?? p.legislation_pack_code,
+                        }))
+                      }}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
+                      {COUNTRY_OPTIONS.map(c => (
+                        <option key={c.code} value={c.code}>{c.flag} {c.label} · {c.currency}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Pack législatif</label>
+                    <input value={form.legislation_pack_code}
+                      onChange={e => setForm(p => ({ ...p, legislation_pack_code: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono"
+                      placeholder="ci_2024" />
+                  </div>
+                </div>
+                {selectedCountry && (
+                  <p className="text-[11px] text-blue-700">
+                    Moteur de paie appliqué : <code className="bg-blue-100 px-1 rounded">{form.legislation_pack_code}</code>
+                    {' '}({selectedCountry.currency})
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Ville</label>
-                <select value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                  {['Abidjan','Bouaké','San-Pédro','Daloa','Man','Yamoussoukro','Korhogo'].map(v => <option key={v}>{v}</option>)}
-                </select>
-              </div>
-              {[
-                { k: 'cnps_number', l: 'N° CNPS employeur' },
-                { k: 'dgi_number', l: 'N° DGI' },
-                { k: 'rccm', l: 'RCCM' },
-                { k: 'at_rate', l: 'Taux AT CNPS (ex: 0.03)' },
-              ].map(({ k, l }) => (
-                <div key={k}>
-                  <label className="text-xs font-medium text-muted-foreground">{l}</label>
-                  <input value={(form as Record<string,string>)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
+              )}
+
+              {/* Identité OHADA */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Forme juridique</label>
+                  <select value={form.legal_form} onChange={e => setForm(p => ({ ...p, legal_form: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
+                    {LEGAL_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Ville</label>
+                  <input value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
+                    placeholder="Abidjan" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">N° CNPS employeur</label>
+                  <input value={form.cnps_number} onChange={e => setForm(p => ({ ...p, cnps_number: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">N° DGI</label>
+                  <input value={form.dgi_number} onChange={e => setForm(p => ({ ...p, dgi_number: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">RCCM</label>
+                  <input value={form.rccm} onChange={e => setForm(p => ({ ...p, rccm: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Taux AT CNPS (0.02 = 2%)</label>
+                  <input value={form.at_rate} onChange={e => setForm(p => ({ ...p, at_rate: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">Convention collective applicable</label>
+                  <input value={form.collective_agreement} onChange={e => setForm(p => ({ ...p, collective_agreement: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
+                    placeholder="Ex: Convention Transport Urbain CI" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">Adresse</label>
+                  <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
-              ))}
-              <div className="col-span-2">
-                <label className="text-xs font-medium text-muted-foreground">Convention collective applicable</label>
-                <input value={form.collective_agreement} onChange={e => setForm(p => ({ ...p, collective_agreement: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="Ex: Convention Transport Urbain CI" />
               </div>
             </div>
-            <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
-              <button onClick={() => create.mutate(form)} disabled={!form.name || create.isPending}
+
+            <div className="sticky bottom-0 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
+              <button onClick={() => setShowModal(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => save.mutate(form)} disabled={!form.name || save.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {create.isPending ? 'Création...' : 'Créer'}
+                {save.isPending
+                  ? (editingId ? 'Mise à jour...' : 'Création...')
+                  : (editingId ? 'Enregistrer' : (hasSubsidiaries ? 'Créer la filiale' : 'Enregistrer'))}
               </button>
             </div>
           </div>

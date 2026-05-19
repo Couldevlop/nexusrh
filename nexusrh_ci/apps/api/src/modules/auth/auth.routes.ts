@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { config } from '../../config.js'
+import { blacklistTokenSafe } from '../../services/redis.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -10,6 +11,9 @@ interface TenantCandidate {
     id: string; schema_name: string; name: string; slug: string
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
+    has_subsidiaries: boolean
+    payroll_mode: string
+    default_country_code: string
   }
   user: {
     id: string; email: string; password_hash: string; role: string
@@ -27,7 +31,9 @@ async function findTenantAndUser(
     id: string; schema_name: string; name: string; slug: string
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
-  }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city
+    has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
+  }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city,
+             has_subsidiaries, payroll_mode, default_country_code
       FROM platform.tenants WHERE status IN ('active', 'trial')`)
 
   const candidates: TenantCandidate[] = []
@@ -52,18 +58,18 @@ async function findTenantAndUser(
   }
 
   if (candidates.length === 0) {
-    log?.warn(`[auth] no user found for ${email} across ${tenantsRes.rows.length} tenants`)
+    log?.warn(`[auth] no user found across ${tenantsRes.rows.length} tenants`)
     return null
   }
 
   for (const c of candidates) {
     if (!c.user.is_active) {
-      log?.warn(`[auth] user ${email} in ${c.tenant.schema_name} is inactive`)
+      log?.warn(`[auth] inactive user in ${c.tenant.schema_name}`)
       continue
     }
     const valid = await bcrypt.compare(password, c.user.password_hash)
     if (valid) return c
-    log?.warn(`[auth] password mismatch for ${email} in ${c.tenant.schema_name}`)
+    log?.warn(`[auth] password mismatch in ${c.tenant.schema_name}`)
   }
 
   return null
@@ -73,6 +79,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /auth/login
   fastify.post('/login', {
     schema: { tags: ['auth'], summary: 'Connexion unifiée (super_admin + tenant)' },
+    config: { rateLimit: { max: 10, timeWindow: '5 minutes' } },
     handler: async (request, reply) => {
       const { email, password } = request.body as { email: string; password: string }
 
@@ -187,6 +194,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: tenant.secondary_color,
           logoUrl:        tenant.logo_url,
           city:           tenant.city,
+          hasSubsidiaries:    tenant.has_subsidiaries,
+          payrollMode:        tenant.payroll_mode,
+          defaultCountryCode: tenant.default_country_code,
         },
         redirectTo,
       })
@@ -217,7 +227,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/logout', {
     preHandler: [fastify.authenticate],
     schema: { tags: ['auth'], summary: 'Déconnexion' },
-    handler: async (_request, reply) => {
+    handler: async (request, reply) => {
+      const user = request.user
+      const jti = (user as unknown as { jti?: string }).jti ?? user.sub
+      // TTL = temps restant jusqu'à expiration du token (max 7j = 604800s)
+      const exp = (user as unknown as { exp?: number }).exp
+      const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
+      await blacklistTokenSafe(jti, ttl)
       return reply.send({ message: 'Déconnecté avec succès' })
     },
   })
@@ -235,8 +251,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string; name: string; slug: string
           primary_color: string; secondary_color: string
           logo_url: string | null; city: string | null
+          has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
         }>(
-          `SELECT id, name, slug, primary_color, secondary_color, logo_url, city
+          `SELECT id, name, slug, primary_color, secondary_color, logo_url, city,
+                  has_subsidiaries, payroll_mode, default_country_code
            FROM platform.tenants WHERE id = $1 LIMIT 1`,
           [user.tenantId]
         )
@@ -250,6 +268,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             secondaryColor: t.secondary_color,
             logoUrl:        t.logo_url,
             city:           t.city,
+            hasSubsidiaries:    t.has_subsidiaries,
+            payrollMode:        t.payroll_mode,
+            defaultCountryCode: t.default_country_code,
           }
         }
       }

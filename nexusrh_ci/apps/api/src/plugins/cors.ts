@@ -13,10 +13,7 @@ function buildAllowedOrigins(): string[] {
     // Toujours ajouter la variante https si l'URL est http
     origins.add(config.appUrl.replace(/^http:\/\//, 'https://'))
   }
-  // Fallback hardcodé sur le domaine de production connu
   origins.add('https://nexusrh.openlabconsulting.com')
-  // Inclure aussi localhost pour les tests en staging
-  DEV_ORIGINS.forEach(o => origins.add(o))
   return [...origins]
 }
 

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
-import { FileText } from 'lucide-react'
+import { FileText, Eye } from 'lucide-react'
+import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
 
 interface PaySlip {
   id: string; month: string; employee_id: string
@@ -13,6 +14,7 @@ interface PaySlip {
 
 export default function PaySlipsPage() {
   const [month, setMonth] = useState('')
+  const [openSlipId, setOpenSlipId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<{ data: PaySlip[] }>({
     queryKey: ['payslips', month],
@@ -66,11 +68,16 @@ export default function PaySlipsPage() {
                   <th className="p-4 text-right">CNPS sal.</th>
                   <th className="p-4 text-right">ITS</th>
                   <th className="p-4">Paiement</th>
+                  <th className="p-4 text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {slips.map(slip => (
-                  <tr key={slip.id} className="hover:bg-muted/30">
+                  <tr
+                    key={slip.id}
+                    className="hover:bg-muted/30 cursor-pointer"
+                    onClick={() => setOpenSlipId(slip.id)}
+                  >
                     <td className="p-4">
                       <p className="font-medium">{slip.first_name} {slip.last_name}</p>
                       <p className="text-xs text-muted-foreground font-mono">{slip.cnps_number ?? '—'}</p>
@@ -86,11 +93,14 @@ export default function PaySlipsPage() {
                       </span>
                       <p className="text-xs text-muted-foreground mt-0.5 capitalize">{slip.payment_method?.replace('_', ' ')}</p>
                     </td>
+                    <td className="p-4 text-right">
+                      <Eye className="inline h-4 w-4 text-muted-foreground" />
+                    </td>
                   </tr>
                 ))}
                 {slips.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
                       <FileText className="mx-auto mb-2 h-8 w-8 opacity-30" />
                       Aucun bulletin pour cette période
                     </td>
@@ -101,6 +111,10 @@ export default function PaySlipsPage() {
           </div>
         )}
       </div>
+
+      {openSlipId && (
+        <PaySlipTransparentModal slipId={openSlipId} onClose={() => setOpenSlipId(null)} />
+      )}
     </div>
   )
 }

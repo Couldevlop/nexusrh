@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -151,7 +151,7 @@ function ContractDetailModal({ contract, onClose, canManage }: {
             </div>
             <div>
               <p className="text-muted-foreground text-xs mb-1">Salaire de base</p>
-              <p className="font-bold text-primary">{formatFCFA(contract.base_salary)}</p>
+              <p className="font-bold text-primary">{formatFCFA(Number(contract.base_salary))}</p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs mb-1">Heures / semaine</p>
@@ -469,7 +469,7 @@ export default function ContractsPage() {
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [showNew, setShowNew] = useState(false)
 
-  const { data, isLoading } = useQuery<{ data: Contract[] }>({
+  const { data, isLoading, isFetching } = useQuery<{ data: Contract[] }>({
     queryKey: ['contracts', statusFilter, typeFilter],
     queryFn: () => {
       const params = new URLSearchParams()
@@ -477,16 +477,18 @@ export default function ContractsPage() {
       if (typeFilter !== 'all') params.set('type', typeFilter)
       return api.get(`/contracts?${params}`).then(r => r.data)
     },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   })
 
   const contracts = data?.data ?? []
 
-  // Stats
+  // Stats — Number() requis : PG retourne numeric comme string
   const stats = {
     total: contracts.length,
     cdi: contracts.filter(c => c.type === 'cdi').length,
     cdd: contracts.filter(c => c.type === 'cdd').length,
-    masseSalariale: contracts.reduce((sum, c) => sum + (c.base_salary ?? 0), 0),
+    masseSalariale: contracts.reduce((sum, c) => sum + (Number(c.base_salary) || 0), 0),
     trialExpiringSoon: contracts.filter(c => {
       if (!c.trial_end_date) return false
       const diff = new Date(c.trial_end_date).getTime() - Date.now()
@@ -587,7 +589,7 @@ export default function ContractsPage() {
       </div>
 
       {/* Tableau */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className={`rounded-xl border border-border bg-card overflow-hidden transition-opacity ${isFetching && !isLoading ? 'opacity-60' : 'opacity-100'}`}>
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mr-2" />
@@ -646,7 +648,7 @@ export default function ContractsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-medium text-primary">
-                      {formatFCFA(contract.base_salary)}
+                      {formatFCFA(Number(contract.base_salary))}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(contract.start_date)}

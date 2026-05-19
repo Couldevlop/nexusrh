@@ -10,6 +10,7 @@ const EmployeeLayout   = lazy(() => import('@/components/layout/EmployeeLayout')
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const LoginPage        = lazy(() => import('@/pages/auth/LoginPage'))
+const PublicCareersPage = lazy(() => import('@/pages/public/PublicCareersPage'))
 
 // ── Platform (super_admin) ────────────────────────────────────────────────────
 const PlatformDashboard   = lazy(() => import('@/pages/platform/PlatformDashboard'))
@@ -17,6 +18,7 @@ const PlatformTenants     = lazy(() => import('@/pages/platform/PlatformTenants'
 const PlatformTenantNew   = lazy(() => import('@/pages/platform/PlatformTenantNew'))
 const PlatformTenantDetail  = lazy(() => import('@/pages/platform/PlatformTenantDetail'))
 const PlatformSettings      = lazy(() => import('@/pages/platform/PlatformSettings'))
+const PlatformLegalWatch    = lazy(() => import('@/pages/platform/PlatformLegalWatch'))
 
 // ── RH Dashboard ─────────────────────────────────────────────────────────────
 const DashboardPage    = lazy(() => import('@/pages/dashboard/DashboardPage'))
@@ -72,6 +74,7 @@ const MesNotesDesFrais = lazy(() => import('@/pages/mon-espace/MesNotesDesFrais'
 const MaFormation      = lazy(() => import('@/pages/mon-espace/MaFormation'))
 const MaCarriere       = lazy(() => import('@/pages/mon-espace/MaCarriere'))
 const MonProfil        = lazy(() => import('@/pages/mon-espace/MonProfil'))
+const MesOffresInternes = lazy(() => import('@/pages/mon-espace/MesOffresInternes'))
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -102,6 +105,9 @@ export default function App() {
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
 
+          {/* ── Page carrières publique (sans auth) ───────────────── */}
+          <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />
+
           {/* ── Portail super_admin ─────────────────────────────── */}
           <Route path="/platform" element={
             <PlatformGuard><PlatformLayout /></PlatformGuard>
@@ -112,6 +118,7 @@ export default function App() {
             <Route path="tenants/new"  element={<PlatformTenantNew />} />
             <Route path="tenants/:id"  element={<PlatformTenantDetail />} />
             <Route path="settings"     element={<PlatformSettings />} />
+            <Route path="legal-watch"  element={<PlatformLegalWatch />} />
           </Route>
 
           {/* ── Application RH (admin, hr_manager, hr_officer, manager, readonly) ── */}
@@ -231,6 +238,7 @@ export default function App() {
             <Route path="frais"        element={<MesNotesDesFrais />} />
             <Route path="formation"    element={<MaFormation />} />
             <Route path="carriere"     element={<MaCarriere />} />
+            <Route path="offres"       element={<MesOffresInternes />} />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 

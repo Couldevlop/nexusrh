@@ -220,18 +220,134 @@ export async function sendEmployeeWelcomeEmail(params: {
 }
 
 export async function sendPasswordResetEmail(params: {
-  to: string; firstName: string; tempPassword: string; loginUrl: string
+  to: string
+  firstName: string
+  tempPassword: string
+  loginUrl: string
+  tenantName: string
+  primaryColor: string
+  tenantCity?: string | null
 }): Promise<void> {
-  const { to, firstName, tempPassword, loginUrl } = params
+  const { to, firstName, tempPassword, loginUrl, tenantName, primaryColor, tenantCity } = params
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Réinitialisation de votre mot de passe — NexusRH CI</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:${primaryColor};padding:32px 40px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:12px;">
+                <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;">
+                  ${tenantName.slice(0, 2).toUpperCase()}
+                </div>
+                <div style="text-align:left;">
+                  <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">${tenantName}</p>
+                  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">${tenantCity ? `${tenantCity} · ` : ''}NexusRH CI</p>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px;">
+              <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;">RÉINITIALISATION</p>
+              <h1 style="margin:0 0 16px;font-size:26px;font-weight:700;color:#111827;">
+                Bonjour ${firstName} 🔑
+              </h1>
+              <p style="margin:0 0 24px;font-size:16px;color:#374151;line-height:1.6;">
+                Le mot de passe de votre compte administrateur sur <strong>${tenantName}</strong> a été réinitialisé.
+                Utilisez le mot de passe temporaire ci-dessous pour vous reconnecter.
+              </p>
+
+              <!-- Credentials box -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:24px;margin-bottom:28px;">
+                <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#374151;">Vos nouveaux identifiants</p>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
+                      <span style="font-size:13px;color:#6b7280;">Adresse email</span>
+                    </td>
+                    <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;text-align:right;">
+                      <span style="font-size:13px;font-weight:600;color:#111827;">${to}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:8px 0 0;">
+                      <span style="font-size:13px;color:#6b7280;">Mot de passe temporaire</span>
+                    </td>
+                    <td style="padding:8px 0 0;text-align:right;">
+                      <code style="font-size:15px;font-weight:700;color:${primaryColor};background:${primaryColor}15;padding:4px 10px;border-radius:6px;letter-spacing:1px;">${tempPassword}</code>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CTA -->
+              <div style="text-align:center;margin-bottom:32px;">
+                <a href="${loginUrl}" style="display:inline-block;background:${primaryColor};color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:16px;font-weight:600;letter-spacing:0.3px;">
+                  Se connecter maintenant →
+                </a>
+              </div>
+
+              <!-- Security note -->
+              <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+                <p style="margin:0;font-size:13px;color:#92400e;">
+                  🔒 <strong>Sécurité :</strong> Changez ce mot de passe temporaire dès votre prochaine connexion dans <em>Mon profil → Sécurité</em>.
+                </p>
+              </div>
+
+              <!-- Warning if not you -->
+              <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;">
+                <p style="margin:0;font-size:13px;color:#991b1b;">
+                  ⚠️ Vous n'êtes pas à l'origine de cette demande ? Contactez immédiatement le support OpenLab via WhatsApp ou email.
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:13px;color:#6b7280;">
+                Une question ? Contactez notre support
+              </p>
+              <p style="margin:0;font-size:13px;">
+                <a href="https://wa.me/2250709320594" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 09 32 05 94</a>
+                &nbsp;·&nbsp;
+                <a href="mailto:support@nexusrh-ci.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">support@nexusrh-ci.com</a>
+              </p>
+              <p style="margin:16px 0 0;font-size:11px;color:#9ca3af;">
+                OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · Côte d'Ivoire
+              </p>
+              <p style="margin:4px 0 0;font-size:11px;color:#9ca3af;">
+                NexusRH CI — La RH Intelligente, au service de l'Afrique qui avance
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
   await transporter.sendMail({
     from: config.smtp.from,
     to,
-    subject: 'NexusRH CI — Réinitialisation de votre mot de passe',
-    html: `<p>Bonjour ${firstName},</p>
-           <p>Votre mot de passe a été réinitialisé.</p>
-           <p><strong>Nouveau mot de passe temporaire :</strong> <code>${tempPassword}</code></p>
-           <p><a href="${loginUrl}">Se connecter →</a></p>
-           <p>OpenLab Consulting</p>`,
-    text: `Bonjour ${firstName},\nMot de passe temporaire : ${tempPassword}\n${loginUrl}`,
+    subject: `🔑 Réinitialisation de votre mot de passe — ${tenantName}`,
+    html,
+    text: `Bonjour ${firstName},\n\nLe mot de passe de votre compte administrateur sur ${tenantName} a été réinitialisé.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nChangez ce mot de passe dès votre prochaine connexion.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
   })
 }

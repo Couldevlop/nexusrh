@@ -7,6 +7,20 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 const rawPool = new Pool({ connectionString: config.database.url })
 
 // ── Helper : calcul des jours ouvrables d'un mois (lundi–samedi, hors dimanche) ──
+// Parse 'YYYY-MM' avec validation stricte → évite NaN dans les calculs paie.
+// OWASP A04 (Insecure Design) : refuser dès l'entrée plutôt que produire des
+// résultats corrompus en aval.
+function parseMonth(month: string): { year: number; monthNum: number } | null {
+  if (!month || typeof month !== 'string') return null
+  const m = month.match(/^(\d{4})-(\d{2})$/)
+  if (!m) return null
+  const year = parseInt(m[1]!, 10)
+  const monthNum = parseInt(m[2]!, 10)
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) return null
+  if (!Number.isFinite(monthNum) || monthNum < 1 || monthNum > 12) return null
+  return { year, monthNum }
+}
+
 function getWorkingDays(year: number, month: number): number {
   const daysInMonth = new Date(year, month, 0).getDate()
   let count = 0
@@ -167,8 +181,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
       }
 
-      const [year, monthNum] = month.split('-').map(Number)
-      const workingDaysMonth = getWorkingDays(year!, monthNum!)
+      const parsed = parseMonth(month)
+      if (!parsed) {
+        return reply.status(400).send({ error: 'Format mois invalide (attendu : YYYY-MM)' })
+      }
+      const { year, monthNum } = parsed
+      const workingDaysMonth = getWorkingDays(year, monthNum)
 
       // Résolution absence du mois
       const absenceCtx = await resolveAbsenceForPayroll(schema, employeeId, month, emp.hire_date)
@@ -237,8 +255,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       )
       const atRate = parseFloat(tenantRes.rows[0]?.at_rate ?? '0.020')
 
-      const [year, monthNum] = month.split('-').map(Number)
-      const workingDaysMonth = getWorkingDays(year!, monthNum!)
+      const parsed = parseMonth(month)
+      if (!parsed) {
+        return reply.status(400).send({ error: 'Format mois invalide (attendu : YYYY-MM)' })
+      }
+      const { year, monthNum } = parsed
+      const workingDaysMonth = getWorkingDays(year, monthNum)
 
       let periodId: string
       if (existing.rows[0]) {
@@ -313,9 +335,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Workflow 2-yeux OBLIGATOIRE (OWASP A04 — Segregation of Duties) :
+      // L'initiateur calcule et clôture en `pending_validation`. Un VALIDATEUR
+      // différent (POST /periods/:month/validate) confirme pour passer à `closed`.
+      // Aucun bypass possible — l'initiateur ne peut PAS auto-valider.
       await rawPool.query(
         `UPDATE "${schema}".pay_periods SET
-           status = 'closed', closed_at = now(), closed_by = $1,
+           status = 'pending_validation',
+           initiated_at = now(), initiated_by = $1,
            total_gross = $2, total_net = $3, total_cnps = $4, total_its = $5
          WHERE id = $6`,
         [request.user.sub, totalGross, totalNet, totalCnps, totalIts, periodId]
@@ -325,8 +352,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const bordereauCount = paySlips.filter((s: any) => s.hasBordereauCnps).length
 
       return reply.send({
-        message: `Période ${month} clôturée — ${emps.rows.length} bulletins générés`,
+        message: `Période ${month} en attente de validation — ${emps.rows.length} bulletins générés. Demandez à un autre admin/hr_manager de valider via POST /payroll/periods/${month}/validate.`,
         periodId,
+        status: 'pending_validation',
         employeesCount: emps.rows.length,
         absencesIntegrées: absenceCount,
         bordereauCnpsCount: bordereauCount,
@@ -337,6 +365,208 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         },
         paySlips,
       })
+    },
+  })
+
+  // ── Workflow paramétrable de validation paie ────────────────────────────
+  // Cycle : open → pending_validation (via /close) → N approvals → closed
+  // OWASP A04 : Segregation of Duties strictement appliquée.
+  // workflow_configs.levels_count détermine le nombre d'approbations requises.
+
+  // GET /payroll/periods/:month/workflow — état du workflow (timeline)
+  fastify.get('/periods/:month/workflow', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const schema = request.user.schemaName
+      const period = await rawPool.query<{
+        id: string; month: string; status: string
+        initiated_at: string | null; initiated_by: string | null
+        rejection_reason: string | null; closed_at: string | null; closed_by: string | null
+        initiator_first_name: string | null; initiator_last_name: string | null
+      }>(
+        `SELECT p.id, p.month, p.status, p.initiated_at, p.initiated_by,
+                p.rejection_reason, p.closed_at, p.closed_by,
+                ui.first_name AS initiator_first_name,
+                ui.last_name  AS initiator_last_name
+           FROM "${schema}".pay_periods p
+           LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
+           WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+
+      const cfg = await rawPool.query<{ levels_count: number }>(
+        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
+      )
+      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
+
+      const approvals = await rawPool.query<{
+        level: number; approver_id: string; approver_role: string | null
+        approved_at: string; notes: string | null
+        first_name: string | null; last_name: string | null
+      }>(
+        `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
+                u.first_name, u.last_name
+           FROM "${schema}".pay_period_approvals a
+           LEFT JOIN "${schema}".users u ON u.id = a.approver_id
+          WHERE a.period_id = $1
+          ORDER BY a.level ASC`,
+        [p.id],
+      )
+
+      const initiatorName = [p.initiator_first_name, p.initiator_last_name].filter(Boolean).join(' ') || null
+
+      return reply.send({
+        period: {
+          id: p.id, month: p.month, status: p.status,
+          initiatedAt: p.initiated_at, initiatedBy: p.initiated_by,
+          initiatorName,
+          rejectionReason: p.rejection_reason,
+          closedAt: p.closed_at, closedBy: p.closed_by,
+        },
+        requiredLevels,
+        currentLevel: approvals.rows.length,
+        isComplete: approvals.rows.length >= requiredLevels,
+        approvals: approvals.rows.map(a => ({
+          level: a.level,
+          approverId: a.approver_id,
+          approverRole: a.approver_role,
+          approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+          approvedAt: a.approved_at,
+          notes: a.notes,
+        })),
+      })
+    },
+  })
+
+  // POST /payroll/periods/:month/approve — N+1 (ou plus) valide
+  fastify.post('/periods/:month/approve', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const { notes } = (request.body ?? {}) as { notes?: string }
+      const schema = request.user.schemaName
+
+      const period = await rawPool.query<{
+        id: string; status: string; initiated_by: string | null
+      }>(
+        `SELECT id, status, initiated_by FROM "${schema}".pay_periods
+           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+
+      if (p.status !== 'pending_validation') {
+        return reply.status(409).send({
+          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+        })
+      }
+      // OWASP A04 SoD : l'initiateur ne peut PAS approuver
+      if (p.initiated_by === request.user.sub) {
+        return reply.status(403).send({
+          error: 'Vous avez initié cette paie. Un autre approbateur est requis (séparation des tâches).',
+        })
+      }
+      // L'approver ne doit pas avoir déjà approuvé à un niveau précédent
+      const dup = await rawPool.query(
+        `SELECT 1 FROM "${schema}".pay_period_approvals
+           WHERE period_id = $1 AND approver_id = $2 LIMIT 1`,
+        [p.id, request.user.sub],
+      )
+      if (dup.rows[0]) {
+        return reply.status(403).send({
+          error: 'Vous avez déjà approuvé un niveau précédent. Un autre approbateur est requis.',
+        })
+      }
+
+      const cfg = await rawPool.query<{ levels_count: number }>(
+        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
+      )
+      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
+
+      const currentCount = await rawPool.query<{ cnt: number }>(
+        `SELECT count(*)::int AS cnt FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
+        [p.id],
+      )
+      const nextLevel = (currentCount.rows[0]?.cnt ?? 0) + 1
+
+      await rawPool.query(
+        `INSERT INTO "${schema}".pay_period_approvals
+           (period_id, level, approver_id, approver_role, notes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [p.id, nextLevel, request.user.sub, request.user.role, notes ?? null],
+      )
+
+      // Si on a atteint le nombre requis → clôture définitive
+      if (nextLevel >= requiredLevels) {
+        await rawPool.query(
+          `UPDATE "${schema}".pay_periods
+             SET status = 'closed', closed_at = now(), closed_by = $1
+             WHERE id = $2`,
+          [request.user.sub, p.id],
+        )
+        // Audit log (non bloquant)
+        rawPool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'payroll.closed', 'pay_period', $2, $3, $4)`,
+          [request.user.sub, p.id, JSON.stringify({ month, finalLevel: nextLevel, requiredLevels }), request.ip ?? null],
+        ).catch(() => {})
+        return reply.send({
+          data: { status: 'closed', level: nextLevel, requiredLevels },
+          message: `Paie ${month} validée à tous les niveaux requis et clôturée.`,
+        })
+      }
+
+      return reply.send({
+        data: { status: 'pending_validation', level: nextLevel, requiredLevels },
+        message: `Validation niveau ${nextLevel}/${requiredLevels} enregistrée. ${requiredLevels - nextLevel} validation(s) restante(s).`,
+      })
+    },
+  })
+
+  // POST /payroll/periods/:month/reject — rejette et retour à open
+  fastify.post('/periods/:month/reject', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      const { reason } = (request.body ?? {}) as { reason?: string }
+      if (!reason || reason.trim().length < 5) {
+        return reply.status(400).send({ error: 'Motif de rejet requis (min 5 caractères)' })
+      }
+      const schema = request.user.schemaName
+      const period = await rawPool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM "${schema}".pay_periods
+           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+        [month],
+      )
+      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+      const p = period.rows[0]
+      if (p.status !== 'pending_validation') {
+        return reply.status(409).send({
+          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+        })
+      }
+      // Reset : status → open, supprimer toutes les approbations partielles
+      await rawPool.query(
+        `DELETE FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
+        [p.id],
+      )
+      await rawPool.query(
+        `UPDATE "${schema}".pay_periods
+           SET status = 'open', rejection_reason = $1,
+               initiated_at = NULL, initiated_by = NULL
+           WHERE id = $2`,
+        [reason, p.id],
+      )
+      rawPool.query(
+        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+         VALUES ($1, 'payroll.rejected', 'pay_period', $2, $3, $4)`,
+        [request.user.sub, p.id, JSON.stringify({ month, reason }), request.ip ?? null],
+      ).catch(() => {})
+      return reply.send({ data: { status: 'open' }, message: 'Paie rejetée — retour à open. Re-calculer la paie après corrections.' })
     },
   })
 
@@ -358,6 +588,161 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       sql += ` ORDER BY ps.month DESC, e.last_name`
       const res = await rawPool.query(sql, params)
       return reply.send({ data: res.rows })
+    },
+  })
+
+  // GET /payroll/payslips/:id/transparency — drill-down complet d'un bulletin
+  // Inspiration : Workday "Pay Explained" + PayFit Smart Lines + Gusto Pay Insights
+  // Accessible par : admin/hr_manager/hr_officer/readonly (tous bulletins du tenant)
+  //                 + employee (uniquement SES bulletins)
+  fastify.get('/payslips/:id/transparency', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['payroll'], summary: 'Bulletin transparent — formules, comparaison, audit' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const schema = request.user.schemaName
+      const role = request.user.role
+
+      const slipRes = await rawPool.query<{
+        id: string; employee_id: string; period_id: string; month: string
+        base_salary: string; gross_salary: string; net_payable: string
+        total_cnps_sal: string; total_cnps_pat: string; its: string
+        employer_cost: string; total_deductions: string
+        lines: unknown
+        first_name: string; last_name: string; cnps_number: string | null
+        nni: string | null; job_title: string | null
+        period_status: string; initiated_at: string | null; closed_at: string | null
+        generated_at: string | null; viewed_by_employee_at: string | null
+        payment_status: string; payment_method: string; payment_reference: string | null
+        paid_at: string | null
+      }>(
+        `SELECT ps.id, ps.employee_id, ps.period_id, ps.month,
+                ps.base_salary, ps.gross_salary, ps.net_payable,
+                ps.total_cnps_sal, ps.total_cnps_pat, ps.its,
+                ps.employer_cost, ps.total_deductions, ps.lines,
+                ps.generated_at, ps.viewed_by_employee_at,
+                ps.payment_status, ps.payment_method, ps.payment_reference, ps.paid_at,
+                e.first_name, e.last_name, e.cnps_number, e.nni, e.job_title,
+                pp.status AS period_status, pp.initiated_at, pp.closed_at
+           FROM "${schema}".pay_slips ps
+           JOIN "${schema}".employees e ON e.id = ps.employee_id
+           LEFT JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id
+          WHERE ps.id = $1 LIMIT 1`,
+        [id],
+      )
+      if (!slipRes.rows[0]) return reply.status(404).send({ error: 'Bulletin introuvable' })
+      const slip = slipRes.rows[0]
+
+      // Garde-fou employee : ne peut voir que son propre bulletin
+      if (role === 'employee') {
+        let myEmployeeId = request.user.employeeId ?? null
+        if (!myEmployeeId) {
+          const me = await rawPool.query(
+            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          )
+          myEmployeeId = (me.rows[0] as { id?: string } | undefined)?.id ?? null
+        }
+        if (myEmployeeId !== slip.employee_id) {
+          return reply.status(403).send({ error: 'Accès refusé à ce bulletin' })
+        }
+      } else if (!['admin','hr_manager','hr_officer','readonly','manager'].includes(role)) {
+        return reply.status(403).send({ error: 'Rôle non autorisé' })
+      }
+
+      // Enrichir les lignes via le service explainer
+      const { explainLines } = await import('../../services/payroll-explainer.service.js')
+      const rawLines = Array.isArray(slip.lines) ? slip.lines : []
+      const explained = explainLines(rawLines as never)
+
+      // Comparaison : 3 mois précédents pour le même employé
+      const compRes = await rawPool.query<{
+        month: string; gross_salary: string; net_payable: string
+        total_cnps_sal: string; its: string
+      }>(
+        `SELECT month, gross_salary, net_payable, total_cnps_sal, its
+           FROM "${schema}".pay_slips
+          WHERE employee_id = $1 AND id <> $2 AND month < $3
+          ORDER BY month DESC LIMIT 3`,
+        [slip.employee_id, id, slip.month],
+      )
+
+      // Audit : événements liés au bulletin ou à sa période
+      const auditRes = await rawPool.query<{
+        action: string; entity: string; created_at: string
+        first_name: string | null; last_name: string | null
+        changes: unknown
+      }>(
+        `SELECT a.action, a.entity, a.created_at, a.changes,
+                u.first_name, u.last_name
+           FROM "${schema}".audit_log a
+           LEFT JOIN "${schema}".users u ON u.id = a.user_id
+          WHERE (a.entity = 'payslip' AND a.entity_id = $1)
+             OR (a.entity = 'pay_period' AND a.entity_id = $2)
+          ORDER BY a.created_at DESC LIMIT 20`,
+        [id, slip.period_id],
+      )
+
+      // Totaux gains / cotisations / retenues
+      const totals = {
+        earnings: explained.filter(l => l.type === 'earning').reduce((s, l) => s + Number(l.amount), 0),
+        employeeContributions: explained
+          .filter(l => l.type === 'employee_contribution' || l.type === 'deduction')
+          .reduce((s, l) => s + Math.abs(Number(l.amount)), 0),
+        employerContributions: explained
+          .filter(l => l.type === 'employer_contribution')
+          .reduce((s, l) => s + Number(l.amount), 0),
+      }
+
+      return reply.send({
+        slip: {
+          id: slip.id,
+          month: slip.month,
+          baseSalary: Number(slip.base_salary),
+          grossSalary: Number(slip.gross_salary),
+          netPayable: Number(slip.net_payable),
+          totalCnpsSal: Number(slip.total_cnps_sal),
+          totalCnpsPat: Number(slip.total_cnps_pat),
+          its: Number(slip.its),
+          employerCost: Number(slip.employer_cost),
+          totalDeductions: Number(slip.total_deductions),
+          generatedAt: slip.generated_at,
+          viewedAt: slip.viewed_by_employee_at,
+          paymentStatus: slip.payment_status,
+          paymentMethod: slip.payment_method,
+          paymentReference: slip.payment_reference,
+          paidAt: slip.paid_at,
+        },
+        employee: {
+          id: slip.employee_id,
+          firstName: slip.first_name,
+          lastName: slip.last_name,
+          cnpsNumber: slip.cnps_number,
+          nni: slip.nni,
+          jobTitle: slip.job_title,
+        },
+        period: {
+          id: slip.period_id,
+          status: slip.period_status,
+          initiatedAt: slip.initiated_at,
+          closedAt: slip.closed_at,
+        },
+        lines: explained,
+        totals,
+        comparison: compRes.rows.map(r => ({
+          month: r.month,
+          grossSalary: Number(r.gross_salary),
+          netPayable: Number(r.net_payable),
+          totalCnpsSal: Number(r.total_cnps_sal),
+          its: Number(r.its),
+        })),
+        audit: auditRes.rows.map(a => ({
+          action: a.action,
+          entity: a.entity,
+          createdAt: a.created_at,
+          actorName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+          changes: a.changes,
+        })),
+      })
     },
   })
 

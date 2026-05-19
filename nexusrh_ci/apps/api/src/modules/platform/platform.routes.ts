@@ -1,11 +1,42 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
+import { randomBytes } from 'crypto'
 import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
 import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/email.js'
 import { maintenanceCache } from '../../cache.js'
 import { seedDemoTenant } from '../../db/seed-demo.js'
+import { listLegislationPacks } from '../../services/legislation-packs.js'
+import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
+import { z } from 'zod'
+
+// ─── Schémas Zod (OWASP A03 Injection + A05 Misconfiguration) ───────────────
+// Validation systématique des bodies. Le error handler global mappe ZodError
+// vers 400 avec issues exploitables côté client.
+
+const createTenantBodySchema = z.object({
+  name: z.string().min(1, 'Nom requis').max(200),
+  slug: z.string().min(2).max(50)
+    .regex(/^[a-z0-9-]+$/, 'Slug : lettres minuscules, chiffres, tirets uniquement'),
+  planType: z.enum(['trial', 'starter', 'business', 'enterprise', 'public_sector']).optional(),
+  sector: z.string().max(50).optional(),
+  city: z.string().max(100).optional(),
+  cnpsNumber: z.string().max(50).optional(),
+  dgiNumber: z.string().max(50).optional(),
+  rccm: z.string().max(100).optional(),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur hex requise').optional(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  logoUrl: z.string().url().or(z.literal('')).optional(),
+  adminEmail: z.string().email('Email admin invalide'),
+  adminFirstName: z.string().min(1).max(100).optional().default('Admin'),
+  adminLastName: z.string().min(1).max(100).optional().default('Tenant'),
+  adminPhone: z.string().max(30).optional(),
+  seedDemoData: z.boolean().optional(),
+  hasSubsidiaries: z.boolean().optional(),
+  payrollMode: z.enum(['single_country', 'multi_country']).optional(),
+  defaultCountryCode: z.string().length(3).optional(),
+})
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -31,6 +62,16 @@ const AT_RATE_BY_SECTOR: Record<string, number> = {
 }
 
 const platformRoutes: FastifyPluginAsync = async (fastify) => {
+  // ── GET /platform/legislation-packs ───────────────────────────────────────
+  // Liste les packs législatifs disponibles (CIV-2024 active, autres stub).
+  fastify.get('/legislation-packs', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Liste des packs législatifs (multi-pays)' },
+    handler: async (_request, reply) => {
+      return reply.send({ data: listLegislationPacks() })
+    },
+  })
+
   // ── GET /platform/tenants ─────────────────────────────────────────────────
   fastify.get('/tenants', {
     preHandler: [fastify.authorize('super_admin')],
@@ -38,16 +79,17 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { page = '1', limit = '20', status } = request.query as Record<string, string>
       const offset = (parseInt(page) - 1) * parseInt(limit)
-      const conditions = status ? `WHERE status = '${status}'` : ''
+      const VALID_STATUSES = ['active', 'suspended', 'trial']
+      const safeStatus = status && VALID_STATUSES.includes(status) ? status : null
+      const params: unknown[] = [parseInt(limit), offset]
+      const whereClause = safeStatus ? `WHERE t.status = $3` : ''
+      if (safeStatus) params.push(safeStatus)
       const rows = await pool.query(
-        `SELECT t.*,
-          (SELECT count(*) FROM "${'"' + 't' + '"'}".schema_name.users) AS user_count
-         FROM platform.tenants t ${conditions}
+        `SELECT * FROM platform.tenants t ${whereClause}
          ORDER BY t.created_at DESC
          LIMIT $1 OFFSET $2`,
-        [parseInt(limit), offset]
+        params
       ).catch(async () => {
-        // Requête simplifiée si cross-schema impossible
         return pool.query(
           `SELECT * FROM platform.tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
           [parseInt(limit), offset]
@@ -82,18 +124,15 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     schema: { tags: ['platform'], summary: 'Créer un nouveau tenant CI' },
     handler: async (request, reply) => {
-      const body = request.body as {
-        name: string; slug: string; planType?: string
-        sector?: string; city?: string
-        cnpsNumber?: string; dgiNumber?: string; rccm?: string
-        primaryColor?: string; secondaryColor?: string; logoUrl?: string
-        adminEmail: string; adminFirstName: string; adminLastName: string
-        adminPhone?: string; seedDemoData?: boolean
+      // OWASP A03 (Injection) + A05 : validation Zod systématique
+      const parsed = createTenantBodySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
       }
-
-      if (!body.name || !body.slug || !body.adminEmail) {
-        return reply.status(400).send({ error: 'name, slug et adminEmail sont requis' })
-      }
+      const body = parsed.data
 
       const slug = body.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')
       const schemaName = `tenant_${slug}`
@@ -109,14 +148,22 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(409).send({ error: `Le slug "${slug}" est déjà utilisé` })
       }
 
+      // Validation : si hasSubsidiaries=true, payrollMode doit suivre
+      const hasSubsidiaries = body.hasSubsidiaries === true
+      const payrollMode = hasSubsidiaries
+        ? (body.payrollMode === 'multi_country' ? 'multi_country' : 'multi_country')
+        : 'single_country'
+      const defaultCountryCode = (body.defaultCountryCode ?? 'CIV').toUpperCase().slice(0, 3)
+
       // 1. Créer le tenant dans platform
       const tenantRes = await pool.query<{ id: string }>(
         `INSERT INTO platform.tenants
            (name, slug, schema_name, plan_type, status, sector, city,
             cnps_number, dgi_number, rccm, at_rate,
             max_users, max_employees, primary_color, secondary_color, logo_url,
-            trial_ends_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            trial_ends_at,
+            has_subsidiaries, payroll_mode, default_country_code)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          RETURNING id`,
         [
           body.name, slug, schemaName, planType,
@@ -128,6 +175,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           body.primaryColor ?? '#E85D04', body.secondaryColor ?? '#F48C06',
           body.logoUrl ?? null,
           planType === 'trial' ? new Date(Date.now() + 30 * 24 * 3600 * 1000) : null,
+          hasSubsidiaries, payrollMode, defaultCountryCode,
         ]
       )
       const tenantId = tenantRes.rows[0]?.id
@@ -141,7 +189,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       await seedAbsenceTypesCI(schemaName)
 
       // 4. Créer l'admin
-      const tempPassword = `CI_${Math.random().toString(36).slice(2, 10).toUpperCase()}!`
+      const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
       const passwordHash = await bcrypt.hash(tempPassword, 12)
 
       await pool.query(
@@ -188,7 +236,8 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const body = request.body as Record<string, unknown>
       const allowed = ['name','plan_type','status','primary_color','secondary_color',
-                       'logo_url','max_users','max_employees','trial_ends_at','city','sector']
+                       'logo_url','max_users','max_employees','trial_ends_at','city','sector',
+                       'has_subsidiaries','payroll_mode','default_country_code']
       const sets: string[] = []
       const vals: unknown[] = []
       let idx = 1
@@ -237,43 +286,119 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /platform/tenants/:id/reset-admin ───────────────────────────────
+  // Body optionnel : { adminEmail, firstName, lastName } pour mode auto-réparation
+  // (re-provisionne le schéma si manquant + crée l'admin si manquant).
   fastify.post('/tenants/:id/reset-admin', {
     preHandler: [fastify.authorize('super_admin')],
-    schema: { tags: ['platform'], summary: 'Réinitialiser le mot de passe admin d\'un tenant' },
+    schema: { tags: ['platform'], summary: 'Réinitialiser le mot de passe admin d\'un tenant (+ auto-repair si body fourni)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const res = await pool.query<{ schema_name: string }>(
-        `SELECT schema_name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
-      )
-      const tenant = res.rows[0]
-      if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const body = (request.body ?? {}) as { adminEmail?: string; firstName?: string; lastName?: string }
+      const repairMode = Boolean(body.adminEmail && body.firstName && body.lastName)
 
-      const adminRes = await pool.query<{ id: string; email: string }>(
-        `SELECT id, email FROM "${tenant.schema_name}".users WHERE role = 'admin' LIMIT 1`
-      )
-      const admin = adminRes.rows[0]
-      if (!admin) return reply.status(404).send({ error: 'Admin introuvable' })
+      try {
+        const res = await pool.query<{
+          schema_name: string; name: string; slug: string; at_rate: string | null
+          primary_color: string | null; city: string | null
+        }>(
+          `SELECT schema_name, name, slug, at_rate, primary_color, city FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
+        )
+        const tenant = res.rows[0]
+        if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
 
-      const tempPassword = `CI_${Math.random().toString(36).slice(2, 10).toUpperCase()}!`
-      const passwordHash = await bcrypt.hash(tempPassword, 12)
-      await pool.query(
-        `UPDATE "${tenant.schema_name}".users SET password_hash = $1, updated_at = now() WHERE id = $2`,
-        [passwordHash, admin.id]
-      )
+        // Calculer schema_name effectif (auto-réparer si vide)
+        let schemaName = tenant.schema_name
+        if (!schemaName) {
+          if (!repairMode) {
+            request.log.error({ tenantId: id }, 'reset-admin: schema_name vide')
+            return reply.status(409).send({
+              error: 'Tenant mal provisionné : schema_name absent. Utilisez le mode réparation (fournir adminEmail/firstName/lastName).',
+            })
+          }
+          schemaName = `tenant_${tenant.slug.replace(/[^a-z0-9_]/g, '_')}`
+          await pool.query(`UPDATE platform.tenants SET schema_name = $1, updated_at = now() WHERE id = $2`, [schemaName, id])
+          request.log.warn({ tenantId: id, schemaName }, 'reset-admin: schema_name réparé')
+        }
 
-      // Envoyer email de réinitialisation (non bloquant)
-      const tenantName = (await pool.query<{ name: string }>(
-        `SELECT name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id]
-      )).rows[0]?.name ?? ''
+        // Vérifier présence du schéma en base
+        const schemaCheck = await pool.query<{ exists: boolean }>(
+          `SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1) AS exists`,
+          [schemaName],
+        )
+        if (!schemaCheck.rows[0]?.exists) {
+          if (!repairMode) {
+            request.log.error({ tenantId: id, schemaName }, 'reset-admin: schéma absent en base')
+            return reply.status(409).send({
+              error: `Schéma "${schemaName}" introuvable. Utilisez le mode réparation (fournir adminEmail/firstName/lastName) pour le provisionner.`,
+            })
+          }
+          request.log.warn({ schemaName }, 'reset-admin: provisionnement du schéma manquant')
+          await provisionTenantSchema(schemaName)
+          const atRate = tenant.at_rate ? parseFloat(tenant.at_rate) : 0.02
+          await seedPayrollRulesCI(schemaName, atRate)
+          await seedAbsenceTypesCI(schemaName)
+        }
 
-      sendPasswordResetEmail({
-        to:           admin.email,
-        firstName:    admin.email.split('@')[0] ?? 'Admin',
-        tempPassword,
-        loginUrl:     `${config.appUrl}/login`,
-      }).catch(() => null)
+        // Chercher admin existant
+        const adminRes = await pool.query<{ id: string; email: string }>(
+          `SELECT id, email FROM "${schemaName}".users WHERE role = 'admin' LIMIT 1`
+        )
+        let admin = adminRes.rows[0]
 
-      return reply.send({ adminEmail: admin.email, tempPassword, tenantName })
+        // Créer admin si absent (mode repair) — sinon 409
+        if (!admin) {
+          if (!repairMode) {
+            return reply.status(409).send({
+              error: 'Aucun utilisateur admin dans ce tenant. Utilisez le mode réparation pour en créer un.',
+            })
+          }
+          const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
+          const passwordHash = await bcrypt.hash(tempPassword, 12)
+          const inserted = await pool.query<{ id: string; email: string }>(
+            `INSERT INTO "${schemaName}".users (email, password_hash, first_name, last_name, role, is_active)
+             VALUES ($1, $2, $3, $4, 'admin', true)
+             RETURNING id, email`,
+            [body.adminEmail!.toLowerCase(), passwordHash, body.firstName!, body.lastName!],
+          )
+          admin = inserted.rows[0]!
+          request.log.warn({ tenantId: id, email: admin.email }, 'reset-admin: admin créé via mode réparation')
+
+          sendPasswordResetEmail({
+            to: admin.email, firstName: body.firstName!, tempPassword,
+            loginUrl: `${config.appUrl}/login`,
+            tenantName: tenant.name,
+            primaryColor: tenant.primary_color ?? '#E85D04',
+            tenantCity: tenant.city,
+          }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
+
+          return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name, repaired: true })
+        }
+
+        // Cas nominal : reset password d'un admin existant
+        const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
+        const passwordHash = await bcrypt.hash(tempPassword, 12)
+        await pool.query(
+          `UPDATE "${schemaName}".users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2`,
+          [passwordHash, admin.id]
+        )
+
+        sendPasswordResetEmail({
+          to:           admin.email,
+          firstName:    admin.email.split('@')[0] ?? 'Admin',
+          tempPassword,
+          loginUrl:     `${config.appUrl}/login`,
+          tenantName:   tenant.name,
+          primaryColor: tenant.primary_color ?? '#E85D04',
+          tenantCity:   tenant.city,
+        }).catch(err => request.log.warn({ err }, 'reset-admin: envoi email échoué (non bloquant)'))
+
+        return reply.send({ adminEmail: admin.email, tempPassword, tenantName: tenant.name })
+      } catch (err) {
+        request.log.error({ err, tenantId: id, repairMode }, 'reset-admin: erreur interne')
+        return reply.status(500).send({
+          error: 'Erreur interne lors de la réinitialisation. Consultez les logs API.',
+        })
+      }
     },
   })
 
@@ -517,8 +642,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /platform/country-configs — Multi-législatif : configurations par pays
+  // Lecture ouverte aux super_admin + admins/RH tenant (catalogue pays non sensible).
   fastify.get('/country-configs', {
-    preHandler: [fastify.authorize('super_admin')],
+    preHandler: [fastify.authorize('super_admin', 'admin', 'hr_manager', 'hr_officer')],
     schema: { tags: ['platform'], summary: 'Configurations multi-pays (UEMOA/OHADA)' },
     handler: async (_request, reply) => {
       await pool.query(`
@@ -535,16 +661,31 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         )
       `).catch(() => null)
 
+      // Tous les packs législatifs supportés par la plateforme (UEMOA + CEMAC + NGA).
+      // is_active=true pour visibilité commerciale ; le statut technique du moteur
+      // de paie reste géré dans legislation-packs.ts (status: active/stub).
+      // DO UPDATE permet d'activer rétroactivement les pays seedés à false.
       await pool.query(`
         INSERT INTO platform.country_configs
           (country_code, country_name, currency, timezone, payroll_engine, is_active, config)
         VALUES
-          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0.15}'),
-          ('SN','Sénégal','XOF','Africa/Dakar','sn_2024',false,'{"smig":69120,"ipresRetraite":0.056,"cfceTaux":0.08}'),
-          ('BF','Burkina Faso','XOF','Africa/Ouagadougou','bf_2024',false,'{"smig":34664,"cnssRetraite":0.055}'),
-          ('ML','Mali','XOF','Africa/Bamako','ml_2024',false,'{"smig":40000,"inpsRetraite":0.037}'),
-          ('TG','Togo','XOF','Africa/Lome','tg_2024',false,'{"smig":35000,"cnavsRetraite":0.04}')
-        ON CONFLICT (country_code) DO NOTHING
+          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0.15,"zone":"UEMOA"}'),
+          ('SN','Sénégal','XOF','Africa/Dakar','sn_2024',true,'{"smig":69120,"ipresRetraite":0.056,"cfceTaux":0.08,"zone":"UEMOA"}'),
+          ('BJ','Bénin','XOF','Africa/Porto-Novo','bj_2024',true,'{"smig":52000,"cnssRetraite":0.036,"zone":"UEMOA"}'),
+          ('TG','Togo','XOF','Africa/Lome','tg_2024',true,'{"smig":35000,"cnavsRetraite":0.04,"zone":"UEMOA"}'),
+          ('BF','Burkina Faso','XOF','Africa/Ouagadougou','bf_2024',true,'{"smig":34664,"cnssRetraite":0.055,"zone":"UEMOA"}'),
+          ('ML','Mali','XOF','Africa/Bamako','ml_2024',true,'{"smig":40000,"inpsRetraite":0.037,"zone":"UEMOA"}'),
+          ('NE','Niger','XOF','Africa/Niamey','ne_2024',true,'{"smig":30047,"cnssRetraite":0.052,"zone":"UEMOA"}'),
+          ('CM','Cameroun','XAF','Africa/Douala','cm_2024',true,'{"smig":36270,"cnpsRetraite":0.042,"zone":"CEMAC"}'),
+          ('TD','Tchad','XAF','Africa/Ndjamena','td_2024',true,'{"smig":60000,"cnpsRetraite":0.035,"zone":"CEMAC"}'),
+          ('NG','Nigeria','NGN','Africa/Lagos','ng_2024',true,'{"smig":70000,"pensionEmployee":0.08,"zone":"ECOWAS"}'),
+          ('GH','Ghana','GHS','Africa/Accra','gh_2024',true,'{"smig":480,"ssnitEmployee":0.055,"zone":"ECOWAS"}')
+        ON CONFLICT (country_code) DO UPDATE SET
+          is_active = EXCLUDED.is_active,
+          currency = EXCLUDED.currency,
+          timezone = EXCLUDED.timezone,
+          payroll_engine = EXCLUDED.payroll_engine,
+          config = EXCLUDED.config
       `).catch(() => null)
 
       const res = await pool.query(`SELECT * FROM platform.country_configs ORDER BY is_active DESC, country_name`).catch(() => ({ rows: [] }))
@@ -574,6 +715,249 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           totalCount:     parseInt(row?.total_count ?? '0'),
         },
       })
+    },
+  })
+
+  // ── Sourcing IA : configuration paramétrable (super_admin only) ────────────
+  // OWASP A01 : authorize('super_admin') sur tous les endpoints.
+  // Invalidation du cache après chaque mutation pour propager immédiatement.
+
+  // ─── GET /platform/sourcing/models ─── liste des modèles IA
+  fastify.get('/sourcing/models', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (_req, reply) => {
+      const res = await pool.query(`
+        SELECT id, provider, model_id, display_name, max_tokens,
+               input_cost_per_1m_eur::float AS input_cost_per_1m_eur,
+               output_cost_per_1m_eur::float AS output_cost_per_1m_eur,
+               is_active, sort_order
+          FROM platform.ai_models
+         ORDER BY sort_order, provider, model_id
+      `).catch(() => ({ rows: [] }))
+      return reply.send({ data: res.rows })
+    },
+  })
+
+  fastify.post('/sourcing/models', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as {
+        provider?: string; model_id?: string; display_name?: string
+        max_tokens?: number; input_cost_per_1m_eur?: number
+        output_cost_per_1m_eur?: number; is_active?: boolean; sort_order?: number
+      }
+      if (!body.provider || !body.model_id || !body.display_name) {
+        return reply.status(400).send({ error: 'provider, model_id et display_name obligatoires' })
+      }
+      try {
+        const res = await pool.query(`
+          INSERT INTO platform.ai_models
+            (provider, model_id, display_name, max_tokens,
+             input_cost_per_1m_eur, output_cost_per_1m_eur, is_active, sort_order)
+          VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,true),COALESCE($8,0))
+          RETURNING *
+        `, [
+          body.provider, body.model_id, body.display_name,
+          body.max_tokens ?? 4000,
+          body.input_cost_per_1m_eur ?? 0,
+          body.output_cost_per_1m_eur ?? 0,
+          body.is_active, body.sort_order,
+        ])
+        invalidateConfigCache()
+        return reply.status(201).send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.create failed')
+        return reply.status(500).send({ error: 'Erreur création modèle' })
+      }
+    },
+  })
+
+  fastify.patch('/sourcing/models/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const body = request.body as Record<string, unknown>
+      const allowed = ['provider','model_id','display_name','max_tokens',
+        'input_cost_per_1m_eur','output_cost_per_1m_eur','is_active','sort_order']
+      const sets: string[] = []
+      const vals: unknown[] = []
+      for (const k of allowed) {
+        if (k in body) { sets.push(`${k} = $${vals.length + 1}`); vals.push(body[k]) }
+      }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ à mettre à jour' })
+      sets.push(`updated_at = now()`)
+      vals.push(id)
+      try {
+        const res = await pool.query(
+          `UPDATE platform.ai_models SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+          vals,
+        )
+        invalidateConfigCache()
+        return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour' })
+      }
+    },
+  })
+
+  fastify.delete('/sourcing/models/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      try {
+        await pool.query(`DELETE FROM platform.ai_models WHERE id = $1`, [id])
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.models.delete failed')
+        return reply.status(500).send({ error: 'Erreur suppression' })
+      }
+    },
+  })
+
+  // ─── GET /platform/sourcing/platforms ─── plateformes de sourcing
+  fastify.get('/sourcing/platforms', {
+    preHandler: [fastify.authorize('super_admin', 'admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const { country_code } = request.query as { country_code?: string }
+      const where: string[] = []
+      const params: unknown[] = []
+      if (country_code) {
+        where.push(`(country_code = $${params.length + 1} OR is_panafrican = true)`)
+        params.push(country_code)
+      }
+      const sql = `SELECT id, code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order
+                     FROM platform.sourcing_platforms
+                    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                    ORDER BY sort_order, name`
+      const res = await pool.query(sql, params).catch(() => ({ rows: [] }))
+      return reply.send({ data: res.rows })
+    },
+  })
+
+  fastify.post('/sourcing/platforms', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as {
+        code?: string; name?: string; country_code?: string | null
+        url?: string | null; est_pool?: number | null
+        is_active?: boolean; is_panafrican?: boolean; sort_order?: number
+      }
+      if (!body.code || !body.name) {
+        return reply.status(400).send({ error: 'code et name obligatoires' })
+      }
+      try {
+        const res = await pool.query(`
+          INSERT INTO platform.sourcing_platforms
+            (code, name, country_code, url, est_pool, is_active, is_panafrican, sort_order)
+          VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),COALESCE($7,false),COALESCE($8,0))
+          RETURNING *
+        `, [
+          body.code, body.name, body.country_code ?? null, body.url ?? null,
+          body.est_pool ?? null, body.is_active, body.is_panafrican, body.sort_order,
+        ])
+        invalidateConfigCache()
+        return reply.status(201).send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.create failed')
+        return reply.status(500).send({ error: 'Erreur création plateforme' })
+      }
+    },
+  })
+
+  fastify.patch('/sourcing/platforms/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const body = request.body as Record<string, unknown>
+      const allowed = ['code','name','country_code','url','est_pool','is_active','is_panafrican','sort_order']
+      const sets: string[] = []
+      const vals: unknown[] = []
+      for (const k of allowed) {
+        if (k in body) { sets.push(`${k} = $${vals.length + 1}`); vals.push(body[k]) }
+      }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ à mettre à jour' })
+      sets.push(`updated_at = now()`)
+      vals.push(id)
+      try {
+        const res = await pool.query(
+          `UPDATE platform.sourcing_platforms SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+          vals,
+        )
+        invalidateConfigCache()
+        return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour' })
+      }
+    },
+  })
+
+  fastify.delete('/sourcing/platforms/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      try {
+        await pool.query(`DELETE FROM platform.sourcing_platforms WHERE id = $1`, [id])
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.platforms.delete failed')
+        return reply.status(500).send({ error: 'Erreur suppression' })
+      }
+    },
+  })
+
+  // ─── GET/PATCH /platform/sourcing/settings ─── singleton clé/valeur ────────
+  fastify.get('/sourcing/settings', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (_req, reply) => {
+      const res = await pool.query(
+        `SELECT key, value, description, updated_at FROM platform.sourcing_settings`,
+      ).catch(() => ({ rows: [] }))
+      // Retour sous forme d'objet aplati : { max_profiles_min: 1, ... }
+      const obj: Record<string, unknown> = {}
+      for (const r of res.rows) {
+        obj[r.key] = (r.value && typeof r.value === 'object' && 'value' in r.value)
+          ? (r.value as { value: unknown }).value
+          : r.value
+      }
+      return reply.send({ data: obj })
+    },
+  })
+
+  fastify.patch('/sourcing/settings', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const body = request.body as Record<string, unknown>
+      const allowed = [
+        'max_profiles_min', 'max_profiles_max', 'max_profiles_default',
+        'max_cost_eur_per_request', 'claude_system_prompt', 'mistral_system_prompt',
+        'richness_weights',
+      ]
+      try {
+        for (const key of Object.keys(body)) {
+          if (!allowed.includes(key)) continue
+          const value = body[key]
+          // Sérialiser proprement : nombres/strings → JSON value, objets → JSONB
+          const jsonValue = JSON.stringify({ value })
+          await pool.query(
+            `INSERT INTO platform.sourcing_settings (key, value, updated_at, updated_by)
+             VALUES ($1, $2::jsonb, now(), $3)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,
+                                              updated_at = now(),
+                                              updated_by = EXCLUDED.updated_by`,
+            [key, key === 'richness_weights' ? JSON.stringify(value) : jsonValue,
+             request.user.sub],
+          )
+        }
+        invalidateConfigCache()
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error({ err }, 'sourcing.settings.update failed')
+        return reply.status(500).send({ error: 'Erreur mise à jour settings' })
+      }
     },
   })
 }

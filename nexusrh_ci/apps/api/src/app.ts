@@ -29,9 +29,11 @@ import swaggerPlugin from './plugins/swagger.js'
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
 import platformRoutes   from './modules/platform/platform.routes.js'
+import legalWatchRoutes from './modules/platform/legal-watch.routes.js'
 import employeesRoutes  from './modules/employees/employees.routes.js'
 import absencesRoutes   from './modules/absences/absences.routes.js'
 import payrollRoutes    from './modules/payroll/payroll.routes.js'
+import payrollWorkflowRoutes from './modules/payroll/payroll-workflow.routes.js'
 import cnpsRoutes       from './modules/cnps/cnps.routes.js'
 import mobileMoneyRoutes  from './modules/mobile-money/mobile-money.routes.js'
 import recruitmentRoutes  from './modules/recruitment/recruitment.routes.js'
@@ -64,6 +66,29 @@ export async function buildApp() {
   await fastify.register(corsPlugin)
   await fastify.register(swaggerPlugin)
   await fastify.register(authPlugin)
+
+  // ── Rate limiting (OWASP A07 — Brute-force protection) ───────────────────────
+  await fastify.register(import('@fastify/rate-limit'), {
+    global:     true,
+    max:        200,
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.ip,
+    errorResponseBuilder: () => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Trop de requêtes. Veuillez patienter.',
+    }),
+  })
+
+  // ── Security headers (OWASP A05 — Security Misconfiguration) ─────────────────
+  fastify.addHook('onSend', async (_req, reply) => {
+    reply.header('X-Content-Type-Options',  'nosniff')
+    reply.header('X-Frame-Options',          'SAMEORIGIN')
+    reply.header('X-XSS-Protection',         '0')
+    reply.header('Strict-Transport-Security','max-age=31536000; includeSubDomains; preload')
+    reply.header('Referrer-Policy',          'strict-origin-when-cross-origin')
+    reply.header('Permissions-Policy',       'geolocation=(), microphone=(), camera=()')
+  })
 
   // ── Multipart (upload fichiers) ──────────────────────────────────────────────
   await fastify.register(import('@fastify/multipart'), {
@@ -110,9 +135,11 @@ export async function buildApp() {
   // ── Routes applicatives ───────────────────────────────────────────────────────
   await fastify.register(authRoutes,         { prefix: '/auth' })
   await fastify.register(platformRoutes,     { prefix: '/platform' })
+  await fastify.register(legalWatchRoutes,   { prefix: '/platform/legal-watch' })
   await fastify.register(employeesRoutes,    { prefix: '/employees' })
   await fastify.register(absencesRoutes,     { prefix: '/absences' })
   await fastify.register(payrollRoutes,      { prefix: '/payroll' })
+  await fastify.register(payrollWorkflowRoutes, { prefix: '/payroll-workflow' })
   await fastify.register(cnpsRoutes,         { prefix: '/cnps' })
   await fastify.register(mobileMoneyRoutes,  { prefix: '/mobile-money' })
   await fastify.register(recruitmentRoutes, { prefix: '/recruitment' })
@@ -131,9 +158,47 @@ export async function buildApp() {
   })
 
   // ── Error handler ─────────────────────────────────────────────────────────────
+  // OWASP A05 : pas de stack trace exposée en production.
+  // OWASP A09 : log complet côté serveur pour audit.
   fastify.setErrorHandler((error, _request, reply) => {
     const statusCode = error.statusCode ?? 500
     fastify.log.error({ err: error, statusCode }, error.message)
+
+    // ZodError (validation body/params) → 400 avec issues exploitables
+    if (error.name === 'ZodError' && 'issues' in error) {
+      const issues = (error as unknown as { issues: Array<{ path: (string|number)[]; message: string }> }).issues
+      return reply.status(400).send({
+        error: 'Validation échouée',
+        issues: issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        statusCode: 400,
+      })
+    }
+
+    // Erreurs PostgreSQL fréquentes — mapping vers codes HTTP appropriés
+    const pgCode = (error as unknown as { code?: string }).code
+    if (pgCode === '23505') {
+      // unique_violation
+      return reply.status(409).send({ error: 'Conflit — ressource déjà existante', statusCode: 409 })
+    }
+    if (pgCode === '23503') {
+      // foreign_key_violation
+      return reply.status(422).send({ error: 'Référence invalide (FK)', statusCode: 422 })
+    }
+    if (pgCode === '23502') {
+      // not_null_violation
+      return reply.status(400).send({ error: 'Champ requis manquant', statusCode: 400 })
+    }
+    if (pgCode === '22P02') {
+      // invalid_text_representation (ex: cast UUID invalide)
+      return reply.status(400).send({ error: 'Format de donnée invalide', statusCode: 400 })
+    }
+    if (pgCode === '42P01' || pgCode === '42703') {
+      // undefined_table / undefined_column — bug serveur, masquer en prod
+      return reply.status(500).send({
+        error: config.env === 'production' ? 'Erreur interne du serveur' : `Schema DB: ${error.message}`,
+        statusCode: 500,
+      })
+    }
 
     if (statusCode === 401) {
       return reply.status(401).send({ error: 'Non authentifié', statusCode: 401 })
