@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { api, formatFCFA } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -22,6 +22,7 @@ interface Job {
   target_departments?: string[]
   target_job_levels?: string[]
   target_min_seniority_months?: number | null
+  ai_focus_text?: string | null
   created_at: string
 }
 
@@ -125,6 +126,11 @@ export default function RecruitmentPage() {
   const [criteriaFocus, setCriteriaFocus] = useState('')
   const [compareTop3, setCompareTop3] = useState(false)
 
+  useEffect(() => {
+    setCriteriaFocus(selectedJob?.ai_focus_text ?? '')
+    if (selectedJob?.ai_focus_text) setShowCriteria(true)
+  }, [selectedJob?.id, selectedJob?.ai_focus_text])
+
   const { data: jobsData, isLoading } = useQuery<{ data: Job[] }>({
     queryKey: ['recruitment-jobs'],
     queryFn: () => api.get('/recruitment/jobs').then(r => r.data),
@@ -196,9 +202,13 @@ export default function RecruitmentPage() {
       }).then((r) => r.data as {
         total: number; analyzed: number; skipped: number; failed: number
         top: Array<{ id: string; score: number; recommendation: string; firstName: string; lastName: string }>
+        effectiveFocus?: string | null
         message?: string
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
+      queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] })
+    },
   })
 
   const jobs = jobsData?.data ?? []
@@ -449,6 +459,7 @@ export default function RecruitmentPage() {
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">
                     Ce texte est injecté dans les exigences de l'offre avant l'analyse IA — il guide le scoring sans remplacer les requirements existants.
+                    {' '}<span className="font-medium text-primary">Sauvegardé automatiquement sur l'offre au lancement de la pré-sélection.</span>
                   </p>
                 </div>
               )}

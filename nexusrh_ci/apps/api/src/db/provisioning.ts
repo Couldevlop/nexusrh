@@ -863,6 +863,7 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS target_legal_entity_id uuid`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS hiring_manager_id uuid`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS public_slug varchar(120)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS ai_focus_text text`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)

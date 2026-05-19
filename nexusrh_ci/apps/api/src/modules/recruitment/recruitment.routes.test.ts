@@ -618,7 +618,8 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
   it('injecte criteria.focus dans les requirements de l\'offre passés à analyzeCV', async () => {
     const longCv = 'Candidat avec expérience SAP solide et anglais bilingue.'.repeat(5)
     queryMock
-      .mockResolvedValueOnce({ rows: [{ title: 'Consultant', description: 'desc', requirements: 'CNPS, OHADA' }] })
+      .mockResolvedValueOnce({ rows: [{ title: 'Consultant', description: 'desc', requirements: 'CNPS, OHADA', ai_focus_text: null }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs (persistance ai_focus_text)
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'C', last_name: 'D' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
@@ -651,5 +652,64 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
       payload: {},
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('persistance : sauvegarde criteria.focus dans recruitment_jobs.ai_focus_text', async () => {
+    const longCv = 'Candidat solide avec expérience confirmée.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: '', ai_focus_text: null }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs.ai_focus_text
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'X', last_name: 'Y' }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 75, recommendation: 'yes', summary: '', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 75, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { criteria: { focus: 'Profils bilingues uniquement' } },
+    })
+
+    // Vérifie que la requête UPDATE ai_focus_text a bien été émise (2e call queryMock)
+    const updateCall = queryMock.mock.calls[1]
+    expect(updateCall?.[0]).toContain('UPDATE')
+    expect(updateCall?.[0]).toContain('ai_focus_text')
+    expect(updateCall?.[1]).toEqual(['Profils bilingues uniquement', 'job-1'])
+  })
+
+  it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {
+    const longCv = 'Profil confirmé avec dossier solide.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: 'CNPS', ai_focus_text: 'Critère sauvegardé pour cette offre' }] })
+      // PAS d'UPDATE recruitment_jobs car criteriaFocus=null (rien à persister)
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'A', last_name: 'B' }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 80, recommendation: 'yes', summary: '', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 80, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {}, // pas de criteria
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.effectiveFocus).toBe('Critère sauvegardé pour cette offre')
+    // analyzeCV doit avoir reçu un job dont requirements contient le focus sauvegardé
+    const callArgs = vi.mocked(analyzeCV).mock.calls[0]
+    expect(callArgs?.[1].requirements).toContain('Critère sauvegardé pour cette offre')
   })
 })

@@ -576,15 +576,28 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const criteriaFocus = body.criteria?.focus?.trim() || null
 
       try {
-        const jobRes = await pool.query<JobContext>(
+        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null }>(
           `SELECT title, description, requirements, contract_type, location,
                   salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
-                  contract_type AS "contractType"
+                  contract_type AS "contractType",
+                  ai_focus_text
              FROM "${schema}".recruitment_jobs WHERE id = $1`,
           [jobId],
         )
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+        // Critère effectif : si body.criteria.focus fourni → écrit ai_focus_text
+        // dans le job (persistance). Sinon, fallback sur la valeur stockée.
+        const effectiveFocus = criteriaFocus ?? job.ai_focus_text?.trim() ?? null
+        if (criteriaFocus !== null && criteriaFocus !== job.ai_focus_text) {
+          await pool.query(
+            `UPDATE "${schema}".recruitment_jobs
+                SET ai_focus_text = $1, updated_at = now()
+              WHERE id = $2`,
+            [criteriaFocus, jobId],
+          )
+        }
 
         const appsRes = await pool.query<{
           id: string
@@ -616,10 +629,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           })
         }
 
-        const enrichedJob: JobContext = criteriaFocus
+        const enrichedJob: JobContext = effectiveFocus
           ? {
               ...job,
-              requirements: [job.requirements?.trim(), `Priorité du recruteur : ${criteriaFocus}`]
+              requirements: [job.requirements?.trim(), `Priorité du recruteur : ${effectiveFocus}`]
                 .filter(Boolean).join('\n\n'),
             }
           : job
@@ -688,7 +701,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
            JSON.stringify({
              model, stages: requestedStages, force,
              analyzed, skipped, failed,
-             criteriaFocus,
+             effectiveFocus,
+             focusSource: criteriaFocus !== null ? 'request' : (job.ai_focus_text ? 'job-stored' : null),
            }),
            request.ip ?? null],
         ).catch(() => { /* tenant sans audit_log : non bloquant */ })
@@ -702,6 +716,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           failed,
           top,
           model,
+          effectiveFocus,
         })
       } catch (err) {
         fastify.log.error({ err }, 'preselect-batch failed')
