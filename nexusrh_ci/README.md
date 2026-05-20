@@ -102,7 +102,7 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **424 tests verts** (Vitest) sur 11 fichiers — paie, recrutement, authentification, packs législatifs, référentiels, workflows |
+| **Tests automatisés** | **437 tests verts** (Vitest) sur 12 fichiers — paie, recrutement, absences, authentification, packs législatifs, référentiels, workflows |
 | **Golden fixtures paie** | 9 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes, congé maternité, maladie maintien 50%, AT avec jour J, heures supp, avance) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
