@@ -138,7 +138,13 @@ Le module recrutement combine l'analyse Claude/Mistral à un workflow Kanban pou
 | **Feedback loop IA** | À chaque embauche ou rejet, le tenant alimente automatiquement un historique (`recruitment_decisions`). Les 8 dernières décisions sont injectées dans le prompt de la pré-sélection suivante en **few-shot examples** — l'IA apprend les préférences réelles de l'équipe sans aucune ré-entraînement ML. Visible dans le UI : *« Apprentissage actif : 23 décisions passées ont calibré ce scoring »* |
 | Traçabilité | Audit log `recruitment.preselect_batch` (modèle, stages, focus effectif, comptes analysés/skip/fail, `learningExamples`) |
 
-**Sécurité** : conforme OWASP A01 (RBAC strict), A03 (paramètres bindés, jamais de concat SQL), A05 (clés IA via env, jamais en dur), A07 (rate-limit anti-abus IA), A09 (audit log non bloquant), A10 (messages d'erreur génériques côté client).
+**Sécurité (OWASP 2025)** :
+- **A01** RBAC strict (admin/hr_manager/hr_officer), isolation tenant via schema-per-tenant
+- **A03** SQL : tous paramètres bindés (`$1, $2, …`), nom de schéma issu du JWT uniquement / **Prompt injection** : sanitization des `candidate_anchor` (suppression \n\t, troncature 220 chars) + délimiteurs `=== DEBUT/FIN DECISIONS ===` + instruction explicite à l'IA de traiter ce bloc comme des données factuelles, jamais comme des consignes
+- **A05** clés IA via env, swagger désactivé en prod, migrations lazy idempotentes
+- **A07** rate-limit anti-abus IA (3/min pré-sélection lot, 10/min analyse unitaire), MFA TOTP disponible
+- **A09** audit log dédié pour chaque hire/reject (`recruitment.hired` / `recruitment.rejected`) + pour chaque batch (`recruitment.preselect_batch`) + traçabilité IA (`recruitment.analyze_cv`). Tous non bloquants
+- **A10** messages d'erreur génériques côté client, détails uniquement dans les logs serveur
 
 ---
 

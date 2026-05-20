@@ -725,15 +725,17 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     expect(firstExample?.anchor).toContain('Marie Konaté')
   })
 
-  it('feedback loop : hired/rejected déclenche un INSERT dans recruitment_decisions', async () => {
+  it('feedback loop : hired/rejected déclenche INSERT dans recruitment_decisions + audit_log', async () => {
     queryMock
       .mockResolvedValueOnce({
         rows: [{
           id: 'app-99', job_id: 'job-1', first_name: 'Test', last_name: 'User',
-          stage: 'hired', ai_score: 75, ai_recommendation: 'yes', ai_summary: 'Bon profil senior',
+          stage: 'hired', ai_score: 75, ai_recommendation: 'yes',
+          ai_summary: 'Bon profil senior\nAvec un retour à la ligne pour tester la sanitization',
         }],
       })
-      .mockResolvedValueOnce({ rows: [] }) // INSERT recruitment_decisions (non bloquant)
+      .mockResolvedValueOnce({ rows: [] }) // INSERT recruitment_decisions
+      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log (OWASP A09)
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
@@ -744,12 +746,18 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     })
 
     expect(res.statusCode).toBe(200)
-    // Le 2e call queryMock doit être l'INSERT dans recruitment_decisions
-    const insertCall = queryMock.mock.calls[1]
-    expect(insertCall?.[0]).toContain('INSERT INTO')
-    expect(insertCall?.[0]).toContain('recruitment_decisions')
-    expect(insertCall?.[1]?.[2]).toBe('hired') // 3e param = decision
-    expect(insertCall?.[1]?.[4]).toBe(75)      // 5e param = prior_ai_score
+    // 2e call : INSERT dans recruitment_decisions
+    const insertDecision = queryMock.mock.calls[1]
+    expect(insertDecision?.[0]).toContain('INSERT INTO')
+    expect(insertDecision?.[0]).toContain('recruitment_decisions')
+    expect(insertDecision?.[1]?.[2]).toBe('hired')
+    expect(insertDecision?.[1]?.[4]).toBe(75)
+    // Sanitization OWASP A03 : pas de \n dans le candidate_anchor stocké
+    expect(insertDecision?.[1]?.[6]).not.toContain('\n')
+    // 3e call : INSERT dans audit_log (OWASP A09)
+    const insertAudit = queryMock.mock.calls[2]
+    expect(insertAudit?.[0]).toContain('audit_log')
+    expect(insertAudit?.[1]?.[1]).toBe('recruitment.hired')
   })
 
   it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {

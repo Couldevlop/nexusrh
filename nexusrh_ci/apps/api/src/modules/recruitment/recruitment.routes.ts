@@ -413,10 +413,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // Feedback loop IA : on snapshot la décision pour alimenter le few-shot des
         // prochaines pré-sélections de ce tenant. Uniquement sur hired/rejected
         // (signaux forts). Non bloquant si la table n'existe pas encore.
+        // OWASP A03 : on neutralise les sauts de ligne et caractères de contrôle
+        // dans ai_summary pour limiter les vecteurs de prompt injection (le texte
+        // sera réinjecté dans le prompt de la prochaine pré-sélection).
         if (app && (stage === 'hired' || stage === 'rejected')) {
+          const summaryClean = (app.ai_summary ?? '')
+            .toString()
+            .replace(/[\r\n\t]+/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim()
+            .slice(0, 200)
           const anchorParts = [
             `${app.first_name ?? ''} ${app.last_name ?? ''}`.trim(),
-            (app.ai_summary ?? '').toString().slice(0, 200).trim(),
+            summaryClean,
           ].filter(Boolean)
           pool.query(
             `INSERT INTO "${schema}".recruitment_decisions
@@ -430,6 +439,25 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               anchorParts.join(' — ') || null,
             ],
           ).catch(() => { /* table absente : migration lazy au prochain preselect */ })
+
+          // OWASP A09 : trace explicite de la décision (qui, sur qui, quand,
+          // avec quel score IA prior). Hire/reject est un événement de sécurité
+          // significatif au sens RGPD (décision impactant un candidat).
+          pool.query(
+            `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+             VALUES ($1, $2, 'application', $3, $4, $5)`,
+            [
+              request.user.sub,
+              stage === 'hired' ? 'recruitment.hired' : 'recruitment.rejected',
+              app.id,
+              JSON.stringify({
+                jobId: app.job_id,
+                priorAiScore: app.ai_score ?? null,
+                priorAiRecommendation: app.ai_recommendation ?? null,
+              }),
+              request.ip ?? null,
+            ],
+          ).catch(() => { /* tenant sans audit_log : non bloquant */ })
         }
 
         return reply.send({ data: app })
