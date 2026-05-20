@@ -102,8 +102,8 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **473 tests verts** (Vitest) sur 14 fichiers — paie, recrutement, absences, contrats, employés, authentification, packs législatifs, référentiels, workflows |
-| **Golden fixtures paie** | 9 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes, congé maternité, maladie maintien 50%, AT avec jour J, heures supp, avance) |
+| **Tests automatisés** | **597 tests verts** (Vitest) sur 15 fichiers — paie, recrutement, absences, contrats, employés, expenses, authentification, packs législatifs, référentiels, workflows |
+| **Golden fixtures paie** | 13 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité, maladie maintien 50%, AT avec jour J inclus/hors mois, heures supp, avance, haut salaire 3 enfants) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
 | **Audit de biais** | Le moteur IA expose les signaux concrets ayant influencé chaque score et alerte explicitement si un signal démographique (école, région, prénom, genre, âge estimé) a pesé — différenciant majeur sur le marché Afrique francophone |
@@ -131,6 +131,7 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 | **Absences**              | ✓ + RBAC manager équipe directe | ✓ + Zod | n/a | `absence.created`, `absence.approved`/`approval_step`, `absence.rejected` |
 | **Contrats**              | ✓        | ✓ + Zod (enum OHADA/CI, UUID, montants bornés) | n/a | `contract.created`, `contract.terminated`, `contract.deleted` |
 | **Employés**              | ✓ + IDOR check sur PATCH self-service (employee ≠ son employeeId → 403) | ✓ + Zod (POST + PATCH .strict()) + UUID validation | n/a | `employee.created`, `employee.updated` (modifiedFields + bySelf), `employee.archived` (avec snapshot) |
+| **Notes de frais**        | ✓ + RBAC manager équipe directe sur approve/reject | ✓ + Zod (catégories OHADA enum, montants bornés 0-10M FCFA, total ≤ 500M, dates YYYY-MM-DD) + UUID validation | n/a | `expense.created`, `expense.approved`, `expense.rejected`, `expense.paid` (action financière critique) |
 
 > Les audit_log inserts sont systématiquement **non bloquants** (`.catch(() => {})`) pour ne pas casser le service principal sur les tenants en cours de migration.
 
