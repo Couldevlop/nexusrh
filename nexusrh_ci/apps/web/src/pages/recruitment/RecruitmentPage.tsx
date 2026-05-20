@@ -215,6 +215,7 @@ export default function RecruitmentPage() {
         total: number; analyzed: number; skipped: number; failed: number
         top: Array<{ id: string; score: number; recommendation: string; firstName: string; lastName: string }>
         effectiveFocus?: string | null
+        learningExamples?: number
         message?: string
       }),
     onSuccess: () => {
@@ -485,11 +486,19 @@ export default function RecruitmentPage() {
           {preselect.data && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
-                <p className="font-medium">
-                  Pré-sélection terminée — {preselect.data.analyzed} analysés
-                  {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
-                  {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
-                </p>
+                <div className="flex-1">
+                  <p className="font-medium">
+                    Pré-sélection terminée — {preselect.data.analyzed} analysés
+                    {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
+                    {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
+                  </p>
+                  {preselect.data.learningExamples != null && preselect.data.learningExamples > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Zap className="h-3 w-3 text-primary" />
+                      Apprentissage actif : {preselect.data.learningExamples} décision{preselect.data.learningExamples > 1 ? 's' : ''} passée{preselect.data.learningExamples > 1 ? 's' : ''} de votre équipe ont calibré ce scoring
+                    </p>
+                  )}
+                </div>
                 <button onClick={() => preselect.reset()}
                   className="text-xs text-muted-foreground hover:text-foreground">
                   Fermer

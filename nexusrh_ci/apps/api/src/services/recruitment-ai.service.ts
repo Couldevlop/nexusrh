@@ -61,12 +61,34 @@ Règles :
 - signalsUsed : 3 à 6 éléments concrets et CITABLES du CV (compétences, années d'expérience, certifications, projets) — pas d'éléments démographiques ici
 - demographicRiskNote : OBLIGATOIRE de signaler si tu as pondéré le score à cause de l'école, la région d'origine, le prénom, le genre ou l'âge — c'est un AUDIT DE BIAIS. Si aucun de ces signaux n'a influencé ton jugement, renvoie null.`
 
-function buildUserPrompt(job: JobContext, cvText: string): string {
+/** Exemple de décision passée du recruteur, utilisé pour calibrer le scoring IA (few-shot) */
+export interface RecruiterDecisionExample {
+  decision:  'hired' | 'rejected'
+  priorAiScore?: number | null
+  anchor:    string  // résumé court du candidat (nom + 1-2 lignes)
+}
+
+function buildUserPrompt(
+  job: JobContext,
+  cvText: string,
+  decisionExamples?: RecruiterDecisionExample[],
+): string {
   const reqs = job.requirements?.trim() || '(non précisés)'
   const desc = job.description?.trim() || '(non précisée)'
   const salary = job.salaryMin && job.salaryMax
     ? `${job.salaryMin}–${job.salaryMax} FCFA`
     : '(non précisée)'
+
+  const examplesBlock =
+    decisionExamples && decisionExamples.length > 0
+      ? `\nDÉCISIONS PASSÉES DE CE RECRUTEUR (calibre ton scoring sur ses préférences réelles) :\n${decisionExamples
+          .map((e) => {
+            const verdict = e.decision === 'hired' ? '✓ RECRUTÉ' : '✗ REJETÉ'
+            const prior = e.priorAiScore != null ? ` (score IA initial : ${e.priorAiScore}/100)` : ''
+            return `- ${verdict}${prior} : ${e.anchor}`
+          })
+          .join('\n')}\n\nApprends de ces décisions sans copier mécaniquement : déduis les préférences sous-jacentes (compétences valorisées, parcours acceptés, signaux disqualifiants) et ajuste ton score en conséquence.\n`
+      : ''
   return `OFFRE :
 - Titre : ${job.title}
 - Type de contrat : ${job.contractType ?? 'CDI'}
@@ -74,7 +96,7 @@ function buildUserPrompt(job: JobContext, cvText: string): string {
 - Fourchette de salaire : ${salary}
 - Description : ${desc}
 - Prérequis : ${reqs}
-
+${examplesBlock}
 CV DU CANDIDAT :
 ${cvText}
 
@@ -123,7 +145,11 @@ function normalize(raw: unknown, model: AiModelChoice): CvAnalysisResult {
   }
 }
 
-async function analyzeWithClaude(job: JobContext, cvText: string): Promise<CvAnalysisResult> {
+async function analyzeWithClaude(
+  job: JobContext,
+  cvText: string,
+  decisionExamples?: RecruiterDecisionExample[],
+): Promise<CvAnalysisResult> {
   if (!config.ai.apiKey) {
     throw new Error('Clé Anthropic non configurée (ANTHROPIC_API_KEY)')
   }
@@ -134,7 +160,7 @@ async function analyzeWithClaude(job: JobContext, cvText: string): Promise<CvAna
     max_tokens:  Math.min(config.ai.maxTokens, 2048),
     temperature: 0.2,
     system:      SYSTEM_PROMPT,
-    messages:    [{ role: 'user', content: buildUserPrompt(job, cvText) }],
+    messages:    [{ role: 'user', content: buildUserPrompt(job, cvText, decisionExamples) }],
   })
   const textBlock = msg.content.find(b => b.type === 'text')
   if (!textBlock || textBlock.type !== 'text') {
@@ -143,7 +169,11 @@ async function analyzeWithClaude(job: JobContext, cvText: string): Promise<CvAna
   return normalize(extractJson(textBlock.text), 'claude')
 }
 
-async function analyzeWithMistral(job: JobContext, cvText: string): Promise<CvAnalysisResult> {
+async function analyzeWithMistral(
+  job: JobContext,
+  cvText: string,
+  decisionExamples?: RecruiterDecisionExample[],
+): Promise<CvAnalysisResult> {
   if (!config.mistral.apiKey) {
     throw new Error('Clé Mistral non configurée (MISTRAL_API_KEY)')
   }
@@ -160,7 +190,7 @@ async function analyzeWithMistral(job: JobContext, cvText: string): Promise<CvAn
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: buildUserPrompt(job, cvText) },
+        { role: 'user',   content: buildUserPrompt(job, cvText, decisionExamples) },
       ],
     }),
   })
@@ -191,6 +221,7 @@ export async function analyzeCV(
   model: AiModelChoice,
   job: JobContext,
   cvText: string,
+  decisionExamples?: RecruiterDecisionExample[],
 ): Promise<CvAnalysisResult> {
   if (!cvText || cvText.trim().length < 50) {
     throw new Error('CV trop court ou vide (minimum 50 caractères)')
@@ -202,8 +233,8 @@ export async function analyzeCV(
   if (!preferred) {
     throw new Error('Aucun modèle IA configuré. Définissez ANTHROPIC_API_KEY ou MISTRAL_API_KEY.')
   }
-  if (preferred === 'claude')  return analyzeWithClaude(job, cvText)
-  return analyzeWithMistral(job, cvText)
+  if (preferred === 'claude')  return analyzeWithClaude(job, cvText, decisionExamples)
+  return analyzeWithMistral(job, cvText, decisionExamples)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
