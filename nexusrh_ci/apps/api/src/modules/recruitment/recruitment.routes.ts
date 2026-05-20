@@ -812,6 +812,70 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // ── HISTORIQUE D'APPRENTISSAGE IA (decisions-history) ──────────────────────
+  // Lecture seule des décisions hire/reject qui alimentent le feedback loop
+  // few-shot du tenant. Sert à expliquer pourquoi un score IA est ce qu'il est :
+  // « voici les 23 décisions de votre équipe qui ont calibré le scoring ».
+  // RBAC : ouvert à toutes les vues recrutement (admin/hr/manager/readonly).
+  // Renvoie [] proprement si la table n'a pas encore été créée pour le tenant.
+  fastify.get('/jobs/:id/decisions-history', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id: jobId } = request.params as { id: string }
+      // OWASP A03 : valider que jobId est bien un UUID (évite l'injection même si bindé)
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+        return reply.status(400).send({ error: 'jobId invalide (UUID requis)' })
+      }
+      const { limit: limitRaw } = request.query as { limit?: string }
+      const limit = Math.min(Math.max(parseInt(limitRaw ?? '50', 10) || 50, 1), 100)
+
+      try {
+        const res = await pool.query<{
+          id: string
+          decision: 'hired' | 'rejected'
+          decided_at: Date
+          decided_by: string | null
+          prior_ai_score: number | null
+          prior_ai_recommendation: string | null
+          candidate_anchor: string | null
+        }>(
+          `SELECT id, decision, decided_at, decided_by,
+                  prior_ai_score, prior_ai_recommendation, candidate_anchor
+             FROM "${schema}".recruitment_decisions
+            WHERE job_id = $1
+            ORDER BY decided_at DESC
+            LIMIT $2`,
+          [jobId, limit],
+        )
+        const counts = res.rows.reduce(
+          (acc, r) => {
+            if (r.decision === 'hired') acc.hired++
+            else if (r.decision === 'rejected') acc.rejected++
+            return acc
+          },
+          { hired: 0, rejected: 0 },
+        )
+        return reply.send({
+          data: res.rows,
+          counts,
+          total: res.rows.length,
+        })
+      } catch (err) {
+        // Table absente (tenant pré-migration) → renvoyer une liste vide, pas 500
+        const msg = err instanceof Error ? err.message : ''
+        if (/recruitment_decisions/i.test(msg) && /does not exist|n'existe pas/i.test(msg)) {
+          return reply.send({ data: [], counts: { hired: 0, rejected: 0 }, total: 0 })
+        }
+        fastify.log.error({ err }, 'decisions-history failed')
+        return reply.status(500).send({
+          error: 'Erreur lors du chargement de l\'historique. Réessayez plus tard.',
+        })
+      }
+    },
+  })
+
   // ── PAGE CARRIÈRES PUBLIQUE (sans auth) ────────────────────────────────────
   // Liste des offres externes/both d'un tenant. Tenant résolu par slug.
   // Retourne aussi le branding (logo, couleurs, ville) pour thématiser la page.

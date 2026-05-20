@@ -760,6 +760,76 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     expect(insertAudit?.[1]?.[1]).toBe('recruitment.hired')
   })
 
+  it('decisions-history : refuse un jobId qui n\'est pas un UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/not-a-uuid/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('decisions-history : renvoie la liste triée par decided_at DESC avec counts', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        { id: 'd-1', decision: 'hired',    decided_at: new Date('2026-05-15'), decided_by: 'u-1', prior_ai_score: 82, prior_ai_recommendation: 'yes',   candidate_anchor: 'Marie K — 5 ans RH' },
+        { id: 'd-2', decision: 'rejected', decided_at: new Date('2026-05-10'), decided_by: 'u-1', prior_ai_score: 71, prior_ai_recommendation: 'maybe', candidate_anchor: 'Paul D — manque exp.' },
+        { id: 'd-3', decision: 'hired',    decided_at: new Date('2026-05-05'), decided_by: 'u-2', prior_ai_score: 76, prior_ai_recommendation: 'yes',   candidate_anchor: 'Aïcha B — bootcamp solide' },
+      ],
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.total).toBe(3)
+    expect(body.counts.hired).toBe(2)
+    expect(body.counts.rejected).toBe(1)
+    expect(body.data[0].id).toBe('d-1')
+  })
+
+  it('decisions-history : LIMIT borné à 100 et 1 minimum', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history?limit=99999',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    // Le 1er call doit avoir limit clampé à 100 (2e param de la requête SQL)
+    expect(queryMock.mock.calls[0]?.[1]?.[1]).toBe(100)
+  })
+
+  it('decisions-history : renvoie [] proprement si la table n\'existe pas (tenant pré-migration)', async () => {
+    queryMock.mockRejectedValueOnce(new Error('relation "tenant_sotra.recruitment_decisions" does not exist'))
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/22222222-2222-2222-2222-222222222222/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data).toEqual([])
+    expect(body.total).toBe(0)
+  })
+
+  it('decisions-history : un employee ne peut pas y accéder (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
   it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {
     const longCv = 'Profil confirmé avec dossier solide.'.repeat(5)
     queryMock
