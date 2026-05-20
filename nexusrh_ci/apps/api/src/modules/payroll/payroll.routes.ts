@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
-import { calculatePayrollCI, type AbsencePayrollInfo } from '../../services/payroll-engine-ci.js'
+import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
@@ -597,9 +598,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   //                 + employee (uniquement SES bulletins)
   fastify.get('/payslips/:id/transparency', {
     preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     schema: { tags: ['payroll'], summary: 'Bulletin transparent — formules, comparaison, audit' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 : UUID validation stricte avant SELECT
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
       const schema = request.user.schemaName
       const role = request.user.role
 
@@ -889,6 +895,140 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="livre-paie-${year}.csv"`)
       return reply.send('﻿' + csv)
+    },
+  })
+
+  // ── POST /payroll/simulate — simulation what-if (axe 2 transparence) ───────
+  // Calcul de paie hypothétique SANS persistance : le RH ajuste brut/primes
+  // /absences et voit instantanément net, coût employeur, ITS. Aussi utilisé
+  // côté employee pour simuler une augmentation/prime, ou côté manager pour
+  // préparer une offre d'embauche.
+  //
+  // OWASP :
+  // - A01 : employee ne peut simuler QUE sur son propre employeeId ;
+  //         manager uniquement sur équipe directe ; admin/hr partout
+  // - A03 : Zod strict avec bornes anti-fraude (cap brut 50M FCFA, AT ≤ 10%,
+  //         workedDays ≤ workingDaysMonth, enfants ≤ 20)
+  // - A07 : rate-limit 30 req/min (calcul CPU + DB lookup)
+  // - A09 : audit log des simulations sensibles (offre d'embauche, négociation)
+  const simulationSchema = z.object({
+    employee_id:      z.string().uuid().optional(),
+    baseSalary:       z.number().int().min(0).max(50_000_000),
+    workedDays:       z.number().int().min(0).max(31),
+    workingDaysMonth: z.number().int().min(20).max(31),
+    atRate:           z.number().min(0).max(0.1),
+    maritalStatus:    z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']),
+    childrenCount:    z.number().int().min(0).max(20),
+    variableElements: z.record(z.string().max(50), z.number().int().min(0).max(50_000_000)).optional(),
+    absence:          z.object({
+      type:                    z.enum(['maternite', 'maladie_sans_at', 'accident_travail']),
+      absenceDays:             z.number().int().min(0).max(31),
+      maintienTaux:            z.number().min(0).max(1).optional(),
+      atJourAccidentInMonth:   z.boolean().optional(),
+    }).optional(),
+  }).strict()
+
+  fastify.post('/simulate', {
+    preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    schema: { tags: ['payroll'], summary: 'Simulation what-if de paie (sans persistance)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const role = request.user.role
+      const parsed = simulationSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Paramètres de simulation invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
+
+      // OWASP A04 : cohérence métier
+      if (body.workedDays > body.workingDaysMonth) {
+        return reply.status(400).send({ error: 'workedDays ne peut pas dépasser workingDaysMonth' })
+      }
+
+      // OWASP A01 : RBAC sur le target employee_id
+      if (body.employee_id) {
+        if (role === 'employee') {
+          // Un employee ne peut simuler QUE sur lui-même
+          const myId = request.user.employeeId
+          if (myId && myId !== body.employee_id) {
+            return reply.status(403).send({ error: 'Vous ne pouvez simuler que sur votre propre profil' })
+          }
+        } else if (role === 'manager') {
+          // Manager doit être manager direct de l'employé cible
+          const r = await rawPool.query<{ id: string }>(
+            `SELECT e.id FROM "${schema}".employees e
+               JOIN "${schema}".employees m ON m.id = e.manager_id
+              WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+            [body.employee_id, request.user.email],
+          )
+          if (r.rows.length === 0) {
+            return reply.status(403).send({ error: 'Vous ne pouvez simuler que sur votre équipe directe' })
+          }
+        }
+        // admin/hr_manager/hr_officer : portée tenant globale, pas de check
+      } else if (role === 'employee') {
+        // Sans employee_id, un employee simule implicitement sur lui-même : OK
+      } else if (role === 'readonly') {
+        return reply.status(403).send({ error: 'Rôle non autorisé pour la simulation' })
+      }
+
+      // Calcul via le moteur (jamais persisté)
+      const ctx: PayrollContext = {
+        baseSalary:       body.baseSalary,
+        workedDays:       body.workedDays,
+        workingDaysMonth: body.workingDaysMonth,
+        atRate:           body.atRate,
+        maritalStatus:    body.maritalStatus,
+        childrenCount:    body.childrenCount,
+        variableElements: body.variableElements ?? {},
+      }
+      if (body.absence) {
+        ctx.absence = body.absence as AbsencePayrollInfo
+      }
+      let result
+      try {
+        result = calculatePayrollCI(ctx)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        // OWASP A10 : message d'erreur générique côté client (pack stub etc.)
+        return reply.status(422).send({
+          error: msg.includes('stub') ? msg : 'Erreur de calcul de paie. Vérifiez les paramètres.',
+        })
+      }
+
+      // Enrichissement explainer (axe 1 transparence)
+      const { explainLines } = await import('../../services/payroll-explainer.service.js')
+      const explained = explainLines(result.lines)
+
+      // OWASP A09 : trace de la simulation (action sensible — préparation
+      // d'offre, négociation). Non bloquant si audit_log absent.
+      rawPool.query(
+        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+         VALUES ($1, $2, 'payroll_simulation', $3, $4, $5)`,
+        [request.user.sub, 'payroll.simulated', body.employee_id ?? null,
+         JSON.stringify({
+           baseSalary: body.baseSalary,
+           hasAbsence: !!body.absence,
+           variableElementsCount: Object.keys(body.variableElements ?? {}).length,
+           grossSalary: result.grossSalary,
+           netPayable: result.netPayable,
+           employerCost: result.employerCost,
+         }),
+         request.ip ?? null],
+      ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+      return reply.send({
+        data: { ...result, lines: explained },
+        meta: {
+          mode: 'simulation',
+          persistedAt: null,
+          targetEmployeeId: body.employee_id ?? null,
+        },
+      })
     },
   })
 }

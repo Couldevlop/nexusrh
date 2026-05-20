@@ -102,7 +102,8 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **797 tests verts** (Vitest) sur 18 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, training, careers, authentification, packs législatifs, référentiels, workflows |
+| **Tests automatisés** | **808 tests verts** (Vitest) sur 19 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, training, careers, authentification, packs législatifs, référentiels, workflows |
+| **Transparence paie** | 4 axes livrés côté API : (1) bulletin explicable ligne-par-ligne (formule humaine + référence Code Travail/CNPS/DGI) via `GET /payroll/payslips/:id/transparency`, (2) **simulation what-if** via `POST /payroll/simulate` — calcul sans persistance, RBAC IDOR strict (employee = soi, manager = équipe), (3) diff mois-à-mois automatique (3 mois précédents dans la réponse transparency), (4) audit log de consultation. UI : `PaySlipTransparentModal.tsx` branché côté employé (`/mon-espace/bulletins`) et RH (`/payroll/payslips`) |
 | **Golden fixtures paie** | 19 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité complet/partiel, maladie maintien 50%/100%, AT avec jour J inclus/hors mois/1j sans IJSS, heures supp, avance, SMIG exact (cas limite), haut salaire 3 enfants, cumul prime+heures supp, tranche ITS 5% pure) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
