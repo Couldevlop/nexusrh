@@ -1,0 +1,55 @@
+{
+  "id": "16-maladie-longue-duree-maintien-100",
+  "description": "Maladie longue durée 20 jours, maintien employeur 100% (ancienneté ≥ 5 ans CCN CI). Marié 2 enfants, salaire 600 000 — l'indemnité maladie est SOUMISE à ITS (contrairement à maternité/AT). Cas réaliste de cadre en arrêt long.",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-20",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 600000,
+    "workedDays": 6,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "married",
+    "childrenCount": 2,
+    "variableElements": {},
+    "absence": {
+      "type": "maladie_sans_at",
+      "absenceDays": 20,
+      "maintienTaux": 1.0
+    }
+  },
+  "expected": {
+    "baseSalary": 600000,
+    "brutProrata": 138461,
+    "grossSalary": 599999,
+    "cnpsRetraiteSal": 8723,
+    "cnpsRetraitePat": 10661,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 8723,
+    "totalCnpsPat": 16086,
+    "baseImposable": 501276,
+    "its": 4038,
+    "totalDeductions": 12761,
+    "netPayable": 587238,
+    "employerCost": 616085,
+    "workingDays": 6,
+    "smigCompliant": true,
+    "indemniteAbsence": 461538,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 138461 },
+      { "code": "1800", "type": "earning",                 "amount": 461538 },
+      { "code": "2000", "type": "employee_contribution",   "amount":   8723 },
+      { "code": "2100", "type": "employee_contribution",   "amount":   4038 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  10661 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}
