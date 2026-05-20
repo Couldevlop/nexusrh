@@ -469,8 +469,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── UPLOAD CV (multipart) ──────────────────────────────────────────────────
-  // Stocke le texte brut du CV dans la candidature. Pour l'analyse IA, le texte
-  // est le minimum nécessaire — un stockage binaire MinIO peut être ajouté ensuite.
+  // OWASP A03 (content type spoofing) : allowlist stricte sur le MIME du fichier
+  // et taille max 10 MB. Stocke à la fois le binaire (cv_blob pour viewer UI)
+  // et le texte extrait (cv_text pour analyse IA — extraction PDF native dans
+  // un sprint suivant).
+  const CV_ALLOWED_MIMES = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+  ])
+  const CV_MAX_BYTES = 10 * 1024 * 1024
   fastify.post('/applications/:id/upload-cv', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
@@ -480,22 +489,85 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const file = await request.file()
         if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
+
+        // OWASP A03 (content type spoofing) : allowlist stricte du MIME
+        const mimetype = (file.mimetype || '').toLowerCase()
+        if (!CV_ALLOWED_MIMES.has(mimetype)) {
+          return reply.status(400).send({
+            error: 'Format de fichier non autorisé. Accepté : PDF, DOC, DOCX, TXT.',
+          })
+        }
+
         const buf = await file.toBuffer()
+        if (buf.byteLength > CV_MAX_BYTES) {
+          return reply.status(400).send({
+            error: `Fichier trop volumineux (max ${CV_MAX_BYTES / (1024 * 1024)} MB).`,
+          })
+        }
         // Extraction texte minimaliste : on lit en UTF-8. Les PDF binaires
         // donneront un texte partiel ; pour aller plus loin, ajouter pdf-parse.
         const cvText = buf.toString('utf-8').replace(/ /g, '').slice(0, 50000)
-        const filename = file.filename || 'cv.txt'
+        const filename = file.filename || 'cv.bin'
         const cvUrl = `local://${filename}`
         const res = await pool.query(`
           UPDATE "${schema}".applications
-          SET cv_url = $1, cv_text = $2, updated_at = now()
-          WHERE id = $3 RETURNING *
-        `, [cvUrl, cvText, id])
+          SET cv_url = $1,
+              cv_text = $2,
+              cv_blob = $3,
+              cv_mime_type = $4,
+              cv_filename = $5,
+              cv_size_bytes = $6,
+              updated_at = now()
+          WHERE id = $7 RETURNING id, cv_url, cv_filename, cv_mime_type, cv_size_bytes
+        `, [cvUrl, cvText, buf, mimetype, filename, buf.byteLength, id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Candidature introuvable' })
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur upload CV' })
+      }
+    },
+  })
+
+  // ── DOWNLOAD CV BLOB (pour viewer UI) ──────────────────────────────────────
+  // Streame le binaire du CV stocké en cv_blob avec le bon Content-Type pour
+  // que le navigateur affiche le PDF inline ou propose un téléchargement.
+  // OWASP A05 : X-Content-Type-Options: nosniff pour bloquer le MIME sniffing.
+  fastify.get('/applications/:id/cv-file', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return reply.status(400).send({ error: 'application id invalide (UUID requis)' })
+      }
+      try {
+        const res = await pool.query<{
+          cv_blob: Buffer | null
+          cv_mime_type: string | null
+          cv_filename: string | null
+        }>(
+          `SELECT cv_blob, cv_mime_type, cv_filename
+             FROM "${schema}".applications WHERE id = $1`,
+          [id],
+        )
+        const row = res.rows[0]
+        if (!row || !row.cv_blob) {
+          return reply.status(404).send({ error: 'Aucun CV binaire stocké pour cette candidature' })
+        }
+        const mime = row.cv_mime_type ?? 'application/octet-stream'
+        const filename = row.cv_filename ?? 'cv.bin'
+        const safeName = filename.replace(/[^\w.\-]/g, '_')
+        reply
+          .header('Content-Type', mime)
+          .header('Content-Disposition', `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+          .header('X-Content-Type-Options', 'nosniff')
+          .header('Cache-Control', 'private, max-age=60')
+        return reply.send(row.cv_blob)
+      } catch (err) {
+        fastify.log.error({ err }, 'cv-file fetch failed')
+        return reply.status(500).send({ error: 'Erreur récupération CV' })
       }
     },
   })

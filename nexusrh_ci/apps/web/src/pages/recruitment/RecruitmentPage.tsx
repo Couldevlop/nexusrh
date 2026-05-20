@@ -40,6 +40,9 @@ interface Application {
   ai_demographic_risk_note?: string | null
   ai_model_used?: string | null
   cv_text?: string | null
+  cv_mime_type?: string | null
+  cv_filename?: string | null
+  cv_size_bytes?: number | null
   source?: string | null
   created_at: string
 }
@@ -1303,7 +1306,14 @@ function ApplicationDetailModal({
       const res = await api.post(`/recruitment/applications/${current.id}/upload-cv`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setCurrent(c => ({ ...c, cv_text: res.data.data.cv_text }))
+      setCurrent(c => ({
+        ...c,
+        cv_text: res.data.data.cv_text,
+        cv_mime_type: res.data.data.cv_mime_type,
+        cv_filename: res.data.data.cv_filename,
+        cv_size_bytes: res.data.data.cv_size_bytes,
+      }))
+      onChanged()
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ?? 'Erreur upload')
@@ -1312,6 +1322,29 @@ function ApplicationDetailModal({
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
+
+  // Récupère le binaire du CV via API authentifiée puis crée un blob URL pour
+  // l'iframe (le iframe ne peut pas envoyer de bearer token directement).
+  const [cvBlobUrl, setCvBlobUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    let urlToRevoke: string | null = null
+    setCvBlobUrl(null)
+    if (current.cv_mime_type) {
+      api.get(`/recruitment/applications/${current.id}/cv-file`, { responseType: 'blob' })
+        .then((r) => {
+          if (!active) return
+          const url = URL.createObjectURL(r.data as Blob)
+          urlToRevoke = url
+          setCvBlobUrl(url)
+        })
+        .catch(() => { /* pas de blob → fallback texte */ })
+    }
+    return () => {
+      active = false
+      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke)
+    }
+  }, [current.id, current.cv_mime_type])
 
   const runAnalysis = async () => {
     setAnalyzing(true)
@@ -1348,17 +1381,54 @@ function ApplicationDetailModal({
         </div>
 
         <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">CV / texte transmis</span>
-            <button onClick={triggerUpload} disabled={uploading}
-              className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
-              <Upload className="h-3 w-3" /> {uploading ? 'Upload...' : 'Téléverser un CV'}
-            </button>
-            <input ref={fileInputRef} type="file" hidden accept=".txt,.pdf,.doc,.docx" onChange={handleFileChange} />
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">CV transmis</span>
+              {current.cv_filename && (
+                <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={current.cv_filename}>
+                  · {current.cv_filename}
+                  {current.cv_size_bytes != null && (
+                    <span> ({Math.round(current.cv_size_bytes / 1024)} ko)</span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {cvBlobUrl && (
+                <a href={cvBlobUrl} download={current.cv_filename ?? 'cv'}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Upload className="h-3 w-3 rotate-180" /> Télécharger
+                </a>
+              )}
+              <button onClick={triggerUpload} disabled={uploading}
+                className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
+                <Upload className="h-3 w-3" /> {uploading ? 'Upload...' : 'Téléverser un CV'}
+              </button>
+              <input ref={fileInputRef} type="file" hidden accept=".txt,.pdf,.doc,.docx" onChange={handleFileChange} />
+            </div>
           </div>
-          <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto text-muted-foreground">
-            {current.cv_text || '(aucun CV fourni — téléversez un fichier ou demandez au candidat de coller son CV dans la lettre de motivation)'}
-          </pre>
+          {cvBlobUrl && current.cv_mime_type === 'application/pdf' ? (
+            <iframe
+              src={cvBlobUrl}
+              title={current.cv_filename ?? 'CV PDF'}
+              className="w-full h-96 rounded border border-border bg-white"
+              sandbox=""
+            />
+          ) : cvBlobUrl && current.cv_mime_type?.startsWith('image/') ? (
+            <img
+              src={cvBlobUrl}
+              alt={current.cv_filename ?? 'CV'}
+              className="max-h-96 w-auto mx-auto rounded border border-border bg-white"
+            />
+          ) : current.cv_text ? (
+            <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto text-muted-foreground">
+              {current.cv_text}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">
+              Aucun CV fourni — téléversez un fichier (PDF, DOC, DOCX, TXT — max 10 Mo) ou demandez au candidat de coller son CV dans la lettre de motivation.
+            </p>
+          )}
         </div>
 
         <div className="mt-4 space-y-3">

@@ -820,6 +820,54 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     expect(body.total).toBe(0)
   })
 
+  it('cv-file : refuse un id qui n\'est pas un UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/not-a-uuid/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('cv-file : 404 si aucun blob stocké', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ cv_blob: null, cv_mime_type: null, cv_filename: null }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('cv-file : streame le binaire avec Content-Type et X-Content-Type-Options nosniff', async () => {
+    const blob = Buffer.from('%PDF-1.4 fake pdf payload', 'utf-8')
+    queryMock.mockResolvedValueOnce({ rows: [{
+      cv_blob: blob, cv_mime_type: 'application/pdf', cv_filename: 'cv-marie.pdf',
+    }] })
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('application/pdf')
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+    expect(res.headers['content-disposition']).toContain('inline')
+  })
+
+  it('cv-file : un employee ne peut PAS télécharger un CV (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
   it('decisions-history : un employee ne peut pas y accéder (403)', async () => {
     const token = tokenFor(app, 'employee')
     const res = await app.inject({
