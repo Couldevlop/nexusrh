@@ -582,6 +582,7 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
           { id: 'app-3', cv_text: longCv, cover_letter: null, first_name: 'E', last_name: 'F' },
         ],
       })
+      .mockResolvedValueOnce({ rows: [] }) // recruitment_decisions (feedback loop, vide)
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
@@ -621,6 +622,7 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
       .mockResolvedValueOnce({ rows: [{ title: 'Consultant', description: 'desc', requirements: 'CNPS, OHADA', ai_focus_text: null }] })
       .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs (persistance ai_focus_text)
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'C', last_name: 'D' }] })
+      .mockResolvedValueOnce({ rows: [] }) // recruitment_decisions (feedback loop)
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
 
@@ -660,6 +662,7 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
       .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: '', ai_focus_text: null }] })
       .mockResolvedValueOnce({ rows: [] }) // UPDATE recruitment_jobs.ai_focus_text
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'X', last_name: 'Y' }] })
+      .mockResolvedValueOnce({ rows: [] }) // recruitment_decisions (feedback loop)
       .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
@@ -683,12 +686,79 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     expect(updateCall?.[1]).toEqual(['Profils bilingues uniquement', 'job-1'])
   })
 
+  it('feedback loop : injecte les décisions passées du tenant dans le prompt et retourne learningExamples', async () => {
+    const longCv = 'Candidate experienced and qualified for the role.'.repeat(5)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Tech Lead', description: 'desc', requirements: 'React', ai_focus_text: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'M', last_name: 'K' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          { decision: 'hired',    prior_ai_score: 78, candidate_anchor: 'Marie Konaté — 5 ans React/Node + leadership' },
+          { decision: 'rejected', prior_ai_score: 82, candidate_anchor: 'Paul Diallo — solide tech mais aucune exp. équipe' },
+          { decision: 'hired',    prior_ai_score: 71, candidate_anchor: 'Aïcha Bamba — bootcamp + 2 projets perso impressionnants' },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    vi.mocked(analyzeCV).mockResolvedValueOnce({
+      score: 85, recommendation: 'yes', summary: '', strengths: [], gaps: [], redFlags: [],
+      interviewQuestions: ['Q1', 'Q2', 'Q3'], matchPercentage: 85, modelUsed: 'claude',
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/preselect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.learningExamples).toBe(3)
+    // analyzeCV doit avoir reçu les 3 exemples
+    const callArgs = vi.mocked(analyzeCV).mock.calls[0]
+    expect(callArgs?.[3]).toHaveLength(3)
+    const firstExample = callArgs?.[3]?.[0]
+    expect(firstExample?.decision).toBe('hired')
+    expect(firstExample?.anchor).toContain('Marie Konaté')
+  })
+
+  it('feedback loop : hired/rejected déclenche un INSERT dans recruitment_decisions', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'app-99', job_id: 'job-1', first_name: 'Test', last_name: 'User',
+          stage: 'hired', ai_score: 75, ai_recommendation: 'yes', ai_summary: 'Bon profil senior',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // INSERT recruitment_decisions (non bloquant)
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/recruitment/applications/app-99/stage',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { stage: 'hired' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    // Le 2e call queryMock doit être l'INSERT dans recruitment_decisions
+    const insertCall = queryMock.mock.calls[1]
+    expect(insertCall?.[0]).toContain('INSERT INTO')
+    expect(insertCall?.[0]).toContain('recruitment_decisions')
+    expect(insertCall?.[1]?.[2]).toBe('hired') // 3e param = decision
+    expect(insertCall?.[1]?.[4]).toBe(75)      // 5e param = prior_ai_score
+  })
+
   it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {
     const longCv = 'Profil confirmé avec dossier solide.'.repeat(5)
     queryMock
       .mockResolvedValueOnce({ rows: [{ title: 'Job', description: '', requirements: 'CNPS', ai_focus_text: 'Critère sauvegardé pour cette offre' }] })
       // PAS d'UPDATE recruitment_jobs car criteriaFocus=null (rien à persister)
       .mockResolvedValueOnce({ rows: [{ id: 'app-1', cv_text: longCv, cover_letter: null, first_name: 'A', last_name: 'B' }] })
+      .mockResolvedValueOnce({ rows: [] }) // recruitment_decisions (feedback loop)
       .mockResolvedValueOnce({ rows: [] }) // UPDATE applications
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 

@@ -848,6 +848,21 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at                  timestamptz NOT NULL DEFAULT now()
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
+
+  // Feedback loop IA — historique des décisions du recruteur pour few-shot learning
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.recruitment_decisions (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    application_id              uuid NOT NULL,
+    decision                    varchar(20) NOT NULL,
+    decided_by                  uuid,
+    decided_at                  timestamptz NOT NULL DEFAULT now(),
+    prior_ai_score              int,
+    prior_ai_recommendation     varchar(20),
+    candidate_anchor            text
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
 }
 
 /**
@@ -909,6 +924,21 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
     created_at                  timestamptz NOT NULL DEFAULT now()
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_sourced_job ON ${s}.sourced_profiles(job_id, transferred_at)`)
+
+  // Feedback loop IA — historique des décisions du recruteur pour few-shot learning
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.recruitment_decisions (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id                      uuid NOT NULL,
+    application_id              uuid NOT NULL,
+    decision                    varchar(20) NOT NULL,
+    decided_by                  uuid,
+    decided_at                  timestamptz NOT NULL DEFAULT now(),
+    prior_ai_score              int,
+    prior_ai_recommendation     varchar(20),
+    candidate_anchor            text
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
 }
 
 /**

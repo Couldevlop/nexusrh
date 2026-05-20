@@ -133,8 +133,10 @@ Le module recrutement combine l'analyse Claude/Mistral à un workflow Kanban pou
 | Pré-sélection batch | `POST /recruitment/jobs/:id/preselect` — analyse séquentielle des candidatures nouvelles (cap 50, rate-limit 3/min, RBAC admin/hr_manager/hr_officer) |
 | Top 10 | Retour classé par score décroissant, refresh automatique des cartes Kanban avec les scores IA |
 | Comparaison side-by-side | Vue 3 colonnes des candidats : forces / manques / alertes / signaux utilisés par l'IA |
+| Comparaison libre N candidats | Cases à cocher sur les cartes Kanban + barre flottante "Comparer (N)" — l'utilisateur sélectionne qui il veut, au-delà du top automatique |
 | Audit de biais | Bannière visible si l'IA reconnaît avoir pondéré le score à cause d'un signal démographique |
-| Traçabilité | Audit log `recruitment.preselect_batch` (modèle, stages, focus effectif, comptes analysés/skip/fail) |
+| **Feedback loop IA** | À chaque embauche ou rejet, le tenant alimente automatiquement un historique (`recruitment_decisions`). Les 8 dernières décisions sont injectées dans le prompt de la pré-sélection suivante en **few-shot examples** — l'IA apprend les préférences réelles de l'équipe sans aucune ré-entraînement ML. Visible dans le UI : *« Apprentissage actif : 23 décisions passées ont calibré ce scoring »* |
+| Traçabilité | Audit log `recruitment.preselect_batch` (modèle, stages, focus effectif, comptes analysés/skip/fail, `learningExamples`) |
 
 **Sécurité** : conforme OWASP A01 (RBAC strict), A03 (paramètres bindés, jamais de concat SQL), A05 (clés IA via env, jamais en dur), A07 (rate-limit anti-abus IA), A09 (audit log non bloquant), A10 (messages d'erreur génériques côté client).
 

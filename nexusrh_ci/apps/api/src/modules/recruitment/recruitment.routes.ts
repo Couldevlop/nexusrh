@@ -7,6 +7,7 @@ import {
   analyzeCV, isModelAvailable,
   sourceProfiles, sourceProfilesCompare,
   type AiModelChoice, type JobContext, type SourcingContext,
+  type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
@@ -407,7 +408,31 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           SET stage = $1, notes = COALESCE($2, notes), updated_at = now()
           WHERE id = $3 RETURNING *
         `, [stage, notes || null, id])
-        return reply.send({ data: res.rows[0] })
+        const app = res.rows[0]
+
+        // Feedback loop IA : on snapshot la décision pour alimenter le few-shot des
+        // prochaines pré-sélections de ce tenant. Uniquement sur hired/rejected
+        // (signaux forts). Non bloquant si la table n'existe pas encore.
+        if (app && (stage === 'hired' || stage === 'rejected')) {
+          const anchorParts = [
+            `${app.first_name ?? ''} ${app.last_name ?? ''}`.trim(),
+            (app.ai_summary ?? '').toString().slice(0, 200).trim(),
+          ].filter(Boolean)
+          pool.query(
+            `INSERT INTO "${schema}".recruitment_decisions
+               (job_id, application_id, decision, decided_by,
+                prior_ai_score, prior_ai_recommendation, candidate_anchor)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              app.job_id, app.id, stage, request.user.sub,
+              app.ai_score ?? null,
+              app.ai_recommendation ?? null,
+              anchorParts.join(' — ') || null,
+            ],
+          ).catch(() => { /* table absente : migration lazy au prochain preselect */ })
+        }
+
+        return reply.send({ data: app })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -641,6 +666,28 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             }
           : job
 
+        // Feedback loop : on injecte les 8 dernières décisions du tenant pour
+        // calibrer le scoring IA sur ses préférences réelles. Non bloquant si
+        // la table n'existe pas encore (tenants pré-migration).
+        const decisionExamples: RecruiterDecisionExample[] = await pool.query<{
+          decision: string
+          prior_ai_score: number | null
+          candidate_anchor: string | null
+        }>(
+          `SELECT decision, prior_ai_score, candidate_anchor
+             FROM "${schema}".recruitment_decisions
+            WHERE candidate_anchor IS NOT NULL
+            ORDER BY decided_at DESC
+            LIMIT 8`,
+        ).then((r) => r.rows
+          .filter((row) => row.decision === 'hired' || row.decision === 'rejected')
+          .map((row) => ({
+            decision: row.decision as 'hired' | 'rejected',
+            priorAiScore: row.prior_ai_score,
+            anchor: row.candidate_anchor!,
+          }))
+        ).catch(() => [])
+
         let analyzed = 0
         let skipped = 0
         let failed = 0
@@ -659,7 +706,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             continue
           }
           try {
-            const result = await analyzeCV(model, enrichedJob, cvText)
+            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples)
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
@@ -711,6 +758,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
              analyzed, skipped, failed,
              effectiveFocus,
              focusSource: criteriaFocus !== null ? 'request' : (job.ai_focus_text ? 'job-stored' : null),
+             learningExamples: decisionExamples.length,
            }),
            request.ip ?? null],
         ).catch(() => { /* tenant sans audit_log : non bloquant */ })
@@ -725,6 +773,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           top,
           model,
           effectiveFocus,
+          learningExamples: decisionExamples.length,
         })
       } catch (err) {
         fastify.log.error({ err }, 'preselect-batch failed')
