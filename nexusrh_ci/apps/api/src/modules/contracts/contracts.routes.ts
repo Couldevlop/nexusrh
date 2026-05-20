@@ -1,8 +1,40 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 
 const pool = new Pool({ connectionString: config.database.url })
+
+// OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
+// et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
+const CONTRACT_TYPES = ['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition'] as const
+const createContractSchema = z.object({
+  employee_id:             z.string().uuid(),
+  type:                    z.enum(CONTRACT_TYPES),
+  start_date:              z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
+  end_date:                z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  trial_end_date:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  base_salary:             z.number().int().nonnegative().max(100_000_000),
+  working_hours:           z.number().int().min(1).max(80).optional(),
+  convention:              z.string().max(200).optional(),
+  job_title:               z.string().max(200).optional(),
+  job_level:               z.string().max(50).optional(),
+  cnps_affiliation:        z.boolean().optional(),
+  ohada_clause:            z.boolean().optional(),
+  non_competition_clause:  z.boolean().optional(),
+  telecommuting_days:      z.number().int().min(0).max(7).optional(),
+})
+
+function auditLogContract(
+  schema: string, userId: string, action: string,
+  contractId: string, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'contract', $3, $4, $5)`,
+    [userId, action, contractId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
 
 const contractsRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -71,22 +103,15 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        employee_id: string
-        type: 'cdi' | 'cdd' | 'saisonnier' | 'apprentissage' | 'stage' | 'mise_a_disposition'
-        start_date: string
-        end_date?: string
-        trial_end_date?: string
-        base_salary: number
-        working_hours?: number
-        convention?: string
-        job_title?: string
-        job_level?: string
-        cnps_affiliation?: boolean
-        ohada_clause?: boolean
-        non_competition_clause?: boolean
-        telecommuting_days?: number
+      // OWASP A03 : validation stricte du body, rejette champs arbitraires
+      const parsed = createContractSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données de contrat invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
+      const body = parsed.data
       try {
         // Calcul automatique de la fin de période d'essai selon Code du Travail CI
         let trialEndDate = body.trial_end_date || null
@@ -119,6 +144,14 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           `UPDATE "${schema}".employees SET base_salary = $1, job_title = COALESCE($2, job_title), updated_at = now() WHERE id = $3`,
           [body.base_salary, body.job_title || null, body.employee_id]
         )
+
+        // OWASP A09 : trace de la création (employé concerné, type, salaire)
+        auditLogContract(schema, request.user.sub, 'contract.created', res.rows[0].id, {
+          employeeId: body.employee_id,
+          type: body.type,
+          startDate: body.start_date,
+          baseSalary: body.base_salary,
+        }, request.ip ?? null)
 
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
@@ -200,20 +233,12 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // OWASP A09 : la rupture de contrat est un événement critique (statut
         // emploi, conséquences RGPD/CNPS). Trace obligatoire.
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'contract.terminated', 'contract', $2, $3, $4)`,
-          [
-            request.user.sub, id,
-            JSON.stringify({
-              employeeId: res.rows[0].employee_id,
-              terminationDate: body.termination_date,
-              reason: body.termination_reason,
-              noticeDays: body.notice_days ?? null,
-            }),
-            request.ip ?? null,
-          ],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditLogContract(schema, request.user.sub, 'contract.terminated', id, {
+          employeeId: res.rows[0].employee_id,
+          terminationDate: body.termination_date,
+          reason: body.termination_reason,
+          noticeDays: body.notice_days ?? null,
+        }, request.ip ?? null)
 
         return reply.send({ success: true })
       } catch (err) {
@@ -313,19 +338,11 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         await pool.query(
           `DELETE FROM "${schema}".contracts WHERE id = $1`, [id]
         )
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'contract.deleted', 'contract', $2, $3, $4)`,
-          [
-            request.user.sub, id,
-            JSON.stringify({
-              employeeId: snapshot.rows[0]?.employee_id ?? null,
-              type: snapshot.rows[0]?.type ?? null,
-              statusBeforeDelete: snapshot.rows[0]?.status ?? null,
-            }),
-            request.ip ?? null,
-          ],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditLogContract(schema, request.user.sub, 'contract.deleted', id, {
+          employeeId: snapshot.rows[0]?.employee_id ?? null,
+          type: snapshot.rows[0]?.type ?? null,
+          statusBeforeDelete: snapshot.rows[0]?.status ?? null,
+        }, request.ip ?? null)
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)
