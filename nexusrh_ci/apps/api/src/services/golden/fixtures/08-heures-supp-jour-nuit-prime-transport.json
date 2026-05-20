@@ -1,0 +1,55 @@
+{
+  "id": "08-heures-supp-jour-nuit-prime-transport",
+  "description": "Salarié avec heures supp +15% (jour) + heures supp +50% (nuit/dimanche) + prime transport. Vérifie l'agrégation des variableElements dans grossSalary et l'exclusion correcte des primes de la base imposable ITS.",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-19",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 180000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "HEURES_SUPP_NORM": 12000,
+      "HEURES_SUPP_NUIT": 5000,
+      "PRIME_TRANSPORT": 25000
+    }
+  },
+  "expected": {
+    "baseSalary": 180000,
+    "brutProrata": 180000,
+    "grossSalary": 222000,
+    "cnpsRetraiteSal": 11340,
+    "cnpsRetraitePat": 13860,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 11340,
+    "totalCnpsPat": 19285,
+    "baseImposable": 141660,
+    "its": 999,
+    "totalDeductions": 12339,
+    "netPayable": 209661,
+    "employerCost": 241285,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 180000 },
+      { "code": "1300", "type": "earning",                 "amount":  25000 },
+      { "code": "1400", "type": "earning",                 "amount":  12000 },
+      { "code": "1500", "type": "earning",                 "amount":   5000 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  11340 },
+      { "code": "2100", "type": "employee_contribution",   "amount":    999 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  13860 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}

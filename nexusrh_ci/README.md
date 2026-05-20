@@ -98,6 +98,48 @@ pnpm run dev
 
 ---
 
+## Qualité & non-régression
+
+| Domaine | Couverture |
+| ------- | ---------- |
+| **Tests automatisés** | **424 tests verts** (Vitest) sur 11 fichiers — paie, recrutement, authentification, packs législatifs, référentiels, workflows |
+| **Golden fixtures paie** | 9 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes, congé maternité, maladie maintien 50%, AT avec jour J, heures supp, avance) |
+| **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
+| **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
+| **Audit de biais** | Le moteur IA expose les signaux concrets ayant influencé chaque score et alerte explicitement si un signal démographique (école, région, prénom, genre, âge estimé) a pesé — différenciant majeur sur le marché Afrique francophone |
+
+```bash
+# Lancer toute la suite
+pnpm --filter @nexusrhci/api test
+
+# Lancer uniquement les golden fixtures paie
+pnpm --filter @nexusrhci/api run test:golden
+
+# Approuver formellement une évolution réglementaire d'une fixture
+pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason "<motif réglementaire>"
+```
+
+> Les fixtures sont initialement des **snapshots** du comportement courant du moteur. Elles deviennent des **références légales** une fois validées par un expert paie ivoirien (date + nom + référence aux textes CNPS/DGI dans `metadata.validatedBy` et `metadata.changelog`).
+
+---
+
+## Recrutement IA — pré-sélection en lot
+
+Le module recrutement combine l'analyse Claude/Mistral à un workflow Kanban pour pré-sélectionner les candidatures à l'échelle d'une offre.
+
+| Étape | Comportement |
+| ----- | ------------ |
+| Saisie des priorités | Champ "Critères du recruteur" en langage naturel (ex : *« Privilégier SAP + anglais courant, pénaliser changements fréquents < 1 an »*) — persisté par offre dans `recruitment_jobs.ai_focus_text` |
+| Pré-sélection batch | `POST /recruitment/jobs/:id/preselect` — analyse séquentielle des candidatures nouvelles (cap 50, rate-limit 3/min, RBAC admin/hr_manager/hr_officer) |
+| Top 10 | Retour classé par score décroissant, refresh automatique des cartes Kanban avec les scores IA |
+| Comparaison side-by-side | Vue 3 colonnes des candidats : forces / manques / alertes / signaux utilisés par l'IA |
+| Audit de biais | Bannière visible si l'IA reconnaît avoir pondéré le score à cause d'un signal démographique |
+| Traçabilité | Audit log `recruitment.preselect_batch` (modèle, stages, focus effectif, comptes analysés/skip/fail) |
+
+**Sécurité** : conforme OWASP A01 (RBAC strict), A03 (paramètres bindés, jamais de concat SQL), A05 (clés IA via env, jamais en dur), A07 (rate-limit anti-abus IA), A09 (audit log non bloquant), A10 (messages d'erreur génériques côté client).
+
+---
+
 ## Mode sans echec
 
 Mode maintenance — comportement attendu  

@@ -1,0 +1,51 @@
+{
+  "id": "09-avance-sur-salaire-50k",
+  "description": "Salarié recevant une avance sur salaire de 50 000 FCFA dans le mois. L'avance apparaît en ligne deduction (code 5000) et minore le netPayable mais reste sans effet sur le grossSalary et la base ITS.",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-19",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 250000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "AVANCE": 50000
+    }
+  },
+  "expected": {
+    "baseSalary": 250000,
+    "brutProrata": 250000,
+    "grossSalary": 250000,
+    "cnpsRetraiteSal": 15750,
+    "cnpsRetraitePat": 19250,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 15750,
+    "totalCnpsPat": 24675,
+    "baseImposable": 196750,
+    "its": 1826,
+    "totalDeductions": 67576,
+    "netPayable": 182424,
+    "employerCost": 274675,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 250000 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  15750 },
+      { "code": "2100", "type": "employee_contribution",   "amount":   1826 },
+      { "code": "5000", "type": "deduction",               "amount":  50000 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  19250 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}
