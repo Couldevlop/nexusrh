@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { eq, and, isNull, like, or } from 'drizzle-orm'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { getTenantDbForRequest } from '../../plugins/tenant.js'
 import { createTenantSchema } from '../../db/schema/tenant.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -8,6 +9,77 @@ import { config } from '../../config.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
 
 const pool = new Pool({ connectionString: config.database.url })
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — validation Zod du body POST /employees
+const createEmployeeSchema = z.object({
+  firstName:           z.string().min(1).max(100).trim(),
+  lastName:            z.string().min(1).max(100).trim(),
+  email:               z.string().email().max(255).optional(),
+  phone:               z.string().max(30).optional(),
+  birthDate:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  gender:              z.enum(['M', 'F', 'X']).optional(),
+  nni:                 z.string().max(50).optional(),
+  cnpsNumber:          z.string().max(30).optional(),
+  mobileMoneyProvider: z.enum(['wave', 'mtn', 'orange', 'cofina']).optional(),
+  mobileMoneyPhone:    z.string().max(30).optional(),
+  departmentId:        z.string().uuid().optional(),
+  managerId:           z.string().uuid().optional(),
+  jobTitle:            z.string().max(200).optional(),
+  jobLevel:            z.string().max(50).optional(),
+  contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
+  hireDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  baseSalary:          z.number().int().min(0).max(100_000_000),
+  city:                z.string().max(100).optional(),
+  maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
+  childrenCount:       z.number().int().min(0).max(30).optional(),
+})
+
+// OWASP A03 — validation Zod du body PATCH /employees/:id
+// Whitelist explicite : les clés non listées sont silencieusement ignorées.
+const patchEmployeeSchema = z.object({
+  firstName:           z.string().min(1).max(100).trim().optional(),
+  lastName:            z.string().min(1).max(100).trim().optional(),
+  email:               z.string().email().max(255).optional(),
+  phone:               z.string().max(30).optional(),
+  birthDate:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  gender:              z.enum(['M', 'F', 'X']).optional(),
+  nni:                 z.string().max(50).optional(),
+  cnpsNumber:          z.string().max(30).optional(),
+  mobileMoneyProvider: z.enum(['wave', 'mtn', 'orange', 'cofina']).optional(),
+  mobileMoneyPhone:    z.string().max(30).optional(),
+  departmentId:        z.string().uuid().nullable().optional(),
+  managerId:           z.string().uuid().nullable().optional(),
+  jobTitle:            z.string().max(200).optional(),
+  jobLevel:            z.string().max(50).optional(),
+  contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
+  hireDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  baseSalary:          z.number().int().min(0).max(100_000_000).optional(),
+  city:                z.string().max(100).optional(),
+  maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
+  childrenCount:       z.number().int().min(0).max(30).optional(),
+  isActive:            z.boolean().optional(),
+  profilePhotoUrl:     z.string().max(2000).optional(),
+  address:             z.string().max(500).optional(),
+}).strict()
+
+// Champs qu'un employee a le droit de modifier sur son propre profil (subset
+// strict de patchEmployeeSchema). Les autres clés sont écartées même en self.
+const EMPLOYEE_SELF_FIELDS = new Set([
+  'phone', 'address', 'mobileMoneyProvider', 'mobileMoneyPhone', 'profilePhotoUrl',
+])
+
+function auditLogEmployee(
+  schema: string, userId: string, action: string,
+  employeeId: string, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'employee', $3, $4, $5)`,
+    [userId, action, employeeId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
 
 const employeesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', async (request) => {
@@ -90,19 +162,15 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
     schema: { tags: ['employees'], summary: 'Créer un employé CI' },
     handler: async (request, reply) => {
-      const body = request.body as {
-        firstName: string; lastName: string; email?: string
-        phone?: string; birthDate?: string; gender?: string
-        nni?: string; cnpsNumber?: string
-        mobileMoneyProvider?: string; mobileMoneyPhone?: string
-        departmentId?: string; managerId?: string
-        jobTitle?: string; jobLevel?: string; contractType?: string
-        hireDate?: string; baseSalary: number
-        city?: string; maritalStatus?: string; childrenCount?: number
+      // OWASP A03 : validation Zod stricte (rejette champs arbitraires + types)
+      const parsed = createEmployeeSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données employé invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
-      if (!body.firstName || !body.lastName || body.baseSalary == null) {
-        return reply.status(400).send({ error: 'firstName, lastName et baseSalary sont requis' })
-      }
+      const body = parsed.data
       if (body.baseSalary < 75000) {
         return reply.status(422).send({ error: 'Le salaire ne peut pas être inférieur au SMIG (75 000 FCFA)' })
       }
@@ -130,6 +198,13 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         ]
       )
 
+      // OWASP A09 : trace de la création
+      auditLogEmployee(schema, request.user.sub, 'employee.created', res.rows[0].id, {
+        firstName: body.firstName, lastName: body.lastName,
+        email: body.email ?? null, jobTitle: body.jobTitle ?? null,
+        baseSalary: body.baseSalary,
+      }, request.ip ?? null)
+
       return reply.status(201).send({ data: res.rows[0] })
     },
   })
@@ -140,38 +215,51 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Modifier un employé' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      const body = request.body as Record<string, unknown>
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
+      // OWASP A01 (IDOR) : un employee ne peut PATCH que son propre profil.
+      // On vérifie l'égalité avec request.user.employeeId — la valeur vient du
+      // JWT signé au login, jamais saisie côté client.
+      if (request.user.role === 'employee' && request.user.employeeId !== id) {
+        return reply.status(403).send({ error: 'Vous ne pouvez modifier que votre propre profil' })
+      }
+      // OWASP A03 : Zod parse + whitelist
+      const parsed = patchEmployeeSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Champs invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      // Si role = employee, restriction supplémentaire : seuls les champs self
+      // (téléphone, adresse, mobile money, photo) sont autorisés. Le payload
+      // peut contenir des autres champs grâce au Zod loose, mais on les retire.
+      const body: Record<string, unknown> = parsed.data
+      if (request.user.role === 'employee') {
+        for (const k of Object.keys(body)) {
+          if (!EMPLOYEE_SELF_FIELDS.has(k)) delete body[k]
+        }
+      }
 
-      // employee ne peut modifier que certains champs de son propre profil
-      const allowedForEmployee = ['phone', 'address', 'mobile_money_provider', 'mobile_money_phone']
-      const allowedForHR = [
-        'first_name','last_name','email','phone','birth_date','gender',
-        'nni','cnps_number','mobile_money_provider','mobile_money_phone',
-        'department_id','manager_id','job_title','job_level','contract_type',
-        'hire_date','base_salary','city','marital_status','children_count',
-        'is_active','profile_photo_url',
-      ]
-
-      const allowed = request.user.role === 'employee' ? allowedForEmployee : allowedForHR
-
-      // pool module-level
       const schema = request.user.schemaName
 
       // Vérification SMIG si modification salaire
-      if (body.base_salary != null && Number(body.base_salary) < 75000) {
-  
+      if (body.baseSalary != null && Number(body.baseSalary) < 75000) {
         return reply.status(422).send({ error: 'Salaire inférieur au SMIG (75 000 FCFA)' })
       }
 
+      // Zod a déjà filtré les champs autorisés. On convertit juste camelCase
+      // → snake_case pour l'UPDATE SQL et on chiffre le NNI sensible.
       const sets: string[] = []
       const vals: unknown[] = []
+      const modifiedKeys: string[] = []
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         const dbKey = k.replace(/([A-Z])/g, '_$1').toLowerCase()
-        if (allowed.includes(dbKey)) {
-          sets.push(`${dbKey} = $${idx++}`)
-          vals.push(dbKey === 'nni' ? encryptIfPresent(v as string) : v)
-        }
+        sets.push(`${dbKey} = $${idx++}`)
+        vals.push(dbKey === 'nni' ? encryptIfPresent(v as string) : v)
+        modifiedKeys.push(dbKey)
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
       sets.push(`updated_at = now()`)
@@ -180,6 +268,14 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
         vals
       )
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+
+      // OWASP A09 : trace de la modification (clés modifiées sans les valeurs
+      // sensibles comme NNI/téléphone — on garde l'info utile à l'audit).
+      auditLogEmployee(schema, request.user.sub, 'employee.updated', id, {
+        modifiedFields: modifiedKeys,
+        bySelf: request.user.role === 'employee',
+      }, request.ip ?? null)
 
       return reply.send({ data: res.rows[0] })
     },
@@ -224,17 +320,36 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Archiver un employé (soft delete)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      // pool module-level
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
       const schema = request.user.schemaName
       try {
+        // OWASP A09 : snapshot AVANT archivage pour la trace audit (sinon on
+        // perd le nom/email/poste qui ont été supprimés)
+        const snapshot = await pool.query<{
+          first_name: string; last_name: string; email: string | null
+          job_title: string | null
+        }>(
+          `SELECT first_name, last_name, email, job_title
+             FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL`,
+          [id],
+        )
+        if (!snapshot.rows[0]) {
+          return reply.status(404).send({ error: 'Employé introuvable ou déjà archivé' })
+        }
         await pool.query(
           `UPDATE "${schema}".employees SET deleted_at = now(), is_active = false WHERE id = $1`, [id]
         )
-  
+        auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
+          firstName: snapshot.rows[0].first_name,
+          lastName:  snapshot.rows[0].last_name,
+          email:     snapshot.rows[0].email,
+          jobTitle:  snapshot.rows[0].job_title,
+        }, request.ip ?? null)
         return reply.send({ message: 'Employé archivé' })
       } catch (err) {
-        fastify.log.error(err)
-  
+        fastify.log.error({ err, employeeId: id }, 'employee archive failed')
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
     },

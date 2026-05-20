@@ -102,7 +102,7 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **460 tests verts** (Vitest) sur 13 fichiers — paie, recrutement, absences, contrats, authentification, packs législatifs, référentiels, workflows |
+| **Tests automatisés** | **473 tests verts** (Vitest) sur 14 fichiers — paie, recrutement, absences, contrats, employés, authentification, packs législatifs, référentiels, workflows |
 | **Golden fixtures paie** | 9 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes, congé maternité, maladie maintien 50%, AT avec jour J, heures supp, avance) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
@@ -130,6 +130,7 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 | **Workflow paie**         | ✓        | ✓                   | n/a            | (SoD vérifié `initiated_by ≠ approver`)                  |
 | **Absences**              | ✓ + RBAC manager équipe directe | ✓ + Zod | n/a | `absence.created`, `absence.approved`/`approval_step`, `absence.rejected` |
 | **Contrats**              | ✓        | ✓ + Zod (enum OHADA/CI, UUID, montants bornés) | n/a | `contract.created`, `contract.terminated`, `contract.deleted` |
+| **Employés**              | ✓ + IDOR check sur PATCH self-service (employee ≠ son employeeId → 403) | ✓ + Zod (POST + PATCH .strict()) + UUID validation | n/a | `employee.created`, `employee.updated` (modifiedFields + bySelf), `employee.archived` (avec snapshot) |
 
 > Les audit_log inserts sont systématiquement **non bloquants** (`.catch(() => {})`) pour ne pas casser le service principal sur les tenants en cours de migration.
 
