@@ -1,9 +1,57 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — validation year query param (regex + plage)
+function parseYearParam(raw: string | undefined): number | null {
+  if (raw === undefined || raw === null) return new Date().getFullYear()
+  if (!/^\d{4}$/.test(raw)) return null
+  const y = parseInt(raw, 10)
+  if (y < 2000 || y > new Date().getFullYear() + 1) return null
+  return y
+}
+
+// OWASP A03 — schemas Zod pour les POST principaux
+const generateDeclarationSchema = z.object({
+  year:    z.number().int().min(2000).max(2100),
+  quarter: z.number().int().min(1).max(4),
+}).strict()
+
+const disaGenerateSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+}).strict()
+
+const cessationEventSchema = z.object({
+  employeeId: z.string().uuid(),
+  exitDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format YYYY-MM-DD requis'),
+  reason:     z.enum(['resignation', 'dismissal', 'conventional', 'end_of_cdd', 'retirement', 'other']),
+  comment:    z.string().max(1000).optional(),
+}).strict()
+
+const STATUS_WHITELIST = new Set(['draft', 'submitted', 'validated', 'rejected'])
+
+// OWASP A09 — audit log non bloquant des déclarations (action financière
+// critique : déclarations à la sécurité sociale ivoirienne, exports XML/PDF/CSV).
+function auditLogCnps(
+  schema: string, userId: string, action: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  rawPool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'cnps', $3, $4, $5)`,
+    [userId, action, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+// OWASP A07 — rate-limit anti-DoS sur les exports lourds (PDF/XML/CSV générés
+// à la volée, agrégations multi-mois). Cap : 10 req/min/IP.
+const HEAVY_EXPORT_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: '1 minute' } }
 
 const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', async (request) => {
@@ -19,11 +67,23 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { year, status } = request.query as Record<string, string>
 
+      // OWASP A03 : valider year + status whitelist
+      let yearParsed: number | null = null
+      if (year !== undefined) {
+        yearParsed = parseYearParam(year)
+        if (yearParsed === null) {
+          return reply.status(400).send({ error: 'year invalide (format YYYY, 2000-courant+1)' })
+        }
+      }
+      if (status !== undefined && !STATUS_WHITELIST.has(status)) {
+        return reply.status(400).send({ error: 'status invalide (draft/submitted/validated/rejected)' })
+      }
+
       let sql = `SELECT * FROM "${schema}".cnps_declarations WHERE quarter IS NOT NULL`
       const params: unknown[] = []
       let idx = 1
 
-      if (year)   { sql += ` AND year = $${idx++}`; params.push(parseInt(year)) }
+      if (yearParsed !== null) { sql += ` AND year = $${idx++}`; params.push(yearParsed) }
       if (status) { sql += ` AND status = $${idx++}`; params.push(status) }
       sql += ` ORDER BY year DESC NULLS LAST, quarter DESC NULLS LAST`
 
@@ -37,12 +97,15 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['cnps'], summary: 'Générer la déclaration trimestrielle CNPS' },
     handler: async (request, reply) => {
-      const { year, quarter } = request.body as { year: number; quarter: number }
-      const schema = request.user.schemaName
-
-      if (!year || !quarter || quarter < 1 || quarter > 4) {
-        return reply.status(400).send({ error: 'year et quarter (1-4) requis' })
+      const parsed = generateDeclarationSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Paramètres invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
+      const { year, quarter } = parsed.data
+      const schema = request.user.schemaName
 
       // Mois du trimestre
       const months: string[] = []
@@ -154,15 +217,25 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['cnps'], summary: 'Soumettre la déclaration CNPS' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const schema = request.user.schemaName
 
       const res = await rawPool.query(
         `UPDATE "${schema}".cnps_declarations
          SET status = 'submitted', submitted_at = now(), submitted_by = $1, updated_at = now()
-         WHERE id = $2 RETURNING *`,
+         WHERE id = $2 AND status = 'draft' RETURNING *`,
         [request.user.sub, id]
       )
-      if (!res.rows[0]) return reply.status(404).send({ error: 'Déclaration introuvable' })
+      if (!res.rows[0]) {
+        return reply.status(404).send({ error: 'Déclaration introuvable ou non soumise (status ≠ draft)' })
+      }
+
+      // OWASP A09 : action critique (soumission à la sécurité sociale CI)
+      auditLogCnps(schema, request.user.sub, 'cnps.declaration_submitted', id, {
+        year: res.rows[0].year, quarter: res.rows[0].quarter,
+        masseSalariale: res.rows[0].masse_salariale ?? null,
+        totalCotisations: res.rows[0].total_cotisations ?? null,
+      }, request.ip ?? null)
 
       return reply.send({ data: res.rows[0], message: 'Déclaration CNPS soumise' })
     },
@@ -171,9 +244,11 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /cnps/declarations/:id/export — exporter en CSV (format e-CNPS)
   fastify.get('/declarations/:id/export', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Exporter la déclaration CNPS (CSV e-CNPS)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const schema = request.user.schemaName
 
       const res = await rawPool.query<{
@@ -239,10 +314,15 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['cnps'], summary: 'Générer la déclaration DISA annuelle (loi 99-477)' },
     handler: async (request, reply) => {
-      const { year } = request.body as { year: number }
+      const parsed = disaGenerateSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Paramètres invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const { year } = parsed.data
       const schema = request.user.schemaName
-
-      if (!year) return reply.status(400).send({ error: 'year requis' })
 
       // Récupérer tous les bulletins de l'année
       const months = Array.from({ length: 12 }, (_, i) =>
@@ -308,9 +388,11 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /cnps/declarations/:id/neva — export XML format NEVA (homologation CNPS CI)
   fastify.get('/declarations/:id/neva', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Export NEVA/XML CNPS (homologation)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const schema = request.user.schemaName
 
       const decl = await rawPool.query<{
@@ -385,9 +467,14 @@ ${salaries}
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['cnps'], summary: 'Signal CNPS — Cessation emploi (temps réel)' },
     handler: async (request, reply) => {
-      const { employeeId, exitDate, reason } = request.body as {
-        employeeId: string; exitDate: string; reason: string
+      const parsed = cessationEventSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Paramètres cessation invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
+      const { employeeId, exitDate, reason } = parsed.data
       const schema = request.user.schemaName
 
       const empRes = await rawPool.query<{
@@ -639,6 +726,7 @@ ${salaries}
   // GET /cnps/rns/:year/pdf — PDF Relevé Nominatif des Salaires (formulaire CNPS EN-GDAV-06 v03)
   fastify.get('/rns/:year/pdf', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Générer le RNS en PDF (formulaire officiel CNPS EN-GDAV-06 v03)' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
@@ -717,6 +805,7 @@ ${salaries}
   // GET /cnps/rns/:year/export — Relevé Nominatif des Salaires (format officiel CNPS CI)
   fastify.get('/rns/:year/export', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Export RNS — Relevé Nominatif des Salaires (CNPS officiel)' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
@@ -811,6 +900,7 @@ ${salaries}
   // GET /cnps/disa/:year/export — export CSV DISA (Déclaration Individuelle Salaires Annuels)
   fastify.get('/disa/:year/export', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Export DISA CSV — format dépôt DGI/CNPS (loi 99-477)' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
