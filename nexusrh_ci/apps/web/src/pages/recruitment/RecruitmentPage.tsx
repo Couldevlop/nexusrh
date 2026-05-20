@@ -40,6 +40,9 @@ interface Application {
   ai_demographic_risk_note?: string | null
   ai_model_used?: string | null
   cv_text?: string | null
+  cv_mime_type?: string | null
+  cv_filename?: string | null
+  cv_size_bytes?: number | null
   source?: string | null
   created_at: string
 }
@@ -129,12 +132,34 @@ export default function RecruitmentPage() {
   const [compareTop3, setCompareTop3] = useState(false)
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([])
   const [compareSelected, setCompareSelected] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+
+  interface DecisionHistoryEntry {
+    id: string
+    decision: 'hired' | 'rejected'
+    decided_at: string
+    decided_by: string | null
+    prior_ai_score: number | null
+    prior_ai_recommendation: string | null
+    candidate_anchor: string | null
+  }
+
+  const { data: historyData, isLoading: historyLoading } = useQuery<{
+    data: DecisionHistoryEntry[]
+    counts: { hired: number; rejected: number }
+    total: number
+  }>({
+    queryKey: ['recruitment-decisions-history', selectedJob?.id],
+    queryFn: () => api.get(`/recruitment/jobs/${selectedJob!.id}/decisions-history`).then((r) => r.data),
+    enabled: showHistory && !!selectedJob?.id,
+  })
 
   useEffect(() => {
     setCriteriaFocus(selectedJob?.ai_focus_text ?? '')
     if (selectedJob?.ai_focus_text) setShowCriteria(true)
     setSelectedAppIds([])
     setCompareSelected(false)
+    setShowHistory(false)
   }, [selectedJob?.id, selectedJob?.ai_focus_text])
 
   const toggleAppSelected = (id: string) => {
@@ -202,7 +227,13 @@ export default function RecruitmentPage() {
   const updateStage = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
       api.patch(`/recruitment/applications/${id}/stage`, { stage }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
+      // Si le nouveau stage est hired/rejected, l'historique IA évolue
+      if (variables.stage === 'hired' || variables.stage === 'rejected') {
+        queryClient.invalidateQueries({ queryKey: ['recruitment-decisions-history'] })
+      }
+    },
   })
 
   const preselect = useMutation({
@@ -434,13 +465,20 @@ export default function RecruitmentPage() {
                   <ArrowRight className="h-3 w-3 text-muted-foreground" />
                   <span className="font-medium">{selectedJob.title}</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => setShowCriteria((v) => !v)}
                     className="text-xs text-muted-foreground hover:text-foreground"
                     title="Ajouter des critères pour orienter l'analyse IA"
                   >
                     {showCriteria ? '− Masquer critères' : '+ Critères du recruteur'}
+                  </button>
+                  <button
+                    onClick={() => setShowHistory((v) => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                    title="Voir les décisions passées qui alimentent le scoring IA"
+                  >
+                    <Zap className="h-3 w-3" /> {showHistory ? 'Masquer apprentissage' : 'Historique apprentissage'}
                   </button>
                   <button
                     onClick={() => preselect.mutate({
@@ -663,6 +701,64 @@ export default function RecruitmentPage() {
           {preselect.isError && (
             <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
               Erreur lors de la pré-sélection. Réessayez plus tard.
+            </div>
+          )}
+          {showHistory && selectedJob && (
+            <div className="rounded-lg border border-border bg-card p-3 text-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold flex items-center gap-1.5">
+                  <Zap className="h-4 w-4 text-primary" />
+                  Historique d'apprentissage IA
+                  {historyData && (
+                    <span className="text-xs font-normal text-muted-foreground ml-2">
+                      ({historyData.total} décision{historyData.total > 1 ? 's' : ''} ·{' '}
+                      <span className="text-green-700">{historyData.counts.hired} recrutés</span> ·{' '}
+                      <span className="text-red-700">{historyData.counts.rejected} rejetés</span>)
+                    </span>
+                  )}
+                </h3>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Masquer
+                </button>
+              </div>
+              {historyLoading && (
+                <p className="text-xs text-muted-foreground italic">Chargement de l'historique…</p>
+              )}
+              {!historyLoading && historyData && historyData.total === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  Aucune décision encore enregistrée. Les recrutements/rejets futurs alimenteront automatiquement le scoring IA des prochains batches.
+                </p>
+              )}
+              {!historyLoading && historyData && historyData.total > 0 && (
+                <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {historyData.data.map((entry) => {
+                    const isHire = entry.decision === 'hired'
+                    return (
+                      <li key={entry.id} className="flex items-start gap-2 text-xs border-l-2 pl-2 py-0.5"
+                          style={{ borderColor: isHire ? 'rgb(34 197 94)' : 'rgb(239 68 68)' }}>
+                        <span className={`font-semibold flex-shrink-0 ${isHire ? 'text-green-700' : 'text-red-700'}`}>
+                          {isHire ? '✓ Recruté' : '✗ Rejeté'}
+                        </span>
+                        <span className="text-muted-foreground flex-shrink-0">
+                          {new Date(entry.decided_at).toLocaleDateString('fr-FR')}
+                        </span>
+                        {entry.prior_ai_score != null && (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0">
+                            IA {entry.prior_ai_score}/100
+                          </span>
+                        )}
+                        <span className="text-muted-foreground truncate">{entry.candidate_anchor || '—'}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-2 italic">
+                Les 8 décisions les plus récentes sont injectées dans le prompt de la prochaine pré-sélection IA pour calibrer le scoring sur vos préférences réelles.
+              </p>
             </div>
           )}
           {selectedAppIds.length >= 1 && (
@@ -1210,7 +1306,14 @@ function ApplicationDetailModal({
       const res = await api.post(`/recruitment/applications/${current.id}/upload-cv`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setCurrent(c => ({ ...c, cv_text: res.data.data.cv_text }))
+      setCurrent(c => ({
+        ...c,
+        cv_text: res.data.data.cv_text,
+        cv_mime_type: res.data.data.cv_mime_type,
+        cv_filename: res.data.data.cv_filename,
+        cv_size_bytes: res.data.data.cv_size_bytes,
+      }))
+      onChanged()
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ?? 'Erreur upload')
@@ -1219,6 +1322,29 @@ function ApplicationDetailModal({
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
+
+  // Récupère le binaire du CV via API authentifiée puis crée un blob URL pour
+  // l'iframe (le iframe ne peut pas envoyer de bearer token directement).
+  const [cvBlobUrl, setCvBlobUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    let urlToRevoke: string | null = null
+    setCvBlobUrl(null)
+    if (current.cv_mime_type) {
+      api.get(`/recruitment/applications/${current.id}/cv-file`, { responseType: 'blob' })
+        .then((r) => {
+          if (!active) return
+          const url = URL.createObjectURL(r.data as Blob)
+          urlToRevoke = url
+          setCvBlobUrl(url)
+        })
+        .catch(() => { /* pas de blob → fallback texte */ })
+    }
+    return () => {
+      active = false
+      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke)
+    }
+  }, [current.id, current.cv_mime_type])
 
   const runAnalysis = async () => {
     setAnalyzing(true)
@@ -1255,17 +1381,54 @@ function ApplicationDetailModal({
         </div>
 
         <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">CV / texte transmis</span>
-            <button onClick={triggerUpload} disabled={uploading}
-              className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
-              <Upload className="h-3 w-3" /> {uploading ? 'Upload...' : 'Téléverser un CV'}
-            </button>
-            <input ref={fileInputRef} type="file" hidden accept=".txt,.pdf,.doc,.docx" onChange={handleFileChange} />
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">CV transmis</span>
+              {current.cv_filename && (
+                <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={current.cv_filename}>
+                  · {current.cv_filename}
+                  {current.cv_size_bytes != null && (
+                    <span> ({Math.round(current.cv_size_bytes / 1024)} ko)</span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {cvBlobUrl && (
+                <a href={cvBlobUrl} download={current.cv_filename ?? 'cv'}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Upload className="h-3 w-3 rotate-180" /> Télécharger
+                </a>
+              )}
+              <button onClick={triggerUpload} disabled={uploading}
+                className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
+                <Upload className="h-3 w-3" /> {uploading ? 'Upload...' : 'Téléverser un CV'}
+              </button>
+              <input ref={fileInputRef} type="file" hidden accept=".txt,.pdf,.doc,.docx" onChange={handleFileChange} />
+            </div>
           </div>
-          <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto text-muted-foreground">
-            {current.cv_text || '(aucun CV fourni — téléversez un fichier ou demandez au candidat de coller son CV dans la lettre de motivation)'}
-          </pre>
+          {cvBlobUrl && current.cv_mime_type === 'application/pdf' ? (
+            <iframe
+              src={cvBlobUrl}
+              title={current.cv_filename ?? 'CV PDF'}
+              className="w-full h-96 rounded border border-border bg-white"
+              sandbox=""
+            />
+          ) : cvBlobUrl && current.cv_mime_type?.startsWith('image/') ? (
+            <img
+              src={cvBlobUrl}
+              alt={current.cv_filename ?? 'CV'}
+              className="max-h-96 w-auto mx-auto rounded border border-border bg-white"
+            />
+          ) : current.cv_text ? (
+            <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto text-muted-foreground">
+              {current.cv_text}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">
+              Aucun CV fourni — téléversez un fichier (PDF, DOC, DOCX, TXT — max 10 Mo) ou demandez au candidat de coller son CV dans la lettre de motivation.
+            </p>
+          )}
         </div>
 
         <div className="mt-4 space-y-3">

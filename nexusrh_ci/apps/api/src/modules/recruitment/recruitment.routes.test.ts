@@ -277,7 +277,10 @@ describe('POST /recruitment/applications/:id/analyze-cv', () => {
       payload: { model: 'claude' },
     })
     expect(res.statusCode).toBe(200)
-    expect(vi.mocked(analyzeCV)).toHaveBeenCalledWith('claude', expect.any(Object), longCv)
+    // analyzeCV reçoit 5 args : model, job, cvText, decisionExamples?, pdfBuffer?
+    expect(vi.mocked(analyzeCV)).toHaveBeenCalledWith(
+      'claude', expect.any(Object), longCv, undefined, null,
+    )
     const body = JSON.parse(res.body)
     expect(body.analysis.score).toBe(85)
   })
@@ -725,15 +728,17 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     expect(firstExample?.anchor).toContain('Marie Konaté')
   })
 
-  it('feedback loop : hired/rejected déclenche un INSERT dans recruitment_decisions', async () => {
+  it('feedback loop : hired/rejected déclenche INSERT dans recruitment_decisions + audit_log', async () => {
     queryMock
       .mockResolvedValueOnce({
         rows: [{
           id: 'app-99', job_id: 'job-1', first_name: 'Test', last_name: 'User',
-          stage: 'hired', ai_score: 75, ai_recommendation: 'yes', ai_summary: 'Bon profil senior',
+          stage: 'hired', ai_score: 75, ai_recommendation: 'yes',
+          ai_summary: 'Bon profil senior\nAvec un retour à la ligne pour tester la sanitization',
         }],
       })
-      .mockResolvedValueOnce({ rows: [] }) // INSERT recruitment_decisions (non bloquant)
+      .mockResolvedValueOnce({ rows: [] }) // INSERT recruitment_decisions
+      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log (OWASP A09)
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
@@ -744,12 +749,136 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     })
 
     expect(res.statusCode).toBe(200)
-    // Le 2e call queryMock doit être l'INSERT dans recruitment_decisions
-    const insertCall = queryMock.mock.calls[1]
-    expect(insertCall?.[0]).toContain('INSERT INTO')
-    expect(insertCall?.[0]).toContain('recruitment_decisions')
-    expect(insertCall?.[1]?.[2]).toBe('hired') // 3e param = decision
-    expect(insertCall?.[1]?.[4]).toBe(75)      // 5e param = prior_ai_score
+    // 2e call : INSERT dans recruitment_decisions
+    const insertDecision = queryMock.mock.calls[1]
+    expect(insertDecision?.[0]).toContain('INSERT INTO')
+    expect(insertDecision?.[0]).toContain('recruitment_decisions')
+    expect(insertDecision?.[1]?.[2]).toBe('hired')
+    expect(insertDecision?.[1]?.[4]).toBe(75)
+    // Sanitization OWASP A03 : pas de \n dans le candidate_anchor stocké
+    expect(insertDecision?.[1]?.[6]).not.toContain('\n')
+    // 3e call : INSERT dans audit_log (OWASP A09)
+    const insertAudit = queryMock.mock.calls[2]
+    expect(insertAudit?.[0]).toContain('audit_log')
+    expect(insertAudit?.[1]?.[1]).toBe('recruitment.hired')
+  })
+
+  it('decisions-history : refuse un jobId qui n\'est pas un UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/not-a-uuid/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('decisions-history : renvoie la liste triée par decided_at DESC avec counts', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        { id: 'd-1', decision: 'hired',    decided_at: new Date('2026-05-15'), decided_by: 'u-1', prior_ai_score: 82, prior_ai_recommendation: 'yes',   candidate_anchor: 'Marie K — 5 ans RH' },
+        { id: 'd-2', decision: 'rejected', decided_at: new Date('2026-05-10'), decided_by: 'u-1', prior_ai_score: 71, prior_ai_recommendation: 'maybe', candidate_anchor: 'Paul D — manque exp.' },
+        { id: 'd-3', decision: 'hired',    decided_at: new Date('2026-05-05'), decided_by: 'u-2', prior_ai_score: 76, prior_ai_recommendation: 'yes',   candidate_anchor: 'Aïcha B — bootcamp solide' },
+      ],
+    })
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.total).toBe(3)
+    expect(body.counts.hired).toBe(2)
+    expect(body.counts.rejected).toBe(1)
+    expect(body.data[0].id).toBe('d-1')
+  })
+
+  it('decisions-history : LIMIT borné à 100 et 1 minimum', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history?limit=99999',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    // Le 1er call doit avoir limit clampé à 100 (2e param de la requête SQL)
+    expect(queryMock.mock.calls[0]?.[1]?.[1]).toBe(100)
+  })
+
+  it('decisions-history : renvoie [] proprement si la table n\'existe pas (tenant pré-migration)', async () => {
+    queryMock.mockRejectedValueOnce(new Error('relation "tenant_sotra.recruitment_decisions" does not exist'))
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/22222222-2222-2222-2222-222222222222/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data).toEqual([])
+    expect(body.total).toBe(0)
+  })
+
+  it('cv-file : refuse un id qui n\'est pas un UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/not-a-uuid/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('cv-file : 404 si aucun blob stocké', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ cv_blob: null, cv_mime_type: null, cv_filename: null }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('cv-file : streame le binaire avec Content-Type et X-Content-Type-Options nosniff', async () => {
+    const blob = Buffer.from('%PDF-1.4 fake pdf payload', 'utf-8')
+    queryMock.mockResolvedValueOnce({ rows: [{
+      cv_blob: blob, cv_mime_type: 'application/pdf', cv_filename: 'cv-marie.pdf',
+    }] })
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('application/pdf')
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+    expect(res.headers['content-disposition']).toContain('inline')
+  })
+
+  it('cv-file : un employee ne peut PAS télécharger un CV (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/applications/11111111-1111-1111-1111-111111111111/cv-file',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('decisions-history : un employee ne peut pas y accéder (403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'GET',
+      url: '/recruitment/jobs/11111111-1111-1111-1111-111111111111/decisions-history',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
   })
 
   it('fallback : utilise job.ai_focus_text si criteria.focus n\'est pas fourni', async () => {

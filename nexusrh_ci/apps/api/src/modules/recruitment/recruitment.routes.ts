@@ -12,6 +12,31 @@ import {
 
 const pool = new Pool({ connectionString: config.database.url })
 
+/**
+ * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction
+ * native, sans dépendance binaire externe). Pour les .txt, décode en UTF-8.
+ * Les .doc/.docx tombent en fallback UTF-8 — extraction native via mammoth
+ * dans un sprint suivant. En cas d'échec d'extraction (PDF corrompu, etc.),
+ * fallback UTF-8 pour ne pas bloquer l'upload.
+ */
+async function extractCvText(buf: Buffer, mimetype: string): Promise<string> {
+  const MAX = 50_000
+  if (mimetype === 'application/pdf') {
+    try {
+      const { getDocumentProxy, extractText } = await import('unpdf')
+      const pdf = await getDocumentProxy(new Uint8Array(buf))
+      const result = await extractText(pdf, { mergePages: true })
+      const text = Array.isArray(result.text) ? result.text.join('\n') : (result.text ?? '')
+      const cleaned = text.replace(/\s+/g, ' ').trim()
+      if (cleaned.length > 0) return cleaned.slice(0, MAX)
+    } catch {
+      // PDF illisible : fallback UTF-8 (texte garbage probable mais l'IA
+      // détectera la non-cohérence et retournera un CV trop court)
+    }
+  }
+  return buf.toString('utf-8').slice(0, MAX)
+}
+
 // Schéma Zod pour la candidature publique — OWASP A03 (Injection) + A04
 // (Insecure Design). Limites stricts pour éviter spam et XSS.
 const publicApplySchema = z.object({
@@ -413,10 +438,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // Feedback loop IA : on snapshot la décision pour alimenter le few-shot des
         // prochaines pré-sélections de ce tenant. Uniquement sur hired/rejected
         // (signaux forts). Non bloquant si la table n'existe pas encore.
+        // OWASP A03 : on neutralise les sauts de ligne et caractères de contrôle
+        // dans ai_summary pour limiter les vecteurs de prompt injection (le texte
+        // sera réinjecté dans le prompt de la prochaine pré-sélection).
         if (app && (stage === 'hired' || stage === 'rejected')) {
+          const summaryClean = (app.ai_summary ?? '')
+            .toString()
+            .replace(/[\r\n\t]+/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim()
+            .slice(0, 200)
           const anchorParts = [
             `${app.first_name ?? ''} ${app.last_name ?? ''}`.trim(),
-            (app.ai_summary ?? '').toString().slice(0, 200).trim(),
+            summaryClean,
           ].filter(Boolean)
           pool.query(
             `INSERT INTO "${schema}".recruitment_decisions
@@ -430,6 +464,25 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               anchorParts.join(' — ') || null,
             ],
           ).catch(() => { /* table absente : migration lazy au prochain preselect */ })
+
+          // OWASP A09 : trace explicite de la décision (qui, sur qui, quand,
+          // avec quel score IA prior). Hire/reject est un événement de sécurité
+          // significatif au sens RGPD (décision impactant un candidat).
+          pool.query(
+            `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+             VALUES ($1, $2, 'application', $3, $4, $5)`,
+            [
+              request.user.sub,
+              stage === 'hired' ? 'recruitment.hired' : 'recruitment.rejected',
+              app.id,
+              JSON.stringify({
+                jobId: app.job_id,
+                priorAiScore: app.ai_score ?? null,
+                priorAiRecommendation: app.ai_recommendation ?? null,
+              }),
+              request.ip ?? null,
+            ],
+          ).catch(() => { /* tenant sans audit_log : non bloquant */ })
         }
 
         return reply.send({ data: app })
@@ -441,8 +494,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── UPLOAD CV (multipart) ──────────────────────────────────────────────────
-  // Stocke le texte brut du CV dans la candidature. Pour l'analyse IA, le texte
-  // est le minimum nécessaire — un stockage binaire MinIO peut être ajouté ensuite.
+  // OWASP A03 (content type spoofing) : allowlist stricte sur le MIME du fichier
+  // et taille max 10 MB. Stocke à la fois le binaire (cv_blob pour viewer UI)
+  // et le texte extrait (cv_text pour analyse IA — extraction PDF native dans
+  // un sprint suivant).
+  const CV_ALLOWED_MIMES = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+  ])
+  const CV_MAX_BYTES = 10 * 1024 * 1024
   fastify.post('/applications/:id/upload-cv', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
@@ -452,22 +514,85 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const file = await request.file()
         if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
+
+        // OWASP A03 (content type spoofing) : allowlist stricte du MIME
+        const mimetype = (file.mimetype || '').toLowerCase()
+        if (!CV_ALLOWED_MIMES.has(mimetype)) {
+          return reply.status(400).send({
+            error: 'Format de fichier non autorisé. Accepté : PDF, DOC, DOCX, TXT.',
+          })
+        }
+
         const buf = await file.toBuffer()
-        // Extraction texte minimaliste : on lit en UTF-8. Les PDF binaires
-        // donneront un texte partiel ; pour aller plus loin, ajouter pdf-parse.
-        const cvText = buf.toString('utf-8').replace(/ /g, '').slice(0, 50000)
-        const filename = file.filename || 'cv.txt'
+        if (buf.byteLength > CV_MAX_BYTES) {
+          return reply.status(400).send({
+            error: `Fichier trop volumineux (max ${CV_MAX_BYTES / (1024 * 1024)} MB).`,
+          })
+        }
+        // Extraction texte : PDF natif via unpdf, sinon UTF-8 (TXT direct,
+        // DOC/DOCX partiel — extraction native dans un sprint suivant).
+        const cvText = await extractCvText(buf, mimetype)
+        const filename = file.filename || 'cv.bin'
         const cvUrl = `local://${filename}`
         const res = await pool.query(`
           UPDATE "${schema}".applications
-          SET cv_url = $1, cv_text = $2, updated_at = now()
-          WHERE id = $3 RETURNING *
-        `, [cvUrl, cvText, id])
+          SET cv_url = $1,
+              cv_text = $2,
+              cv_blob = $3,
+              cv_mime_type = $4,
+              cv_filename = $5,
+              cv_size_bytes = $6,
+              updated_at = now()
+          WHERE id = $7 RETURNING id, cv_url, cv_filename, cv_mime_type, cv_size_bytes
+        `, [cvUrl, cvText, buf, mimetype, filename, buf.byteLength, id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Candidature introuvable' })
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur upload CV' })
+      }
+    },
+  })
+
+  // ── DOWNLOAD CV BLOB (pour viewer UI) ──────────────────────────────────────
+  // Streame le binaire du CV stocké en cv_blob avec le bon Content-Type pour
+  // que le navigateur affiche le PDF inline ou propose un téléchargement.
+  // OWASP A05 : X-Content-Type-Options: nosniff pour bloquer le MIME sniffing.
+  fastify.get('/applications/:id/cv-file', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return reply.status(400).send({ error: 'application id invalide (UUID requis)' })
+      }
+      try {
+        const res = await pool.query<{
+          cv_blob: Buffer | null
+          cv_mime_type: string | null
+          cv_filename: string | null
+        }>(
+          `SELECT cv_blob, cv_mime_type, cv_filename
+             FROM "${schema}".applications WHERE id = $1`,
+          [id],
+        )
+        const row = res.rows[0]
+        if (!row || !row.cv_blob) {
+          return reply.status(404).send({ error: 'Aucun CV binaire stocké pour cette candidature' })
+        }
+        const mime = row.cv_mime_type ?? 'application/octet-stream'
+        const filename = row.cv_filename ?? 'cv.bin'
+        const safeName = filename.replace(/[^\w.\-]/g, '_')
+        reply
+          .header('Content-Type', mime)
+          .header('Content-Disposition', `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+          .header('X-Content-Type-Options', 'nosniff')
+          .header('Cache-Control', 'private, max-age=60')
+        return reply.send(row.cv_blob)
+      } catch (err) {
+        fastify.log.error({ err }, 'cv-file fetch failed')
+        return reply.status(500).send({ error: 'Erreur récupération CV' })
       }
     },
   })
@@ -488,9 +613,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         const appRes = await pool.query<{
-          id: string; job_id: string; cv_text: string | null; cover_letter: string | null
+          id: string; job_id: string
+          cv_text: string | null; cover_letter: string | null
+          cv_blob: Buffer | null; cv_mime_type: string | null
         }>(
-          `SELECT id, job_id, cv_text, cover_letter
+          `SELECT id, job_id, cv_text, cover_letter, cv_blob, cv_mime_type
              FROM "${schema}".applications WHERE id = $1`,
           [id],
         )
@@ -514,7 +641,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre liée introuvable' })
 
-        const result = await analyzeCV(model, job, cvText)
+        // Fallback Claude Vision : si le PDF est stocké, on le passe à analyzeCV
+        // qui décidera (selon la qualité du texte extrait) s'il bascule sur le
+        // mode document natif.
+        const pdfFallback = app.cv_mime_type === 'application/pdf' ? app.cv_blob : null
+        const result = await analyzeCV(model, job, cvText, undefined, pdfFallback)
 
         const upd = await pool.query(`
           UPDATE "${schema}".applications
@@ -632,10 +763,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           id: string
           cv_text: string | null
           cover_letter: string | null
+          cv_blob: Buffer | null
+          cv_mime_type: string | null
           first_name: string
           last_name: string
         }>(
-          `SELECT id, cv_text, cover_letter, first_name, last_name
+          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name
              FROM "${schema}".applications
             WHERE job_id = $1
               AND stage = ANY($2::text[])
@@ -706,7 +839,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             continue
           }
           try {
-            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples)
+            const pdfFallback = c.cv_mime_type === 'application/pdf' ? c.cv_blob : null
+            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback)
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
@@ -779,6 +913,70 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log.error({ err }, 'preselect-batch failed')
         return reply.status(500).send({
           error: 'Erreur lors de la pré-sélection en lot. Réessayez plus tard.',
+        })
+      }
+    },
+  })
+
+  // ── HISTORIQUE D'APPRENTISSAGE IA (decisions-history) ──────────────────────
+  // Lecture seule des décisions hire/reject qui alimentent le feedback loop
+  // few-shot du tenant. Sert à expliquer pourquoi un score IA est ce qu'il est :
+  // « voici les 23 décisions de votre équipe qui ont calibré le scoring ».
+  // RBAC : ouvert à toutes les vues recrutement (admin/hr/manager/readonly).
+  // Renvoie [] proprement si la table n'a pas encore été créée pour le tenant.
+  fastify.get('/jobs/:id/decisions-history', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id: jobId } = request.params as { id: string }
+      // OWASP A03 : valider que jobId est bien un UUID (évite l'injection même si bindé)
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+        return reply.status(400).send({ error: 'jobId invalide (UUID requis)' })
+      }
+      const { limit: limitRaw } = request.query as { limit?: string }
+      const limit = Math.min(Math.max(parseInt(limitRaw ?? '50', 10) || 50, 1), 100)
+
+      try {
+        const res = await pool.query<{
+          id: string
+          decision: 'hired' | 'rejected'
+          decided_at: Date
+          decided_by: string | null
+          prior_ai_score: number | null
+          prior_ai_recommendation: string | null
+          candidate_anchor: string | null
+        }>(
+          `SELECT id, decision, decided_at, decided_by,
+                  prior_ai_score, prior_ai_recommendation, candidate_anchor
+             FROM "${schema}".recruitment_decisions
+            WHERE job_id = $1
+            ORDER BY decided_at DESC
+            LIMIT $2`,
+          [jobId, limit],
+        )
+        const counts = res.rows.reduce(
+          (acc, r) => {
+            if (r.decision === 'hired') acc.hired++
+            else if (r.decision === 'rejected') acc.rejected++
+            return acc
+          },
+          { hired: 0, rejected: 0 },
+        )
+        return reply.send({
+          data: res.rows,
+          counts,
+          total: res.rows.length,
+        })
+      } catch (err) {
+        // Table absente (tenant pré-migration) → renvoyer une liste vide, pas 500
+        const msg = err instanceof Error ? err.message : ''
+        if (/recruitment_decisions/i.test(msg) && /does not exist|n'existe pas/i.test(msg)) {
+          return reply.send({ data: [], counts: { hired: 0, rejected: 0 }, total: 0 })
+        }
+        fastify.log.error({ err }, 'decisions-history failed')
+        return reply.status(500).send({
+          error: 'Erreur lors du chargement de l\'historique. Réessayez plus tard.',
         })
       }
     },

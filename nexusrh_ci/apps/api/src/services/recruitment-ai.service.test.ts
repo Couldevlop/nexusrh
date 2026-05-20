@@ -161,6 +161,39 @@ describe('recruitment-ai.service — analyzeCV (Claude)', () => {
     expect(result.demographicRiskNote).toBeNull()
     expect(result.score).toBe(87)
   })
+
+  it('hybride PDF : reste en mode texte si l\'extraction est satisfaisante (> 200 chars lisibles)', async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: VALID_ANALYSIS }] })
+    const richText = 'Marie Konaté, 5 ans expérience RH Abidjan, licence GRH. '.repeat(8)
+    const fakePdf = Buffer.from('%PDF-1.4 fake binary content', 'utf-8')
+    const result = await analyzeCV('claude', JOB, richText, undefined, fakePdf)
+    expect(result.ingestionMode).toBe('text')
+    // Le 1er param du content n'est PAS un tableau (pas de document block)
+    const callArgs = createMock.mock.calls[0]?.[0]
+    expect(Array.isArray(callArgs?.messages?.[0]?.content)).toBe(false)
+  })
+
+  it('hybride PDF : bascule en mode document si l\'extraction texte est trop courte', async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: VALID_ANALYSIS }] })
+    const fakePdf = Buffer.from('%PDF-1.4 fake binary content for document mode', 'utf-8')
+    // Texte extrait insuffisant (< 200 chars) → fallback PDF document mode
+    const result = await analyzeCV('claude', JOB, 'CV trop court à analyser en texte.', undefined, fakePdf)
+    expect(result.ingestionMode).toBe('pdf-document')
+    // Le content envoyé à Claude est un tableau [document, text]
+    const callArgs = createMock.mock.calls[0]?.[0]
+    const content = callArgs?.messages?.[0]?.content
+    expect(Array.isArray(content)).toBe(true)
+    expect(content?.[0]?.type).toBe('document')
+    expect(content?.[0]?.source?.media_type).toBe('application/pdf')
+  })
+
+  it('hybride PDF : bascule en mode document si extraction garbage (ratio printable bas)', async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: 'text', text: VALID_ANALYSIS }] })
+    const garbage = '\x00\x01\x02\x03'.repeat(80) + 'CV'  // 322 chars dont 320 non-printables
+    const fakePdf = Buffer.from('%PDF-1.4', 'utf-8')
+    const result = await analyzeCV('claude', JOB, garbage, undefined, fakePdf)
+    expect(result.ingestionMode).toBe('pdf-document')
+  })
 })
 
 describe('recruitment-ai.service — analyzeCV (Mistral)', () => {

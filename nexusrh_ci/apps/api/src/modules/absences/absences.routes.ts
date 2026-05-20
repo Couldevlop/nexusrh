@@ -1,9 +1,50 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
+
+// OWASP A03 (input validation) — schema strict pour POST /absences
+const createAbsenceSchema = z.object({
+  absenceTypeId: z.string().uuid('absenceTypeId doit être un UUID'),
+  startDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
+  endDate:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
+  halfDay:       z.boolean().optional(),
+  reason:        z.string().max(1000).optional(),
+  employeeId:    z.string().uuid().optional(),
+})
+
+/**
+ * OWASP A01 — un manager ne peut approuver/rejeter que les absences des
+ * employés dont il est manager direct. Renvoie true si l'utilisateur a le
+ * droit d'agir sur cette absence.
+ */
+async function managerCanActOnAbsence(
+  schema: string,
+  managerEmployeeId: string | null | undefined,
+  absenceEmployeeId: string,
+): Promise<boolean> {
+  if (!managerEmployeeId) return false
+  if (managerEmployeeId === absenceEmployeeId) return false // auto-approbation interdite
+  const r = await rawPool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE id = $1 AND manager_id = $2 LIMIT 1`,
+    [absenceEmployeeId, managerEmployeeId],
+  )
+  return r.rows.length > 0
+}
+
+function auditLogAbsence(
+  schema: string, userId: string, action: string,
+  absenceId: string, changes: Record<string, unknown>, ip: string | null,
+): void {
+  rawPool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'absence', $3, $4, $5)`,
+    [userId, action, absenceId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
 
 const absencesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', async (request) => {
@@ -112,10 +153,15 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['absences'], summary: 'Créer une demande d\'absence' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        absenceTypeId: string; startDate: string; endDate: string
-        halfDay?: boolean; reason?: string; employeeId?: string
+      // OWASP A03 : validation stricte du body (rejette champs arbitraires)
+      const parsed = createAbsenceSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données de demande invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
+      const body = parsed.data
 
       let employeeId = body.employeeId ?? request.user.employeeId ?? null
       if (!employeeId) {
@@ -157,6 +203,12 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         [days, employeeId, body.absenceTypeId, year]
       ).catch(() => undefined)
 
+      // OWASP A09 : trace de la création de demande
+      auditLogAbsence(schema, request.user.sub, 'absence.created', res.rows[0].id, {
+        employeeId, absenceTypeId: body.absenceTypeId,
+        startDate: body.startDate, endDate: body.endDate, days,
+      }, request.ip ?? null)
+
       return reply.status(201).send({ data: res.rows[0] })
     },
   })
@@ -183,6 +235,15 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       if (absence.status === 'approved') return reply.status(422).send({ error: 'Déjà approuvée' })
       if (absence.status === 'rejected') return reply.status(422).send({ error: 'Déjà rejetée' })
 
+      // OWASP A01 : un manager ne peut approuver que SES subordonnés directs.
+      // admin/hr_manager/hr_officer ont la portée globale du tenant.
+      if (request.user.role === 'manager') {
+        const allowed = await managerCanActOnAbsence(schema, request.user.employeeId, absence.employee_id)
+        if (!allowed) {
+          return reply.status(403).send({ error: 'Vous ne pouvez approuver que les absences de votre équipe directe' })
+        }
+      }
+
       const nextLevel = absence.validation_level + 1
       const isApproved = nextLevel >= levelsCount
 
@@ -205,6 +266,14 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
           [absence.days, absence.employee_id, absence.absence_type_id, year]
         ).catch(() => undefined)
       }
+
+      // OWASP A09 : trace de l'approbation (niveau workflow + fully approved)
+      auditLogAbsence(schema, request.user.sub,
+        isApproved ? 'absence.approved' : 'absence.approval_step',
+        id,
+        { level: nextLevel, totalLevels: levelsCount, fullyApproved: isApproved,
+          employeeId: absence.employee_id },
+        request.ip ?? null)
 
       return reply.send({
         data: res.rows[0],
@@ -229,6 +298,14 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
 
+      // OWASP A01 : un manager ne peut rejeter que les absences de son équipe directe
+      if (request.user.role === 'manager') {
+        const allowed = await managerCanActOnAbsence(schema, request.user.employeeId, absence.employee_id)
+        if (!allowed) {
+          return reply.status(403).send({ error: 'Vous ne pouvez rejeter que les absences de votre équipe directe' })
+        }
+      }
+
       const res = await rawPool.query(
         `UPDATE "${schema}".absences SET status = 'rejected', rejection_reason = $1,
          rejected_by = $2, updated_at = now() WHERE id = $3 RETURNING *`,
@@ -243,6 +320,11 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
          WHERE employee_id = $2 AND absence_type_id = $3 AND year = $4`,
         [absence.days, absence.employee_id, absence.absence_type_id, year]
       ).catch(() => undefined)
+
+      // OWASP A09 : trace du rejet (motif inclus)
+      auditLogAbsence(schema, request.user.sub, 'absence.rejected', id, {
+        employeeId: absence.employee_id, reason: reason ?? null,
+      }, request.ip ?? null)
 
       return reply.send({ data: res.rows[0] })
     },

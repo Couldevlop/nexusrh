@@ -827,8 +827,11 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /payroll/livre-de-paie/:year/export — Livre de paie annuel CSV
+  // OWASP A07 : rate-limit anti-scraping/brute-force sur cet export coûteux
+  // (agrège jusqu'à plusieurs centaines de bulletins, données salariales sensibles).
   fastify.get('/livre-de-paie/:year/export', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     schema: { tags: ['payroll'], summary: 'Export livre de paie annuel — inspecteurs du travail CI' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }

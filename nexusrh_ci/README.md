@@ -102,7 +102,7 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **424 tests verts** (Vitest) sur 11 fichiers — paie, recrutement, authentification, packs législatifs, référentiels, workflows |
+| **Tests automatisés** | **460 tests verts** (Vitest) sur 13 fichiers — paie, recrutement, absences, contrats, authentification, packs législatifs, référentiels, workflows |
 | **Golden fixtures paie** | 9 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes, congé maternité, maladie maintien 50%, AT avec jour J, heures supp, avance) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
@@ -121,6 +121,18 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 
 > Les fixtures sont initialement des **snapshots** du comportement courant du moteur. Elles deviennent des **références légales** une fois validées par un expert paie ivoirien (date + nom + référence aux textes CNPS/DGI dans `metadata.validatedBy` et `metadata.changelog`).
 
+### Conformité OWASP — couverture par module
+
+| Module                    | A01 RBAC | A03 Inj./Validation | A07 Rate-limit | A09 Audit log                                            |
+| ------------------------- | -------- | ------------------- | -------------- | -------------------------------------------------------- |
+| **Recrutement**           | ✓        | ✓ + Zod + anti-prompt-injection | ✓ 3-10/min | `analyze_cv`, `preselect_batch`, `hired`, `rejected` |
+| **Paie**                  | ✓        | ✓                   | ✓ 5/h export   | `payroll.closed`, `payroll.rejected`                     |
+| **Workflow paie**         | ✓        | ✓                   | n/a            | (SoD vérifié `initiated_by ≠ approver`)                  |
+| **Absences**              | ✓ + RBAC manager équipe directe | ✓ + Zod | n/a | `absence.created`, `absence.approved`/`approval_step`, `absence.rejected` |
+| **Contrats**              | ✓        | ✓ + Zod (enum OHADA/CI, UUID, montants bornés) | n/a | `contract.created`, `contract.terminated`, `contract.deleted` |
+
+> Les audit_log inserts sont systématiquement **non bloquants** (`.catch(() => {})`) pour ne pas casser le service principal sur les tenants en cours de migration.
+
 ---
 
 ## Recrutement IA — pré-sélection en lot
@@ -136,9 +148,18 @@ Le module recrutement combine l'analyse Claude/Mistral à un workflow Kanban pou
 | Comparaison libre N candidats | Cases à cocher sur les cartes Kanban + barre flottante "Comparer (N)" — l'utilisateur sélectionne qui il veut, au-delà du top automatique |
 | Audit de biais | Bannière visible si l'IA reconnaît avoir pondéré le score à cause d'un signal démographique |
 | **Feedback loop IA** | À chaque embauche ou rejet, le tenant alimente automatiquement un historique (`recruitment_decisions`). Les 8 dernières décisions sont injectées dans le prompt de la pré-sélection suivante en **few-shot examples** — l'IA apprend les préférences réelles de l'équipe sans aucune ré-entraînement ML. Visible dans le UI : *« Apprentissage actif : 23 décisions passées ont calibré ce scoring »* |
+| **Historique d'apprentissage** | Endpoint `GET /recruitment/jobs/:id/decisions-history` + panneau UI dépliable « Historique apprentissage » sur le pipeline Kanban — compteurs ✓ recrutés / ✗ rejetés + timeline des décisions avec score IA prior. Transparence totale sur ce qui calibre le scoring |
+| **CV viewer intégré** | Upload binaire (PDF/DOC/DOCX/TXT, MIME en allowlist, max 10 Mo) stocké en `applications.cv_blob`. Endpoint `GET /recruitment/applications/:id/cv-file` stream avec `X-Content-Type-Options: nosniff` + `Content-Disposition: inline`. Modal détail candidat affiche un **iframe PDF** (ou image) au lieu du texte brut, avec bouton Télécharger |
+| **Extraction CV hybride** | À l'upload, extraction texte native via **unpdf** (PDF.js de Mozilla, sans dépendance binaire, free). À l'analyse IA, si le texte est satisfaisant (≥ 200 chars + ratio printable ≥ 70%) → mode texte cheap. Sinon (PDF scanné, layout complexe, OCR raté) → bascule automatique vers **Claude Vision** en mode `document` (le PDF binaire est envoyé directement, lecture native multi-page). Coût optimisé : 80% des CVs restent en mode texte (~$0.003), seuls les scans déclenchent le mode document. Mode renvoyé dans `ingestionMode: 'text' \| 'pdf-document'` |
 | Traçabilité | Audit log `recruitment.preselect_batch` (modèle, stages, focus effectif, comptes analysés/skip/fail, `learningExamples`) |
 
-**Sécurité** : conforme OWASP A01 (RBAC strict), A03 (paramètres bindés, jamais de concat SQL), A05 (clés IA via env, jamais en dur), A07 (rate-limit anti-abus IA), A09 (audit log non bloquant), A10 (messages d'erreur génériques côté client).
+**Sécurité (OWASP 2025)** :
+- **A01** RBAC strict (admin/hr_manager/hr_officer), isolation tenant via schema-per-tenant
+- **A03** SQL : tous paramètres bindés (`$1, $2, …`), nom de schéma issu du JWT uniquement / **Prompt injection** : sanitization des `candidate_anchor` (suppression \n\t, troncature 220 chars) + délimiteurs `=== DEBUT/FIN DECISIONS ===` + instruction explicite à l'IA de traiter ce bloc comme des données factuelles, jamais comme des consignes
+- **A05** clés IA via env, swagger désactivé en prod, migrations lazy idempotentes
+- **A07** rate-limit anti-abus IA (3/min pré-sélection lot, 10/min analyse unitaire), MFA TOTP disponible
+- **A09** audit log dédié pour chaque hire/reject (`recruitment.hired` / `recruitment.rejected`) + pour chaque batch (`recruitment.preselect_batch`) + traçabilité IA (`recruitment.analyze_cv`). Tous non bloquants
+- **A10** messages d'erreur génériques côté client, détails uniquement dans les logs serveur
 
 ---
 
