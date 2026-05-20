@@ -4,14 +4,46 @@ import { config } from '../../config.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
+// OWASP A03 — validation des paramètres query (year, month). Année comprise
+// entre 2000 et l'année courante + 1 (limite la fenêtre d'agrégation possible).
+function parseYearParam(raw: string | undefined): number | null {
+  if (raw === undefined || raw === null) return new Date().getFullYear()
+  if (!/^\d{4}$/.test(raw)) return null
+  const y = parseInt(raw, 10)
+  if (y < 2000 || y > new Date().getFullYear() + 1) return null
+  return y
+}
+
+// OWASP A09 — audit log non bloquant des exports (vol potentiel de données :
+// masse salariale, cotisations CNPS, distribution salaires). Action sensible.
+function auditLogReporting(
+  schema: string, userId: string, action: string,
+  scope: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'reporting', NULL, $3, $4)`,
+    [userId, action, JSON.stringify(scope), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+// OWASP A07 — rate-limit anti-DoS sur les agrégations coûteuses. Les routes
+// /overview et /payroll-summary lancent 5-8 requêtes en parallèle avec
+// GROUP BY massifs. Cap : 30 req/min/IP. Largement suffisant pour un dashboard
+// qui se rafraîchit à l'usage, bloque le scraping abusif.
+const HEAVY_REPORT_RATE_LIMIT = { rateLimit: { max: 30, timeWindow: '1 minute' } }
+
 const reportingRoutes: FastifyPluginAsync = async (fastify) => {
 
   // GET /reporting/overview
   fastify.get('/overview', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    config: HEAVY_REPORT_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { year = String(new Date().getFullYear()) } = request.query as Record<string, string>
+      const yearParam = parseYearParam((request.query as Record<string, string>).year)
+      if (yearParam === null) return reply.status(400).send({ error: 'year invalide (format YYYY, 2000-courant+1)' })
+      const year = String(yearParam)
       try {
         const [depts, pay, absTypes, recJobs, empsTotal] = await Promise.all([
           pool.query(`
@@ -48,9 +80,10 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           }),
           { totalGross: 0, totalNet: 0, totalCnps: 0, totalIts: 0 }
         )
+        auditLogReporting(schema, request.user.sub, 'reporting.overview', { year: yearParam }, request.ip ?? null)
         return reply.send({
           data: {
-            year: parseInt(year),
+            year: yearParam,
             activeEmployees: empsTotal.rows[0]?.total ?? 0,
             departments: depts.rows,
             payrollEvolution: pay.rows,
@@ -69,6 +102,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /reporting/payroll-summary
   fastify.get('/payroll-summary', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    config: HEAVY_REPORT_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       try {
@@ -94,6 +128,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
             GROUP BY range ORDER BY MIN(base_salary)
           `),
         ])
+        auditLogReporting(schema, request.user.sub, 'reporting.payroll_summary', {}, request.ip ?? null)
         return reply.send({ data: { periods: periods.rows, salaryDistribution: salaryDist.rows } })
       } catch (err) {
         fastify.log.error(err)
@@ -105,9 +140,12 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /reporting/absences
   fastify.get('/absences', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    config: HEAVY_REPORT_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { year = String(new Date().getFullYear()) } = request.query as Record<string, string>
+      const yearParam = parseYearParam((request.query as Record<string, string>).year)
+      if (yearParam === null) return reply.status(400).send({ error: 'year invalide (format YYYY, 2000-courant+1)' })
+      const year = String(yearParam)
       try {
         const [byMonth, byDept] = await Promise.all([
           pool.query(`
@@ -127,6 +165,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
             GROUP BY d.name ORDER BY total_days DESC
           `, [parseInt(year)]),
         ])
+        auditLogReporting(schema, request.user.sub, 'reporting.absences', { year: yearParam }, request.ip ?? null)
         return reply.send({ data: { byMonth: byMonth.rows, byDepartment: byDept.rows } })
       } catch (err) {
         fastify.log.error(err)
@@ -138,9 +177,12 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /reporting/cnps-analytics
   fastify.get('/cnps-analytics', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    config: HEAVY_REPORT_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { year = String(new Date().getFullYear()) } = request.query as Record<string, string>
+      const yearParam = parseYearParam((request.query as Record<string, string>).year)
+      if (yearParam === null) return reply.status(400).send({ error: 'year invalide (format YYYY, 2000-courant+1)' })
+      const year = String(yearParam)
       try {
         const declarations = await pool.query(`
           SELECT year, quarter, status, masse_salariale::int,
@@ -155,6 +197,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE month LIKE $1 AND status = 'closed'
           ORDER BY month
         `, [`${year}-%`])
+        auditLogReporting(schema, request.user.sub, 'reporting.cnps_analytics', { year: yearParam }, request.ip ?? null)
         return reply.send({
           data: {
             declarations: declarations.rows,

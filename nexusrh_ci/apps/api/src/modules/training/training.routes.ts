@@ -1,9 +1,64 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 const rawPool = pool
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — schemas Zod pour les routes mutantes
+const createTrainingSchema = z.object({
+  title:              z.string().min(1).max(200).trim(),
+  description:        z.string().max(5000).optional(),
+  duration:           z.number().int().min(0).max(10_000).optional(),
+  duration_unit:      z.enum(['hours', 'days', 'weeks', 'months']).optional(),
+  format:             z.enum(['presentiel', 'distanciel', 'hybride']).optional(),
+  category:           z.string().max(100).optional(),
+  is_fdfp_eligible:   z.boolean().optional(),
+  fdfp_code:          z.string().max(50).optional(),
+  max_participants:   z.number().int().min(1).max(500).optional(),
+}).strict()
+
+const createSessionSchema = z.object({
+  training_id:  z.string().uuid(),
+  start_date:   z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format date YYYY-MM-DD requis'),
+  end_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional(),
+  location:     z.string().max(200).optional(),
+  trainer:      z.string().max(200).optional(),
+  max_places:   z.number().int().min(1).max(500).optional(),
+}).strict()
+
+const enrollSchema = z.object({
+  session_id:   z.string().uuid(),
+  employee_id:  z.string().uuid().optional(),
+}).strict()
+
+// OWASP A04 — bornes anti-fraude : 1 formation pro CI dépasse rarement 5M FCFA
+// par session entière. 50M est un cap "sanity check" qui bloque les 999999999.
+const FDFP_TOTAL_MAX = 50_000_000
+const FDFP_EMPLOYEES_MAX = 1000
+const fdfpRequestSchema = z.object({
+  training_title:   z.string().min(1).max(200).trim(),
+  training_id:      z.string().uuid().optional(),
+  session_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format date YYYY-MM-DD requis'),
+  employees_count:  z.number().int().min(1).max(FDFP_EMPLOYEES_MAX),
+  total_cost:       z.number().int().min(0).max(FDFP_TOTAL_MAX),
+  provider_name:    z.string().min(1).max(200).trim(),
+  fdfp_code:        z.string().max(50).optional(),
+}).strict()
+
+function auditLogTraining(
+  schema: string, userId: string, action: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'training', $3, $4, $5)`,
+    [userId, action, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
 
 const trainingRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -40,18 +95,29 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as Record<string, unknown>
+      // OWASP A03 : validation Zod stricte
+      const parsed = createTrainingSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données de formation invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".trainings
             (title, description, duration, duration_unit, format, category,
              is_fdfp_eligible, fdfp_code, max_participants)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-        `, [body.title, body.description || null,
-            body.duration || null, body.duration_unit || 'hours',
-            body.format || 'presentiel', body.category || null,
-            body.is_fdfp_eligible || false, body.fdfp_code || null,
-            body.max_participants || null])
+        `, [body.title, body.description ?? null,
+            body.duration ?? null, body.duration_unit ?? 'hours',
+            body.format ?? 'presentiel', body.category ?? null,
+            body.is_fdfp_eligible ?? false, body.fdfp_code ?? null,
+            body.max_participants ?? null])
+        auditLogTraining(schema, request.user.sub, 'training.created', res.rows[0].id, {
+          title: body.title, category: body.category ?? null, isFdfp: body.is_fdfp_eligible ?? false,
+        }, request.ip ?? null)
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -93,15 +159,25 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as Record<string, unknown>
+      const parsed = createSessionSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données de session invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".training_sessions
             (training_id, start_date, end_date, location, trainer, status, max_places)
           VALUES ($1,$2,$3,$4,$5,'planned',$6) RETURNING *
-        `, [body.training_id, body.start_date, body.end_date || null,
-            body.location || null, body.trainer || null,
-            body.max_places || 20])
+        `, [body.training_id, body.start_date, body.end_date ?? null,
+            body.location ?? null, body.trainer ?? null,
+            body.max_places ?? 20])
+        auditLogTraining(schema, request.user.sub, 'training.session_created', res.rows[0].id, {
+          trainingId: body.training_id, startDate: body.start_date, maxPlaces: body.max_places ?? 20,
+        }, request.ip ?? null)
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -116,6 +192,13 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { session_id, employee_id } = request.query as Record<string, string>
+      // OWASP A03 : validation UUID query params (évite injection même bindée)
+      if (session_id && !UUID_RE.test(session_id)) {
+        return reply.status(400).send({ error: 'session_id invalide (UUID requis)' })
+      }
+      if (employee_id && !UUID_RE.test(employee_id)) {
+        return reply.status(400).send({ error: 'employee_id invalide (UUID requis)' })
+      }
       let sql = `SELECT te.*,
                    e.first_name, e.last_name,
                    ts.start_date AS session_start, ts.location,
@@ -145,7 +228,15 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as { session_id: string; employee_id?: string }
+      // OWASP A03 : validation Zod stricte (UUIDs)
+      const parsed = enrollSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données d\'inscription invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
       try {
         let employeeId = body.employee_id
         if (!employeeId || request.user.role === 'employee') {
@@ -154,6 +245,15 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
           )
           if (!emp.rows[0]) return reply.status(400).send({ error: 'Employé introuvable' })
           employeeId = emp.rows[0].id as string
+        }
+        // OWASP A04 : empêche l'inscription multiple à la même session (anti spam)
+        const duplicate = await pool.query(
+          `SELECT id FROM "${schema}".training_enrollments
+            WHERE session_id = $1 AND employee_id = $2 LIMIT 1`,
+          [body.session_id, employeeId],
+        )
+        if (duplicate.rows[0]) {
+          return reply.status(409).send({ error: 'Cet employé est déjà inscrit à cette session' })
         }
         // Vérifier places
         const session = await pool.query(`
@@ -170,6 +270,9 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
           INSERT INTO "${schema}".training_enrollments (session_id, employee_id, status)
           VALUES ($1,$2,'enrolled') RETURNING *
         `, [body.session_id, employeeId])
+        auditLogTraining(schema, request.user.sub, 'training.enrolled', res.rows[0].id, {
+          sessionId: body.session_id, employeeId, bySelf: request.user.role === 'employee',
+        }, request.ip ?? null)
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -213,49 +316,66 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // POST /training/fdfp/request — demande remboursement FDFP
+  // OWASP A04 anti-fraude : montants bornés (total ≤ 50M FCFA, ≤ 1000 employés).
+  // OWASP A07 : rate-limit modeste (action financière sensible, on tolère un
+  // burst raisonnable mais on bloque le spam).
   fastify.post('/fdfp/request', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     schema: { tags: ['training'], summary: 'Soumettre demande remboursement FDFP CI' },
     handler: async (request, reply) => {
-      const {
-        training_title, training_id, session_date, employees_count,
-        total_cost, provider_name, fdfp_code,
-      } = request.body as {
-        training_title: string; training_id?: string; session_date: string
-        employees_count: number; total_cost: number
-        provider_name: string; fdfp_code?: string
-      }
       const schema = request.user.schemaName
-
-      if (!training_title || !session_date || !total_cost || !provider_name) {
-        return reply.status(400).send({ error: 'training_title, session_date, total_cost et provider_name requis' })
+      // OWASP A03 + A04 : validation Zod stricte, bornes anti-fraude
+      const parsed = fdfpRequestSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Demande FDFP invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
       }
+      const body = parsed.data
 
-      const estimated_refund = Math.floor(total_cost * 0.5)
-      await rawPool.query(
+      const estimated_refund = Math.floor(body.total_cost * 0.5)
+      const insertRes = await rawPool.query(
         `INSERT INTO "${schema}".hr_events
            (type, title, description, date, metadata, created_by)
-         VALUES ('fdfp_request','Demande remboursement FDFP',$1,$2,$3,$4)`,
+         VALUES ('fdfp_request','Demande remboursement FDFP',$1,$2,$3,$4)
+         RETURNING id`,
         [
-          `Formation : ${training_title} · Organisme : ${provider_name}`,
-          session_date,
+          `Formation : ${body.training_title} · Organisme : ${body.provider_name}`,
+          body.session_date,
           JSON.stringify({
-            training_title, training_id: training_id ?? null, session_date,
-            employees_count, total_cost, provider_name,
-            fdfp_code: fdfp_code ?? null,
+            training_title: body.training_title,
+            training_id: body.training_id ?? null,
+            session_date: body.session_date,
+            employees_count: body.employees_count,
+            total_cost: body.total_cost,
+            provider_name: body.provider_name,
+            fdfp_code: body.fdfp_code ?? null,
             estimated_refund, currency: 'XOF',
             status: 'pending_validation',
           }),
           request.user.sub,
         ]
       )
+      // OWASP A09 : trace de la demande financière (vol potentiel via fraude FDFP)
+      auditLogTraining(schema, request.user.sub, 'training.fdfp_requested', insertRes.rows[0]?.id ?? null, {
+        trainingTitle: body.training_title,
+        providerName: body.provider_name,
+        totalCost: body.total_cost,
+        employeesCount: body.employees_count,
+        estimatedRefund: estimated_refund,
+      }, request.ip ?? null)
 
       return reply.status(201).send({
         message: 'Demande FDFP enregistrée',
         data: {
-          training_title, session_date, employees_count,
-          total_cost, estimated_refund,
-          fdfp_code: fdfp_code ?? null,
+          training_title: body.training_title,
+          session_date: body.session_date,
+          employees_count: body.employees_count,
+          total_cost: body.total_cost,
+          estimated_refund,
+          fdfp_code: body.fdfp_code ?? null,
           status: 'pending_validation', currency: 'XOF',
         },
       })

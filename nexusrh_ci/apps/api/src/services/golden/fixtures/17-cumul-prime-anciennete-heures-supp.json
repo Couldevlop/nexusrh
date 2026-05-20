@@ -1,0 +1,53 @@
+{
+  "id": "17-cumul-prime-anciennete-heures-supp",
+  "description": "Cadre 400 000 FCFA + prime ancienneté 20 000 + heures supp +15% 18 000. Cas réaliste de cadre senior — vérifie le cumul de variableElements (codes 1100 + 1400) avec ITS tranche 5% et primes hors base imposable",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-20",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 400000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "PRIME_ANCIENNETE": 20000,
+      "HEURES_SUPP_NORM": 18000
+    }
+  },
+  "expected": {
+    "baseSalary": 400000,
+    "brutProrata": 400000,
+    "grossSalary": 438000,
+    "cnpsRetraiteSal": 25200,
+    "cnpsRetraitePat": 30800,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 25200,
+    "totalCnpsPat": 36225,
+    "baseImposable": 314800,
+    "its": 6214,
+    "totalDeductions": 31414,
+    "netPayable": 406586,
+    "employerCost": 474225,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 400000 },
+      { "code": "1100", "type": "earning",                 "amount":  20000 },
+      { "code": "1400", "type": "earning",                 "amount":  18000 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  25200 },
+      { "code": "2100", "type": "employee_contribution",   "amount":   6214 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  30800 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}

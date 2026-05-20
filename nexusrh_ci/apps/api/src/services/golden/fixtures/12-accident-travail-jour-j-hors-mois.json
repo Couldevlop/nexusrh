@@ -1,0 +1,59 @@
+{
+  "id": "12-accident-travail-jour-j-hors-mois",
+  "description": "AT secteur BTP (taux 5%), 5j d'arrêt — le jour J est tombé un mois précédent donc atJourAccidentInMonth=false. IJSS CNPS sur les 5 jours complets (pas 4 comme en fixture 07). Marié sans enfant → crédit famille annule ITS",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-20",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 300000,
+    "workedDays": 21,
+    "workingDaysMonth": 26,
+    "atRate": 0.05,
+    "maritalStatus": "married",
+    "childrenCount": 0,
+    "variableElements": {},
+    "absence": {
+      "type": "accident_travail",
+      "absenceDays": 5,
+      "atJourAccidentInMonth": false
+    }
+  },
+  "expected": {
+    "baseSalary": 300000,
+    "brutProrata": 242307,
+    "grossSalary": 299999,
+    "cnpsRetraiteSal": 15265,
+    "cnpsRetraitePat": 18657,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 3500,
+    "totalCnpsSal": 15265,
+    "totalCnpsPat": 26182,
+    "baseImposable": 190695,
+    "its": 0,
+    "totalDeductions": 15265,
+    "netPayable": 284734,
+    "employerCost": 326181,
+    "workingDays": 21,
+    "smigCompliant": true,
+    "indemniteAbsence": 57692,
+    "bordereauCnps": {
+      "motif": "accident_travail",
+      "montant": 57692
+    },
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 242307 },
+      { "code": "1900", "type": "earning",                 "amount":  57692 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  15265 },
+      { "code": "2100", "type": "employee_contribution",   "amount":      0 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  18657 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   3500 }
+    ]
+  }
+}

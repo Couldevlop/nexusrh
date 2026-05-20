@@ -1,0 +1,51 @@
+{
+  "id": "10-prime-rendement-mois-complet",
+  "description": "Salarié avec prime de rendement seule (PRIME_RENDEMENT 50 000) — vérifie que la prime est dans grossSalary mais hors base imposable ITS",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-20",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 200000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "PRIME_RENDEMENT": 50000
+    }
+  },
+  "expected": {
+    "baseSalary": 200000,
+    "brutProrata": 200000,
+    "grossSalary": 250000,
+    "cnpsRetraiteSal": 12600,
+    "cnpsRetraitePat": 15400,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 12600,
+    "totalCnpsPat": 20825,
+    "baseImposable": 157400,
+    "its": 1235,
+    "totalDeductions": 13835,
+    "netPayable": 236165,
+    "employerCost": 270825,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 200000 },
+      { "code": "1200", "type": "earning",                 "amount":  50000 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  12600 },
+      { "code": "2100", "type": "employee_contribution",   "amount":   1235 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  15400 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}
