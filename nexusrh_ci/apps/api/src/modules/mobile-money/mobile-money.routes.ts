@@ -1,22 +1,79 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
 
+// OWASP A03 — patterns de validation stricts
+const UUID_RE      = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const MONTH_RE     = /^\d{4}-(0[1-9]|1[0-2])$/
+const REFERENCE_RE = /^[A-Za-z0-9_-]{1,100}$/
+const PROVIDERS    = ['wave', 'mtn_momo', 'orange_money'] as const
+type Provider = typeof PROVIDERS[number]
+
+// OWASP A04 — bornes anti-fraude paiements Mobile Money CI.
+// Seuils calibrés sur les usages PME ivoiriennes : aucun salaire net légitime
+// ne dépasse 50M FCFA/mois et un seul lot ne couvre pas plus de 1000 employés.
+const MONTANT_MIN_FCFA              = 1
+const MONTANT_MAX_PAR_PAIEMENT_FCFA = 50_000_000      // 50M FCFA
+const MAX_PAYSLIPS_PAR_CAMPAGNE     = 1_000
+
+// OWASP A09 — audit log non bloquant des actions financières (création campagne,
+// exécution virements, retry). Permet la traçabilité même si la table audit_log
+// n'existe pas encore dans un tenant ancien.
+function auditLogMobileMoney(
+  schema: string, userId: string, action: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  rawPool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'mobile_money', $3, $4, $5)`,
+    [userId, action, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+// OWASP A07 — rate-limits sur actions sensibles (création campagne et exécution
+// virements en masse). L'exécution est plus restrictive : un lot mal initié peut
+// pousser des centaines de transactions provider en quelques secondes.
+const CAMPAIGN_CREATE_RATE_LIMIT  = { rateLimit: { max: 20, timeWindow: '1 minute' } }
+const CAMPAIGN_EXECUTE_RATE_LIMIT = { rateLimit: { max: 5,  timeWindow: '1 minute' } }
+const RETRY_RATE_LIMIT            = { rateLimit: { max: 30, timeWindow: '1 minute' } }
+
+// OWASP A03 — schémas Zod stricts
+const createCampaignSchema = z.object({
+  month:    z.string().regex(MONTH_RE, 'Format YYYY-MM requis'),
+  provider: z.enum([...PROVIDERS, 'all']).optional(),
+}).strict()
+
+const executeCampaignSchema = z.object({
+  paySlipIds: z.array(z.string().regex(UUID_RE, 'UUID requis'))
+              .min(1, 'Au moins un paySlipId requis')
+              .max(MAX_PAYSLIPS_PAR_CAMPAGNE, `Maximum ${MAX_PAYSLIPS_PAR_CAMPAGNE} virements par lot`),
+}).strict()
+
+const paymentsQuerySchema = z.object({
+  month:      z.string().regex(MONTH_RE).optional(),
+  status:     z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled']).optional(),
+  employeeId: z.string().regex(UUID_RE).optional(),
+}).strict()
+
+const statsQuerySchema = z.object({
+  year: z.string().regex(/^\d{4}$/).optional(),
+}).strict()
+
 /**
- * Simule un initiation de paiement Mobile Money CI
- * En production, remplacer par les vrais SDK Wave/MTN/Orange
+ * Simule un initiation de paiement Mobile Money CI.
+ * En production, remplacer par les vrais SDK Wave/MTN/Orange.
  */
 async function initiateMobileMoneyPayment(params: {
-  provider: 'wave' | 'mtn_momo' | 'orange_money'
+  provider: Provider
   phone: string
   amount: number
   reference: string
   description: string
 }): Promise<{ success: boolean; transactionId?: string; error?: string }> {
-  // Simulation — en production: appel API Wave/MTN/Orange
   const providers = {
     wave:         config.mobileMoney.wave.apiKey,
     mtn_momo:     config.mobileMoney.mtn.apiKey,
@@ -32,11 +89,6 @@ async function initiateMobileMoneyPayment(params: {
   if (!/^\+2250[57]\d{8}$/.test(cleanPhone)) {
     return { success: false, error: `Numéro invalide pour la CI: ${params.phone}` }
   }
-
-  // TODO: appel SDK réel
-  // Wave:         await fetch('https://api.wave.com/v1/checkout/sessions', {...})
-  // MTN MoMo:     await mtnMomoClient.requestToPayDeliveryNotification(...)
-  // Orange Money: await fetch('https://api.orange.com/orange-money-webpay/ci/v1/webpayment', {...})
 
   // Simulation: 95% success rate
   const success = Math.random() > 0.05
@@ -57,16 +109,25 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/campaigns', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['mobile-money'], summary: 'Créer une campagne de virements Mobile Money' },
+    config: CAMPAIGN_CREATE_RATE_LIMIT,
     handler: async (request, reply) => {
-      const { month, provider } = request.body as {
-        month: string
-        provider?: 'wave' | 'mtn_momo' | 'orange_money' | 'all'
+      // OWASP A03 — validation Zod stricte (rejette payload inconnu)
+      const parsed = createCampaignSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
+      const { month, provider } = parsed.data
       const schema = request.user.schemaName
 
-      if (!month) return reply.status(400).send({ error: 'month requis (YYYY-MM)' })
+      // OWASP A03 — provider passe par enum Zod puis par param binding
+      // (jamais par interpolation directe dans la requête SQL).
+      const params: unknown[] = [month]
+      let providerFilter = ''
+      if (provider && provider !== 'all') {
+        params.push(provider)
+        providerFilter = ` AND e.mobile_money_provider = $${params.length}`
+      }
 
-      // Récupérer les bulletins du mois
       const slipsRes = await rawPool.query<{
         id: string; employee_id: string; net_payable: string
         payment_method: string; payment_status: string
@@ -80,57 +141,73 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
          WHERE ps.month = $1 AND ps.status IN ('generated','approved')
-           AND ps.payment_status IN ('pending','failed')
-           ${provider && provider !== 'all' ? `AND e.mobile_money_provider = '${provider}'` : ''}
+           AND ps.payment_status IN ('pending','failed')${providerFilter}
          ORDER BY e.last_name`,
-        [month]
+        params,
       )
 
       const slips = slipsRes.rows
       if (slips.length === 0) {
-        // Vérifier si le mois a des bulletins mais déjà payés
         const paidRes = await rawPool.query<{ count: string }>(
           `SELECT count(*)::text AS count FROM "${schema}".pay_slips
            WHERE month = $1 AND status IN ('generated','approved')
              AND payment_status = 'paid'`,
-          [month]
+          [month],
         )
         const paidCount = parseInt(paidRes.rows[0]?.count ?? '0')
         if (paidCount > 0) {
           return reply.send({
-            reference: null, paySlips: [], month,
-            employeesCount: 0, totalAmount: 0, currency: 'XOF',
-            allPaid: true,
-            message: `${paidCount} bulletins de ce mois sont déjà virés.`,
+            reference: `CAMP_${month}_EMPTY`,
+            month,
+            provider: provider ?? 'all',
+            slips: [],
+            summary: { total: 0, totalAmount: 0, currency: 'XOF', alreadyPaid: paidCount },
+            message: 'Tous les bulletins de ce mois sont déjà payés',
           })
         }
-        return reply.send({
-          reference: null, paySlips: [], month,
-          employeesCount: 0, totalAmount: 0, currency: 'XOF',
-          allPaid: false,
-          message: 'Aucun bulletin trouvé. Clôturez d\'abord la paie pour ce mois.',
-        })
+        return reply.status(404).send({ error: 'Aucun bulletin éligible pour ce mois' })
       }
 
-      const totalAmount = slips.reduce((s, sl) => s + parseInt(sl.net_payable ?? '0'), 0)
-      const campaignRef = `CAM_${month.replace('-', '')}_${Date.now()}`
+      // OWASP A04 — borne anti-fraude : refuser les lots dépassant le cap.
+      if (slips.length > MAX_PAYSLIPS_PAR_CAMPAGNE) {
+        return reply.status(422).send({
+          error: `Lot trop volumineux (${slips.length} bulletins). Maximum ${MAX_PAYSLIPS_PAR_CAMPAGNE} par campagne.`,
+        })
+      }
+      // OWASP A04 — chaque montant dans la borne autorisée.
+      for (const sl of slips) {
+        const amt = parseInt(sl.net_payable ?? '0')
+        if (amt > MONTANT_MAX_PAR_PAIEMENT_FCFA) {
+          return reply.status(422).send({
+            error: `Montant suspect détecté (${amt} FCFA pour ${sl.first_name} ${sl.last_name}). Plafond ${MONTANT_MAX_PAR_PAIEMENT_FCFA} FCFA/paiement.`,
+          })
+        }
+      }
 
-      return reply.status(201).send({
-        reference: campaignRef,
+      const reference   = `CAMP_${month.replace('-', '')}_${Date.now()}`
+      const totalAmount = slips.reduce((s, sl) => s + parseInt(sl.net_payable ?? '0'), 0)
+
+      auditLogMobileMoney(
+        schema, request.user.sub, 'mobile_money.campaign.prepared',
+        null,
+        { month, provider: provider ?? 'all', reference, slipsCount: slips.length, totalAmount },
+        request.ip ?? null,
+      )
+
+      return reply.send({
+        reference,
         month,
         provider: provider ?? 'all',
-        employeesCount: slips.length,
-        totalAmount,
-        currency: 'XOF',
-        paySlips: slips.map(sl => ({
+        slips: slips.map(sl => ({
           paySlipId: sl.id,
           employeeId: sl.employee_id,
           name: `${sl.first_name} ${sl.last_name}`,
-          provider: sl.mobile_money_provider ?? 'wave',
+          provider: sl.mobile_money_provider,
           phone: sl.mobile_money_phone ?? '',
           amount: parseInt(sl.net_payable ?? '0'),
           currentStatus: sl.payment_status,
         })),
+        summary: { total: slips.length, totalAmount, currency: 'XOF' },
       })
     },
   })
@@ -139,14 +216,20 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/campaigns/:reference/execute', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['mobile-money'], summary: 'Exécuter les virements Mobile Money' },
+    config: CAMPAIGN_EXECUTE_RATE_LIMIT,
     handler: async (request, reply) => {
+      // OWASP A03 — validation référence campagne (alphanumérique strict)
       const { reference } = request.params as { reference: string }
-      const { paySlipIds } = request.body as { paySlipIds: string[] }
-      const schema = request.user.schemaName
-
-      if (!paySlipIds || paySlipIds.length === 0) {
-        return reply.status(400).send({ error: 'paySlipIds requis' })
+      if (!REFERENCE_RE.test(reference)) {
+        return reply.status(400).send({ error: 'Référence de campagne invalide' })
       }
+      // OWASP A03 — validation corps Zod (UUIDs + cardinalité)
+      const parsed = executeCampaignSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const { paySlipIds } = parsed.data
+      const schema = request.user.schemaName
 
       const results: Array<{
         paySlipId: string
@@ -161,7 +244,6 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
       }> = []
 
       for (const paySlipId of paySlipIds) {
-        // Récupérer le bulletin
         const slipRes = await rawPool.query<{
           id: string; employee_id: string; net_payable: string; month: string
           first_name: string; last_name: string
@@ -173,7 +255,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
            FROM "${schema}".pay_slips ps
            JOIN "${schema}".employees e ON e.id = ps.employee_id
            WHERE ps.id = $1 LIMIT 1`,
-          [paySlipId]
+          [paySlipId],
         )
         const slip = slipRes.rows[0]
         if (!slip) {
@@ -182,20 +264,24 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const amount = parseInt(slip.net_payable ?? '0')
-        if (amount <= 0) {
-          results.push({ paySlipId, employeeId: slip.employee_id, name: `${slip.first_name} ${slip.last_name}`, provider: slip.mobile_money_provider, phone: slip.mobile_money_phone, amount: 0, success: false, error: 'Montant nul' })
+        if (amount < MONTANT_MIN_FCFA) {
+          results.push({ paySlipId, employeeId: slip.employee_id, name: `${slip.first_name} ${slip.last_name}`, provider: slip.mobile_money_provider, phone: slip.mobile_money_phone, amount: 0, success: false, error: 'Montant nul ou négatif' })
+          continue
+        }
+        // OWASP A04 — re-vérification du plafond à l'exécution (defense in depth)
+        if (amount > MONTANT_MAX_PAR_PAIEMENT_FCFA) {
+          results.push({ paySlipId, employeeId: slip.employee_id, name: `${slip.first_name} ${slip.last_name}`, provider: slip.mobile_money_provider, phone: slip.mobile_money_phone, amount, success: false, error: `Plafond dépassé (max ${MONTANT_MAX_PAR_PAIEMENT_FCFA} FCFA)` })
           continue
         }
 
         const payResult = await initiateMobileMoneyPayment({
-          provider: slip.mobile_money_provider as 'wave' | 'mtn_momo' | 'orange_money',
+          provider: slip.mobile_money_provider as Provider,
           phone: slip.mobile_money_phone,
           amount,
           reference: `${reference}_${paySlipId.slice(0, 8)}`,
           description: `Salaire ${slip.month} — ${slip.first_name} ${slip.last_name}`,
         })
 
-        // Enregistrer le paiement
         await rawPool.query(
           `INSERT INTO "${schema}".mobile_money_payments
              (employee_id, pay_slip_id, provider, phone_number, amount, reference, status, external_ref, error_message)
@@ -207,10 +293,9 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
             payResult.success ? 'completed' : 'failed',
             payResult.transactionId ?? null,
             payResult.error ?? null,
-          ]
+          ],
         )
 
-        // Mettre à jour le bulletin
         await rawPool.query(
           `UPDATE "${schema}".pay_slips SET
              payment_status = $1, payment_reference = $2,
@@ -221,7 +306,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
             payResult.transactionId ?? null,
             payResult.success ? new Date() : null,
             paySlipId,
-          ]
+          ],
         )
 
         results.push({
@@ -239,6 +324,14 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
 
       const succeeded = results.filter(r => r.success)
       const failed    = results.filter(r => !r.success)
+      const totalPaid = succeeded.reduce((s, r) => s + r.amount, 0)
+
+      auditLogMobileMoney(
+        schema, request.user.sub, 'mobile_money.campaign.executed',
+        null,
+        { reference, total: results.length, succeeded: succeeded.length, failed: failed.length, totalPaid },
+        request.ip ?? null,
+      )
 
       return reply.send({
         reference,
@@ -247,7 +340,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
           total:     results.length,
           succeeded: succeeded.length,
           failed:    failed.length,
-          totalPaid: succeeded.reduce((s, r) => s + r.amount, 0),
+          totalPaid,
           currency:  'XOF',
         },
       })
@@ -259,7 +352,12 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly')],
     schema: { tags: ['mobile-money'], summary: 'Historique des paiements Mobile Money' },
     handler: async (request, reply) => {
-      const { month, status, employeeId } = request.query as Record<string, string>
+      // OWASP A03 — validation query (rejette filtres exotiques + injection)
+      const parsed = paymentsQuerySchema.safeParse(request.query)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const { month, status, employeeId } = parsed.data
       const schema = request.user.schemaName
 
       let sql = `SELECT mp.id, mp.provider, mp.phone_number AS phone,
@@ -288,7 +386,16 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'readonly')],
     schema: { tags: ['mobile-money'], summary: 'Statistiques paiements Mobile Money' },
     handler: async (request, reply) => {
-      const { year = String(new Date().getFullYear()) } = request.query as Record<string, string>
+      // OWASP A03 — validation query year
+      const parsedQ = statsQuerySchema.safeParse(request.query)
+      if (!parsedQ.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsedQ.error.flatten() })
+      }
+      const yearStr = parsedQ.data.year ?? String(new Date().getFullYear())
+      const year    = parseInt(yearStr, 10)
+      if (year < 2000 || year > new Date().getFullYear() + 1) {
+        return reply.status(400).send({ error: 'year hors plage' })
+      }
       const schema = request.user.schemaName
 
       const res = await rawPool.query<{
@@ -302,10 +409,10 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          WHERE EXTRACT(YEAR FROM mp.created_at) = $1
          GROUP BY mp.provider, mp.status
          ORDER BY mp.provider, mp.status`,
-        [parseInt(year)]
+        [year],
       )
 
-      return reply.send({ data: res.rows, year: parseInt(year), currency: 'XOF' })
+      return reply.send({ data: res.rows, year, currency: 'XOF' })
     },
   })
 
@@ -313,8 +420,13 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch('/payments/:id/retry', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     schema: { tags: ['mobile-money'], summary: 'Relancer un paiement échoué' },
+    config: RETRY_RATE_LIMIT,
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 — validation UUID stricte
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'ID invalide' })
+      }
       const schema = request.user.schemaName
 
       const payRes = await rawPool.query<{
@@ -328,16 +440,26 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".mobile_money_payments mp
          JOIN "${schema}".employees e ON e.id = mp.employee_id
          WHERE mp.id = $1 LIMIT 1`,
-        [id]
+        [id],
       )
       const payment = payRes.rows[0]
       if (!payment) return reply.status(404).send({ error: 'Paiement introuvable' })
       if (payment.status === 'completed') return reply.status(422).send({ error: 'Paiement déjà complété' })
 
+      // OWASP A04 — re-vérification du plafond avant relance
+      const retryAmount = parseInt(payment.amount)
+      if (retryAmount < MONTANT_MIN_FCFA || retryAmount > MONTANT_MAX_PAR_PAIEMENT_FCFA) {
+        return reply.status(422).send({ error: `Montant hors borne (${retryAmount} FCFA)` })
+      }
+      // OWASP A03 — provider stocké en base doit toujours appartenir à la whitelist
+      if (!PROVIDERS.includes(payment.provider as Provider)) {
+        return reply.status(422).send({ error: 'Provider inconnu sur ce paiement' })
+      }
+
       const retryResult = await initiateMobileMoneyPayment({
-        provider: payment.provider as 'wave' | 'mtn_momo' | 'orange_money',
+        provider: payment.provider as Provider,
         phone: payment.phone_number,
-        amount: parseInt(payment.amount),
+        amount: retryAmount,
         reference: `${payment.reference}_RETRY_${Date.now()}`,
         description: `Relance salaire — ${payment.first_name} ${payment.last_name}`,
       })
@@ -351,7 +473,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
           retryResult.transactionId ?? null,
           retryResult.error ?? null,
           id,
-        ]
+        ],
       )
 
       if (retryResult.success) {
@@ -360,9 +482,16 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
            SET payment_status = 'paid', payment_reference = $1,
                paid_at = now(), updated_at = now()
            WHERE id = $2`,
-          [retryResult.transactionId, payment.pay_slip_id]
+          [retryResult.transactionId, payment.pay_slip_id],
         )
       }
+
+      auditLogMobileMoney(
+        schema, request.user.sub, 'mobile_money.payment.retried',
+        id,
+        { success: retryResult.success, amount: retryAmount, provider: payment.provider },
+        request.ip ?? null,
+      )
 
       return reply.send({
         success: retryResult.success,
