@@ -127,11 +127,21 @@ export default function RecruitmentPage() {
   const [showCriteria, setShowCriteria] = useState(false)
   const [criteriaFocus, setCriteriaFocus] = useState('')
   const [compareTop3, setCompareTop3] = useState(false)
+  const [selectedAppIds, setSelectedAppIds] = useState<string[]>([])
+  const [compareSelected, setCompareSelected] = useState(false)
 
   useEffect(() => {
     setCriteriaFocus(selectedJob?.ai_focus_text ?? '')
     if (selectedJob?.ai_focus_text) setShowCriteria(true)
+    setSelectedAppIds([])
+    setCompareSelected(false)
   }, [selectedJob?.id, selectedJob?.ai_focus_text])
+
+  const toggleAppSelected = (id: string) => {
+    setSelectedAppIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
 
   const { data: jobsData, isLoading } = useQuery<{ data: Job[] }>({
     queryKey: ['recruitment-jobs'],
@@ -646,6 +656,177 @@ export default function RecruitmentPage() {
               Erreur lors de la pré-sélection. Réessayez plus tard.
             </div>
           )}
+          {selectedAppIds.length >= 1 && (
+            <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/10 backdrop-blur px-3 py-2 text-sm">
+              <span className="font-medium">
+                {selectedAppIds.length} candidat{selectedAppIds.length > 1 ? 's' : ''} sélectionné{selectedAppIds.length > 1 ? 's' : ''}
+                {selectedAppIds.length === 1 && <span className="text-xs text-muted-foreground ml-2">(sélectionnez-en au moins 2 pour comparer)</span>}
+              </span>
+              <div className="flex items-center gap-2">
+                {selectedAppIds.length >= 2 && (
+                  <button
+                    onClick={() => setCompareSelected(true)}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Layers className="h-3.5 w-3.5" /> Comparer ({selectedAppIds.length})
+                  </button>
+                )}
+                <button
+                  onClick={() => { setSelectedAppIds([]); setCompareSelected(false) }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Tout désélectionner
+                </button>
+              </div>
+            </div>
+          )}
+          {compareSelected && selectedAppIds.length >= 2 && (
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Comparaison libre — {selectedAppIds.length} candidat{selectedAppIds.length > 1 ? 's' : ''}
+                </h3>
+                <button
+                  onClick={() => setCompareSelected(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Masquer
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {selectedAppIds.map((id) => {
+                  const app = applications.find((a) => a.id === id)
+                  if (!app) return null
+                  const isAnalyzed = app.ai_score !== null && app.ai_score !== undefined
+                  const strengths = normalizeJsonArray(app.ai_strengths).slice(0, 4)
+                  const gaps = normalizeJsonArray(app.ai_gaps).slice(0, 3)
+                  const redFlags = normalizeJsonArray(app.ai_red_flags)
+                  const signalsUsed = normalizeJsonArray(app.ai_signals_used).slice(0, 4)
+                  const biasNote = app.ai_demographic_risk_note?.trim() || null
+                  const reco = app.ai_recommendation ?? 'maybe'
+                  const recoColor = {
+                    strong_yes: 'bg-green-100 text-green-700',
+                    yes: 'bg-blue-100 text-blue-700',
+                    maybe: 'bg-yellow-100 text-yellow-700',
+                    no: 'bg-red-100 text-red-700',
+                  }[reco] ?? 'bg-gray-100 text-gray-600'
+                  return (
+                    <div key={app.id} className="rounded-lg border border-border bg-background p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{app.first_name} {app.last_name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{app.email}</p>
+                        </div>
+                        {isAnalyzed ? (
+                          <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-bold text-primary flex-shrink-0">
+                            {app.ai_score}/100
+                          </span>
+                        ) : (
+                          <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground flex-shrink-0">
+                            non analysé
+                          </span>
+                        )}
+                      </div>
+                      {isAnalyzed && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${recoColor}`}>
+                            {reco.replace('_', ' ')}
+                          </span>
+                          {app.ai_match_percentage != null && (
+                            <span className="text-[10px] text-muted-foreground">
+                              adéquation {app.ai_match_percentage}%
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!isAnalyzed && (
+                        <p className="text-[11px] text-muted-foreground italic">
+                          Lancez la pré-sélection IA pour analyser ce candidat.
+                        </p>
+                      )}
+                      {strengths.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">Forces</p>
+                          <ul className="text-xs space-y-0.5">
+                            {strengths.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <CheckCircle className="h-3 w-3 text-green-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {gaps.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">Manques</p>
+                          <ul className="text-xs space-y-0.5">
+                            {gaps.map((g, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-orange-500 flex-shrink-0">·</span>
+                                <span className="text-muted-foreground">{g}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {redFlags.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">Alertes</p>
+                          <ul className="text-xs space-y-0.5">
+                            {redFlags.map((r, i) => (
+                              <li key={i} className="flex gap-1">
+                                <XCircle className="h-3 w-3 text-red-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-muted-foreground">{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {signalsUsed.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Signaux utilisés par l'IA
+                          </p>
+                          <ul className="text-xs space-y-0.5">
+                            {signalsUsed.map((s, i) => (
+                              <li key={i} className="flex gap-1">
+                                <span className="text-blue-500 flex-shrink-0">›</span>
+                                <span className="text-muted-foreground">{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {biasNote && (
+                        <div className="rounded border border-amber-300 bg-amber-50 p-2">
+                          <p className="text-[10px] font-semibold text-amber-800 mb-0.5 flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Audit de biais
+                          </p>
+                          <p className="text-[11px] text-amber-900 leading-snug">{biasNote}</p>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t flex gap-1.5">
+                        <button
+                          onClick={() => setSelectedApp(app)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-primary hover:bg-primary/5 rounded py-1"
+                        >
+                          <Eye className="h-3 w-3" /> Détail
+                        </button>
+                        <button
+                          onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
+                          className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
+                        >
+                          Entretien
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <div className="flex gap-3 overflow-x-auto pb-4">
             {PIPELINE_STAGES.map(stage => {
               const stageApps = applications.filter(a => a.stage === stage)
@@ -677,9 +858,20 @@ export default function RecruitmentPage() {
                         onDragStart={() => setDraggedId(app.id)}
                         onDragEnd={() => { setDraggedId(null); setDragOverStage(null) }}
                         onClick={() => setSelectedApp(app)}
-                        className={`rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:border-primary select-none transition-opacity ${draggedId === app.id ? 'opacity-40' : 'opacity-100'}`}
+                        className={`rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:border-primary select-none transition-opacity ${draggedId === app.id ? 'opacity-40' : 'opacity-100'} ${selectedAppIds.includes(app.id) ? 'ring-2 ring-primary border-primary' : ''}`}
                       >
-                        <p className="text-sm font-medium">{app.first_name} {app.last_name}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium">{app.first_name} {app.last_name}</p>
+                          <input
+                            type="checkbox"
+                            checked={selectedAppIds.includes(app.id)}
+                            onChange={(e) => { e.stopPropagation(); toggleAppSelected(app.id) }}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Sélectionner pour comparaison"
+                            aria-label={`Sélectionner ${app.first_name} ${app.last_name} pour comparaison`}
+                            className="h-3.5 w-3.5 accent-primary cursor-pointer flex-shrink-0 mt-0.5"
+                          />
+                        </div>
                         <p className="text-xs text-muted-foreground truncate">{app.email}</p>
                         {app.source === 'internal' && (
                           <span className="mt-1 inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
