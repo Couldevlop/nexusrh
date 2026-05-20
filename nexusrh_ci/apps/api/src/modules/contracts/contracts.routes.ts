@@ -198,6 +198,23 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           body.termination_date,
         ])
 
+        // OWASP A09 : la rupture de contrat est un événement critique (statut
+        // emploi, conséquences RGPD/CNPS). Trace obligatoire.
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'contract.terminated', 'contract', $2, $3, $4)`,
+          [
+            request.user.sub, id,
+            JSON.stringify({
+              employeeId: res.rows[0].employee_id,
+              terminationDate: body.termination_date,
+              reason: body.termination_reason,
+              noticeDays: body.notice_days ?? null,
+            }),
+            request.ip ?? null,
+          ],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)
@@ -286,9 +303,29 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
+        // OWASP A09 : snapshot du contrat AVANT suppression pour la trace audit
+        // (sinon on perd l'employé concerné). Suppression suit dans la même
+        // transaction logique.
+        const snapshot = await pool.query<{ employee_id: string; type: string; status: string }>(
+          `SELECT employee_id, type, status FROM "${schema}".contracts WHERE id = $1`,
+          [id],
+        )
         await pool.query(
           `DELETE FROM "${schema}".contracts WHERE id = $1`, [id]
         )
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'contract.deleted', 'contract', $2, $3, $4)`,
+          [
+            request.user.sub, id,
+            JSON.stringify({
+              employeeId: snapshot.rows[0]?.employee_id ?? null,
+              type: snapshot.rows[0]?.type ?? null,
+              statusBeforeDelete: snapshot.rows[0]?.status ?? null,
+            }),
+            request.ip ?? null,
+          ],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)

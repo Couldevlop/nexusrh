@@ -121,6 +121,18 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 
 > Les fixtures sont initialement des **snapshots** du comportement courant du moteur. Elles deviennent des **références légales** une fois validées par un expert paie ivoirien (date + nom + référence aux textes CNPS/DGI dans `metadata.validatedBy` et `metadata.changelog`).
 
+### Conformité OWASP — couverture par module
+
+| Module                    | A01 RBAC | A03 Inj./Validation | A07 Rate-limit | A09 Audit log                                            |
+| ------------------------- | -------- | ------------------- | -------------- | -------------------------------------------------------- |
+| **Recrutement**           | ✓        | ✓ + Zod + anti-prompt-injection | ✓ 3-10/min | `analyze_cv`, `preselect_batch`, `hired`, `rejected` |
+| **Paie**                  | ✓        | ✓                   | ✓ 5/h export   | `payroll.closed`, `payroll.rejected`                     |
+| **Workflow paie**         | ✓        | ✓                   | n/a            | (SoD vérifié `initiated_by ≠ approver`)                  |
+| **Absences**              | ✓ + RBAC manager équipe directe | ✓ + Zod | n/a | `absence.created`, `absence.approved`/`approval_step`, `absence.rejected` |
+| **Contrats**              | ✓        | ✓                   | n/a            | `contract.terminated`, `contract.deleted`                |
+
+> Les audit_log inserts sont systématiquement **non bloquants** (`.catch(() => {})`) pour ne pas casser le service principal sur les tenants en cours de migration.
+
 ---
 
 ## Recrutement IA — pré-sélection en lot
