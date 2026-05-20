@@ -1,0 +1,59 @@
+{
+  "id": "24-prime-transport-suspendue-absence",
+  "description": "Salarié en arrêt maladie 10j avec PRIME_TRANSPORT 25k + PRIME_RENDEMENT 15k saisis. Le moteur DOIT supprimer PRIME_TRANSPORT (prime de présence physique, PRIMES_PRESENCE set) mais conserver PRIME_RENDEMENT (prime au rendement, non liée à la présence). Vérifie le code PRIMES_PRESENCE de l'engine",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-20",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": []
+  },
+  "input": {
+    "baseSalary": 280000,
+    "workedDays": 16,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "PRIME_TRANSPORT": 25000,
+      "PRIME_RENDEMENT": 15000
+    },
+    "absence": {
+      "type": "maladie_sans_at",
+      "absenceDays": 10,
+      "maintienTaux": 0.5
+    }
+  },
+  "expected": {
+    "baseSalary": 280000,
+    "brutProrata": 172307,
+    "grossSalary": 241153,
+    "cnpsRetraiteSal": 10855,
+    "cnpsRetraitePat": 13267,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 10855,
+    "totalCnpsPat": 18692,
+    "baseImposable": 181375,
+    "its": 1595,
+    "totalDeductions": 12450,
+    "netPayable": 228703,
+    "employerCost": 259845,
+    "workingDays": 16,
+    "smigCompliant": true,
+    "indemniteAbsence": 53846,
+    "lines": [
+      { "code": "1000", "type": "earning",                 "amount": 172307 },
+      { "code": "1200", "type": "earning",                 "amount":  15000 },
+      { "code": "1800", "type": "earning",                 "amount":  53846 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  10855 },
+      { "code": "2100", "type": "employee_contribution",   "amount":   1595 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  13267 },
+      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+    ]
+  }
+}
