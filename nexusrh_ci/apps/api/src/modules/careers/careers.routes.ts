@@ -1,8 +1,103 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { config } from '../../config.js'
 
 const pool = new Pool({ connectionString: config.database.url })
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — schemas Zod
+const createSkillSchema = z.object({
+  name:     z.string().min(1).max(200).trim(),
+  category: z.string().max(100).optional(),
+}).strict()
+
+const upsertEmployeeSkillsSchema = z.object({
+  employee_id: z.string().uuid(),
+  skills:      z.array(z.object({
+    skill_id:     z.string().uuid(),
+    level:        z.number().int().min(0).max(5),
+    target_level: z.number().int().min(0).max(5).optional(),
+  })).min(1).max(200),
+}).strict()
+
+const createEvaluationSchema = z.object({
+  employee_id:       z.string().uuid(),
+  type:              z.enum(['annual', 'mid_year', 'probation', '360', 'manager_review']).optional(),
+  year:              z.number().int().min(2000).max(2100).optional(),
+  period:            z.string().max(50).optional(),
+  global_score:      z.number().int().min(0).max(100).optional(),
+  performance_score: z.number().int().min(0).max(100).optional(),
+  goals_score:       z.number().int().min(0).max(100).optional(),
+  skills_score:      z.number().int().min(0).max(100).optional(),
+  comments:          z.string().max(5000).optional(),
+  goals:             z.array(z.string().max(500)).max(50).optional(),
+  strengths:         z.array(z.string().max(500)).max(50).optional(),
+  improvements:      z.array(z.string().max(500)).max(50).optional(),
+  training_needs:    z.array(z.string().max(500)).max(50).optional(),
+}).strict()
+
+const patchEvaluationSchema = z.object({
+  global_score:        z.number().int().min(0).max(100).optional(),
+  performance_score:   z.number().int().min(0).max(100).optional(),
+  goals_score:         z.number().int().min(0).max(100).optional(),
+  skills_score:        z.number().int().min(0).max(100).optional(),
+  comments:            z.string().max(5000).optional(),
+  manager_comments:    z.string().max(5000).optional(),
+  employee_comments:   z.string().max(5000).optional(),
+  status:              z.enum(['draft', 'in_progress', 'pending_signature', 'completed', 'cancelled']).optional(),
+  signed_by_employee:  z.boolean().optional(),
+  signed_by_manager:   z.boolean().optional(),
+  goals:               z.array(z.string().max(500)).max(50).optional(),
+  strengths:           z.array(z.string().max(500)).max(50).optional(),
+  improvements:        z.array(z.string().max(500)).max(50).optional(),
+  training_needs:      z.array(z.string().max(500)).max(50).optional(),
+}).strict()
+
+/**
+ * OWASP A01 — vérifie qu'un manager a le droit d'agir sur l'employé cible
+ * (manager direct uniquement). Retourne true pour admin/hr_*, false sinon.
+ */
+async function userCanActOnEmployee(
+  schema: string, role: string, requesterEmail: string, targetEmployeeId: string,
+): Promise<boolean> {
+  if (role === 'admin' || role === 'hr_manager' || role === 'hr_officer') return true
+  if (role !== 'manager') return false
+  const r = await pool.query<{ id: string }>(
+    `SELECT e.id FROM "${schema}".employees e
+       JOIN "${schema}".employees m ON m.id = e.manager_id
+      WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+    [targetEmployeeId, requesterEmail],
+  )
+  return r.rows.length > 0
+}
+
+/**
+ * OWASP A01 — pour les routes self-service / lecture compétences. Un employé
+ * peut voir SES données ; un manager celles de son équipe directe ; les RH/admin
+ * partout. Renvoie l'employé connecté (lookup email/JWT) ou null.
+ */
+async function isOwnEmployeeRecord(
+  schema: string, requesterEmail: string, targetEmployeeId: string,
+): Promise<boolean> {
+  const r = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE id = $1 AND email = $2 LIMIT 1`,
+    [targetEmployeeId, requesterEmail],
+  )
+  return r.rows.length > 0
+}
+
+function auditLogCareer(
+  schema: string, userId: string, action: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'career', $3, $4, $5)`,
+    [userId, action, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
 
 const careersRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -28,12 +123,21 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as { name: string; category?: string }
+      const parsed = createSkillSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Compétence invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
       try {
         const res = await pool.query(
           `INSERT INTO "${schema}".career_skills (name, category) VALUES ($1,$2) RETURNING *`,
-          [body.name, body.category || null]
+          [parsed.data.name, parsed.data.category ?? null]
         )
+        auditLogCareer(schema, request.user.sub, 'career.skill_created', res.rows[0].id, {
+          name: parsed.data.name, category: parsed.data.category ?? null,
+        }, request.ip ?? null)
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -48,6 +152,19 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { employeeId } = request.params as { employeeId: string }
+      if (!UUID_RE.test(employeeId)) {
+        return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
+      }
+      // OWASP A01 : un employee ne voit QUE ses propres compétences ; un manager
+      // celles de son équipe directe ; admin/hr_* partout.
+      const role = request.user.role
+      if (role === 'employee') {
+        const own = await isOwnEmployeeRecord(schema, request.user.email, employeeId)
+        if (!own) return reply.status(403).send({ error: 'Accès interdit' })
+      } else if (role === 'manager') {
+        const allowed = await userCanActOnEmployee(schema, role, request.user.email, employeeId)
+        if (!allowed) return reply.status(403).send({ error: 'Vous ne pouvez consulter que les compétences de votre équipe directe' })
+      }
       try {
         const res = await pool.query(`
           SELECT es.*, cs.name AS skill_name, cs.category
@@ -69,9 +186,18 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        employee_id: string
-        skills: Array<{ skill_id: string; level: number; target_level?: number }>
+      const parsed = upsertEmployeeSkillsSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Données compétences invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
+      // OWASP A01 : un manager ne peut modifier que les compétences de son équipe
+      const allowed = await userCanActOnEmployee(schema, request.user.role, request.user.email, body.employee_id)
+      if (!allowed) {
+        return reply.status(403).send({ error: 'Vous ne pouvez modifier que les compétences de votre équipe directe' })
       }
       try {
         for (const skill of body.skills) {
@@ -80,8 +206,11 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
             VALUES ($1,$2,$3,$4,now())
             ON CONFLICT (employee_id, skill_id) DO UPDATE
             SET level = $3, target_level = $4, updated_at = now()
-          `, [body.employee_id, skill.skill_id, skill.level, skill.target_level || null])
+          `, [body.employee_id, skill.skill_id, skill.level, skill.target_level ?? null])
         }
+        auditLogCareer(schema, request.user.sub, 'career.skills_updated', body.employee_id, {
+          skillsCount: body.skills.length,
+        }, request.ip ?? null)
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)
@@ -129,7 +258,20 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as Record<string, unknown>
+      // OWASP A03 : Zod strict (rejette champs hors whitelist, scores bornés 0-100)
+      const parsed = createEvaluationSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Évaluation invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
+      // OWASP A01 : un manager ne peut évaluer que son équipe directe
+      const allowed = await userCanActOnEmployee(schema, request.user.role, request.user.email, body.employee_id)
+      if (!allowed) {
+        return reply.status(403).send({ error: 'Vous ne pouvez évaluer que votre équipe directe' })
+      }
       try {
         const evaluatorRes = await pool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
@@ -144,16 +286,19 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
           RETURNING *
         `, [
           body.employee_id, evaluatorId,
-          body.type || 'annual', body.year || new Date().getFullYear(),
-          body.period || null,
-          body.global_score || null, body.performance_score || null,
-          body.goals_score || null, body.skills_score || null,
-          body.comments || null,
-          JSON.stringify(body.goals || []),
-          JSON.stringify(body.strengths || []),
-          JSON.stringify(body.improvements || []),
-          JSON.stringify(body.training_needs || []),
+          body.type ?? 'annual', body.year ?? new Date().getFullYear(),
+          body.period ?? null,
+          body.global_score ?? null, body.performance_score ?? null,
+          body.goals_score ?? null, body.skills_score ?? null,
+          body.comments ?? null,
+          JSON.stringify(body.goals ?? []),
+          JSON.stringify(body.strengths ?? []),
+          JSON.stringify(body.improvements ?? []),
+          JSON.stringify(body.training_needs ?? []),
         ])
+        auditLogCareer(schema, request.user.sub, 'career.evaluation_created', res.rows[0].id, {
+          employeeId: body.employee_id, type: body.type ?? 'annual', year: body.year ?? new Date().getFullYear(),
+        }, request.ip ?? null)
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -168,20 +313,42 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const body = request.body as Record<string, unknown>
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      const parsed = patchEvaluationSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Modification invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
+      // OWASP A01 : un manager ne peut modifier que les évaluations de son équipe.
+      // On lit d'abord l'employee_id de l'évaluation pour la vérification.
+      if (request.user.role === 'manager') {
+        const target = await pool.query<{ employee_id: string }>(
+          `SELECT employee_id FROM "${schema}".evaluations WHERE id = $1 LIMIT 1`, [id],
+        )
+        if (!target.rows[0]) return reply.status(404).send({ error: 'Évaluation introuvable' })
+        const allowed = await userCanActOnEmployee(schema, 'manager', request.user.email, target.rows[0].employee_id)
+        if (!allowed) {
+          return reply.status(403).send({ error: 'Vous ne pouvez modifier que les évaluations de votre équipe directe' })
+        }
+      }
       const scalarFields = [
         'global_score','performance_score','goals_score','skills_score',
         'comments','manager_comments','employee_comments','status',
         'signed_by_employee','signed_by_manager',
-      ]
-      const jsonFields = ['goals','strengths','improvements','training_needs']
+      ] as const
+      const jsonFields = ['goals','strengths','improvements','training_needs'] as const
       const updates: string[] = []
       const values: unknown[] = []
+      const modifiedFields: string[] = []
+      const b = body as Record<string, unknown>
       for (const f of scalarFields) {
-        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(body[f]) }
+        if (f in b) { updates.push(`${f} = $${values.length + 1}`); values.push(b[f]); modifiedFields.push(f) }
       }
       for (const f of jsonFields) {
-        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(JSON.stringify(body[f])) }
+        if (f in b) { updates.push(`${f} = $${values.length + 1}`); values.push(JSON.stringify(b[f])); modifiedFields.push(f) }
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       if (body.status === 'completed') updates.push(`completed_at = now()`)
@@ -192,6 +359,11 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
           `UPDATE "${schema}".evaluations SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
           values
         )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Évaluation introuvable' })
+        auditLogCareer(schema, request.user.sub, 'career.evaluation_updated', id, {
+          modifiedFields,
+          newStatus: body.status ?? null,
+        }, request.ip ?? null)
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
