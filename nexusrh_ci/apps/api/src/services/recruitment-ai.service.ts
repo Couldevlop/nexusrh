@@ -33,6 +33,30 @@ export interface CvAnalysisResult {
   /** Note d'alerte si le score est influencé par un signal potentiellement biaisé
    *  (école précise, région d'origine, prénom, genre, âge estimé, etc.). null si RAS. */
   demographicRiskNote?: string | null
+  /** Indique le mode d'ingestion du CV (texte extrait OU document PDF natif via vision IA) */
+  ingestionMode?: 'text' | 'pdf-document'
+}
+
+/**
+ * OWASP A04 + qualité IA : détermine si le texte extrait du CV est suffisamment
+ * propre pour l'analyse. Si non (PDF scanné, layout complexe, garbage UTF-8),
+ * le caller peut basculer vers le mode document PDF natif de Claude Vision.
+ */
+function isExtractedTextSatisfactory(text: string | null | undefined): boolean {
+  if (!text) return false
+  const t = text.trim()
+  if (t.length < 200) return false
+  // Ratio de caractères lisibles (ASCII imprimable + accents Latin-1 + whitespace)
+  let readable = 0
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i)
+    if (
+      (c >= 32 && c <= 126) ||      // ASCII imprimable
+      (c >= 0xC0 && c <= 0xFF) ||   // Latin-1 supplément (accents FR)
+      c === 0x0A || c === 0x0D || c === 0x09  // \n \r \t
+    ) readable++
+  }
+  return readable / t.length >= 0.7
 }
 
 const SYSTEM_PROMPT = `Tu es un expert RH ivoirien chargé de pré-sélectionner des candidats.
@@ -119,7 +143,7 @@ function extractJson(raw: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1))
 }
 
-function normalize(raw: unknown, model: AiModelChoice): CvAnalysisResult {
+function normalize(raw: unknown, model: AiModelChoice, ingestionMode: 'text' | 'pdf-document' = 'text'): CvAnalysisResult {
   if (!raw || typeof raw !== 'object') throw new Error('Réponse IA invalide')
   const r = raw as Record<string, unknown>
   const score = Math.max(0, Math.min(100, Math.round(Number(r.score) || 0)))
@@ -148,6 +172,7 @@ function normalize(raw: unknown, model: AiModelChoice): CvAnalysisResult {
     modelUsed:         model,
     signalsUsed:       arr(r.signalsUsed),
     demographicRiskNote,
+    ingestionMode,
   }
 }
 
@@ -155,24 +180,52 @@ async function analyzeWithClaude(
   job: JobContext,
   cvText: string,
   decisionExamples?: RecruiterDecisionExample[],
+  pdfBuffer?: Buffer,
 ): Promise<CvAnalysisResult> {
   if (!config.ai.apiKey) {
     throw new Error('Clé Anthropic non configurée (ANTHROPIC_API_KEY)')
   }
   const Anthropic = (await import('@anthropic-ai/sdk')).default
   const client = new Anthropic({ apiKey: config.ai.apiKey })
+
+  // Mode document PDF : Claude lit le binaire directement (vision native). On
+  // l'utilise quand l'extraction texte locale a échoué (PDF scanné, layout
+  // complexe). Sinon on reste sur le mode texte, beaucoup moins cher.
+  const useDocumentMode = !!pdfBuffer
+  const userContent: unknown = useDocumentMode
+    ? [
+        {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: pdfBuffer!.toString('base64'),
+          },
+        },
+        {
+          type: 'text',
+          text: buildUserPrompt(
+            job,
+            '(Le CV du candidat est joint en pièce document PDF ci-dessus. Lis-le directement.)',
+            decisionExamples,
+          ),
+        },
+      ]
+    : buildUserPrompt(job, cvText, decisionExamples)
+
   const msg = await client.messages.create({
     model:       config.ai.model,
     max_tokens:  Math.min(config.ai.maxTokens, 2048),
     temperature: 0.2,
     system:      SYSTEM_PROMPT,
-    messages:    [{ role: 'user', content: buildUserPrompt(job, cvText, decisionExamples) }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages:    [{ role: 'user', content: userContent as any }],
   })
   const textBlock = msg.content.find(b => b.type === 'text')
   if (!textBlock || textBlock.type !== 'text') {
     throw new Error('Réponse Claude vide')
   }
-  return normalize(extractJson(textBlock.text), 'claude')
+  return normalize(extractJson(textBlock.text), 'claude', useDocumentMode ? 'pdf-document' : 'text')
 }
 
 async function analyzeWithMistral(
@@ -228,10 +281,18 @@ export async function analyzeCV(
   job: JobContext,
   cvText: string,
   decisionExamples?: RecruiterDecisionExample[],
+  pdfBuffer?: Buffer | null,
 ): Promise<CvAnalysisResult> {
-  if (!cvText || cvText.trim().length < 50) {
+  // Hybride : si on a un PDF ET que l'extraction texte est insuffisante (scan,
+  // layout complexe, OCR raté), on bascule sur le mode document de Claude
+  // Vision (lit le PDF en natif). Sinon on reste en mode texte cheap.
+  const textIsSatisfactory = isExtractedTextSatisfactory(cvText)
+  const canUseDocumentMode = !!pdfBuffer && !textIsSatisfactory
+
+  if (!canUseDocumentMode && (!cvText || cvText.trim().length < 50)) {
     throw new Error('CV trop court ou vide (minimum 50 caractères)')
   }
+
   const preferred = isModelAvailable(model) ? model
     : isModelAvailable('claude') ? 'claude'
     : isModelAvailable('mistral') ? 'mistral'
@@ -239,7 +300,11 @@ export async function analyzeCV(
   if (!preferred) {
     throw new Error('Aucun modèle IA configuré. Définissez ANTHROPIC_API_KEY ou MISTRAL_API_KEY.')
   }
-  if (preferred === 'claude')  return analyzeWithClaude(job, cvText, decisionExamples)
+  if (preferred === 'claude') {
+    return analyzeWithClaude(job, cvText, decisionExamples, canUseDocumentMode ? pdfBuffer! : undefined)
+  }
+  // Mistral : pas de support PDF natif côté SDK — on reste texte (qualité
+  // dégradée sur les scans, mais cohérent avec ce que l'utilisateur a choisi).
   return analyzeWithMistral(job, cvText, decisionExamples)
 }
 

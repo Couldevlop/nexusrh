@@ -277,7 +277,10 @@ describe('POST /recruitment/applications/:id/analyze-cv', () => {
       payload: { model: 'claude' },
     })
     expect(res.statusCode).toBe(200)
-    expect(vi.mocked(analyzeCV)).toHaveBeenCalledWith('claude', expect.any(Object), longCv)
+    // analyzeCV reçoit 5 args : model, job, cvText, decisionExamples?, pdfBuffer?
+    expect(vi.mocked(analyzeCV)).toHaveBeenCalledWith(
+      'claude', expect.any(Object), longCv, undefined, null,
+    )
     const body = JSON.parse(res.body)
     expect(body.analysis.score).toBe(85)
   })

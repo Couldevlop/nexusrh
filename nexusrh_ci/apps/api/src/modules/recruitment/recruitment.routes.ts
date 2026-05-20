@@ -12,6 +12,31 @@ import {
 
 const pool = new Pool({ connectionString: config.database.url })
 
+/**
+ * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction
+ * native, sans dépendance binaire externe). Pour les .txt, décode en UTF-8.
+ * Les .doc/.docx tombent en fallback UTF-8 — extraction native via mammoth
+ * dans un sprint suivant. En cas d'échec d'extraction (PDF corrompu, etc.),
+ * fallback UTF-8 pour ne pas bloquer l'upload.
+ */
+async function extractCvText(buf: Buffer, mimetype: string): Promise<string> {
+  const MAX = 50_000
+  if (mimetype === 'application/pdf') {
+    try {
+      const { getDocumentProxy, extractText } = await import('unpdf')
+      const pdf = await getDocumentProxy(new Uint8Array(buf))
+      const result = await extractText(pdf, { mergePages: true })
+      const text = Array.isArray(result.text) ? result.text.join('\n') : (result.text ?? '')
+      const cleaned = text.replace(/\s+/g, ' ').trim()
+      if (cleaned.length > 0) return cleaned.slice(0, MAX)
+    } catch {
+      // PDF illisible : fallback UTF-8 (texte garbage probable mais l'IA
+      // détectera la non-cohérence et retournera un CV trop court)
+    }
+  }
+  return buf.toString('utf-8').slice(0, MAX)
+}
+
 // Schéma Zod pour la candidature publique — OWASP A03 (Injection) + A04
 // (Insecure Design). Limites stricts pour éviter spam et XSS.
 const publicApplySchema = z.object({
@@ -504,9 +529,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             error: `Fichier trop volumineux (max ${CV_MAX_BYTES / (1024 * 1024)} MB).`,
           })
         }
-        // Extraction texte minimaliste : on lit en UTF-8. Les PDF binaires
-        // donneront un texte partiel ; pour aller plus loin, ajouter pdf-parse.
-        const cvText = buf.toString('utf-8').replace(/ /g, '').slice(0, 50000)
+        // Extraction texte : PDF natif via unpdf, sinon UTF-8 (TXT direct,
+        // DOC/DOCX partiel — extraction native dans un sprint suivant).
+        const cvText = await extractCvText(buf, mimetype)
         const filename = file.filename || 'cv.bin'
         const cvUrl = `local://${filename}`
         const res = await pool.query(`
@@ -588,9 +613,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         const appRes = await pool.query<{
-          id: string; job_id: string; cv_text: string | null; cover_letter: string | null
+          id: string; job_id: string
+          cv_text: string | null; cover_letter: string | null
+          cv_blob: Buffer | null; cv_mime_type: string | null
         }>(
-          `SELECT id, job_id, cv_text, cover_letter
+          `SELECT id, job_id, cv_text, cover_letter, cv_blob, cv_mime_type
              FROM "${schema}".applications WHERE id = $1`,
           [id],
         )
@@ -614,7 +641,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre liée introuvable' })
 
-        const result = await analyzeCV(model, job, cvText)
+        // Fallback Claude Vision : si le PDF est stocké, on le passe à analyzeCV
+        // qui décidera (selon la qualité du texte extrait) s'il bascule sur le
+        // mode document natif.
+        const pdfFallback = app.cv_mime_type === 'application/pdf' ? app.cv_blob : null
+        const result = await analyzeCV(model, job, cvText, undefined, pdfFallback)
 
         const upd = await pool.query(`
           UPDATE "${schema}".applications
@@ -732,10 +763,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           id: string
           cv_text: string | null
           cover_letter: string | null
+          cv_blob: Buffer | null
+          cv_mime_type: string | null
           first_name: string
           last_name: string
         }>(
-          `SELECT id, cv_text, cover_letter, first_name, last_name
+          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name
              FROM "${schema}".applications
             WHERE job_id = $1
               AND stage = ANY($2::text[])
@@ -806,7 +839,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             continue
           }
           try {
-            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples)
+            const pdfFallback = c.cv_mime_type === 'application/pdf' ? c.cv_blob : null
+            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback)
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
