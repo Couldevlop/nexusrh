@@ -102,7 +102,7 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **597 tests verts** (Vitest) sur 15 fichiers — paie, recrutement, absences, contrats, employés, expenses, authentification, packs législatifs, référentiels, workflows |
+| **Tests automatisés** | **605 tests verts** (Vitest) sur 16 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, authentification, packs législatifs, référentiels, workflows |
 | **Golden fixtures paie** | 13 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité, maladie maintien 50%, AT avec jour J inclus/hors mois, heures supp, avance, haut salaire 3 enfants) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
@@ -132,6 +132,7 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 | **Contrats**              | ✓        | ✓ + Zod (enum OHADA/CI, UUID, montants bornés) | n/a | `contract.created`, `contract.terminated`, `contract.deleted` |
 | **Employés**              | ✓ + IDOR check sur PATCH self-service (employee ≠ son employeeId → 403) | ✓ + Zod (POST + PATCH .strict()) + UUID validation | n/a | `employee.created`, `employee.updated` (modifiedFields + bySelf), `employee.archived` (avec snapshot) |
 | **Notes de frais**        | ✓ + RBAC manager équipe directe sur approve/reject | ✓ + Zod (catégories OHADA enum, montants bornés 0-10M FCFA, total ≤ 500M, dates YYYY-MM-DD) + UUID validation | n/a | `expense.created`, `expense.approved`, `expense.rejected`, `expense.paid` (action financière critique) |
+| **Reporting / Analytics** | ✓ (admin/hr_*/readonly uniquement, employee + manager bloqués) | ✓ year validé (regex `^\d{4}$` + plage 2000-courant+1) | ✓ 30 req/min sur les 4 routes agrégées (overview, payroll-summary, absences, cnps-analytics) | `reporting.overview`, `reporting.payroll_summary`, `reporting.absences`, `reporting.cnps_analytics` (vol de données = traçabilité obligatoire) |
 
 > Les audit_log inserts sont systématiquement **non bloquants** (`.catch(() => {})`) pour ne pas casser le service principal sur les tenants en cours de migration.
 
