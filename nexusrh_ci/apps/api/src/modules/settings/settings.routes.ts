@@ -1,10 +1,99 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { randomBytes } from 'crypto'
+import { z } from 'zod'
 import { config } from '../../config.js'
 import bcrypt from 'bcryptjs'
 import { provisionTenantSchema } from '../../db/provisioning.js'
 import { sendEmployeeWelcomeEmail } from '../../services/email.js'
+
+// OWASP A03 — patterns de validation stricts
+const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const HEX_COLOR_RE   = /^#[0-9A-Fa-f]{6}$/
+const CNPS_NUMBER_RE = /^[A-Z0-9-]{1,40}$/
+const DGI_NUMBER_RE  = /^[A-Z0-9-]{1,40}$/
+const RCCM_RE        = /^[A-Z0-9-]{1,60}$/
+const URL_OR_DATA_RE = /^(https?:\/\/|data:image\/)/
+
+// OWASP A04 — bornes anti-fraude CNPS CI : le taux AT légal est entre 2% et 5%.
+// Hors plage = fraude potentielle (sous-cotisation ou erreur de saisie destructrice).
+const AT_RATE_MIN = 0.02
+const AT_RATE_MAX = 0.05
+
+// OWASP A04 — cap import CSV pour éviter DoS (memory spike + DB starvation).
+const IMPORT_MAX_HEADERS = 50
+const IMPORT_MAX_ROWS    = 10_000
+
+// OWASP A07 — rate-limits sur les écritures de paramétrage (cibles fraude).
+const SETTINGS_WRITE_RATE_LIMIT = { rateLimit: { max: 20, timeWindow: '1 minute' } }
+const IMPORT_RATE_LIMIT         = { rateLimit: { max: 10, timeWindow: '1 hour'   } }
+
+// OWASP A09 — audit log non bloquant des modifications de paramétrage tenant.
+// Changements CNPS/AT/DGI sont des vecteurs de fraude : modif numéro CNPS =
+// re-routage des cotisations vers un compte attaquant ; baisse taux AT = sous-
+// cotisation. Traçabilité 100% obligatoire (loi 2013-450 CI cybercriminalité).
+function auditLogSettings(
+  schema: string, userId: string, action: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, 'settings', $3, $4, $5)`,
+    [userId, action, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+// OWASP A03 — schémas Zod stricts
+const patchTenantSchema = z.object({
+  name:            z.string().min(1).max(200).optional(),
+  primary_color:   z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
+  secondary_color: z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
+  logo_url:        z.string().regex(URL_OR_DATA_RE, 'URL http(s) ou data:image requise').max(8192).optional().nullable(),
+  city:            z.string().min(1).max(100).optional(),
+  cnps_number:     z.string().regex(CNPS_NUMBER_RE).optional().nullable(),
+  dgi_number:      z.string().regex(DGI_NUMBER_RE).optional().nullable(),
+  rccm:            z.string().regex(RCCM_RE).optional().nullable(),
+  at_rate:         z.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+}).strict()
+
+const createLegalEntitySchema = z.object({
+  name:                  z.string().min(1).max(200),
+  rccm:                  z.string().regex(RCCM_RE).optional().nullable(),
+  cnps_number:           z.string().regex(CNPS_NUMBER_RE).optional().nullable(),
+  dgi_number:            z.string().regex(DGI_NUMBER_RE).optional().nullable(),
+  address:               z.string().max(500).optional().nullable(),
+  city:                  z.string().max(100).optional(),
+  legal_form:            z.enum(['SARL', 'SA', 'SAS', 'EURL', 'SCI', 'SCOP', 'GIE', 'EI', 'AUTRE']).optional(),
+  collective_agreement:  z.string().max(200).optional().nullable(),
+  at_rate:               z.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+  country_code:          z.string().regex(/^[A-Z]{2,3}$/).optional(),
+  legislation_pack_code: z.string().max(50).optional().nullable(),
+}).strict()
+
+const patchLegalEntitySchema = createLegalEntitySchema.partial().extend({
+  is_active: z.boolean().optional(),
+}).strict()
+
+const createPayrollRuleSchema = z.object({
+  code:         z.string().min(1).max(20),
+  name:         z.string().min(1).max(200),
+  type:         z.enum(['earning', 'deduction', 'employee_contribution', 'employer_contribution']),
+  formula:      z.string().max(500).optional().nullable(),
+  rate:         z.number().min(-10).max(10).optional().nullable(),
+  ceiling_type: z.string().max(50).optional().nullable(),
+  is_active:    z.boolean().optional(),
+  order:        z.number().int().min(0).max(9999).optional(),
+  description:  z.string().max(1000).optional().nullable(),
+}).strict()
+
+const patchPayrollRuleSchema = createPayrollRuleSchema.omit({ code: true, type: true }).partial().strict()
+
+const importBodySchema = z.object({
+  headers: z.array(z.string().max(100)).min(1).max(IMPORT_MAX_HEADERS),
+  rows:    z.array(z.array(z.string().max(2000))).min(1).max(IMPORT_MAX_ROWS),
+}).strict()
+
+const IMPORT_TYPES = ['employees', 'departments', 'absences'] as const
 
 function generateTempPassword(): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -57,15 +146,27 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // PATCH /settings/tenant
   fastify.patch('/tenant', {
     preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
-      const body = request.body as Record<string, unknown>
+      // OWASP A03 — validation Zod stricte (refuse champs inconnus, bornes AT,
+      // regex hex/CNPS/DGI/RCCM, URL logo http(s) ou data:image uniquement)
+      const parsed = patchTenantSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const body = parsed.data as Record<string, unknown>
       const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate']
       const updates: string[] = []
       const values: unknown[] = []
+      const changedFields: Record<string, unknown> = {}
       for (const f of allowed) {
-        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(body[f]) }
+        if (f in body) {
+          updates.push(`${f} = $${values.length + 1}`)
+          values.push(body[f])
+          changedFields[f] = body[f]
+        }
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ modifiable' })
       updates.push(`updated_at = now()`)
@@ -74,6 +175,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query(
           `UPDATE platform.tenants SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
           values
+        )
+        // OWASP A09 — traçabilité modifications paramétrage critique (CNPS/DGI/AT)
+        auditLogSettings(
+          request.user.schemaName, request.user.sub, 'settings.tenant_updated',
+          tenantId,
+          { modifiedFields: Object.keys(changedFields), changes: changedFields },
+          request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
       } catch (err) {
@@ -387,21 +495,32 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /settings/payroll-rules
   fastify.post('/payroll-rules', {
     preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        code: string; name: string; type: string; formula?: string
-        rate?: number; ceiling_type?: string; is_active?: boolean; order?: number; description?: string
+      // OWASP A03 — Zod stricte (type enum, rate borné -10..10, code max 20)
+      const parsed = createPayrollRuleSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
+      const body = parsed.data
       try {
-        const res = await pool.query(`
+        const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".payroll_rules
             (code, name, type, formula, rate, ceiling_type, is_active, "order", description)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-        `, [body.code, body.name, body.type, body.formula || null,
-            body.rate !== undefined ? body.rate : null, body.ceiling_type || null,
-            body.is_active ?? true, body.order || 99, body.description || null])
-        return reply.status(201).send({ data: res.rows[0] })
+        `, [body.code, body.name, body.type, body.formula ?? null,
+            body.rate ?? null, body.ceiling_type ?? null,
+            body.is_active ?? true, body.order ?? 99, body.description ?? null])
+        const created = res.rows[0]
+        // OWASP A09 — création règle de paie = action critique (taux cotisation)
+        auditLogSettings(
+          schema, request.user.sub, 'settings.payroll_rule_created',
+          created?.id ?? null,
+          { code: body.code, type: body.type, rate: body.rate, name: body.name },
+          request.ip ?? null,
+        )
+        return reply.status(201).send({ data: created })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -412,17 +531,27 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // PATCH /settings/payroll-rules/:id
   fastify.patch('/payroll-rules/:id', {
     preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const body = request.body as Record<string, unknown>
+      // OWASP A03 — UUID validation
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      // OWASP A03 — Zod stricte (rate borné, refus champs inconnus)
+      const parsed = patchPayrollRuleSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const body = parsed.data as Record<string, unknown>
       const allowed = ['name','formula','rate','ceiling_type','is_active','order','description']
       const updates: string[] = []
       const values: unknown[] = []
+      const changedFields: Record<string, unknown> = {}
       for (const f of allowed) {
         if (f in body) {
           updates.push(`${f === 'order' ? '"order"' : f} = $${values.length + 1}`)
           values.push(body[f])
+          changedFields[f] = body[f]
         }
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
@@ -430,6 +559,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(
           `UPDATE "${schema}".payroll_rules SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`, values
+        )
+        // OWASP A09 — traçabilité modification règle paie (modif rate = impact direct cotisations)
+        auditLogSettings(
+          schema, request.user.sub, 'settings.payroll_rule_updated',
+          id,
+          { modifiedFields: Object.keys(changedFields), changes: changedFields },
+          request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
       } catch (err) {
@@ -479,29 +615,35 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /settings/legal-entities
   fastify.post('/legal-entities', {
     preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureMigrated(schema)
-      const body = request.body as {
-        name: string; rccm?: string; cnps_number?: string; dgi_number?: string
-        address?: string; city?: string; legal_form?: string
-        collective_agreement?: string; at_rate?: number
-        country_code?: string; legislation_pack_code?: string
+      // OWASP A03 + A04 — Zod (at_rate borné 0.02-0.05, name max 200, regex CNPS/DGI/RCCM)
+      const parsed = createLegalEntitySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
-      if (!body.name || body.name.trim().length === 0) {
-        return reply.status(400).send({ error: 'Le nom de la filiale est obligatoire' })
-      }
+      const body = parsed.data
       try {
-        const res = await pool.query(`
+        const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".legal_entities
             (name, rccm, cnps_number, dgi_number, address, city, legal_form,
              collective_agreement, at_rate, country_code, legislation_pack_code)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
-        `, [body.name, body.rccm || null, body.cnps_number || null, body.dgi_number || null,
-            body.address || null, body.city || 'Abidjan', body.legal_form || 'SARL',
-            body.collective_agreement || null, body.at_rate || 0.02,
-            body.country_code || 'CIV', body.legislation_pack_code || null])
-        return reply.status(201).send({ data: res.rows[0] })
+        `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
+            body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
+            body.collective_agreement ?? null, body.at_rate ?? 0.02,
+            body.country_code ?? 'CIV', body.legislation_pack_code ?? null])
+        const created = res.rows[0]
+        // OWASP A09 — création d'entité légale = action critique (numéros CNPS/DGI officiels)
+        auditLogSettings(
+          schema, request.user.sub, 'settings.legal_entity_created',
+          created?.id ?? null,
+          { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate },
+          request.ip ?? null,
+        )
+        return reply.status(201).send({ data: created })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -512,17 +654,30 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // PATCH /settings/legal-entities/:id
   fastify.patch('/legal-entities/:id', {
     preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureMigrated(schema)
       const { id } = request.params as { id: string }
-      const body = request.body as Record<string, unknown>
+      // OWASP A03 — UUID validation
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      // OWASP A03 + A04 — Zod (at_rate borné, regex CNPS/DGI/RCCM)
+      const parsed = patchLegalEntitySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const body = parsed.data as Record<string, unknown>
       const allowed = ['name','rccm','cnps_number','dgi_number','address','city',
         'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active']
       const updates: string[] = []
       const values: unknown[] = []
+      const changedFields: Record<string, unknown> = {}
       for (const f of allowed) {
-        if (f in body) { updates.push(`${f} = $${values.length + 1}`); values.push(body[f]) }
+        if (f in body) {
+          updates.push(`${f} = $${values.length + 1}`)
+          values.push(body[f])
+          changedFields[f] = body[f]
+        }
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       updates.push(`updated_at = now()`)
@@ -530,6 +685,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(
           `UPDATE "${schema}".legal_entities SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`, values
+        )
+        // OWASP A09 — traçabilité modifications entité légale
+        auditLogSettings(
+          schema, request.user.sub, 'settings.legal_entity_updated',
+          id,
+          { modifiedFields: Object.keys(changedFields), changes: changedFields },
+          request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
       } catch (err) {
@@ -863,14 +1025,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /settings/import/:type ─────────────────────────────────────────────
   fastify.post('/import/:type', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: IMPORT_RATE_LIMIT,
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { type } = request.params as { type: string }
-      const { headers, rows } = request.body as { headers: string[]; rows: string[][] }
-
-      if (!headers?.length || !rows?.length) {
-        return reply.status(400).send({ error: 'Fichier vide ou format invalide' })
+      // OWASP A03 — whitelist du type d'import (refus de "users", "tokens", etc.)
+      if (!(IMPORT_TYPES as readonly string[]).includes(type)) {
+        return reply.status(400).send({ error: `Type d'import invalide (autorisés : ${IMPORT_TYPES.join(', ')})` })
       }
+      // OWASP A03 + A04 — Zod (cap 50 colonnes × 10 000 lignes pour éviter
+      // DoS memory + traitement O(headers × rows))
+      const parsed = importBodySchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(413).send({
+          error: `Fichier vide ou trop volumineux (max ${IMPORT_MAX_HEADERS} colonnes × ${IMPORT_MAX_ROWS} lignes)`,
+          issues: parsed.error.flatten(),
+        })
+      }
+      const { headers, rows } = parsed.data
 
       const idx = (col: string) => headers.indexOf(col)
       const get = (row: string[], col: string) => row[idx(col)]?.trim() ?? ''
@@ -1019,6 +1191,15 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         } else {
           return reply.status(400).send({ error: `Type d'import inconnu : ${type}` })
         }
+
+        // OWASP A09 — traçabilité import en masse (action puissante : crée des
+        // employés en bulk, peut être utilisée pour injecter de faux salariés).
+        auditLogSettings(
+          schema, request.user.sub, 'settings.import_completed',
+          null,
+          { type, totalRows: rows.length, inserted, skipped, errorsCount: errors.length },
+          request.ip ?? null,
+        )
 
         return reply.send({ total: rows.length, inserted, skipped, errors })
       } catch (err) {
