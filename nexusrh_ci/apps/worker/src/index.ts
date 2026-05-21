@@ -14,10 +14,23 @@ const connection = createClient()
 connection.on('error', (err: Error) => logger.error({ err }, 'Redis connection error'))
 const workers: Worker<unknown, void>[] = []
 
+// OWASP A04 — concurrency cap par worker pour éviter qu'un seul tenant
+// monopolise la DB en envoyant 1000 jobs en parallèle.
+const WORKER_CONCURRENCY = 5
+
+// OWASP A04 — cap absolu de cron legal-watch sources (anti config rogue
+// qui définirait LEGAL_WATCH_SOURCES avec 10000 entrées → Redis storm)
+const LEGAL_WATCH_MAX_SOURCES = 100
+
 function createWorker(queueName: string, handler: JobHandler): Worker<unknown, void> {
   const worker = new Worker<unknown, void>(queueName, handler, {
     connection,
-    concurrency: 5,
+    concurrency: WORKER_CONCURRENCY,
+    // OWASP A04 — anti-saturation Redis : purger les jobs terminés.
+    // Garder les 1000 derniers échecs pour diagnostic. Garder les 100 derniers
+    // succès pour observabilité (sans saturer la mémoire Redis).
+    removeOnComplete: { count: 100 },
+    removeOnFail:     { count: 1000 },
   })
 
   worker.on('completed', (job) => {
@@ -25,7 +38,10 @@ function createWorker(queueName: string, handler: JobHandler): Worker<unknown, v
   })
 
   worker.on('failed', (job, err) => {
-    logger.error({ jobId: job?.id, queue: queueName, err }, 'Job failed')
+    // OWASP A10 — log message d'erreur sans stack complète (peut leak PII
+    // si une query inclut email/employeeId dans la trace)
+    const errMsg = err instanceof Error ? err.message : 'unknown'
+    logger.error({ jobId: job?.id, queue: queueName, errMsg, attempts: job?.attemptsMade }, 'Job failed')
   })
 
   return worker
@@ -52,6 +68,14 @@ async function scheduleLegalWatchCron(): Promise<void> {
   }
   if (sources.length === 0) {
     logger.info('legal-watch: aucune source configurée — cron non programmé')
+    return
+  }
+  // OWASP A04 — cap anti-config-rogue
+  if (sources.length > LEGAL_WATCH_MAX_SOURCES) {
+    logger.error(
+      { count: sources.length, max: LEGAL_WATCH_MAX_SOURCES },
+      `legal-watch: trop de sources (max ${LEGAL_WATCH_MAX_SOURCES}) — cron non programmé`,
+    )
     return
   }
   const legalQueue = new Queue<LegalWatchPayload>('legal-watch', { connection })
