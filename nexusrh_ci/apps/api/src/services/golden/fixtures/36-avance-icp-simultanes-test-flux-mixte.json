@@ -1,0 +1,96 @@
+{
+  "id": "36-avance-icp-simultanes-test-flux-mixte",
+  "description": "Salarié non-cadre avec ICP (code 1600, earning) ET avance sur salaire (code 5000, deduction) simultanément. Vérifie l'interaction earning + deduction dans le même bulletin : ICP augmente le grossSalary, avance se déduit du netPayable. Cas fréquent en début d'année (paiement ICP + petite avance accordée). Vérifie que netPayable = grossSalary - cotisations - ITS - avance",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "non-cadre",
+    "period": "2024-12",
+    "createdAt": "2026-05-21",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": [
+      {
+        "date": "2026-05-21",
+        "author": "Couldevlop <coulwao@gmail.com>",
+        "reason": "Sprint 11 — earning + deduction simultanés",
+        "deltaSummary": "baseSalary 0 → 280000 ; brutProrata 0 → 280000 ; grossSalary 0 → 303000 ; cnpsRetraiteSal 0 → 17640 ; cnpsRetraitePat 0 → 21560 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 17640 ; totalCnpsPat 0 → 26985 ; baseImposable 0 → 220360 ; its 0 → 2180 ; totalDeductions 0 → 59820 ; netPayable 0 → 243180 ; employerCost 0 → 329985 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 9"
+      }
+    ]
+  },
+  "input": {
+    "baseSalary": 280000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "single",
+    "childrenCount": 0,
+    "variableElements": {
+      "ICP": 23000,
+      "AVANCE": 40000
+    }
+  },
+  "expected": {
+    "baseSalary": 280000,
+    "brutProrata": 280000,
+    "grossSalary": 303000,
+    "cnpsRetraiteSal": 17640,
+    "cnpsRetraitePat": 21560,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 17640,
+    "totalCnpsPat": 26985,
+    "baseImposable": 220360,
+    "its": 2180,
+    "totalDeductions": 59820,
+    "netPayable": 243180,
+    "employerCost": 329985,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      {
+        "code": "1000",
+        "type": "earning",
+        "amount": 280000
+      },
+      {
+        "code": "1600",
+        "type": "earning",
+        "amount": 23000
+      },
+      {
+        "code": "2000",
+        "type": "employee_contribution",
+        "amount": 17640
+      },
+      {
+        "code": "2100",
+        "type": "employee_contribution",
+        "amount": 2180
+      },
+      {
+        "code": "5000",
+        "type": "deduction",
+        "amount": 40000
+      },
+      {
+        "code": "3000",
+        "type": "employer_contribution",
+        "amount": 21560
+      },
+      {
+        "code": "3100",
+        "type": "employer_contribution",
+        "amount": 3500
+      },
+      {
+        "code": "3200",
+        "type": "employer_contribution",
+        "amount": 525
+      },
+      {
+        "code": "3300",
+        "type": "employer_contribution",
+        "amount": 1400
+      }
+    ]
+  }
+}

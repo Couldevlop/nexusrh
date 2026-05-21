@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { z } from 'zod'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { config } from '../../config.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
@@ -498,6 +499,169 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         transactionId: retryResult.transactionId,
         error: retryResult.error,
       })
+    },
+  })
+
+  // ── POST /mobile-money/webhooks/:provider — callbacks providers ──────────────
+  //
+  // Endpoint PUBLIC (sans JWT) appelé par Wave/MTN/Orange pour notifier le
+  // statut final d'une transaction (completed / failed / cancelled).
+  //
+  // Sécurité :
+  //  - OWASP A02 : HMAC SHA-256 signature obligatoire (header X-Signature)
+  //    comparée en timing-safe avec le secret par provider. Sans signature
+  //    valide → 401, l'attaquant ne peut pas spoof un callback "completed"
+  //    pour marquer un bulletin payé sans avoir effectivement transféré.
+  //  - OWASP A04 (idempotence) : si la transaction est déjà "completed",
+  //    le webhook retourne 200 sans rien faire (anti-replay : un provider
+  //    peut retry plusieurs fois ; on doit toujours répondre 200 pour qu'il
+  //    arrête, mais sans double-mettre à jour pay_slips).
+  //  - OWASP A07 : rate-limit modéré (les providers retry mais pas en spam).
+  //  - Tenant résolu via query param ?tenant={slug} (le slug n'est pas un
+  //    secret, c'est la signature HMAC qui authentifie).
+  fastify.post('/webhooks/:provider', {
+    schema: { tags: ['mobile-money'], summary: 'Webhook callback provider (HMAC signé)' },
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const { provider } = request.params as { provider: string }
+      const { tenant: tenantSlug } = request.query as { tenant?: string }
+
+      // OWASP A03 — provider whitelist + slug regex
+      if (!PROVIDERS.includes(provider as Provider)) {
+        return reply.status(404).send({ error: 'Provider inconnu' })
+      }
+      if (!tenantSlug || !/^[a-z][a-z0-9_-]{0,62}$/.test(tenantSlug)) {
+        return reply.status(400).send({ error: 'Paramètre tenant requis (slug)' })
+      }
+
+      // Récupère le webhookSecret du provider depuis config
+      const secrets: Record<Provider, string | undefined> = {
+        wave:         config.mobileMoney.wave.webhookSecret,
+        mtn_momo:     config.mobileMoney.mtn.webhookSecret,
+        orange_money: config.mobileMoney.orange.webhookSecret,
+      }
+      const secret = secrets[provider as Provider]
+      if (!secret) {
+        // Si le secret n'est pas configuré, refuser tout webhook (fail-closed)
+        fastify.log.warn({ provider }, '[webhook] secret non configuré, callback refusé')
+        return reply.status(503).send({ error: 'Webhook désactivé pour ce provider' })
+      }
+
+      // OWASP A02 — vérification HMAC en timing-safe
+      const sigHeader = String(request.headers['x-signature'] ?? '').trim()
+      if (!sigHeader) return reply.status(401).send({ error: 'Signature manquante' })
+
+      // Le body brut est requis pour HMAC ; on le re-sérialise (Fastify l'a
+      // déjà parsé en JSON). C'est équivalent si on utilise la même
+      // canonicalisation côté provider.
+      const bodyRaw = JSON.stringify(request.body ?? {})
+      const expected = createHmac('sha256', secret).update(bodyRaw).digest('hex')
+      // Accepte les formats "sha256=hex" ou "hex" brut
+      const provided = sigHeader.startsWith('sha256=') ? sigHeader.slice(7) : sigHeader
+
+      let sigOk = false
+      try {
+        const a = Buffer.from(expected, 'hex')
+        const b = Buffer.from(provided, 'hex')
+        sigOk = a.length === b.length && timingSafeEqual(a, b)
+      } catch { sigOk = false }
+      if (!sigOk) {
+        fastify.log.warn({ provider, tenantSlug }, '[webhook] signature HMAC invalide')
+        return reply.status(401).send({ error: 'Signature invalide' })
+      }
+
+      // OWASP A03 — Zod strict sur payload
+      const webhookSchema = z.object({
+        reference:     z.string().regex(REFERENCE_RE),
+        transactionId: z.string().min(1).max(100),
+        status:        z.enum(['completed', 'failed', 'cancelled']),
+        message:       z.string().max(500).optional(),
+      }).strict()
+      const parsed = webhookSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Payload invalide', issues: parsed.error.flatten() })
+      }
+      const { reference, transactionId, status, message } = parsed.data
+
+      // Résoudre le tenant (slug → schemaName) en lookup platform.tenants
+      const tenantRes = await rawPool.query<{ schema_name: string; status: string }>(
+        `SELECT schema_name, status FROM platform.tenants WHERE slug = $1 LIMIT 1`,
+        [tenantSlug],
+      )
+      const tenant = tenantRes.rows[0]
+      if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
+      if (tenant.status === 'suspended') return reply.status(403).send({ error: 'Tenant suspendu' })
+
+      const schema = tenant.schema_name
+      if (!/^[a-z][a-z0-9_]{0,62}$/.test(schema)) {
+        return reply.status(500).send({ error: 'Configuration tenant invalide' })
+      }
+
+      await ensureTenantSchema(schema)
+
+      // Récupérer le paiement par reference (clé naturelle du provider)
+      const payRes = await rawPool.query<{
+        id: string; pay_slip_id: string; status: string; external_ref: string | null
+      }>(
+        `SELECT id, pay_slip_id, status, external_ref
+         FROM "${schema}".mobile_money_payments WHERE reference = $1 LIMIT 1`,
+        [reference],
+      )
+      const payment = payRes.rows[0]
+      if (!payment) {
+        // Ne pas révéler si la référence existe ou pas (anti-enumération)
+        return reply.status(202).send({ accepted: true, processed: false })
+      }
+
+      // OWASP A04 — IDEMPOTENCE : si déjà completed avec le MÊME external_ref
+      // (transactionId), c'est un retry du provider → 200 OK sans rien faire.
+      // Si déjà completed avec un autre external_ref, on signale conflit.
+      if (payment.status === 'completed') {
+        if (payment.external_ref === transactionId) {
+          return reply.send({ accepted: true, processed: false, reason: 'already_completed' })
+        }
+        // Tentative de changer le résultat final d'un paiement déjà complété
+        fastify.log.warn(
+          { provider, tenantSlug, reference, oldRef: payment.external_ref, newRef: transactionId },
+          '[webhook] tentative de modification d\'un paiement déjà complété',
+        )
+        auditLogMobileMoney(
+          schema, 'webhook', 'mobile_money.webhook.conflict',
+          payment.id,
+          { provider, reference, oldExternalRef: payment.external_ref, newExternalRef: transactionId },
+          request.ip ?? null,
+        )
+        return reply.status(409).send({ error: 'Paiement déjà complété avec une autre référence' })
+      }
+
+      // Update du paiement avec le statut final
+      const dbStatus = status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'cancelled'
+      await rawPool.query(
+        `UPDATE "${schema}".mobile_money_payments
+         SET status = $1, external_ref = $2, error_message = $3, updated_at = now()
+         WHERE id = $4`,
+        [dbStatus, transactionId, message ?? null, payment.id],
+      )
+
+      // Si succès, marquer le bulletin de paie associé comme payé
+      if (status === 'completed' && payment.pay_slip_id) {
+        await rawPool.query(
+          `UPDATE "${schema}".pay_slips
+           SET payment_status = 'paid', payment_reference = $1,
+               paid_at = now(), updated_at = now()
+           WHERE id = $2`,
+          [transactionId, payment.pay_slip_id],
+        )
+      }
+
+      auditLogMobileMoney(
+        schema, 'webhook', `mobile_money.webhook.${dbStatus}`,
+        payment.id,
+        { provider, reference, transactionId, status: dbStatus },
+        request.ip ?? null,
+      )
+
+      return reply.send({ accepted: true, processed: true, status: dbStatus })
     },
   })
 }

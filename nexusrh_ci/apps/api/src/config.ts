@@ -62,10 +62,12 @@ const envSchema = z.object({
   MTN_MOMO_API_URL:          z.string().default('https://sandbox.momodeveloper.mtn.com'),
   MTN_MOMO_SUBSCRIPTION_KEY: z.string().optional(),
   MTN_MOMO_ENV:              z.string().default('sandbox'),
+  MTN_MOMO_WEBHOOK_SECRET:   z.string().optional(),
 
-  ORANGE_MONEY_API_KEY:     z.string().optional(),
-  ORANGE_MONEY_API_URL:     z.string().default('https://api.orange.com/orange-money-webpay/ci/v1'),
-  ORANGE_MONEY_MERCHANT_KEY: z.string().optional(),
+  ORANGE_MONEY_API_KEY:       z.string().optional(),
+  ORANGE_MONEY_API_URL:       z.string().default('https://api.orange.com/orange-money-webpay/ci/v1'),
+  ORANGE_MONEY_MERCHANT_KEY:  z.string().optional(),
+  ORANGE_MONEY_WEBHOOK_SECRET: z.string().optional(),
 
   FEATURE_AI_ASSISTANT:     z.string().transform(v => v === 'true').default('true'),
   FEATURE_MOBILE_MONEY:     z.string().transform(v => v === 'true').default('true'),
@@ -164,11 +166,13 @@ export const config = {
       apiUrl:          env.MTN_MOMO_API_URL,
       subscriptionKey: env.MTN_MOMO_SUBSCRIPTION_KEY,
       env:             env.MTN_MOMO_ENV,
+      webhookSecret:   env.MTN_MOMO_WEBHOOK_SECRET,
     },
     orange: {
-      apiKey:       env.ORANGE_MONEY_API_KEY,
-      apiUrl:       env.ORANGE_MONEY_API_URL,
-      merchantKey:  env.ORANGE_MONEY_MERCHANT_KEY,
+      apiKey:        env.ORANGE_MONEY_API_KEY,
+      apiUrl:        env.ORANGE_MONEY_API_URL,
+      merchantKey:   env.ORANGE_MONEY_MERCHANT_KEY,
+      webhookSecret: env.ORANGE_MONEY_WEBHOOK_SECRET,
     },
   },
 
