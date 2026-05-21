@@ -4,6 +4,26 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
+import { buildMfaChallenge } from './auth-mfa.routes.js'
+import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
+
+// OWASP A02 — options du cookie httpOnly de session.
+// httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
+// secure    : envoyé uniquement en HTTPS (anti MITM, sauf en dev local)
+// sameSite  : 'lax' = pas envoyé sur requêtes cross-site POST (anti-CSRF basique)
+// path '/'  : disponible sur toutes les routes /api/*
+// maxAge    : 7 jours par défaut (aligné JWT_EXPIRES_IN), ajustable
+function authCookieOptions(): {
+  httpOnly: boolean; secure: boolean; sameSite: 'lax'; path: string; maxAge: number
+} {
+  return {
+    httpOnly: true,
+    secure:   process.env['NODE_ENV'] === 'production',
+    sameSite: 'lax',
+    path:     '/',
+    maxAge:   60 * 60 * 24 * 7,
+  }
+}
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -150,6 +170,21 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (platformUser && platformUser.is_active) {
           const valid = await bcrypt.compare(password, platformUser.password_hash)
           if (valid) {
+            // MFA actif : émet un challenge 3min au lieu du JWT final.
+            // Le client doit ensuite appeler POST /auth/mfa/login-verify avec
+            // le code TOTP (ou backup) pour obtenir le vrai token.
+            if (platformUser.mfa_enabled) {
+              const challenge = buildMfaChallenge(fastify, {
+                sub: platformUser.id, schemaName: 'platform', tenantId: null,
+              })
+              auditLogAuth('platform', platformUser.id, 'auth.login.mfa_required', { scope: 'platform' }, ip, ua)
+              return reply.status(202).send({
+                mfaRequired: true,
+                challenge,
+                message: 'Saisissez votre code TOTP pour finaliser la connexion',
+              })
+            }
+
             const token = fastify.jwt.sign({
               sub:        platformUser.id,
               tenantId:   null,
@@ -165,6 +200,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               [platformUser.id],
             )
             auditLogAuth('platform', platformUser.id, 'auth.login.success', { scope: 'platform' }, ip, ua)
+            // OWASP A02 — pose le JWT en cookie httpOnly (mode SPA). Le client
+            // browser n'a plus à manipuler le token en JS. Les clients API
+            // peuvent toujours utiliser le `token` renvoyé en JSON dans Authorization.
+            reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
             return reply.send({
               token,
               user: {
@@ -196,6 +235,25 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const { tenant, user } = candidate
+
+        // MFA actif sur ce user : émet un challenge 3min au lieu du JWT final.
+        // Le client doit ensuite appeler POST /auth/mfa/login-verify avec le
+        // code TOTP (ou backup) pour obtenir le vrai token. last_login_at
+        // n'est PAS mis à jour ici (login non finalisé).
+        if (user.mfa_enabled) {
+          const challenge = buildMfaChallenge(fastify, {
+            sub: user.id, schemaName: tenant.schema_name, tenantId: tenant.id,
+          })
+          auditLogAuth(
+            tenant.schema_name, user.id, 'auth.login.mfa_required',
+            { role: user.role }, ip, ua,
+          )
+          return reply.status(202).send({
+            mfaRequired: true,
+            challenge,
+            message: 'Saisissez votre code TOTP pour finaliser la connexion',
+          })
+        }
 
         // Trouver l'employeeId si lié
         let employeeId: string | null = null
@@ -233,6 +291,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           { role: user.role, mustChangePassword, hasEmployeeLink: !!employeeId },
           ip, ua,
         )
+
+        // OWASP A02 — cookie httpOnly mode SPA (cf. helper authCookieOptions)
+        reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
 
         return reply.send({
           token,
@@ -300,6 +361,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const exp = (user as unknown as { exp?: number }).exp
       const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
       await blacklistTokenSafe(jti, ttl)
+      // OWASP A02 — révoque le cookie httpOnly (mode SPA browser)
+      reply.clearCookie(AUTH_COOKIE_NAME, { path: '/' })
       auditLogAuth(
         user.schemaName, user.sub, 'auth.logout',
         { jti },
@@ -307,6 +370,24 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         request.headers['user-agent']?.slice(0, 500) ?? null,
       )
       return reply.send({ message: 'Déconnecté avec succès' })
+    },
+  })
+
+  // ── GET /auth/csrf-token : émet un token CSRF (double-submit pattern) ─────
+  // Le client SPA appelle cet endpoint au boot, stocke le token retourné en
+  // mémoire (PAS dans un cookie pour pouvoir l'injecter en header), puis
+  // l'envoie dans X-CSRF-Token sur chaque POST/PATCH/PUT/DELETE.
+  // Le serveur valide que header.csrf === jwt.aud='csrf' && sub === user.sub.
+  // Sans ce token, les mutations cookie-authentifiées sont refusées (anti-CSRF).
+  fastify.get('/csrf-token', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['auth'], summary: 'Émettre un token CSRF (double-submit pattern)' },
+    handler: async (request, reply) => {
+      const csrfToken = fastify.jwt.sign(
+        { sub: request.user.sub, aud: 'csrf' } as unknown as Parameters<typeof fastify.jwt.sign>[0],
+        { expiresIn: '1h' },
+      )
+      return reply.send({ csrfToken })
     },
   })
 

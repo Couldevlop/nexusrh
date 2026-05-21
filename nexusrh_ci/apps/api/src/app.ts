@@ -28,6 +28,7 @@ import swaggerPlugin from './plugins/swagger.js'
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
+import authMfaRoutes    from './modules/auth/auth-mfa.routes.js'
 import platformRoutes   from './modules/platform/platform.routes.js'
 import legalWatchRoutes from './modules/platform/legal-watch.routes.js'
 import employeesRoutes  from './modules/employees/employees.routes.js'
@@ -123,6 +124,50 @@ export async function buildApp() {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   })
 
+  // ── CSRF guard (OWASP A01 — double-submit token) ─────────────────────────────
+  // S'applique UNIQUEMENT quand la requête est authentifiée via cookie httpOnly
+  // (mode SPA browser). Les clients API qui utilisent `Authorization: Bearer`
+  // ne sont pas concernés (le header n'est pas auto-injecté par le navigateur
+  // sur une requête cross-site, contrairement au cookie).
+  fastify.addHook('preHandler', async (request, reply) => {
+    const method = request.method.toUpperCase()
+    if (method !== 'POST' && method !== 'PATCH' && method !== 'PUT' && method !== 'DELETE') return
+
+    const url = request.url
+    // Bypass : auth flow (login, mfa, reset password) + webhooks signés HMAC
+    if (
+      url.startsWith('/auth/') ||
+      url.startsWith('/mobile-money/webhooks/')
+    ) return
+
+    const cookies = (request as unknown as { cookies?: Record<string, string> }).cookies ?? {}
+    const hasCookie = !!cookies['nexusrh_token']
+    const hasBearer = String(request.headers.authorization ?? '').toLowerCase().startsWith('bearer ')
+    // Si auth via header Bearer uniquement (pas de cookie) → pas de CSRF requis
+    if (!hasCookie || hasBearer) return
+
+    const csrfHeader = String(request.headers['x-csrf-token'] ?? '').trim()
+    if (!csrfHeader) {
+      return reply.status(403).send({ error: 'CSRF token requis (X-CSRF-Token)' })
+    }
+    try {
+      const decoded = fastify.jwt.verify<{ sub: string; aud?: string }>(csrfHeader)
+      if (decoded.aud !== 'csrf') {
+        return reply.status(403).send({ error: 'CSRF token invalide (audience)' })
+      }
+      // Vérifie que le sujet du CSRF match l'utilisateur (sub doit correspondre
+      // au futur user résolu par jwtVerify dans le handler). On extrait le sub
+      // du JWT auth (cookie) sans le valider pleinement ici (le authenticate
+      // du handler le fera).
+      const jwtPayload = fastify.jwt.decode<{ sub: string }>(cookies['nexusrh_token'] ?? '')
+      if (!jwtPayload || jwtPayload.sub !== decoded.sub) {
+        return reply.status(403).send({ error: 'CSRF token / session mismatch' })
+      }
+    } catch {
+      return reply.status(403).send({ error: 'CSRF token invalide' })
+    }
+  })
+
   // ── Middleware maintenance : bloque tous les accès tenant sauf super_admin ───
   fastify.addHook('onRequest', async (request, reply) => {
     const url = request.url
@@ -162,6 +207,7 @@ export async function buildApp() {
 
   // ── Routes applicatives ───────────────────────────────────────────────────────
   await fastify.register(authRoutes,         { prefix: '/auth' })
+  await fastify.register(authMfaRoutes,      { prefix: '/auth' })
   await fastify.register(platformRoutes,     { prefix: '/platform' })
   await fastify.register(legalWatchRoutes,   { prefix: '/platform/legal-watch' })
   await fastify.register(employeesRoutes,    { prefix: '/employees' })
