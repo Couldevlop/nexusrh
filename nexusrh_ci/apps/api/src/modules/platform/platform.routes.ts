@@ -40,6 +40,22 @@ const createTenantBodySchema = z.object({
 
 const pool = new Pool({ connectionString: config.database.url })
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A09 — audit log non bloquant pour les actions super_admin sensibles
+// (création tenant, modifications, suspensions, suppressions). Ces événements
+// ont un impact catastrophique : trace OBLIGATOIRE en cas d'incident/forensics.
+function auditLogPlatform(
+  userId: string, action: string, entity: string,
+  entityId: string | null, changes: Record<string, unknown>, ip: string | null,
+): void {
+  pool.query(
+    `INSERT INTO platform.audit_log (user_id, action, entity, entity_id, changes, ip_address)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [userId, action, entity, entityId, JSON.stringify(changes), ip],
+  ).catch(() => { /* table audit_log absente : non bloquant */ })
+}
+
 const PLAN_DEFAULTS: Record<string, { maxUsers: number; maxEmployees: number }> = {
   trial:         { maxUsers: 10,   maxEmployees: 20   },
   starter:       { maxUsers: 30,   maxEmployees: 30   },
@@ -120,7 +136,11 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /platform/tenants ────────────────────────────────────────────────
+  // OWASP A07 — rate-limit anti-spam : création tenant = action très coûteuse
+  // (provision schéma + seeds + envoi email) ET catastrophique en cas d'abus
+  // (super_admin compromis pourrait créer des milliers de tenants fantômes).
   fastify.post('/tenants', {
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
     preHandler: [fastify.authorize('super_admin')],
     schema: { tags: ['platform'], summary: 'Créer un nouveau tenant CI' },
     handler: async (request, reply) => {
@@ -219,11 +239,23 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         plan:         planType,
       }).catch(err => fastify.log.warn({ err }, 'Email bienvenue non envoyé'))
 
+      // OWASP A09 : trace de la création de tenant (action super_admin
+      // catastrophique : ajout d'une organisation entière au système).
+      auditLogPlatform(request.user.sub, 'tenant.created', 'tenant', tenantId, {
+        slug, name: body.name, planType,
+        adminEmail: body.adminEmail,
+        hasSubsidiaries: body.hasSubsidiaries ?? false,
+        seedDemoData: body.seedDemoData ?? false,
+      }, request.ip ?? null)
+
       return reply.status(201).send({
         data: { id: tenantId, slug, schemaName, name: body.name, planType },
         adminEmail:   body.adminEmail,
+        // tempPassword volontairement retourné comme filet de sécurité si l'email
+        // échoue (cf. CLAUDE.md). NE PAS dupliquer dans message ci-dessous —
+        // le message ne doit pas véhiculer le secret en clair vers les logs HTTP.
         tempPassword,
-        message: `Tenant "${body.name}" créé avec succès. Mot de passe temporaire : ${tempPassword}`,
+        message: `Tenant "${body.name}" créé avec succès. Mot de passe transmis par email.`,
       })
     },
   })
@@ -234,17 +266,23 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['platform'], summary: 'Modifier un tenant' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 : UUID validation stricte avant UPDATE
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
       const body = request.body as Record<string, unknown>
       const allowed = ['name','plan_type','status','primary_color','secondary_color',
                        'logo_url','max_users','max_employees','trial_ends_at','city','sector',
                        'has_subsidiaries','payroll_mode','default_country_code']
       const sets: string[] = []
       const vals: unknown[] = []
+      const modifiedFields: string[] = []
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         if (allowed.includes(k)) {
           sets.push(`${k} = $${idx++}`)
           vals.push(v)
+          modifiedFields.push(k)
         }
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
@@ -254,6 +292,16 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE platform.tenants SET ${sets.join(', ')} WHERE id = $${idx}`,
         vals
       )
+
+      // OWASP A09 : trace les modifications de tenant (changement de plan,
+      // suspension, changement statut → impacts contractuels et conformité)
+      auditLogPlatform(request.user.sub, 'tenant.updated', 'tenant', id, {
+        modifiedFields,
+        // Inclut les nouvelles valeurs pour status/plan_type qui sont les plus
+        // sensibles (impact: bascule active↔suspended, downgrade de plan)
+        newStatus:   typeof body.status === 'string' ? body.status : undefined,
+        newPlanType: typeof body.plan_type === 'string' ? body.plan_type : undefined,
+      }, request.ip ?? null)
       const res = await pool.query(`SELECT * FROM platform.tenants WHERE id = $1`, [id])
       return reply.send({ data: res.rows[0] })
     },
@@ -805,9 +853,20 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
+        // OWASP A09 : snapshot AVANT suppression pour traçabilité
+        const snap = await pool.query<{ provider: string; model_id: string; display_name: string }>(
+          `SELECT provider, model_id, display_name FROM platform.ai_models WHERE id = $1`,
+          [id],
+        )
         await pool.query(`DELETE FROM platform.ai_models WHERE id = $1`, [id])
         invalidateConfigCache()
+        auditLogPlatform(request.user.sub, 'sourcing.model_deleted', 'ai_model', id, {
+          provider: snap.rows[0]?.provider ?? null,
+          modelId:  snap.rows[0]?.model_id ?? null,
+          displayName: snap.rows[0]?.display_name ?? null,
+        }, request.ip ?? null)
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error({ err }, 'sourcing.models.delete failed')
@@ -898,9 +957,19 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
+        const snap = await pool.query<{ name: string; country_code: string; url: string | null }>(
+          `SELECT name, country_code, url FROM platform.sourcing_platforms WHERE id = $1`,
+          [id],
+        )
         await pool.query(`DELETE FROM platform.sourcing_platforms WHERE id = $1`, [id])
         invalidateConfigCache()
+        auditLogPlatform(request.user.sub, 'sourcing.platform_deleted', 'sourcing_platform', id, {
+          name: snap.rows[0]?.name ?? null,
+          countryCode: snap.rows[0]?.country_code ?? null,
+          url: snap.rows[0]?.url ?? null,
+        }, request.ip ?? null)
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error({ err }, 'sourcing.platforms.delete failed')

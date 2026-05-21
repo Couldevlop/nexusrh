@@ -250,6 +250,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     { code: '1300', label: 'Prime de transport',            varKey: 'PRIME_TRANSPORT'   },
     { code: '1400', label: 'Heures supp. +15%',            varKey: 'HEURES_SUPP_NORM'  },
     { code: '1500', label: 'Heures supp. +50% (nuit/dim)', varKey: 'HEURES_SUPP_NUIT'  },
+    { code: '1550', label: 'Heures supp. +100% (jour férié)', varKey: 'HEURES_SUPP_FERIE' },
     { code: '1600', label: 'Indemnité congés payés',        varKey: 'ICP'               },
   ]
   for (const e of varEarnings) {

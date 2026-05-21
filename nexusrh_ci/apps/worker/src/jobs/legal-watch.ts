@@ -20,17 +20,14 @@ import type { Job } from 'bullmq'
 import { Pool } from 'pg'
 import { createHash } from 'crypto'
 import { logger } from '../logger.js'
+import { parseLegalWatchPayload, JobValidationError, type LegalWatchPayload } from '../schemas.js'
 
-const pool = new Pool({ connectionString: process.env['DATABASE_URL'] })
+// OWASP A04 — cap connexions PG (le worker peut traiter plusieurs sources en
+// parallèle, chacune fait 2-3 queries — 5 connexions suffisent et empêchent
+// de saturer le pool DB partagé avec l'API)
+const pool = new Pool({ connectionString: process.env['DATABASE_URL'], max: 5 })
 
-export interface LegalWatchPayload {
-  /** article_id ciblé dans droit_ci.articles (peut être null pour création) */
-  articleId:    string | null
-  sourceUrl:    string
-  source:       string                              // code_travail | jo | dgi | cnps | ...
-  countryCode:  string                              // 'CIV', 'SEN', ...
-  sourceType?:  'scraper' | 'manual' | 'upload'
-}
+export type { LegalWatchPayload } from '../schemas.js'
 
 const FETCH_TIMEOUT_MS = 30_000
 const MAX_BODY_BYTES   = 1_000_000  // 1 MB
@@ -61,12 +58,20 @@ function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex')
 }
 
-export async function processLegalWatchJob(job: Job<LegalWatchPayload, void>): Promise<void> {
-  const { articleId, sourceUrl, source, countryCode, sourceType = 'scraper' } = job.data
-
-  if (!sourceUrl || !sourceUrl.startsWith('http')) {
-    throw new Error('sourceUrl invalide')
+export async function processLegalWatchJob(job: Job<unknown, void>): Promise<void> {
+  // OWASP A03 + A10 (anti-SSRF) — validation stricte du payload :
+  // sourceUrl obligatoirement http(s), countryCode ISO alpha-3, source whitelist
+  let payload: LegalWatchPayload
+  try {
+    payload = parseLegalWatchPayload(job.data)
+  } catch (err) {
+    if (err instanceof JobValidationError) {
+      logger.error({ jobId: job.id, err: err.message }, 'legal-watch: payload invalide — job rejeté')
+      return
+    }
+    throw err
   }
+  const { articleId, sourceUrl, source, countryCode, sourceType = 'scraper' } = payload
 
   logger.info({ articleId, sourceUrl, source }, 'legal-watch: fetch start')
 

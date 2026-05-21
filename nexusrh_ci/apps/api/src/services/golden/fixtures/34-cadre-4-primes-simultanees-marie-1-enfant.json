@@ -1,0 +1,108 @@
+{
+  "id": "34-cadre-4-primes-simultanees-marie-1-enfant",
+  "description": "Cadre marié 1 enfant avec cumul de 4 primes earnings simultanées : ancienneté + rendement + transport + ICP. Cas typique d'un cadre confirmé en fin d'année (prime annuelle de rendement). Vérifie l'agrégation correcte au grossSalary, l'exclusion de toutes les primes de la baseImposable ITS (seul brutProrata est imposé), et le crédit famille marié+1 enfant (5500 + 3000 = 8500)",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "cadre",
+    "period": "2024-12",
+    "createdAt": "2026-05-21",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": [
+      {
+        "date": "2026-05-21",
+        "author": "Couldevlop <coulwao@gmail.com>",
+        "reason": "Sprint 11 — cumul 4 primes simultanées",
+        "deltaSummary": "baseSalary 0 → 700000 ; brutProrata 0 → 700000 ; grossSalary 0 → 973000 ; cnpsRetraiteSal 0 → 44100 ; cnpsRetraitePat 0 → 53900 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 44100 ; totalCnpsPat 0 → 59325 ; baseImposable 0 → 550900 ; its 0 → 9519 ; totalDeductions 0 → 53619 ; netPayable 0 → 919381 ; employerCost 0 → 1032325 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 11"
+      }
+    ]
+  },
+  "input": {
+    "baseSalary": 700000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "married",
+    "childrenCount": 1,
+    "variableElements": {
+      "PRIME_ANCIENNETE": 35000,
+      "PRIME_RENDEMENT": 150000,
+      "PRIME_TRANSPORT": 30000,
+      "ICP": 58000
+    }
+  },
+  "expected": {
+    "baseSalary": 700000,
+    "brutProrata": 700000,
+    "grossSalary": 973000,
+    "cnpsRetraiteSal": 44100,
+    "cnpsRetraitePat": 53900,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 44100,
+    "totalCnpsPat": 59325,
+    "baseImposable": 550900,
+    "its": 9519,
+    "totalDeductions": 53619,
+    "netPayable": 919381,
+    "employerCost": 1032325,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      {
+        "code": "1000",
+        "type": "earning",
+        "amount": 700000
+      },
+      {
+        "code": "1100",
+        "type": "earning",
+        "amount": 35000
+      },
+      {
+        "code": "1200",
+        "type": "earning",
+        "amount": 150000
+      },
+      {
+        "code": "1300",
+        "type": "earning",
+        "amount": 30000
+      },
+      {
+        "code": "1600",
+        "type": "earning",
+        "amount": 58000
+      },
+      {
+        "code": "2000",
+        "type": "employee_contribution",
+        "amount": 44100
+      },
+      {
+        "code": "2100",
+        "type": "employee_contribution",
+        "amount": 9519
+      },
+      {
+        "code": "3000",
+        "type": "employer_contribution",
+        "amount": 53900
+      },
+      {
+        "code": "3100",
+        "type": "employer_contribution",
+        "amount": 3500
+      },
+      {
+        "code": "3200",
+        "type": "employer_contribution",
+        "amount": 525
+      },
+      {
+        "code": "3300",
+        "type": "employer_contribution",
+        "amount": 1400
+      }
+    ]
+  }
+}

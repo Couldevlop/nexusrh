@@ -53,6 +53,11 @@ function auditLogCnps(
 // à la volée, agrégations multi-mois). Cap : 10 req/min/IP.
 const HEAVY_EXPORT_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: '1 minute' } }
 
+// OWASP A04 — cap anti-fraude sur les exports DISA agrégés annuels.
+// Une PME ivoirienne classique a < 500 employés ; un export > 2000 lignes
+// indique soit un tenant entreprise (à traiter par batch), soit un abus.
+const DISA_MAX_EMPLOYEES = 2_000
+
 const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', async (request) => {
     const schema = request.user?.schemaName
@@ -196,6 +201,14 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         )
         declarationId = insRes.rows[0]?.id ?? ''
       }
+
+      // OWASP A09 — traçabilité de la génération d'une déclaration sociale
+      // (action préparatoire à un dépôt légal CNPS, doit être auditable).
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.declaration_generated', declarationId,
+        { year, quarter, employeesCount: employees.length, totalCotisations, totalMasseSalariale },
+        request.ip ?? null,
+      )
 
       return reply.send({
         data: {
@@ -347,6 +360,14 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       const employees = empsRes.rows
+
+      // OWASP A04 — cap anti-fraude : refuser les exports DISA gigantesques.
+      if (employees.length > DISA_MAX_EMPLOYEES) {
+        return reply.status(413).send({
+          error: `Trop d'employés pour un export DISA en un lot (${employees.length}). Maximum ${DISA_MAX_EMPLOYEES} par génération.`,
+        })
+      }
+
       let masseSalariale = 0
       let totalCnps = 0
       let totalIts = 0
@@ -371,6 +392,13 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
            status           = 'draft',
            updated_at       = now()`,
         [year, employees.length, masseSalariale, totalCnps, totalIts, JSON.stringify(employees)]
+      )
+
+      // OWASP A09 — traçabilité génération DISA annuelle (loi 99-477)
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.disa_generated', null,
+        { year, employeesCount: employees.length, masseSalariale, totalCnps, totalIts },
+        request.ip ?? null,
       )
 
       return reply.send({
@@ -455,6 +483,14 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
 ${salaries}
   </SALARIES>
 </DECLARATION_CNPS>`
+
+      // OWASP A09 — l'export NEVA = artefact transmis à la CNPS (preuve légale),
+      // doit être traçable (qui l'a téléchargé, à quelle date, pour quel trimestre).
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.declaration_neva_exported', id,
+        { year: d.year, quarter: d.quarter, employeesCount: d.employees_count, format: 'xml/neva' },
+        request.ip ?? null,
+      )
 
       reply.header('Content-Type', 'application/xml; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="NEVA_CNPS_${d.year}_T${d.quarter}.xml"`)
@@ -543,7 +579,11 @@ ${salaries}
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly')],
     schema: { tags: ['cnps'], summary: 'Récapitulatif annuel CNPS' },
     handler: async (request, reply) => {
-      const { year = String(new Date().getFullYear()) } = request.query as Record<string, string>
+      const { year: yearRaw } = request.query as Record<string, string>
+      // OWASP A03 — validation stricte (regex + plage) au lieu de parseInt brut
+      const yearNum = parseYearParam(yearRaw)
+      if (yearNum === null) return reply.status(400).send({ error: 'year hors plage' })
+      const year = String(yearNum)
       const schema = request.user.schemaName
 
       const res = await rawPool.query<{
@@ -587,9 +627,10 @@ ${salaries}
       const { year, quarter } = request.params as { year: string; quarter: string }
       const schema = request.user.schemaName
 
-      const yr  = parseInt(year)
+      // OWASP A03 — validation stricte (regex + plage)
+      const yr  = parseYearParam(year)
       const qtr = parseInt(quarter)
-      if (!yr || !qtr || qtr < 1 || qtr > 4) {
+      if (yr === null || !qtr || qtr < 1 || qtr > 4) {
         return reply.status(400).send({ error: 'year et quarter (1-4) requis' })
       }
 
@@ -732,8 +773,10 @@ ${salaries}
       const { year } = request.params as { year: string }
       const { employeeId } = request.query as { employeeId?: string }
       const schema = request.user.schemaName
-      const yr = parseInt(year)
-      if (!yr) return reply.status(400).send({ error: 'year requis' })
+      // OWASP A03 — validation stricte year + UUID employeeId si fourni
+      const yr = parseYearParam(year)
+      if (yr === null) return reply.status(400).send({ error: 'year hors plage' })
+      if (employeeId && !UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
 
       const tenantRes = await rawPool.query<{
         name: string; cnps_number: string; city: string
@@ -775,24 +818,38 @@ ${salaries}
 
       const { generateRnsPdf } = await import('../../services/rns-pdf.js')
 
-      const pdfBuffer = await generateRnsPdf(
-        {
-          name:            tenant.name,
-          address:         tenant.address,
-          cnpsNumber:      tenant.cnps_number,
-          affiliationDate: tenant.cnps_affiliation_date,
-          city:            tenant.city,
-        },
-        empsRes.rows.map(e => ({
-          lastName:     e.last_name,
-          firstName:    e.first_name,
-          cnpsNumber:   e.cnps_number,
-          hireDate:     e.hire_date,
-          exitDate:     e.exit_date,
-          annualSalary: e.annual_salary,
-          monthsWorked: e.months_worked,
-          year:         yr,
-        })),
+      let pdfBuffer: Buffer
+      try {
+        pdfBuffer = await generateRnsPdf(
+          {
+            name:            tenant.name,
+            address:         tenant.address,
+            cnpsNumber:      tenant.cnps_number,
+            affiliationDate: tenant.cnps_affiliation_date,
+            city:            tenant.city,
+          },
+          empsRes.rows.map(e => ({
+            lastName:     e.last_name,
+            firstName:    e.first_name,
+            cnpsNumber:   e.cnps_number,
+            hireDate:     e.hire_date,
+            exitDate:     e.exit_date,
+            annualSalary: e.annual_salary,
+            monthsWorked: e.months_worked,
+            year:         yr,
+          })),
+        )
+      } catch (err) {
+        // OWASP A10 — masquer les détails internes (template manquant, font fail)
+        fastify.log.error({ err: (err as Error).message }, '[cnps] RNS PDF generation failed')
+        return reply.status(500).send({ error: 'Échec de la génération du RNS PDF' })
+      }
+
+      // OWASP A09 — traçabilité téléchargement RNS (relevé nominatif officiel CNPS)
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.rns_pdf_exported', null,
+        { year: yr, employeeId: employeeId ?? null, employeesCount: empsRes.rows.length, format: 'pdf' },
+        request.ip ?? null,
       )
 
       const suffix = employeeId ? `_${empsRes.rows[0]?.last_name}` : '_TOUS'
@@ -810,8 +867,9 @@ ${salaries}
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
       const schema = request.user.schemaName
-      const yr = parseInt(year)
-      if (!yr) return reply.status(400).send({ error: 'year requis' })
+      // OWASP A03 — validation stricte year
+      const yr = parseYearParam(year)
+      if (yr === null) return reply.status(400).send({ error: 'year hors plage' })
 
       const tenantRes = await rawPool.query<{ name: string; cnps_number: string; rccm: string; dgi_number: string }>(
         `SELECT name, cnps_number, rccm, dgi_number FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
@@ -891,6 +949,14 @@ ${salaries}
       ]
 
       const csv = [...headerLines, ...dataLines, ...footerLines].join('\r\n')
+
+      // OWASP A09 — traçabilité téléchargement RNS CSV
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.rns_csv_exported', null,
+        { year: yr, employeesCount: employees.length, totalBrut, format: 'csv' },
+        request.ip ?? null,
+      )
+
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="RNS_CNPS_${yr}.csv"`)
       return reply.send('﻿' + csv)
@@ -905,8 +971,9 @@ ${salaries}
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
       const schema = request.user.schemaName
-      const yr = parseInt(year)
-      if (!yr) return reply.status(400).send({ error: 'year requis' })
+      // OWASP A03 — validation stricte year
+      const yr = parseYearParam(year)
+      if (yr === null) return reply.status(400).send({ error: 'year hors plage' })
 
       const tenantRes = await rawPool.query<{ name: string; cnps_number: string; dgi_number: string }>(
         `SELECT name, cnps_number, dgi_number FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
@@ -973,6 +1040,14 @@ ${salaries}
       ]
 
       const csv = [...headerLines, ...dataLines, ...footerLines].join('\r\n')
+
+      // OWASP A09 — traçabilité téléchargement DISA (artefact transmis au DGI/CNPS)
+      auditLogCnps(
+        schema, request.user.sub, 'cnps.disa_csv_exported', null,
+        { year: yr, employeesCount: employees.length, format: 'csv' },
+        request.ip ?? null,
+      )
+
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="DISA_${yr}.csv"`)
       return reply.send('﻿' + csv)
@@ -982,6 +1057,9 @@ ${salaries}
   // GET /cnps/audit-conformite — audit conformité sociale 360° (CNPS/DGI/ITS/SMIG)
   fastify.get('/audit-conformite', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    // OWASP A07 — endpoint exécutant 7+ queries lourdes (agrégations multi-tables) :
+    // même cap que les exports pour éviter la saturation DB.
+    config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Audit conformité sociale 360° — CNPS/DGI/SMIG/Plafonds/Déclarations' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
