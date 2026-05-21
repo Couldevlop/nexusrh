@@ -117,6 +117,28 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at     timestamptz NOT NULL DEFAULT now(),
       UNIQUE(year, employee_id)
     )`,
+    // ── Auth : reset password tokens (TTL 15 min, usage unique) ──
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".password_reset_tokens (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      uuid NOT NULL,
+      token_hash   varchar(128) NOT NULL UNIQUE,
+      expires_at   timestamptz NOT NULL,
+      used_at      timestamptz,
+      requested_ip varchar(45),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_prt_user_idx" ON "${schemaName}".password_reset_tokens(user_id)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_prt_expires_idx" ON "${schemaName}".password_reset_tokens(expires_at)`,
+
+    // ── Auth : MFA backup codes (10 codes hashés bcrypt, usage unique) ──
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".mfa_backup_codes (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     uuid NOT NULL,
+      code_hash   varchar(128) NOT NULL,
+      used_at     timestamptz,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_mbc_user_idx" ON "${schemaName}".mfa_backup_codes(user_id)`,
   ]
 
   for (const sql of alters) {
@@ -124,4 +146,40 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
   }
 
   migratedSchemas.add(schemaName)
+}
+
+let platformMigrated = false
+
+/**
+ * Migrations lazy spécifiques au schéma platform (super_admin / multi-tenant).
+ * Idempotent. Appelé au boot ou en lazy depuis les routes auth.
+ */
+export async function ensurePlatformSchema(): Promise<void> {
+  if (platformMigrated) return
+
+  const alters = [
+    `CREATE TABLE IF NOT EXISTS platform.password_reset_tokens (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      uuid NOT NULL,
+      token_hash   varchar(128) NOT NULL UNIQUE,
+      expires_at   timestamptz NOT NULL,
+      used_at      timestamptz,
+      requested_ip varchar(45),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_prt_user_idx ON platform.password_reset_tokens(user_id)`,
+    `CREATE INDEX IF NOT EXISTS platform_prt_expires_idx ON platform.password_reset_tokens(expires_at)`,
+    `CREATE TABLE IF NOT EXISTS platform.mfa_backup_codes (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     uuid NOT NULL,
+      code_hash   varchar(128) NOT NULL,
+      used_at     timestamptz,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_mbc_user_idx ON platform.mfa_backup_codes(user_id)`,
+  ]
+  for (const sql of alters) {
+    await pool.query(sql).catch(() => undefined)
+  }
+  platformMigrated = true
 }

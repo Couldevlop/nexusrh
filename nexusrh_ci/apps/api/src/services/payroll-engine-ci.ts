@@ -280,6 +280,12 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   lines.push({ code: '2000', label: `${caisse} Retraite salarié (${tauxRetSalPct}%)`, type: 'employee_contribution', base: baseRetraite, amount: cnpsRetraiteSal })
   lines.push({ code: '2100', label: pack.labelImpotSalaire,                          type: 'employee_contribution', base: baseImposable, amount: its })
 
+  // Mutuelle santé complémentaire (optionnelle, négociée tenant). Montant fixe
+  // mensuel via variableElements (MUTUELLE_SAL / MUTUELLE_PAT). N'entre PAS
+  // dans les bases CNPS ni dans le calcul ITS.
+  const mutuelleSal = variableElements['MUTUELLE_SAL'] ?? 0
+  if (mutuelleSal > 0) lines.push({ code: '4000', label: 'Mutuelle santé salarié',  type: 'employee_contribution', base: 0, amount: mutuelleSal })
+
   const avance = variableElements['AVANCE'] ?? 0
   if (avance > 0) lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
 
@@ -290,10 +296,13 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   }
   lines.push({ code: '3300', label: `${caisse} Accidents du travail (${(atRate * 100).toFixed(2)}%)`, type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat })
 
+  const mutuellePat = variableElements['MUTUELLE_PAT'] ?? 0
+  if (mutuellePat > 0) lines.push({ code: '4100', label: 'Mutuelle santé patronal', type: 'employer_contribution', base: 0, amount: mutuellePat })
+
   // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
-  const totalRetenues = totalCnpsSal + its + avance
+  const totalRetenues = totalCnpsSal + its + avance + mutuelleSal
   const netPayable    = Math.max(0, grossSalary - totalRetenues)
-  const employerCost  = grossSalary + totalCnpsPat
+  const employerCost  = grossSalary + totalCnpsPat + mutuellePat
 
   return {
     lines,
