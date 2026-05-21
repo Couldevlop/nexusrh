@@ -81,13 +81,41 @@ export async function buildApp() {
   })
 
   // ── Security headers (OWASP A05 — Security Misconfiguration) ─────────────────
-  fastify.addHook('onSend', async (_req, reply) => {
+  // CSP strict pour l'API (JSON only) ; CSP permissive pour /docs (Swagger UI
+  // qui charge HTML/JS inline). Réponses sensibles (PDF/CSV bulletins, exports
+  // CNPS) : Cache-Control: no-store pour éviter la fuite via cache navigateur
+  // partagé sur poste RH (multi-utilisateur).
+  const API_CSP  = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+  const DOCS_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+  const SENSITIVE_CONTENT_TYPES = /^(application\/pdf|text\/csv|application\/xml)/i
+
+  fastify.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options',  'nosniff')
-    reply.header('X-Frame-Options',          'SAMEORIGIN')
+    reply.header('X-Frame-Options',          'DENY')
     reply.header('X-XSS-Protection',         '0')
     reply.header('Strict-Transport-Security','max-age=31536000; includeSubDomains; preload')
     reply.header('Referrer-Policy',          'strict-origin-when-cross-origin')
     reply.header('Permissions-Policy',       'geolocation=(), microphone=(), camera=()')
+    reply.header('Cross-Origin-Resource-Policy', 'same-origin')
+    reply.header('Cross-Origin-Opener-Policy',   'same-origin')
+
+    // CSP différencié selon la route (Swagger UI a besoin d'inline scripts)
+    const url = req.raw.url ?? ''
+    if (url.startsWith('/docs')) {
+      reply.header('Content-Security-Policy', DOCS_CSP)
+    } else {
+      reply.header('Content-Security-Policy', API_CSP)
+    }
+
+    // Cache-Control no-store sur réponses contenant des données RH sensibles
+    // (bulletins PDF, exports DISA/CNPS CSV, déclarations XML). Évite que le
+    // bulletin d'un salarié reste accessible dans le cache après logout sur
+    // un poste partagé.
+    const ct = String(reply.getHeader('content-type') ?? '')
+    if (SENSITIVE_CONTENT_TYPES.test(ct)) {
+      reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+      reply.header('Pragma',         'no-cache')
+    }
   })
 
   // ── Multipart (upload fichiers) ──────────────────────────────────────────────

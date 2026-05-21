@@ -127,27 +127,51 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(await getReferentielStats())
   })
 
+  // OWASP A07 — rate-limit sur opérations lourdes destructives (seed reset
+  // toute la base référentiel, reindex parcourt tous les articles)
+  const HEAVY_ADMIN_RATE_LIMIT = { rateLimit: { max: 3, timeWindow: '5 minutes' } }
+
+  // OWASP A09 — audit log non bloquant des opérations admin destructives
+  function auditLogReferentiels(
+    userId: string, action: string, changes: Record<string, unknown>, ip: string | null,
+  ): void {
+    pool.query(
+      `INSERT INTO platform.activity_log (actor_user_id, action, payload, ip_address)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, action, JSON.stringify(changes), ip],
+    ).catch(() => { /* table absente sur ancien env : non bloquant */ })
+  }
+
   // ── Seed : data file → PostgreSQL → Elasticsearch (admin uniquement) ─────────
   app.post('/seed', {
     preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
-  }, async (_req, reply) => {
+    config: HEAVY_ADMIN_RATE_LIMIT,
+  }, async (req, reply) => {
     try {
       await ensureIndex()
-      return reply.send({ success: true, ...(await seedReferentiel()) })
+      const result = await seedReferentiel()
+      auditLogReferentiels(req.user.sub, 'referentiels.seeded', result as Record<string, unknown>, req.ip ?? null)
+      return reply.send({ success: true, ...result })
     } catch (err: any) {
-      return reply.status(500).send({ error: err.message })
+      // OWASP A10 — masquer le détail interne (path DB/ES, stack, connection string)
+      app.log.error({ err: err.message }, '[referentiels seed] failed')
+      return reply.status(500).send({ error: 'Échec du seed du référentiel' })
     }
   })
 
   // ── Réindexation ES depuis PG (admin uniquement, sans re-seed) ──────────────
   app.post('/reindex', {
     preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
-  }, async (_req, reply) => {
+    config: HEAVY_ADMIN_RATE_LIMIT,
+  }, async (req, reply) => {
     try {
       const indexed = await reindexFromDb()
+      auditLogReferentiels(req.user.sub, 'referentiels.reindexed', { indexed }, req.ip ?? null)
       return reply.send({ success: true, indexed })
     } catch (err: any) {
-      return reply.status(500).send({ error: err.message })
+      // OWASP A10 — masquer le détail interne
+      app.log.error({ err: err.message }, '[referentiels reindex] failed')
+      return reply.status(500).send({ error: 'Échec de la réindexation' })
     }
   })
 }
