@@ -210,8 +210,26 @@ export default function ReferentielsPage() {
     staleTime: 600_000,
   })
 
+  // OWASP A03 — sanitize l'extrait Elasticsearch avant injection HTML.
+  // Le highlight ES utilise par défaut <em>...</em> pour marquer les termes
+  // matchés. On échappe TOUT le HTML, puis on restaure UNIQUEMENT <em>/</em>
+  // (whitelist stricte). Bloque l'injection d'<img onerror>, <script>, etc.
+  // qui serait possible si un article du référentiel contenait du HTML brut.
+  const sanitizeExcerpt = (raw: string): string => {
+    const escaped = raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+    // Restaurer les balises <em> de highlight ES (échappées en &lt;em&gt;)
+    return escaped
+      .replace(/&lt;em&gt;/g, '<em>')
+      .replace(/&lt;\/em&gt;/g, '</em>')
+  }
+
   const excerpt = useCallback((hit: ArticleHit) =>
-    hit.highlight?.texte?.[0] ?? hit.texte.slice(0, 200) + '…', [])
+    sanitizeExcerpt(hit.highlight?.texte?.[0] ?? hit.texte.slice(0, 200) + '…'), [])
 
   const toggle = (key: string) =>
     setExpanded(p => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n })

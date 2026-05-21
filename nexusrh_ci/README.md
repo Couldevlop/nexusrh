@@ -144,6 +144,30 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 | **Settings (paramétrage tenant)** | ✓ (admin uniquement sur écritures sensibles — PATCH /tenant, /legal-entities, /payroll-rules, hr_manager sur /import) | ✓ + Zod strict (`patchTenantSchema`, `createLegalEntitySchema`, `patchLegalEntitySchema`, `createPayrollRuleSchema`, `patchPayrollRuleSchema`, `importBodySchema` toutes `.strict()`) + regex hex `^#[A-Fa-f0-9]{6}$` sur couleurs + regex CNPS/DGI/RCCM + URL logo http(s) ou data:image uniquement + **bornes anti-fraude AT 0.02-0.05** (refus 400 sinon, A04) + cap import CSV 50 colonnes × 10 000 lignes (413 sinon, anti-DoS memory) + UUID validation sur PATCH/:id + whitelist types import (employees/departments/absences uniquement) | ✓ 20/min sur écritures sensibles (`/tenant`, `/legal-entities`, `/payroll-rules`) + 10/h sur `/import/:type` | `settings.tenant_updated` (modifiedFields + changes), `settings.legal_entity_created/updated` (cnps/dgi/at trace fraude), `settings.payroll_rule_created/updated` (modif rate = impact direct cotisations), `settings.import_completed` (type + counts) — modifs numéro CNPS/DGI/AT = vecteurs fraude, traçabilité 100% obligatoire |
 | **Référentiels (recherche légale)** | ✓ (search ouvert tous rôles, /stats admin+hr_manager, /seed + /reindex admin+super_admin uniquement) | ✓ Fastify JSON schema strict sur query/params (refus champs inconnus, bornes longueurs) + masquage messages d'erreur Elasticsearch/PostgreSQL en générique (OWASP A10, plus de leak path DB/ES sur /seed et /reindex) | ✓ 3/5min sur /seed + /reindex (opérations destructives qui reset/reconstruisent l'index) | `referentiels.seeded` (action destructive — reset base référentielle), `referentiels.reindexed` (parcours complet PG → ES, traçabilité super_admin obligatoire) |
 | **Transverse (security headers)** | n/a | n/a | **rate-limit global 200/min/IP** (OWASP A07 brute-force) | n/a — headers HTTP appliqués globalement |
+| **Frontend (SPA React)** | ✓ RoleGuard + TenantGuard + PlatformGuard sur toutes routes sensibles + **queryClient.clear() au logout** (cleanup cache TanStack via event bus `nexusrh:logout`) + purge explicite localStorage `nexusrhci-auth` | ✓ + **sanitization stricte highlight Elasticsearch** sur `<em>` whitelist uniquement (anti-XSS sur `dangerouslySetInnerHTML` ReferentielsPage, contenu source potentiellement contrôlé via /seed) + Zod sur formulaires login/change-password (email regex, password 12+ chars) | ✓ rate-limit appliqué côté API (frontend ne peut pas spam le backend) | n/a — l'auditabilité est côté API (`auth.login.success/failed/logout`, `auth.password.changed`) |
+
+#### Security headers frontend nginx (production)
+
+Le `apps/web/nginx.conf` applique en prod **tous les security headers** + une **Content-Security-Policy** stricte calibrée pour SPA Vite + Tailwind + shadcn/ui :
+
+```
+Content-Security-Policy:
+  default-src 'self';
+  script-src  'self';                              ← aucun CDN, aucun inline
+  style-src   'self' 'unsafe-inline';              ← requis Tailwind JIT + shadcn
+  img-src     'self' data: https:;                 ← logos SVG inline + avatars
+  font-src    'self' data:;
+  connect-src 'self';                              ← API via proxy /api/*
+  frame-ancestors 'none';                          ← anti-clickjacking
+  base-uri    'self';
+  form-action 'self';
+  object-src  'none';
+  upgrade-insecure-requests
+```
+
+`index.html` embarque une **meta CSP fallback** (pour dev local sans nginx) + `<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">` car les données RH sensibles ne doivent jamais être indexées par les moteurs de recherche.
+
+**Reste roadmap (Sprint sécurité +1)** : migration JWT localStorage → cookie httpOnly + endpoint `/auth/refresh` avec rotation (gros chantier, demande refactor auth backend + CSRF token). En l'état, le JWT en localStorage est mitigé par : CSP strict (script-src 'self' bloque toute injection externe), sanitization Elasticsearch, cleanup logout complet.
 
 #### Security headers HTTP appliqués globalement (OWASP A05)
 

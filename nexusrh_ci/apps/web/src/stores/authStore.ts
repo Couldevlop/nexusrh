@@ -58,6 +58,16 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         set({ user: null, token: null, refreshToken: null, tenantConfig: null })
         resetTheme()
+        // OWASP A01 — cleanup défense en profondeur : vider le cache TanStack
+        // Query (un onglet collègue ne doit jamais voir les bulletins/données
+        // de l'ancien user après logout) + purger explicitement le storage
+        // persisté Zustand (le set ci-dessus le marque vide, mais la clé
+        // localStorage doit aussi être effacée pour éviter une rehydration
+        // partielle si la lib Zustand change de comportement).
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nexusrh:logout'))
+          try { window.localStorage.removeItem('nexusrhci-auth') } catch { /* quota / private mode */ }
+        }
       },
 
       isAuthenticated: () => !!get().token && !!get().user,

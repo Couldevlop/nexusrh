@@ -137,8 +137,17 @@ export default function LoginPage() {
       );
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setError(e.response?.data?.error ?? "Identifiants invalides");
+      // OWASP A07 — message d'erreur générique pour éviter l'énumération
+      // d'emails ("user introuvable" vs "mot de passe incorrect" trahit
+      // l'existence d'un compte). On affiche le message API uniquement si
+      // c'est une erreur 400 de validation (format), pas pour 401/4xx auth.
+      const e = err as { response?: { status?: number; data?: { error?: string } } };
+      const isValidation = e.response?.status === 400;
+      setError(
+        isValidation
+          ? (e.response?.data?.error ?? "Format invalide")
+          : "Identifiants invalides ou compte non autorisé",
+      );
     }
   };
 
