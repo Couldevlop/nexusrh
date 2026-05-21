@@ -270,4 +270,216 @@ describe('POST /settings/import/:type — cap CSV + whitelist + audit (OWASP A03
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('settings.import_completed')
   })
+
+  it('import departments avec responsable_email → lookup manager_id', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })                       // SELECT existing department
+      .mockResolvedValueOnce({ rows: [{ id: 'usr-mgr-1' }] })    // SELECT users by email
+      .mockResolvedValueOnce({ rows: [] })                       // INSERT department
+      .mockResolvedValueOnce({ rows: [] })                       // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/departments',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['nom', 'code', 'responsable_email'],
+        rows: [['Logistique', 'LOG', 'manager@sotra.ci']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('departments'))
+    expect(insertCall?.[1]?.[2]).toBe('usr-mgr-1')  // manager_id résolu
+  })
+})
+
+describe('POST /settings/import/:type — nouveaux types (whitelist élargie)', () => {
+  it('accepte type pay-slips (auparavant rejeté par whitelist)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // SELECT existing pay_slip
+      .mockResolvedValueOnce({ rows: [{ id: 'per-1' }] })   // SELECT pay_periods
+      .mockResolvedValueOnce({ rows: [] })                   // INSERT pay_slips
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/pay-slips',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'periode', 'salaire_brut', 'cotis_cnps_sal', 'its', 'net_paye', 'cout_employeur'],
+        rows: [['a@b.ci', '2024-06', '300000', '18900', '500', '280600', '342000']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).inserted).toBe(1)
+  })
+
+  it('accepte type mobile-money + valide opérateur whitelist', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // UPDATE employees mobile_money
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/mobile-money',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'operateur', 'numero_telephone'],
+        rows: [['a@b.ci', 'wave', '+225 07 12 34 56']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).inserted).toBe(1)
+  })
+
+  it('mobile-money refuse opérateur hors whitelist', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/mobile-money',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'operateur', 'numero_telephone'],
+        rows: [['a@b.ci', 'bitcoin', '+225 07 12 34 56']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.inserted).toBe(0)
+    expect(body.errors[0]).toContain('bitcoin')
+  })
+
+  it('import contracts OK (handler nouveau)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // INSERT contracts
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/contracts',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'type_contrat', 'date_debut', 'date_fin', 'salaire_base', 'periode_essai_jours', 'convention_collective', 'lieu_travail'],
+        rows: [['a@b.ci', 'cdi', '2024-01-15', '', '450000', '60', 'Transport CI', 'Abidjan Plateau']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).inserted).toBe(1)
+  })
+
+  it('contracts refuse type hors whitelist (OWASP A03)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/contracts',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'type_contrat', 'date_debut', 'salaire_base'],
+        rows: [['a@b.ci', 'esclavage', '2024-01-15', '450000']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.inserted).toBe(0)
+    expect(body.errors[0]).toContain('esclavage')
+  })
+
+  it('contracts refuse salaire hors borne (OWASP A04)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/contracts',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'type_contrat', 'date_debut', 'salaire_base'],
+        rows: [['a@b.ci', 'cdi', '2024-01-15', '999999999']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.inserted).toBe(0)
+    expect(body.errors[0]).toContain('hors borne')
+  })
+
+  it('import expenses OK (handler nouveau)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // INSERT expense_reports
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'titre', 'mois', 'montant_total', 'statut'],
+        rows: [['a@b.ci', 'Mission Yamoussoukro', '2024-06', '25000', 'approved']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).inserted).toBe(1)
+  })
+
+  it('expenses refuse mois mal formé (anti SQL injection)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log (auditLogSettings)
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'titre', 'mois', 'montant_total', 'statut'],
+        rows: [['a@b.ci', 'X', '06/2024', '25000', 'approved']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.inserted).toBe(0)
+    expect(body.errors[0]).toContain('06/2024')
+  })
+
+  it('expenses refuse statut hors énum (OWASP A03)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/import/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        headers: ['email_employe', 'titre', 'mois', 'montant_total', 'statut'],
+        rows: [['a@b.ci', 'X', '2024-06', '25000', 'magic_status']],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).errors[0]).toContain('magic_status')
+  })
+
+  it('refuse encore les types non whitelistés (defense in depth)', async () => {
+    const token = tokenFor(app, 'admin')
+    for (const badType of ['users', 'tokens', 'audit_log', 'platform_users']) {
+      const res = await app.inject({
+        method: 'POST', url: `/settings/import/${badType}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { headers: ['x'], rows: [['y']] },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(JSON.parse(res.body).error).toContain('Type d\'import invalide')
+    }
+  })
 })

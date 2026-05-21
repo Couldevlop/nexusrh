@@ -93,7 +93,12 @@ const importBodySchema = z.object({
   rows:    z.array(z.array(z.string().max(2000))).min(1).max(IMPORT_MAX_ROWS),
 }).strict()
 
-const IMPORT_TYPES = ['employees', 'departments', 'absences'] as const
+// Liste des types d'import supportés par le handler ci-dessous. Doit rester
+// synchronisée avec les templates frontend (SettingsPage.tsx — IMPORT_TEMPLATES).
+const IMPORT_TYPES = [
+  'employees', 'departments', 'absences',
+  'pay-slips', 'mobile-money', 'contracts', 'expenses',
+] as const
 
 function generateTempPassword(): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -1107,9 +1112,21 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             if (!name) { skipped++; continue }
             const ex = await pool.query(`SELECT id FROM "${schema}".departments WHERE name ILIKE $1 LIMIT 1`, [name])
             if (ex.rows[0]) { skipped++; continue }
+            // Lookup responsable_email → manager_id (l'utilisateur doit déjà exister)
+            let managerId: string | null = null
+            const responsableEmail = get(row, 'responsable_email')
+            if (responsableEmail) {
+              const u = await pool.query(`SELECT id FROM "${schema}".users WHERE email = $1 LIMIT 1`, [responsableEmail])
+              managerId = u.rows[0]?.id ?? null
+              if (!managerId) {
+                errors.push(`Ligne ${i + 2}: responsable ${responsableEmail} introuvable (département créé sans manager)`)
+              }
+            }
             try {
-              await pool.query(`INSERT INTO "${schema}".departments (name, code) VALUES ($1,$2)`,
-                [name, get(row, 'code') || null])
+              await pool.query(
+                `INSERT INTO "${schema}".departments (name, code, manager_id) VALUES ($1,$2,$3)`,
+                [name, get(row, 'code') || null, managerId],
+              )
               inserted++
             } catch (e) { errors.push(`Ligne ${i + 2}: ${(e as Error).message}`); skipped++ }
           }
@@ -1179,11 +1196,104 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             if (!email) { skipped++; continue }
             const emp = await pool.query(`SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email])
             if (!emp.rows[0]) { skipped++; errors.push(`Ligne ${i + 2}: ${email} introuvable`); continue }
-            const provider = get(row, 'operateur')
+            // OWASP A03 — whitelist opérateurs (anti-injection valeur libre)
+            const provider = get(row, 'operateur').toLowerCase()
+            const allowedProviders = ['wave', 'mtn_momo', 'orange_money']
+            if (!allowedProviders.includes(provider)) {
+              errors.push(`Ligne ${i + 2}: opérateur "${provider}" invalide (autorisés : ${allowedProviders.join(', ')})`); skipped++; continue
+            }
             const phone = get(row, 'numero_telephone')
             try {
-              await pool.query(`UPDATE "${schema}".employees SET mobile_money_provider=$1, mobile_money_number=$2 WHERE id=$3`,
-                [provider, phone, emp.rows[0].id])
+              await pool.query(
+                `UPDATE "${schema}".employees SET mobile_money_provider=$1, mobile_money_phone=$2 WHERE id=$3`,
+                [provider, phone, emp.rows[0].id],
+              )
+              inserted++
+            } catch (e) { errors.push(`Ligne ${i + 2}: ${(e as Error).message}`); skipped++ }
+          }
+
+        } else if (type === 'contracts') {
+          // Frontend template : email_employe, type_contrat, date_debut, date_fin,
+          // salaire_base, periode_essai_jours, convention_collective, lieu_travail.
+          // Mapping DB : employee_id, type, start_date, end_date, base_salary,
+          // trial_end_date (= start_date + periode_essai_jours), convention, job_title.
+          // (lieu_travail n'a pas de colonne dédiée — stocké dans job_title)
+          const allowedContractTypes = ['cdi', 'cdd', 'apprentissage', 'stage', 'mission']
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i]!
+            const email = get(row, 'email_employe')
+            if (!email) { skipped++; continue }
+            const emp = await pool.query(`SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email])
+            if (!emp.rows[0]) { skipped++; errors.push(`Ligne ${i + 2}: ${email} introuvable`); continue }
+            // OWASP A03 — type contrat dans whitelist
+            const ctype = (get(row, 'type_contrat') || 'cdi').toLowerCase()
+            if (!allowedContractTypes.includes(ctype)) {
+              errors.push(`Ligne ${i + 2}: type "${ctype}" invalide (${allowedContractTypes.join(', ')})`); skipped++; continue
+            }
+            const startDate = toDate(get(row, 'date_debut')) ?? get(row, 'date_debut')
+            const endDate   = toDate(get(row, 'date_fin')) || null
+            // OWASP A04 — bornes salaire (FCFA entiers, max ~50M/mois en cadre CI extrême)
+            const baseSalary = parseInt(get(row, 'salaire_base')) || 0
+            if (baseSalary <= 0 || baseSalary > 50_000_000) {
+              errors.push(`Ligne ${i + 2}: salaire ${baseSalary} hors borne (1 - 50 000 000 FCFA)`); skipped++; continue
+            }
+            const trialDays = parseInt(get(row, 'periode_essai_jours')) || 0
+            let trialEndDate: string | null = null
+            if (trialDays > 0 && startDate) {
+              const sd = new Date(startDate)
+              sd.setDate(sd.getDate() + trialDays)
+              trialEndDate = sd.toISOString().slice(0, 10)
+            }
+            try {
+              await pool.query(`
+                INSERT INTO "${schema}".contracts
+                  (employee_id, type, start_date, end_date, trial_end_date,
+                   base_salary, convention, job_title, status)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')
+              `, [
+                emp.rows[0].id, ctype, startDate, endDate, trialEndDate,
+                baseSalary,
+                get(row, 'convention_collective') || null,
+                get(row, 'lieu_travail') || null,
+              ])
+              inserted++
+            } catch (e) { errors.push(`Ligne ${i + 2}: ${(e as Error).message}`); skipped++ }
+          }
+
+        } else if (type === 'expenses') {
+          // Frontend template : email_employe, titre, mois, montant_total, statut
+          // Mapping DB expense_reports : employee_id, title, month (YYYY-MM),
+          // total_amount, status (draft|submitted|approved|rejected|reimbursed|paid)
+          const allowedStatuses = ['draft', 'submitted', 'approved', 'rejected', 'reimbursed', 'paid']
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i]!
+            const email = get(row, 'email_employe')
+            if (!email) { skipped++; continue }
+            const emp = await pool.query(`SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email])
+            if (!emp.rows[0]) { skipped++; errors.push(`Ligne ${i + 2}: ${email} introuvable`); continue }
+            const title = get(row, 'titre')
+            if (!title) { errors.push(`Ligne ${i + 2}: titre requis`); skipped++; continue }
+            const month = get(row, 'mois')
+            // OWASP A03 — format mois strict YYYY-MM (ne pas accepter "12/24" etc.)
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+              errors.push(`Ligne ${i + 2}: mois "${month}" invalide (format YYYY-MM attendu)`); skipped++; continue
+            }
+            // OWASP A04 — bornes montant (anti-fraude : 0 < montant <= 10M FCFA / note)
+            const total = parseInt(get(row, 'montant_total')) || 0
+            if (total <= 0 || total > 10_000_000) {
+              errors.push(`Ligne ${i + 2}: montant ${total} hors borne (1 - 10 000 000 FCFA)`); skipped++; continue
+            }
+            // OWASP A03 — statut whitelist
+            const status = (get(row, 'statut') || 'approved').toLowerCase()
+            if (!allowedStatuses.includes(status)) {
+              errors.push(`Ligne ${i + 2}: statut "${status}" invalide (${allowedStatuses.join(', ')})`); skipped++; continue
+            }
+            try {
+              await pool.query(`
+                INSERT INTO "${schema}".expense_reports
+                  (employee_id, title, month, total_amount, status)
+                VALUES ($1,$2,$3,$4,$5)
+              `, [emp.rows[0].id, title, month, total, status])
               inserted++
             } catch (e) { errors.push(`Ligne ${i + 2}: ${(e as Error).message}`); skipped++ }
           }

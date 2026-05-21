@@ -1143,10 +1143,13 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
     icon: Building2,
     color: 'bg-purple-100 text-purple-600',
     endpoint: '/settings/import/departments',
-    headers: ['nom','code','description','responsable_email'],
+    // Conforme schéma DB tenant.departments (nom, code, manager_id).
+    // responsable_email → lookup users.email → manager_id côté handler.
+    // 'description' a été retirée (pas de colonne dans la table).
+    headers: ['nom','code','responsable_email'],
     example: [
-      ['Engineering','ENG','Développement logiciel','manager@entreprise.ci'],
-      ['Finance','FIN','Comptabilité et finance','finance@entreprise.ci'],
+      ['Engineering','ENG','manager@entreprise.ci'],
+      ['Finance','FIN','finance@entreprise.ci'],
     ],
   },
   {
