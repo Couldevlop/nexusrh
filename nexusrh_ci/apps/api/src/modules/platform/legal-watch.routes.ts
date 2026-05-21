@@ -17,32 +17,50 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { z } from 'zod'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { config } from '../../config.js'
 import { analyzeLegalDiff } from '../../services/legal-diff.service.js'
 import { LEGAL_SOURCES_CATALOG } from '../../data/legal-sources-catalog.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
+// OWASP A03 — patterns stricts
+const UUID_RE         = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const ARTICLE_ID_RE   = /^[a-z][a-z0-9_-]{0,49}$/i
+const SOURCE_CODE_RE  = /^[a-z][a-z0-9_-]{0,29}$/
+const COUNTRY_CODE_RE = /^[A-Z]{3}$/
+// Whitelist countries supportés par le catalogue
+const SUPPORTED_COUNTRIES = new Set(LEGAL_SOURCES_CATALOG.map(s => s.countryCode))
+
+// OWASP A07 — rate-limits sur opérations sensibles
+const ANALYZE_RATE_LIMIT      = { rateLimit: { max: 20, timeWindow: '1 hour'   } }
+const REVIEW_RATE_LIMIT       = { rateLimit: { max: 60, timeWindow: '1 hour'   } }  // approve/reject
+const PROPOSALS_READ_LIMIT    = { rateLimit: { max: 200, timeWindow: '1 hour'  } }  // listing
+
+// OWASP A03 — Zod strict + regex sur identifiants
 const analyzeSchema = z.object({
-  article_id:     z.string().max(50).optional(),         // null = nouvel article
-  country_code:   z.string().length(3).default('CIV'),
-  source:         z.string().min(1).max(30),
+  article_id:     z.string().regex(ARTICLE_ID_RE).max(50).optional(),
+  country_code:   z.string().regex(COUNTRY_CODE_RE).default('CIV'),
+  source:         z.string().regex(SOURCE_CODE_RE).min(1).max(30),
   source_url:     z.string().url().max(2000).optional(),
   source_type:    z.enum(['manual', 'scraper', 'upload']).default('manual'),
   proposed_text:  z.string().min(10).max(30_000),
   context:        z.string().max(2000).optional(),
-})
+}).strict()
 
 const reviewSchema = z.object({
   notes: z.string().max(2000).optional(),
-})
+}).strict()
+
+const sourcesCatalogQuerySchema = z.object({
+  country: z.string().regex(COUNTRY_CODE_RE).optional(),
+}).strict()
 
 const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /analyze : IA propose un diff ───────────────────────────────────
   fastify.post('/analyze', {
     preHandler: [fastify.authorize('super_admin')],
-    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    config: ANALYZE_RATE_LIMIT,
     handler: async (request, reply) => {
       const parsed = analyzeSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -61,20 +79,30 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT texte, titre_article FROM droit_ci.articles WHERE article_id = $1 LIMIT 1`,
           [body.article_id],
         )
-        if (cur.rows[0]) {
-          currentText = cur.rows[0].texte
-          currentTitre = cur.rows[0].titre_article
+        // OWASP A04 — refus explicite si article_id pointe vers un article inexistant
+        // (anti-pollution : sinon on créerait une proposition liée à un fantôme)
+        if (!cur.rows[0]) {
+          return reply.status(404).send({ error: `Article ${body.article_id} introuvable` })
         }
+        currentText  = cur.rows[0].texte
+        currentTitre = cur.rows[0].titre_article
       }
 
       let diff
       try {
         diff = await analyzeLegalDiff(currentText, body.proposed_text, body.context)
       } catch (err) {
+        // OWASP A10 — masquer les détails internes Anthropic (stack, model, prompt).
+        // Le pattern user-actionable est documenté dans le service legal-diff
+        // (validation entrée). Tout autre msg = erreur générique côté client,
+        // détail loggé serveur.
         const msg = err instanceof Error ? err.message : String(err)
         const isUserActionable = /trop court|trop long|configur|Clé Anthropic/i.test(msg)
+        if (!isUserActionable) {
+          fastify.log.error({ err: msg }, '[legal-watch] analyse IA échouée')
+        }
         return reply.status(isUserActionable ? 422 : 500).send({
-          error: isUserActionable ? msg : 'Erreur analyse IA',
+          error: isUserActionable ? msg : 'Erreur analyse IA — réessayez ou contactez le support',
         })
       }
 
@@ -114,6 +142,7 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   // ── GET /proposals : liste paginée ───────────────────────────────────────
   fastify.get('/proposals', {
     preHandler: [fastify.authorize('super_admin')],
+    config: PROPOSALS_READ_LIMIT,
     handler: async (request, reply) => {
       const { status = 'pending', limit = '50', offset = '0' } = request.query as Record<string, string>
       const lim = Math.min(Math.max(parseInt(limit) || 50, 1), 200)
@@ -145,8 +174,11 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   // ── GET /proposals/:id : détail (avec current_text + proposed_text) ─────
   fastify.get('/proposals/:id', {
     preHandler: [fastify.authorize('super_admin')],
+    config: PROPOSALS_READ_LIMIT,
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 — UUID strict (proposal IDs sont des UUID PG generated)
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const res = await pool.query(`
         SELECT p.*, a.titre_article AS current_title, a.article_numero
           FROM droit_ci.article_proposals p
@@ -168,8 +200,11 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   //   5. Audit log (OWASP A09)
   fastify.post('/proposals/:id/approve', {
     preHandler: [fastify.authorize('super_admin')],
+    config: REVIEW_RATE_LIMIT,
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 — UUID strict
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const parsed = reviewSchema.safeParse(request.body ?? {})
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation échouée' })
@@ -246,8 +281,11 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
             `, [prop.proposed_text, newChecksum, prop.article_id])
           }
         } else {
-          // 3b. INSERT nouvel article (cas rare : ajout pur)
-          const newArticleId = `${prop.source}-${prop.country_code}-${Date.now()}`
+          // 3b. INSERT nouvel article (cas rare : ajout pur).
+          // OWASP A04 — ID cryptographique (UUID v4) au lieu de Date.now()
+          // pour éviter toute collision si 2 propositions sont approuvées
+          // dans la même milliseconde (rare mais déterministe = mauvaise idée).
+          const newArticleId = `${prop.source}-${prop.country_code}-${randomUUID().slice(0, 12)}`
           await client.query(`
             INSERT INTO droit_ci.articles
               (article_id, article_numero, source, country_code,
@@ -297,8 +335,11 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /proposals/:id/reject ──────────────────────────────────────────
   fastify.post('/proposals/:id/reject', {
     preHandler: [fastify.authorize('super_admin')],
+    config: REVIEW_RATE_LIMIT,
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
+      // OWASP A03 — UUID strict
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const parsed = reviewSchema.safeParse(request.body ?? {})
       if (!parsed.success) return reply.status(400).send({ error: 'Validation échouée' })
       const notes = parsed.data.notes ?? null
@@ -315,8 +356,14 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
       if (!res.rows[0]) {
         return reply.status(409).send({ error: 'Proposition introuvable ou déjà traitée' })
       }
+      // OWASP A09 — audit complet du reject (actor + notes + ip pour conformité
+      // legale CI loi 2013-450 cybercriminalité, traçabilité 12 mois)
       fastify.log.info(
-        { actor: request.user.sub, action: 'legal_watch.reject', proposal_id: id },
+        {
+          actor: request.user.sub, action: 'legal_watch.reject',
+          proposal_id: id, notes: notes ?? null,
+          ip: request.ip ?? null,
+        },
         'Proposition rejetée',
       )
       return reply.send({ data: { id, status: 'rejected' } })
@@ -329,9 +376,15 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/sources-catalog', {
     preHandler: [fastify.authorize('super_admin')],
     handler: async (request, reply) => {
-      const { country } = request.query as { country?: string }
+      // OWASP A03 — country validé regex puis whitelist contre catalogue
+      const parsed = sourcesCatalogQuerySchema.safeParse(request.query)
+      if (!parsed.success) return reply.status(400).send({ error: 'country invalide (ISO 3166-1 alpha-3)' })
+      const { country } = parsed.data
+      if (country && !SUPPORTED_COUNTRIES.has(country)) {
+        return reply.status(404).send({ error: `Pays ${country} non supporté par le catalogue` })
+      }
       const data = country
-        ? LEGAL_SOURCES_CATALOG.filter(s => s.countryCode === country.toUpperCase())
+        ? LEGAL_SOURCES_CATALOG.filter(s => s.countryCode === country)
         : LEGAL_SOURCES_CATALOG
       return reply.send({ data, total: data.length })
     },

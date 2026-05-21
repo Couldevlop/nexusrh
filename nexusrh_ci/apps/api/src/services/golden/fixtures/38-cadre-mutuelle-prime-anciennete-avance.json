@@ -1,0 +1,108 @@
+{
+  "id": "38-cadre-mutuelle-prime-anciennete-avance",
+  "description": "Cadre marié 2 enfants avec : mutuelle (sal + pat), prime d'ancienneté, avance sur salaire. Vérifie l'interaction complexe earnings + employee_contributions + deduction simultanées : grossSalary inclut salaire base + ancienneté ; totalRetenues inclut cnps + ITS + mutuelle sal + avance ; employerCost inclut grossSalary + cnps pat + mutuelle pat. Cas réaliste d'un cadre avec rémunération composée",
+  "metadata": {
+    "pack": "CIV-2024",
+    "category": "cadre",
+    "period": "2024-11",
+    "createdAt": "2026-05-21",
+    "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
+    "changelog": [
+      {
+        "date": "2026-05-21",
+        "author": "Couldevlop <coulwao@gmail.com>",
+        "reason": "Sprint 12 — cumul mutuelle + ancienneté + avance",
+        "deltaSummary": "baseSalary 0 → 600000 ; brutProrata 0 → 600000 ; grossSalary 0 → 660000 ; cnpsRetraiteSal 0 → 37800 ; cnpsRetraitePat 0 → 46200 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 37800 ; totalCnpsPat 0 → 51625 ; baseImposable 0 → 472200 ; its 0 → 2584 ; totalDeductions 0 → 132384 ; netPayable 0 → 527616 ; employerCost 0 → 735625 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 11"
+      }
+    ]
+  },
+  "input": {
+    "baseSalary": 600000,
+    "workedDays": 26,
+    "workingDaysMonth": 26,
+    "atRate": 0.02,
+    "maritalStatus": "married",
+    "childrenCount": 2,
+    "variableElements": {
+      "PRIME_ANCIENNETE": 60000,
+      "MUTUELLE_SAL": 12000,
+      "MUTUELLE_PAT": 24000,
+      "AVANCE": 80000
+    }
+  },
+  "expected": {
+    "baseSalary": 600000,
+    "brutProrata": 600000,
+    "grossSalary": 660000,
+    "cnpsRetraiteSal": 37800,
+    "cnpsRetraitePat": 46200,
+    "cnpsPfPat": 4025,
+    "cnpsAtPat": 1400,
+    "totalCnpsSal": 37800,
+    "totalCnpsPat": 51625,
+    "baseImposable": 472200,
+    "its": 2584,
+    "totalDeductions": 132384,
+    "netPayable": 527616,
+    "employerCost": 735625,
+    "workingDays": 26,
+    "smigCompliant": true,
+    "lines": [
+      {
+        "code": "1000",
+        "type": "earning",
+        "amount": 600000
+      },
+      {
+        "code": "1100",
+        "type": "earning",
+        "amount": 60000
+      },
+      {
+        "code": "2000",
+        "type": "employee_contribution",
+        "amount": 37800
+      },
+      {
+        "code": "2100",
+        "type": "employee_contribution",
+        "amount": 2584
+      },
+      {
+        "code": "4000",
+        "type": "employee_contribution",
+        "amount": 12000
+      },
+      {
+        "code": "5000",
+        "type": "deduction",
+        "amount": 80000
+      },
+      {
+        "code": "3000",
+        "type": "employer_contribution",
+        "amount": 46200
+      },
+      {
+        "code": "3100",
+        "type": "employer_contribution",
+        "amount": 3500
+      },
+      {
+        "code": "3200",
+        "type": "employer_contribution",
+        "amount": 525
+      },
+      {
+        "code": "3300",
+        "type": "employer_contribution",
+        "amount": 1400
+      },
+      {
+        "code": "4100",
+        "type": "employer_contribution",
+        "amount": 24000
+      }
+    ]
+  }
+}
