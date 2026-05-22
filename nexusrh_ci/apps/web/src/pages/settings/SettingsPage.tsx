@@ -1692,10 +1692,25 @@ function DataImportTab() {
 // ── Tab: Workflow ─────────────────────────────────────────────────────────────
 const LEVEL_NAMES = ['Manager direct', 'DRH / RH Manager', 'Comptabilité', 'Direction Générale', 'PDG / Gérant']
 
-const MODULE_META: Record<string, { label: string; desc: string; icon: string }> = {
-  absences:  { label: 'Absences',        desc: 'Approbation des demandes d\'absence',     icon: '📅' },
-  expenses:  { label: 'Notes de frais',  desc: 'Validation des notes de frais',            icon: '🧾' },
-  payroll:   { label: 'Clôture de paie', desc: 'Validation avant virement Mobile Money',  icon: '💰' },
+const MODULE_META: Record<string, { label: string; desc: string; icon: React.ElementType; color: string }> = {
+  absences: {
+    label: 'Absences',
+    desc:  'Approbation des demandes d\'absence',
+    icon:  CalendarDays,
+    color: 'bg-orange-100 text-orange-600',
+  },
+  expenses: {
+    label: 'Notes de frais',
+    desc:  'Validation des notes de frais',
+    icon:  Receipt,
+    color: 'bg-rose-100 text-rose-600',
+  },
+  payroll: {
+    label: 'Clôture de paie',
+    desc:  'Validation avant virement Mobile Money',
+    icon:  Banknote,
+    color: 'bg-green-100 text-green-600',
+  },
 }
 
 function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
@@ -1736,9 +1751,11 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           const current = localConfigs[module] ?? configMap[module]?.levels_count ?? 1
           return (
             <div key={module} className="rounded-lg border border-border p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{meta.icon}</span>
-                <div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${meta.color}`}>
+                  <meta.icon className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{meta.label}</p>
                   <p className="text-xs text-muted-foreground">{meta.desc}</p>
                 </div>
