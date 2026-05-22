@@ -19,12 +19,16 @@ function parseYearParam(raw: string | undefined): number | null {
 
 // OWASP A03 — schemas Zod pour les POST principaux
 const generateDeclarationSchema = z.object({
-  year:    z.number().int().min(2000).max(2100),
-  quarter: z.number().int().min(1).max(4),
+  year:          z.number().int().min(2000).max(2100),
+  quarter:       z.number().int().min(1).max(4),
+  // Palier 3 multi-filiales : si tenant.has_subsidiaries=true, REQUIS pour
+  // scoper la déclaration à une filiale (chaque numéro CNPS est distinct).
+  legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
 }).strict()
 
 const disaGenerateSchema = z.object({
-  year: z.number().int().min(2000).max(2100),
+  year:          z.number().int().min(2000).max(2100),
+  legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
 }).strict()
 
 const cessationEventSchema = z.object({
@@ -109,8 +113,28 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         })
       }
-      const { year, quarter } = parsed.data
+      const { year, quarter, legalEntityId } = parsed.data
       const schema = request.user.schemaName
+
+      // Multi-filiales : si tenant.has_subsidiaries=true, exiger legalEntityId
+      // pour scoper la déclaration. Chaque filiale a son propre numéro CNPS
+      // employeur et doit générer ses propres déclarations distinctes.
+      const tenantRes = await rawPool.query<{ has_subsidiaries: boolean }>(
+        `SELECT has_subsidiaries FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      )
+      const hasSubs = tenantRes.rows[0]?.has_subsidiaries === true
+      if (hasSubs && !legalEntityId) {
+        return reply.status(400).send({
+          error: 'Ce tenant a plusieurs filiales — legalEntityId requis (chaque numéro CNPS génère sa propre déclaration)',
+        })
+      }
+      if (legalEntityId) {
+        const le = await rawPool.query(
+          `SELECT id FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+          [legalEntityId],
+        ).catch(() => ({ rows: [] }))
+        if (!le.rows[0]) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+      }
 
       // Mois du trimestre
       const months: string[] = []
@@ -118,17 +142,27 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         months.push(`${year}-${String(m).padStart(2, '0')}`)
       }
 
-      // Vérifier si déclaration déjà existante
+      // Vérifier si déclaration déjà existante (pour CE legalEntityId)
       const existing = await rawPool.query<{ id: string; status: string }>(
         `SELECT id, status FROM "${schema}".cnps_declarations
-         WHERE year = $1 AND quarter = $2 LIMIT 1`,
-        [year, quarter]
-      )
+         WHERE year = $1 AND quarter = $2 AND (legal_entity_id IS NOT DISTINCT FROM $3)
+         LIMIT 1`,
+        [year, quarter, legalEntityId ?? null],
+      ).catch(async () => rawPool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM "${schema}".cnps_declarations
+         WHERE year = $1 AND quarter = $2 LIMIT 1`, [year, quarter],
+      ))
       if (existing.rows[0]?.status === 'submitted') {
-        return reply.status(422).send({ error: 'Déclaration déjà soumise pour ce trimestre' })
+        return reply.status(422).send({ error: 'Déclaration déjà soumise pour ce trimestre / cette filiale' })
       }
 
-      // Agréger les bulletins du trimestre
+      // Agréger les bulletins du trimestre scopés filiale si applicable
+      const aggParams: unknown[] = [months]
+      let aggFilter = ''
+      if (legalEntityId) {
+        aggParams.push(legalEntityId)
+        aggFilter = ` AND ps.legal_entity_id = $${aggParams.length}`
+      }
       const slipsRes = await rawPool.query<{
         employee_id: string; first_name: string; last_name: string
         cnps_number: string; nni: string
@@ -150,9 +184,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
                 SUM(COALESCE(ps.net_payable,0))::text AS net_payable
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
-         WHERE ps.month = ANY($1::text[])
+         WHERE ps.month = ANY($1::text[])${aggFilter}
          GROUP BY e.id, e.first_name, e.last_name, e.cnps_number, e.nni`,
-        [months]
+        aggParams,
       )
 
       const employees = slipsRes.rows
@@ -167,7 +201,7 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const totalCotisations = totalSalarial + totalPatronal
 
-      // Insérer ou mettre à jour la déclaration trimestrielle
+      // Insérer ou mettre à jour la déclaration trimestrielle (scopée filiale)
       let declarationId: string
       if (existing.rows[0]) {
         await rawPool.query(
@@ -189,6 +223,21 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           `INSERT INTO "${schema}".cnps_declarations
              (year, quarter, months,
               total_cotisations_salariales, total_cotisations_patronales,
+              total_cotisations, masse_salariale, employees_count, data, status,
+              legal_entity_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10)
+           RETURNING id`,
+          [
+            year, quarter, JSON.stringify(months),
+            totalSalarial, totalPatronal,
+            totalCotisations, totalMasseSalariale,
+            employees.length, JSON.stringify(employees),
+            legalEntityId ?? null,
+          ]
+        ).catch(async () => rawPool.query<{ id: string }>(
+          `INSERT INTO "${schema}".cnps_declarations
+             (year, quarter, months,
+              total_cotisations_salariales, total_cotisations_patronales,
               total_cotisations, masse_salariale, employees_count, data, status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft')
            RETURNING id`,
@@ -197,8 +246,8 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
             totalSalarial, totalPatronal,
             totalCotisations, totalMasseSalariale,
             employees.length, JSON.stringify(employees),
-          ]
-        )
+          ],
+        ))
         declarationId = insRes.rows[0]?.id ?? ''
       }
 
@@ -206,7 +255,8 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       // (action préparatoire à un dépôt légal CNPS, doit être auditable).
       auditLogCnps(
         schema, request.user.sub, 'cnps.declaration_generated', declarationId,
-        { year, quarter, employeesCount: employees.length, totalCotisations, totalMasseSalariale },
+        { year, quarter, legalEntityId: legalEntityId ?? null,
+          employeesCount: employees.length, totalCotisations, totalMasseSalariale },
         request.ip ?? null,
       )
 
@@ -334,13 +384,38 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         })
       }
-      const { year } = parsed.data
+      const { year, legalEntityId } = parsed.data
       const schema = request.user.schemaName
 
-      // Récupérer tous les bulletins de l'année
+      // Multi-filiales : si has_subsidiaries=true, legalEntityId obligatoire
+      // (chaque filiale a son numéro CNPS distinct et sa DISA propre).
+      const tenantRes = await rawPool.query<{ has_subsidiaries: boolean }>(
+        `SELECT has_subsidiaries FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      )
+      if (tenantRes.rows[0]?.has_subsidiaries === true && !legalEntityId) {
+        return reply.status(400).send({
+          error: 'Ce tenant a plusieurs filiales — legalEntityId requis (DISA distincte par numéro CNPS)',
+        })
+      }
+      if (legalEntityId) {
+        const le = await rawPool.query(
+          `SELECT id FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+          [legalEntityId],
+        ).catch(() => ({ rows: [] }))
+        if (!le.rows[0]) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+      }
+
+      // Récupérer tous les bulletins de l'année (scope filiale si applicable)
       const months = Array.from({ length: 12 }, (_, i) =>
         `${year}-${String(i + 1).padStart(2, '0')}`
       )
+
+      const aggParams: unknown[] = [months]
+      let aggFilter = ''
+      if (legalEntityId) {
+        aggParams.push(legalEntityId)
+        aggFilter = ` AND ps.legal_entity_id = $${aggParams.length}`
+      }
 
       const empsRes = await rawPool.query<{
         employee_id: string; first_name: string; last_name: string
@@ -354,9 +429,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
                 SUM(ps.its)::text AS total_its
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
-         WHERE ps.month = ANY($1::text[])
+         WHERE ps.month = ANY($1::text[])${aggFilter}
          GROUP BY e.id, e.first_name, e.last_name, e.cnps_number, e.nni, e.job_title`,
-        [months]
+        aggParams,
       )
 
       const employees = empsRes.rows
@@ -379,7 +454,24 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Insérer/mettre à jour un enregistrement DISA agrégé par année
+      // (et par filiale en multi-filiales). Le UNIQUE existant porte sur
+      // (year), donc on tente avec legal_entity_id puis fallback si la
+      // contrainte n'autorise pas la dimension supplémentaire.
       await rawPool.query(
+        `INSERT INTO "${schema}".disa_records
+           (year, employees_count, masse_salariale, total_cnps, total_its, data, status, legal_entity_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'draft',$7)
+         ON CONFLICT (year) DO UPDATE SET
+           employees_count = EXCLUDED.employees_count,
+           masse_salariale  = EXCLUDED.masse_salariale,
+           total_cnps       = EXCLUDED.total_cnps,
+           total_its        = EXCLUDED.total_its,
+           data             = EXCLUDED.data,
+           status           = 'draft',
+           legal_entity_id  = EXCLUDED.legal_entity_id,
+           updated_at       = now()`,
+        [year, employees.length, masseSalariale, totalCnps, totalIts, JSON.stringify(employees), legalEntityId ?? null]
+      ).catch(async () => rawPool.query(
         `INSERT INTO "${schema}".disa_records
            (year, employees_count, masse_salariale, total_cnps, total_its, data, status)
          VALUES ($1,$2,$3,$4,$5,$6,'draft')
@@ -391,13 +483,14 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
            data             = EXCLUDED.data,
            status           = 'draft',
            updated_at       = now()`,
-        [year, employees.length, masseSalariale, totalCnps, totalIts, JSON.stringify(employees)]
-      )
+        [year, employees.length, masseSalariale, totalCnps, totalIts, JSON.stringify(employees)],
+      ))
 
       // OWASP A09 — traçabilité génération DISA annuelle (loi 99-477)
       auditLogCnps(
         schema, request.user.sub, 'cnps.disa_generated', null,
-        { year, employeesCount: employees.length, masseSalariale, totalCnps, totalIts },
+        { year, legalEntityId: legalEntityId ?? null,
+          employeesCount: employees.length, masseSalariale, totalCnps, totalIts },
         request.ip ?? null,
       )
 

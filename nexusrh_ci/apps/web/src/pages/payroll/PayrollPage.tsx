@@ -297,10 +297,16 @@ function RejectionHistoryBanner({ month: _month }: { month: string }) {
   return null
 }
 
+interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
+
 export default function PayrollPage() {
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
+  const tenantConfig = useAuthStore(s => s.tenantConfig)
+  const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+
   const [selectedMonth, setSelectedMonth] = useState<string>('')
+  const [selectedEntityId, setSelectedEntityId] = useState<string>('')
   const [closingResult, setClosingResult] = useState<{
     status?: string; message?: string; employeesCount?: number; totals?: Record<string, number>
   } | null>(null)
@@ -308,13 +314,23 @@ export default function PayrollPage() {
   const [livreLoading, setLivreLoading] = useState(false)
   const [workflowMonth, setWorkflowMonth] = useState<string | null>(null)
 
+  // Charge les filiales SEULEMENT si tenant multi-filiales (évite query inutile)
+  const { data: entitiesData } = useQuery<{ data: LegalEntity[] }>({
+    queryKey: ['legal-entities-for-payroll'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data),
+    enabled: hasSubsidiaries,
+  })
+  const legalEntities = entitiesData?.data ?? []
+
   const { data: periodsData, isLoading } = useQuery<{ data: PayPeriod[] }>({
     queryKey: ['payroll-periods'],
     queryFn: () => api.get('/payroll/periods').then(r => r.data),
   })
 
   const closeMut = useMutation({
-    mutationFn: (month: string) => api.post(`/payroll/periods/${month}/close`),
+    mutationFn: (month: string) => api.post(`/payroll/periods/${month}/close`,
+      hasSubsidiaries && selectedEntityId ? { legalEntityId: selectedEntityId } : {},
+    ),
     onSuccess: (res) => {
       setClosingResult(res.data as { status?: string; message?: string; employeesCount?: number; totals?: Record<string, number> })
       queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
@@ -374,7 +390,7 @@ export default function PayrollPage() {
           doit confirmer pour finaliser la période (séparation des tâches obligatoire).
         </p>
 
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-3 flex-wrap">
           <div>
             <label className="text-sm font-medium mb-1 block">Mois à clôturer</label>
             <select
@@ -391,9 +407,32 @@ export default function PayrollPage() {
             </select>
           </div>
 
+          {hasSubsidiaries && (
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Filiale <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedEntityId}
+                onChange={e => setSelectedEntityId(e.target.value)}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[200px]"
+              >
+                <option value="">-- Sélectionner une filiale --</option>
+                {legalEntities.map(le => (
+                  <option key={le.id} value={le.id}>
+                    {le.name}{le.city ? ` (${le.city})` : ''}{le.cnps_number ? ` — CNPS ${le.cnps_number}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Chaque filiale a son numéro CNPS → clôture distincte
+              </p>
+            </div>
+          )}
+
           <button
             onClick={() => selectedMonth && closeMut.mutate(selectedMonth)}
-            disabled={!selectedMonth || closeMut.isPending}
+            disabled={!selectedMonth || (hasSubsidiaries && !selectedEntityId) || closeMut.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {closeMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
