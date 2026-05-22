@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatFCFA } from '@/lib/api'
-import { FileText, Download, Loader2, Send, ShieldCheck, AlertTriangle, CheckCircle, XCircle, ClipboardList } from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
+import { FileText, Download, Loader2, Send, ShieldCheck, AlertTriangle, CheckCircle, XCircle, ClipboardList, Building2 } from 'lucide-react'
+
+interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
 
 interface CnpsDeclaration {
   id: string; year: number; quarter: number; months: string[]
@@ -30,13 +33,25 @@ interface ValidationResult {
 
 export default function CnpsPage() {
   const queryClient = useQueryClient()
+  const tenantConfig = useAuthStore(s => s.tenantConfig)
+  const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
   const [quarter, setQuarter] = useState<number>(Math.ceil((new Date().getMonth() + 1) / 3))
+  const [legalEntityId, setLegalEntityId] = useState<string>('')
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [validating, setValidating] = useState(false)
   const [rnsYear, setRnsYear] = useState(currentYear)
   const [rnsLoading, setRnsLoading] = useState<'pdf' | 'csv' | null>(null)
+
+  // Charge les filiales SEULEMENT en multi-filiales (cf. Palier 3)
+  const { data: entitiesData } = useQuery<{ data: LegalEntity[] }>({
+    queryKey: ['legal-entities-for-cnps'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data),
+    enabled: hasSubsidiaries,
+  })
+  const legalEntities = entitiesData?.data ?? []
 
   const { data: declsData, isLoading } = useQuery<{ data: CnpsDeclaration[] }>({
     queryKey: ['cnps-declarations', year],
@@ -49,7 +64,11 @@ export default function CnpsPage() {
   })
 
   const generateMut = useMutation({
-    mutationFn: () => api.post('/cnps/declarations/generate', { year, quarter }),
+    mutationFn: () => api.post('/cnps/declarations/generate',
+      hasSubsidiaries && legalEntityId
+        ? { year, quarter, legalEntityId }
+        : { year, quarter },
+    ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cnps-declarations'] })
       setValidation(null)
@@ -227,6 +246,27 @@ export default function CnpsPage() {
               <option value={4}>T4 (Oct–Déc)</option>
             </select>
           </div>
+
+          {hasSubsidiaries && (
+            <div>
+              <label className="text-sm font-medium mb-1 flex items-center gap-1">
+                <Building2 className="h-3 w-3" /> Filiale <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={legalEntityId}
+                onChange={e => { setLegalEntityId(e.target.value); setValidation(null) }}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[220px]"
+              >
+                <option value="">-- Choisir --</option>
+                {legalEntities.map(le => (
+                  <option key={le.id} value={le.id}>
+                    {le.name}{le.cnps_number ? ` (CNPS ${le.cnps_number})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
             onClick={handleValidate}
             disabled={validating}
@@ -236,7 +276,7 @@ export default function CnpsPage() {
           </button>
           <button
             onClick={() => generateMut.mutate()}
-            disabled={generateMut.isPending || (validation !== null && !validation.valid)}
+            disabled={generateMut.isPending || (validation !== null && !validation.valid) || (hasSubsidiaries && !legalEntityId)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {generateMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Générer la déclaration

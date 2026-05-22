@@ -117,6 +117,17 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at     timestamptz NOT NULL DEFAULT now(),
       UNIQUE(year, employee_id)
     )`,
+    // ── Multi-filiales (Palier 3) : scope par legal_entity_id ──
+    // Permet la clôture paie / déclarations CNPS / DISA scopées à une filiale
+    // pour les tenants has_subsidiaries=true. Backward compat : NULL = mono-filiale.
+    `ALTER TABLE "${schemaName}".pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(30)`,
+    `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
+    `ALTER TABLE "${schemaName}".disa_records      ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON "${schemaName}".pay_slips(legal_entity_id)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON "${schemaName}".cnps_declarations(legal_entity_id)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON "${schemaName}".disa_records(legal_entity_id)`,
+
     // ── Auth : reset password tokens (TTL 15 min, usage unique) ──
     `CREATE TABLE IF NOT EXISTS "${schemaName}".password_reset_tokens (
       id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

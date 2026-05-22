@@ -3,7 +3,16 @@ import { Pool } from 'pg'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
+import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+
+// OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — schéma body close period (multi-filiales)
+const closePeriodBodySchema = z.object({
+  legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
+}).strict()
 
 const rawPool = new Pool({ connectionString: config.database.url })
 
@@ -225,36 +234,95 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // POST /payroll/periods/:month/close — clôture mensuelle (avec absences)
+  //
+  // Multi-filiales (Palier 3) :
+  //  - Si tenant.has_subsidiaries=true → `legalEntityId` REQUIS dans le body
+  //    Zod : scope la clôture aux employés de cette filiale uniquement.
+  //  - Si false → `legalEntityId` ignoré, comportement historique (tous emp).
+  //  - Le moteur reçoit le pack législatif + at_rate spécifiques à la filiale
+  //    (ou tenant si mono-filiale), résolus par resolvePayrollContext().
   fastify.post('/periods/:month/close', {
     preHandler: [fastify.authorize('admin','hr_manager')],
-    schema: { tags: ['payroll'], summary: 'Clôturer une période de paie CI' },
+    schema: { tags: ['payroll'], summary: 'Clôturer une période de paie CI (scope filiale si multi-filiales)' },
     handler: async (request, reply) => {
       const { month } = request.params as { month: string }
       const schema = request.user.schemaName
 
-      const existing = await rawPool.query<{ id: string; status: string }>(
-        `SELECT id, status FROM "${schema}".pay_periods WHERE month = $1 LIMIT 1`, [month]
+      // OWASP A03 — body validation (legalEntityId UUID si fourni)
+      const bodyParsed = closePeriodBodySchema.safeParse(request.body ?? {})
+      if (!bodyParsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: bodyParsed.error.flatten() })
+      }
+      const { legalEntityId } = bodyParsed.data
+
+      const tenantRes = await rawPool.query<{
+        id: string; has_subsidiaries: boolean; at_rate: string
+        default_country_code: string | null
+      }>(
+        `SELECT id, has_subsidiaries, at_rate, default_country_code
+         FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
+      const tenant = tenantRes.rows[0]
+      if (!tenant) return reply.status(404).send({ error: 'Tenant introuvable' })
+
+      // Multi-filiales : exige legalEntityId
+      if (tenant.has_subsidiaries && !legalEntityId) {
+        return reply.status(400).send({
+          error: 'Ce tenant a plusieurs filiales — legalEntityId requis pour scoper la clôture',
+        })
+      }
+
+      // Si filiale fournie, valide qu'elle existe et appartient au tenant
+      let legalEntity: { id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string } | null = null
+      if (legalEntityId) {
+        const leRes = await rawPool.query<{
+          id: string; at_rate: string | null; legislation_pack_code: string | null
+          country_code: string | null; name: string
+        }>(
+          `SELECT id, at_rate, legislation_pack_code, country_code, name
+           FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+          [legalEntityId],
+        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string }> }))
+        if (!leRes.rows[0]) {
+          return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        }
+        legalEntity = leRes.rows[0]
+      }
+
+      const existing = await rawPool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM "${schema}".pay_periods
+         WHERE month = $1 AND (legal_entity_id IS NOT DISTINCT FROM $2)
+         LIMIT 1`,
+        [month, legalEntityId ?? null],
+      ).catch(async () => {
+        // Fallback si colonne legal_entity_id pas encore migrée (mono-filiale)
+        return rawPool.query<{ id: string; status: string }>(
+          `SELECT id, status FROM "${schema}".pay_periods WHERE month = $1 LIMIT 1`, [month],
+        )
+      })
       if (existing.rows[0]?.status === 'closed') {
         return reply.status(422).send({ error: 'Période déjà clôturée' })
       }
 
+      // Scope employés par filiale si applicable
+      const empsParams: unknown[] = []
+      let empsWhere = `is_active = true AND deleted_at IS NULL`
+      if (legalEntityId) {
+        empsParams.push(legalEntityId)
+        empsWhere += ` AND legal_entity_id = $${empsParams.length}`
+      }
       const emps = await rawPool.query<{
         id: string; base_salary: string; marital_status: string; children_count: number
         mobile_money_provider: string; mobile_money_phone: string
         first_name: string; last_name: string; cnps_number: string; nni: string
-        hire_date: string | null
+        hire_date: string | null; legal_entity_id: string | null
       }>(
         `SELECT id, base_salary, marital_status, children_count,
                 mobile_money_provider, mobile_money_phone,
-                first_name, last_name, cnps_number, nni, hire_date
-         FROM "${schema}".employees WHERE is_active = true AND deleted_at IS NULL`
+                first_name, last_name, cnps_number, nni, hire_date, legal_entity_id
+         FROM "${schema}".employees WHERE ${empsWhere}`,
+        empsParams,
       )
-
-      const tenantRes = await rawPool.query<{ at_rate: string }>(
-        `SELECT at_rate FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
-      )
-      const atRate = parseFloat(tenantRes.rows[0]?.at_rate ?? '0.020')
 
       const parsed = parseMonth(month)
       if (!parsed) {
@@ -268,13 +336,32 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         periodId = existing.rows[0].id
       } else {
         const pRes = await rawPool.query<{ id: string }>(
-          `INSERT INTO "${schema}".pay_periods (month) VALUES ($1) RETURNING id`, [month]
-        )
+          `INSERT INTO "${schema}".pay_periods (month, legal_entity_id) VALUES ($1, $2) RETURNING id`,
+          [month, legalEntityId ?? null],
+        ).catch(async () => {
+          // Colonne pas encore migrée → fallback INSERT sans legal_entity_id
+          return rawPool.query<{ id: string }>(
+            `INSERT INTO "${schema}".pay_periods (month) VALUES ($1) RETURNING id`, [month],
+          )
+        })
         periodId = pRes.rows[0]?.id ?? ''
       }
 
       let totalGross = 0; let totalNet = 0; let totalCnps = 0; let totalIts = 0
       const paySlips: unknown[] = []
+
+      // Résolution du contexte paie commun (Clean Architecture — pure function)
+      const tenantInfo = {
+        id: tenant.id, hasSubsidiaries: tenant.has_subsidiaries,
+        atRate: parseFloat(tenant.at_rate ?? '0.020'),
+        defaultCountryCode: tenant.default_country_code,
+      }
+      const legalEntityInfo = legalEntity ? {
+        id: legalEntity.id,
+        atRate: legalEntity.at_rate ? parseFloat(legalEntity.at_rate) : null,
+        legislationPackCode: legalEntity.legislation_pack_code,
+        countryCode: legalEntity.country_code,
+      } : null
 
       for (const emp of emps.rows) {
         const varEls: Record<string, number> = {}
@@ -287,15 +374,25 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         // Résolution absence pour cet employé ce mois-ci
         const absenceCtx = await resolveAbsenceForPayroll(schema, emp.id, month, emp.hire_date)
 
+        // Résolution du contexte paie (at_rate + pack législatif selon filiale).
+        // OWASP A09 : si fallback legacy, le warning est inclus dans l'audit
+        // log final via paySlips.warnings.
+        const resolved = resolvePayrollContext({
+          tenant:     tenantInfo,
+          employee:   { id: emp.id, legalEntityId: emp.legal_entity_id },
+          legalEntity: legalEntityInfo,
+        })
+
         const result = calculatePayrollCI({
           baseSalary:       parseInt(emp.base_salary),
           workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
           workingDaysMonth,
-          atRate,
+          atRate:           resolved.atRate,
           maritalStatus:    emp.marital_status ?? 'single',
           childrenCount:    emp.children_count ?? 0,
           variableElements: varEls,
           absence:          absenceCtx?.info,
+          legislationPack:  resolved.legislationPack,
         })
 
         totalGross += result.grossSalary
@@ -306,14 +403,18 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         // Sérialiser le bordereau CNPS s'il existe
         const bordereauJson = result.bordereauCnps ? JSON.stringify(result.bordereauCnps) : null
 
+        // Persist le legal_entity_id résolu (peut être null en mono-filiale).
+        // Si la colonne n'est pas encore migrée, on retombe sur l'INSERT
+        // sans cette colonne (backward compat période de transition).
         const slip = await rawPool.query(
           `INSERT INTO "${schema}".pay_slips
              (employee_id, period_id, month, base_salary, gross_salary,
               cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
               total_cnps_sal, total_cnps_pat, its, total_deductions,
               net_payable, employer_cost, lines, status, generated_at,
-              payment_method, payment_status, bordereau_cnps, indemnite_absence)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19)
+              payment_method, payment_status, bordereau_cnps, indemnite_absence,
+              legal_entity_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19,$20)
            ON CONFLICT DO NOTHING
            RETURNING id`,
           [
@@ -324,8 +425,31 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             emp.mobile_money_provider ?? 'mobile_money',
             bordereauJson,
             result.indemniteAbsence ?? null,
+            resolved.legalEntityId,
           ]
-        )
+        ).catch(async () => {
+          // Fallback si legal_entity_id pas encore migrée
+          return rawPool.query(
+            `INSERT INTO "${schema}".pay_slips
+               (employee_id, period_id, month, base_salary, gross_salary,
+                cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
+                total_cnps_sal, total_cnps_pat, its, total_deductions,
+                net_payable, employer_cost, lines, status, generated_at,
+                payment_method, payment_status, bordereau_cnps, indemnite_absence)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19)
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [
+              emp.id, periodId, month, emp.base_salary, result.grossSalary,
+              result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
+              result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
+              result.netPayable, result.employerCost, JSON.stringify(result.lines),
+              emp.mobile_money_provider ?? 'mobile_money',
+              bordereauJson,
+              result.indemniteAbsence ?? null,
+            ],
+          )
+        })
         if (slip.rows[0]) paySlips.push({
           employeeId: emp.id,
           paySlipId: slip.rows[0].id,

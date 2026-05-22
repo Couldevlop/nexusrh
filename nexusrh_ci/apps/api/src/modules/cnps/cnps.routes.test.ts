@@ -59,6 +59,7 @@ beforeEach(() => {
 describe('POST /cnps/declarations/generate — audit_log (OWASP A09)', () => {
   it('génère + trace audit cnps.declaration_generated', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: false }] }) // SELECT tenant (Palier 3 multi-filiales)
       .mockResolvedValueOnce({ rows: [] }) // SELECT existing
       .mockResolvedValueOnce({ rows: [{
         employee_id: UUID_A, first_name: 'A', last_name: 'D',
@@ -101,6 +102,50 @@ describe('POST /cnps/declarations/generate — audit_log (OWASP A09)', () => {
     })
     expect(res.statusCode).toBe(403)
   })
+
+  // ── Palier 3 multi-filiales ────────────────────────────────────────────────
+  it('tenant has_subsidiaries=true → refuse SANS legalEntityId (400)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ has_subsidiaries: true }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/cnps/declarations/generate',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { year: 2024, quarter: 4 },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('legalEntityId requis')
+  })
+
+  it('tenant has_subsidiaries=true + legalEntityId UUID + filiale valide → OK', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: true }] })        // SELECT tenant
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A }] })                    // SELECT legal_entity (valide)
+      .mockResolvedValueOnce({ rows: [] })                                  // SELECT existing
+      .mockResolvedValueOnce({ rows: [] })                                  // slipsRes (vide ok)
+      .mockResolvedValueOnce({ rows: [{ id: 'decl-multi' }] })              // INSERT cnps_declarations
+      .mockResolvedValueOnce({ rows: [] })                                  // audit_log
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/cnps/declarations/generate',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { year: 2024, quarter: 4, legalEntityId: UUID_A },
+    })
+    expect(res.statusCode).toBe(200)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    // params: [userId, action, entityId, changes_json, ip]
+    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    expect(changes.legalEntityId).toBe(UUID_A)
+  })
+
+  it('legalEntityId non-UUID → refus Zod 400', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/cnps/declarations/generate',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { year: 2024, quarter: 4, legalEntityId: 'not-uuid' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('POST /cnps/disa/generate — cap + audit (OWASP A04 + A09)', () => {
@@ -110,7 +155,9 @@ describe('POST /cnps/disa/generate — cap + audit (OWASP A04 + A09)', () => {
       cnps_number: 'C', nni: 'N', job_title: 'Dev',
       total_sal: '100000', total_cnps_sal: '6300', total_its: '500',
     }))
-    queryMock.mockResolvedValueOnce({ rows: fakeRows })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: false }] }) // SELECT tenant
+      .mockResolvedValueOnce({ rows: fakeRows })
 
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
@@ -124,6 +171,7 @@ describe('POST /cnps/disa/generate — cap + audit (OWASP A04 + A09)', () => {
 
   it('trace audit cnps.disa_generated', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: false }] }) // SELECT tenant
       .mockResolvedValueOnce({ rows: [{
         employee_id: UUID_A, first_name: 'A', last_name: 'D',
         cnps_number: 'C', nni: 'N', job_title: 'Dev',
