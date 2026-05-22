@@ -10,6 +10,7 @@ const EmployeeLayout   = lazy(() => import('@/components/layout/EmployeeLayout')
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const LoginPage          = lazy(() => import('@/pages/auth/LoginPage'))
+const RafPeriodsPage     = lazy(() => import('@/pages/raf/RafPeriodsPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
@@ -145,6 +146,11 @@ export default function App() {
             <Route path="payroll" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <PayrollPage />
+              </RoleGuard>
+            } />
+            <Route path="raf/periods" element={
+              <RoleGuard allowedRoles={['raf_site','admin','hr_manager']}>
+                <RafPeriodsPage />
               </RoleGuard>
             } />
             <Route path="payroll/payslips" element={

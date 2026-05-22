@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CreditCard, Calendar,
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
-  Calculator, ClipboardCheck, X, Scale,
+  Calculator, ClipboardCheck, X, Scale, ClipboardList,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -15,13 +15,21 @@ interface NavItem {
   icon: React.ElementType
   roles?: string[]
   end?: boolean
+  /** Si true, affiché uniquement quand tenantConfig.hasSubsidiaries === true */
+  requiresSubsidiaries?: boolean
 }
 
 const HR_NAV: NavItem[] = [
   { to: '/dashboard',     label: 'Tableau de bord', icon: LayoutDashboard, end: true },
   { to: '/employees',     label: 'Employés',         icon: Users,      end: true },
   { to: '/contracts',     label: 'Contrats OHADA',   icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true },
+  { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  // Workflow multi-pays : visible UNIQUEMENT pour les tenants multi-filiales.
+  // Côté RH centrale (admin/hr_manager) : suivi déclinaison + validation.
+  // Côté RAF site : leur unique point d'accès à la paie (filtré server-side
+  // sur raf_user_id = user.sub).
+  { to: '/raf/periods',   label: 'Paie multi-pays',  icon: ClipboardList, end: true,
+    roles: ['raf_site','admin','hr_manager'], requiresSubsidiaries: true },
   { to: '/payroll/simulateur-its', label: 'Simulateur ITS', icon: Calculator, roles: ['admin','hr_manager','hr_officer'] },
   { to: '/absences',      label: 'Absences',         icon: Calendar,   end: true },
   { to: '/expenses-rh',   label: 'Notes de frais',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
@@ -47,9 +55,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     ? tenantConfig.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
     : 'RH'
 
-  const navItems = HR_NAV.filter(item =>
-    !item.roles || item.roles.includes(user?.role ?? '')
-  )
+  const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+  const navItems = HR_NAV.filter(item => {
+    if (item.roles && !item.roles.includes(user?.role ?? '')) return false
+    if (item.requiresSubsidiaries && !hasSubsidiaries) return false
+    return true
+  })
 
   return (
     <>

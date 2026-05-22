@@ -19,7 +19,8 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { config } from '../../config.js'
-import { LEGISLATION_PACKS } from '../../services/legislation-packs.js'
+import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
+import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -143,19 +144,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const { sites } = request.body as {
-        sites: Array<{ legalEntityId: string; rafUserId: string; legislationPackCode: string }>
-      }
-      if (!Array.isArray(sites) || sites.length === 0) {
-        return reply.status(400).send({ error: 'Aucun site à déclencher (sites: [])' })
-      }
-      // Validation des packs
-      for (const s of sites) {
-        if (!LEGISLATION_PACKS[s.legislationPackCode]) {
-          return reply.status(400).send({
-            error: `Pack législatif inconnu : ${s.legislationPackCode}`,
-          })
-        }
+      // Le body est optionnel : sans `sites`, on auto-popule depuis
+      // legal_entities WHERE is_active = true (Palier 3 simplifié, le RH
+      // n'a pas à recopier la liste des filiales).
+      const body = (request.body ?? {}) as {
+        sites?: Array<{ legalEntityId: string; rafUserId: string; legislationPackCode: string }>
       }
       try {
         const parent = await pool.query<{ month: string; status: string }>(
@@ -169,6 +162,42 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.status(409).send({
             error: `Période non éligible (status=${parent.rows[0].status}, attendu=draft_central)`,
           })
+        }
+
+        // Auto-population depuis legal_entities si body.sites absent
+        let sites = body.sites ?? []
+        if (sites.length === 0) {
+          const lesRes = await pool.query<{
+            id: string; raf_user_id: string | null
+            legislation_pack_code: string | null; country_code: string | null
+            name: string
+          }>(
+            `SELECT id, raf_user_id, legislation_pack_code, country_code, name
+             FROM "${schema}".legal_entities WHERE is_active = true`,
+          )
+          const missingRaf: string[] = []
+          for (const le of lesRes.rows) {
+            if (!le.raf_user_id) { missingRaf.push(le.name); continue }
+            const code = le.legislation_pack_code ?? (
+              le.country_code && LEGISLATION_PACKS[`${le.country_code}-2024`]
+                ? `${le.country_code}-2024` : 'CIV-2024'
+            )
+            sites.push({ legalEntityId: le.id, rafUserId: le.raf_user_id, legislationPackCode: code })
+          }
+          if (missingRaf.length > 0) {
+            return reply.status(400).send({
+              error: `Filiales sans RAF assigné : ${missingRaf.join(', ')}. Définir legal_entities.raf_user_id d'abord.`,
+            })
+          }
+        }
+        if (sites.length === 0) {
+          return reply.status(400).send({ error: 'Aucune filiale active à scoper' })
+        }
+        // Validation packs (qu'on vienne du body OU de l'auto-population)
+        for (const s of sites) {
+          if (!LEGISLATION_PACKS[s.legislationPackCode]) {
+            return reply.status(400).send({ error: `Pack législatif inconnu : ${s.legislationPackCode}` })
+          }
         }
 
         const month = parent.rows[0].month
@@ -215,9 +244,12 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       try {
         const periodRes = await pool.query<{
-          status: string; raf_user_id: string | null; parent_period_id: string | null
+          id: string; month: string; status: string
+          raf_user_id: string | null; parent_period_id: string | null
+          legal_entity_id: string | null; legislation_pack_code: string | null
         }>(
-          `SELECT status, raf_user_id, parent_period_id FROM "${schema}".pay_periods WHERE id = $1`,
+          `SELECT id, month, status, raf_user_id, parent_period_id, legal_entity_id, legislation_pack_code
+           FROM "${schema}".pay_periods WHERE id = $1`,
           [id],
         )
         const period = periodRes.rows[0]
@@ -233,18 +265,115 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             error: `Période non éligible (status=${period.status}, attendu=sent_to_sites)`,
           })
         }
+        if (!period.legal_entity_id) {
+          return reply.status(500).send({ error: 'Période enfant sans legal_entity_id (incohérence)' })
+        }
+
+        // ── Génération réelle des bulletins de la filiale ──────────────────
+        // On lit les paramètres de calcul depuis legal_entities + on applique
+        // le pack législatif stocké sur la période enfant (résolu au send-to-sites).
+        const leRes = await pool.query<{
+          at_rate: string | null; name: string
+        }>(
+          `SELECT at_rate, name FROM "${schema}".legal_entities WHERE id = $1`,
+          [period.legal_entity_id],
+        )
+        const le = leRes.rows[0]
+        if (!le) return reply.status(500).send({ error: 'Filiale introuvable' })
+
+        const pack = getLegislationPack(period.legislation_pack_code)
+        if (pack.status === 'stub') {
+          return reply.status(422).send({
+            error: `Pack législatif "${pack.code}" en mode stub — non utilisable en production. Activer le pack ou changer la filiale.`,
+          })
+        }
+        const atRate = le.at_rate ? parseFloat(le.at_rate) : 0.02
+
+        // Récupère les employés de la filiale
+        const emps = await pool.query<{
+          id: string; base_salary: string; marital_status: string; children_count: number
+        }>(
+          `SELECT id, base_salary, marital_status, children_count
+           FROM "${schema}".employees
+           WHERE is_active = true AND deleted_at IS NULL AND legal_entity_id = $1`,
+          [period.legal_entity_id],
+        )
+
+        const month = period.month
+        const [yearStr, monthNumStr] = month.split('-')
+        const year = parseInt(yearStr!, 10)
+        const monthNum = parseInt(monthNumStr!, 10)
+        // Jours ouvrables : approx (26 si non spécifié)
+        const daysInMonth = new Date(year, monthNum, 0).getDate()
+        let workingDaysMonth = 0
+        for (let d = 1; d <= daysInMonth; d++) {
+          if (new Date(year, monthNum - 1, d).getDay() !== 0) workingDaysMonth++
+        }
+
+        let inserted = 0
+        let totalGross = 0; let totalNet = 0; let totalCnps = 0; let totalIts = 0
+        for (const emp of emps.rows) {
+          // Variables locales (heures supp, primes, avances) — saisies par le RAF
+          // dans la table variable_elements, scope (employé, période enfant).
+          const varEls: Record<string, number> = {}
+          const velRes = await pool.query<{ rule_code: string; amount: string }>(
+            `SELECT rule_code, amount FROM "${schema}".variable_elements
+             WHERE employee_id = $1 AND period_id = $2`,
+            [emp.id, id],
+          ).catch(() => ({ rows: [] as Array<{ rule_code: string; amount: string }> }))
+          for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
+
+          const result = calculatePayrollCI({
+            baseSalary:       parseInt(emp.base_salary),
+            workedDays:       workingDaysMonth,
+            workingDaysMonth,
+            atRate,
+            maritalStatus:    emp.marital_status ?? 'single',
+            childrenCount:    emp.children_count ?? 0,
+            variableElements: varEls,
+            legislationPack:  pack,
+          })
+          totalGross += result.grossSalary
+          totalNet   += result.netPayable
+          totalCnps  += result.totalCnpsSal + result.totalCnpsPat
+          totalIts   += result.its
+
+          await pool.query(`
+            INSERT INTO "${schema}".pay_slips
+              (employee_id, period_id, month, base_salary, gross_salary,
+               cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
+               total_cnps_sal, total_cnps_pat, its, total_deductions,
+               net_payable, employer_cost, lines, status, generated_at,
+               payment_method, payment_status, legal_entity_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),'mobile_money','pending',$17)
+            ON CONFLICT DO NOTHING
+          `, [
+            emp.id, id, month, emp.base_salary, result.grossSalary,
+            result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
+            result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
+            result.netPayable, result.employerCost, JSON.stringify(result.lines),
+            period.legal_entity_id,
+          ])
+          inserted++
+        }
+
         const upd = await pool.query(
           `UPDATE "${schema}".pay_periods
-             SET status = 'completed_by_site', completed_by_site_at = now()
+             SET status = 'completed_by_site', completed_by_site_at = now(),
+                 total_gross = $2, total_net = $3, total_cnps = $4, total_its = $5
            WHERE id = $1 RETURNING *`,
-          [id],
+          [id, totalGross, totalNet, totalCnps, totalIts],
         )
         await auditWorkflow({
           schema, userId: request.user.sub,
           action: 'workflow.submit_by_raf', entity: 'pay_period', entityId: id,
+          changes: { inserted, totalGross, totalNet, legalEntityName: le.name },
           ipAddress: request.ip,
         })
-        return reply.send({ data: upd.rows[0] })
+        return reply.send({
+          data: upd.rows[0],
+          summary: { inserted, totalGross, totalNet, totalCnps, totalIts },
+        })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -271,9 +400,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         if (parent.rows[0].parent_period_id) {
           return reply.status(400).send({ error: 'La validation s\'applique à la période parente' })
         }
-        // Vérifier que toutes les filles sont completed_by_site
-        const children = await pool.query<{ status: string }>(
-          `SELECT status FROM "${schema}".pay_periods WHERE parent_period_id = $1`,
+        // Vérifier que toutes les filles sont completed_by_site et consolider
+        const children = await pool.query<{
+          id: string; status: string; legal_entity_id: string | null
+          total_gross: string | null; total_net: string | null
+          total_cnps: string | null; total_its: string | null
+        }>(
+          `SELECT id, status, legal_entity_id, total_gross, total_net, total_cnps, total_its
+           FROM "${schema}".pay_periods WHERE parent_period_id = $1`,
           [id],
         )
         const pending = children.rows.filter(r => r.status !== 'completed_by_site')
@@ -283,19 +417,40 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           })
         }
 
+        // Consolidation : somme des totaux enfants vers le parent
+        let sumGross = 0; let sumNet = 0; let sumCnps = 0; let sumIts = 0
+        for (const c of children.rows) {
+          sumGross += parseInt(c.total_gross ?? '0')
+          sumNet   += parseInt(c.total_net   ?? '0')
+          sumCnps  += parseInt(c.total_cnps  ?? '0')
+          sumIts   += parseInt(c.total_its   ?? '0')
+        }
+
+        await pool.query(
+          `UPDATE "${schema}".pay_periods
+             SET status = 'validated_central', validated_central_at = now(),
+                 validated_by = $1,
+                 total_gross = $3, total_net = $4, total_cnps = $5, total_its = $6
+           WHERE id = $2`,
+          [request.user.sub, id, sumGross, sumNet, sumCnps, sumIts],
+        )
+        // Les enfants passent aussi à validated_central pour cohérence statut
         await pool.query(
           `UPDATE "${schema}".pay_periods
              SET status = 'validated_central', validated_central_at = now(), validated_by = $1
-           WHERE id = $2 OR parent_period_id = $2`,
+           WHERE parent_period_id = $2`,
           [request.user.sub, id],
         )
         await auditWorkflow({
           schema, userId: request.user.sub,
           action: 'workflow.validate_central', entity: 'pay_period', entityId: id,
-          changes: { sitesCount: children.rows.length },
+          changes: { sitesCount: children.rows.length, sumGross, sumNet, sumCnps, sumIts },
           ipAddress: request.ip,
         })
-        return reply.send({ data: { id, status: 'validated_central' } })
+        return reply.send({
+          data: { id, status: 'validated_central' },
+          consolidated: { sites: children.rows.length, sumGross, sumNet, sumCnps, sumIts },
+        })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

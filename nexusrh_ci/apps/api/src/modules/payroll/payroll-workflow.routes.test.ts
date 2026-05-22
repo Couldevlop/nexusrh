@@ -88,6 +88,10 @@ describe('Workflow paie centralisé — création période parente', () => {
 
 describe('Workflow — déclinaison aux sites', () => {
   it('refuse un pack législatif inconnu', async () => {
+    // Depuis le refactor auto-population, la validation pack passe APRÈS le
+    // SELECT parent. On mock donc le parent OK avant que la validation pack
+    // arrive et rejette XXX-9999.
+    queryMock.mockResolvedValueOnce({ rows: [{ month: '2024-12', status: 'draft_central' }] })
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
       method: 'POST', url: '/payroll-workflow/periods/pp-1/send-to-sites',
@@ -146,10 +150,20 @@ describe('Workflow — RAF soumet sa période', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('un raf_site peut soumettre sa propre période', async () => {
+  it('un raf_site peut soumettre sa propre période (génère bulletins)', async () => {
+    // Le handler génère désormais les bulletins via calculatePayrollCI :
+    // SELECT period → SELECT legal_entity → SELECT employees → boucle
+    // (SELECT variable_elements + INSERT pay_slips) → UPDATE period → audit.
     queryMock
-      .mockResolvedValueOnce({ rows: [{ status: 'sent_to_sites', raf_user_id: 'u-me', parent_period_id: 'pp-1' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: 'child-1', month: '2024-12', status: 'sent_to_sites',
+        raf_user_id: 'u-me', parent_period_id: 'pp-1',
+        legal_entity_id: 'le-1', legislation_pack_code: 'CIV-2024',
+      }] })
+      .mockResolvedValueOnce({ rows: [{ at_rate: '0.020', name: 'Filiale Test' }] })
+      .mockResolvedValueOnce({ rows: [] })  // employees vide
       .mockResolvedValueOnce({ rows: [{ id: 'child-1', status: 'completed_by_site' }] })
+      .mockResolvedValueOnce({ rows: [] })  // audit_log
     const token = tokenFor(app, 'raf_site', 'u-me')
     const res = await app.inject({
       method: 'POST', url: '/payroll-workflow/periods/child-1/submit-by-raf',
