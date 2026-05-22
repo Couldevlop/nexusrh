@@ -22,7 +22,8 @@
     "test:golden": "vitest run src/services/golden",
     "payroll:fixtures:approve": "tsx src/services/golden/approve-fixture.ts",
     "rns:calibrate": "tsx src/scripts/rns-calibrate.ts",
-    "demo:multi-filiales": "tsx --env-file=../../.env src/scripts/enable-multi-filiales-sotra.ts"
+    "demo:multi-filiales": "tsx --env-file=../../.env src/scripts/enable-multi-filiales-sotra.ts",
+    "demo:syrse-groupe":   "tsx --env-file=../../.env src/scripts/enable-syrse-groupe.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",

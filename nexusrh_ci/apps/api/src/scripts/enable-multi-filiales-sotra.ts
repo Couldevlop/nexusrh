@@ -57,10 +57,15 @@ async function main(): Promise<void> {
   ]
   const rafIds: string[] = []
   for (const r of rafs) {
+    // last_login_at=now() évite l'écran "première connexion → changer mdp"
+    // (le RAF peut se connecter directement avec le mdp fourni).
     const u = await pool.query<{ id: string }>(
-      `INSERT INTO "${SCHEMA}".users (email, password_hash, role, first_name, last_name, is_active)
-       VALUES ($1, $2, 'raf_site', $3, $4, true)
-       ON CONFLICT (email) DO UPDATE SET role = 'raf_site', is_active = true, password_hash = EXCLUDED.password_hash
+      `INSERT INTO "${SCHEMA}".users (email, password_hash, role, first_name, last_name, is_active, last_login_at)
+       VALUES ($1, $2, 'raf_site', $3, $4, true, now())
+       ON CONFLICT (email) DO UPDATE SET
+         role = 'raf_site', is_active = true,
+         password_hash = EXCLUDED.password_hash,
+         last_login_at = COALESCE("${SCHEMA}".users.last_login_at, now())
        RETURNING id`,
       [r.email, passwordHash, r.firstName, r.lastName],
     )
