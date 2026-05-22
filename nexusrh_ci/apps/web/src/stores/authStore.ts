@@ -18,7 +18,7 @@ export interface AuthUser {
   sub: string
   tenantId: string | null
   schemaName: string
-  role: 'super_admin' | 'admin' | 'hr_manager' | 'hr_officer' | 'manager' | 'employee' | 'readonly'
+  role: 'super_admin' | 'admin' | 'hr_manager' | 'hr_officer' | 'manager' | 'employee' | 'readonly' | 'raf_site'
   email: string
   firstName: string
   lastName: string

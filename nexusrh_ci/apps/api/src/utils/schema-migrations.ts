@@ -120,6 +120,7 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // ── Multi-filiales (Palier 3) : scope par legal_entity_id ──
     // Permet la clôture paie / déclarations CNPS / DISA scopées à une filiale
     // pour les tenants has_subsidiaries=true. Backward compat : NULL = mono-filiale.
+    `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS raf_user_id uuid`,
     `ALTER TABLE "${schemaName}".pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(30)`,
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
