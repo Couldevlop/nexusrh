@@ -6,13 +6,43 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
+  // OWASP A02 — envoie le cookie httpOnly nexusrh_token sur chaque requête
+  // (en plus du header Authorization pour backward-compat période).
+  withCredentials: true,
 })
 
-// Intercepteur requête : injecter le token JWT
+// CSRF token (double-submit pattern). Stocké en mémoire JS (pas en cookie pour
+// pouvoir l'injecter en header). Rafraîchi au boot et au logout/login.
+let csrfToken: string | null = null
+
+export async function refreshCsrfToken(): Promise<void> {
+  try {
+    const token = useAuthStore.getState().token
+    if (!token) { csrfToken = null; return }
+    const res = await axios.get<{ csrfToken: string }>(`${API_BASE}/auth/csrf-token`, {
+      headers: { Authorization: `Bearer ${token}` },
+      withCredentials: true,
+    })
+    csrfToken = res.data.csrfToken
+  } catch {
+    csrfToken = null  // non-bloquant : si /csrf-token KO, mutations rejetées avec message clair
+  }
+}
+
+export function clearCsrfToken(): void { csrfToken = null }
+
+// Intercepteur requête : injecter le token JWT + le CSRF token sur les mutations
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // OWASP A01 — CSRF double-submit : inject X-CSRF-Token sur toute mutation.
+  // Le backend ignore si l'auth est via Bearer header (clients API), mais
+  // l'exige si l'auth est via cookie httpOnly (mode SPA browser, futur).
+  const method = (config.method ?? 'get').toLowerCase()
+  if (method !== 'get' && method !== 'head' && method !== 'options' && csrfToken) {
+    config.headers['X-CSRF-Token'] = csrfToken
   }
   return config
 })

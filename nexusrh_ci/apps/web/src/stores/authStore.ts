@@ -51,6 +51,10 @@ export const useAuthStore = create<AuthState>()(
         if (tenantConfig) {
           applyTenantTheme(tenantConfig)
         }
+        // Rafraîchir le CSRF token dès qu'on a un JWT valide (post-login)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nexusrh:csrf-refresh'))
+        }
       },
 
       setToken: (token) => set({ token }),
@@ -66,6 +70,7 @@ export const useAuthStore = create<AuthState>()(
         // partielle si la lib Zustand change de comportement).
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('nexusrh:logout'))
+          window.dispatchEvent(new CustomEvent('nexusrh:csrf-clear'))
           try { window.localStorage.removeItem('nexusrhci-auth') } catch { /* quota / private mode */ }
         }
       },

@@ -6,8 +6,9 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock,
 } from 'lucide-react'
+import MfaSettingsPage from './MfaSettingsPage'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface TenantSettings {
@@ -64,6 +65,7 @@ const TABS = [
   { id: 'legal-entities', label: 'Entités juridiques',icon: Layers },
   { id: 'workflow',       label: 'Workflow',          icon: GitBranch },
   { id: 'data-import',   label: 'Reprise de données',icon: Database },
+  { id: 'mfa',           label: 'Sécurité (MFA)',    icon: Lock },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -100,6 +102,7 @@ export default function SettingsPage() {
       {tab === 'legal-entities' && <LegalEntitiesTab qc={qc} />}
       {tab === 'workflow'       && <WorkflowTab qc={qc} />}
       {tab === 'data-import'   && <DataImportTab />}
+      {tab === 'mfa'           && <MfaSettingsPage />}
     </div>
   )
 }

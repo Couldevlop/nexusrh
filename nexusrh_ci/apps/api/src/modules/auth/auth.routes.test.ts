@@ -13,6 +13,15 @@ vi.mock('../../services/redis.js', () => ({
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
 }))
 
+// auth-mfa.routes.ts (importé indirectement via buildMfaChallenge) tire
+// services/email.ts qui exige config.smtp — mock pour éviter le crash.
+vi.mock('../../services/email.js', () => ({
+  sendEmployeeWelcomeEmail:    vi.fn().mockResolvedValue(undefined),
+  sendWelcomeTenantEmail:      vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail:      vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetLinkEmail:  vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',
