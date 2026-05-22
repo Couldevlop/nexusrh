@@ -9,8 +9,10 @@ const PlatformLayout   = lazy(() => import('@/components/layout/PlatformLayout')
 const EmployeeLayout   = lazy(() => import('@/components/layout/EmployeeLayout'))
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-const LoginPage        = lazy(() => import('@/pages/auth/LoginPage'))
-const PublicCareersPage = lazy(() => import('@/pages/public/PublicCareersPage'))
+const LoginPage          = lazy(() => import('@/pages/auth/LoginPage'))
+const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
+const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
+const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
 
 // ── Platform (super_admin) ────────────────────────────────────────────────────
 const PlatformDashboard   = lazy(() => import('@/pages/platform/PlatformDashboard'))
@@ -104,6 +106,8 @@ export default function App() {
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* ── Page carrières publique (sans auth) ───────────────── */}
           <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />

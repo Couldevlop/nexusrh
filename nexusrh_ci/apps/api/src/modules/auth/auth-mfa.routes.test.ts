@@ -19,6 +19,13 @@ vi.mock('../../utils/schema-migrations.js', () => ({
   ensurePlatformSchema: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../../services/email.js', () => ({
+  sendEmployeeWelcomeEmail:    vi.fn().mockResolvedValue(undefined),
+  sendWelcomeTenantEmail:      vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail:      vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetLinkEmail:  vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',

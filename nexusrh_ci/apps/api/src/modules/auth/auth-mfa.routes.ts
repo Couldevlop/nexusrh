@@ -21,6 +21,7 @@ import { randomBytes, randomUUID, createHash } from 'crypto'
 import { config } from '../../config.js'
 import { ensurePlatformSchema, ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
+import { sendPasswordResetLinkEmail } from '../../services/email.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -384,12 +385,20 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
           `INSERT INTO ${tokensTable} (user_id, token_hash, expires_at, requested_ip) VALUES ($1, $2, $3, $4)`,
           [found.id, tokenHash, expiresAt, request.ip ?? null])
 
-        // TODO production : envoyer l'email via le service email. Pour l'instant
-        // on log le token côté serveur (DEV ONLY). L'endpoint NE retourne JAMAIS
-        // le token au client (sinon n'importe qui pourrait reset sans email).
-        fastify.log.info(
-          { email, schemaName: found.schemaName, rawToken },
-          '[forgot-password] token généré (à envoyer par email en production)')
+        // Envoi de l'email avec le lien magique. Non-bloquant : si SMTP down,
+        // on log mais on répond OK (sinon on révèle au client l'existence du
+        // compte via le timing/erreur — anti-énumération).
+        const appUrl = config.appUrl ?? process.env['APP_URL'] ?? 'http://localhost:3001'
+        const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(rawToken)}`
+        sendPasswordResetLinkEmail({
+          to: email,
+          firstName: found.firstName,
+          resetUrl,
+          expiresInMinutes: 15,
+        }).catch((err) => {
+          fastify.log.error({ err: (err as Error).message, email },
+            '[forgot-password] envoi email échoué (anti-énumération : réponse OK quand même)')
+        })
 
         auditMfa(found.schemaName, found.id, 'password.reset_requested',
           { email }, request.ip ?? null)

@@ -351,3 +351,91 @@ export async function sendPasswordResetEmail(params: {
     text: `Bonjour ${firstName},\n\nLe mot de passe de votre compte administrateur sur ${tenantName} a été réinitialisé.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nChangez ce mot de passe dès votre prochaine connexion.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
   })
 }
+
+/**
+ * Self-service forgot-password : envoie un LIEN magique (avec token unique-use,
+ * TTL 15 min) que l'utilisateur clique pour ouvrir /reset-password?token=...
+ *
+ * À distinguer de sendPasswordResetEmail() ci-dessus qui envoie un MOT DE PASSE
+ * TEMPORAIRE généré côté serveur (utilisé par le reset administratif super_admin).
+ */
+export async function sendPasswordResetLinkEmail(params: {
+  to: string
+  firstName: string
+  resetUrl: string         // ex: https://nexusrh.openlabconsulting.com/reset-password?token=XYZ
+  expiresInMinutes: number // 15 par défaut
+}): Promise<void> {
+  const { to, firstName, resetUrl, expiresInMinutes } = params
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Réinitialiser votre mot de passe — NexusRH CI</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:#E85D04;padding:32px 40px;text-align:center;">
+              <p style="margin:0;font-size:22px;font-weight:700;color:#fff;">NexusRH CI</p>
+              <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">La RH Intelligente d'Abidjan</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px;">
+              <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;">RÉINITIALISATION DEMANDÉE</p>
+              <h1 style="margin:0 0 16px;font-size:26px;font-weight:700;color:#111827;">
+                Bonjour ${firstName} 👋
+              </h1>
+              <p style="margin:0 0 24px;font-size:16px;color:#374151;line-height:1.6;">
+                Nous avons reçu une demande de réinitialisation de votre mot de passe.
+                Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
+                <strong>Ce lien est valable ${expiresInMinutes} minutes</strong> et ne peut être utilisé qu'une seule fois.
+              </p>
+
+              <div style="text-align:center;margin-bottom:28px;">
+                <a href="${resetUrl}" style="display:inline-block;background:#E85D04;color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:16px;font-weight:600;letter-spacing:0.3px;">
+                  Réinitialiser mon mot de passe →
+                </a>
+              </div>
+
+              <div style="background:#fff8eb;border-left:4px solid #f59e0b;padding:16px 20px;border-radius:6px;margin-bottom:24px;">
+                <p style="margin:0;font-size:13px;color:#78350f;line-height:1.6;">
+                  <strong>Vous n'avez pas demandé cette réinitialisation ?</strong><br>
+                  Ignorez ce message. Votre mot de passe actuel reste inchangé. Pour toute question, contactez votre administrateur.
+                </p>
+              </div>
+
+              <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;text-align:center;">
+                Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
+                <span style="word-break:break-all;color:#6b7280;">${resetUrl}</span>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
+                OpenLab Consulting — Cocody, Rivièra Faya Lauriers 8, Abidjan<br>
+                <a href="mailto:support@nexusrh-ci.com" style="color:#E85D04;text-decoration:none;">support@nexusrh-ci.com</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  await transporter.sendMail({
+    from: config.smtp.from,
+    to,
+    subject: `🔑 Réinitialisez votre mot de passe NexusRH CI`,
+    html,
+    text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH CI.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+  })
+}

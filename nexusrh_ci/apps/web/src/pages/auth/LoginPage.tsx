@@ -107,6 +107,11 @@ export default function LoginPage() {
     redirectTo: string;
   } | null>(null);
 
+  // Etat "MFA requis" (2e étape login)
+  const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
   // ── Formulaire login ──
 
   const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
@@ -115,25 +120,34 @@ export default function LoginPage() {
     setError(null);
     try {
       const res = await api.post<{
-        token: string;
-        refreshToken: string;
-        user: AuthUser;
-        tenantConfig: TenantConfig | null;
-        redirectTo: string;
+        token?: string;
+        refreshToken?: string;
+        user?: AuthUser;
+        tenantConfig?: TenantConfig | null;
+        redirectTo?: string;
         must_change_password?: boolean;
+        // Réponse MFA 202 :
+        mfaRequired?: boolean;
+        challenge?: string;
       }>("/auth/login", data);
 
-      if (res.data.must_change_password === true) {
-        setPendingAuth(res.data);
+      // 202 Accepted : MFA requis, demander le code TOTP/backup
+      if (res.status === 202 && res.data.mfaRequired && res.data.challenge) {
+        setMfaChallenge(res.data.challenge);
+        return;
+      }
+
+      if (res.data.must_change_password === true && res.data.user && res.data.token) {
+        setPendingAuth(res.data as Required<typeof res.data>);
         setMustChange(true);
         return;
       }
 
       setAuth(
-        res.data.user,
-        res.data.token,
-        res.data.refreshToken,
-        res.data.tenantConfig,
+        res.data.user!,
+        res.data.token!,
+        res.data.refreshToken ?? "",
+        res.data.tenantConfig ?? null,
       );
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
@@ -148,6 +162,31 @@ export default function LoginPage() {
           ? (e.response?.data?.error ?? "Format invalide")
           : "Identifiants invalides ou compte non autorisé",
       );
+    }
+  };
+
+  // ── Vérification MFA (2e étape login si user a activé MFA) ──
+  const onMfaVerify = async () => {
+    if (!mfaChallenge || mfaCode.trim().length < 6) return;
+    setMfaSubmitting(true);
+    setError(null);
+    try {
+      const res = await api.post<{
+        token: string;
+        user: AuthUser;
+        tenantConfig: TenantConfig | null;
+        redirectTo: string;
+      }>("/auth/mfa/login-verify", {
+        challenge: mfaChallenge,
+        code: mfaCode.trim().toUpperCase(),
+      });
+      setAuth(res.data.user, res.data.token, "", res.data.tenantConfig);
+      navigate(res.data.redirectTo ?? "/", { replace: true });
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { error?: string } } };
+      setError(e.response?.data?.error ?? "Code MFA invalide ou expiré");
+    } finally {
+      setMfaSubmitting(false);
     }
   };
 
@@ -259,7 +298,17 @@ export default function LoginPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-black text-sm text-primary-foreground">N</div>
               <span className="font-black text-lg">NexusRH CI</span>
             </div>
-            {!mustChange ? (
+            {mfaChallenge ? (
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
+                  <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900">Vérification en 2 étapes</h1>
+                  <p className="text-xs text-gray-500">Saisissez le code de votre application d'authentification</p>
+                </div>
+              </div>
+            ) : !mustChange ? (
               <>
                 <h1 className="text-2xl font-bold text-gray-900">Bienvenue</h1>
                 <p className="mt-1 text-sm text-gray-500">Connectez-vous à votre espace RH</p>
@@ -280,8 +329,51 @@ export default function LoginPage() {
           {/* Carte formulaire */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
 
+            {/* ── MFA (2e étape login) ── */}
+            {mfaChallenge && (
+              <form onSubmit={(e) => { e.preventDefault(); void onMfaVerify(); }} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Code à 6 chiffres (ou code de secours 10 caractères)
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    inputMode="text"
+                    maxLength={10}
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    placeholder="123 456"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-center text-lg font-mono tracking-widest text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <p className="mt-1.5 text-xs text-gray-500">
+                    Le code change toutes les 30 secondes dans votre app (Google Authenticator, Authy, 1Password…)
+                  </p>
+                </div>
+                {error && (
+                  <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={mfaSubmitting || mfaCode.trim().length < 6}
+                  className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {mfaSubmitting ? "Vérification…" : "Valider"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMfaChallenge(null); setMfaCode(""); setError(null); }}
+                  className="w-full text-xs text-gray-500 hover:text-gray-700"
+                >
+                  ← Annuler et revenir à la connexion
+                </button>
+              </form>
+            )}
+
             {/* ── Connexion ── */}
-            {!mustChange && (
+            {!mfaChallenge && !mustChange && (
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-5">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -331,11 +423,17 @@ export default function LoginPage() {
                   {loginForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loginForm.formState.isSubmitting ? "Connexion…" : "Se connecter"}
                 </button>
+
+                <div className="text-center">
+                  <a href="/forgot-password" className="text-xs text-gray-500 hover:text-primary hover:underline">
+                    Mot de passe oublié ?
+                  </a>
+                </div>
               </form>
             )}
 
             {/* ── Première connexion ── */}
-            {mustChange && (
+            {!mfaChallenge && mustChange && (
               <form onSubmit={changeForm.handleSubmit(onChangePassword)} className="space-y-5">
                 <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
                   Définissez un mot de passe fort : <strong>12 caractères minimum</strong>, majuscule, chiffre et caractère spécial.

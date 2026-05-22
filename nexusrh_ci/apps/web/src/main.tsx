@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
+import { refreshCsrfToken, clearCsrfToken } from '@/lib/api'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -21,6 +22,18 @@ if (typeof window !== 'undefined') {
   window.addEventListener('nexusrh:logout', () => {
     queryClient.clear()
   })
+
+  // OWASP A01 — CSRF lifecycle :
+  // - 'nexusrh:csrf-refresh' (post-login) → fetch /auth/csrf-token et stocker
+  // - 'nexusrh:csrf-clear'   (logout)     → purger le token en mémoire
+  window.addEventListener('nexusrh:csrf-refresh', () => {
+    void refreshCsrfToken()
+  })
+  window.addEventListener('nexusrh:csrf-clear', () => {
+    clearCsrfToken()
+  })
+  // Au boot : si déjà authentifié (rehydration localStorage), récupère un CSRF token
+  void refreshCsrfToken()
 
   // Détection des "stale chunks" après déploiement : Vite génère des fichiers
   // JS avec hash (RecruitmentPage-CJwDcTbR.js). Quand on déploie une nouvelle

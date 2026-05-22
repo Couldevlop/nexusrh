@@ -20,7 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:golden": "vitest run src/services/golden",
-    "payroll:fixtures:approve": "tsx src/services/golden/approve-fixture.ts"
+    "payroll:fixtures:approve": "tsx src/services/golden/approve-fixture.ts",
+    "rns:calibrate": "tsx src/scripts/rns-calibrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
