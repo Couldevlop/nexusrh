@@ -139,7 +139,14 @@ function overlayFromCoords(
 
   const drawAt = (text: string | undefined | null, spec: CoordSpec) => {
     if (!text) return
-    const value = String(text).trim()
+    // Normalisation des espaces : `toLocaleString('fr-FR')` insère des
+    // NARROW NO-BREAK SPACE (U+202F) entre les milliers ("3 600 000"),
+    // que la police Helvetica WinAnsi (utilisée par pdf-lib en core font)
+    // ne sait pas encoder → crash. On remplace tous les espaces unicode
+    // par un espace ASCII standard avant dessin.
+    const value = String(text)
+      .replace(/[     ]/g, ' ')
+      .trim()
     if (!value) return
     // pdf-lib utilise y depuis le BAS de la page. Le JSON est en y-depuis-le-haut.
     page.drawText(value, {
