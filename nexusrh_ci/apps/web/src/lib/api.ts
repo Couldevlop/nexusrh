@@ -62,22 +62,16 @@ api.interceptors.response.use(
         return Promise.reject(error)
       }
 
-      // Tenter refresh si refreshToken disponible
-      const refreshToken = useAuthStore.getState().refreshToken
-      if (refreshToken && error.config && !error.config._retry) {
-        error.config._retry = true
-        try {
-          const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken })
-          const { token } = res.data as { token: string }
-          useAuthStore.getState().setToken(token)
-          error.config.headers.Authorization = `Bearer ${token}`
-          return axios(error.config)
-        } catch {
-          useAuthStore.getState().logout()
-          window.location.href = '/login'
-        }
-      } else if (useAuthStore.getState().token) {
-        // Token présent mais rejeté (expiré) → déconnecter
+      // 401 sur une route protégée alors qu'on a un token en store : token expiré
+      // ou révoqué côté serveur (blacklist Redis). On déconnecte proprement.
+      //
+      // Note historique : un mécanisme de refresh-token séparé avait été
+      // esquissé (POST /auth/refresh avec body {refreshToken}). Mais le
+      // backend /auth/refresh exige juste un JWT valide en Authorization et
+      // ne consomme PAS de refreshToken distinct. Le login ne retourne pas
+      // de refreshToken séparé non plus. La branche était donc dead code et
+      // a été retirée pour éviter la confusion.
+      if (useAuthStore.getState().token) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
       }
