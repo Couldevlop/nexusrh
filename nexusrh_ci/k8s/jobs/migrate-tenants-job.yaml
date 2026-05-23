@@ -2,13 +2,16 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: nexusrh-migrate-tenants
-  namespace: nexusrh
+  # Namespace aligné sur le déploiement réel (ci-build.yml → helm --namespace nexusrh-ci).
+  namespace: nexusrh-ci
   labels:
     app.kubernetes.io/component: maintenance
   annotations:
     # Migration idempotente des schémas tenants (colonnes multi-pays + bascule
-    # clé d'unicité pay_periods). À (re)lancer après chaque déploiement qui fait
+    # clé d'unicité pay_periods). À (re)lancer après un déploiement qui fait
     # évoluer provisionTenantSchema(). Sans risque sur les données RH.
+    # NB : le seed automatique du deploy couvre déjà les tenants démo
+    # (SOTRA/Cabinet/OpenLab) ; ce Job couvre les AUTRES tenants (clients).
     migrated-at: "FILL_WITH_DATE"
 spec:
   ttlSecondsAfterFinished: 1800
@@ -19,7 +22,7 @@ spec:
         app.kubernetes.io/component: maintenance
     spec:
       restartPolicy: Never
-      serviceAccountName: nexusrh-api
+      # SA par défaut : le Job n'a besoin que du réseau + DB (aucun accès API K8s).
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -27,23 +30,15 @@ spec:
         runAsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: wait-postgres
-          image: busybox:1.36
-          command: [sh, -c, "until nc -z postgres-svc 5432; do echo 'waiting postgres...'; sleep 3; done"]
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: { drop: [ALL] }
-          resources:
-            requests: { cpu: "50m", memory: "32Mi" }
-            limits:   { cpu: "100m", memory: "64Mi" }
       containers:
         - name: migrate-tenants
-          image: ghcr.io/couldevlop/nexusrh-api:prod
+          # Image alignée sur ci-build.yml (tag :latest poussé à chaque deploy main).
+          image: ghcr.io/couldevlop/nexusrh-ci-api:latest
           imagePullPolicy: Always
           # Boucle sur tous les platform.tenants et applique provisionTenantSchema
-          # (idempotent). Exit ≠ 0 si un tenant échoue ⇒ Job marqué Failed.
+          # (idempotent). Le script fait un fail-fast sur la connexion DB, donc
+          # pas besoin d'initContainer d'attente. Exit != 0 si un tenant échoue
+          # => Job marqué Failed (OWASP A09 : aucune erreur silencieuse).
           command: ["node", "dist/db/migrate-tenants.js"]
           envFrom:
             - configMapRef:
