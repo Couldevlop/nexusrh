@@ -180,29 +180,52 @@ Job de migration explicite ci-dessous.
    - `kubectl apply` à la demande — **aucun hook helm**, n'interagit jamais avec
      un rollout (même politique que le reset passwords, cf. plus bas)
 
-### Procédure de déploiement (nexusrh.openlabconsulting.com)
+### Comment le déploiement en ligne est déclenché
+
+Le build + déploiement (`.github/workflows/ci-build.yml`) se déclenche **uniquement
+sur `push` vers `main`** (chemins `nexusrh_ci/**`) ou en `workflow_dispatch`.
+**Pousser sur `develop` ne déploie rien** — il faut merger `develop` → `main`.
+
+Au deploy : build des images `ghcr.io/couldevlop/nexusrh-ci-{api,web,worker}:latest`
+→ `helm upgrade` namespace **`nexusrh-ci`** → rollout restart → puis
+**`node dist/db/seed.js`** (idempotent) exécuté automatiquement.
+
+Comme `seed.js` appelle `provisionTenantSchema()` pour SOTRA / Cabinet / OpenLab,
+**la bascule de clé s'applique automatiquement à ces tenants démo** dès le deploy.
+Les **autres tenants (clients créés via le portail)** ne sont PAS couverts par le
+seed → exécuter la migration ci-dessous.
+
+### Procédure de migration des tenants en ligne
 
 ```bash
-# 0. (Recommandé) backup DB avant toute migration de schéma
-#    kubectl exec -n nexusrh <postgres-pod> -- pg_dump -U nexusrh nexusrh > backup.sql
+# 0. (Recommandé) backup DB avant toute migration de schéma (pg_dump via Job/exec)
 
-# 1. Déployer la nouvelle image API (le boot applique createPlatformSchema)
-#    via le pipeline habituel / helm upgrade — l'image doit être :prod à jour
+# 1. Merger develop -> main pour déclencher le deploy (build :latest + helm + seed)
 
-# 2. (Optionnel) prévisualiser les tenants ciblés, sans rien appliquer
-kubectl delete job -n nexusrh nexusrh-migrate-tenants --ignore-not-found
-# éditer migrated-at, puis :
-kubectl apply -f nexusrh_ci/k8s/jobs/migrate-tenants-job.yaml
-kubectl logs -n nexusrh job/nexusrh-migrate-tenants --follow
+# 2. Migrer TOUS les tenants — méthode recommandée : exec sur le pod API
+#    (identique à la façon dont le deploy lance le seed ; zéro dépendance manifest)
+API_POD=$(kubectl get pods -n nexusrh-ci \
+  -l app.kubernetes.io/component=api \
+  --field-selector=status.phase=Running \
+  --sort-by=.metadata.creationTimestamp \
+  -o jsonpath='{.items[-1].metadata.name}')
+kubectl exec -n nexusrh-ci "$API_POD" -- node dist/db/migrate-tenants.js
 
 # 3. Vérifier la sortie : "<N> migré(s) · 0 échec(s)".
-#    En cas d'échec, la cause la plus probable est un doublon (month) AVANT
-#    bascule de clé — investiguer le tenant listé, dédupliquer, relancer (idempotent).
+#    En cas d'échec : cause la plus probable = doublon (month) AVANT bascule de
+#    clé — investiguer le tenant listé, dédupliquer, relancer (idempotent).
+```
+
+Alternative (Job standalone) :
+
+```bash
+kubectl delete job -n nexusrh-ci nexusrh-migrate-tenants --ignore-not-found
+kubectl apply -f nexusrh_ci/k8s/jobs/migrate-tenants-job.yaml
+kubectl logs -n nexusrh-ci job/nexusrh-migrate-tenants --follow
 ```
 
 > Localement : `pnpm --filter @nexusrhci/api run db:migrate-tenants:dry-run`
 > puis `pnpm --filter @nexusrhci/api run db:migrate-tenants`.
-> Adapter le `namespace` selon l'environnement (`nexusrh` prod / `nexusrh-ci` preprod).
 
 ### Activer le multi-pays sur un tenant (après migration)
 
