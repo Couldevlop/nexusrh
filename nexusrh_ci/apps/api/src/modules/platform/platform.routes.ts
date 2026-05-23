@@ -286,6 +286,35 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
+
+      // OWASP A04 (Insecure Design) : activer le multi-pays IMPOSE que le schéma
+      // tenant porte déjà les colonnes/contraintes du workflow multi-filiales.
+      // On (re)provisionne AVANT de basculer le flag — sinon un ancien tenant se
+      // retrouverait avec has_subsidiaries=true mais des routes en erreur 500.
+      // provisionTenantSchema est entièrement idempotent (CREATE/ALTER IF NOT EXISTS).
+      if (body.has_subsidiaries === true) {
+        const sres = await pool.query<{ schema_name: string | null }>(
+          `SELECT schema_name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+        )
+        const schemaName = sres.rows[0]?.schema_name
+        if (!schemaName) {
+          return reply.status(409).send({
+            error: 'Tenant mal provisionné (schema_name absent) — multi-pays non activable. Réparez via reset-admin.',
+          })
+        }
+        try {
+          await provisionTenantSchema(schemaName)
+        } catch (err) {
+          request.log.error({ err, tenantId: id, schemaName }, 'Échec provisionnement multi-pays — flag non basculé')
+          return reply.status(500).send({
+            error: 'Échec de la préparation du schéma multi-pays. Le tenant n\'a pas été modifié.',
+          })
+        }
+        // OWASP A09 : trace l'événement structurel sensible (active le workflow paie).
+        auditLogPlatform(request.user.sub, 'tenant.subsidiaries_enabled', 'tenant', id,
+          { schemaName }, request.ip ?? null)
+      }
+
       sets.push(`updated_at = now()`)
       vals.push(id)
       await pool.query(

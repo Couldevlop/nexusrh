@@ -21,6 +21,7 @@ import { Pool } from 'pg'
 import { config } from '../../config.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
+import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -74,6 +75,15 @@ async function assertMultiCountryTenant(
 
 const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
 
+  // Garantit que le schéma tenant porte les colonnes multi-filiales avant toute
+  // opération (idempotent). Filet pour un tenant basculé en multi-pays par une
+  // voie qui n'aurait pas re-provisionné le schéma. OWASP A04 : pas de calcul
+  // sur un schéma incohérent.
+  fastify.addHook('preHandler', async (request) => {
+    const schema = request.user?.schemaName
+    if (schema) await ensureTenantSchema(schema)
+  })
+
   // ── GET /payroll-workflow/periods ─────────────────────────────────────────
   // Liste les périodes parentes + leurs déclinaisons site.
   fastify.get('/periods', {
@@ -122,7 +132,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           INSERT INTO "${schema}".pay_periods
             (month, status, parent_period_id, legal_entity_id)
           VALUES ($1, 'draft_central', NULL, NULL)
-          ON CONFLICT (month) WHERE parent_period_id IS NULL DO NOTHING
+          ON CONFLICT (month, legal_entity_id) DO NOTHING
           RETURNING *
         `, [body.month])
         if (!res.rows[0]) {

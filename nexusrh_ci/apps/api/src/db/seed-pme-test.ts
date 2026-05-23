@@ -189,7 +189,7 @@ async function main() {
   const periodRes = await pool.query<{ id: string }>(`
     INSERT INTO "${TENANT_SCHEMA}".pay_periods (month, status, closed_at, closed_by)
     VALUES ($1, 'closed', now(), 'seed-pme-test')
-    ON CONFLICT (month) DO UPDATE SET status = 'closed'
+    ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
     RETURNING id
   `, [PERIOD_MONTH])
   const periodId = periodRes.rows[0]!.id

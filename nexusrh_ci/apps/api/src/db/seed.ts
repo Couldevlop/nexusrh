@@ -397,7 +397,7 @@ async function main() {
     const periodRes = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".pay_periods (month, status, closed_at, closed_by)
       VALUES ($1, 'closed', now(), 'seed')
-      ON CONFLICT (month) DO UPDATE SET status = 'closed'
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
       RETURNING id
     `, [month])
     const periodId = periodRes.rows[0]?.id ?? ''
@@ -1007,7 +1007,7 @@ async function main() {
     const periodRes = await pool.query<{ id: string }>(`
       INSERT INTO "${cabinetSchema}".pay_periods (month, status, closed_at, closed_by)
       VALUES ($1, 'closed', now(), 'seed')
-      ON CONFLICT (month) DO UPDATE SET status = 'closed'
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
       RETURNING id
     `, [month])
     const periodId = periodRes.rows[0]?.id ?? ''

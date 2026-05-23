@@ -141,6 +141,81 @@ mais en production, ne pas le relancer sans backup DB préalable.
 
 ---
 
+## Migration des schémas tenants (multi-pays & évolutions de schéma)
+
+### Le problème de rollout
+
+Au démarrage de l'API (`index.ts`), seul **`createPlatformSchema()`** tourne. Il
+applique automatiquement, à chaque (re)déploiement, les évolutions du schéma
+`platform` (ex. `tenants.has_subsidiaries`, `payroll_mode`, `default_country_code`).
+
+En revanche, les évolutions du **schéma de chaque tenant** vivent dans
+`provisionTenantSchema()`, qui n'est appelé qu'à la **création** d'un tenant (et,
+depuis le correctif multi-pays, lors de l'activation `has_subsidiaries=true` via
+le portail super_admin). **Conséquence : sur `nexusrh.openlabconsulting.com`, les
+tenants déjà provisionnés ne reçoivent PAS automatiquement** :
+
+- les colonnes workflow `pay_periods` (`parent_period_id`, états, `raf_user_id`…),
+- `legal_entities.country_code` / `legislation_pack_code`, `employees.legal_entity_id`,
+- la **bascule de clé d'unicité** `pay_periods` : `UNIQUE(month)` → index
+  `(month, legal_entity_id) NULLS NOT DISTINCT` (indispensable au multi-filiales).
+
+Un filet de sécurité « lazy » existe (`ensureTenantSchema`, exécuté au 1ᵉʳ accès
+aux routes paie/CNPS/absences/employés), mais il **avale les erreurs
+silencieusement** et dépend du trafic. Pour un rollout maîtrisé, on utilise le
+Job de migration explicite ci-dessous.
+
+### Le runner de migration
+
+1. **Script TS** (`apps/api/src/db/migrate-tenants.ts`)
+   - Lit la liste **réelle** des tenants dans `platform.tenants` (jamais en dur)
+   - Applique `provisionTenantSchema()` à chacun (idempotent : `… IF NOT EXISTS`,
+     `DROP CONSTRAINT IF EXISTS`)
+   - **Purement structurel** — ne touche aucune donnée RH
+   - Modes : `--dry-run` (liste sans appliquer) | défaut (applique)
+   - **OWASP A09** : chaque tenant tracé (succès / échec + raison), aucune erreur
+     avalée ; exit code ≠ 0 si un tenant échoue ⇒ Job K8s marqué `Failed`
+
+2. **Job K8s standalone** (`k8s/jobs/migrate-tenants-job.yaml`)
+   - `kubectl apply` à la demande — **aucun hook helm**, n'interagit jamais avec
+     un rollout (même politique que le reset passwords, cf. plus bas)
+
+### Procédure de déploiement (nexusrh.openlabconsulting.com)
+
+```bash
+# 0. (Recommandé) backup DB avant toute migration de schéma
+#    kubectl exec -n nexusrh <postgres-pod> -- pg_dump -U nexusrh nexusrh > backup.sql
+
+# 1. Déployer la nouvelle image API (le boot applique createPlatformSchema)
+#    via le pipeline habituel / helm upgrade — l'image doit être :prod à jour
+
+# 2. (Optionnel) prévisualiser les tenants ciblés, sans rien appliquer
+kubectl delete job -n nexusrh nexusrh-migrate-tenants --ignore-not-found
+# éditer migrated-at, puis :
+kubectl apply -f nexusrh_ci/k8s/jobs/migrate-tenants-job.yaml
+kubectl logs -n nexusrh job/nexusrh-migrate-tenants --follow
+
+# 3. Vérifier la sortie : "<N> migré(s) · 0 échec(s)".
+#    En cas d'échec, la cause la plus probable est un doublon (month) AVANT
+#    bascule de clé — investiguer le tenant listé, dédupliquer, relancer (idempotent).
+```
+
+> Localement : `pnpm --filter @nexusrhci/api run db:migrate-tenants:dry-run`
+> puis `pnpm --filter @nexusrhci/api run db:migrate-tenants`.
+> Adapter le `namespace` selon l'environnement (`nexusrh` prod / `nexusrh-ci` preprod).
+
+### Activer le multi-pays sur un tenant (après migration)
+
+1. Portail super_admin → fiche tenant → bascule **Multi-pays**. Le `PATCH`
+   (re)provisionne le schéma **avant** de basculer le flag (OWASP A04 — pas
+   d'état `flag=true` avec colonnes manquantes), puis trace `tenant.subsidiaries_enabled`.
+2. Créer les `legal_entities` (pays + pack + RAF) et rattacher les employés.
+3. **Les utilisateurs du tenant doivent se reconnecter** : `hasSubsidiaries` est
+   figé dans `tenantConfig` au login → c'est ce qui révèle la sidebar « Paie
+   multi-pays », le sélecteur de filiale, etc.
+
+---
+
 ## Veille réglementaire (legal-watch)
 
 Module de détection automatique des mises à jour d'articles juridiques.
