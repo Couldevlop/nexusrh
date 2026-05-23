@@ -121,13 +121,32 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // Permet la clôture paie / déclarations CNPS / DISA scopées à une filiale
     // pour les tenants has_subsidiaries=true. Backward compat : NULL = mono-filiale.
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS raf_user_id uuid`,
+    `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`,
+    `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`,
+    `ALTER TABLE "${schemaName}".employees         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
-    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(30)`,
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".disa_records      ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
+    // Workflow paie centralisé multi-sites (draft_central → … → closed).
+    // Ces colonnes étaient seulement créées au provisionnement : sans elles, un
+    // ancien tenant basculé en multi-pays renvoyait des 500 (colonnes absentes).
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS parent_period_id uuid`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS raf_user_id uuid`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS sent_to_sites_at timestamptz`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS completed_by_site_at timestamptz`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS validated_central_at timestamptz`,
+    `ALTER TABLE "${schemaName}".pay_periods       ADD COLUMN IF NOT EXISTS validated_by uuid`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON "${schemaName}".pay_slips(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON "${schemaName}".cnps_declarations(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON "${schemaName}".disa_records(legal_entity_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON "${schemaName}".pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`,
+    // Bascule de la clé d'unicité paie : UNIQUE(month) plein → (month, legal_entity_id)
+    // NULLS NOT DISTINCT. Indispensable pour insérer parent + déclinaisons site
+    // (même mois). Mono-pays : comportement inchangé (legal_entity_id NULL unique/mois).
+    `ALTER TABLE "${schemaName}".pay_periods DROP CONSTRAINT IF EXISTS pay_periods_month_key`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_${schemaName}_pp_month_le ON "${schemaName}".pay_periods (month, legal_entity_id) NULLS NOT DISTINCT`,
 
     // ── Auth : reset password tokens (TTL 15 min, usage unique) ──
     `CREATE TABLE IF NOT EXISTS "${schemaName}".password_reset_tokens (

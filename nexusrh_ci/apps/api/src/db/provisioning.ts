@@ -341,9 +341,12 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
 
+  // NB : pas de contrainte UNIQUE(month) inline. L'unicité réelle est portée par
+  // un index (month, legal_entity_id) NULLS NOT DISTINCT créé plus bas, qui
+  // supporte la paie multi-filiales (parent + déclinaisons site même mois).
   await q(`CREATE TABLE IF NOT EXISTS ${s}.pay_periods (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    month       varchar(7) NOT NULL UNIQUE,
+    month       varchar(7) NOT NULL,
     status      varchar(20) NOT NULL DEFAULT 'open',
     closed_at   timestamptz,
     closed_by   varchar(100),
@@ -756,6 +759,15 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.pay_periods ADD COLUMN IF NOT EXISTS validated_by uuid`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON ${s}.pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_le_status ON ${s}.pay_periods(legal_entity_id, status) WHERE legal_entity_id IS NOT NULL`)
+
+  // ── Clé d'unicité paie (month, legal_entity_id) ──────────────────────────────
+  // Remplace l'ancienne contrainte pleine UNIQUE(month) (incompatible avec le
+  // multi-filiales : un parent + N déclinaisons site partagent le même mois).
+  // NULLS NOT DISTINCT (PG15+) garantit qu'une période mono-pays (legal_entity_id
+  // NULL) reste unique par mois, tout en autorisant une période par filiale.
+  // Idempotent : la migration tourne aussi sur les anciens schémas (DROP IF EXISTS).
+  await q(`ALTER TABLE ${s}.pay_periods DROP CONSTRAINT IF EXISTS pay_periods_month_key`)
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${schemaName}_pp_month_le ON ${s}.pay_periods (month, legal_entity_id) NULLS NOT DISTINCT`)
 
   // ── Workflow paie paramétrable (OWASP A04 — Segregation of Duties) ───────
   // workflow_configs.levels_count (module='payroll') pilote le nombre de
