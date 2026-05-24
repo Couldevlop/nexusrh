@@ -744,6 +744,19 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
 
+  // Scope filiale sur les artefacts de paie / déclarations (Palier 3).
+  // ⚠️ Doit rester aligné avec ensureTenantSchema (utils/schema-migrations.ts) :
+  // sans ces colonnes ici, un tenant migré via le runner explicite
+  // `migrate-tenants.ts` (qui n'appelle QUE provisionTenantSchema) resterait
+  // dépendant du fallback lazy (qui avale les erreurs) pour pay_slips / CNPS /
+  // DISA. Backward compat : NULL = mono-filiale (lignes existantes inchangées).
+  await q(`ALTER TABLE ${s}.pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  await q(`ALTER TABLE ${s}.disa_records      ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON ${s}.pay_slips(legal_entity_id)`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON ${s}.cnps_declarations(legal_entity_id)`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON ${s}.disa_records(legal_entity_id)`)
+
   // ── Workflow paie centralisé multi-sites (Palier 3) ──────────────────────────
   // Étend pay_periods pour supporter le cycle draft_central → sent_to_sites →
   // completed_by_sites → validated_central → closed. Une période globale
