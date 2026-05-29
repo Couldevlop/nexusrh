@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
+import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
 import { useAuthStore } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard } from '@/guards/RoleGuard'
 
@@ -100,6 +101,7 @@ function RootRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ChunkLoadErrorBoundary>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Racine */}
@@ -256,6 +258,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      </ChunkLoadErrorBoundary>
     </BrowserRouter>
   )
 }
