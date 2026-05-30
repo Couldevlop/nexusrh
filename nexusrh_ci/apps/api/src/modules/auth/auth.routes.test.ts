@@ -210,15 +210,17 @@ describe('POST /auth/change-password — Zod + audit (OWASP A03 + A09)', () => {
     expect(auditCall?.[1]?.[1]).toBe('auth.password.changed')
   })
 
-  it('refuse schemaName non-conforme regex (400, defense in depth A03)', async () => {
+  it('refuse un schemaName non-conforme à l\'authentification (401, defense in depth A03)', async () => {
+    // Le garde central (plugin auth) rejette désormais tout token au schemaName
+    // non conforme AVANT d'atteindre le handler — fail-closed au choke point.
     const token = tokenFor('admin', 'tenant_x; DROP TABLE users--')
     const res = await app.inject({
       method: 'POST', url: '/auth/change-password',
       headers: { authorization: `Bearer ${token}` },
       payload: { oldPassword: 'CorrectOld', newPassword: 'NewSecret123' },
     })
-    expect(res.statusCode).toBe(400)
-    expect(JSON.parse(res.body).error).toBe('Schema invalide')
+    expect(res.statusCode).toBe(401)
+    expect(JSON.parse(res.body).error).toContain('schéma non conforme')
   })
 })
 
