@@ -33,6 +33,7 @@ const EmployeeDetail   = lazy(() => import('@/pages/employees/EmployeeDetail'))
 
 // ── Payroll ───────────────────────────────────────────────────────────────────
 const PayrollPage      = lazy(() => import('@/pages/payroll/PayrollPage'))
+const PayrollMultiSitesPage = lazy(() => import('@/pages/payroll/PayrollMultiSitesPage'))
 const PaySlipsPage     = lazy(() => import('@/pages/payroll/PaySlipsPage'))
 const ItsSimulatorPage = lazy(() => import('@/pages/payroll/ItsSimulatorPage'))
 
@@ -148,6 +149,11 @@ export default function App() {
             <Route path="payroll" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <PayrollPage />
+              </RoleGuard>
+            } />
+            <Route path="payroll/multi-filiales" element={
+              <RoleGuard allowedRoles={['admin','hr_manager']}>
+                <PayrollMultiSitesPage />
               </RoleGuard>
             } />
             <Route path="raf/periods" element={

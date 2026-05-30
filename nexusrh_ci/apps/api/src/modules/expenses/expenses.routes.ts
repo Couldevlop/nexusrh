@@ -144,9 +144,17 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE er.id = $1
         `, [id])
         if (!reportRes.rows[0]) return reply.status(404).send({ error: 'Note introuvable' })
-        // Vérification ownership : employee ne peut accéder qu'à ses propres notes
-        if (role === 'employee' && reportRes.rows[0].employee_email !== request.user.email) {
-          return reply.status(403).send({ error: 'Accès interdit' })
+        // OWASP A01 — scope d'accès :
+        //  - employee : uniquement ses propres notes
+        //  - manager  : uniquement les notes de son équipe directe
+        //  - admin/hr_manager/hr_officer/readonly : accès complet (matrice RBAC)
+        if (role === 'employee') {
+          if (reportRes.rows[0].employee_email !== request.user.email) {
+            return reply.status(403).send({ error: 'Accès interdit' })
+          }
+        } else if (role === 'manager') {
+          const allowed = await managerCanActOnReport(schema, request.user.email, id)
+          if (!allowed) return reply.status(403).send({ error: 'Accès interdit — hors de votre équipe directe' })
         }
         const linesRes = await pool.query(
           `SELECT * FROM "${schema}".expense_lines WHERE report_id = $1 ORDER BY date`, [id]

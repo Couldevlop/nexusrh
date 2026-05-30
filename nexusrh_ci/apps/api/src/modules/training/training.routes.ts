@@ -240,12 +240,25 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         let employeeId = body.employee_id
         if (!employeeId || request.user.role === 'employee') {
+          // employee (ou aucun employeeId fourni) → inscription self-service forcée
           const emp = await pool.query(
             `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
           )
           if (!emp.rows[0]) return reply.status(400).send({ error: 'Employé introuvable' })
           employeeId = emp.rows[0].id as string
+        } else if (request.user.role === 'manager') {
+          // OWASP A01 — un manager ne peut inscrire QUE son équipe directe
+          const team = await pool.query(
+            `SELECT 1 FROM "${schema}".employees e
+               JOIN "${schema}".employees m ON m.id = e.manager_id
+              WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+            [employeeId, request.user.email],
+          )
+          if (!team.rows[0]) {
+            return reply.status(403).send({ error: 'Vous ne pouvez inscrire que les membres de votre équipe directe' })
+          }
         }
+        // admin/hr_manager/hr_officer : inscription de tout employé (fonction admin formation)
         // OWASP A04 : empêche l'inscription multiple à la même session (anti spam)
         const duplicate = await pool.query(
           `SELECT id FROM "${schema}".training_enrollments

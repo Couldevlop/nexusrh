@@ -559,7 +559,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   // que le navigateur affiche le PDF inline ou propose un téléchargement.
   // OWASP A05 : X-Content-Type-Options: nosniff pour bloquer le MIME sniffing.
   fastify.get('/applications/:id/cv-file', {
-    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    // OWASP A01 — le CV (PII candidat) n'est accessible qu'aux rôles qui recrutent
+    // activement. 'readonly' (consultation passive) retiré : il ne doit pas tirer
+    // les binaires CV.
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
