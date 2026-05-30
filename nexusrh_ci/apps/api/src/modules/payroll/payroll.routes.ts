@@ -775,7 +775,19 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         if (myEmployeeId !== slip.employee_id) {
           return reply.status(403).send({ error: 'Accès refusé à ce bulletin' })
         }
-      } else if (!['admin','hr_manager','hr_officer','readonly','manager'].includes(role)) {
+      } else if (role === 'manager') {
+        // OWASP A01 — un manager ne voit QUE les bulletins de son équipe directe
+        // (la matrice RBAC ne lui donne aucun accès aux bulletins du tenant entier).
+        const team = await rawPool.query(
+          `SELECT 1 FROM "${schema}".employees e
+             JOIN "${schema}".employees m ON m.id = e.manager_id
+            WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+          [slip.employee_id, request.user.email],
+        )
+        if (!team.rows[0]) {
+          return reply.status(403).send({ error: 'Accès refusé — bulletin hors de votre équipe directe' })
+        }
+      } else if (!['admin','hr_manager','hr_officer','readonly'].includes(role)) {
         return reply.status(403).send({ error: 'Rôle non autorisé' })
       }
 
