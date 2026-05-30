@@ -185,6 +185,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               })
             }
 
+            // OWASP A07 — MFA obligatoire super_admin : si le MFA n'est pas
+            // encore activé, on émet un token RESTREINT (mfaPending) qui ne donne
+            // accès qu'au parcours d'activation MFA (cf. plugin auth). Évite le
+            // verrouillage du compte tout en imposant l'activation avant tout
+            // accès plateforme.
+            const mfaPending = !platformUser.mfa_enabled
             const token = fastify.jwt.sign({
               sub:        platformUser.id,
               tenantId:   null,
@@ -194,18 +200,22 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               firstName:  platformUser.first_name,
               lastName:   platformUser.last_name,
               employeeId: null,
+              ...(mfaPending ? { mfaPending: true } : {}),
             })
             await pool.query(
               `UPDATE platform.platform_users SET updated_at = now() WHERE id = $1`,
               [platformUser.id],
             )
-            auditLogAuth('platform', platformUser.id, 'auth.login.success', { scope: 'platform' }, ip, ua)
+            auditLogAuth('platform', platformUser.id, 'auth.login.success', { scope: 'platform', mfaSetupRequired: mfaPending }, ip, ua)
             // OWASP A02 — pose le JWT en cookie httpOnly (mode SPA). Le client
             // browser n'a plus à manipuler le token en JS. Les clients API
             // peuvent toujours utiliser le `token` renvoyé en JSON dans Authorization.
             reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
             return reply.send({
               token,
+              // Le frontend doit forcer l'activation MFA quand ce flag est vrai
+              // (le token n'autorise rien d'autre côté serveur).
+              mfaSetupRequired: mfaPending,
               user: {
                 sub:        platformUser.id,
                 tenantId:   null,

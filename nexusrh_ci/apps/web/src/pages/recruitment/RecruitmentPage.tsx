@@ -244,7 +244,12 @@ export default function RecruitmentPage() {
         criteria: criteria ? { focus: criteria } : undefined,
       }).then((r) => r.data as {
         total: number; analyzed: number; skipped: number; failed: number
-        top: Array<{ id: string; score: number; recommendation: string; firstName: string; lastName: string }>
+        autoRejected?: number; toReview?: number
+        top: Array<{
+          id: string; score: number; recommendation: string
+          firstName: string; lastName: string
+          screeningDecision?: 'auto_reject' | 'review'; failedRules?: string[]
+        }>
         effectiveFocus?: string | null
         learningExamples?: number
         message?: string
@@ -514,6 +519,8 @@ export default function RecruitmentPage() {
                   </p>
                 </div>
               )}
+              {/* Règles dures de pré-tri — paramétrables par l'admin du tenant */}
+              <ScreeningCriteriaPanel jobId={selectedJob.id} />
             </div>
           )}
           {!selectedJob && (
@@ -527,9 +534,16 @@ export default function RecruitmentPage() {
                 <div className="flex-1">
                   <p className="font-medium">
                     Pré-sélection terminée — {preselect.data.analyzed} analysés
+                    {(preselect.data.toReview ?? 0) > 0 && <span className="text-emerald-700"> · {preselect.data.toReview} à revoir</span>}
+                    {(preselect.data.autoRejected ?? 0) > 0 && <span className="text-red-600"> · {preselect.data.autoRejected} auto-rejetés</span>}
                     {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
                     {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
                   </p>
+                  {(preselect.data.autoRejected ?? 0) > 0 && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      Les candidats auto-rejetés sont passés en « Rejeté » avec le motif (règles de pré-tri) — réversible manuellement dans le pipeline.
+                    </p>
+                  )}
                   {preselect.data.learningExamples != null && preselect.data.learningExamples > 0 && (
                     <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
                       <Zap className="h-3 w-3 text-primary" />
@@ -3011,4 +3025,214 @@ function normalizeJsonArray(v: unknown): string[] {
     try { return normalizeJsonArray(JSON.parse(v)) } catch { return [] }
   }
   return []
+}
+
+// ── Critères de pré-tri (règles dures) — paramétrables par l'admin du tenant ──
+// 100% configurable par offre (rien en dur). Charge GET, sauvegarde PUT.
+// Les règles s'appliquent au lancement de la pré-sélection (auto-rejet si
+// knockout / score sous seuil). Une donnée candidate inconnue ne rejette jamais.
+const DIPLOMA_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '',         label: '— Aucun minimum —' },
+  { value: 'cep',      label: 'CEP' },
+  { value: 'bepc',     label: 'BEPC / Brevet' },
+  { value: 'cap',      label: 'CAP / BEP' },
+  { value: 'bac',      label: 'Baccalauréat' },
+  { value: 'bac+2',    label: 'Bac+2 (BTS/DUT)' },
+  { value: 'bac+3',    label: 'Bac+3 (Licence)' },
+  { value: 'bac+4',    label: 'Bac+4 (Maîtrise)' },
+  { value: 'bac+5',    label: 'Bac+5 (Master/Ingénieur)' },
+  { value: 'doctorat', label: 'Doctorat' },
+]
+
+interface ScreeningCriteriaForm {
+  minExperienceYears: string
+  requiredSkills: string
+  allowedLocations: string
+  requiredLanguages: string
+  maxExpectedSalary: string
+  minDiploma: string
+  autoRejectBelowScore: string
+  knockoutEnabled: boolean
+}
+
+function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<ScreeningCriteriaForm | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const { data, isLoading } = useQuery<{ data: { criteria: Record<string, unknown> } }>({
+    queryKey: ['screening-criteria', jobId],
+    queryFn: () => api.get(`/recruitment/jobs/${jobId}/screening-criteria`).then(r => r.data),
+    enabled: open,
+  })
+
+  // Hydrate le formulaire une fois les critères chargés (listes → texte séparé par virgules)
+  const c = data?.data.criteria
+  if (open && c && form === null) {
+    const arr = (v: unknown) => Array.isArray(v) ? (v as string[]).join(', ') : ''
+    const num = (v: unknown) => (typeof v === 'number' ? String(v) : '')
+    setForm({
+      minExperienceYears:   num(c.minExperienceYears),
+      requiredSkills:       arr(c.requiredSkills),
+      allowedLocations:     arr(c.allowedLocations),
+      requiredLanguages:    arr(c.requiredLanguages),
+      maxExpectedSalary:    num(c.maxExpectedSalary),
+      minDiploma:           typeof c.minDiploma === 'string' ? c.minDiploma : '',
+      autoRejectBelowScore: num(c.autoRejectBelowScore),
+      knockoutEnabled:      c.knockoutEnabled !== false,
+    })
+  }
+
+  const save = useMutation({
+    mutationFn: (f: ScreeningCriteriaForm) => {
+      const list = (s: string) => s.split(',').map(x => x.trim()).filter(Boolean)
+      const intOrNull = (s: string) => {
+        const n = parseInt(s, 10)
+        return Number.isFinite(n) ? n : null
+      }
+      const criteria = {
+        minExperienceYears:   intOrNull(f.minExperienceYears),
+        requiredSkills:       list(f.requiredSkills),
+        allowedLocations:     list(f.allowedLocations),
+        requiredLanguages:    list(f.requiredLanguages),
+        maxExpectedSalary:    intOrNull(f.maxExpectedSalary),
+        minDiploma:           f.minDiploma || null,
+        autoRejectBelowScore: intOrNull(f.autoRejectBelowScore),
+        knockoutEnabled:      f.knockoutEnabled,
+      }
+      return api.put(`/recruitment/jobs/${jobId}/screening-criteria`, { criteria })
+    },
+    onSuccess: () => {
+      setSaved(true)
+      queryClient.invalidateQueries({ queryKey: ['screening-criteria', jobId] })
+      setTimeout(() => setSaved(false), 2500)
+    },
+  })
+
+  const set = (patch: Partial<ScreeningCriteriaForm>) =>
+    setForm(prev => prev ? { ...prev, ...patch } : prev)
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-3">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+      >
+        <ShieldCheck className="h-3.5 w-3.5" />
+        {open ? '− Masquer' : '+ Configurer'} les règles de pré-tri (auto-rejet)
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          {isLoading || !form ? (
+            <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[11px] text-muted-foreground">
+                Critères propres à cette offre. Au lancement de la pré-sélection, un candidat qui échoue à une
+                règle obligatoire (ou dont le score est sous le seuil) est <strong>auto-rejeté</strong> avec le motif.
+                Une information non détectée dans le CV ne provoque jamais de rejet.
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Expérience minimum (années)</span>
+                  <input
+                    type="number" min={0} max={50} value={form.minExperienceYears}
+                    onChange={e => set({ minExperienceYears: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Diplôme minimum</span>
+                  <select
+                    value={form.minDiploma}
+                    onChange={e => set({ minDiploma: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    {DIPLOMA_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium">Compétences obligatoires (séparées par des virgules)</span>
+                <input
+                  value={form.requiredSkills}
+                  onChange={e => set({ requiredSkills: e.target.value })}
+                  placeholder="Ex : Permis D, Mécanique, Excel"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Localisations acceptées (virgules)</span>
+                  <input
+                    value={form.allowedLocations}
+                    onChange={e => set({ allowedLocations: e.target.value })}
+                    placeholder="Ex : Abidjan, Bouaké"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Langues obligatoires (virgules)</span>
+                  <input
+                    value={form.requiredLanguages}
+                    onChange={e => set({ requiredLanguages: e.target.value })}
+                    placeholder="Ex : Français, Anglais"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Prétention salariale max (FCFA)</span>
+                  <input
+                    type="number" min={0} value={form.maxExpectedSalary}
+                    onChange={e => set({ maxExpectedSalary: e.target.value })}
+                    placeholder="Ex : 500000"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">Auto-rejet si score IA &lt; (0–100)</span>
+                  <input
+                    type="number" min={0} max={100} value={form.autoRejectBelowScore}
+                    onChange={e => set({ autoRejectBelowScore: e.target.value })}
+                    placeholder="Ex : 40"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox" checked={form.knockoutEnabled}
+                  onChange={e => set({ knockoutEnabled: e.target.checked })}
+                  className="h-4 w-4 rounded border-border"
+                />
+                <span>Activer les règles éliminatoires (décocher = critères indicatifs, seul le seuil de score reste actif)</span>
+              </label>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                {saved && <span className="text-xs text-emerald-600">Enregistré ✓</span>}
+                {save.isError && <span className="text-xs text-red-600">Erreur d'enregistrement</span>}
+                <button
+                  onClick={() => form && save.mutate(form)}
+                  disabled={save.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                >
+                  {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Enregistrer les critères
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }

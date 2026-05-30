@@ -303,6 +303,17 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       if (existing.rows[0]?.status === 'closed') {
         return reply.status(422).send({ error: 'Période déjà clôturée' })
       }
+      // OWASP A04 (idempotence) — si la clôture a déjà été initiée (bulletins
+      // générés, en attente de validation 2-yeux), un nouvel appel ne doit PAS
+      // recalculer/regénérer. On refuse explicitement : pour recalculer, il faut
+      // d'abord rejeter la période (retour à 'open').
+      if (existing.rows[0]?.status === 'pending_validation') {
+        return reply.status(409).send({
+          error: 'Clôture déjà initiée pour cette période (en attente de validation). Rejetez-la d\'abord pour recalculer.',
+          periodId: existing.rows[0].id,
+          status: 'pending_validation',
+        })
+      }
 
       // Scope employés par filiale si applicable
       const empsParams: unknown[] = []

@@ -848,6 +848,18 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_mime_type varchar(100)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_filename varchar(255)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_size_bytes integer`)
+  // Extraction structurée IA (alimente le moteur de pré-tri par règles dures)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_years_experience int`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_skills jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_diploma varchar(120)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_location varchar(120)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_languages jsonb DEFAULT '[]'`)
+  // Verdict de pré-tri automatique (auto_reject | review) + règles échouées
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_decision varchar(20)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_failed_rules jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screened_at timestamptz`)
+  // Prétention salariale candidat (entrée du critère maxExpectedSalary)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS expected_salary bigint`)
 
   // Index utiles pour le filtrage interne et la consultation pipeline
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_jobs_visibility ON ${s}.recruitment_jobs(visibility, status)`)
@@ -915,6 +927,9 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS hiring_manager_id uuid`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS public_slug varchar(120)`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS ai_focus_text text`)
+  // Critères de pré-tri paramétrables par offre (règles dures) — éditables depuis
+  // l'interface admin du tenant. JSONB validé/borné applicativement (sanitizeCriteria).
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS screening_criteria jsonb`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
@@ -933,6 +948,18 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_mime_type varchar(100)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_filename varchar(255)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS cv_size_bytes integer`)
+  // Extraction structurée IA (alimente le moteur de pré-tri par règles dures)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_years_experience int`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_skills jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_diploma varchar(120)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_location varchar(120)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_languages jsonb DEFAULT '[]'`)
+  // Verdict de pré-tri automatique (auto_reject | review) + règles échouées
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_decision varchar(20)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_failed_rules jsonb DEFAULT '[]'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screened_at timestamptz`)
+  // Prétention salariale candidat (entrée du critère maxExpectedSalary)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS expected_salary bigint`)
 
   // Sourcing IA — table cache des profils générés (migration lazy idempotente)
   await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (
