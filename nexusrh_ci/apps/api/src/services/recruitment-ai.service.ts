@@ -35,6 +35,23 @@ export interface CvAnalysisResult {
   demographicRiskNote?: string | null
   /** Indique le mode d'ingestion du CV (texte extrait OU document PDF natif via vision IA) */
   ingestionMode?: 'text' | 'pdf-document'
+  /** Données structurées extraites du CV — alimentent le moteur de règles dures
+   *  (pré-tri). L'IA extrait ; le moteur déterministe décide. */
+  extracted?: CvExtractedData
+}
+
+/** Données structurées extraites d'un CV par l'IA (pour le pré-tri par règles). */
+export interface CvExtractedData {
+  /** Années d'expérience professionnelle totales (entier). null si indéterminable. */
+  yearsExperience: number | null
+  /** Compétences techniques et fonctionnelles citées dans le CV. */
+  skills: string[]
+  /** Diplôme le plus élevé, libellé brut tel qu'écrit dans le CV. null si absent. */
+  highestDiploma: string | null
+  /** Ville/pays de résidence du candidat. null si absent. */
+  location: string | null
+  /** Langues maîtrisées. */
+  languages: string[]
 }
 
 /**
@@ -73,7 +90,14 @@ valide (sans balises markdown, sans texte avant/après) avec exactement cette st
   "interviewQuestions": ["<question 1>", "<question 2>", "<question 3>"],
   "matchPercentage": <entier 0-100>,
   "signalsUsed": ["<élément concret du CV qui a influencé le score 1>", "<élément 2>", "<élément 3>", "<élément 4>"],
-  "demographicRiskNote": "<note d'alerte si le score est influencé par un signal démographique (école précise, région, prénom, genre, âge estimé) ; null si aucun signal de ce type n'a pesé>"
+  "demographicRiskNote": "<note d'alerte si le score est influencé par un signal démographique (école précise, région, prénom, genre, âge estimé) ; null si aucun signal de ce type n'a pesé>",
+  "extracted": {
+    "yearsExperience": <entier : années d'expérience pro totales, ou null si indéterminable>,
+    "skills": ["<compétence technique/fonctionnelle 1>", "<compétence 2>", ...],
+    "highestDiploma": "<diplôme le plus élevé tel qu'écrit dans le CV, ou null>",
+    "location": "<ville/pays de résidence du candidat, ou null>",
+    "languages": ["<langue 1>", "<langue 2>", ...]
+  }
 }
 
 Règles :
@@ -83,7 +107,8 @@ Règles :
 - Rends 3 questions d'entretien spécifiques et pratiques
 - N'invente jamais d'informations absentes du CV
 - signalsUsed : 3 à 6 éléments concrets et CITABLES du CV (compétences, années d'expérience, certifications, projets) — pas d'éléments démographiques ici
-- demographicRiskNote : OBLIGATOIRE de signaler si tu as pondéré le score à cause de l'école, la région d'origine, le prénom, le genre ou l'âge — c'est un AUDIT DE BIAIS. Si aucun de ces signaux n'a influencé ton jugement, renvoie null.`
+- demographicRiskNote : OBLIGATOIRE de signaler si tu as pondéré le score à cause de l'école, la région d'origine, le prénom, le genre ou l'âge — c'est un AUDIT DE BIAIS. Si aucun de ces signaux n'a influencé ton jugement, renvoie null.
+- extracted : extraction FACTUELLE et NEUTRE du CV (pas un jugement). yearsExperience = nombre entier d'années d'expérience pro ; skills = compétences réellement citées ; highestDiploma = libellé brut ; location = lieu de résidence ; languages = langues maîtrisées. Mets null/[] si l'information est absente — n'invente jamais.`
 
 /** Exemple de décision passée du recruteur, utilisé pour calibrer le scoring IA (few-shot) */
 export interface RecruiterDecisionExample {
@@ -160,6 +185,25 @@ function normalize(raw: unknown, model: AiModelChoice, ingestionMode: 'text' | '
       && demographicRiskRaw.trim().toLowerCase() !== 'null'
       ? demographicRiskRaw.trim()
       : null
+
+  // Extraction structurée (pour le moteur de règles dures). Tolérant : champs
+  // absents → null/[]. yearsExperience borné [0, 60] (anti valeurs aberrantes).
+  const extractedRaw = (r.extracted && typeof r.extracted === 'object')
+    ? r.extracted as Record<string, unknown>
+    : {}
+  const yearsRaw = Number(extractedRaw.yearsExperience)
+  const extracted: CvExtractedData = {
+    yearsExperience: Number.isFinite(yearsRaw) ? Math.max(0, Math.min(60, Math.round(yearsRaw))) : null,
+    skills:          arr(extractedRaw.skills),
+    highestDiploma:  typeof extractedRaw.highestDiploma === 'string' && extractedRaw.highestDiploma.trim().toLowerCase() !== 'null'
+      ? extractedRaw.highestDiploma.trim().slice(0, 120) || null
+      : null,
+    location:        typeof extractedRaw.location === 'string' && extractedRaw.location.trim().toLowerCase() !== 'null'
+      ? extractedRaw.location.trim().slice(0, 120) || null
+      : null,
+    languages:       arr(extractedRaw.languages),
+  }
+
   return {
     score,
     recommendation,
@@ -173,6 +217,7 @@ function normalize(raw: unknown, model: AiModelChoice, ingestionMode: 'text' | '
     signalsUsed:       arr(r.signalsUsed),
     demographicRiskNote,
     ingestionMode,
+    extracted,
   }
 }
 

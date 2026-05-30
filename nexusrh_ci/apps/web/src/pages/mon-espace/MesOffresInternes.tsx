@@ -129,15 +129,13 @@ export default function MesOffresInternes() {
               </div>
 
               {job.description && (
-                <p className="mt-3 text-sm text-muted-foreground line-clamp-3">{job.description}</p>
+                <p className="mt-3 text-sm text-muted-foreground line-clamp-2">{job.description}</p>
               )}
 
               <div className="mt-4 flex justify-end">
                 <button onClick={() => { setSelected(job); setError(null); setSuccess(null) }}
-                  disabled={job.already_applied > 0}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
-                  <Send className="h-3.5 w-3.5" />
-                  {job.already_applied > 0 ? 'Déjà candidat' : 'Postuler'}
+                  className="flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5">
+                  Voir l'offre <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -147,9 +145,34 @@ export default function MesOffresInternes() {
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSelected(null)}>
-          <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold">Postuler : {selected.title}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">{selected.title}</h3>
+            {(selected.location || selected.department_name) && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {[selected.department_name, selected.location].filter(Boolean).join(' · ')}
+              </p>
+            )}
+
+            {/* Intégralité de l'offre (aperçu → détail complet, façon APEC) */}
+            <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+              {selected.description && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Description du poste</p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.description}</p>
+                </div>
+              )}
+              {selected.requirements && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Profil recherché</p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.requirements}</p>
+                </div>
+              )}
+              {!selected.description && !selected.requirements && (
+                <p className="text-sm text-muted-foreground">Aucun détail supplémentaire fourni pour cette offre.</p>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
               Votre profil employé sera transmis automatiquement. Ajoutez une lettre
               de motivation pour expliquer votre intérêt.
             </p>

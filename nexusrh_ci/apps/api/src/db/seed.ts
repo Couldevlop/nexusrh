@@ -249,6 +249,15 @@ async function main() {
     RETURNING id
   `, [sotraSlug, sotraSchema, sotraAtRate.toString()])
 
+  // SOTRA = groupe multi-filiales : active le workflow paie centralisé (le lien
+  // « Paie multi-filiales » de la sidebar + l'initiation du draft en dépendent).
+  await pool.query(
+    `UPDATE platform.tenants
+        SET has_subsidiaries = true, payroll_mode = 'multi_country', default_country_code = 'CIV'
+      WHERE slug = $1`,
+    [sotraSlug],
+  )
+
   const sotraTenantId = sotraTenantRes.rows[0]?.id ?? ''
   console.log('[3/10] Tenant SOTRA créé')
 
@@ -268,9 +277,46 @@ async function main() {
       ('admin@sotra.ci',    $1, 'Directeur', 'RH SOTRA',   'admin',      true, now()),
       ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true, now()),
       ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
-      ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now())
+      ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now()),
+      ('raf.abidjan@sotra.ci', $1, 'RAF', 'Abidjan', 'raf_site', true, now()),
+      ('raf.bouake@sotra.ci',  $1, 'RAF', 'Bouaké',  'raf_site', true, now())
     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [adminHash, managerHash, employeeHash])
+
+  // ── Filiales SOTRA (legal_entities) + RAF affectés ──────────────────────────
+  // Deux filiales pour démontrer le workflow paie centralisé : la RH groupe
+  // initie le draft global, décline aux filiales, chaque RAF soumet sa filiale,
+  // la RH consolide puis clôture (validation 2-yeux SoD).
+  const sotraRafAbj = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".users WHERE email = 'raf.abidjan@sotra.ci' LIMIT 1`,
+  )
+  const sotraRafBke = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".users WHERE email = 'raf.bouake@sotra.ci' LIMIT 1`,
+  )
+  const sotraEntitiesDef = [
+    { name: 'SOTRA Abidjan (siège)', city: 'Abidjan', rccm: 'CI-ABJ-2010-B-0045', raf: sotraRafAbj.rows[0]?.id ?? null },
+    { name: 'SOTRA Bouaké',          city: 'Bouaké',  rccm: 'CI-BKE-2015-B-0102', raf: sotraRafBke.rows[0]?.id ?? null },
+  ]
+  const sotraEntityIds: string[] = []
+  for (const le of sotraEntitiesDef) {
+    const r = await pool.query<{ id: string }>(`
+      INSERT INTO "${sotraSchema}".legal_entities
+        (name, rccm, cnps_number, dgi_number, city, legal_form, at_rate,
+         country_code, legislation_pack_code, raf_user_id, is_active)
+      VALUES ($1,$2,$3,$4,$5,'SA',$6,'CIV','CIV-2024',$7,true)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `, [le.name, le.rccm, 'CI000123456', 'DGI-ABJ-2024-0089', le.city, sotraAtRate.toString(), le.raf])
+    if (r.rows[0]) {
+      sotraEntityIds.push(r.rows[0].id)
+    } else {
+      const ex = await pool.query<{ id: string }>(
+        `SELECT id FROM "${sotraSchema}".legal_entities WHERE name = $1 LIMIT 1`, [le.name],
+      )
+      if (ex.rows[0]) sotraEntityIds.push(ex.rows[0].id)
+    }
+  }
+  console.log(`[4b/10] ${sotraEntityIds.length} filiales SOTRA créées + 2 RAF`)
 
   // Workflow config
   await pool.query(`
@@ -359,6 +405,18 @@ async function main() {
       `UPDATE "${sotraSchema}".users SET employee_id = $1 WHERE email = 'employe@sotra.ci'`,
       [sotraEmployees[0].id]
     )
+  }
+
+  // Répartir les employés sur les filiales (alternance) pour que la paie par
+  // filiale produise des bulletins réels lors du workflow centralisé.
+  if (sotraEntityIds.length > 0) {
+    for (let i = 0; i < sotraEmployees.length; i++) {
+      const entityId = sotraEntityIds[i % sotraEntityIds.length]
+      await pool.query(
+        `UPDATE "${sotraSchema}".employees SET legal_entity_id = $1 WHERE id = $2`,
+        [entityId, sotraEmployees[i]!.id],
+      )
+    }
   }
 
   // Types d'absence (récupérer les IDs)

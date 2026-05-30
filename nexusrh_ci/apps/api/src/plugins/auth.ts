@@ -19,6 +19,9 @@ export interface JwtSignPayload {
   firstName:  string
   lastName:   string
   employeeId: string | null
+  /** OWASP A07 — super_admin connecté sans MFA activé : token restreint au
+   *  parcours d'activation MFA tant que ce flag est présent. */
+  mfaPending?: boolean
 }
 
 export interface JwtPayload extends JwtSignPayload {
@@ -73,6 +76,19 @@ export default fp(async (fastify) => {
     if (!isValidSchemaName(request.user.schemaName)) {
       reply.status(401).send({ error: 'Token invalide (schéma non conforme)' })
       return
+    }
+    // OWASP A07 — MFA obligatoire super_admin : un token "mfaPending" (super_admin
+    // connecté sans MFA activé) est restreint au parcours d'activation MFA. Toute
+    // autre route est refusée tant que le MFA n'est pas activé.
+    if ((request.user as { mfaPending?: boolean }).mfaPending === true) {
+      const path = request.url.split('?')[0] ?? ''
+      const allowed =
+        path.startsWith('/auth/mfa/') ||
+        path === '/auth/me' || path === '/auth/logout' || path === '/auth/csrf-token'
+      if (!allowed) {
+        reply.status(403).send({ error: 'MFA obligatoire — activez le MFA pour accéder à la plateforme' })
+        return
+      }
     }
     const jti = (request.user as unknown as { jti?: string }).jti ?? request.user.sub
     if (await isTokenBlacklisted(jti)) {

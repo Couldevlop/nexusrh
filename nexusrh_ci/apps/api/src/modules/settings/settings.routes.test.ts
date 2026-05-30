@@ -148,6 +148,7 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
   it('création OK + audit settings.legal_entity_created', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: 'le-1', name: 'Filiale Cocody', at_rate: '0.03' }] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE platform.tenants (active has_subsidiaries)
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
     const token = tokenFor(app, 'admin')

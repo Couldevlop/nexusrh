@@ -285,6 +285,15 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const { role, is_active } = request.body as { role?: string; is_active?: boolean }
+
+      // OWASP A01 (escalade de privilège) — un admin de tenant ne peut attribuer
+      // QUE des rôles tenant. 'super_admin' (plateforme) est interdit : sinon un
+      // admin pourrait se hisser au niveau plateforme via un simple PATCH.
+      const TENANT_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site']
+      if (role !== undefined && !TENANT_ROLES.includes(role)) {
+        return reply.status(400).send({ error: 'Rôle invalide (rôles tenant uniquement)' })
+      }
+
       const updates: string[] = []
       const values: unknown[] = []
       if (role !== undefined)      { updates.push(`role = $${values.length + 1}`); values.push(role) }
@@ -293,9 +302,28 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
+        // OWASP A09 — snapshot AVANT pour tracer le before/after (changement de
+        // rôle = action sensible auditée).
+        const before = await pool.query<{ role: string; is_active: boolean }>(
+          `SELECT role, is_active FROM "${schema}".users WHERE id = $1`, [id],
+        )
+        if (!before.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
+
         const res = await pool.query(
           `UPDATE "${schema}".users SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING id, email, role, is_active`,
           values
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
+
+        const roleChanged = role !== undefined && role !== before.rows[0].role
+        auditLogSettings(
+          schema, request.user.sub,
+          roleChanged ? 'user.role_changed' : 'user.updated', id,
+          {
+            before: { role: before.rows[0].role, isActive: before.rows[0].is_active },
+            after:  { role: role ?? before.rows[0].role, isActive: is_active ?? before.rows[0].is_active },
+          },
+          request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
       } catch (err) {
@@ -641,6 +669,19 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
             body.country_code ?? 'CIV', body.legislation_pack_code ?? null])
         const created = res.rows[0]
+        // Déclarer une filiale active le workflow paie multi-filiales du tenant :
+        // sinon le lien « Paie multi-filiales » (qui porte l'initiation du draft)
+        // reste masqué dans la sidebar (conditionné à tenantConfig.hasSubsidiaries).
+        // Idempotent (ne réécrit que si false), non bloquant — un échec de cette
+        // mise à jour secondaire ne doit jamais faire échouer la création.
+        try {
+          await pool.query(
+            `UPDATE platform.tenants
+                SET has_subsidiaries = true, payroll_mode = 'multi_country', updated_at = now()
+              WHERE schema_name = $1 AND has_subsidiaries = false`,
+            [schema],
+          )
+        } catch { /* non bloquant */ }
         // OWASP A09 — création d'entité légale = action critique (numéros CNPS/DGI officiels)
         auditLogSettings(
           schema, request.user.sub, 'settings.legal_entity_created',
