@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { config } from '../config.js'
 import { isTokenBlacklisted } from '../services/redis.js'
+import { isValidSchemaName } from '../utils/schema-name.js'
 
 // Nom du cookie qui transporte le JWT en httpOnly (mode SPA browser).
 // Les clients API peuvent toujours utiliser Authorization: Bearer (backward-compat).
@@ -64,6 +65,13 @@ export default fp(async (fastify) => {
       await request.jwtVerify()
     } catch {
       reply.status(401).send({ error: 'Token invalide ou expiré' })
+      return
+    }
+    // OWASP A03 (défense en profondeur) — le schemaName du token est interpolé
+    // tel quel dans des identifiants SQL par les handlers. On rejette ici, au
+    // choke point central, tout token portant un schemaName non conforme.
+    if (!isValidSchemaName(request.user.schemaName)) {
+      reply.status(401).send({ error: 'Token invalide (schéma non conforme)' })
       return
     }
     const jti = (request.user as unknown as { jti?: string }).jti ?? request.user.sub

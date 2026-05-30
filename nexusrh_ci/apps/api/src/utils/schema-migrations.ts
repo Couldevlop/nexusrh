@@ -1,5 +1,6 @@
 import { Pool } from 'pg'
 import { config } from '../config.js'
+import { assertValidSchemaName } from './schema-name.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 const migratedSchemas = new Set<string>()
@@ -10,6 +11,8 @@ const migratedSchemas = new Set<string>()
  */
 export async function ensureTenantSchema(schemaName: string): Promise<void> {
   if (!schemaName || migratedSchemas.has(schemaName)) return
+  // OWASP A03 — schemaName interpolé dans 170+ ALTER TABLE : valider avant la boucle.
+  assertValidSchemaName(schemaName)
 
   const alters = [
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS nni varchar(50)`,

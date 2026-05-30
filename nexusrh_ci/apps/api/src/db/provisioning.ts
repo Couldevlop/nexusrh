@@ -1,5 +1,6 @@
 import { Pool } from 'pg'
 import { config } from '../config.js'
+import { assertValidSchemaName } from '../utils/schema-name.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -229,6 +230,9 @@ export async function createPlatformSchema(): Promise<void> {
  * Provisionne un nouveau schéma tenant avec toutes les tables CI
  */
 export async function provisionTenantSchema(schemaName: string): Promise<void> {
+  // OWASP A03 — schemaName interpolé dans CREATE SCHEMA/TABLE (50+ DDL) : valider
+  // avant toute exécution, même si le slug est déjà contrôlé en amont.
+  assertValidSchemaName(schemaName)
   const q = (sql: string) => pool.query(sql)
   const s = `"${schemaName}"`
 

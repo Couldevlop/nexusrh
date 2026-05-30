@@ -4,6 +4,7 @@ import { config } from '../config.js'
 import { platformSchema, tenants, platformUsers, tenantInvitations } from './schema/platform.js'
 import { legalArticles } from './schema/droit-ci.js'
 import { createTenantSchema } from './schema/tenant.js'
+import { assertValidSchemaName } from '../utils/schema-name.js'
 import type { FastifyRequest } from 'fastify'
 
 // ── Pool global ───────────────────────────────────────────────────────────────
@@ -46,5 +47,8 @@ export function getTenantSchemaForRequest(request: FastifyRequest) {
 
 // ── SET search_path pour requête raw ─────────────────────────────────────────
 export async function setSearchPath(schemaName: string): Promise<void> {
+  // OWASP A03 — le nom de schéma est interpolé (non paramétrable en SQL) :
+  // whitelist stricte obligatoire avant exécution.
+  assertValidSchemaName(schemaName)
   await pool.query(`SET search_path = "${schemaName}", public`)
 }
