@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CreditCard, Calendar,
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
-  Calculator, ClipboardCheck, X, Scale, ClipboardList,
+  Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -24,12 +24,15 @@ const HR_NAV: NavItem[] = [
   { to: '/employees',     label: 'Employés',         icon: Users,      end: true },
   { to: '/contracts',     label: 'Contrats OHADA',   icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  // Workflow multi-pays : visible UNIQUEMENT pour les tenants multi-filiales.
-  // Côté RH centrale (admin/hr_manager) : suivi déclinaison + validation.
-  // Côté RAF site : leur unique point d'accès à la paie (filtré server-side
-  // sur raf_user_id = user.sub).
-  { to: '/raf/periods',   label: 'Paie multi-pays',  icon: ClipboardList, end: true,
-    roles: ['raf_site','admin','hr_manager'], requiresSubsidiaries: true },
+  // Workflow multi-filiales — visible UNIQUEMENT pour les tenants à filiales :
+  //  - RH centrale (admin/hr_manager) : pilotage complet (initier draft, décliner,
+  //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
+  //  - RAF site : son unique point d'accès (soumission de SA filiale, filtré
+  //    server-side sur raf_user_id = user.sub) → /raf/periods
+  { to: '/payroll/multi-filiales', label: 'Paie multi-filiales', icon: Layers, end: true,
+    roles: ['admin','hr_manager'], requiresSubsidiaries: true },
+  { to: '/raf/periods',   label: 'Paie de ma filiale', icon: ClipboardList, end: true,
+    roles: ['raf_site'], requiresSubsidiaries: true },
   { to: '/payroll/simulateur-its', label: 'Simulateur ITS', icon: Calculator, roles: ['admin','hr_manager','hr_officer'] },
   { to: '/absences',      label: 'Absences',         icon: Calendar,   end: true },
   { to: '/expenses-rh',   label: 'Notes de frais',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
