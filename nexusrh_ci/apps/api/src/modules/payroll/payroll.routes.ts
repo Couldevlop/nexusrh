@@ -786,19 +786,11 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         if (myEmployeeId !== slip.employee_id) {
           return reply.status(403).send({ error: 'Accès refusé à ce bulletin' })
         }
-      } else if (role === 'manager') {
-        // OWASP A01 — un manager ne voit QUE les bulletins de son équipe directe
-        // (la matrice RBAC ne lui donne aucun accès aux bulletins du tenant entier).
-        const team = await rawPool.query(
-          `SELECT 1 FROM "${schema}".employees e
-             JOIN "${schema}".employees m ON m.id = e.manager_id
-            WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
-          [slip.employee_id, request.user.email],
-        )
-        if (!team.rows[0]) {
-          return reply.status(403).send({ error: 'Accès refusé — bulletin hors de votre équipe directe' })
-        }
       } else if (!['admin','hr_manager','hr_officer','readonly'].includes(role)) {
+        // OWASP A01 (deny-by-default) — la paie est hors du périmètre du manager
+        // (matrice RBAC : manager = aucun accès paie). Seuls admin/hr_manager/
+        // hr_officer/readonly consultent les bulletins du tenant ; l'employee
+        // accède uniquement aux siens (traité plus haut).
         return reply.status(403).send({ error: 'Rôle non autorisé' })
       }
 
@@ -1096,6 +1088,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'workedDays ne peut pas dépasser workingDaysMonth' })
       }
 
+      // OWASP A01 (deny-by-default) — la simulation de paie est réservée aux rôles
+      // RH + à l'employee (sur lui-même). Le manager n'a aucun accès paie (matrice
+      // RBAC) ; readonly ne simule pas (action de préparation, pas de consultation).
+      const SIM_ALLOWED_ROLES = ['admin', 'hr_manager', 'hr_officer', 'employee']
+      if (!SIM_ALLOWED_ROLES.includes(role)) {
+        return reply.status(403).send({ error: 'Rôle non autorisé pour la simulation de paie' })
+      }
+
       // OWASP A01 : RBAC sur le target employee_id
       if (body.employee_id) {
         if (role === 'employee') {
@@ -1104,24 +1104,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           if (myId && myId !== body.employee_id) {
             return reply.status(403).send({ error: 'Vous ne pouvez simuler que sur votre propre profil' })
           }
-        } else if (role === 'manager') {
-          // Manager doit être manager direct de l'employé cible
-          const r = await rawPool.query<{ id: string }>(
-            `SELECT e.id FROM "${schema}".employees e
-               JOIN "${schema}".employees m ON m.id = e.manager_id
-              WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
-            [body.employee_id, request.user.email],
-          )
-          if (r.rows.length === 0) {
-            return reply.status(403).send({ error: 'Vous ne pouvez simuler que sur votre équipe directe' })
-          }
         }
         // admin/hr_manager/hr_officer : portée tenant globale, pas de check
-      } else if (role === 'employee') {
-        // Sans employee_id, un employee simule implicitement sur lui-même : OK
-      } else if (role === 'readonly') {
-        return reply.status(403).send({ error: 'Rôle non autorisé pour la simulation' })
       }
+      // Sans employee_id, un employee simule implicitement sur lui-même : OK
 
       // Calcul via le moteur (jamais persisté)
       const ctx: PayrollContext = {
