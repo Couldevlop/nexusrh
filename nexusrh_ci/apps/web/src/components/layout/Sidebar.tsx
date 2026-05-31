@@ -17,13 +17,17 @@ interface NavItem {
   end?: boolean
   /** Si true, affiché uniquement quand tenantConfig.hasSubsidiaries === true */
   requiresSubsidiaries?: boolean
+  /** Si true, MASQUÉ quand tenantConfig.hasSubsidiaries === true. Pour un tenant
+   *  à filiales, la « Paie multi-filiales » couvre toute la paie ; l'onglet
+   *  « Paie » mono-filiale ferait doublon/confusion. */
+  hideIfSubsidiaries?: boolean
 }
 
 const HR_NAV: NavItem[] = [
   { to: '/dashboard',     label: 'Tableau de bord', icon: LayoutDashboard, end: true },
   { to: '/employees',     label: 'Employés',         icon: Users,      end: true },
   { to: '/contracts',     label: 'Contrats OHADA',   icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true },
   // Workflow multi-filiales — visible UNIQUEMENT pour les tenants à filiales :
   //  - RH centrale (admin/hr_manager) : pilotage complet (initier draft, décliner,
   //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
@@ -62,6 +66,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navItems = HR_NAV.filter(item => {
     if (item.roles && !item.roles.includes(user?.role ?? '')) return false
     if (item.requiresSubsidiaries && !hasSubsidiaries) return false
+    if (item.hideIfSubsidiaries && hasSubsidiaries) return false
     return true
   })
 

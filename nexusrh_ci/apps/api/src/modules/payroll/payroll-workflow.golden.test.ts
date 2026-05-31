@@ -220,3 +220,175 @@ describe('Workflow paie multi-pays end-to-end (Palier 3)', () => {
     expect(JSON.parse(res.body).error).toContain('stub')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOLDEN — « Décliner aux filiales » : initiation + erreurs personnalisées
+//
+// Bug réel rapporté : après « Initier le brouillon », le clic « Décliner » renvoie
+// « Erreur serveur » (message générique, non actionnable). Cause racine : sur un
+// tenant dont la contrainte d'unicité paie n'a pas été migrée, l'INSERT de la
+// période fille (même mois que le parent) viole UNIQUE(month) → Postgres 23505 →
+// catch générique. Ces tests verrouillent : (1) le succès de l'initiation,
+// (2) le succès de la déclinaison, (3) que CHAQUE échec renvoie un message FR
+// actionnable et le bon statut HTTP, jamais « Erreur serveur ».
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Workflow paie multi-sites — initiation + déclinaison (golden)', () => {
+  beforeEach(() => queryMock.mockReset())
+
+  it('Initiation : crée la période parente draft_central (admin)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: true }] })                              // assertMultiCountryTenant
+      .mockResolvedValueOnce({ rows: [{ id: PARENT_ID, month: '2025-02', status: 'draft_central' }] }) // INSERT parent
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: '/payroll-workflow/periods',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { month: '2025-02' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).data.status).toBe('draft_central')
+  })
+
+  it('Initiation refusée si le tenant n\'a pas activé les filiales (400 explicite)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ has_subsidiaries: false }] }) // assertMultiCountryTenant
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: '/payroll-workflow/periods',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { month: '2025-02' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).not.toBe('Erreur serveur')
+  })
+
+  it('Déclinaison OK : 2 filiales actives → 2 périodes filles sent_to_sites (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'draft_central' }] }) // SELECT parent
+      .mockResolvedValueOnce({ rows: [
+        { id: LE_CI, raf_user_id: RAF_CI, legislation_pack_code: 'CIV-2024', country_code: 'CIV', name: 'Filiale CI' },
+      ] })                                                                              // SELECT legal_entities
+      .mockResolvedValueOnce({ rows: [{ id: CHILD_CI, legal_entity_id: LE_CI, status: 'sent_to_sites' }] }) // INSERT child
+      .mockResolvedValueOnce({ rows: [] })  // UPDATE parent status
+      .mockResolvedValueOnce({ rows: [] })  // audit_log
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body)
+    expect(body.data.sites).toHaveLength(1)
+  })
+
+  it('Déclinaison — violation d\'unicité (23505) → 409 personnalisé, PAS « Erreur serveur »', async () => {
+    const e = new Error('duplicate key value violates unique constraint') as Error & { code: string }
+    e.code = '23505'
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'draft_central' }] }) // SELECT parent
+      .mockResolvedValueOnce({ rows: [                                                  // SELECT legal_entities
+        { id: LE_CI, raf_user_id: RAF_CI, legislation_pack_code: 'CIV-2024', country_code: 'CIV', name: 'Filiale CI' },
+      ] })
+      .mockRejectedValueOnce(e)                                                          // INSERT child → conflit
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(409)
+    const body = JSON.parse(res.body)
+    expect(body.error).not.toBe('Erreur serveur')
+    expect(body.error.toLowerCase()).toContain('doublon')
+  })
+
+  it('Déclinaison — schéma pas à jour (42703 undefined_column) → 500 personnalisé « schéma »', async () => {
+    const e = new Error('column "legal_entity_id" does not exist') as Error & { code: string }
+    e.code = '42703'
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'draft_central' }] })
+      .mockResolvedValueOnce({ rows: [
+        { id: LE_CI, raf_user_id: RAF_CI, legislation_pack_code: 'CIV-2024', country_code: 'CIV', name: 'Filiale CI' },
+      ] })
+      .mockRejectedValueOnce(e)
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(500)
+    const body = JSON.parse(res.body)
+    expect(body.error).not.toBe('Erreur serveur')
+    expect(body.error.toLowerCase()).toContain('schéma')
+  })
+
+  it('Déclinaison — aucune filiale active → 400 actionnable (renvoie vers Paramètres)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'draft_central' }] }) // SELECT parent
+      .mockResolvedValueOnce({ rows: [] })                                              // SELECT legal_entities (vide)
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(400)
+    const body = JSON.parse(res.body)
+    expect(body.error).not.toBe('Erreur serveur')
+    expect(body.error).toContain('Paramètres')
+  })
+
+  it('Déclinaison — filiale sans RAF → 400 nominatif (nom de la filiale)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'draft_central' }] })
+      .mockResolvedValueOnce({ rows: [
+        { id: LE_SN, raf_user_id: null, legislation_pack_code: 'CIV-2024', country_code: 'CIV', name: 'Filiale Bouaké' },
+      ] })
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(400)
+    const body = JSON.parse(res.body)
+    expect(body.error).not.toBe('Erreur serveur')
+    expect(body.error).toContain('Filiale Bouaké')
+  })
+
+  it('Déclinaison — période déjà déclinée (status≠draft_central) → 409 explicite', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ month: '2025-02', status: 'sent_to_sites' }] })
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(409)
+    const body = JSON.parse(res.body)
+    expect(body.error).not.toBe('Erreur serveur')
+    expect(body.error).toContain('draft_central')
+  })
+
+  it('Déclinaison — période parente inexistante → 404 explicite', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT parent → introuvable
+
+    const token = tokenFor(app, 'admin', 'hr-central')
+    const res = await app.inject({
+      method: 'POST', url: `/payroll-workflow/periods/${PARENT_ID}/send-to-sites`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(404)
+    expect(JSON.parse(res.body).error).not.toBe('Erreur serveur')
+  })
+})

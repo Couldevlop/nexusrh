@@ -51,6 +51,44 @@ async function auditWorkflow(opts: {
   }
 }
 
+/**
+ * Traduit une erreur (souvent Postgres) en message FR personnalisé + statut HTTP.
+ * OWASP A10 : on mappe les codes connus vers des messages ACTIONNABLES pour le RH
+ * sans jamais exposer le détail technique interne. Remplace les « Erreur serveur »
+ * génériques par une explication utile (ce qui s'est passé + quoi faire).
+ */
+function describeWorkflowError(err: unknown): { status: number; error: string } {
+  const code = (err as { code?: string } | null)?.code
+  switch (code) {
+    case '23505': // unique_violation — ex : déclinaison déjà faite, doublon de période
+      return {
+        status: 409,
+        error: 'Cette opération a déjà été effectuée pour ce mois (doublon détecté). '
+          + 'Rechargez la page pour voir l\'état à jour de la paie.',
+      }
+    case '23503': // foreign_key_violation — filiale/RAF référencé inexistant
+      return {
+        status: 400,
+        error: 'Référence invalide : une filiale ou un responsable (RAF) est introuvable. '
+          + 'Vérifiez la configuration des filiales dans Paramètres.',
+      }
+    case '42P10': // ON CONFLICT sans index correspondant
+    case '42P01': // undefined_table
+    case '42703': // undefined_column
+      return {
+        status: 500,
+        error: 'Le schéma de ce tenant n\'est pas encore à jour pour la paie multi-filiales. '
+          + 'Réessayez dans un instant ; si le problème persiste, contactez le support.',
+      }
+    default:
+      return {
+        status: 500,
+        error: 'Une erreur est survenue lors de l\'opération de paie multi-filiales. '
+          + 'Réessayez ; si le problème persiste, contactez le support.',
+      }
+  }
+}
+
 type PeriodStatus =
   | 'draft_central'
   | 'sent_to_sites'
@@ -104,8 +142,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query(sql, params)
         return reply.send({ data: res.rows })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
@@ -140,8 +179,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         }
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
@@ -201,7 +241,10 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
         if (sites.length === 0) {
-          return reply.status(400).send({ error: 'Aucune filiale active à scoper' })
+          return reply.status(400).send({
+            error: 'Aucune filiale active à scoper. Créez au moins une filiale '
+              + '(avec un RAF assigné) dans Paramètres › Filiales avant de décliner la paie.',
+          })
         }
         // Validation packs (qu'on vienne du body OU de l'auto-population)
         for (const s of sites) {
@@ -239,8 +282,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
 
         return reply.status(201).send({ data: { parent: id, sites: created } })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
@@ -385,8 +429,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           summary: { inserted, totalGross, totalNet, totalCnps, totalIts },
         })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
@@ -462,8 +507,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           consolidated: { sites: children.rows.length, sumGross, sumNet, sumCnps, sumIts },
         })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
@@ -499,8 +545,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         })
         return reply.send({ data: { id, status: 'closed' } })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
       }
     },
   })
