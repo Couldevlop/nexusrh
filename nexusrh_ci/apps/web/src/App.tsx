@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'react'
 import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
 import { useAuthStore } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard } from '@/guards/RoleGuard'
+import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 const MainLayout       = lazy(() => import('@/components/layout/MainLayout'))
@@ -148,7 +149,9 @@ export default function App() {
 
             <Route path="payroll" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <PayrollPage />
+                <RedirectIfSubsidiaries>
+                  <PayrollPage />
+                </RedirectIfSubsidiaries>
               </RoleGuard>
             } />
             <Route path="payroll/multi-filiales" element={
