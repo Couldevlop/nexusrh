@@ -1,14 +1,25 @@
-import nodemailer from 'nodemailer'
+import nodemailer, { type Transporter } from 'nodemailer'
 import { config } from '../config.js'
 
-const transporter = nodemailer.createTransport({
-  host: config.smtp.host,
-  port: config.smtp.port,
-  secure: config.smtp.secure,
-  auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
-  requireTLS: config.smtp.host === 'smtp.gmail.com',
-  tls: { rejectUnauthorized: false },
-})
+// Création PARESSEUSE du transporter : on ne lit `config.smtp` qu'au premier
+// envoi réel, jamais à l'import du module. Évite tout effet de bord à
+// l'import (Clean Architecture) — un module qui importe email.ts (ex.
+// settings.routes) ne dépend plus de la présence de config.smtp au chargement,
+// ce qui casserait notamment les tests qui mockent une config partielle.
+let _transporter: Transporter | null = null
+function getTransporter(): Transporter {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: config.smtp.host,
+      port: config.smtp.port,
+      secure: config.smtp.secure,
+      auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
+      requireTLS: config.smtp.host === 'smtp.gmail.com',
+      tls: { rejectUnauthorized: false },
+    })
+  }
+  return _transporter
+}
 
 export async function sendWelcomeTenantEmail(params: {
   to: string
@@ -159,7 +170,7 @@ export async function sendWelcomeTenantEmail(params: {
 </body>
 </html>`
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: config.smtp.from,
     to,
     subject: `🎉 Votre espace NexusRH CI est prêt — ${tenantName}`,
@@ -210,7 +221,7 @@ export async function sendEmployeeWelcomeEmail(params: {
 </table>
 </body></html>`
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: config.smtp.from,
     to,
     subject: `Votre accès NexusRH CI — ${tenantName}`,
@@ -343,7 +354,7 @@ export async function sendPasswordResetEmail(params: {
 </body>
 </html>`
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: config.smtp.from,
     to,
     subject: `🔑 Réinitialisation de votre mot de passe — ${tenantName}`,
@@ -431,7 +442,7 @@ export async function sendPasswordResetLinkEmail(params: {
 </body>
 </html>`
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: config.smtp.from,
     to,
     subject: `🔑 Réinitialisez votre mot de passe NexusRH CI`,
