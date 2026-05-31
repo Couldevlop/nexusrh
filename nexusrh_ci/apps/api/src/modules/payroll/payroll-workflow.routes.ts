@@ -101,6 +101,19 @@ const VALID_STATUSES: PeriodStatus[] = [
   'validated_central', 'closed',
 ]
 
+// OWASP A03 — validation des identifiants avant usage SQL
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Libellés FR des événements du workflow (suivi transparent pour les décideurs).
+// Toute action workflow.* tracée dans l'audit_log est rendue lisible ici.
+const WORKFLOW_EVENT_LABELS: Record<string, string> = {
+  'workflow.create_draft':     'Brouillon initié',
+  'workflow.send_to_sites':    'Décliné aux filiales',
+  'workflow.submit_by_raf':    'Filiale soumise par le RAF',
+  'workflow.validate_central': 'Consolidé par la RH centrale',
+  'workflow.close':            'Paie clôturée',
+}
+
 async function assertMultiCountryTenant(
   schemaName: string,
 ): Promise<{ hasSubsidiaries: boolean }> {
@@ -177,6 +190,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         if (!res.rows[0]) {
           return reply.status(409).send({ error: 'Période parente déjà existante pour ce mois' })
         }
+        // OWASP A09 — trace l'initiation du brouillon (1re étape de la chronologie
+        // de suivi consultée par les décideurs).
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.create_draft', entity: 'pay_period', entityId: res.rows[0].id,
+          changes: { month: body.month },
+          ipAddress: request.ip,
+        })
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error({ err }, 'payroll-workflow operation failed')
@@ -546,6 +567,106 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ data: { id, status: 'closed' } })
       } catch (err) {
         fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── GET /payroll-workflow/periods/:id/timeline ────────────────────────────
+  // Suivi TRANSPARENT de l'évolution du draft pour les responsables : chronologie
+  // nominative (qui a fait quoi, quand, sur quelle filiale) reconstituée depuis
+  // l'audit_log du parent + de ses filiales. Lecture seule.
+  // RBAC (OWASP A01) : admin/hr_manager/readonly voient tout le draft ; raf_site
+  // n'y accède que s'il pilote au moins une filiale de ce draft.
+  fastify.get('/periods/:id/timeline', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'raf_site', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'Identifiant de période invalide' })
+      }
+      try {
+        const parentRes = await pool.query<{
+          id: string; month: string; status: string; parent_period_id: string | null
+        }>(
+          `SELECT id, month, status, parent_period_id
+             FROM "${schema}".pay_periods WHERE id = $1`,
+          [id],
+        )
+        const parent = parentRes.rows[0]
+        if (!parent || parent.parent_period_id) {
+          return reply.status(404).send({ error: 'Draft de paie introuvable (période parente attendue)' })
+        }
+
+        const childrenRes = await pool.query<{
+          id: string; legal_entity_id: string | null
+          raf_user_id: string | null; legal_entity_name: string | null
+        }>(
+          `SELECT pp.id, pp.legal_entity_id, pp.raf_user_id, le.name AS legal_entity_name
+             FROM "${schema}".pay_periods pp
+             LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id
+            WHERE pp.parent_period_id = $1`,
+          [id],
+        )
+        const children = childrenRes.rows
+
+        // OWASP A01 — un RAF ne peut suivre que les drafts qui le concernent
+        if (request.user.role === 'raf_site') {
+          const owns = children.some(c => c.raf_user_id === request.user.sub)
+          if (!owns) {
+            return reply.status(403).send({
+              error: 'Accès refusé : vous ne pilotez aucune filiale de ce draft.',
+            })
+          }
+        }
+
+        const leById = new Map(children.map(c => [c.id, c.legal_entity_name]))
+        const periodIds = [parent.id, ...children.map(c => c.id)]
+
+        const eventsRes = await pool.query<{
+          action: string; created_at: string; changes: Record<string, unknown> | null
+          entity_id: string; first_name: string | null; last_name: string | null
+        }>(
+          `SELECT a.action, a.created_at, a.changes, a.entity_id,
+                  u.first_name, u.last_name
+             FROM "${schema}".audit_log a
+             LEFT JOIN "${schema}".users u ON u.id = a.user_id
+            WHERE a.entity = 'pay_period'
+              AND a.entity_id = ANY($1::uuid[])
+              AND a.action LIKE 'workflow.%'
+            ORDER BY a.created_at ASC`,
+          [periodIds],
+        ).catch(() => ({ rows: [] as Array<{
+          action: string; created_at: string; changes: Record<string, unknown> | null
+          entity_id: string; first_name: string | null; last_name: string | null
+        }> }))
+
+        const events = eventsRes.rows.map((e) => {
+          const actorName = [e.first_name, e.last_name].filter(Boolean).join(' ').trim() || 'Système'
+          const ch = (e.changes && typeof e.changes === 'object') ? e.changes : {}
+          const filialeFromChanges = typeof ch.legalEntityName === 'string' ? ch.legalEntityName : null
+          const filiale = filialeFromChanges ?? leById.get(e.entity_id) ?? null
+          return {
+            action: e.action,
+            label: WORKFLOW_EVENT_LABELS[e.action] ?? e.action,
+            actorName,
+            at: e.created_at,
+            filiale,
+            detail: ch,
+          }
+        })
+
+        return reply.send({
+          data: {
+            period: { id: parent.id, month: parent.month, status: parent.status },
+            totalSites: children.length,
+            events,
+          },
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow timeline failed')
         const { status, error } = describeWorkflowError(err)
         return reply.status(status).send({ error })
       }

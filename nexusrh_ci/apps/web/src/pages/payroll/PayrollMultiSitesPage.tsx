@@ -4,6 +4,7 @@ import { api, formatFCFA, formatMonth } from '@/lib/api'
 import {
   Building2, Send, Loader2, CheckCircle2, Lock, Layers,
   PlayCircle, ShieldCheck, ChevronRight, AlertTriangle,
+  History, ChevronDown, Clock, User,
 } from 'lucide-react'
 
 /**
@@ -72,6 +73,8 @@ export default function PayrollMultiSitesPage() {
   const qc = useQueryClient()
   const [month, setMonth] = useState(currentMonthValue())
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Suivi transparent : id du draft dont la chronologie est dépliée (null = aucune)
+  const [openTimelineId, setOpenTimelineId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<{ data: WfPeriod[] }>({
     queryKey: ['wf-periods'],
@@ -181,6 +184,16 @@ export default function PayrollMultiSitesPage() {
                   <StatusBadge status={parent.status} />
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Suivi transparent : chronologie nominative du draft (lecture seule) */}
+                  <button
+                    onClick={() => setOpenTimelineId(prev => prev === parent.id ? null : parent.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50"
+                    title="Voir l'évolution du draft (qui a fait quoi, quand)"
+                  >
+                    <History className="h-3.5 w-3.5" />
+                    Suivi
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTimelineId === parent.id ? 'rotate-180' : ''}`} />
+                  </button>
                   {parent.status === 'draft_central' && (
                     <ActionBtn
                       onClick={() => sendToSites.mutate(parent.id)}
@@ -302,6 +315,11 @@ export default function PayrollMultiSitesPage() {
                   </tfoot>
                 )}
               </table>
+
+              {/* Suivi transparent : chronologie nominative dépliable */}
+              {openTimelineId === parent.id && (
+                <DraftTimeline periodId={parent.id} />
+              )}
             </div>
           )
         })}
@@ -335,5 +353,107 @@ function ActionBtn({
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
       {label}
     </button>
+  )
+}
+
+// ── Suivi transparent du draft : chronologie nominative (lecture seule) ───────
+interface WfEvent {
+  action: string
+  label: string
+  actorName: string
+  at: string
+  filiale: string | null
+  detail: Record<string, unknown>
+}
+
+const EVENT_ICON: Record<string, React.ElementType> = {
+  'workflow.create_draft':     PlayCircle,
+  'workflow.send_to_sites':    Send,
+  'workflow.submit_by_raf':    Building2,
+  'workflow.validate_central': ShieldCheck,
+  'workflow.close':            Lock,
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(d)
+}
+
+function eventDetail(ev: WfEvent): string | null {
+  const d = ev.detail ?? {}
+  const parts: string[] = []
+  if (typeof d.sitesCount === 'number') parts.push(`${d.sitesCount} filiale${d.sitesCount > 1 ? 's' : ''}`)
+  if (typeof d.inserted === 'number') parts.push(`${d.inserted} bulletin${d.inserted > 1 ? 's' : ''}`)
+  if (typeof d.totalGross === 'number') parts.push(`brut ${formatFCFA(d.totalGross)}`)
+  if (typeof d.sumGross === 'number') parts.push(`brut consolidé ${formatFCFA(d.sumGross)}`)
+  if (typeof d.sumNet === 'number') parts.push(`net ${formatFCFA(d.sumNet)}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+function DraftTimeline({ periodId }: { periodId: string }) {
+  const { data, isLoading, isError } = useQuery<{
+    data: { period: { month: string; status: string }; totalSites: number; events: WfEvent[] }
+  }>({
+    queryKey: ['wf-timeline', periodId],
+    queryFn: () => api.get(`/payroll-workflow/periods/${periodId}/timeline`).then(r => r.data),
+  })
+
+  return (
+    <div className="border-t border-border bg-muted/20 px-4 py-3">
+      <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <History className="h-3.5 w-3.5" /> Évolution du draft
+      </h3>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Chargement de la chronologie…
+        </div>
+      )}
+
+      {isError && (
+        <p className="py-2 text-sm text-destructive">Impossible de charger la chronologie.</p>
+      )}
+
+      {!isLoading && !isError && data && data.data.events.length === 0 && (
+        <p className="py-2 text-sm text-muted-foreground">
+          Aucun événement enregistré pour ce draft.
+        </p>
+      )}
+
+      {!isLoading && !isError && data && data.data.events.length > 0 && (
+        <ol className="relative space-y-3 pl-5">
+          {/* ligne verticale */}
+          <span className="absolute left-1.5 top-1 bottom-1 w-px bg-border" aria-hidden />
+          {data.data.events.map((ev, i) => {
+            const Icon = EVENT_ICON[ev.action] ?? Clock
+            const detail = eventDetail(ev)
+            return (
+              <li key={i} className="relative">
+                <span className="absolute -left-[18px] top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border bg-card">
+                  <Icon className="h-2 w-2 text-primary" />
+                </span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="text-sm font-medium text-foreground">{ev.label}</span>
+                  {ev.filiale && (
+                    <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                      <Building2 className="h-2.5 w-2.5" /> {ev.filiale}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1"><User className="h-3 w-3" /> {ev.actorName}</span>
+                  <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {formatDateTime(ev.at)}</span>
+                  {detail && <span className="text-muted-foreground/80">{detail}</span>}
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </div>
   )
 }
