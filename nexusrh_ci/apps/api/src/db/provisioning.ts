@@ -148,6 +148,7 @@ export async function createPlatformSchema(): Promise<void> {
       is_active     boolean NOT NULL DEFAULT true,
       mfa_enabled   boolean NOT NULL DEFAULT false,
       mfa_secret    varchar(255),
+      password_changed_at timestamptz NOT NULL DEFAULT now(),
       created_at    timestamptz NOT NULL DEFAULT now(),
       updated_at    timestamptz NOT NULL DEFAULT now()
     )
@@ -909,6 +910,22 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
+
+  // ── Cycle de vie du mot de passe (OWASP A07) ─────────────────────────────────
+  // ⚠️ Doit rester aligné avec ensureTenantSchema (utils/schema-migrations.ts).
+  // CRITIQUE : la route /auth/login lit users.password_changed_at MAIS ne déclenche
+  // PAS ensureTenantSchema (préfixe /auth/*, pas une route module tenant). Sans
+  // cette colonne ici, un tenant fraîchement seedé renverrait un 503 au login.
+  // password_changed_at backfill = now() (NOT NULL DEFAULT) → pas d'expiration
+  // immédiate des comptes hérités. password_history = blacklist anti-réutilisation.
+  await q(`ALTER TABLE ${s}.users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.password_history (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       uuid NOT NULL,
+    password_hash varchar(255) NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_pwd_hist_user_idx" ON ${s}.password_history(user_id, created_at DESC)`)
 }
 
 /**

@@ -6,6 +6,13 @@ import { config } from '../../config.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
+import {
+  getSecurityPolicy,
+  isPasswordExpired,
+  isPasswordReused,
+  effectiveTenantMfaRequired,
+} from '../../services/security-policy.service.js'
+import { isPasswordBreached } from '../../services/breach-check.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -78,11 +85,13 @@ interface TenantCandidate {
     has_subsidiaries: boolean
     payroll_mode: string
     default_country_code: string
+    mfa_required: boolean
   }
   user: {
     id: string; email: string; password_hash: string; role: string
     first_name: string; last_name: string; mfa_enabled: boolean
     is_active: boolean; last_login_at: string | null
+    password_changed_at: string | null
   }
 }
 
@@ -96,8 +105,10 @@ async function findTenantAndUser(
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
     has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
+    mfa_required: boolean
   }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city,
-             has_subsidiaries, payroll_mode, default_country_code
+             has_subsidiaries, payroll_mode, default_country_code,
+             COALESCE(mfa_required, false) AS mfa_required
       FROM platform.tenants WHERE status IN ('active', 'trial')`)
 
   const candidates: TenantCandidate[] = []
@@ -108,9 +119,10 @@ async function findTenantAndUser(
       const userRes = await pool.query<{
         id: string; email: string; password_hash: string; role: string
         first_name: string; last_name: string; mfa_enabled: boolean; is_active: boolean
-        last_login_at: string | null
+        last_login_at: string | null; password_changed_at: string | null
       }>(
-        `SELECT id, email, password_hash, role, first_name, last_name, mfa_enabled, is_active, last_login_at
+        `SELECT id, email, password_hash, role, first_name, last_name, mfa_enabled, is_active,
+                last_login_at, password_changed_at
          FROM "${tenant.schema_name}".users WHERE email = $1 LIMIT 1`,
         [email],
       )
@@ -156,12 +168,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const ua   = request.headers['user-agent']?.slice(0, 500) ?? null
 
       try {
+        // OWASP A07 — politique de sécurité paramétrable (super_admin). Lue une
+        // fois par login ; ne lève jamais (défauts si table/colonnes absentes).
+        const policy = await getSecurityPolicy(pool)
+        const now = new Date()
+
         // 1. Vérifier si c'est un super_admin (platform)
         const platformRes = await pool.query<{
           id: string; email: string; password_hash: string; role: string
           first_name: string; last_name: string; mfa_enabled: boolean; is_active: boolean
+          password_changed_at: string | null
         }>(
-          `SELECT id, email, password_hash, role, first_name, last_name, mfa_enabled, is_active
+          `SELECT id, email, password_hash, role, first_name, last_name, mfa_enabled, is_active,
+                  password_changed_at
            FROM platform.platform_users WHERE email = $1 LIMIT 1`,
           [email],
         )
@@ -185,12 +204,25 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               })
             }
 
-            // OWASP A07 — MFA obligatoire super_admin : si le MFA n'est pas
-            // encore activé, on émet un token RESTREINT (mfaPending) qui ne donne
-            // accès qu'au parcours d'activation MFA (cf. plugin auth). Évite le
-            // verrouillage du compte tout en imposant l'activation avant tout
-            // accès plateforme.
-            const mfaPending = !platformUser.mfa_enabled
+            // OWASP A07 — MFA obligatoire super_admin UNIQUEMENT si la politique
+            // l'exige (paramétrable, désactivée par défaut). Si exigé sans MFA
+            // actif, on émet un token RESTREINT (mfaPending) limité au parcours
+            // d'activation MFA. Désactivée par défaut → accès normal (débloque la
+            // création de tenant).
+            const mfaPending = policy.mfaRequiredSuperAdmin && !platformUser.mfa_enabled
+
+            // OWASP A07 — mot de passe expiré (durée de vie) ou présent dans une
+            // fuite (vérifié si internet) → on force le changement via un token
+            // restreint à /auth/change-password. Pas de verrouillage du compte.
+            // Sauté si mfaPending (parcours MFA prioritaire).
+            const expired = !mfaPending &&
+              isPasswordExpired(platformUser.password_changed_at, policy.passwordMaxAgeDays, now)
+            let breached = false
+            if (!mfaPending && policy.breachCheckEnabled) {
+              breached = (await isPasswordBreached(password)) === true
+            }
+            const pwdResetRequired = !mfaPending && (expired || breached)
+
             const token = fastify.jwt.sign({
               sub:        platformUser.id,
               tenantId:   null,
@@ -201,12 +233,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               lastName:   platformUser.last_name,
               employeeId: null,
               ...(mfaPending ? { mfaPending: true } : {}),
+              ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
             })
             await pool.query(
               `UPDATE platform.platform_users SET updated_at = now() WHERE id = $1`,
               [platformUser.id],
             )
-            auditLogAuth('platform', platformUser.id, 'auth.login.success', { scope: 'platform', mfaSetupRequired: mfaPending }, ip, ua)
+            auditLogAuth('platform', platformUser.id, 'auth.login.success',
+              { scope: 'platform', mfaSetupRequired: mfaPending, passwordExpired: expired, passwordBreached: breached }, ip, ua)
             // OWASP A02 — pose le JWT en cookie httpOnly (mode SPA). Le client
             // browser n'a plus à manipuler le token en JS. Les clients API
             // peuvent toujours utiliser le `token` renvoyé en JSON dans Authorization.
@@ -216,6 +250,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               // Le frontend doit forcer l'activation MFA quand ce flag est vrai
               // (le token n'autorise rien d'autre côté serveur).
               mfaSetupRequired: mfaPending,
+              // Forcer le changement de mot de passe (expiré/compromis).
+              must_change_password: pwdResetRequired,
+              passwordExpired: expired,
+              passwordBreached: breached,
               user: {
                 sub:        platformUser.id,
                 tenantId:   null,
@@ -227,7 +265,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 employeeId: null,
               },
               tenantConfig: null,
-              redirectTo: '/platform/dashboard',
+              redirectTo: pwdResetRequired ? '/change-password' : '/platform/dashboard',
             })
           }
         } else if (!platformUser) {
@@ -265,6 +303,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           })
         }
 
+        // OWASP A07 — MFA obligatoire pour les employés du tenant : politique
+        // globale (super_admin), durcissable par le tenant (mfa_required), jamais
+        // assouplissable. Sans MFA actif → token restreint au parcours
+        // d'activation MFA (le user a déjà passé le contrôle mot de passe).
+        const tenantMfaPending = effectiveTenantMfaRequired(policy, tenant.mfa_required)
+
         // Trouver l'employeeId si lié
         let employeeId: string | null = null
         try {
@@ -277,6 +321,16 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           // pas d'employé lié
         }
 
+        // OWASP A07 — expiration / fuite → forcer le changement (token restreint
+        // à /auth/change-password). Sauté si parcours MFA prioritaire.
+        const expired = !tenantMfaPending &&
+          isPasswordExpired(user.password_changed_at, policy.passwordMaxAgeDays, now)
+        let breached = false
+        if (!tenantMfaPending && policy.breachCheckEnabled) {
+          breached = (await isPasswordBreached(password)) === true
+        }
+        const pwdResetRequired = !tenantMfaPending && (expired || breached)
+
         const token = fastify.jwt.sign({
           sub:        user.id,
           tenantId:   tenant.id,
@@ -286,19 +340,24 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           firstName:  user.first_name,
           lastName:   user.last_name,
           employeeId,
+          ...(tenantMfaPending ? { mfaPending: true } : {}),
+          ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
         })
 
-        const mustChangePassword = !user.last_login_at
+        const mustChangePassword = !user.last_login_at || pwdResetRequired
 
         await pool.query(
           `UPDATE "${tenant.schema_name}".users SET last_login_at = now() WHERE id = $1`,
           [user.id],
         )
-        const redirectTo = user.role === 'employee' ? '/mon-espace' : '/dashboard'
+        const redirectTo = pwdResetRequired
+          ? '/change-password'
+          : (user.role === 'employee' ? '/mon-espace' : '/dashboard')
 
         auditLogAuth(
           tenant.schema_name, user.id, 'auth.login.success',
-          { role: user.role, mustChangePassword, hasEmployeeLink: !!employeeId },
+          { role: user.role, mustChangePassword, hasEmployeeLink: !!employeeId,
+            mfaSetupRequired: tenantMfaPending, passwordExpired: expired, passwordBreached: breached },
           ip, ua,
         )
 
@@ -308,6 +367,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({
           token,
           must_change_password: mustChangePassword,
+          mfaSetupRequired: tenantMfaPending,
+          passwordExpired: expired,
+          passwordBreached: breached,
           user: {
             sub:        user.id,
             tenantId:   tenant.id,
@@ -473,6 +535,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const table = user.schemaName === 'platform'
         ? 'platform.platform_users'
         : `"${user.schemaName}".users`
+      const historyTable = user.schemaName === 'platform'
+        ? 'platform.password_history'
+        : `"${user.schemaName}".password_history`
+
+      // OWASP A07 — politique mot de passe (historique anti-réutilisation +
+      // refus d'un nouveau mot de passe figurant dans une fuite). Ne lève jamais.
+      const policy = await getSecurityPolicy(pool)
 
       const res = await pool.query<{ password_hash: string }>(
         `SELECT password_hash FROM ${table} WHERE id = $1 LIMIT 1`,
@@ -492,11 +561,67 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Ancien mot de passe incorrect' })
       }
 
+      // OWASP A07 — historique anti-réutilisation : le nouveau mot de passe ne
+      // doit correspondre ni à l'actuel ni aux N précédents. SELECT défensif
+      // (table absente sur un schéma non migré → pas de blocage, dégradation
+      // gracieuse). On inclut le hash courant pour interdire de re-poser le même.
+      if (policy.passwordHistoryCount > 0) {
+        const histRes = await pool.query<{ password_hash: string }>(
+          `SELECT password_hash FROM ${historyTable}
+           WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+          [user.sub, policy.passwordHistoryCount],
+        ).catch(() => ({ rows: [] as Array<{ password_hash: string }> }))
+        const previousHashes = [record.password_hash, ...histRes.rows.map((r) => r.password_hash)]
+        if (await isPasswordReused(newPassword, previousHashes)) {
+          auditLogAuth(
+            user.schemaName, user.sub, 'auth.password.reuse_blocked', {},
+            request.ip ?? null, request.headers['user-agent']?.slice(0, 500) ?? null,
+          )
+          return reply.status(400).send({
+            error: `Mot de passe déjà utilisé récemment — choisissez-en un différent des ${policy.passwordHistoryCount} derniers`,
+          })
+        }
+      }
+
+      // OWASP A07 — refuser un nouveau mot de passe présent dans une fuite connue
+      // (si internet). `null` = vérif impossible → on n'empêche pas (non bloquant).
+      if (policy.breachCheckEnabled) {
+        const breached = await isPasswordBreached(newPassword)
+        if (breached === true) {
+          auditLogAuth(
+            user.schemaName, user.sub, 'auth.password.breach_blocked', {},
+            request.ip ?? null, request.headers['user-agent']?.slice(0, 500) ?? null,
+          )
+          return reply.status(400).send({
+            error: 'Ce mot de passe figure dans une fuite de données connue — choisissez-en un autre',
+          })
+        }
+      }
+
       const newHash = await bcrypt.hash(newPassword, 12)
+      // OWASP A07 — met à jour le hash ET la date de changement (réinitialise le
+      // compteur de durée de vie). Le token restreint pwdResetRequired devient
+      // caduc à la prochaine connexion / au prochain /auth/refresh.
       await pool.query(
-        `UPDATE ${table} SET password_hash = $1, updated_at = now() WHERE id = $2`,
+        `UPDATE ${table} SET password_hash = $1, password_changed_at = now(), updated_at = now() WHERE id = $2`,
         [newHash, user.sub],
       )
+
+      // OWASP A07 — archive l'ANCIEN hash dans l'historique puis purge au-delà de
+      // la fenêtre conservée. Non bloquant (table absente → on ignore).
+      if (policy.passwordHistoryCount > 0) {
+        await pool.query(
+          `INSERT INTO ${historyTable} (user_id, password_hash) VALUES ($1, $2)`,
+          [user.sub, record.password_hash],
+        ).catch(() => undefined)
+        await pool.query(
+          `DELETE FROM ${historyTable}
+           WHERE user_id = $1 AND id NOT IN (
+             SELECT id FROM ${historyTable} WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
+           )`,
+          [user.sub, policy.passwordHistoryCount],
+        ).catch(() => undefined)
+      }
 
       auditLogAuth(
         user.schemaName, user.sub, 'auth.password.changed',

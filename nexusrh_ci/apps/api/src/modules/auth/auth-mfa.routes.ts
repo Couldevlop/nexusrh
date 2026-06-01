@@ -459,8 +459,10 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       if (!match) return reply.status(404).send({ error: 'Token invalide' })
 
       const newHash = await bcrypt.hash(newPassword, 12)
-      // Mise à jour + invalidation atomique du token
-      await pool.query(`UPDATE ${match.userTable} SET password_hash = $1, updated_at = now() WHERE id = $2`,
+      // Mise à jour + invalidation atomique du token. password_changed_at est
+      // réinitialisé (OWASP A07 — repart pour une durée de vie complète après
+      // réinitialisation par email).
+      await pool.query(`UPDATE ${match.userTable} SET password_hash = $1, password_changed_at = now(), updated_at = now() WHERE id = $2`,
         [newHash, match.userId])
       await pool.query(`UPDATE ${match.table} SET used_at = now() WHERE id = $1`, [match.tokenId])
 

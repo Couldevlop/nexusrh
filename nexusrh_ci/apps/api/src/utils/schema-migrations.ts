@@ -173,6 +173,18 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at  timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_mbc_user_idx" ON "${schemaName}".mfa_backup_codes(user_id)`,
+
+    // ── Cycle de vie du mot de passe (durée de vie + historique anti-réutilisation) ──
+    // password_changed_at : backfill = now() sur les lignes existantes (NOT NULL
+    // DEFAULT now()) pour ne PAS expirer immédiatement les comptes hérités.
+    `ALTER TABLE "${schemaName}".users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".password_history (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       uuid NOT NULL,
+      password_hash varchar(255) NOT NULL,
+      created_at    timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_pwd_hist_user_idx" ON "${schemaName}".password_history(user_id, created_at DESC)`,
   ]
 
   for (const sql of alters) {
@@ -211,6 +223,33 @@ export async function ensurePlatformSchema(): Promise<void> {
       created_at  timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS platform_mbc_user_idx ON platform.mfa_backup_codes(user_id)`,
+
+    // ── Politique de sécurité paramétrable (super_admin) ──────────────────────
+    // La table platform_settings peut déjà exister (créée en lazy par les routes
+    // platform). On garantit ici la présence des colonnes de politique sécurité.
+    `CREATE TABLE IF NOT EXISTS platform.platform_settings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS mfa_required_super_admin boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS mfa_required_tenant_users boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS password_max_age_days int NOT NULL DEFAULT 30`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS password_history_count int NOT NULL DEFAULT 5`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS breach_check_enabled boolean NOT NULL DEFAULT true`,
+
+    // ── Surcharge MFA durcissante par tenant (ne peut qu'imposer le MFA) ──────
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT false`,
+
+    // ── Cycle de vie du mot de passe côté super_admin ─────────────────────────
+    `ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
+    `CREATE TABLE IF NOT EXISTS platform.password_history (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       uuid NOT NULL,
+      password_hash varchar(255) NOT NULL,
+      created_at    timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_pwd_hist_user_idx ON platform.password_history(user_id, created_at DESC)`,
   ]
   for (const sql of alters) {
     await pool.query(sql).catch(() => undefined)

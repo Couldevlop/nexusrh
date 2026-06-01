@@ -22,6 +22,10 @@ export interface JwtSignPayload {
   /** OWASP A07 — super_admin connecté sans MFA activé : token restreint au
    *  parcours d'activation MFA tant que ce flag est présent. */
   mfaPending?: boolean
+  /** OWASP A07 — mot de passe expiré (durée de vie dépassée) ou trouvé dans une
+   *  fuite : token restreint au changement de mot de passe tant que ce flag est
+   *  présent. L'utilisateur n'est pas verrouillé, il DOIT renouveler son mdp. */
+  pwdResetRequired?: boolean
 }
 
 export interface JwtPayload extends JwtSignPayload {
@@ -87,6 +91,19 @@ export default fp(async (fastify) => {
         path === '/auth/me' || path === '/auth/logout' || path === '/auth/csrf-token'
       if (!allowed) {
         reply.status(403).send({ error: 'MFA obligatoire — activez le MFA pour accéder à la plateforme' })
+        return
+      }
+    }
+    // OWASP A07 — mot de passe expiré/compromis : token restreint au changement
+    // de mot de passe. Mêmes routes de service autorisées que mfaPending, plus
+    // /auth/change-password (la seule action permise pour débloquer le compte).
+    if ((request.user as { pwdResetRequired?: boolean }).pwdResetRequired === true) {
+      const path = request.url.split('?')[0] ?? ''
+      const allowed =
+        path === '/auth/change-password' ||
+        path === '/auth/me' || path === '/auth/logout' || path === '/auth/csrf-token'
+      if (!allowed) {
+        reply.status(403).send({ error: 'Mot de passe expiré ou compromis — changez votre mot de passe pour continuer' })
         return
       }
     }

@@ -23,6 +23,12 @@ interface PlatformSettings {
   ai_enabled: boolean
   legal_name: string
   legal_address: string
+  // ── Politique de sécurité paramétrable (OWASP A07) ──
+  mfa_required_super_admin: boolean
+  mfa_required_tenant_users: boolean
+  password_max_age_days: number
+  password_history_count: number
+  breach_check_enabled: boolean
   aiConfigured: boolean
   smtpConfigured: boolean
   version: string
@@ -488,8 +494,51 @@ export default function PlatformSettings() {
           {tab === 'security' && (
             <>
               <h2 className="font-semibold">Sécurité de la plateforme</h2>
+
+              {/* ── Politiques paramétrables (OWASP A07) ── */}
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <p className="text-sm font-semibold">Authentification à deux facteurs (MFA)</p>
+                <Toggle
+                  checked={settings.mfa_required_super_admin ?? false}
+                  onChange={v => update('mfa_required_super_admin', v)}
+                  label="Imposer le MFA aux super_admin" />
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Désactivé : les super_admin accèdent à la plateforme sans MFA (peuvent créer des tenants).
+                  Activé : le MFA doit être configuré avant tout accès.
+                </p>
+                <Toggle
+                  checked={settings.mfa_required_tenant_users ?? false}
+                  onChange={v => update('mfa_required_tenant_users', v)}
+                  label="Imposer le MFA à tous les employés des tenants" />
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Politique globale. Chaque tenant peut la <strong>durcir</strong> (jamais l'assouplir) depuis ses propres paramètres.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <p className="text-sm font-semibold">Cycle de vie des mots de passe</p>
+                <Field label="Durée de vie du mot de passe (jours)" hint="0 = pas d'expiration. Au-delà, l'utilisateur doit le changer à la connexion.">
+                  <input type="number" min={0} max={3650} className={inputCls}
+                    value={settings.password_max_age_days ?? 30}
+                    onChange={e => update('password_max_age_days', parseInt(e.target.value || '0', 10))} />
+                </Field>
+                <Field label="Historique anti-réutilisation" hint="Nombre de derniers mots de passe interdits à la réutilisation (0 = aucun).">
+                  <input type="number" min={0} max={50} className={inputCls}
+                    value={settings.password_history_count ?? 5}
+                    onChange={e => update('password_history_count', parseInt(e.target.value || '0', 10))} />
+                </Field>
+                <Toggle
+                  checked={settings.breach_check_enabled ?? true}
+                  onChange={v => update('breach_check_enabled', v)}
+                  label="Vérifier les mots de passe contre les fuites connues (HaveIBeenPwned)" />
+                <p className="text-xs text-muted-foreground -mt-2">
+                  À chaque connexion (si accès internet), le mot de passe est comparé — en k-anonymat, sans jamais quitter le serveur —
+                  aux fuites connues. S'il est compromis, le changement est imposé. Sans internet : contrôle ignoré (non bloquant).
+                </p>
+              </div>
+
               <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                <p className="text-sm font-medium">Politiques de sécurité (configurées via .env)</p>
+                <p className="text-sm font-medium">Autres mesures (configurées via .env)</p>
                 {[
                   { label: 'JWT Secret', status: 'Configuré', ok: true },
                   { label: 'JWT Expiration', status: '7 jours', ok: true },
