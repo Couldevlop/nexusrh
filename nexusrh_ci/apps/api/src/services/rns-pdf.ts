@@ -60,6 +60,16 @@ interface CoordSpec {
   bold: boolean
   maxWidth?: number
   format?: 'fcfa' | 'date'
+  /**
+   * Alignement horizontal DANS la case [x, x+maxWidth].
+   *  - 'left'   (défaut) : ancrage à gauche, x = bord gauche de la case
+   *  - 'right'  : ancrage à droite (x calculé via la largeur réelle du texte)
+   *  - 'center' : centré dans la case
+   * Les montants (format 'fcfa') sont ancrés à DROITE par défaut : c'est ce qui
+   * corrige le « décalage des chiffres » (un montant plus court ou plus long ne
+   * débordait plus de sa colonne puisqu'il est désormais collé au bord droit).
+   */
+  align?: 'left' | 'right' | 'center'
 }
 interface RnsCoords {
   employer: {
@@ -148,14 +158,35 @@ function overlayFromCoords(
       .replace(/[     ]/g, ' ')
       .trim()
     if (!value) return
+
+    const useFont = spec.bold ? fontBold : font
+    // Les montants sont ancrés à droite par défaut (corrige le décalage des
+    // chiffres dans leur colonne). Un align explicite est prioritaire.
+    const align = spec.align ?? (spec.format === 'fcfa' ? 'right' : 'left')
+
+    // Ancrage horizontal dans la case [x, x+maxWidth] : x calculé depuis la
+    // largeur RÉELLE du texte. Pas de wrapping pour right/center (montant sur
+    // une seule ligne, collé au bord voulu).
+    let x = spec.x
+    let wrap: number | undefined = spec.maxWidth
+    if (align !== 'left' && spec.maxWidth) {
+      const w = useFont.widthOfTextAtSize(value, spec.size)
+      x = align === 'right'
+        ? spec.x + spec.maxWidth - w
+        : spec.x + (spec.maxWidth - w) / 2
+      // Garde-fou : un texte plus large que la case ne déborde pas à gauche.
+      if (x < spec.x) x = spec.x
+      wrap = undefined
+    }
+
     // pdf-lib utilise y depuis le BAS de la page. Le JSON est en y-depuis-le-haut.
     page.drawText(value, {
-      x:        spec.x,
-      y:        H - spec.y - spec.size,
-      size:     spec.size,
-      font:     spec.bold ? fontBold : font,
-      color:    rgb(0, 0, 0),
-      maxWidth: spec.maxWidth,
+      x,
+      y:    H - spec.y - spec.size,
+      size: spec.size,
+      font: useFont,
+      color: rgb(0, 0, 0),
+      ...(wrap ? { maxWidth: wrap } : {}),
     })
   }
 
