@@ -722,9 +722,14 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['platform'], summary: 'Mettre à jour les constantes légales (Store de Lois)' },
     handler: async (request, reply) => {
       const { country, version } = request.params as { country: string; version: string }
-      const { constants, notes, effective } = request.body as {
-        constants: Record<string, unknown>; notes?: string; effective?: string
+      // OWASP A03 — `constants` DOIT être un objet ; sans garde, un corps invalide
+      // (constants absent) faisait planter `constants['SMIG_MENSUEL']` → 500.
+      const body = (request.body ?? {}) as { constants?: unknown; notes?: string; effective?: string }
+      if (typeof body.constants !== 'object' || body.constants === null || Array.isArray(body.constants)) {
+        return reply.status(400).send({ error: 'Corps invalide : « constants » (objet) requis' })
       }
+      const constants = body.constants as Record<string, unknown>
+      const { notes, effective } = body
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS platform.legal_constants (

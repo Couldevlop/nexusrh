@@ -9,6 +9,7 @@ import {
   type AiModelChoice, type JobContext, type SourcingContext,
   type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
+import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -231,6 +232,55 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           values,
         )
         return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /recruitment/jobs/:id/screening-criteria — règles de pré-tri de l'offre.
+  // Retourne toujours une forme canonique (sanitizeCriteria) même si la colonne
+  // est NULL → le panneau frontend s'hydrate avec des valeurs par défaut sûres.
+  fastify.get('/jobs/:id/screening-criteria', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      try {
+        const res = await pool.query<{ screening_criteria: unknown }>(
+          `SELECT screening_criteria FROM "${schema}".recruitment_jobs WHERE id = $1 LIMIT 1`,
+          [id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
+        return reply.send({ data: { criteria: sanitizeCriteria(res.rows[0].screening_criteria ?? {}) } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // PUT /recruitment/jobs/:id/screening-criteria — enregistre les règles de pré-tri.
+  // OWASP A03 : sanitizeCriteria borne/normalise toutes les entrées (listes,
+  // entiers, diplôme whitelisté) avant persistance dans la colonne jsonb.
+  fastify.put('/jobs/:id/screening-criteria', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const body = (request.body ?? {}) as { criteria?: unknown }
+      const clean = sanitizeCriteria(body.criteria ?? {})
+      try {
+        const res = await pool.query<{ id: string }>(
+          `UPDATE "${schema}".recruitment_jobs SET screening_criteria = $1, updated_at = now()
+           WHERE id = $2 RETURNING id`,
+          [JSON.stringify(clean), id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
+        return reply.send({ data: { criteria: clean } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
