@@ -28,11 +28,19 @@ const createSessionSchema = z.object({
   location:     z.string().max(200).optional(),
   trainer:      z.string().max(200).optional(),
   max_places:   z.number().int().min(1).max(500).optional(),
+  // À la planification, les RH désignent directement les employés à inscrire.
+  employee_ids: z.array(z.string().uuid()).max(500).optional(),
 }).strict()
 
+// L'inscription est désormais une action RH/manager : employee_id OBLIGATOIRE
+// (plus d'auto-inscription par l'employé — cf. authorize sur la route).
 const enrollSchema = z.object({
   session_id:   z.string().uuid(),
-  employee_id:  z.string().uuid().optional(),
+  employee_id:  z.string().uuid(),
+}).strict()
+
+const participantsSchema = z.object({
+  employee_ids: z.array(z.string().uuid()).min(1).max(500),
 }).strict()
 
 // OWASP A04 — bornes anti-fraude : 1 formation pro CI dépasse rarement 5M FCFA
@@ -58,6 +66,67 @@ function auditLogTraining(
      VALUES ($1, $2, 'training', $3, $4, $5)`,
     [userId, action, entityId, JSON.stringify(changes), ip],
   ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+interface BulkEnrollResult {
+  ok: boolean
+  reason?: 'session_not_found'
+  added: number
+  skippedDuplicates: number
+  skippedFull: number
+  skippedInvalid: number
+}
+
+// Inscrit en masse des employés SÉLECTIONNÉS à une session (action RH). Réutilisé
+// par la planification de session ET l'ajout de participants à une session
+// existante. Sûr : ne garde que les employee_ids appartenant au tenant (OWASP A01
+// IDOR — pas d'inscription d'un id forgé hors tenant), respecte les places et la
+// non-duplication. `schema` provient du JWT validé (plugins/auth — OWASP A03).
+async function enrollEmployeesBulk(
+  schema: string, sessionId: string, employeeIds: string[],
+  actorId: string, ip: string | null,
+): Promise<BulkEnrollResult> {
+  const unique = [...new Set(employeeIds)]
+  const result: BulkEnrollResult = { ok: true, added: 0, skippedDuplicates: 0, skippedFull: 0, skippedInvalid: 0 }
+
+  const cap = await pool.query<{ max_places: number; enrolled: number }>(`
+    SELECT ts.max_places, COUNT(te.id)::int AS enrolled
+    FROM "${schema}".training_sessions ts
+    LEFT JOIN "${schema}".training_enrollments te ON te.session_id = ts.id
+    WHERE ts.id = $1 GROUP BY ts.id
+  `, [sessionId])
+  if (!cap.rows[0]) return { ...result, ok: false, reason: 'session_not_found' }
+  const maxPlaces = cap.rows[0].max_places
+  let enrolled = cap.rows[0].enrolled
+
+  // OWASP A01 — ne conserver que les employés réels du tenant.
+  const valid = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE id = ANY($1::uuid[]) AND is_active = true`, [unique],
+  )
+  const validSet = new Set(valid.rows.map((r) => r.id))
+
+  const existing = await pool.query<{ employee_id: string }>(
+    `SELECT employee_id FROM "${schema}".training_enrollments WHERE session_id = $1`, [sessionId],
+  )
+  const existingSet = new Set(existing.rows.map((r) => r.employee_id))
+
+  const added: string[] = []
+  for (const empId of unique) {
+    if (!validSet.has(empId)) { result.skippedInvalid++; continue }
+    if (existingSet.has(empId)) { result.skippedDuplicates++; continue }
+    if (enrolled >= maxPlaces) { result.skippedFull++; continue }
+    const r = await pool.query<{ id: string }>(`
+      INSERT INTO "${schema}".training_enrollments (session_id, employee_id, status)
+      VALUES ($1,$2,'enrolled') RETURNING id
+    `, [sessionId, empId])
+    if (r.rows[0]) { added.push(empId); enrolled++ }
+  }
+  result.added = added.length
+  if (added.length) {
+    auditLogTraining(schema, actorId, 'training.participants_added', sessionId,
+      { count: added.length, employeeIds: added }, ip)
+  }
+  return result
 }
 
 const trainingRoutes: FastifyPluginAsync = async (fastify) => {
@@ -175,10 +244,44 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
         `, [body.training_id, body.start_date, body.end_date ?? null,
             body.location ?? null, body.trainer ?? null,
             body.max_places ?? 20])
-        auditLogTraining(schema, request.user.sub, 'training.session_created', res.rows[0].id, {
+        const session = res.rows[0]
+        auditLogTraining(schema, request.user.sub, 'training.session_created', session.id, {
           trainingId: body.training_id, startDate: body.start_date, maxPlaces: body.max_places ?? 20,
         }, request.ip ?? null)
-        return reply.status(201).send({ data: res.rows[0] })
+
+        // À la planification : inscrit directement les employés sélectionnés.
+        let enrollment: BulkEnrollResult | undefined
+        if (body.employee_ids && body.employee_ids.length > 0) {
+          enrollment = await enrollEmployeesBulk(
+            schema, session.id, body.employee_ids, request.user.sub, request.ip ?? null)
+        }
+        return reply.status(201).send({ data: session, enrollment })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // POST /training/sessions/:id/participants — ajoute des employés sélectionnés
+  // à une session existante (action RH). Remplace l'auto-inscription employé.
+  fastify.post('/sessions/:id/participants', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id session invalide (UUID requis)' })
+      const parsed = participantsSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Liste de participants invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      try {
+        const r = await enrollEmployeesBulk(schema, id, parsed.data.employee_ids, request.user.sub, request.ip ?? null)
+        if (!r.ok) return reply.status(404).send({ error: 'Session introuvable' })
+        return reply.status(201).send({ data: r })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -224,11 +327,14 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // POST /training/enroll
+  // L'inscription est une action RH/manager : les employés NE s'inscrivent PLUS
+  // eux-mêmes (les RH désignent les participants à la planification ou via
+  // /sessions/:id/participants). 'employee' et 'readonly' sont exclus.
   fastify.post('/enroll', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      // OWASP A03 : validation Zod stricte (UUIDs)
+      // OWASP A03 : validation Zod stricte (UUIDs, employee_id obligatoire)
       const parsed = enrollSchema.safeParse(request.body)
       if (!parsed.success) {
         return reply.status(400).send({
@@ -238,15 +344,8 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       try {
-        let employeeId = body.employee_id
-        if (!employeeId || request.user.role === 'employee') {
-          // employee (ou aucun employeeId fourni) → inscription self-service forcée
-          const emp = await pool.query(
-            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
-          )
-          if (!emp.rows[0]) return reply.status(400).send({ error: 'Employé introuvable' })
-          employeeId = emp.rows[0].id as string
-        } else if (request.user.role === 'manager') {
+        const employeeId = body.employee_id
+        if (request.user.role === 'manager') {
           // OWASP A01 — un manager ne peut inscrire QUE son équipe directe
           const team = await pool.query(
             `SELECT 1 FROM "${schema}".employees e

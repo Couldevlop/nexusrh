@@ -112,6 +112,7 @@ const FORMS: FormEndpoint[] = [
   // ── Formation ──
   { method: 'POST', url: '/training/catalog',      scope: 'tenant' },
   { method: 'POST', url: '/training/sessions',     scope: 'tenant' },
+  { method: 'POST', url: `/training/sessions/${UUID}/participants`, scope: 'tenant' },
   { method: 'POST', url: '/training/enroll',       scope: 'tenant' },
   { method: 'POST', url: '/training/fdfp/request', scope: 'tenant' },
   // ── Recrutement ──
