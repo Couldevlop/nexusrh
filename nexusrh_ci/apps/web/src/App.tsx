@@ -2,13 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
 import { useAuthStore } from '@/stores/authStore'
-import { AuthGuard, PlatformGuard, RoleGuard } from '@/guards/RoleGuard'
+import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard } from '@/guards/RoleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 const MainLayout       = lazy(() => import('@/components/layout/MainLayout'))
 const PlatformLayout   = lazy(() => import('@/components/layout/PlatformLayout'))
 const EmployeeLayout   = lazy(() => import('@/components/layout/EmployeeLayout'))
+const AgencyLayout     = lazy(() => import('@/components/layout/AgencyLayout'))
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const LoginPage          = lazy(() => import('@/pages/auth/LoginPage'))
@@ -24,6 +25,14 @@ const PlatformTenantNew   = lazy(() => import('@/pages/platform/PlatformTenantNe
 const PlatformTenantDetail  = lazy(() => import('@/pages/platform/PlatformTenantDetail'))
 const PlatformSettings      = lazy(() => import('@/pages/platform/PlatformSettings'))
 const PlatformLegalWatch    = lazy(() => import('@/pages/platform/PlatformLegalWatch'))
+const PlatformAgencies      = lazy(() => import('@/pages/platform/PlatformAgencies'))
+const PlatformAgencyDetail  = lazy(() => import('@/pages/platform/PlatformAgencyDetail'))
+
+// ── Cabinet de recrutement ─────────────────────────────────────────────────────
+const AgencyDashboard  = lazy(() => import('@/pages/agency/AgencyDashboard'))
+const AgencyClients    = lazy(() => import('@/pages/agency/AgencyClients'))
+const AgencyMembers    = lazy(() => import('@/pages/agency/AgencyMembers'))
+const AgencySettings   = lazy(() => import('@/pages/agency/AgencySettings'))
 
 // ── RH Dashboard ─────────────────────────────────────────────────────────────
 const DashboardPage    = lazy(() => import('@/pages/dashboard/DashboardPage'))
@@ -94,8 +103,12 @@ function PageLoader() {
 // ── Redirect selon rôle ────────────────────────────────────────────────────────
 function RootRedirect() {
   const user = useAuthStore((s) => s.user)
+  const activeTenant = useAuthStore((s) => s.activeTenant)
   if (!user) return <Navigate to="/login" replace />
   if (user.role === 'super_admin') return <Navigate to="/platform/dashboard" replace />
+  // Cabinet en contexte cabinet → portail cabinet ; en session scopée (admin
+  // délégué sur un tenant) → app RH normale.
+  if (user.actorType === 'agency' && !activeTenant) return <Navigate to="/agency/dashboard" replace />
   if (user.role === 'employee') return <Navigate to="/mon-espace" replace />
   return <Navigate to="/dashboard" replace />
 }
@@ -128,6 +141,19 @@ export default function App() {
             <Route path="tenants/:id"  element={<PlatformTenantDetail />} />
             <Route path="settings"     element={<PlatformSettings />} />
             <Route path="legal-watch"  element={<PlatformLegalWatch />} />
+            <Route path="agencies"     element={<PlatformAgencies />} />
+            <Route path="agencies/:id" element={<PlatformAgencyDetail />} />
+          </Route>
+
+          {/* ── Portail cabinet de recrutement ───────────────────── */}
+          <Route path="/agency" element={
+            <AgencyGuard><AgencyLayout /></AgencyGuard>
+          }>
+            <Route index element={<Navigate to="/agency/dashboard" replace />} />
+            <Route path="dashboard" element={<AgencyDashboard />} />
+            <Route path="clients"   element={<AgencyClients />} />
+            <Route path="members"   element={<AgencyMembers />} />
+            <Route path="settings"  element={<AgencySettings />} />
           </Route>
 
           {/* ── Application RH (admin, hr_manager, hr_officer, manager, readonly) ── */}

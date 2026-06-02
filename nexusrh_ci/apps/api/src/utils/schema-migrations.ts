@@ -267,6 +267,67 @@ export async function ensurePlatformSchema(): Promise<void> {
       created_at    timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS platform_pwd_hist_user_idx ON platform.password_history(user_id, created_at DESC)`,
+
+    // ── Cabinets de recrutement (acteur multi-tenant, CI uniquement) ──────────
+    // Tables isolées dans le schema platform — aucun schema tenant n'est touché.
+    // Idempotent : exécuté au boot pour les bases déjà provisionnées.
+    `CREATE TABLE IF NOT EXISTS platform.agencies (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      slug          varchar(63) NOT NULL UNIQUE,
+      name          varchar(255) NOT NULL,
+      status        varchar(20) NOT NULL DEFAULT 'active',
+      country_code  varchar(3) NOT NULL DEFAULT 'CIV',
+      city          varchar(100),
+      contact_email varchar(255),
+      contact_phone varchar(30),
+      primary_color varchar(7) DEFAULT '#1D4ED8',
+      logo_url      text,
+      created_by    uuid,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now()
+    )`,
+    // Expéditeur email fourni par le cabinet : utilisé pour les invitations des
+    // tenants/utilisateurs créés par CE cabinet. (Cabinets + tenants créés par le
+    // super_admin utilisent l'expéditeur OpenLab par défaut.)
+    `ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_email varchar(255)`,
+    `ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_name varchar(150)`,
+    `CREATE TABLE IF NOT EXISTS platform.agency_users (
+      id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agency_id           uuid NOT NULL REFERENCES platform.agencies(id) ON DELETE CASCADE,
+      email               varchar(255) NOT NULL UNIQUE,
+      password_hash       varchar(255) NOT NULL,
+      first_name          varchar(100) NOT NULL,
+      last_name           varchar(100) NOT NULL,
+      role                varchar(20) NOT NULL DEFAULT 'agency_member',
+      is_active           boolean NOT NULL DEFAULT true,
+      mfa_enabled         boolean NOT NULL DEFAULT false,
+      mfa_secret          varchar(255),
+      password_changed_at timestamptz NOT NULL DEFAULT now(),
+      last_login_at       timestamptz,
+      created_at          timestamptz NOT NULL DEFAULT now(),
+      updated_at          timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_agency_users_agency ON platform.agency_users(agency_id)`,
+    `CREATE TABLE IF NOT EXISTS platform.agency_tenants (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agency_id   uuid NOT NULL REFERENCES platform.agencies(id) ON DELETE CASCADE,
+      tenant_id   uuid NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+      assigned_by uuid,
+      assigned_at timestamptz NOT NULL DEFAULT now(),
+      detached_at timestamptz,
+      UNIQUE (agency_id, tenant_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_agency_tenants_agency ON platform.agency_tenants(agency_id) WHERE detached_at IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_agency_tenants_tenant ON platform.agency_tenants(tenant_id) WHERE detached_at IS NULL`,
+
+    // ── Logos (tenants + cabinets) en base, servis par endpoint public ────────
+    // Pattern CV recrutement (bytea). logo_url pointe vers /public/brand/{id}.
+    `CREATE TABLE IF NOT EXISTS platform.brand_assets (
+      id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      mime       varchar(100) NOT NULL,
+      bytes      bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
   ]
   for (const sql of alters) {
     await pool.query(sql).catch(() => undefined)

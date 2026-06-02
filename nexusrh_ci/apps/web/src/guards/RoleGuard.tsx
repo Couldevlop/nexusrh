@@ -35,3 +35,16 @@ export function EmployeeGuard({ children }: { children: React.ReactNode }) {
   if (user.role === 'employee') return <>{children}</>
   return <Navigate to="/dashboard" replace />
 }
+
+// Portail cabinet de recrutement : accessible aux utilisateurs cabinet en
+// CONTEXTE cabinet (pas en session scopée sur un tenant — dans ce cas l'app RH
+// normale prend le relais via le rôle 'admin' délégué).
+export function AgencyGuard({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user)
+  const activeTenant = useAuthStore((s) => s.activeTenant)
+  if (!user) return <Navigate to="/login" replace />
+  if (user.actorType !== 'agency') return <Navigate to="/dashboard" replace />
+  // En session scopée → rediriger vers l'app RH du tenant client.
+  if (activeTenant) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}

@@ -47,6 +47,8 @@ import settingsRoutes     from './modules/settings/settings.routes.js'
 import contractsRoutes    from './modules/contracts/contracts.routes.js'
 import aiRoutes           from './modules/ai/ai.routes.js'
 import { referentielsRoutes } from './modules/referentiels/referentiels.routes.js'
+import agencyRoutes       from './modules/agency/agency.routes.js'
+import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -180,11 +182,13 @@ export async function buildApp() {
   // ── Middleware maintenance : bloque tous les accès tenant sauf super_admin ───
   fastify.addHook('onRequest', async (request, reply) => {
     const url = request.url
-    // Toujours autorisés : health, auth, /platform/* (super_admin)
+    // Toujours autorisés : health, auth, /platform/* (super_admin), /public/*
+    // (logos publics — doivent rester chargeables, y compris dans les emails).
     if (
       url === '/health' ||
       url.startsWith('/auth/') ||
-      url.startsWith('/platform/')
+      url.startsWith('/platform/') ||
+      url.startsWith('/public/')
     ) return
 
     const inMaintenance = await isMaintenanceModeActive()
@@ -234,6 +238,9 @@ export async function buildApp() {
   await fastify.register(contractsRoutes,   { prefix: '/contracts' })
   await fastify.register(aiRoutes,          { prefix: '/ai' })
   await fastify.register(referentielsRoutes, { prefix: '/referentiels' })
+  await fastify.register(agencyRoutes,       { prefix: '/agency' })
+  await fastify.register(brandRoutes,        { prefix: '/platform/brand' })
+  await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {

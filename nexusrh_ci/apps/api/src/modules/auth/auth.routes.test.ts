@@ -79,6 +79,7 @@ describe('POST /auth/login — credential check (OWASP A02 + A09)', () => {
     queryMock.mockResolvedValueOnce({ rows: [{ breach_check_enabled: false }] }) // getSecurityPolicy
     queryMock.mockResolvedValueOnce({ rows: [] })  // platform_users vide
     queryMock.mockResolvedValueOnce({ rows: [] })  // tenants vide
+    queryMock.mockResolvedValueOnce({ rows: [] })  // findAgencyUser vide (cabinet)
     queryMock.mockResolvedValueOnce({ rows: [] })  // audit_log
 
     const res = await app.inject({

@@ -16,6 +16,7 @@ import {
 import { isPasswordBreached } from '../../services/breach-check.service.js'
 import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
+import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -153,6 +154,37 @@ async function findTenantAndUser(
   }
 
   return null
+}
+
+interface AgencyCandidate {
+  id: string; email: string; password_hash: string; role: string
+  first_name: string; last_name: string; mfa_enabled: boolean
+  is_active: boolean; password_changed_at: string | null
+  agency_id: string; agency_name: string; agency_status: string
+  primary_color: string | null; logo_url: string | null; city: string | null
+}
+
+// Cabinet de recrutement : lookup d'un utilisateur dans platform.agency_users.
+// Non bloquant si les tables n'existent pas encore (bases pré-migration). Un
+// cabinet suspendu ou un user inactif → null (login refusé, pas de fuite de motif).
+async function findAgencyUser(email: string): Promise<AgencyCandidate | null> {
+  try {
+    const r = await pool.query<AgencyCandidate>(
+      `SELECT au.id, au.email, au.password_hash, au.role, au.first_name, au.last_name,
+              au.mfa_enabled, au.is_active, au.password_changed_at,
+              a.id AS agency_id, a.name AS agency_name, a.status AS agency_status,
+              a.primary_color, a.logo_url, a.city
+       FROM platform.agency_users au
+       JOIN platform.agencies a ON a.id = au.agency_id
+       WHERE au.email = $1 LIMIT 1`,
+      [email],
+    )
+    const row = r.rows[0]
+    if (!row || !row.is_active || row.agency_status !== 'active') return null
+    return row
+  } catch {
+    return null
+  }
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -297,6 +329,91 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // 2. Chercher dans les tenants
         const candidate = await findTenantAndUser(email, password, fastify.log)
         if (!candidate) {
+          // 2bis. CABINET de recrutement (platform.agency_users). Vérifié
+          // seulement si aucun tenant ne matche → le chemin tenant nominal reste
+          // inchangé (zéro régression). Acteur multi-tenant : contexte cabinet
+          // (schemaName='platform'), bascule ensuite vers un tenant client via
+          // POST /agency/sessions/activate.
+          const agencyUser = await findAgencyUser(email)
+          if (agencyUser && await bcrypt.compare(password, agencyUser.password_hash)) {
+            await clearFailures(redisLockoutStore, email)
+
+            // MFA actif : challenge TOTP (contexte plateforme).
+            if (agencyUser.mfa_enabled) {
+              const challenge = buildMfaChallenge(fastify, {
+                sub: agencyUser.id, schemaName: 'platform', tenantId: null,
+              })
+              auditLogAuth('platform', agencyUser.id, 'auth.login.mfa_required', { scope: 'agency' }, ip, ua)
+              return reply.status(202).send({
+                mfaRequired: true,
+                challenge,
+                message: 'Saisissez votre code TOTP pour finaliser la connexion',
+              })
+            }
+
+            // MFA obligatoire (politique plateforme, désactivée par défaut) →
+            // token restreint au parcours d'activation MFA.
+            const mfaPending = policy.mfaRequiredSuperAdmin && !agencyUser.mfa_enabled
+            const expired = !mfaPending &&
+              isPasswordExpired(agencyUser.password_changed_at, policy.passwordMaxAgeDays, now)
+            let breached = false
+            if (!mfaPending && policy.breachCheckEnabled) {
+              breached = (await isPasswordBreached(password)) === true
+            }
+            const pwdResetRequired = !mfaPending && (expired || breached)
+
+            const token = fastify.jwt.sign({
+              sub:        agencyUser.id,
+              tenantId:   null,
+              schemaName: 'platform',
+              role:       agencyUser.role,
+              email:      agencyUser.email,
+              firstName:  agencyUser.first_name,
+              lastName:   agencyUser.last_name,
+              employeeId: null,
+              actorType:  'agency',
+              agencyId:   agencyUser.agency_id,
+              ...(mfaPending ? { mfaPending: true } : {}),
+              ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
+            })
+            await pool.query(
+              `UPDATE platform.agency_users SET last_login_at = now(), updated_at = now() WHERE id = $1`,
+              [agencyUser.id],
+            ).catch(() => undefined)
+            auditLogAuth('platform', agencyUser.id, 'auth.login.success',
+              { scope: 'agency', agencyId: agencyUser.agency_id,
+                mfaSetupRequired: mfaPending, passwordExpired: expired, passwordBreached: breached }, ip, ua)
+            reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
+            return reply.send({
+              token,
+              mfaSetupRequired: mfaPending,
+              must_change_password: pwdResetRequired,
+              passwordExpired: expired,
+              passwordBreached: breached,
+              user: {
+                sub:        agencyUser.id,
+                tenantId:   null,
+                schemaName: 'platform',
+                email:      agencyUser.email,
+                firstName:  agencyUser.first_name,
+                lastName:   agencyUser.last_name,
+                role:       agencyUser.role,
+                employeeId: null,
+                actorType:  'agency',
+                agencyId:   agencyUser.agency_id,
+              },
+              tenantConfig: null,
+              agencyConfig: {
+                id:           agencyUser.agency_id,
+                name:         agencyUser.agency_name,
+                primaryColor: agencyUser.primary_color,
+                logoUrl:      agencyUser.logo_url,
+                city:         agencyUser.city,
+              },
+              redirectTo: pwdResetRequired ? '/change-password' : '/agency/dashboard',
+            })
+          }
+
           // OWASP A09 — log de l'échec, sans révéler le motif au client
           auditLogAuth('platform', null, 'auth.login.failed', { email, reason: 'invalid_credentials' }, ip, ua)
           // OWASP A07 — comptabilise l'échec ; si le seuil est atteint, verrouille
@@ -441,7 +558,31 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['auth'], summary: 'Renouveler le token' },
     config: REFRESH_RATE_LIMIT,
     handler: async (request, reply) => {
-      const user = request.user
+      const user = request.user as typeof request.user & {
+        actorType?: 'agency'; agencyId?: string; agencyUserId?: string; onBehalfOf?: string
+      }
+
+      // CABINET — token SCOPÉ sur un tenant client (schemaName ≠ platform) :
+      // re-valider l'autorisation à chaque refresh (OWASP A01/A02). Si le tenant
+      // a été détaché / le cabinet suspendu depuis l'émission → 401. TTL court
+      // conservé (30 min) pour borner la fenêtre de staleness.
+      if (user.actorType === 'agency' && user.schemaName !== 'platform') {
+        if (!user.agencyId || !user.tenantId) {
+          return reply.status(401).send({ error: 'Session cabinet invalide' })
+        }
+        const guard = await assertAgencyCanActOnTenant(pool, user.agencyUserId ?? user.sub, user.agencyId, user.tenantId)
+        if (!guard.ok) {
+          return reply.status(401).send({ error: 'Accès au tenant révoqué' })
+        }
+        const scoped = fastify.jwt.sign({
+          sub: user.sub, tenantId: user.tenantId, schemaName: user.schemaName, role: 'admin',
+          email: user.email, firstName: user.firstName, lastName: user.lastName, employeeId: null,
+          actorType: 'agency', agencyId: user.agencyId, agencyUserId: user.agencyUserId ?? user.sub,
+          onBehalfOf: user.tenantId,
+        }, { expiresIn: '30m' })
+        return reply.send({ token: scoped, scoped: true, expiresInSec: 1800 })
+      }
+
       const newToken = fastify.jwt.sign({
         sub:        user.sub,
         tenantId:   user.tenantId,
@@ -451,6 +592,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         firstName:  user.firstName,
         lastName:   user.lastName,
         employeeId: user.employeeId,
+        // Préserve le contexte cabinet (token non scopé).
+        ...(user.actorType === 'agency' && user.agencyId
+          ? { actorType: 'agency' as const, agencyId: user.agencyId }
+          : {}),
       })
       return reply.send({ token: newToken })
     },
