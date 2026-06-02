@@ -13,13 +13,15 @@
  *      Un 404 « ressource introuvable » (UUID inexistant, base vide) est légitime
  *      ici : le montage est déjà prouvé par le check #1.
  *
- * Les formulaires publics d'authentification (login/forgot/reset) n'ont pas de
- * garde 401 : on vérifie seulement qu'ils sont montés et robustes (corps invalide
- * => réponse < 500, jamais 404). forgot-password renvoie 200 par anti-énumération.
+ * COUVERTURE : tous les POST/PATCH/PUT des modules, SAUF (raisons explicites) :
+ *   - Upload multipart : /recruitment/.../upload-cv, /recruitment/public/.../apply,
+ *     /settings/import/* (parser binaire — non pertinent pour ce filet) ;
+ *   - Webhooks publics signés HMAC : /mobile-money/webhooks/:provider ;
+ *   - Appels IA externes (Anthropic/Mistral) : /ai/chat (SSE), analyze-cv, source,
+ *     source/compare (dépendances réseau tierces).
  *
  * Isolation : VRAI config.ts + buildApp() ; seuls pg (lignes vides) et redis sont
- * mockés. Les endpoints d'upload multipart et les appels IA/externes sont exclus
- * (parser binaire / services tiers non pertinents pour ce filet).
+ * mockés. forgot-password renvoie 200 par anti-énumération (cf. check #3).
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
@@ -64,69 +66,101 @@ interface FormEndpoint {
 
 const UUID = '00000000-0000-0000-0000-000000000000'
 
-// Formulaires représentatifs de CHAQUE module (create/submit/patch).
+// TOUS les formulaires (create/submit/patch) de chaque module.
 const FORMS: FormEndpoint[] = [
-  // Auth publics
+  // ── Auth publics ──
   { method: 'POST', url: '/auth/login',           scope: 'public' },
   { method: 'POST', url: '/auth/forgot-password', scope: 'public' },
   { method: 'POST', url: '/auth/reset-password',  scope: 'public' },
-  // Auth authentifié
+  // ── Auth authentifié ──
   { method: 'POST', url: '/auth/change-password', scope: 'authed' },
-  // Employés
-  { method: 'POST',  url: '/employees',          scope: 'tenant' },
-  { method: 'PATCH', url: `/employees/${UUID}`,  scope: 'tenant' },
-  // Absences
+  // ── Employés ──
+  { method: 'POST',  url: '/employees',         scope: 'tenant' },
+  { method: 'PATCH', url: `/employees/${UUID}`, scope: 'tenant' },
+  // ── Absences ──
   { method: 'POST',  url: '/absences',                 scope: 'tenant' },
   { method: 'PATCH', url: `/absences/${UUID}/approve`, scope: 'tenant' },
   { method: 'PATCH', url: `/absences/${UUID}/reject`,  scope: 'tenant' },
-  // Notes de frais
+  // ── Notes de frais ──
   { method: 'POST',  url: '/expenses',                 scope: 'tenant' },
   { method: 'POST',  url: `/expenses/${UUID}/lines`,   scope: 'tenant' },
   { method: 'PATCH', url: `/expenses/${UUID}/submit`,  scope: 'tenant' },
   { method: 'PATCH', url: `/expenses/${UUID}/approve`, scope: 'tenant' },
-  // Paramétrage tenant
-  { method: 'PATCH', url: '/settings/tenant',            scope: 'tenant' },
-  { method: 'POST',  url: '/settings/users',             scope: 'tenant' },
-  { method: 'POST',  url: '/settings/departments',       scope: 'tenant' },
-  { method: 'POST',  url: '/settings/absence-types',     scope: 'tenant' },
-  { method: 'POST',  url: '/settings/payroll-rules',     scope: 'tenant' },
-  { method: 'POST',  url: '/settings/legal-entities',    scope: 'tenant' },
-  { method: 'PATCH', url: '/settings/workflow',          scope: 'tenant' },
-  { method: 'POST',  url: '/settings/variable-elements', scope: 'tenant' },
-  // Carrières / compétences
-  { method: 'POST', url: '/careers/skills',          scope: 'tenant' },
-  { method: 'PUT',  url: '/careers/employee-skills', scope: 'tenant' },
-  { method: 'POST', url: '/careers/evaluations',     scope: 'tenant' },
-  // Formation
+  { method: 'PATCH', url: `/expenses/${UUID}/reject`,  scope: 'tenant' },
+  { method: 'PATCH', url: `/expenses/${UUID}/pay`,     scope: 'tenant' },
+  // ── Paramétrage tenant ──
+  { method: 'PATCH', url: '/settings/tenant',                scope: 'tenant' },
+  { method: 'POST',  url: '/settings/users',                scope: 'tenant' },
+  { method: 'PATCH', url: `/settings/users/${UUID}`,        scope: 'tenant' },
+  { method: 'POST',  url: `/settings/users/${UUID}/reset-password`, scope: 'tenant' },
+  { method: 'POST',  url: '/settings/departments',          scope: 'tenant' },
+  { method: 'PATCH', url: `/settings/departments/${UUID}`,  scope: 'tenant' },
+  { method: 'POST',  url: '/settings/absence-types',        scope: 'tenant' },
+  { method: 'PATCH', url: `/settings/absence-types/${UUID}`, scope: 'tenant' },
+  { method: 'POST',  url: '/settings/payroll-rules',        scope: 'tenant' },
+  { method: 'PATCH', url: `/settings/payroll-rules/${UUID}`, scope: 'tenant' },
+  { method: 'POST',  url: '/settings/legal-entities',       scope: 'tenant' },
+  { method: 'PATCH', url: `/settings/legal-entities/${UUID}`, scope: 'tenant' },
+  { method: 'PATCH', url: '/settings/workflow',             scope: 'tenant' },
+  { method: 'POST',  url: '/settings/variable-elements',    scope: 'tenant' },
+  // ── Carrières / compétences ──
+  { method: 'POST',  url: '/careers/skills',             scope: 'tenant' },
+  { method: 'PUT',   url: '/careers/employee-skills',    scope: 'tenant' },
+  { method: 'POST',  url: '/careers/evaluations',        scope: 'tenant' },
+  { method: 'PATCH', url: `/careers/evaluations/${UUID}`, scope: 'tenant' },
+  // ── Formation ──
   { method: 'POST', url: '/training/catalog',      scope: 'tenant' },
   { method: 'POST', url: '/training/sessions',     scope: 'tenant' },
   { method: 'POST', url: '/training/enroll',       scope: 'tenant' },
   { method: 'POST', url: '/training/fdfp/request', scope: 'tenant' },
-  // Recrutement
-  { method: 'POST', url: '/recruitment/jobs',                   scope: 'tenant' },
-  { method: 'POST', url: '/recruitment/applications',           scope: 'tenant' },
-  { method: 'POST', url: `/recruitment/jobs/${UUID}/preselect`, scope: 'tenant' },
-  // Contrats
-  { method: 'POST', url: '/contracts',                   scope: 'tenant' },
-  { method: 'POST', url: `/contracts/${UUID}/terminate`, scope: 'tenant' },
-  { method: 'POST', url: `/contracts/${UUID}/renew`,     scope: 'tenant' },
-  // CNPS / DISA
-  { method: 'POST', url: '/cnps/declarations/generate', scope: 'tenant' },
-  { method: 'POST', url: '/cnps/disa/generate',         scope: 'tenant' },
-  { method: 'POST', url: '/cnps/events/cessation',      scope: 'tenant' },
-  // Paie
-  { method: 'POST', url: '/payroll/calculate',             scope: 'tenant' },
-  { method: 'POST', url: '/payroll/simulate',              scope: 'tenant' },
-  { method: 'POST', url: '/payroll/periods/2024-07/close', scope: 'tenant' },
-  { method: 'POST', url: '/payroll-workflow/periods',      scope: 'tenant' },
-  // Mobile Money
-  { method: 'POST', url: '/mobile-money/campaigns', scope: 'tenant' },
-  // Plateforme (super_admin)
-  { method: 'POST',  url: '/platform/tenants',            scope: 'platform' },
-  { method: 'PATCH', url: '/platform/settings',           scope: 'platform' },
-  { method: 'PATCH', url: `/platform/tenants/${UUID}`,    scope: 'platform' },
-  { method: 'POST',  url: '/platform/sourcing/models',    scope: 'platform' },
-  { method: 'POST',  url: '/platform/sourcing/platforms', scope: 'platform' },
+  // ── Recrutement ──
+  { method: 'POST',  url: '/recruitment/jobs',                    scope: 'tenant' },
+  { method: 'PATCH', url: `/recruitment/jobs/${UUID}`,            scope: 'tenant' },
+  { method: 'POST',  url: '/recruitment/applications',           scope: 'tenant' },
+  { method: 'PATCH', url: `/recruitment/applications/${UUID}/stage`, scope: 'tenant' },
+  { method: 'POST',  url: `/recruitment/jobs/${UUID}/preselect`, scope: 'tenant' },
+  { method: 'POST',  url: `/recruitment/internal-jobs/${UUID}/apply`, scope: 'tenant' },
+  // ── Contrats ──
+  { method: 'POST',  url: '/contracts',                   scope: 'tenant' },
+  { method: 'PATCH', url: `/contracts/${UUID}`,           scope: 'tenant' },
+  { method: 'POST',  url: `/contracts/${UUID}/terminate`, scope: 'tenant' },
+  { method: 'POST',  url: `/contracts/${UUID}/renew`,     scope: 'tenant' },
+  // ── CNPS / DISA ──
+  { method: 'POST', url: '/cnps/declarations/generate',      scope: 'tenant' },
+  { method: 'POST', url: `/cnps/declarations/${UUID}/submit`, scope: 'tenant' },
+  { method: 'POST', url: '/cnps/disa/generate',             scope: 'tenant' },
+  { method: 'POST', url: '/cnps/events/cessation',          scope: 'tenant' },
+  // ── Paie ──
+  { method: 'POST', url: '/payroll/calculate',              scope: 'tenant' },
+  { method: 'POST', url: '/payroll/simulate',               scope: 'tenant' },
+  { method: 'POST', url: '/payroll/periods/2024-07/close',  scope: 'tenant' },
+  { method: 'POST', url: '/payroll/periods/2024-07/approve', scope: 'tenant' },
+  { method: 'POST', url: '/payroll/periods/2024-07/reject', scope: 'tenant' },
+  // ── Paie multi-filiales (workflow centralisé) ──
+  { method: 'POST', url: '/payroll-workflow/periods',                    scope: 'tenant' },
+  { method: 'POST', url: `/payroll-workflow/periods/${UUID}/send-to-sites`,   scope: 'tenant' },
+  { method: 'POST', url: `/payroll-workflow/periods/${UUID}/submit-by-raf`,   scope: 'tenant' },
+  { method: 'POST', url: `/payroll-workflow/periods/${UUID}/validate-central`, scope: 'tenant' },
+  { method: 'POST', url: `/payroll-workflow/periods/${UUID}/close`,           scope: 'tenant' },
+  // ── Mobile Money ──
+  { method: 'POST',  url: '/mobile-money/campaigns',                scope: 'tenant' },
+  { method: 'POST',  url: '/mobile-money/campaigns/ref-x/execute',  scope: 'tenant' },
+  { method: 'PATCH', url: `/mobile-money/payments/${UUID}/retry`,   scope: 'tenant' },
+  // ── IA (calcul pur, hors appels externes) ──
+  { method: 'POST', url: '/ai/simulate-its', scope: 'tenant' },
+  // ── Plateforme (super_admin) ──
+  { method: 'POST',  url: '/platform/tenants',                  scope: 'platform' },
+  { method: 'PATCH', url: '/platform/settings',                 scope: 'platform' },
+  { method: 'PATCH', url: `/platform/tenants/${UUID}`,          scope: 'platform' },
+  { method: 'POST',  url: `/platform/tenants/${UUID}/suspend`,  scope: 'platform' },
+  { method: 'POST',  url: `/platform/tenants/${UUID}/reactivate`, scope: 'platform' },
+  { method: 'POST',  url: `/platform/tenants/${UUID}/reset-admin`, scope: 'platform' },
+  { method: 'POST',  url: '/platform/sourcing/models',          scope: 'platform' },
+  { method: 'PATCH', url: `/platform/sourcing/models/${UUID}`,  scope: 'platform' },
+  { method: 'POST',  url: '/platform/sourcing/platforms',       scope: 'platform' },
+  { method: 'PATCH', url: `/platform/sourcing/platforms/${UUID}`, scope: 'platform' },
+  { method: 'PATCH', url: '/platform/sourcing/settings',        scope: 'platform' },
+  { method: 'PATCH', url: '/platform/legal-constants/CI/2024',  scope: 'platform' },
 ]
 
 let app: FastifyInstance
@@ -164,8 +198,6 @@ describe('Golden Formulaires — toutes les soumissions montées, protégées et
           headers: { authorization: `Bearer ${token(f.scope)}` },
           payload: { champ_invalide: ' ', n: Number.NaN },
         })
-        // < 500 = aucun crash. Le montage est prouve par le check #1 ; un 404
-        // « ressource introuvable » (UUID inexistant, base vide) est legitime.
         expect(res.statusCode, `${f.method} ${f.url} a renvoye ${res.statusCode}`).toBeLessThan(500)
       })
     }
