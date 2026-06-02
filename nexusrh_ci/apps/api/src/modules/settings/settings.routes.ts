@@ -794,7 +794,17 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const configs = request.body as Array<{ module: string; levels_count: number }>
+      // OWASP A03 — le corps DOIT être un tableau de configs ; sans validation un
+      // corps non-itérable (objet) faisait planter le for...of → 500. → 400 propre.
+      const workflowSchema = z.array(z.object({
+        module:       z.string().min(1).max(50),
+        levels_count: z.number().int().min(1).max(10),
+      })).max(50)
+      const parsed = workflowSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Configuration workflow invalide', issues: parsed.error.flatten() })
+      }
+      const configs = parsed.data
       try {
         for (const cfg of configs) {
           await pool.query(`
