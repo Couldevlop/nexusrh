@@ -94,6 +94,10 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
 
   const [error, setError] = useState<string | null>(null);
+  // Mot de passe EXACT validé à la connexion — figé au moment de la soumission
+  // du login. Réutilisé comme « ancien mot de passe » au changement forcé, au
+  // lieu de relire le champ (qui peut être vide/altéré : autofill, re-render).
+  const [loginPassword, setLoginPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
 
@@ -123,6 +127,9 @@ export default function LoginPage() {
 
   const onLogin = async (data: LoginForm) => {
     setError(null);
+    // Fige le mot de passe soumis : c'est exactement celui que le serveur va
+    // valider, donc le bon « ancien mot de passe » si un changement est imposé.
+    setLoginPassword(data.password);
     try {
       const res = await api.post<{
         token?: string;
@@ -232,7 +239,7 @@ export default function LoginPage() {
       await api.post(
         "/auth/change-password",
         {
-          oldPassword: loginForm.getValues("password"),
+          oldPassword: loginPassword,
           newPassword: data.newPassword,
         },
         {
