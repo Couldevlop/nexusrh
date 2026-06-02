@@ -926,6 +926,19 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at    timestamptz NOT NULL DEFAULT now()
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_pwd_hist_user_idx" ON ${s}.password_history(user_id, created_at DESC)`)
+
+  // ── Config IA par tenant (clé API chiffrée + modèle, OWASP A02) ──────────────
+  // Aligné avec ensureTenantSchema. NULL → repli sur la clé plateforme (env).
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.ai_settings (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    claude_api_key_enc  text,
+    claude_model        varchar(100),
+    mistral_api_key_enc text,
+    mistral_model       varchar(100),
+    preferred_provider  varchar(20) NOT NULL DEFAULT 'claude',
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now()
+  )`)
 }
 
 /**

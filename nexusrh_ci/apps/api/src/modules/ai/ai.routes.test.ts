@@ -21,6 +21,15 @@ vi.mock('@anthropic-ai/sdk', () => ({
   })),
 }))
 
+// Credentials IA résolus sans requête BD (repli env simulé : clé Claude présente).
+vi.mock('../../services/ai-credentials.service.js', () => ({
+  resolveAiCreds: vi.fn().mockResolvedValue({
+    claude:  { apiKey: 'sk-ant-test', model: 'claude-sonnet-4' },
+    mistral: { apiKey: null,          model: 'mistral-large' },
+    preferredProvider: 'claude',
+  }),
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',

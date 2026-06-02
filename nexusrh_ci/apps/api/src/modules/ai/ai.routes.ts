@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { config } from '../../config.js'
+import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
 
@@ -72,13 +73,16 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/status', {
     preHandler: [fastify.authenticate],
     schema: { tags: ['ai'], summary: 'Statut IA' },
-    handler: async (_request, reply) => {
-      // OWASP A03 — ne pas exposer la version exacte du modèle (info reconnaissance)
+    handler: async (request, reply) => {
+      // Disponibilité tenant-aware : clé du tenant si configurée, sinon clé
+      // plateforme (env). OWASP A03 — ne pas exposer le nom exact du modèle.
+      const creds = await resolveAiCreds(request.user.schemaName)
+      const available = !!(creds.claude.apiKey || creds.mistral.apiKey)
       return reply.send({
-        available: !!config.ai.apiKey,
-        message: config.ai.apiKey
+        available,
+        message: available
           ? 'Assistant IA disponible'
-          : 'Clé API Anthropic non configurée. Contactez votre administrateur.',
+          : 'Clé API IA non configurée (plateforme ou tenant). Contactez votre administrateur.',
       })
     },
   })
@@ -89,13 +93,6 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['ai'], summary: 'Chat IA RH CI (SSE streaming)' },
     config: AI_CHAT_RATE_LIMIT,
     handler: async (request, reply) => {
-      if (!config.ai.apiKey) {
-        return reply.status(503).send({
-          error: 'IA non disponible',
-          message: 'Clé API Anthropic non configurée. Configurez ANTHROPIC_API_KEY dans vos variables d\'environnement.',
-        })
-      }
-
       // OWASP A03 — validation Zod stricte (rejette payload inconnu + tailles bornées)
       const parsed = chatSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -116,6 +113,16 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A05 — sanity check du schema (JWT-issued mais defense in depth)
       if (!SCHEMA_NAME_RE.test(schema)) {
         return reply.status(400).send({ error: 'Schema invalide' })
+      }
+
+      // Credentials IA effectifs : clé/modèle du tenant si configurés, sinon repli
+      // plateforme (env). Si aucune clé Claude (tenant ni plateforme) → 503.
+      const creds = await resolveAiCreds(schema)
+      if (!creds.claude.apiKey) {
+        return reply.status(503).send({
+          error: 'IA non disponible',
+          message: 'Clé API Anthropic non configurée (ni tenant ni plateforme).',
+        })
       }
 
       let tenantInfo = sanitizeForPrompt(context?.tenantName, 100) || 'Entreprise CI'
@@ -176,10 +183,10 @@ CONTEXTE CI IMPORTANT :
 
       try {
         const Anthropic = (await import('@anthropic-ai/sdk')).default
-        const client = new Anthropic({ apiKey: config.ai.apiKey })
+        const client = new Anthropic({ apiKey: creds.claude.apiKey })
 
         const stream = await client.messages.stream({
-          model:      config.ai.model,
+          model:      creds.claude.model,
           max_tokens: config.ai.maxTokens,
           system:     systemPrompt,
           messages,
