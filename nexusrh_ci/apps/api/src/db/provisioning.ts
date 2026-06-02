@@ -960,6 +960,17 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   // Critères de pré-tri paramétrables par offre (règles dures) — éditables depuis
   // l'interface admin du tenant. JSONB validé/borné applicativement (sanitizeCriteria).
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS screening_criteria jsonb`)
+  // ── Structure d'offre APEC (tous NULL-ables : zéro régression) ──────────────
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS reference varchar(60)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS experience_level varchar(30)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS job_level varchar(30)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS sector varchar(30)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS required_education varchar(30)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS benefits text`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS work_mode varchar(20)`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS start_date date`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS recruitment_process text`)
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${schemaName}_jobs_reference ON ${s}.recruitment_jobs(reference) WHERE reference IS NOT NULL`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)

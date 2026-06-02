@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { api, formatFCFA } from '@/lib/api'
+import {
+  EXPERIENCE_OPTIONS, JOB_LEVEL_OPTIONS, WORK_MODE_OPTIONS,
+  EDUCATION_OPTIONS, SECTOR_OPTIONS,
+} from '@/lib/apec'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Briefcase, Plus, Users, MapPin, ChevronRight, Eye,
@@ -106,6 +110,15 @@ interface NewJobForm {
   target_departments: string[]
   target_job_levels: string[]
   target_min_seniority_months: string
+  // ── Champs APEC (optionnels) ──
+  experience_level: string
+  job_level: string
+  sector: string
+  required_education: string
+  work_mode: string
+  start_date: string
+  benefits: string
+  recruitment_process: string
 }
 
 const EMPTY_FORM: NewJobForm = {
@@ -116,6 +129,8 @@ const EMPTY_FORM: NewJobForm = {
   status: 'open', visibility: 'external',
   target_departments: [], target_job_levels: [],
   target_min_seniority_months: '',
+  experience_level: '', job_level: '', sector: '', required_education: '',
+  work_mode: '', start_date: '', benefits: '', recruitment_process: '',
 }
 
 export default function RecruitmentPage() {
@@ -1198,6 +1213,47 @@ function NewJobModal({
             <label className="text-xs font-medium text-muted-foreground">Prérequis</label>
             <textarea value={form.requirements} onChange={e => setForm(p => ({ ...p, requirements: e.target.value }))}
               rows={2} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+          </div>
+
+          {/* ── Structure d'offre APEC (tous optionnels) ── */}
+          <div className="border-t border-border pt-3 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground">Structure de l'offre (standard APEC)</p>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { key: 'experience_level',   label: 'Expérience',      opts: EXPERIENCE_OPTIONS },
+                { key: 'job_level',          label: 'Statut',          opts: JOB_LEVEL_OPTIONS },
+                { key: 'required_education', label: 'Formation',       opts: EDUCATION_OPTIONS },
+                { key: 'sector',             label: 'Secteur',         opts: SECTOR_OPTIONS },
+                { key: 'work_mode',          label: 'Mode de travail', opts: WORK_MODE_OPTIONS },
+              ] as const).map(({ key, label, opts }) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-muted-foreground">{label}</label>
+                  <select value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                    <option value="">—</option>
+                    {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Date de prise de poste</label>
+                <input type="date" value={form.start_date}
+                  onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Avantages</label>
+              <textarea value={form.benefits} onChange={e => setForm(p => ({ ...p, benefits: e.target.value }))}
+                rows={2} placeholder="Mutuelle, primes, télétravail, formation…"
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Processus de recrutement</label>
+              <textarea value={form.recruitment_process} onChange={e => setForm(p => ({ ...p, recruitment_process: e.target.value }))}
+                rows={2} placeholder="Entretien RH → test technique → entretien manager…"
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+            </div>
           </div>
 
           <div className="border-t border-border pt-3">
