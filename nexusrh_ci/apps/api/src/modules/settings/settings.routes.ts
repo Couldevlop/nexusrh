@@ -54,6 +54,10 @@ const patchTenantSchema = z.object({
   dgi_number:      z.string().regex(DGI_NUMBER_RE).optional().nullable(),
   rccm:            z.string().regex(RCCM_RE).optional().nullable(),
   at_rate:         z.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+  // OWASP A07 — l'admin tenant peut DURCIR la politique MFA de son tenant.
+  // L'effet ne peut qu'imposer le MFA (jamais l'assouplir sous la politique
+  // globale plateforme) : cf. effectiveTenantMfaRequired côté login.
+  mfa_required:    z.boolean().optional(),
 }).strict()
 
 const createLegalEntitySchema = z.object({
@@ -136,6 +140,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT id, slug, name, plan_type, status, sector, city, cnps_number,
                   dgi_number, rccm, at_rate, max_users, max_employees,
                   primary_color, secondary_color, logo_url, trial_ends_at,
+                  COALESCE(mfa_required, false) AS mfa_required,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
         )
@@ -162,7 +167,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate']
+      const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -789,7 +794,17 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const configs = request.body as Array<{ module: string; levels_count: number }>
+      // OWASP A03 — le corps DOIT être un tableau de configs ; sans validation un
+      // corps non-itérable (objet) faisait planter le for...of → 500. → 400 propre.
+      const workflowSchema = z.array(z.object({
+        module:       z.string().min(1).max(50),
+        levels_count: z.number().int().min(1).max(10),
+      })).max(50)
+      const parsed = workflowSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Configuration workflow invalide', issues: parsed.error.flatten() })
+      }
+      const configs = parsed.data
       try {
         for (const cfg of configs) {
           await pool.query(`

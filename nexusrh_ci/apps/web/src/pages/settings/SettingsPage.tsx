@@ -17,6 +17,7 @@ interface TenantSettings {
   dgi_number: string | null; rccm: string | null; at_rate: string | null
   primary_color: string; secondary_color: string; logo_url: string | null
   max_users: number; max_employees: number
+  mfa_required?: boolean
 }
 interface TenantUser {
   id: string; email: string; first_name: string; last_name: string
@@ -73,7 +74,13 @@ type TabId = typeof TABS[number]['id']
 export default function SettingsPage() {
   const qc = useQueryClient()
   const { tenantConfig } = useAuthStore()
-  const [tab, setTab] = useState<TabId>('general')
+  // Onglet initial sélectionnable par URL (?tab=mfa) — utilisé notamment par la
+  // redirection « MFA obligatoire » du login (OWASP A07).
+  const initialTab = ((): TabId => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return (TABS as readonly { id: string }[]).some(x => x.id === t) ? (t as TabId) : 'general'
+  })()
+  const [tab, setTab] = useState<TabId>(initialTab)
 
   return (
     <div className="p-6 space-y-6">
@@ -172,6 +179,21 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             </div>
           ))}
         </div>
+
+        <h2 className="font-semibold pt-2">Sécurité</h2>
+        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+          <input type="checkbox"
+            defaultChecked={!!s.mfa_required}
+            onChange={e => setForm(p => ({ ...p, mfa_required: e.target.checked }))}
+            className="mt-0.5 h-4 w-4" />
+          <span className="text-sm">
+            <span className="font-medium">Imposer le MFA à tous les employés de ce tenant</span>
+            <span className="block text-xs text-muted-foreground">
+              Durcit la politique plateforme — vous pouvez l'imposer ici même si elle n'est pas globalement obligatoire,
+              mais pas l'assouplir si la plateforme l'exige déjà.
+            </span>
+          </span>
+        </label>
 
         <div className="pt-2 flex items-center justify-between border-t border-border">
           <p className="text-xs text-muted-foreground">

@@ -25,6 +25,7 @@ async function isMaintenanceModeActive(): Promise<boolean> {
 import authPlugin    from './plugins/auth.js'
 import corsPlugin    from './plugins/cors.js'
 import swaggerPlugin from './plugins/swagger.js'
+import { ensurePlatformSchema } from './utils/schema-migrations.js'
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
@@ -67,6 +68,14 @@ export async function buildApp() {
   await fastify.register(corsPlugin)
   await fastify.register(swaggerPlugin)
   await fastify.register(authPlugin)
+
+  // Migrations lazy du schéma platform au démarrage (idempotent, non bloquant) :
+  // garantit la présence des colonnes de politique de sécurité (mfa_required,
+  // password_changed_at, platform_settings.*) avant le premier login. Sans cela,
+  // une base déjà provisionnée mais non migrée renverrait des 500 au login.
+  await ensurePlatformSchema().catch((err) => {
+    fastify.log.warn({ err: (err as Error).message }, '[boot] ensurePlatformSchema a échoué (non bloquant)')
+  })
 
   // ── Rate limiting (OWASP A07 — Brute-force protection) ───────────────────────
   await fastify.register(import('@fastify/rate-limit'), {

@@ -273,15 +273,21 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const body = request.body as Record<string, unknown>
       const allowed = ['name','plan_type','status','primary_color','secondary_color',
                        'logo_url','max_users','max_employees','trial_ends_at','city','sector',
-                       'has_subsidiaries','payroll_mode','default_country_code']
+                       'has_subsidiaries','payroll_mode','default_country_code',
+                       // OWASP A07 — surcharge MFA durcissante par tenant (super_admin)
+                       'mfa_required']
       const sets: string[] = []
       const vals: unknown[] = []
       const modifiedFields: string[] = []
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         if (allowed.includes(k)) {
+          // mfa_required est un booléen strict (durcissement de politique)
+          const val = k === 'mfa_required'
+            ? (v === true || v === 'true' || v === 1 || v === '1')
+            : v
           sets.push(`${k} = $${idx++}`)
-          vals.push(v)
+          vals.push(val)
           modifiedFields.push(k)
         }
       }
@@ -539,6 +545,15 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
             ai_enabled      boolean      DEFAULT true,
             legal_name      varchar(255) DEFAULT 'OpenLab Consulting',
             legal_address   text         DEFAULT 'Cocody, Rivièra Faya Lauriers 8, Abidjan',
+            mfa_required_super_admin  boolean NOT NULL DEFAULT false,
+            mfa_required_tenant_users boolean NOT NULL DEFAULT false,
+            password_max_age_days     int     NOT NULL DEFAULT 30,
+            password_history_count    int     NOT NULL DEFAULT 5,
+            breach_check_enabled      boolean NOT NULL DEFAULT true,
+            lockout_enabled           boolean NOT NULL DEFAULT true,
+            lockout_max_attempts      int     NOT NULL DEFAULT 5,
+            lockout_window_minutes    int     NOT NULL DEFAULT 15,
+            lockout_duration_minutes  int     NOT NULL DEFAULT 15,
             created_at      timestamptz  NOT NULL DEFAULT now(),
             updated_at      timestamptz  NOT NULL DEFAULT now()
           )
@@ -570,12 +585,38 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         'app_name','support_email','support_phone','logo_url','favicon_url',
         'primary_color','maintenance_mode','allow_new_tenants','max_tenants',
         'default_trial_days','ai_enabled','legal_name','legal_address',
+        // ── Politique de sécurité paramétrable (OWASP A07) ──
+        'mfa_required_super_admin','mfa_required_tenant_users',
+        'password_max_age_days','password_history_count','breach_check_enabled',
+        'lockout_enabled','lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes',
       ]
+      // OWASP A03 — coercition de type avant écriture (les toggles/nombres
+      // arrivent parfois en string depuis le frontend). Les booleans/ints sont
+      // normalisés ; les bornes des durées/historique sont contraintes.
+      const BOOL_FIELDS = new Set([
+        'maintenance_mode','allow_new_tenants','ai_enabled',
+        'mfa_required_super_admin','mfa_required_tenant_users','breach_check_enabled',
+        'lockout_enabled',
+      ])
+      const INT_FIELDS = new Set(['max_tenants','default_trial_days','password_max_age_days','password_history_count',
+        'lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes'])
       const sets: string[] = []
       const vals: unknown[] = []
       let idx = 1
-      for (const [k, v] of Object.entries(body)) {
-        if (allowed.includes(k)) { sets.push(`${k} = $${idx++}`); vals.push(v) }
+      for (const [k, rawV] of Object.entries(body)) {
+        if (!allowed.includes(k)) continue
+        let v: unknown = rawV
+        if (BOOL_FIELDS.has(k)) {
+          v = rawV === true || rawV === 'true' || rawV === 1 || rawV === '1'
+        } else if (INT_FIELDS.has(k)) {
+          const n = typeof rawV === 'number' ? rawV : parseInt(String(rawV), 10)
+          if (!Number.isFinite(n) || n < 0) continue
+          // bornes raisonnables : durée de vie ≤ 3650 j, historique ≤ 50
+          if (k === 'password_max_age_days') v = Math.min(n, 3650)
+          else if (k === 'password_history_count') v = Math.min(n, 50)
+          else v = n
+        }
+        sets.push(`${k} = $${idx++}`); vals.push(v)
       }
       if (!sets.length) return reply.status(400).send({ error: 'Aucun champ valide' })
       sets.push(`updated_at = now()`)

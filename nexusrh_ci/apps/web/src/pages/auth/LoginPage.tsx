@@ -97,8 +97,13 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
 
-  // Etat "première connexion"
+  // Etat "première connexion" / changement forcé (expiration ou fuite)
   const [mustChange, setMustChange] = useState(false);
+  // Raison d'un changement IMPOSÉ par la politique de sécurité (token restreint
+  // pwdResetRequired). Si défini, on force une reconnexion après le changement
+  // (on ne réutilise jamais le token restreint).
+  const [forcedReason, setForcedReason] = useState<null | "expired" | "breached">(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [pendingAuth, setPendingAuth] = useState<{
     user: AuthUser;
     token: string;
@@ -126,19 +131,43 @@ export default function LoginPage() {
         tenantConfig?: TenantConfig | null;
         redirectTo?: string;
         must_change_password?: boolean;
+        // Politique de sécurité (OWASP A07) :
+        mfaSetupRequired?: boolean;
+        passwordExpired?: boolean;
+        passwordBreached?: boolean;
         // Réponse MFA 202 :
         mfaRequired?: boolean;
         challenge?: string;
       }>("/auth/login", data);
 
-      // 202 Accepted : MFA requis, demander le code TOTP/backup
+      // 202 Accepted : MFA déjà configuré → demander le code TOTP/backup
       if (res.status === 202 && res.data.mfaRequired && res.data.challenge) {
         setMfaChallenge(res.data.challenge);
         return;
       }
 
+      // MFA OBLIGATOIRE mais pas encore configuré : token restreint au parcours
+      // d'activation MFA. On connecte et on redirige vers la configuration MFA.
+      if (res.data.mfaSetupRequired === true && res.data.user && res.data.token) {
+        setAuth(
+          res.data.user,
+          res.data.token,
+          res.data.refreshToken ?? "",
+          res.data.tenantConfig ?? null,
+        );
+        navigate("/settings?tab=mfa", { replace: true });
+        return;
+      }
+
       if (res.data.must_change_password === true && res.data.user && res.data.token) {
         setPendingAuth(res.data as Required<typeof res.data>);
+        // Changement IMPOSÉ par la politique (token restreint) vs première
+        // connexion (token plein). On mémorise la raison pour adapter l'après-coup.
+        setForcedReason(
+          res.data.passwordBreached ? "breached"
+            : res.data.passwordExpired ? "expired"
+            : null,
+        );
         setMustChange(true);
         return;
       }
@@ -211,6 +240,23 @@ export default function LoginPage() {
         },
       );
 
+      // Changement IMPOSÉ par la politique (expiration / fuite) : le token en
+      // poche est RESTREINT (pwdResetRequired) et désormais caduc. On ne le
+      // réutilise jamais — on force une reconnexion propre avec le nouveau mdp.
+      if (forcedReason) {
+        setMustChange(false);
+        setPendingAuth(null);
+        setForcedReason(null);
+        loginForm.reset();
+        setInfoMsg(
+          forcedReason === "breached"
+            ? "Mot de passe mis à jour (l'ancien figurait dans une fuite). Reconnectez-vous."
+            : "Mot de passe mis à jour (l'ancien avait expiré). Reconnectez-vous.",
+        );
+        return;
+      }
+
+      // Première connexion (token plein) : on peut enchaîner directement.
       if (pendingAuth) {
         setAuth(
           pendingAuth.user,
@@ -320,7 +366,13 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-gray-900">Sécurisation du compte</h1>
-                  <p className="text-xs text-gray-500">Première connexion — changement requis</p>
+                  <p className="text-xs text-gray-500">
+                    {forcedReason === "breached"
+                      ? "Mot de passe compromis (fuite de données) — changement requis"
+                      : forcedReason === "expired"
+                      ? "Mot de passe expiré — changement requis"
+                      : "Première connexion — changement requis"}
+                  </p>
                 </div>
               </div>
             )}
@@ -375,6 +427,11 @@ export default function LoginPage() {
             {/* ── Connexion ── */}
             {!mfaChallenge && !mustChange && (
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-5">
+                {infoMsg && (
+                  <div className="rounded-xl bg-green-50 border border-green-100 px-4 py-3 text-sm text-green-700">
+                    {infoMsg}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                     Adresse email

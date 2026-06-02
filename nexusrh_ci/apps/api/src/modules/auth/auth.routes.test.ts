@@ -11,6 +11,7 @@ vi.mock('../../services/redis.js', () => ({
   blacklistToken:      vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
+  redisLockoutStore:   {},  // store de verrouillage (fail-open : {}.get indéfini → non bloquant)
 }))
 
 // auth-mfa.routes.ts (importé indirectement via buildMfaChallenge) tire
@@ -29,6 +30,12 @@ vi.mock('../../config.js', () => ({
     database: { url: 'postgresql://test' },
     redis: { url: 'redis://localhost:6380' },
   },
+}))
+
+// Neutralise l'appel réseau HaveIBeenPwned dans les tests (non bloquant = null).
+// La logique de fuite est couverte à 100% par breach-check.service.test.ts.
+vi.mock('../../services/breach-check.service.js', () => ({
+  isPasswordBreached: vi.fn().mockResolvedValue(null),
 }))
 
 import authPlugin from '../../plugins/auth.js'
@@ -69,6 +76,7 @@ describe('POST /auth/login — Zod stricte (OWASP A03)', () => {
 
 describe('POST /auth/login — credential check (OWASP A02 + A09)', () => {
   it('email inconnu → 401 + audit auth.login.failed (timing-safe dummy bcrypt joué)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ breach_check_enabled: false }] }) // getSecurityPolicy
     queryMock.mockResolvedValueOnce({ rows: [] })  // platform_users vide
     queryMock.mockResolvedValueOnce({ rows: [] })  // tenants vide
     queryMock.mockResolvedValueOnce({ rows: [] })  // audit_log
@@ -86,13 +94,15 @@ describe('POST /auth/login — credential check (OWASP A02 + A09)', () => {
   it('login tenant OK → 200 + audit auth.login.success', async () => {
     const passwordHash = await bcrypt.hash('Admin1234!', 4)
     queryMock
+      .mockResolvedValueOnce({ rows: [{ breach_check_enabled: false, password_max_age_days: 0 }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [] })  // platform_users vide
       .mockResolvedValueOnce({ rows: [{ id: 't1', schema_name: 'tenant_sotra', name: 'Sotra', slug: 'sotra',
         primary_color: '#E85D04', secondary_color: '#F48C06', logo_url: null, city: 'Abidjan',
-        has_subsidiaries: false, payroll_mode: 'monthly', default_country_code: 'CI' }] }) // tenants
+        has_subsidiaries: false, payroll_mode: 'monthly', default_country_code: 'CI', mfa_required: false }] }) // tenants
       .mockResolvedValueOnce({ rows: [{
         id: 'u1', email: 'admin@sotra.ci', password_hash: passwordHash, role: 'admin',
         first_name: 'A', last_name: 'D', mfa_enabled: false, is_active: true, last_login_at: '2024-01-01',
+        password_changed_at: '2024-01-01',
       }] })  // users dans tenant_sotra
       .mockResolvedValueOnce({ rows: [{ id: 'emp1' }] })  // employees lookup
       .mockResolvedValueOnce({ rows: [] })  // UPDATE last_login_at
@@ -114,9 +124,12 @@ describe('POST /auth/login — credential check (OWASP A02 + A09)', () => {
   it('login platform super_admin → 200 + audit scope:platform', async () => {
     const passwordHash = await bcrypt.hash('SuperAdmin1234!', 4)
     queryMock
+      .mockResolvedValueOnce({ rows: [{ breach_check_enabled: false, password_max_age_days: 0,
+        mfa_required_super_admin: false }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [{
         id: 'sa1', email: 'superadmin@nexusrh-ci.com', password_hash: passwordHash, role: 'super_admin',
         first_name: 'Super', last_name: 'Admin', mfa_enabled: false, is_active: true,
+        password_changed_at: '2024-01-01',
       }] })
       .mockResolvedValueOnce({ rows: [] })  // UPDATE platform_users
       .mockResolvedValueOnce({ rows: [] })  // audit_log
@@ -136,6 +149,9 @@ describe('POST /auth/login — credential check (OWASP A02 + A09)', () => {
   })
 
   it('DB error → 503 sans leak détails (OWASP A10)', async () => {
+    // getSecurityPolicy avale ses propres erreurs (défauts) → on le fait réussir,
+    // puis on rejette sur la requête platform_users pour déclencher le 503.
+    queryMock.mockResolvedValueOnce({ rows: [{ breach_check_enabled: false }] }) // getSecurityPolicy
     queryMock.mockRejectedValueOnce(new Error('FATAL: database "nexusrhci" does not exist'))
     const res = await app.inject({
       method: 'POST', url: '/auth/login',
@@ -178,6 +194,7 @@ describe('POST /auth/change-password — Zod + audit (OWASP A03 + A09)', () => {
   it('ancien mot de passe incorrect → 400 + audit password.change_failed', async () => {
     const wrongOldHash = await bcrypt.hash('CorrectOldPassword', 4)
     queryMock
+      .mockResolvedValueOnce({ rows: [{ password_history_count: 0, breach_check_enabled: false }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [{ password_hash: wrongOldHash }] }) // SELECT password_hash
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
@@ -195,8 +212,9 @@ describe('POST /auth/change-password — Zod + audit (OWASP A03 + A09)', () => {
   it('change-password OK → 200 + audit auth.password.changed', async () => {
     const correctOldHash = await bcrypt.hash('CorrectOld', 4)
     queryMock
+      .mockResolvedValueOnce({ rows: [{ password_history_count: 0, breach_check_enabled: false }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [{ password_hash: correctOldHash }] }) // SELECT
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE (password_hash + password_changed_at)
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
     const token = tokenFor('admin')
