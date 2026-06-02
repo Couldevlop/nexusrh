@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatDate } from '@/lib/api'
-import { BookOpen, Clock, MapPin, CheckCircle, Plus } from 'lucide-react'
+import { BookOpen, Clock, MapPin, CheckCircle, Info } from 'lucide-react'
 
 interface Training {
   id: string; title: string; description: string | null
@@ -29,9 +29,7 @@ const FORMAT_LABELS: Record<string, string> = {
 }
 
 export default function MaFormation() {
-  const queryClient = useQueryClient()
   const [tab, setTab] = useState<'catalog' | 'enrolled'>('enrolled')
-  const [enrollingSession, setEnrollingSession] = useState<string | null>(null)
 
   const { data: catalogData } = useQuery<{ data: Training[] }>({
     queryKey: ['training-catalog-emp'],
@@ -48,15 +46,6 @@ export default function MaFormation() {
   const { data: enrollmentsData } = useQuery<{ data: Enrollment[] }>({
     queryKey: ['training-my-enrollments'],
     queryFn: () => api.get('/training/my-enrollments').then(r => r.data),
-  })
-
-  const enrollMut = useMutation({
-    mutationFn: (session_id: string) => api.post('/training/enroll', { session_id }),
-    onSuccess: () => {
-      setEnrollingSession(null)
-      queryClient.invalidateQueries({ queryKey: ['training-my-enrollments'] })
-      queryClient.invalidateQueries({ queryKey: ['training-sessions-emp'] })
-    },
   })
 
   const catalog = catalogData?.data ?? []
@@ -153,9 +142,11 @@ export default function MaFormation() {
       {/* Catalogue */}
       {tab === 'catalog' && (
         <div className="space-y-6">
-          <p className="text-sm text-muted-foreground">
-            {sessions.length} session(s) disponible(s) · Cliquez pour vous inscrire
-          </p>
+          <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Les inscriptions aux formations sont gérées par votre service RH. Vous serez ajouté(e) aux sessions qui vous concernent — retrouvez-les dans « Mes inscriptions ».</span>
+          </div>
+          <p className="text-sm text-muted-foreground">{sessions.length} session(s) planifiée(s)</p>
           {sessions.length === 0 ? (
             <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
               <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
@@ -194,17 +185,10 @@ export default function MaFormation() {
                         </div>
                         <span className="text-muted-foreground">{s.enrolled_count}/{s.max_places} places</span>
                       </div>
-                      {isEnrolled ? (
+                      {isEnrolled && (
                         <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
                           <CheckCircle className="h-3.5 w-3.5" /> Inscrit
                         </span>
-                      ) : (
-                        <button
-                          onClick={() => setEnrollingSession(s.id)}
-                          disabled={isFull}
-                          className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">
-                          <Plus className="h-3 w-3" /> S'inscrire
-                        </button>
                       )}
                     </div>
                   </div>
@@ -215,25 +199,6 @@ export default function MaFormation() {
         </div>
       )}
 
-      {/* Confirmation inscription */}
-      {enrollingSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEnrollingSession(null)}>
-          <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-2">Confirmer l'inscription</h3>
-            <p className="text-sm text-muted-foreground mb-5">
-              Voulez-vous vous inscrire à cette session de formation ?
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setEnrollingSession(null)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
-              <button onClick={() => enrollMut.mutate(enrollingSession)} disabled={enrollMut.isPending}
-                className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {enrollMut.isPending ? 'Inscription...' : 'Confirmer'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

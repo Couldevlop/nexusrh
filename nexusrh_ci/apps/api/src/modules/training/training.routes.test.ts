@@ -123,49 +123,120 @@ describe('POST /training/sessions — Zod (OWASP A03)', () => {
   })
 })
 
-describe('POST /training/enroll — Zod + anti-duplicate (OWASP A03 + A04)', () => {
-  it('refuse session_id non-UUID (400)', async () => {
+describe('POST /training/enroll — RH/manager uniquement (OWASP A01 + A03 + A04)', () => {
+  it('refuse l\'auto-inscription par un employee (403)', async () => {
     const token = tokenFor(app, 'employee', { employeeId: UUID_B })
     const res = await app.inject({
       method: 'POST', url: '/training/enroll',
       headers: { authorization: `Bearer ${token}` },
-      payload: { session_id: 'pas-uuid' },
+      payload: { session_id: UUID_A, employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('refuse session_id non-UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: 'pas-uuid', employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse employee_id manquant (400) — plus d\'auto-inscription', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A },
     })
     expect(res.statusCode).toBe(400)
   })
 
   it('refuse une seconde inscription à la même session (409)', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ id: UUID_B }] }) // SELECT employee by email
       .mockResolvedValueOnce({ rows: [{ id: 'enr-existing' }] }) // duplicate check finds row
 
-    const token = tokenFor(app, 'employee', { employeeId: UUID_B })
+    const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({
       method: 'POST', url: '/training/enroll',
       headers: { authorization: `Bearer ${token}` },
-      payload: { session_id: UUID_A },
+      payload: { session_id: UUID_A, employee_id: UUID_B },
     })
     expect(res.statusCode).toBe(409)
     expect(JSON.parse(res.body).error).toContain('déjà inscrit')
   })
 
-  it('inscription réussie trace audit_log training.enrolled', async () => {
+  it('inscription RH réussie trace audit_log training.enrolled', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ id: UUID_B }] })          // SELECT employee
       .mockResolvedValueOnce({ rows: [] })                         // duplicate check empty
       .mockResolvedValueOnce({ rows: [{ max_places: 20, enrolled: 5 }] }) // session check
       .mockResolvedValueOnce({ rows: [{ id: 'enr-new' }] })       // INSERT enrollment
       .mockResolvedValueOnce({ rows: [] })                         // audit_log
 
-    const token = tokenFor(app, 'employee', { employeeId: UUID_B })
+    const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({
       method: 'POST', url: '/training/enroll',
       headers: { authorization: `Bearer ${token}` },
-      payload: { session_id: UUID_A },
+      payload: { session_id: UUID_A, employee_id: UUID_B },
     })
     expect(res.statusCode).toBe(201)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('training.enrolled')
+  })
+
+  it('manager hors équipe directe → 403', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // team check : pas dans l'équipe
+    const token = tokenFor(app, 'manager')
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A, employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+})
+
+describe('POST /training/sessions/:id/participants — ajout RH des sélectionnés', () => {
+  it('refuse un employee (403)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: UUID_B })
+    const res = await app.inject({
+      method: 'POST', url: `/training/sessions/${UUID_A}/participants`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { employee_ids: [UUID_B] },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('ajoute les employés sélectionnés (201) + trace participants_added', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ max_places: 20, enrolled: 0 }] })  // capacité
+      .mockResolvedValueOnce({ rows: [{ id: UUID_B }] })                   // employés valides du tenant
+      .mockResolvedValueOnce({ rows: [] })                                 // déjà inscrits
+      .mockResolvedValueOnce({ rows: [{ id: 'enr-1' }] })                  // INSERT enrollment
+      .mockResolvedValueOnce({ rows: [] })                                 // audit_log
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: `/training/sessions/${UUID_A}/participants`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { employee_ids: [UUID_B] },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).data.added).toBe(1)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]?.[1]).toBe('training.participants_added')
+  })
+
+  it('session inexistante → 404', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // capacité : session absente
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: `/training/sessions/${UUID_A}/participants`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { employee_ids: [UUID_B] },
+    })
+    expect(res.statusCode).toBe(404)
   })
 })
 

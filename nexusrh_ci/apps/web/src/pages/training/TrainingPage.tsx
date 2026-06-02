@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatDate, formatFCFA } from '@/lib/api'
-import { BookOpen, Plus, Clock, Users, CheckCircle, Award, FileText, Loader2 } from 'lucide-react'
+import { BookOpen, Plus, Clock, Users, CheckCircle, Award, FileText, Loader2, UserPlus } from 'lucide-react'
 
 interface Training {
   id: string; title: string; description: string | null
@@ -23,6 +23,8 @@ interface Enrollment {
   first_name: string; last_name: string
   status: string; completed_at: string | null; location: string | null
 }
+
+interface EmployeeLite { id: string; first_name: string; last_name: string }
 
 const FORMAT_LABELS: Record<string, string> = {
   presentiel: 'Présentiel', distanciel: 'Distanciel', hybride: 'Hybride',
@@ -47,6 +49,18 @@ export default function TrainingPage() {
     training_id: '', start_date: '', end_date: '', location: '',
     trainer: '', max_places: '20',
   })
+  // Employés sélectionnés à la planification d'une session.
+  const [sessionEmployees, setSessionEmployees] = useState<string[]>([])
+  // Ajout de participants à une session existante (id de session ciblée).
+  const [participantsSession, setParticipantsSession] = useState<string | null>(null)
+  const [participantsPick, setParticipantsPick] = useState<string[]>([])
+
+  const { data: employeesData } = useQuery<{ data: EmployeeLite[] }>({
+    queryKey: ['training-employees'],
+    queryFn: () => api.get('/employees?limit=500').then(r => r.data),
+    enabled: showNewSession || participantsSession !== null,
+  })
+  const employees = employeesData?.data ?? []
 
   const { data: catalogData } = useQuery<{ data: Training[] }>({
     queryKey: ['training-catalog'],
@@ -77,11 +91,27 @@ export default function TrainingPage() {
 
   const createSession = useMutation({
     mutationFn: (data: typeof newSession) =>
-      api.post('/training/sessions', { ...data, max_places: parseInt(data.max_places) }),
+      api.post('/training/sessions', {
+        ...data,
+        max_places: parseInt(data.max_places),
+        ...(sessionEmployees.length > 0 ? { employee_ids: sessionEmployees } : {}),
+      }),
     onSuccess: () => {
       setShowNewSession(false)
       setNewSession({ training_id: '', start_date: '', end_date: '', location: '', trainer: '', max_places: '20' })
+      setSessionEmployees([])
       queryClient.invalidateQueries({ queryKey: ['training-sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['training-enrollments'] })
+    },
+  })
+
+  const addParticipants = useMutation({
+    mutationFn: () => api.post(`/training/sessions/${participantsSession}/participants`, { employee_ids: participantsPick }),
+    onSuccess: () => {
+      setParticipantsSession(null)
+      setParticipantsPick([])
+      queryClient.invalidateQueries({ queryKey: ['training-sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['training-enrollments'] })
     },
   })
 
@@ -203,6 +233,7 @@ export default function TrainingPage() {
                 <th className="p-4 text-center">Inscriptions</th>
                 <th className="p-4">Format</th>
                 <th className="p-4">Statut</th>
+                <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -243,11 +274,20 @@ export default function TrainingPage() {
                       'bg-muted text-muted-foreground'
                     }`}>{s.status}</span>
                   </td>
+                  <td className="p-4 text-right">
+                    {s.status === 'planned' && (
+                      <button
+                        onClick={() => { setParticipantsSession(s.id); setParticipantsPick([]) }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5">
+                        <UserPlus className="h-3.5 w-3.5" /> Participants
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {sessions.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
                     Aucune session planifiée
                   </td>
@@ -478,9 +518,15 @@ export default function TrainingPage() {
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
               </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Participants ({sessionEmployees.length} sélectionné{sessionEmployees.length > 1 ? 's' : ''})
+                </label>
+                <EmployeePicker employees={employees} selected={sessionEmployees} onChange={setSessionEmployees} />
+              </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setShowNewSession(false)}
+              <button onClick={() => { setShowNewSession(false); setSessionEmployees([]) }}
                 className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
               <button onClick={() => createSession.mutate(newSession)}
                 disabled={!newSession.training_id || !newSession.start_date || createSession.isPending}
@@ -564,6 +610,56 @@ export default function TrainingPage() {
           </div>
         </div>
       )}
+
+      {/* Modal ajout de participants à une session existante */}
+      {participantsSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setParticipantsSession(null)}>
+          <div className="rounded-xl border border-border bg-card p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold mb-1">Ajouter des participants</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Sélectionnez les employés à inscrire à cette session.
+            </p>
+            <EmployeePicker employees={employees} selected={participantsPick} onChange={setParticipantsPick} />
+            <div className="mt-5 flex gap-2 justify-end">
+              <button onClick={() => setParticipantsSession(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => addParticipants.mutate()}
+                disabled={participantsPick.length === 0 || addParticipants.isPending}
+                className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {addParticipants.isPending ? 'Ajout...' : `Inscrire (${participantsPick.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Sélecteur multi-employés (recherche + cases à cocher) réutilisé par la
+// planification de session et l'ajout de participants.
+function EmployeePicker({ employees, selected, onChange }: {
+  employees: EmployeeLite[]; selected: string[]; onChange: (ids: string[]) => void
+}) {
+  const [q, setQ] = useState('')
+  const filtered = employees.filter(e =>
+    `${e.first_name} ${e.last_name}`.toLowerCase().includes(q.toLowerCase()))
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  return (
+    <div className="mt-1">
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un employé…"
+        className="mb-2 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+      <div className="max-h-48 overflow-auto rounded-lg border border-border divide-y divide-border">
+        {filtered.map(e => (
+          <label key={e.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent">
+            <input type="checkbox" checked={selected.includes(e.id)} onChange={() => toggle(e.id)}
+              className="h-4 w-4 rounded border-border accent-primary" />
+            {e.first_name} {e.last_name}
+          </label>
+        ))}
+        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Aucun employé.</p>}
+      </div>
     </div>
   )
 }
