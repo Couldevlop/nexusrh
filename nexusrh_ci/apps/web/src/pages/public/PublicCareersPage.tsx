@@ -6,6 +6,7 @@ import {
   Loader2, Search, Banknote, AlertCircle, FileText, ArrowRight, X,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { apecMetaPairs } from '../../lib/apec'
 
 interface PublicJob {
   id: string
@@ -21,6 +22,16 @@ interface PublicJob {
   created_at: string
   published_at: string | null
   applications_count: number
+  // ── Champs APEC ──
+  reference?: string | null
+  experience_level?: string | null
+  job_level?: string | null
+  sector?: string | null
+  required_education?: string | null
+  benefits?: string | null
+  work_mode?: string | null
+  start_date?: string | null
+  recruitment_process?: string | null
 }
 
 interface CareersResponse {
@@ -272,6 +283,16 @@ function JobDetailModal({ job, primary, onClose, onApply }: {
             <Banknote className="h-4 w-4" /> {salary}
           </div>
         )}
+        {apecMetaPairs(job).length > 0 && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
+            {apecMetaPairs(job).map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                <p className="text-sm font-medium text-slate-800">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
         {job.description && (
           <section>
             <h4 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-slate-500">Description du poste</h4>
@@ -282,6 +303,18 @@ function JobDetailModal({ job, primary, onClose, onApply }: {
           <section>
             <h4 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-slate-500">Profil recherché</h4>
             <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{job.requirements}</p>
+          </section>
+        )}
+        {job.benefits && (
+          <section>
+            <h4 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-slate-500">Avantages</h4>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{job.benefits}</p>
+          </section>
+        )}
+        {job.recruitment_process && (
+          <section>
+            <h4 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-slate-500">Processus de recrutement</h4>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{job.recruitment_process}</p>
           </section>
         )}
       </div>

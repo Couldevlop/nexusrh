@@ -66,10 +66,45 @@ type JobBody = {
   target_min_seniority_months?: number | null
   target_legal_entity_id?: string | null
   hiring_manager_id?: string | null
+  // ── Structure d'offre APEC (tous optionnels) ──
+  experience_level?: string | null
+  job_level?: string | null
+  sector?: string | null
+  required_education?: string | null
+  benefits?: string | null
+  work_mode?: string | null
+  start_date?: string | null
+  recruitment_process?: string | null
 }
 
 const STAGES = ['new', 'screening', 'interview', 'test', 'offer', 'hired', 'rejected']
 const VISIBILITIES = ['external', 'internal', 'both']
+
+// ── Énumérations standard APEC (whitelist de validation) ──────────────────────
+const EXPERIENCE_LEVELS = ['debutant_accepte', 'min_1_an', '1_3_ans', '3_7_ans', 'min_7_ans']
+const JOB_LEVELS_APEC   = ['employe_technicien', 'agent_maitrise', 'cadre', 'cadre_dirigeant']
+const WORK_MODES        = ['on_site', 'hybrid', 'remote']
+const EDUCATION_LEVELS  = ['aucun', 'cap_bep', 'bac', 'bac_2', 'bac_3', 'bac_5', 'doctorat']
+const JOB_SECTORS       = ['industrie', 'commerce', 'services', 'btp', 'finance', 'sante',
+                           'ong', 'public', 'transport', 'agriculture', 'mines', 'telecom', 'education', 'autre']
+
+// Une valeur APEC est valide si absente/vide OU dans la liste blanche (OWASP A03).
+function inEnum(v: string | null | undefined, allowed: string[]): boolean {
+  return v == null || v === '' || allowed.includes(v)
+}
+// Retourne un message d'erreur si un champ énum APEC est hors liste, sinon null.
+function validateApecEnums(b: JobBody): string | null {
+  if (!inEnum(b.experience_level, EXPERIENCE_LEVELS)) return 'experience_level invalide'
+  if (!inEnum(b.job_level, JOB_LEVELS_APEC))          return 'job_level invalide'
+  if (!inEnum(b.work_mode, WORK_MODES))               return 'work_mode invalide'
+  if (!inEnum(b.required_education, EDUCATION_LEVELS)) return 'required_education invalide'
+  if (!inEnum(b.sector, JOB_SECTORS))                 return 'sector invalide'
+  return null
+}
+// Normalise une valeur énum : '' → null ; sinon la valeur (déjà validée).
+function enumOrNull(v: string | null | undefined): string | null {
+  return v == null || v === '' ? null : v
+}
 
 function slugifyTitle(title: string): string {
   return title.toLowerCase()
@@ -137,9 +172,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureRecruitmentSchemaMigrated(schema)
       const body = request.body as JobBody
       if (!body.title) return reply.status(400).send({ error: 'Titre requis' })
+      // OWASP A03 — valider les énumérations APEC avant insertion.
+      const enumErr = validateApecEnums(body)
+      if (enumErr) return reply.status(400).send({ error: enumErr })
       const visibility = VISIBILITIES.includes(body.visibility ?? '')
         ? body.visibility! : 'external'
       const status = body.status || 'open'
+      // Référence APEC auto-générée : {SLUG}-{ANNÉE}-{séquence}. Le n° de séquence
+      // est calculé atomiquement dans l'INSERT (sous-requête count) ; unicité
+      // garantie par l'index partiel sur reference (collision rare → 409 propre).
+      const slug = schema.replace(/^tenant_/, '').toUpperCase()
+      const refPrefix = `${slug}-${new Date().getFullYear()}-`
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".recruitment_jobs
@@ -147,8 +190,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
              description, requirements, status, published_at, created_by,
              visibility, target_departments, target_job_levels,
              target_min_seniority_months, target_legal_entity_id, hiring_manager_id,
-             public_slug)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+             public_slug, reference,
+             experience_level, job_level, sector, required_education,
+             benefits, work_mode, start_date, recruitment_process)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+             $19 || lpad((SELECT count(*)+1 FROM "${schema}".recruitment_jobs WHERE reference LIKE $19 || '%')::text, 4, '0'),
+             $20,$21,$22,$23,$24,$25,$26,$27)
           RETURNING *
         `, [
           body.title, body.department_id || null,
@@ -164,6 +211,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           body.target_legal_entity_id || null,
           body.hiring_manager_id || null,
           slugifyTitle(body.title),
+          refPrefix,
+          enumOrNull(body.experience_level), enumOrNull(body.job_level),
+          enumOrNull(body.sector), enumOrNull(body.required_education),
+          body.benefits || null, enumOrNull(body.work_mode),
+          body.start_date || null, body.recruitment_process || null,
         ])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
@@ -205,10 +257,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
       const body = request.body as JobBody
+      // OWASP A03 — valider les énumérations APEC avant mise à jour.
+      const enumErr = validateApecEnums(body)
+      if (enumErr) return reply.status(400).send({ error: enumErr })
+      // `reference` est immuable (auto-générée à la création) → jamais modifiable.
       const scalarFields: Array<keyof JobBody> = [
         'title', 'department_id', 'location', 'contract_type',
         'salary_min', 'salary_max', 'description', 'requirements', 'status',
         'target_min_seniority_months', 'target_legal_entity_id', 'hiring_manager_id',
+        // ── Champs APEC ──
+        'experience_level', 'job_level', 'sector', 'required_education',
+        'benefits', 'work_mode', 'start_date', 'recruitment_process',
       ]
       const updates: string[] = []
       const values: unknown[] = []
@@ -1067,6 +1126,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const jobs = await pool.query(`
         SELECT id, title, location, contract_type, salary_min, salary_max,
                currency, description, requirements, public_slug,
+               reference, experience_level, job_level, sector, required_education,
+               benefits, work_mode, start_date, recruitment_process,
                created_at, published_at,
                (SELECT count(*)::int FROM "${t.schema_name}".applications a
                   WHERE a.job_id = rj.id) AS applications_count
@@ -1110,6 +1171,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const job = await pool.query(`
         SELECT id, title, location, contract_type, salary_min, salary_max,
                currency, description, requirements,
+               reference, experience_level, job_level, sector, required_education,
+               benefits, work_mode, start_date, recruitment_process,
                created_at, published_at
           FROM "${t.schema_name}".recruitment_jobs
           WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')

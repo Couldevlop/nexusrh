@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, formatFCFA } from '@/lib/api'
+import { apecMetaPairs } from '@/lib/apec'
 import { Briefcase, MapPin, Send, CheckCircle, Lock } from 'lucide-react'
 
 interface InternalJob {
@@ -17,6 +18,16 @@ interface InternalJob {
   target_min_seniority_months: number | null
   created_at: string
   already_applied: number
+  // ── Champs APEC ──
+  reference?: string | null
+  experience_level?: string | null
+  job_level?: string | null
+  sector?: string | null
+  required_education?: string | null
+  benefits?: string | null
+  work_mode?: string | null
+  start_date?: string | null
+  recruitment_process?: string | null
 }
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -153,6 +164,18 @@ export default function MesOffresInternes() {
               </p>
             )}
 
+            {/* Grille méta APEC (référence, statut, expérience, secteur…) */}
+            {apecMetaPairs(selected).length > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-3">
+                {apecMetaPairs(selected).map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="text-xs font-medium text-foreground">{value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Intégralité de l'offre (aperçu → détail complet, façon APEC) */}
             <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-3">
               {selected.description && (
@@ -165,6 +188,18 @@ export default function MesOffresInternes() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Profil recherché</p>
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.requirements}</p>
+                </div>
+              )}
+              {selected.benefits && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Avantages</p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.benefits}</p>
+                </div>
+              )}
+              {selected.recruitment_process && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Processus de recrutement</p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.recruitment_process}</p>
                 </div>
               )}
               {!selected.description && !selected.requirements && (

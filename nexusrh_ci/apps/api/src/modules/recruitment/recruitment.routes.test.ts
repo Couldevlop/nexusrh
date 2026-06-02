@@ -149,6 +149,50 @@ describe('POST /recruitment/jobs — visibility & ciblage', () => {
     })
     expect(res.statusCode).toBe(403)
   })
+
+  it('rejette une énumération APEC invalide (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Test', experience_level: 'pas_un_niveau' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('experience_level')
+  })
+
+  it('persiste les champs APEC + génère une référence {SLUG}-{ANNÉE}-{seq}', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'job-apec', reference: 'SOTRA-2026-0001' }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        title: 'Directeur Financier',
+        experience_level: '3_7_ans', job_level: 'cadre_dirigeant',
+        sector: 'finance', required_education: 'bac_5', work_mode: 'hybrid',
+        start_date: '2026-09-01', benefits: 'Mutuelle, 13e mois',
+        recruitment_process: 'RH → DAF → DG',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const sql  = String(queryMock.mock.calls[0]![0])
+    const args = queryMock.mock.calls[0]![1] as unknown[]
+    expect(sql).toContain('reference')
+    // refPrefix = $19 (index 18) : {SLUG}-{ANNÉE}-
+    expect(args[18]).toMatch(/^SOTRA-\d{4}-$/)
+    // champs APEC (index 19+)
+    expect(args[19]).toBe('3_7_ans')        // experience_level
+    expect(args[20]).toBe('cadre_dirigeant') // job_level
+    expect(args[21]).toBe('finance')         // sector
+    expect(args[22]).toBe('bac_5')           // required_education
+    expect(args[23]).toBe('Mutuelle, 13e mois') // benefits
+    expect(args[24]).toBe('hybrid')          // work_mode
+    expect(args[25]).toBe('2026-09-01')      // start_date
+    expect(args[26]).toBe('RH → DAF → DG')   // recruitment_process
+  })
 })
 
 describe('GET /recruitment/internal-jobs — filtrage interne', () => {
