@@ -237,6 +237,10 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS password_max_age_days int NOT NULL DEFAULT 30`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS password_history_count int NOT NULL DEFAULT 5`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS breach_check_enabled boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_enabled boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_max_attempts int NOT NULL DEFAULT 5`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_window_minutes int NOT NULL DEFAULT 15`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_duration_minutes int NOT NULL DEFAULT 15`,
 
     // ── Surcharge MFA durcissante par tenant (ne peut qu'imposer le MFA) ──────
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT false`,

@@ -11,8 +11,11 @@ import {
   isPasswordExpired,
   isPasswordReused,
   effectiveTenantMfaRequired,
+  toLockoutPolicy,
 } from '../../services/security-policy.service.js'
 import { isPasswordBreached } from '../../services/breach-check.service.js'
+import { redisLockoutStore } from '../../services/redis.js'
+import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -173,6 +176,21 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         const policy = await getSecurityPolicy(pool)
         const now = new Date()
 
+        // OWASP A07 — verrouillage de compte (brute-force). Compteurs Redis par
+        // email, fail-open si Redis indisponible. Contrôlé AVANT toute vérif de
+        // mot de passe : un compte verrouillé est refusé sans révéler le motif
+        // exact des identifiants.
+        const lockoutPolicy = toLockoutPolicy(policy)
+        const lock = await checkLockout(redisLockoutStore, email, lockoutPolicy)
+        if (lock.locked) {
+          auditLogAuth('platform', null, 'auth.login.locked',
+            { email, retryAfterSec: lock.retryAfterSec }, ip, ua)
+          reply.header('Retry-After', String(lock.retryAfterSec))
+          return reply.status(423).send({
+            error: `Compte temporairement verrouillé suite à trop de tentatives. Réessayez dans ${Math.ceil(lock.retryAfterSec / 60)} min.`,
+          })
+        }
+
         // 1. Vérifier si c'est un super_admin (platform)
         const platformRes = await pool.query<{
           id: string; email: string; password_hash: string; role: string
@@ -189,6 +207,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (platformUser && platformUser.is_active) {
           const valid = await bcrypt.compare(password, platformUser.password_hash)
           if (valid) {
+            // OWASP A07 — mot de passe correct : réinitialise le compteur d'échecs.
+            await clearFailures(redisLockoutStore, email)
             // MFA actif : émet un challenge 3min au lieu du JWT final.
             // Le client doit ensuite appeler POST /auth/mfa/login-verify avec
             // le code TOTP (ou backup) pour obtenir le vrai token.
@@ -279,10 +299,23 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (!candidate) {
           // OWASP A09 — log de l'échec, sans révéler le motif au client
           auditLogAuth('platform', null, 'auth.login.failed', { email, reason: 'invalid_credentials' }, ip, ua)
+          // OWASP A07 — comptabilise l'échec ; si le seuil est atteint, verrouille
+          // et informe immédiatement (423) plutôt que de répéter un 401 opaque.
+          const fail = await registerFailure(redisLockoutStore, email, lockoutPolicy)
+          if (fail.locked) {
+            auditLogAuth('platform', null, 'auth.login.locked',
+              { email, retryAfterSec: fail.retryAfterSec, trigger: 'threshold_reached' }, ip, ua)
+            reply.header('Retry-After', String(fail.retryAfterSec))
+            return reply.status(423).send({
+              error: `Compte temporairement verrouillé suite à trop de tentatives. Réessayez dans ${Math.ceil(fail.retryAfterSec / 60)} min.`,
+            })
+          }
           return reply.status(401).send({ error: 'Email ou mot de passe incorrect' })
         }
 
         const { tenant, user } = candidate
+        // OWASP A07 — identifiants tenant valides : réinitialise le compteur d'échecs.
+        await clearFailures(redisLockoutStore, email)
 
         // MFA actif sur ce user : émet un challenge 3min au lieu du JWT final.
         // Le client doit ensuite appeler POST /auth/mfa/login-verify avec le

@@ -11,6 +11,7 @@ vi.mock('../../services/redis.js', () => ({
   blacklistToken:      vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
+  redisLockoutStore:   {},  // store de verrouillage (fail-open : {}.get indéfini → non bloquant)
 }))
 
 // auth-mfa.routes.ts (importé indirectement via buildMfaChallenge) tire

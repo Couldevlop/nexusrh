@@ -17,6 +17,7 @@ vi.mock('./services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe: vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
+  redisLockoutStore:  {},
 }))
 
 vi.mock('./services/email.js', () => ({

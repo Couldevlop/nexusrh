@@ -23,6 +23,14 @@ export interface SecurityPolicy {
   passwordHistoryCount: number
   /** Vérifier le mot de passe contre les fuites connues (si internet). */
   breachCheckEnabled: boolean
+  /** Verrouiller un compte après N échecs de connexion (OWASP A07). */
+  lockoutEnabled: boolean
+  /** Seuil d'échecs déclenchant le verrou (0 = désactivé). */
+  lockoutMaxAttempts: number
+  /** Fenêtre de comptage des échecs (minutes). */
+  lockoutWindowMinutes: number
+  /** Durée du verrou une fois le seuil atteint (minutes). */
+  lockoutDurationMinutes: number
 }
 
 export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
@@ -31,6 +39,10 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
   passwordMaxAgeDays: 30,
   passwordHistoryCount: 5,
   breachCheckEnabled: true,
+  lockoutEnabled: true,
+  lockoutMaxAttempts: 5,
+  lockoutWindowMinutes: 15,
+  lockoutDurationMinutes: 15,
 }
 
 // pg renvoie les booleans/ints typés, mais selon le driver/colonne manquante on
@@ -60,6 +72,28 @@ export function mapSecurityPolicyRow(row: Record<string, unknown> | null | undef
     passwordMaxAgeDays:     toNonNegInt(row['password_max_age_days'], DEFAULT_SECURITY_POLICY.passwordMaxAgeDays),
     passwordHistoryCount:   toNonNegInt(row['password_history_count'], DEFAULT_SECURITY_POLICY.passwordHistoryCount),
     breachCheckEnabled:     toBool(row['breach_check_enabled'],      DEFAULT_SECURITY_POLICY.breachCheckEnabled),
+    lockoutEnabled:         toBool(row['lockout_enabled'],          DEFAULT_SECURITY_POLICY.lockoutEnabled),
+    lockoutMaxAttempts:     toNonNegInt(row['lockout_max_attempts'], DEFAULT_SECURITY_POLICY.lockoutMaxAttempts),
+    lockoutWindowMinutes:   toNonNegInt(row['lockout_window_minutes'], DEFAULT_SECURITY_POLICY.lockoutWindowMinutes),
+    lockoutDurationMinutes: toNonNegInt(row['lockout_duration_minutes'], DEFAULT_SECURITY_POLICY.lockoutDurationMinutes),
+  }
+}
+
+/**
+ * Construit la LockoutPolicy (account-lockout.service) à partir de la politique
+ * de sécurité. Convertit les minutes en secondes. Si la durée de fenêtre/verrou
+ * est nulle, on retombe sur 15 min (évite un TTL de 0 = jamais expirant côté Redis).
+ */
+export function toLockoutPolicy(policy: SecurityPolicy): {
+  enabled: boolean; maxAttempts: number; windowSeconds: number; lockSeconds: number
+} {
+  const windowMin = policy.lockoutWindowMinutes > 0 ? policy.lockoutWindowMinutes : 15
+  const lockMin   = policy.lockoutDurationMinutes > 0 ? policy.lockoutDurationMinutes : 15
+  return {
+    enabled:       policy.lockoutEnabled,
+    maxAttempts:   policy.lockoutMaxAttempts,
+    windowSeconds: windowMin * 60,
+    lockSeconds:   lockMin * 60,
   }
 }
 

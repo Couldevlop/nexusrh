@@ -550,6 +550,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
             password_max_age_days     int     NOT NULL DEFAULT 30,
             password_history_count    int     NOT NULL DEFAULT 5,
             breach_check_enabled      boolean NOT NULL DEFAULT true,
+            lockout_enabled           boolean NOT NULL DEFAULT true,
+            lockout_max_attempts      int     NOT NULL DEFAULT 5,
+            lockout_window_minutes    int     NOT NULL DEFAULT 15,
+            lockout_duration_minutes  int     NOT NULL DEFAULT 15,
             created_at      timestamptz  NOT NULL DEFAULT now(),
             updated_at      timestamptz  NOT NULL DEFAULT now()
           )
@@ -584,6 +588,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         // ── Politique de sécurité paramétrable (OWASP A07) ──
         'mfa_required_super_admin','mfa_required_tenant_users',
         'password_max_age_days','password_history_count','breach_check_enabled',
+        'lockout_enabled','lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes',
       ]
       // OWASP A03 — coercition de type avant écriture (les toggles/nombres
       // arrivent parfois en string depuis le frontend). Les booleans/ints sont
@@ -591,8 +596,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const BOOL_FIELDS = new Set([
         'maintenance_mode','allow_new_tenants','ai_enabled',
         'mfa_required_super_admin','mfa_required_tenant_users','breach_check_enabled',
+        'lockout_enabled',
       ])
-      const INT_FIELDS = new Set(['max_tenants','default_trial_days','password_max_age_days','password_history_count'])
+      const INT_FIELDS = new Set(['max_tenants','default_trial_days','password_max_age_days','password_history_count',
+        'lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes'])
       const sets: string[] = []
       const vals: unknown[] = []
       let idx = 1

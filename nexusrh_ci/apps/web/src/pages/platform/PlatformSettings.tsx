@@ -29,6 +29,10 @@ interface PlatformSettings {
   password_max_age_days: number
   password_history_count: number
   breach_check_enabled: boolean
+  lockout_enabled: boolean
+  lockout_max_attempts: number
+  lockout_window_minutes: number
+  lockout_duration_minutes: number
   aiConfigured: boolean
   smtpConfigured: boolean
   version: string
@@ -534,6 +538,36 @@ export default function PlatformSettings() {
                 <p className="text-xs text-muted-foreground -mt-2">
                   À chaque connexion (si accès internet), le mot de passe est comparé — en k-anonymat, sans jamais quitter le serveur —
                   aux fuites connues. S'il est compromis, le changement est imposé. Sans internet : contrôle ignoré (non bloquant).
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <p className="text-sm font-semibold">Verrouillage de compte (anti-force brute)</p>
+                <Toggle
+                  checked={settings.lockout_enabled ?? true}
+                  onChange={v => update('lockout_enabled', v)}
+                  label="Verrouiller un compte après trop d'échecs de connexion" />
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Seuil d'échecs" hint="0 = désactivé">
+                    <input type="number" min={0} max={50} className={inputCls}
+                      value={settings.lockout_max_attempts ?? 5}
+                      onChange={e => update('lockout_max_attempts', parseInt(e.target.value || '0', 10))} />
+                  </Field>
+                  <Field label="Fenêtre (min)" hint="comptage">
+                    <input type="number" min={1} max={1440} className={inputCls}
+                      value={settings.lockout_window_minutes ?? 15}
+                      onChange={e => update('lockout_window_minutes', parseInt(e.target.value || '1', 10))} />
+                  </Field>
+                  <Field label="Durée verrou (min)" hint="blocage">
+                    <input type="number" min={1} max={1440} className={inputCls}
+                      value={settings.lockout_duration_minutes ?? 15}
+                      onChange={e => update('lockout_duration_minutes', parseInt(e.target.value || '1', 10))} />
+                  </Field>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Après {settings.lockout_max_attempts ?? 5} échecs en {settings.lockout_window_minutes ?? 15} min,
+                  le compte est bloqué {settings.lockout_duration_minutes ?? 15} min (réponse 423). Le rate-limiting
+                  par IP reste actif en complément ; en cas de panne Redis, le verrouillage est ignoré (fail-open).
                 </p>
               </div>
 

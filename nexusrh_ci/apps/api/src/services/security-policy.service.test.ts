@@ -7,6 +7,7 @@ import {
   isPasswordExpired,
   effectiveTenantMfaRequired,
   isPasswordReused,
+  toLockoutPolicy,
 } from './security-policy.service.js'
 
 describe('mapSecurityPolicyRow — robustesse types/colonnes (OWASP A07)', () => {
@@ -26,12 +27,20 @@ describe('mapSecurityPolicyRow — robustesse types/colonnes (OWASP A07)', () =>
       password_max_age_days: 60,
       password_history_count: 10,
       breach_check_enabled: false,
+      lockout_enabled: false,
+      lockout_max_attempts: 7,
+      lockout_window_minutes: 30,
+      lockout_duration_minutes: 60,
     })).toEqual({
       mfaRequiredSuperAdmin: true,
       mfaRequiredTenantUsers: false,
       passwordMaxAgeDays: 60,
       passwordHistoryCount: 10,
       breachCheckEnabled: false,
+      lockoutEnabled: false,
+      lockoutMaxAttempts: 7,
+      lockoutWindowMinutes: 30,
+      lockoutDurationMinutes: 60,
     })
   })
   it('coercition string/number (driver renvoie parfois t/f/string)', () => {
@@ -127,6 +136,23 @@ describe('effectiveTenantMfaRequired — durcissement only (OWASP A07)', () => {
     expect(effectiveTenantMfaRequired({ mfaRequiredTenantUsers: false }, false)).toBe(false)
     expect(effectiveTenantMfaRequired({ mfaRequiredTenantUsers: false }, null)).toBe(false)
     expect(effectiveTenantMfaRequired({ mfaRequiredTenantUsers: false }, undefined)).toBe(false)
+  })
+})
+
+describe('toLockoutPolicy — minutes → secondes (OWASP A07)', () => {
+  it('convertit les minutes en secondes', () => {
+    expect(toLockoutPolicy({ ...DEFAULT_SECURITY_POLICY, lockoutEnabled: true,
+      lockoutMaxAttempts: 5, lockoutWindowMinutes: 15, lockoutDurationMinutes: 30 }))
+      .toEqual({ enabled: true, maxAttempts: 5, windowSeconds: 900, lockSeconds: 1800 })
+  })
+  it('fenêtre/durée nulles → repli 15 min (évite un TTL nul côté Redis)', () => {
+    const p = toLockoutPolicy({ ...DEFAULT_SECURITY_POLICY,
+      lockoutWindowMinutes: 0, lockoutDurationMinutes: 0 })
+    expect(p.windowSeconds).toBe(900)
+    expect(p.lockSeconds).toBe(900)
+  })
+  it('propage enabled=false', () => {
+    expect(toLockoutPolicy({ ...DEFAULT_SECURITY_POLICY, lockoutEnabled: false }).enabled).toBe(false)
   })
 })
 
