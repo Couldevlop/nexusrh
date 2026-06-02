@@ -103,6 +103,7 @@ const FORMS: FormEndpoint[] = [
   { method: 'PATCH', url: `/settings/legal-entities/${UUID}`, scope: 'tenant' },
   { method: 'PATCH', url: '/settings/workflow',             scope: 'tenant' },
   { method: 'POST',  url: '/settings/variable-elements',    scope: 'tenant' },
+  { method: 'PUT',   url: '/settings/ai',                   scope: 'tenant' },
   // ── Carrières / compétences ──
   { method: 'POST',  url: '/careers/skills',             scope: 'tenant' },
   { method: 'PUT',   url: '/careers/employee-skills',    scope: 'tenant' },

@@ -37,6 +37,15 @@ vi.mock('../../services/recruitment-ai.service.js', () => ({
   isModelAvailable: vi.fn((m: string) => m === 'claude'),
 }))
 
+// Credentials IA résolus sans requête BD (évite tout décalage des séquences de mocks).
+vi.mock('../../services/ai-credentials.service.js', () => ({
+  resolveAiCreds: vi.fn().mockResolvedValue({
+    claude:  { apiKey: 'sk-ant-test', model: 'claude-sonnet-4' },
+    mistral: { apiKey: null,          model: 'mistral-large' },
+    preferredProvider: 'claude',
+  }),
+}))
+
 import authPlugin from '../../plugins/auth.js'
 import recruitmentRoutes from './recruitment.routes.js'
 import {
@@ -279,7 +288,7 @@ describe('POST /recruitment/applications/:id/analyze-cv', () => {
     expect(res.statusCode).toBe(200)
     // analyzeCV reçoit 5 args : model, job, cvText, decisionExamples?, pdfBuffer?
     expect(vi.mocked(analyzeCV)).toHaveBeenCalledWith(
-      'claude', expect.any(Object), longCv, undefined, null,
+      'claude', expect.any(Object), longCv, undefined, null, expect.any(Object),
     )
     const body = JSON.parse(res.body)
     expect(body.analysis.score).toBe(85)
@@ -366,7 +375,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
     expect(res.statusCode).toBe(200)
     expect(vi.mocked(sourceProfiles)).toHaveBeenCalledWith(
       'claude', expect.objectContaining({ title: 'Lead Dev' }),
-      ['LinkedIn'], 8, ['CI', 'SN'],
+      ['LinkedIn'], 8, ['CI', 'SN'], expect.any(Object),
     )
     const body = JSON.parse(res.body)
     expect(body.meta.provider).toBe('claude')

@@ -6,7 +6,7 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 
@@ -67,6 +67,7 @@ const TABS = [
   { id: 'workflow',       label: 'Workflow',          icon: GitBranch },
   { id: 'data-import',   label: 'Reprise de données',icon: Database },
   { id: 'mfa',           label: 'Sécurité (MFA)',    icon: Lock },
+  { id: 'ai',            label: 'IA (clé & modèle)', icon: Bot },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -110,6 +111,130 @@ export default function SettingsPage() {
       {tab === 'workflow'       && <WorkflowTab qc={qc} />}
       {tab === 'data-import'   && <DataImportTab />}
       {tab === 'mfa'           && <MfaSettingsPage />}
+      {tab === 'ai'            && <AiTab qc={qc} />}
+    </div>
+  )
+}
+
+// ── Tab: IA (clé API + modèle par fournisseur) ─────────────────────────────────
+interface AiConfig {
+  claude:  { hasKey: boolean; keyMask: string | null; model: string | null }
+  mistral: { hasKey: boolean; keyMask: string | null; model: string | null }
+  preferredProvider: 'claude' | 'mistral'
+  encryptionAvailable: boolean
+  platformClaude: boolean
+  platformMistral: boolean
+  models: Array<{ provider: string; modelId: string; displayName: string }>
+}
+
+function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { data, isLoading } = useQuery<{ data: AiConfig }>({
+    queryKey: ['settings-ai'],
+    queryFn: () => api.get('/settings/ai').then(r => r.data),
+  })
+  const cfg = data?.data
+  // Saisie : clé vide = inchangée ; on n'envoie une clé que si l'admin en tape une.
+  const [form, setForm] = useState<{
+    claudeApiKey?: string; mistralApiKey?: string
+    claudeModel?: string; mistralModel?: string
+    preferredProvider?: 'claude' | 'mistral'
+  }>({})
+  const [saved, setSaved] = useState(false)
+
+  const save = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => api.put('/settings/ai', payload),
+    onSuccess: () => {
+      setSaved(true); setForm({})
+      qc.invalidateQueries({ queryKey: ['settings-ai'] })
+      setTimeout(() => setSaved(false), 2500)
+    },
+  })
+
+  if (isLoading || !cfg) return <div className="p-8 text-center text-muted-foreground">Chargement...</div>
+
+  const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring'
+  const modelsOf = (provider: string) => cfg.models.filter(m => m.provider === provider)
+
+  const ProviderBlock = ({
+    provider, label, current, platformFallback,
+  }: { provider: 'claude' | 'mistral'; label: string; current: { hasKey: boolean; keyMask: string | null; model: string | null }; platformFallback: boolean }) => {
+    const keyField  = provider === 'claude' ? 'claudeApiKey'  : 'mistralApiKey'
+    const modelField = provider === 'claude' ? 'claudeModel'  : 'mistralModel'
+    const models = modelsOf(provider)
+    return (
+      <div className="rounded-xl border border-border p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{label}</h3>
+          <span className={`text-xs rounded-full px-2 py-0.5 ${current.hasKey ? 'bg-green-100 text-green-700' : platformFallback ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+            {current.hasKey ? `Clé tenant ${current.keyMask}` : platformFallback ? 'Repli clé plateforme' : 'Aucune clé'}
+          </span>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Clé API {label}</label>
+          <input type="password" autoComplete="new-password" className={inputCls}
+            placeholder={current.hasKey ? `Configurée (${current.keyMask}) — laisser vide pour conserver` : 'Collez votre clé pour l\'activer'}
+            value={(form as Record<string, string>)[keyField] ?? ''}
+            onChange={e => setForm(p => ({ ...p, [keyField]: e.target.value }))}
+            disabled={!cfg.encryptionAvailable} />
+          {current.hasKey && (
+            <button type="button"
+              onClick={() => setForm(p => ({ ...p, [keyField]: '' }))}
+              className="mt-1 text-xs text-red-600 hover:underline">
+              Effacer la clé (revenir au repli plateforme)
+            </button>
+          )}
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Modèle {label}</label>
+          <select className={inputCls}
+            value={(form as Record<string, string>)[modelField] ?? current.model ?? ''}
+            onChange={e => setForm(p => ({ ...p, [modelField]: e.target.value }))}>
+            <option value="">— Modèle plateforme par défaut —</option>
+            {models.map(m => <option key={m.modelId} value={m.modelId}>{m.displayName}</option>)}
+          </select>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      {!cfg.encryptionAvailable && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-800">
+            Le chiffrement des clés n'est pas configuré côté plateforme (ENCRYPTION_KEY).
+            La saisie d'une clé est désactivée. Contactez l'administrateur de la plateforme.
+          </p>
+        </div>
+      )}
+      <p className="text-sm text-muted-foreground">
+        Configurez la clé API et le modèle de votre tenant. Sans clé, l'IA utilise la clé de la
+        plateforme (repli). Les clés sont chiffrées (AES-256) et ne sont jamais réaffichées.
+      </p>
+
+      <ProviderBlock provider="claude"  label="Claude (Anthropic)" current={cfg.claude}  platformFallback={cfg.platformClaude} />
+      <ProviderBlock provider="mistral" label="Mistral"           current={cfg.mistral} platformFallback={cfg.platformMistral} />
+
+      <div className="rounded-xl border border-border p-4">
+        <label className="text-xs font-medium text-muted-foreground">Fournisseur préféré (chat & sourcing)</label>
+        <select className={inputCls}
+          value={form.preferredProvider ?? cfg.preferredProvider}
+          onChange={e => setForm(p => ({ ...p, preferredProvider: e.target.value as 'claude' | 'mistral' }))}>
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="mistral">Mistral</option>
+        </select>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        {saved && <span className="text-xs text-green-600">Configuration IA enregistrée.</span>}
+        <button onClick={() => save.mutate(form)}
+          disabled={Object.keys(form).length === 0 || save.isPending}
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          <Save className="h-4 w-4" />{save.isPending ? 'Enregistrement...' : 'Enregistrer'}
+        </button>
+      </div>
+      {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur lors de l\'enregistrement.'}</p>}
     </div>
   )
 }

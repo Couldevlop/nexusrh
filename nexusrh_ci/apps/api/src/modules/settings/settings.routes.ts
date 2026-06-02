@@ -6,6 +6,9 @@ import { config } from '../../config.js'
 import bcrypt from 'bcryptjs'
 import { provisionTenantSchema } from '../../db/provisioning.js'
 import { sendEmployeeWelcomeEmail } from '../../services/email.js'
+import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
+import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
+import { loadAiModels } from '../../services/sourcing-config.service.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -194,6 +197,147 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── GET /settings/ai — config IA du tenant (clé JAMAIS renvoyée en clair) ──
+  // OWASP A02 : on n'expose que la présence d'une clé + son masque (4 derniers).
+  fastify.get('/ai', {
+    preHandler: [fastify.authorize('admin')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureMigrated(schema)
+      try {
+        const res = await pool.query<{
+          claude_api_key_enc: string | null; claude_model: string | null
+          mistral_api_key_enc: string | null; mistral_model: string | null
+          preferred_provider: string | null
+        }>(
+          `SELECT claude_api_key_enc, claude_model, mistral_api_key_enc, mistral_model, preferred_provider
+             FROM "${schema}".ai_settings LIMIT 1`,
+        )
+        const r = res.rows[0]
+        const claudeKey  = decryptIfPresent(r?.claude_api_key_enc)
+        const mistralKey = decryptIfPresent(r?.mistral_api_key_enc)
+        // Catalogue de modèles curé par le super_admin (pour les listes déroulantes).
+        const models = await loadAiModels().catch(() => [])
+        return reply.send({
+          data: {
+            claude:  { hasKey: !!claudeKey,  keyMask: maskKey(claudeKey),  model: r?.claude_model ?? null },
+            mistral: { hasKey: !!mistralKey, keyMask: maskKey(mistralKey), model: r?.mistral_model ?? null },
+            preferredProvider: r?.preferred_provider === 'mistral' ? 'mistral' : 'claude',
+            encryptionAvailable: isEncryptionAvailable(),
+            // repli plateforme actif si une clé env existe (info pour l'UI)
+            platformClaude:  !!config.ai.apiKey,
+            platformMistral: !!config.mistral.apiKey,
+            models: models.map(m => ({ provider: m.provider, modelId: m.model_id, displayName: m.display_name })),
+          },
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PUT /settings/ai — enregistre clé (chiffrée) + modèle par fournisseur ──
+  // OWASP A02 : clés chiffrées AES-256-GCM. A03 : modèle validé contre le
+  // catalogue ai_models actif. Champ absent = inchangé ; chaîne vide = effacé.
+  fastify.put('/ai', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureMigrated(schema)
+
+      const aiSchema = z.object({
+        claudeApiKey:      z.string().max(300).nullable().optional(),
+        mistralApiKey:     z.string().max(300).nullable().optional(),
+        claudeModel:       z.string().max(100).nullable().optional(),
+        mistralModel:      z.string().max(100).nullable().optional(),
+        preferredProvider: z.enum(['claude', 'mistral']).optional(),
+      }).strict()
+      const parsed = aiSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const b = parsed.data
+
+      // Chiffrement requis pour stocker une clé.
+      const wantsKey = (b.claudeApiKey != null && b.claudeApiKey !== '') ||
+                       (b.mistralApiKey != null && b.mistralApiKey !== '')
+      if (wantsKey && !isEncryptionAvailable()) {
+        return reply.status(400).send({
+          error: 'Chiffrement non configuré côté plateforme (ENCRYPTION_KEY). Impossible de stocker une clé.',
+        })
+      }
+
+      // A03 — le modèle choisi doit appartenir au catalogue actif du fournisseur.
+      const models = await loadAiModels().catch(() => [])
+      const validModel = (provider: 'claude' | 'mistral', model: string | null | undefined): boolean =>
+        model == null || model === '' || models.some(m => m.provider === provider && m.model_id === model)
+      if (!validModel('claude', b.claudeModel) || !validModel('mistral', b.mistralModel)) {
+        return reply.status(400).send({ error: 'Modèle inconnu — choisissez un modèle du catalogue.' })
+      }
+
+      // Sentinelle KEEP = champ absent → inchangé. null/'' → effacé. string → posé.
+      const KEEP = Symbol('keep')
+      const keyVal = (v: string | null | undefined): string | null | typeof KEEP =>
+        v === undefined ? KEEP : (v === '' || v === null ? null : encrypt(v))
+      const colVal = (v: string | null | undefined): string | null | typeof KEEP =>
+        v === undefined ? KEEP : (v === '' ? null : v)
+
+      const fields: Array<{ col: string; val: string | null | typeof KEEP }> = [
+        { col: 'claude_api_key_enc',  val: keyVal(b.claudeApiKey) },
+        { col: 'mistral_api_key_enc', val: keyVal(b.mistralApiKey) },
+        { col: 'claude_model',        val: colVal(b.claudeModel) },
+        { col: 'mistral_model',       val: colVal(b.mistralModel) },
+        { col: 'preferred_provider',  val: b.preferredProvider === undefined ? KEEP : b.preferredProvider },
+      ]
+
+      try {
+        const existing = await pool.query<{ id: string }>(`SELECT id FROM "${schema}".ai_settings LIMIT 1`)
+        if (!existing.rows[0]) {
+          // INSERT : KEEP → valeur par défaut (null, sauf preferred_provider='claude')
+          await pool.query(
+            `INSERT INTO "${schema}".ai_settings
+               (claude_api_key_enc, mistral_api_key_enc, claude_model, mistral_model, preferred_provider)
+             VALUES ($1, $2, $3, $4, $5)`,
+            fields.map(f => f.val === KEEP ? (f.col === 'preferred_provider' ? 'claude' : null) : f.val),
+          )
+        } else {
+          const sets: string[] = []
+          const vals: unknown[] = []
+          for (const f of fields) {
+            if (f.val === KEEP) continue
+            sets.push(`${f.col} = $${vals.length + 1}`)
+            vals.push(f.val)
+          }
+          if (sets.length) {
+            sets.push('updated_at = now()')
+            vals.push(existing.rows[0].id)
+            await pool.query(
+              `UPDATE "${schema}".ai_settings SET ${sets.join(', ')} WHERE id = $${vals.length}`,
+              vals,
+            )
+          }
+        }
+
+        // OWASP A09 — trace SANS la valeur des clés (uniquement quels champs changés).
+        auditLogSettings(
+          schema, request.user.sub, 'settings.ai_updated', schema,
+          {
+            changed: fields.filter(f => f.val !== KEEP).map(f => f.col),
+            claudeKeySet:  b.claudeApiKey != null && b.claudeApiKey !== '',
+            mistralKeySet: b.mistralApiKey != null && b.mistralApiKey !== '',
+          },
+          request.ip ?? null,
+        )
+        return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

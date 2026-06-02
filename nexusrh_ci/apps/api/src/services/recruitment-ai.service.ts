@@ -5,8 +5,17 @@ import {
   defaultRichnessWeights,
   type RichnessWeights,
 } from './sourcing-config.service.js'
+import type { AiCreds } from './ai-credentials.service.js'
 
 export type AiModelChoice = 'claude' | 'mistral'
+
+// Résolution clé/modèle effectifs : credentials tenant si fournis (déjà repliés
+// sur l'env par resolveAiCreds), sinon config plateforme (env) — rétro-compat
+// totale avec les appels existants qui ne passent pas de creds.
+function claudeKey(creds?: AiCreds): string | null   { return creds ? creds.claude.apiKey  : (config.ai.apiKey ?? null) }
+function claudeModel(creds?: AiCreds): string         { return creds ? creds.claude.model   : config.ai.model }
+function mistralKey(creds?: AiCreds): string | null  { return creds ? creds.mistral.apiKey : (config.mistral.apiKey ?? null) }
+function mistralModel(creds?: AiCreds): string        { return creds ? creds.mistral.model  : config.mistral.model }
 
 export interface JobContext {
   title:        string
@@ -226,12 +235,14 @@ async function analyzeWithClaude(
   cvText: string,
   decisionExamples?: RecruiterDecisionExample[],
   pdfBuffer?: Buffer,
+  creds?: AiCreds,
 ): Promise<CvAnalysisResult> {
-  if (!config.ai.apiKey) {
+  const apiKey = claudeKey(creds)
+  if (!apiKey) {
     throw new Error('Clé Anthropic non configurée (ANTHROPIC_API_KEY)')
   }
   const Anthropic = (await import('@anthropic-ai/sdk')).default
-  const client = new Anthropic({ apiKey: config.ai.apiKey })
+  const client = new Anthropic({ apiKey })
 
   // Mode document PDF : Claude lit le binaire directement (vision native). On
   // l'utilise quand l'extraction texte locale a échoué (PDF scanné, layout
@@ -259,7 +270,7 @@ async function analyzeWithClaude(
     : buildUserPrompt(job, cvText, decisionExamples)
 
   const msg = await client.messages.create({
-    model:       config.ai.model,
+    model:       claudeModel(creds),
     max_tokens:  Math.min(config.ai.maxTokens, 2048),
     temperature: 0.2,
     system:      SYSTEM_PROMPT,
@@ -277,18 +288,20 @@ async function analyzeWithMistral(
   job: JobContext,
   cvText: string,
   decisionExamples?: RecruiterDecisionExample[],
+  creds?: AiCreds,
 ): Promise<CvAnalysisResult> {
-  if (!config.mistral.apiKey) {
+  const apiKey = mistralKey(creds)
+  if (!apiKey) {
     throw new Error('Clé Mistral non configurée (MISTRAL_API_KEY)')
   }
   const res = await fetch(`${config.mistral.apiUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${config.mistral.apiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: config.mistral.model,
+      model: mistralModel(creds),
       temperature: 0.2,
       max_tokens: 2048,
       response_format: { type: 'json_object' },
@@ -310,9 +323,9 @@ async function analyzeWithMistral(
   return normalize(extractJson(content), 'mistral')
 }
 
-export function isModelAvailable(model: AiModelChoice): boolean {
-  if (model === 'claude')  return Boolean(config.ai.apiKey)
-  if (model === 'mistral') return Boolean(config.mistral.apiKey)
+export function isModelAvailable(model: AiModelChoice, creds?: AiCreds): boolean {
+  if (model === 'claude')  return Boolean(claudeKey(creds))
+  if (model === 'mistral') return Boolean(mistralKey(creds))
   return false
 }
 
@@ -327,6 +340,7 @@ export async function analyzeCV(
   cvText: string,
   decisionExamples?: RecruiterDecisionExample[],
   pdfBuffer?: Buffer | null,
+  creds?: AiCreds,
 ): Promise<CvAnalysisResult> {
   // Hybride : si on a un PDF ET que l'extraction texte est insuffisante (scan,
   // layout complexe, OCR raté), on bascule sur le mode document de Claude
@@ -338,19 +352,19 @@ export async function analyzeCV(
     throw new Error('CV trop court ou vide (minimum 50 caractères)')
   }
 
-  const preferred = isModelAvailable(model) ? model
-    : isModelAvailable('claude') ? 'claude'
-    : isModelAvailable('mistral') ? 'mistral'
+  const preferred = isModelAvailable(model, creds) ? model
+    : isModelAvailable('claude', creds) ? 'claude'
+    : isModelAvailable('mistral', creds) ? 'mistral'
     : null
   if (!preferred) {
     throw new Error('Aucun modèle IA configuré. Définissez ANTHROPIC_API_KEY ou MISTRAL_API_KEY.')
   }
   if (preferred === 'claude') {
-    return analyzeWithClaude(job, cvText, decisionExamples, canUseDocumentMode ? pdfBuffer! : undefined)
+    return analyzeWithClaude(job, cvText, decisionExamples, canUseDocumentMode ? pdfBuffer! : undefined, creds)
   }
   // Mistral : pas de support PDF natif côté SDK — on reste texte (qualité
   // dégradée sur les scans, mais cohérent avec ce que l'utilisateur a choisi).
-  return analyzeWithMistral(job, cvText, decisionExamples)
+  return analyzeWithMistral(job, cvText, decisionExamples, creds)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -646,12 +660,15 @@ interface AIRawResult {
   model:            string
 }
 
-async function callClaudeRaw(prompt: string, maxTokens: number): Promise<AIRawResult> {
+async function callClaudeRaw(prompt: string, maxTokens: number, creds?: AiCreds): Promise<AIRawResult> {
+  const apiKey = claudeKey(creds)
+  if (!apiKey) throw new Error('Clé Anthropic non configurée (ANTHROPIC_API_KEY)')
+  const model = claudeModel(creds)
   const Anthropic = (await import('@anthropic-ai/sdk')).default
-  const client = new Anthropic({ apiKey: config.ai.apiKey })
+  const client = new Anthropic({ apiKey })
   const t0 = Date.now()
   const msg = await client.messages.create({
-    model:       config.ai.model,
+    model,
     max_tokens:  maxTokens,
     temperature: 0.3,
     messages:    [{ role: 'user', content: prompt }],
@@ -664,20 +681,23 @@ async function callClaudeRaw(prompt: string, maxTokens: number): Promise<AIRawRe
     latencyMs,
     inputTokens:  msg.usage.input_tokens,
     outputTokens: msg.usage.output_tokens,
-    model:        config.ai.model,
+    model,
   }
 }
 
-async function callMistralRaw(prompt: string, maxTokens: number): Promise<AIRawResult> {
+async function callMistralRaw(prompt: string, maxTokens: number, creds?: AiCreds): Promise<AIRawResult> {
+  const apiKey = mistralKey(creds)
+  if (!apiKey) throw new Error('Clé Mistral non configurée (MISTRAL_API_KEY)')
+  const model = mistralModel(creds)
   const t0 = Date.now()
   const res = await fetch(`${config.mistral.apiUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${config.mistral.apiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model:           config.mistral.model,
+      model,
       temperature:     0.3,
       max_tokens:      maxTokens,
       response_format: { type: 'json_object' },
@@ -698,7 +718,7 @@ async function callMistralRaw(prompt: string, maxTokens: number): Promise<AIRawR
     latencyMs,
     inputTokens:  data.usage?.prompt_tokens ?? 0,
     outputTokens: data.usage?.completion_tokens ?? 0,
-    model:        config.mistral.model,
+    model,
   }
 }
 
@@ -723,13 +743,14 @@ async function sourceWithProvider(
   platforms: string[],
   maxProfiles: number,
   countries: string[],
+  creds?: AiCreds,
 ): Promise<SourcingProviderResult> {
   const prompt = buildSourcingPrompt(ctx, platforms, maxProfiles, countries)
   const settings = await loadSourcingSettings().catch(() => null)
   try {
     const raw = provider === 'claude'
-      ? await callClaudeRaw(prompt, 4000)
-      : await callMistralRaw(prompt, 4000)
+      ? await callClaudeRaw(prompt, 4000, creds)
+      : await callMistralRaw(prompt, 4000, creds)
 
     let data: SourcingResult | null = null
     try {
@@ -764,7 +785,7 @@ async function sourceWithProvider(
   } catch (err) {
     return {
       provider,
-      model:            provider === 'claude' ? config.ai.model : config.mistral.model,
+      model:            provider === 'claude' ? claudeModel(creds) : mistralModel(creds),
       data:             null,
       jsonValid:        false,
       richnessScore:    0,
@@ -784,16 +805,17 @@ export async function sourceProfiles(
   platforms: string[],
   maxProfiles: number,
   countries: string[],
+  creds?: AiCreds,
 ): Promise<SourcingProviderResult> {
-  const preferred = isModelAvailable(model) ? model
-    : isModelAvailable('claude')  ? 'claude'
-    : isModelAvailable('mistral') ? 'mistral'
+  const preferred = isModelAvailable(model, creds) ? model
+    : isModelAvailable('claude', creds)  ? 'claude'
+    : isModelAvailable('mistral', creds) ? 'mistral'
     : null
   if (!preferred) {
     throw new Error('Aucun modèle IA configuré. Définissez ANTHROPIC_API_KEY ou MISTRAL_API_KEY.')
   }
   const capped = Math.max(1, Math.min(maxProfiles, 20))
-  return sourceWithProvider(preferred, ctx, platforms, capped, countries)
+  return sourceWithProvider(preferred, ctx, platforms, capped, countries, creds)
 }
 
 function buildSourcingRecommendation(claude: SourcingProviderResult, mistral: SourcingProviderResult): string {
@@ -824,17 +846,18 @@ export async function sourceProfilesCompare(
   platforms: string[],
   maxProfiles: number,
   countries: string[],
+  creds?: AiCreds,
 ): Promise<SourcingCompareResult> {
-  if (!isModelAvailable('claude')) {
+  if (!isModelAvailable('claude', creds)) {
     throw new Error('Clé Anthropic non configurée — comparaison impossible')
   }
-  if (!isModelAvailable('mistral')) {
+  if (!isModelAvailable('mistral', creds)) {
     throw new Error('Clé Mistral non configurée — comparaison impossible')
   }
   const capped = Math.max(1, Math.min(maxProfiles, 10))
   const [claude, mistral] = await Promise.all([
-    sourceWithProvider('claude',  ctx, platforms, capped, countries),
-    sourceWithProvider('mistral', ctx, platforms, capped, countries),
+    sourceWithProvider('claude',  ctx, platforms, capped, countries, creds),
+    sourceWithProvider('mistral', ctx, platforms, capped, countries, creds),
   ])
 
   const winner: AiModelChoice = claude.richnessScore >= mistral.richnessScore ? 'claude' : 'mistral'

@@ -10,6 +10,7 @@ import {
   type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
 import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
+import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -90,10 +91,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   // ── Capabilités IA (pour le sélecteur UI) ──────────────────────────────────
   fastify.get('/ai/capabilities', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
-    handler: async (_req, reply) => reply.send({
-      claude:  isModelAvailable('claude'),
-      mistral: isModelAvailable('mistral'),
-    }),
+    handler: async (req, reply) => {
+      const creds = await resolveAiCreds(req.user.schemaName)
+      return reply.send({
+        claude:  isModelAvailable('claude', creds),
+        mistral: isModelAvailable('mistral', creds),
+      })
+    },
   })
 
   // ── OFFRES ─────────────────────────────────────────────────────────────────
@@ -698,7 +702,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // qui décidera (selon la qualité du texte extrait) s'il bascule sur le
         // mode document natif.
         const pdfFallback = app.cv_mime_type === 'application/pdf' ? app.cv_blob : null
-        const result = await analyzeCV(model, job, cvText, undefined, pdfFallback)
+        const result = await analyzeCV(model, job, cvText, undefined, pdfFallback, await resolveAiCreds(schema))
 
         const upd = await pool.query(`
           UPDATE "${schema}".applications
@@ -885,6 +889,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           lastName: string
         }> = []
 
+        // Credentials IA résolus une seule fois pour tout le batch (clé tenant ou
+        // repli plateforme) — évite une lecture ai_settings par candidat.
+        const creds = await resolveAiCreds(schema)
         for (const c of candidates) {
           const cvText = c.cv_text ?? c.cover_letter ?? ''
           if (!cvText || cvText.trim().length < 50) {
@@ -893,7 +900,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           }
           try {
             const pdfFallback = c.cv_mime_type === 'application/pdf' ? c.cv_blob : null
-            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback)
+            const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback, creds)
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
@@ -1230,7 +1237,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
-        const result = await sourceProfiles(model, job, platforms, maxProfiles, countries)
+        const result = await sourceProfiles(model, job, platforms, maxProfiles, countries, await resolveAiCreds(schema))
 
         // OWASP A09 : trace de l'usage IA (qui, sur quelle offre, modèle, profils)
         pool.query(
@@ -1511,10 +1518,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const maxProfiles = Math.max(1, Math.min(Number(body.max_profiles) || 5, 10))
 
       try {
-        if (!isModelAvailable('mistral')) {
+        const creds = await resolveAiCreds(schema)
+        if (!isModelAvailable('mistral', creds)) {
           return reply.status(422).send({
             error: 'MISTRAL_API_KEY non configurée — comparaison impossible',
-            hint:  'Ajoutez MISTRAL_API_KEY=... dans votre .env pour activer la comparaison.',
+            hint:  'Ajoutez MISTRAL_API_KEY=... dans votre .env (ou la clé du tenant) pour activer la comparaison.',
           })
         }
 
@@ -1529,7 +1537,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
-        const result = await sourceProfilesCompare(job, platforms, maxProfiles, countries)
+        const result = await sourceProfilesCompare(job, platforms, maxProfiles, countries, creds)
 
         pool.query(
           `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
