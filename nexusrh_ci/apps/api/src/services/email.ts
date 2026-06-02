@@ -21,6 +21,26 @@ function getTransporter(): Transporter {
   return _transporter
 }
 
+// En-tête de marque : affiche le LOGO uploadé (URL absolue servie par
+// /public/brand/:id) s'il est fourni, sinon les initiales colorées (fallback).
+// L'URL doit être absolue et publiquement accessible pour s'afficher dans les
+// clients mail (Gmail/Outlook bloquent les data: URLs).
+function brandHeader(name: string, subtitle: string, primaryColor: string, logoUrl?: string | null): string {
+  const badge = logoUrl
+    ? `<img src="${logoUrl}" alt="${name}" width="48" height="48" style="width:48px;height:48px;border-radius:10px;object-fit:contain;background:#fff;display:block;" />`
+    : `<div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;">${name.slice(0, 2).toUpperCase()}</div>`
+  return `
+            <td style="background:${primaryColor};padding:32px 40px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:12px;">
+                ${badge}
+                <div style="text-align:left;">
+                  <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">${name}</p>
+                  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">${subtitle}</p>
+                </div>
+              </div>
+            </td>`
+}
+
 export async function sendWelcomeTenantEmail(params: {
   to: string
   firstName: string
@@ -31,8 +51,11 @@ export async function sendWelcomeTenantEmail(params: {
   loginUrl: string
   tempPassword: string
   plan: string
+  logoUrl?: string | null
+  from?: string | null
+  replyTo?: string | null
 }): Promise<void> {
-  const { to, firstName, lastName, tenantName, tenantCity, primaryColor, loginUrl, tempPassword, plan } = params
+  const { to, firstName, lastName, tenantName, tenantCity, primaryColor, loginUrl, tempPassword, plan, logoUrl, from, replyTo } = params
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -48,18 +71,7 @@ export async function sendWelcomeTenantEmail(params: {
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
 
           <!-- Header -->
-          <tr>
-            <td style="background:${primaryColor};padding:32px 40px;text-align:center;">
-              <div style="display:inline-flex;align-items:center;gap:12px;">
-                <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;">
-                  ${tenantName.slice(0, 2).toUpperCase()}
-                </div>
-                <div style="text-align:left;">
-                  <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">${tenantName}</p>
-                  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">${tenantCity} · NexusRH CI</p>
-                </div>
-              </div>
-            </td>
+          <tr>${brandHeader(tenantName, `${tenantCity} · NexusRH CI`, primaryColor, logoUrl)}
           </tr>
 
           <!-- Body -->
@@ -171,7 +183,8 @@ export async function sendWelcomeTenantEmail(params: {
 </html>`
 
   await getTransporter().sendMail({
-    from: config.smtp.from,
+    from: from || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
     to,
     subject: `🎉 Votre espace NexusRH CI est prêt — ${tenantName}`,
     html,
@@ -182,18 +195,16 @@ export async function sendWelcomeTenantEmail(params: {
 export async function sendEmployeeWelcomeEmail(params: {
   to: string; firstName: string; lastName: string
   tenantName: string; primaryColor: string; loginUrl: string; tempPassword: string
+  logoUrl?: string | null; from?: string | null; replyTo?: string | null
 }): Promise<void> {
-  const { to, firstName, lastName, tenantName, primaryColor, loginUrl, tempPassword } = params
+  const { to, firstName, lastName, tenantName, primaryColor, loginUrl, tempPassword, logoUrl, from, replyTo } = params
   const html = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
   <tr><td align="center">
     <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
-      <tr><td style="background:${primaryColor};padding:24px 32px;text-align:center;">
-        <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">${tenantName}</p>
-        <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.8);">NexusRH CI — Espace employé</p>
-      </td></tr>
+      <tr>${brandHeader(tenantName, 'NexusRH CI — Espace employé', primaryColor, logoUrl)}</tr>
       <tr><td style="padding:32px;">
         <h2 style="margin:0 0 12px;font-size:22px;color:#111;">Bonjour ${firstName} ${lastName} 👋</h2>
         <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
@@ -222,11 +233,68 @@ export async function sendEmployeeWelcomeEmail(params: {
 </body></html>`
 
   await getTransporter().sendMail({
-    from: config.smtp.from,
+    from: from || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
     to,
     subject: `Votre accès NexusRH CI — ${tenantName}`,
     html,
     text: `Bonjour ${firstName},\nVotre compte a été créé.\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\nConnexion : ${loginUrl}\nVous devrez changer ce mot de passe à la première connexion.`,
+  })
+}
+
+// Email de bienvenue d'un CABINET de recrutement (envoyé au 1er owner par le
+// super_admin). Expéditeur = OpenLab par défaut (config.smtp.from).
+export async function sendWelcomeAgencyEmail(params: {
+  to: string
+  firstName: string
+  lastName: string
+  agencyName: string
+  primaryColor: string
+  loginUrl: string
+  tempPassword: string
+  logoUrl?: string | null
+}): Promise<void> {
+  const { to, firstName, lastName, agencyName, primaryColor, loginUrl, tempPassword, logoUrl } = params
+  const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr>${brandHeader(agencyName, 'Cabinet de recrutement · NexusRH CI', primaryColor, logoUrl)}</tr>
+      <tr><td style="padding:40px;">
+        <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;">BIENVENUE</p>
+        <h1 style="margin:0 0 16px;font-size:26px;font-weight:700;color:#111827;">Bonjour ${firstName} ${lastName} 👋</h1>
+        <p style="margin:0 0 24px;font-size:16px;color:#374151;line-height:1.6;">
+          Votre cabinet <strong>${agencyName}</strong> est désormais actif sur <strong>NexusRH CI</strong>.
+          Vous pouvez gérer vos entreprises clientes, inviter vos recruteurs et piloter le recrutement.
+        </p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:24px;margin-bottom:28px;">
+          <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#374151;">Vos identifiants de connexion</p>
+          <p style="margin:0 0 6px;font-size:13px;color:#6b7280;">Email : <strong style="color:#111;">${to}</strong></p>
+          <p style="margin:0;font-size:13px;color:#6b7280;">Mot de passe temporaire : <code style="background:${primaryColor}15;color:${primaryColor};font-size:15px;font-weight:700;padding:3px 10px;border-radius:6px;">${tempPassword}</code></p>
+        </div>
+        <div style="text-align:center;margin-bottom:28px;">
+          <a href="${loginUrl}" style="display:inline-block;background:${primaryColor};color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:16px;font-weight:600;">Accéder à mon cabinet →</a>
+        </div>
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
+          <p style="margin:0;font-size:13px;color:#92400e;">🔒 <strong>Sécurité :</strong> changez ce mot de passe dès votre première connexion.</p>
+        </div>
+      </td></tr>
+      <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+        <p style="margin:0;font-size:11px;color:#9ca3af;">OpenLab Consulting · Abidjan · NexusRH CI</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`
+
+  await getTransporter().sendMail({
+    from: config.smtp.from,
+    to,
+    subject: `🎉 Votre cabinet est actif sur NexusRH CI — ${agencyName}`,
+    html,
+    text: `Bonjour ${firstName},\n\nVotre cabinet ${agencyName} est actif sur NexusRH CI.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting`,
   })
 }
 

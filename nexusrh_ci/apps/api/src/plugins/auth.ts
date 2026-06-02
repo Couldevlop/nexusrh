@@ -26,6 +26,16 @@ export interface JwtSignPayload {
    *  fuite : token restreint au changement de mot de passe tant que ce flag est
    *  présent. L'utilisateur n'est pas verrouillé, il DOIT renouveler son mdp. */
   pwdResetRequired?: boolean
+  /** Cabinet de recrutement : présent uniquement pour les tokens d'un utilisateur
+   *  de cabinet (contexte cabinet OU session scopée sur un tenant client). */
+  actorType?: 'agency'
+  /** ID du cabinet (platform.agencies.id) — présent si actorType='agency'. */
+  agencyId?: string
+  /** ID de l'utilisateur cabinet (platform.agency_users.id) — présent sur un
+   *  token scopé pour tracer l'acteur réel derrière le role='admin' délégué. */
+  agencyUserId?: string
+  /** Token scopé : ID du tenant client sur lequel le cabinet agit (on-behalf). */
+  onBehalfOf?: string
 }
 
 export interface JwtPayload extends JwtSignPayload {

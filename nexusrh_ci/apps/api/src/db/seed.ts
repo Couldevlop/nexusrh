@@ -1225,6 +1225,42 @@ async function main() {
   console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // CABINET DE RECRUTEMENT — Cabinet Talents CI (gère SOTRA + Cabinet Expertise)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const agencyHash = await bcrypt.hash('Admin1234!', 12)
+  const agencyRes = await pool.query<{ id: string }>(`
+    INSERT INTO platform.agencies
+      (slug, name, status, country_code, city, contact_email, contact_phone,
+       primary_color, sender_email, sender_name)
+    VALUES
+      ('cabinet-talents-ci', 'Cabinet Talents CI', 'active', 'CIV', 'Abidjan',
+       'contact@cabinet-talents.ci', '+225 0707080910', '#1D4ED8',
+       'recrutement@cabinet-talents.ci', 'Cabinet Talents CI')
+    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, status = 'active',
+       sender_email = EXCLUDED.sender_email, sender_name = EXCLUDED.sender_name
+    RETURNING id
+  `)
+  const agencyId = agencyRes.rows[0]!.id
+
+  await pool.query(`
+    INSERT INTO platform.agency_users (agency_id, email, password_hash, first_name, last_name, role, is_active)
+    VALUES
+      ($1, 'owner@cabinet-talents.ci',     $2, 'Awa',   'Koné',    'agency_owner',  true),
+      ($1, 'recruteur@cabinet-talents.ci', $2, 'Jean',  'Brou',    'agency_member', true)
+    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
+  `, [agencyId, agencyHash])
+
+  // Rattachement aux 2 entreprises clientes CI (SOTRA + Cabinet Expertise).
+  for (const tid of [sotraTenantId, cabinetRes.rows[0]!.id]) {
+    await pool.query(`
+      INSERT INTO platform.agency_tenants (agency_id, tenant_id)
+      VALUES ($1, $2)
+      ON CONFLICT (agency_id, tenant_id) DO UPDATE SET detached_at = NULL
+    `, [agencyId, tid])
+  }
+  console.log('[10b] Cabinet Talents CI créé + rattaché à SOTRA et Cabinet Expertise')
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\n=== Seed terminé avec succès ===\n')
@@ -1244,6 +1280,11 @@ async function main() {
   console.log()
   console.log('  [OpenLab Consulting]')
   console.log('  coulwao@gmail.com     /  Openlab1234!  (admin)')
+  console.log()
+  console.log('  [Cabinet Talents CI — cabinet de recrutement]')
+  console.log('  owner@cabinet-talents.ci     /  Admin1234!  (agency_owner)')
+  console.log('  recruteur@cabinet-talents.ci /  Admin1234!  (agency_member)')
+  console.log('  → gère SOTRA + Cabinet Expertise CI')
   console.log()
   console.log(`  SOTRA       : ${sotraEmployees.length} employés, ${sotraPeriods.length} mois de bulletins`)
   console.log(`  Cabinet CI  : ${cabinetEmployees.length} employés, ${cabinetPeriods.length} mois de bulletins`)

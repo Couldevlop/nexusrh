@@ -4,9 +4,9 @@ import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
-import { sendWelcomeTenantEmail, sendPasswordResetEmail } from '../../services/email.js'
+import { sendPasswordResetEmail } from '../../services/email.js'
 import { maintenanceCache } from '../../cache.js'
-import { seedDemoTenant } from '../../db/seed-demo.js'
+import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import { z } from 'zod'
@@ -54,27 +54,6 @@ function auditLogPlatform(
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [userId, action, entity, entityId, JSON.stringify(changes), ip],
   ).catch(() => { /* table audit_log absente : non bloquant */ })
-}
-
-const PLAN_DEFAULTS: Record<string, { maxUsers: number; maxEmployees: number }> = {
-  trial:         { maxUsers: 10,   maxEmployees: 20   },
-  starter:       { maxUsers: 30,   maxEmployees: 30   },
-  business:      { maxUsers: 100,  maxEmployees: 150  },
-  enterprise:    { maxUsers: 9999, maxEmployees: 9999 },
-  public_sector: { maxUsers: 200,  maxEmployees: 500  },
-}
-
-const AT_RATE_BY_SECTOR: Record<string, number> = {
-  commerce:   0.020,
-  services:   0.020,
-  finance:    0.020,
-  education:  0.020,
-  public:     0.020,
-  btp:        0.030,
-  sante:      0.030,
-  industrie:  0.040,
-  agriculture: 0.040,
-  extraction: 0.050,
 }
 
 const platformRoutes: FastifyPluginAsync = async (fastify) => {
@@ -154,107 +133,34 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
 
-      const slug = body.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-      const schemaName = `tenant_${slug}`
-      const planType = body.planType ?? 'trial'
-      const plan = PLAN_DEFAULTS[planType] ?? { maxUsers: 10, maxEmployees: 20 }
-      const atRate = AT_RATE_BY_SECTOR[body.sector ?? 'services'] ?? 0.020
-
-      // Vérifier unicité slug
-      const existing = await pool.query(
-        `SELECT id FROM platform.tenants WHERE slug = $1 LIMIT 1`, [slug]
-      )
-      if (existing.rows[0]) {
-        return reply.status(409).send({ error: `Le slug "${slug}" est déjà utilisé` })
+      // Pipeline de provisionnement centralisé (service partagé avec le module
+      // cabinet). Comportement identique à l'ancien handler inline.
+      let created
+      try {
+        created = await createTenantWithSchema(pool, body, { logger: fastify.log })
+      } catch (err) {
+        if (err instanceof TenantSlugConflictError) {
+          return reply.status(409).send({ error: err.message })
+        }
+        throw err
       }
-
-      // Validation : si hasSubsidiaries=true, payrollMode doit suivre
-      const hasSubsidiaries = body.hasSubsidiaries === true
-      const payrollMode = hasSubsidiaries
-        ? (body.payrollMode === 'multi_country' ? 'multi_country' : 'multi_country')
-        : 'single_country'
-      const defaultCountryCode = (body.defaultCountryCode ?? 'CIV').toUpperCase().slice(0, 3)
-
-      // 1. Créer le tenant dans platform
-      const tenantRes = await pool.query<{ id: string }>(
-        `INSERT INTO platform.tenants
-           (name, slug, schema_name, plan_type, status, sector, city,
-            cnps_number, dgi_number, rccm, at_rate,
-            max_users, max_employees, primary_color, secondary_color, logo_url,
-            trial_ends_at,
-            has_subsidiaries, payroll_mode, default_country_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-         RETURNING id`,
-        [
-          body.name, slug, schemaName, planType,
-          planType === 'trial' ? 'trial' : 'active',
-          body.sector ?? null, body.city ?? 'Abidjan',
-          body.cnpsNumber ?? null, body.dgiNumber ?? null, body.rccm ?? null,
-          atRate.toString(),
-          plan.maxUsers, plan.maxEmployees,
-          body.primaryColor ?? '#E85D04', body.secondaryColor ?? '#F48C06',
-          body.logoUrl ?? null,
-          planType === 'trial' ? new Date(Date.now() + 30 * 24 * 3600 * 1000) : null,
-          hasSubsidiaries, payrollMode, defaultCountryCode,
-        ]
-      )
-      const tenantId = tenantRes.rows[0]?.id
-      if (!tenantId) throw new Error('Erreur création tenant')
-
-      // 2. Provisionner le schéma
-      await provisionTenantSchema(schemaName)
-
-      // 3. Seed rubriques CI + types absences
-      await seedPayrollRulesCI(schemaName, atRate)
-      await seedAbsenceTypesCI(schemaName)
-
-      // 4. Créer l'admin
-      const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
-      const passwordHash = await bcrypt.hash(tempPassword, 12)
-
-      await pool.query(
-        `INSERT INTO "${schemaName}".users
-           (email, password_hash, first_name, last_name, role, is_active)
-         VALUES ($1, $2, $3, $4, 'admin', true)`,
-        [body.adminEmail, passwordHash, body.adminFirstName, body.adminLastName]
-      )
-
-      // 5. Données de démonstration (optionnel, non bloquant)
-      if (body.seedDemoData === true) {
-        seedDemoTenant(pool, schemaName, atRate).catch(err =>
-          fastify.log.warn({ err }, 'Seed démo non terminé')
-        )
-      }
-
-      // 6. Email de bienvenue (non bloquant)
-      sendWelcomeTenantEmail({
-        to:           body.adminEmail,
-        firstName:    body.adminFirstName,
-        lastName:     body.adminLastName,
-        tenantName:   body.name,
-        tenantCity:   body.city ?? 'Abidjan',
-        primaryColor: body.primaryColor ?? '#E85D04',
-        loginUrl:     `${config.appUrl}/login`,
-        tempPassword,
-        plan:         planType,
-      }).catch(err => fastify.log.warn({ err }, 'Email bienvenue non envoyé'))
 
       // OWASP A09 : trace de la création de tenant (action super_admin
       // catastrophique : ajout d'une organisation entière au système).
-      auditLogPlatform(request.user.sub, 'tenant.created', 'tenant', tenantId, {
-        slug, name: body.name, planType,
+      auditLogPlatform(request.user.sub, 'tenant.created', 'tenant', created.id, {
+        slug: created.slug, name: body.name, planType: created.planType,
         adminEmail: body.adminEmail,
         hasSubsidiaries: body.hasSubsidiaries ?? false,
         seedDemoData: body.seedDemoData ?? false,
       }, request.ip ?? null)
 
       return reply.status(201).send({
-        data: { id: tenantId, slug, schemaName, name: body.name, planType },
+        data: { id: created.id, slug: created.slug, schemaName: created.schemaName, name: body.name, planType: created.planType },
         adminEmail:   body.adminEmail,
         // tempPassword volontairement retourné comme filet de sécurité si l'email
         // échoue (cf. CLAUDE.md). NE PAS dupliquer dans message ci-dessous —
         // le message ne doit pas véhiculer le secret en clair vers les logs HTTP.
-        tempPassword,
+        tempPassword: created.tempPassword,
         message: `Tenant "${body.name}" créé avec succès. Mot de passe transmis par email.`,
       })
     },

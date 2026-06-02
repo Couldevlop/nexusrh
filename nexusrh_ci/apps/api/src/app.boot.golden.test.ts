@@ -83,6 +83,9 @@ const PROTECTED_ENDPOINTS: Array<{
   // AVANT le preHandler → 400. On vise /my-country (auth seule, sans schéma)
   // pour isoler la couche d'authentification.
   { module: 'referentiels',     method: 'GET',  url: '/referentiels/my-country' },
+  { module: 'agency',           method: 'GET',  url: '/agency/my-tenants' },
+  { module: 'agency',           method: 'POST', url: '/agency/sessions/activate' },
+  { module: 'brand',            method: 'POST', url: '/platform/brand/logo' },
 ]
 
 let app: FastifyInstance

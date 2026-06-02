@@ -225,6 +225,75 @@ export async function createPlatformSchema(): Promise<void> {
       updated_by  uuid
     )
   `)
+
+  // ── Cabinets de recrutement (acteur multi-tenant, CI uniquement) ─────────────
+  // Organisation multi-utilisateurs gérant plusieurs tenants clients. Tables
+  // isolées dans le schema platform : aucun schema tenant n'est touché.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.agencies (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      slug          varchar(63) NOT NULL UNIQUE,
+      name          varchar(255) NOT NULL,
+      status        varchar(20) NOT NULL DEFAULT 'active',
+      country_code  varchar(3) NOT NULL DEFAULT 'CIV',
+      city          varchar(100),
+      contact_email varchar(255),
+      contact_phone varchar(30),
+      primary_color varchar(7) DEFAULT '#1D4ED8',
+      logo_url      text,
+      created_by    uuid,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.agency_users (
+      id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agency_id           uuid NOT NULL REFERENCES platform.agencies(id) ON DELETE CASCADE,
+      email               varchar(255) NOT NULL UNIQUE,
+      password_hash       varchar(255) NOT NULL,
+      first_name          varchar(100) NOT NULL,
+      last_name           varchar(100) NOT NULL,
+      role                varchar(20) NOT NULL DEFAULT 'agency_member',
+      is_active           boolean NOT NULL DEFAULT true,
+      mfa_enabled         boolean NOT NULL DEFAULT false,
+      mfa_secret          varchar(255),
+      password_changed_at timestamptz NOT NULL DEFAULT now(),
+      last_login_at       timestamptz,
+      created_at          timestamptz NOT NULL DEFAULT now(),
+      updated_at          timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_agency_users_agency ON platform.agency_users(agency_id)`)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.agency_tenants (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agency_id   uuid NOT NULL REFERENCES platform.agencies(id) ON DELETE CASCADE,
+      tenant_id   uuid NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+      assigned_by uuid,
+      assigned_at timestamptz NOT NULL DEFAULT now(),
+      detached_at timestamptz,
+      UNIQUE (agency_id, tenant_id)
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_agency_tenants_agency ON platform.agency_tenants(agency_id) WHERE detached_at IS NULL`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_agency_tenants_tenant ON platform.agency_tenants(tenant_id) WHERE detached_at IS NULL`)
+
+  // Expéditeur email fourni par le cabinet (From/Reply-To) pour les invitations
+  // de SES tenants. Cabinets + tenants super_admin → expéditeur OpenLab par défaut.
+  await pool.query(`ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_email varchar(255)`)
+  await pool.query(`ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_name varchar(150)`)
+
+  // ── Logos (tenants + cabinets) stockés en base, servis par un endpoint public ─
+  // Même pattern que les CV recrutement (bytea). logo_url pointe vers /public/brand/{id}.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.brand_assets (
+      id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      mime       varchar(100) NOT NULL,
+      bytes      bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `)
 }
 
 /**

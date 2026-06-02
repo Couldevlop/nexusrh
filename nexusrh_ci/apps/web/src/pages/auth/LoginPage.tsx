@@ -9,6 +9,7 @@ import {
   useAuthStore,
   type AuthUser,
   type TenantConfig,
+  type AgencyConfig,
 } from "@/stores/authStore";
 import { Loader2, Eye, EyeOff, ShieldCheck, CheckCircle } from "lucide-react";
 
@@ -136,6 +137,7 @@ export default function LoginPage() {
         refreshToken?: string;
         user?: AuthUser;
         tenantConfig?: TenantConfig | null;
+        agencyConfig?: AgencyConfig | null;
         redirectTo?: string;
         must_change_password?: boolean;
         // Politique de sécurité (OWASP A07) :
@@ -184,6 +186,7 @@ export default function LoginPage() {
         res.data.token!,
         res.data.refreshToken ?? "",
         res.data.tenantConfig ?? null,
+        res.data.agencyConfig ?? null,
       );
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {

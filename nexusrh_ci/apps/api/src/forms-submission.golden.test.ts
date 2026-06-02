@@ -57,7 +57,7 @@ vi.mock('./services/email.js', () => ({
 
 import { buildApp } from './app.js'
 
-type Scope = 'tenant' | 'platform' | 'authed' | 'public'
+type Scope = 'tenant' | 'platform' | 'authed' | 'public' | 'agency'
 interface FormEndpoint {
   method: 'POST' | 'PATCH' | 'PUT'
   url:    string
@@ -163,6 +163,18 @@ const FORMS: FormEndpoint[] = [
   { method: 'PATCH', url: `/platform/sourcing/platforms/${UUID}`, scope: 'platform' },
   { method: 'PATCH', url: '/platform/sourcing/settings',        scope: 'platform' },
   { method: 'PATCH', url: '/platform/legal-constants/CI/2024',  scope: 'platform' },
+  // ── Cabinets de recrutement (super_admin) ──
+  { method: 'POST',  url: '/agency/agencies',                   scope: 'platform' },
+  { method: 'PATCH', url: `/agency/agencies/${UUID}`,           scope: 'platform' },
+  { method: 'POST',  url: `/agency/agencies/${UUID}/suspend`,   scope: 'platform' },
+  { method: 'POST',  url: `/agency/agencies/${UUID}/reactivate`, scope: 'platform' },
+  { method: 'POST',  url: `/agency/agencies/${UUID}/tenants`,   scope: 'platform' },
+  // ── Cabinets de recrutement (utilisateur cabinet) ──
+  { method: 'POST',  url: '/agency/sessions/activate',          scope: 'agency' },
+  { method: 'POST',  url: '/agency/sessions/deactivate',        scope: 'agency' },
+  { method: 'POST',  url: '/agency/members',                    scope: 'agency' },
+  { method: 'PATCH', url: `/agency/members/${UUID}`,            scope: 'agency' },
+  { method: 'POST',  url: '/agency/client-tenants',             scope: 'agency' },
 ]
 
 let app: FastifyInstance
@@ -173,6 +185,10 @@ function token(scope: Scope): string {
   }
   if (scope === 'platform') {
     return app.jwt.sign({ ...base, tenantId: null, schemaName: 'platform', role: 'super_admin' })
+  }
+  if (scope === 'agency') {
+    return app.jwt.sign({ ...base, tenantId: null, schemaName: 'platform', role: 'agency_owner',
+      actorType: 'agency', agencyId: '11111111-1111-1111-1111-111111111111' })
   }
   return app.jwt.sign({ ...base, tenantId: 't1', schemaName: 'tenant_test', role: 'admin' })
 }
@@ -193,7 +209,7 @@ describe('Golden Formulaires — toutes les soumissions montées, protégées et
 
   // 2. ROBUSTESSE : token valide + corps invalide => < 500 (jamais de crash)
   describe('Robustes : token + corps invalide => reponse < 500 (pas de crash)', () => {
-    for (const f of FORMS.filter(x => x.scope === 'tenant' || x.scope === 'platform' || x.scope === 'authed')) {
+    for (const f of FORMS.filter(x => x.scope === 'tenant' || x.scope === 'platform' || x.scope === 'authed' || x.scope === 'agency')) {
       it(`${f.method} ${f.url}`, async () => {
         const res = await app.inject({
           method: f.method, url: f.url,

@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import AiChat from '@/components/ai/AiChat'
 import { AlertTriangle, Menu } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 
 const ROUTE_LABELS: Record<string, string> = {
   '/dashboard': 'Tableau de bord',
@@ -29,6 +30,8 @@ export default function MainLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden flex-col">
+      {/* Bannière « cabinet agit pour le tenant X » (session scopée) */}
+      <ActingAsBanner />
       {/* Maintenance banner */}
       <MaintenanceBanner />
 

@@ -92,6 +92,7 @@ describe('POST /auth/login — verrouillage de compte (OWASP A07)', () => {
       .mockResolvedValueOnce({ rows: [{}] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [] })   // platform_users vide
       .mockResolvedValueOnce({ rows: [] })   // tenants vide
+      .mockResolvedValueOnce({ rows: [] })   // findAgencyUser vide (cabinet)
       .mockResolvedValueOnce({ rows: [] })   // audit failed
     const res = await app.inject({ method: 'POST', url: '/auth/login',
       payload: { email: 'ghost@nowhere.ci', password: 'whatever123' } })
@@ -107,6 +108,7 @@ describe('POST /auth/login — verrouillage de compte (OWASP A07)', () => {
       .mockResolvedValueOnce({ rows: [{}] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [] })   // platform_users vide
       .mockResolvedValueOnce({ rows: [] })   // tenants vide
+      .mockResolvedValueOnce({ rows: [] })   // findAgencyUser vide (cabinet)
       .mockResolvedValueOnce({ rows: [] })   // audit failed
       .mockResolvedValueOnce({ rows: [] })   // audit locked
     const res = await app.inject({ method: 'POST', url: '/auth/login',
