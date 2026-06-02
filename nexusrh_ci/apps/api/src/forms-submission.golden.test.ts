@@ -119,6 +119,7 @@ const FORMS: FormEndpoint[] = [
   { method: 'POST',  url: '/recruitment/applications',           scope: 'tenant' },
   { method: 'PATCH', url: `/recruitment/applications/${UUID}/stage`, scope: 'tenant' },
   { method: 'POST',  url: `/recruitment/jobs/${UUID}/preselect`, scope: 'tenant' },
+  { method: 'PUT',   url: `/recruitment/jobs/${UUID}/screening-criteria`, scope: 'tenant' },
   { method: 'POST',  url: `/recruitment/internal-jobs/${UUID}/apply`, scope: 'tenant' },
   // ── Contrats ──
   { method: 'POST',  url: '/contracts',                   scope: 'tenant' },
