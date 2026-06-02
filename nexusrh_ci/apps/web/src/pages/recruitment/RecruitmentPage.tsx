@@ -28,6 +28,19 @@ interface Job {
   target_min_seniority_months?: number | null
   ai_focus_text?: string | null
   created_at: string
+  // Détail éditable (renvoyé par SELECT rj.* — liste & détail)
+  description?: string | null
+  requirements?: string | null
+  // Structure d'offre APEC
+  reference?: string | null
+  experience_level?: string | null
+  job_level?: string | null
+  sector?: string | null
+  required_education?: string | null
+  benefits?: string | null
+  work_mode?: string | null
+  start_date?: string | null
+  recruitment_process?: string | null
 }
 
 interface Application {
@@ -226,7 +239,9 @@ export default function RecruitmentPage() {
   const tenantSlug = useAuthStore((s) => s.tenantConfig?.slug ?? '')
 
   const updateJob = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<NewJobForm> & { status?: string } }) =>
+    // Body typé large : EditJobModal convertit les numériques (salaire, ancienneté)
+    // en number|null avant envoi (jamais '' vers une colonne int).
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/recruitment/jobs/${id}`, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] }),
   })
@@ -2899,7 +2914,7 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
   departments: Department[]
   submitting: boolean
   onClose: () => void
-  onSubmit: (patch: Partial<NewJobForm> & { status?: string }) => void
+  onSubmit: (patch: Record<string, unknown>) => void
 }) {
   const [form, setForm] = useState({
     title: job.title,
@@ -2910,36 +2925,90 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
     salary_max: job.salary_max ?? '',
     status: job.status,
     visibility: (job.visibility ?? 'external') as 'external' | 'internal' | 'both',
+    description: job.description ?? '',
+    requirements: job.requirements ?? '',
+    // Structure APEC
+    experience_level: job.experience_level ?? '',
+    job_level: job.job_level ?? '',
+    sector: job.sector ?? '',
+    required_education: job.required_education ?? '',
+    work_mode: job.work_mode ?? '',
+    start_date: job.start_date ? job.start_date.slice(0, 10) : '',
+    benefits: job.benefits ?? '',
+    recruitment_process: job.recruitment_process ?? '',
+    // Ciblage interne
+    target_departments: job.target_departments ?? [],
+    target_job_levels: job.target_job_levels ?? [],
+    target_min_seniority_months: job.target_min_seniority_months != null ? String(job.target_min_seniority_months) : '',
   })
+  const isInternal = form.visibility !== 'external'
+  const toggleDept = (id: string) => setForm(p => ({
+    ...p, target_departments: p.target_departments.includes(id)
+      ? p.target_departments.filter(d => d !== id) : [...p.target_departments, id],
+  }))
+  const toggleLevel = (lvl: string) => setForm(p => ({
+    ...p, target_job_levels: p.target_job_levels.includes(lvl)
+      ? p.target_job_levels.filter(l => l !== lvl) : [...p.target_job_levels, lvl],
+  }))
+
+  const submit = () => onSubmit({
+    title: form.title,
+    department_id: form.department_id || null,
+    location: form.location,
+    contract_type: form.contract_type,
+    status: form.status,
+    visibility: form.visibility,
+    salary_min: form.salary_min ? parseInt(String(form.salary_min)) : null,
+    salary_max: form.salary_max ? parseInt(String(form.salary_max)) : null,
+    description: form.description || null,
+    requirements: form.requirements || null,
+    experience_level: form.experience_level || null,
+    job_level: form.job_level || null,
+    sector: form.sector || null,
+    required_education: form.required_education || null,
+    work_mode: form.work_mode || null,
+    start_date: form.start_date || null,
+    benefits: form.benefits || null,
+    recruitment_process: form.recruitment_process || null,
+    // Ciblage interne réinitialisé si l'offre redevient purement externe.
+    target_departments: isInternal ? form.target_departments : [],
+    target_job_levels: isInternal ? form.target_job_levels : [],
+    target_min_seniority_months: isInternal && form.target_min_seniority_months
+      ? parseInt(String(form.target_min_seniority_months)) : null,
+  })
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="rounded-xl border border-border bg-card w-full max-w-xl shadow-xl my-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h3 className="font-semibold">Modifier l'offre</h3>
+      <div className="rounded-xl border border-border bg-card w-full max-w-2xl max-h-[min(90vh,720px)] flex flex-col shadow-xl my-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
+          <div>
+            <h3 className="font-semibold">Modifier l'offre</h3>
+            {job.reference && <p className="text-[11px] text-muted-foreground">Réf. {job.reference}</p>}
+          </div>
           <button onClick={onClose} className="rounded-full p-1 hover:bg-accent"><XCircle className="h-5 w-5 text-muted-foreground" /></button>
         </div>
-        <div className="px-5 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Titre du poste *</label>
             <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Département</label>
+            <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              <option value="">— Aucun —</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">Département</label>
-              <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="">— Aucun —</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Localisation</label>
               <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Contrat</label>
+              <label className="text-xs font-medium text-muted-foreground">Type de contrat</label>
               <select value={form.contract_type} onChange={e => setForm(p => ({ ...p, contract_type: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
                 <option value="cdi">CDI</option>
@@ -2958,19 +3027,72 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire min</label>
+              <label className="text-xs font-medium text-muted-foreground">Salaire min (FCFA)</label>
               <input type="number" value={form.salary_min} onChange={e => setForm(p => ({ ...p, salary_min: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire max</label>
+              <label className="text-xs font-medium text-muted-foreground">Salaire max (FCFA)</label>
               <input type="number" value={form.salary_max} onChange={e => setForm(p => ({ ...p, salary_max: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
           </div>
+
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Visibilité</label>
-            <div className="mt-1 grid grid-cols-3 gap-2">
+            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+              rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Prérequis</label>
+            <textarea value={form.requirements} onChange={e => setForm(p => ({ ...p, requirements: e.target.value }))}
+              rows={2} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+          </div>
+
+          {/* ── Structure d'offre APEC ── */}
+          <div className="border-t border-border pt-3 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground">Structure de l'offre (standard APEC)</p>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { key: 'experience_level',   label: 'Expérience',      opts: EXPERIENCE_OPTIONS },
+                { key: 'job_level',          label: 'Statut',          opts: JOB_LEVEL_OPTIONS },
+                { key: 'required_education', label: 'Formation',       opts: EDUCATION_OPTIONS },
+                { key: 'sector',             label: 'Secteur',         opts: SECTOR_OPTIONS },
+                { key: 'work_mode',          label: 'Mode de travail', opts: WORK_MODE_OPTIONS },
+              ] as const).map(({ key, label, opts }) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-muted-foreground">{label}</label>
+                  <select value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                    <option value="">—</option>
+                    {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Date de prise de poste</label>
+                <input type="date" value={form.start_date}
+                  onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Avantages</label>
+              <textarea value={form.benefits} onChange={e => setForm(p => ({ ...p, benefits: e.target.value }))}
+                rows={2} placeholder="Mutuelle, primes, télétravail, formation…"
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Processus de recrutement</label>
+              <textarea value={form.recruitment_process} onChange={e => setForm(p => ({ ...p, recruitment_process: e.target.value }))}
+                rows={2} placeholder="Entretien RH → test technique → entretien manager…"
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-3">
+            <label className="text-xs font-medium text-muted-foreground">Visibilité de l'offre *</label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
               {(['external', 'internal', 'both'] as const).map(v => {
                 const cfg = VISIBILITY_CONFIG[v]!
                 const Icon = cfg.icon
@@ -2983,15 +3105,52 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
               })}
             </div>
           </div>
+
+          {isInternal && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50/40 p-3 space-y-3">
+              <p className="text-xs font-medium text-purple-700">Critères de ciblage interne (tous optionnels, combinables)</p>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Départements ciblés</label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {departments.length === 0 && <span className="text-xs text-muted-foreground italic">Aucun département</span>}
+                  {departments.map(d => {
+                    const active = form.target_departments.includes(d.id)
+                    return (
+                      <button key={d.id} type="button" onClick={() => toggleDept(d.id)}
+                        className={`rounded-full border px-2.5 py-1 text-xs ${active ? 'border-purple-500 bg-purple-100 text-purple-700' : 'border-border hover:bg-accent'}`}>
+                        {d.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Catégories ciblées</label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {JOB_LEVELS.map(lvl => {
+                    const active = form.target_job_levels.includes(lvl)
+                    return (
+                      <button key={lvl} type="button" onClick={() => toggleLevel(lvl)}
+                        className={`rounded-full border px-2.5 py-1 text-xs ${active ? 'border-purple-500 bg-purple-100 text-purple-700' : 'border-border hover:bg-accent'}`}>
+                        {JOB_LEVEL_LABELS[lvl]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Ancienneté minimum (mois)</label>
+                <input type="number" min="0" value={form.target_min_seniority_months}
+                  onChange={e => setForm(p => ({ ...p, target_min_seniority_months: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Ex: 24 (pour 2 ans)" />
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex gap-2 justify-end border-t border-border px-5 py-3">
+        <div className="sticky bottom-0 z-10 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
-          <button onClick={() => onSubmit({
-            title: form.title, department_id: form.department_id || undefined,
-            location: form.location, contract_type: form.contract_type,
-            salary_min: form.salary_min, salary_max: form.salary_max,
-            status: form.status, visibility: form.visibility,
-          })} disabled={!form.title || submitting}
+          <button onClick={submit} disabled={!form.title || submitting}
             className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {submitting ? 'Enregistrement…' : 'Enregistrer'}
           </button>
