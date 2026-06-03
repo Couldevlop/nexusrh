@@ -46,6 +46,15 @@ vi.mock('../../services/ai-credentials.service.js', () => ({
   }),
 }))
 
+// Pays de sourcing résolus sans requête BD (la sécurité mono/multi-pays est
+// couverte par sourcing-countries.service.test.ts). Reflète le client.
+vi.mock('../../services/sourcing-countries.service.js', () => ({
+  resolveSourcingCountries: vi.fn(async (_p: unknown, _s: unknown, requested?: string[]) => ({
+    countries: requested && requested.length ? requested : ['CI'],
+    multiCountry: true, tenantCountry: 'CI',
+  })),
+}))
+
 import authPlugin from '../../plugins/auth.js'
 import recruitmentRoutes from './recruitment.routes.js'
 import {
