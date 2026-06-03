@@ -512,6 +512,164 @@ async function main() {
   }
   console.log(`[7/10] ${sotraEmployees.length * sotraPeriods.length} bulletins SOTRA générés (6 mois)`)
 
+  // ─── Paie multi-filiales : workflow centralisé d'exemple (page « Paie multi-filiales ») ──
+  // SOTRA est un groupe à filiales : on matérialise le workflow paie centralisé pour que
+  // la page ne soit PAS vide au premier lancement et illustre TOUS les états — mois
+  // clôturés + consolidés (avec totaux réels par filiale et chronologie nominative), et un
+  // mois EN COURS montrant la progression des soumissions filiale par filiale.
+  {
+    const lesRes = await pool.query<{
+      id: string; raf_user_id: string | null; legislation_pack_code: string | null; name: string
+    }>(
+      `SELECT id, raf_user_id, legislation_pack_code, name
+         FROM "${sotraSchema}".legal_entities WHERE is_active = true ORDER BY name`,
+    )
+    const filiales = lesRes.rows.filter((f) => f.raf_user_id)
+    const centralRes = await pool.query<{ id: string }>(
+      `SELECT id FROM "${sotraSchema}".users WHERE role IN ('admin','hr_manager') ORDER BY role LIMIT 1`,
+    )
+    const centralUserId = centralRes.rows[0]?.id ?? null
+
+    if (filiales.length > 0 && centralUserId) {
+      // Idempotent en reseed local (en prod le schéma tenant est DROP au préalable).
+      await pool.query(
+        `DELETE FROM "${sotraSchema}".audit_log WHERE entity = 'pay_period' AND action LIKE 'workflow.%'`,
+      ).catch(() => undefined)
+      await pool.query(
+        `DELETE FROM "${sotraSchema}".pay_periods WHERE parent_period_id IS NOT NULL`,
+      ).catch(() => undefined)
+      await pool.query(
+        `DELETE FROM "${sotraSchema}".pay_periods WHERE month = '2025-07' AND legal_entity_id IS NULL`,
+      ).catch(() => undefined)
+
+      // Totaux par filiale d'un mois (sommés depuis les bulletins réels déjà générés).
+      const totalsByMonth = async (month: string) => {
+        const r = await pool.query<{ le: string; g: string; n: string; c: string; i: string }>(
+          `SELECT e.legal_entity_id AS le,
+                  COALESCE(SUM(ps.gross_salary),0)                       AS g,
+                  COALESCE(SUM(ps.net_payable),0)                        AS n,
+                  COALESCE(SUM(ps.total_cnps_sal + ps.total_cnps_pat),0) AS c,
+                  COALESCE(SUM(ps.its),0)                                AS i
+             FROM "${sotraSchema}".pay_slips ps
+             JOIN "${sotraSchema}".employees e ON e.id = ps.employee_id
+            WHERE ps.month = $1 AND e.legal_entity_id IS NOT NULL
+            GROUP BY e.legal_entity_id`,
+          [month],
+        )
+        const m = new Map<string, { g: number; n: number; c: number; i: number }>()
+        for (const row of r.rows) m.set(row.le, { g: +row.g, n: +row.n, c: +row.c, i: +row.i })
+        return m
+      }
+
+      // Chronologie : created_at décalé (jours + minutes croissantes) pour un ordre stable.
+      let tick = 0
+      const insertEvent = async (
+        entityId: string, action: string, changes: Record<string, unknown>, daysAgo: number,
+      ) => {
+        await pool.query(
+          `INSERT INTO "${sotraSchema}".audit_log (user_id, action, entity, entity_id, changes, created_at)
+           VALUES ($1,$2,'pay_period',$3,$4,
+                   now() - ($5 || ' days')::interval + ($6 || ' minutes')::interval)`,
+          [centralUserId, action, entityId, JSON.stringify(changes), daysAgo, tick++],
+        ).catch(() => undefined)
+      }
+
+      // 1) Mois CLÔTURÉS : on décline chaque période parente existante vers ses filiales.
+      const closedMonths = sotraPeriods // 2025-01 … 2025-06
+      for (let mi = 0; mi < closedMonths.length; mi++) {
+        const month = closedMonths[mi]!
+        const daysAgo = (closedMonths.length - mi) * 25
+        const parentRes = await pool.query<{ id: string }>(
+          `SELECT id FROM "${sotraSchema}".pay_periods
+            WHERE month = $1 AND parent_period_id IS NULL AND legal_entity_id IS NULL LIMIT 1`,
+          [month],
+        )
+        const parentId = parentRes.rows[0]?.id
+        if (!parentId) continue
+        const totals = await totalsByMonth(month)
+
+        await insertEvent(parentId, 'workflow.create_draft', { month }, daysAgo)
+        await insertEvent(parentId, 'workflow.send_to_sites', { sitesCount: filiales.length }, daysAgo)
+
+        let sg = 0, sn = 0, sc = 0, si = 0
+        for (const f of filiales) {
+          const t = totals.get(f.id) ?? { g: 0, n: 0, c: 0, i: 0 }
+          sg += t.g; sn += t.n; sc += t.c; si += t.i
+          const childRes = await pool.query<{ id: string }>(
+            `INSERT INTO "${sotraSchema}".pay_periods
+               (month, status, parent_period_id, legal_entity_id, legislation_pack_code, raf_user_id,
+                total_gross, total_net, total_cnps, total_its,
+                sent_to_sites_at, completed_by_site_at, validated_central_at, closed_at, validated_by, closed_by)
+             VALUES ($1,'closed',$2,$3,$4,$5,$6,$7,$8,$9, now(),now(),now(),now(),$10::uuid,$10::text)
+             ON CONFLICT (month, legal_entity_id) DO NOTHING
+             RETURNING id`,
+            [month, parentId, f.id, f.legislation_pack_code ?? 'CIV-2024', f.raf_user_id,
+             t.g, t.n, t.c, t.i, centralUserId],
+          )
+          const childId = childRes.rows[0]?.id
+          if (childId) {
+            await insertEvent(childId, 'workflow.submit_by_raf',
+              { inserted: 0, totalGross: t.g, totalNet: t.n, legalEntityName: f.name }, daysAgo)
+          }
+        }
+
+        // Parent déjà 'closed' avec totaux (= somme employés = somme filiales) ; on
+        // renseigne les jalons workflow manquants pour la cohérence d'affichage.
+        await pool.query(
+          `UPDATE "${sotraSchema}".pay_periods
+              SET sent_to_sites_at     = COALESCE(sent_to_sites_at, now()),
+                  validated_central_at = COALESCE(validated_central_at, now()),
+                  validated_by         = COALESCE(validated_by, $2)
+            WHERE id = $1`,
+          [parentId, centralUserId],
+        )
+        await insertEvent(parentId, 'workflow.validate_central',
+          { sitesCount: filiales.length, sumGross: sg, sumNet: sn }, daysAgo)
+        await insertEvent(parentId, 'workflow.close', {}, daysAgo)
+      }
+
+      // 2) Mois EN COURS (démo « live ») : décliné, 1re filiale soumise, le reste en attente.
+      const liveMonth = '2025-07'
+      const refTotals = await totalsByMonth('2025-06')
+      const liveParentRes = await pool.query<{ id: string }>(
+        `INSERT INTO "${sotraSchema}".pay_periods
+           (month, status, parent_period_id, legal_entity_id, sent_to_sites_at)
+         VALUES ($1,'sent_to_sites',NULL,NULL, now())
+         RETURNING id`,
+        [liveMonth],
+      )
+      const liveParentId = liveParentRes.rows[0]?.id
+      if (liveParentId) {
+        await insertEvent(liveParentId, 'workflow.create_draft', { month: liveMonth }, 2)
+        await insertEvent(liveParentId, 'workflow.send_to_sites', { sitesCount: filiales.length }, 1)
+        for (let fi = 0; fi < filiales.length; fi++) {
+          const f = filiales[fi]!
+          const submitted = fi === 0 // la 1re filiale a soumis ; les suivantes restent en attente
+          const t = refTotals.get(f.id) ?? { g: 0, n: 0, c: 0, i: 0 }
+          const childRes = await pool.query<{ id: string }>(
+            `INSERT INTO "${sotraSchema}".pay_periods
+               (month, status, parent_period_id, legal_entity_id, legislation_pack_code, raf_user_id,
+                total_gross, total_net, total_cnps, total_its, sent_to_sites_at, completed_by_site_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), CASE WHEN $11 THEN now() ELSE NULL END)
+             ON CONFLICT (month, legal_entity_id) DO NOTHING
+             RETURNING id`,
+            [liveMonth, submitted ? 'completed_by_site' : 'sent_to_sites', liveParentId, f.id,
+             f.legislation_pack_code ?? 'CIV-2024', f.raf_user_id,
+             submitted ? t.g : null, submitted ? t.n : null, submitted ? t.c : null, submitted ? t.i : null,
+             submitted],
+          )
+          const childId = childRes.rows[0]?.id
+          if (childId && submitted) {
+            await insertEvent(childId, 'workflow.submit_by_raf',
+              { inserted: 0, totalGross: t.g, totalNet: t.n, legalEntityName: f.name }, 1)
+          }
+        }
+      }
+
+      console.log(`[7c/10] Workflow paie multi-filiales SOTRA : ${closedMonths.length} mois clôturés + 1 mois en cours, ${filiales.length} filiales`)
+    }
+  }
+
   // ─── Contrats OHADA pour tous les employés SOTRA ─────────────────────────────
   const contractTypes = ['cdi','cdi','cdi','cdi','cdd'] // 80% CDI, 20% CDD
   for (let ci = 0; ci < sotraEmployees.length; ci++) {
