@@ -427,7 +427,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (_request, reply) => {
       // Retourner les settings stockés + infos de la plateforme
       const res = await pool.query(
-        `SELECT * FROM platform.platform_settings LIMIT 1`
+        `SELECT * FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1`
       ).catch(async () => {
         // Table n'existe pas encore, la créer
         await pool.query(`
@@ -465,7 +465,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           )
         `)
         await pool.query(`INSERT INTO platform.platform_settings DEFAULT VALUES ON CONFLICT DO NOTHING`)
-        return pool.query(`SELECT * FROM platform.platform_settings LIMIT 1`)
+        return pool.query(`SELECT * FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1`)
       })
 
       const settings = res.rows[0] ?? {}
@@ -527,12 +527,16 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       if (!sets.length) return reply.status(400).send({ error: 'Aucun champ valide' })
       sets.push(`updated_at = now()`)
 
+      // Singleton : garantir l'unique ligne sans en créer de doublon (index unique
+      // sur `singleton`). Repli sur DEFAULT VALUES si l'index n'existe pas encore.
       await pool.query(
+        `INSERT INTO platform.platform_settings (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING`
+      ).catch(() => pool.query(
         `INSERT INTO platform.platform_settings DEFAULT VALUES ON CONFLICT DO NOTHING`
-      ).catch(() => null)
+      ).catch(() => null))
 
       await pool.query(
-        `UPDATE platform.platform_settings SET ${sets.join(', ')} WHERE id = (SELECT id FROM platform.platform_settings LIMIT 1)`,
+        `UPDATE platform.platform_settings SET ${sets.join(', ')} WHERE id = (SELECT id FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1)`,
         vals
       )
       if ('maintenance_mode' in body) maintenanceCache.invalidate()

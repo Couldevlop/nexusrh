@@ -312,6 +312,19 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_window_minutes int NOT NULL DEFAULT 15`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_duration_minutes int NOT NULL DEFAULT 15`,
 
+    // ── Singleton : une SEULE ligne de configuration plateforme ───────────────
+    // Corrige un bug historique : les routes faisaient `INSERT ... DEFAULT VALUES
+    // ON CONFLICT DO NOTHING` sans contrainte d'unicité → une nouvelle ligne à
+    // chaque PATCH, et `SELECT ... LIMIT 1` (sans ORDER BY) lisait la politique de
+    // sécurité (MFA, lockout, mdp) de façon non déterministe.
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS singleton boolean NOT NULL DEFAULT true`,
+    // Dédoublonnage : ne conserver que la ligne la plus ancienne (avant l'index unique).
+    `DELETE FROM platform.platform_settings WHERE id NOT IN (
+       SELECT id FROM platform.platform_settings ORDER BY created_at ASC, id ASC LIMIT 1)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS platform_settings_singleton_idx ON platform.platform_settings(singleton)`,
+    // Garantir la présence de l'unique ligne (défauts de politique).
+    `INSERT INTO platform.platform_settings (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING`,
+
     // ── Surcharge MFA durcissante par tenant (ne peut qu'imposer le MFA) ──────
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT false`,
 
