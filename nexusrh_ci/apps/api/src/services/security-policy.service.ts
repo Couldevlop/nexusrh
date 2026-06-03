@@ -103,7 +103,7 @@ export function toLockoutPolicy(policy: SecurityPolicy): {
  */
 export async function getSecurityPolicy(pool: Pick<Pool, 'query'>): Promise<SecurityPolicy> {
   try {
-    const res = await pool.query('SELECT * FROM platform.platform_settings LIMIT 1')
+    const res = await pool.query('SELECT * FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1')
     return mapSecurityPolicyRow(res.rows[0] as Record<string, unknown> | undefined)
   } catch {
     return { ...DEFAULT_SECURITY_POLICY }
