@@ -11,6 +11,7 @@ import {
 } from '../../services/recruitment-ai.service.js'
 import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -1283,9 +1284,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const platforms = Array.isArray(body.platforms) && body.platforms.length
         ? body.platforms
         : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
-      const countries = Array.isArray(body.countries) && body.countries.length
-        ? body.countries
-        : ['CI']
+      // OWASP A01 — pays imposés côté serveur : un tenant mono-pays ne peut
+      // sourcer que dans SON pays (le `countries` du client est ignoré). Multi-
+      // pays : sélection client validée.
+      const { countries } = await resolveSourcingCountries(pool, schema, body.countries)
       const maxProfiles = Math.max(1, Math.min(Number(body.max_profiles) || 10, 20))
 
       try {
@@ -1575,9 +1577,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const platforms = Array.isArray(body.platforms) && body.platforms.length
         ? body.platforms
         : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
-      const countries = Array.isArray(body.countries) && body.countries.length
-        ? body.countries
-        : ['CI']
+      // OWASP A01 — pays imposés côté serveur : un tenant mono-pays ne peut
+      // sourcer que dans SON pays (le `countries` du client est ignoré). Multi-
+      // pays : sélection client validée.
+      const { countries } = await resolveSourcingCountries(pool, schema, body.countries)
       const maxProfiles = Math.max(1, Math.min(Number(body.max_profiles) || 5, 10))
 
       try {
