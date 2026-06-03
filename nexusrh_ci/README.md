@@ -84,6 +84,15 @@ pnpm run dev
 | ------------------- | -------------- | ----- | ------------- |
 | `coulwao@gmail.com` | `Openlab1234!` | admin | `/dashboard`  |
 
+### Cabinet Talents CI — cabinet de recrutement (gère SOTRA + Cabinet Expertise)
+
+| Email                          | Mot de passe | Rôle          | Redirige vers         |
+| ------------------------------ | ------------ | ------------- | --------------------- |
+| `owner@cabinet-talents.ci`     | `Admin1234!` | agency_owner  | `/agency/dashboard`   |
+| `recruteur@cabinet-talents.ci` | `Admin1234!` | agency_member | `/agency/dashboard`   |
+
+> Guide client dédié : [`docs/GUIDE-CABINET-RECRUTEMENT.md`](docs/GUIDE-CABINET-RECRUTEMENT.md).
+
 > **Procédure de reset si login 401** :
 > ```bash
 > # Workflow GitHub Actions (recommandé)
@@ -102,7 +111,7 @@ pnpm run dev
 
 | Domaine | Couverture |
 | ------- | ---------- |
-| **Tests automatisés** | **1481 tests verts** (Vitest) sur 28 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, training, careers, mobile-money (28 tests dont 11 webhooks HMAC), IA assistant, CNPS, settings (28 tests dont 11 imports conformes BD), référentiels, legal-watch (15 tests), authentification (plugin + routes + MFA TOTP + forgot/reset password — 20 tests), cookie httpOnly + CSRF (9 tests), packs législatifs, workflows, security headers, **38 fixtures golden** (1044 assertions)  |
+| **Tests automatisés** | **2022 tests verts** (Vitest) sur 61 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, training, careers, mobile-money, IA assistant, CNPS, settings, référentiels, legal-watch, authentification (plugin + routes + MFA TOTP + forgot/reset password), cookie httpOnly + CSRF, **cabinet de recrutement** (login + activation de session + CRUD + isolation), **connectivité** (webhooks/clés API/connecteurs + SSRF), **garde de cloisonnement contexte-plateforme**, packs législatifs, workflows, security headers, golden fixtures paie  |
 | **Transparence paie** | 4 axes livrés côté API : (1) bulletin explicable ligne-par-ligne (formule humaine + référence Code Travail/CNPS/DGI) via `GET /payroll/payslips/:id/transparency`, (2) **simulation what-if** via `POST /payroll/simulate` — calcul sans persistance, RBAC IDOR strict (employee = soi, manager = équipe), (3) diff mois-à-mois automatique (3 mois précédents dans la réponse transparency), (4) audit log de consultation. UI : `PaySlipTransparentModal.tsx` branché côté employé (`/mon-espace/bulletins`) et RH (`/payroll/payslips`) |
 | **Golden fixtures paie** | 28 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité complet/partiel, maladie maintien 50%/75%/100%, AT avec jour J inclus/hors mois/1j sans IJSS, heures supp, avance, SMIG exact (cas limite), haut salaire 3 enfants, cumul prime+heures supp, tranche ITS 5% pure, **cumul maximal 6 variableElements**, **plafond CNPS retraite exact 1 647 315 FCFA**) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
@@ -146,6 +155,10 @@ pnpm --filter @nexusrhci/api run payroll:fixtures:approve <fixture-id> --reason 
 | **Settings (paramétrage tenant)** | ✓ (admin uniquement sur écritures sensibles — PATCH /tenant, /legal-entities, /payroll-rules, hr_manager sur /import) | ✓ + Zod strict (`patchTenantSchema`, `createLegalEntitySchema`, `patchLegalEntitySchema`, `createPayrollRuleSchema`, `patchPayrollRuleSchema`, `importBodySchema` toutes `.strict()`) + regex hex `^#[A-Fa-f0-9]{6}$` sur couleurs + regex CNPS/DGI/RCCM + URL logo http(s) ou data:image uniquement + **bornes anti-fraude AT 0.02-0.05** (refus 400 sinon, A04) + cap import CSV 50 colonnes × 10 000 lignes (413 sinon, anti-DoS memory) + UUID validation sur PATCH/:id + whitelist types import (employees/departments/absences uniquement) | ✓ 20/min sur écritures sensibles (`/tenant`, `/legal-entities`, `/payroll-rules`) + 10/h sur `/import/:type` | `settings.tenant_updated` (modifiedFields + changes), `settings.legal_entity_created/updated` (cnps/dgi/at trace fraude), `settings.payroll_rule_created/updated` (modif rate = impact direct cotisations), `settings.import_completed` (type + counts) — modifs numéro CNPS/DGI/AT = vecteurs fraude, traçabilité 100% obligatoire |
 | **Référentiels (recherche légale)** | ✓ (search ouvert tous rôles, /stats admin+hr_manager, /seed + /reindex admin+super_admin uniquement) | ✓ Fastify JSON schema strict sur query/params (refus champs inconnus, bornes longueurs) + masquage messages d'erreur Elasticsearch/PostgreSQL en générique (OWASP A10, plus de leak path DB/ES sur /seed et /reindex) | ✓ 3/5min sur /seed + /reindex (opérations destructives qui reset/reconstruisent l'index) | `referentiels.seeded` (action destructive — reset base référentielle), `referentiels.reindexed` (parcours complet PG → ES, traçabilité super_admin obligatoire) |
 | **Legal-watch (veille réglementaire)** | ✓ (super_admin uniquement sur tous les endpoints — admin/hr_manager bloqués) | ✓ + Zod .strict() (analyzeSchema + reviewSchema + sourcesCatalogQuerySchema) avec regex sur article_id, source_code, country_code ISO alpha-3 + UUID validation stricte sur :id (approve/reject/proposals/:id) + **vérification existence article_id avant INSERT proposition** (anti-pollution A04) + country whitelist contre catalogue (404 si pays non supporté) + ID nouvel article via `randomUUID()` (au lieu de Date.now() qui peut collisionner) | ✓ analyze 20/h (LLM Claude coûteux), approve/reject 60/h (actions destructives), proposals GET 200/h | `legal_watch.approve` (actor + proposal_id + article_id + checksum sha256), `legal_watch.reject` (actor + notes + ip — conformité loi 2013-450 CI traçabilité 12 mois) + masquage erreurs Anthropic en 500 générique (OWASP A10, plus de leak clé API / model / prompt) |
+| **Cabinet de recrutement (agency)** | ✓ Acteur multi-tenant : login cabinet (contexte plateforme) puis **activation de session scopée** sur un tenant client via un **point de contrôle unique** (`assertAgencyCanActOnTenant` : membre ∈ cabinet ∧ tenant rattaché ∧ tenant actif ∧ **CI** ∧ schéma valide) ; super_admin only sur le CRUD cabinets ; endpoints owner scopés à l'`agencyId` du token (jamais du body) | ✓ + Zod strict + garde-fou CI serveur (422 hors CI) | ✓ 10/h création + 30/min activation | `auth.login.success{scope:agency}`, `agency.session.activated`, `agency.activate.denied`, `agency.created/updated/suspended/tenant.attached/detached`, `agency.client_tenant.created` |
+| **Connectivité (intégrations)** | ✓ admin tenant only sur le CRUD ; API publique `/integrations/v1/*` authentifiée par **clé API à portées** (scopes), hachée (sha256), révocable | ✓ + Zod strict (whitelist events/scopes) ; secrets chiffrés **AES-256**, **HMAC SHA-256** sur webhooks (en-têtes NexusRH non écrasables) | ✓ 30/h CRUD + 20/min test + 120/min API publique | `integration.webhook.created/updated/deleted`, `integration.apikey.created/updated/deleted`, `integration.connector.*` |
+| **Anti-SSRF (A10) — appels sortants** | n/a | **Garde SSRF** sur webhooks + connecteurs : http(s) only, pas d'identifiants dans l'URL, **blocage IP privées/loopback/link-local/metadata** avec **résolution DNS**, `redirect: 'error'` (pas de suivi de redirection) | n/a | (refus tracés `integration.*` côté handler) |
+| **Cloisonnement contexte-plateforme (A01)** | **Garde central** : un acteur en contexte plateforme (super_admin, ou cabinet hors session scopée — `schemaName='platform'`) atteignant une route tenant reçoit **403** (au lieu d'un 500) ; les sessions cabinet scopées (`schemaName=tenant_x`) ne sont pas affectées | n/a | n/a | golden dédié `platform-context-guard.golden.test.ts` |
 | **Transverse (security headers)** | n/a | n/a | **rate-limit global 200/min/IP** (OWASP A07 brute-force) | n/a — headers HTTP appliqués globalement |
 | **Frontend (SPA React)** | ✓ RoleGuard + TenantGuard + PlatformGuard sur toutes routes sensibles + **queryClient.clear() au logout** (cleanup cache TanStack via event bus `nexusrh:logout`) + purge explicite localStorage `nexusrhci-auth` | ✓ + **sanitization stricte highlight Elasticsearch** sur `<em>` whitelist uniquement (anti-XSS sur `dangerouslySetInnerHTML` ReferentielsPage, contenu source potentiellement contrôlé via /seed) + Zod sur formulaires login/change-password (email regex, password 12+ chars) | ✓ rate-limit appliqué côté API (frontend ne peut pas spam le backend) | n/a — l'auditabilité est côté API (`auth.login.success/failed/logout`, `auth.password.changed`) |
 | **Worker BullMQ (jobs asynchrones)** | ✓ Validation systématique `tenantId` UUID + `schemaName` regex `^[a-z][a-z0-9_]{0,62}$` sur **chaque** handler (payroll, cnps, ai-scoring, email, legal-watch) avant exécution — un job rogue avec un schemaName injecté est rejeté | ✓ Module `schemas.ts` avec validators stricts (UUID, regex, énums, bornes longueurs/plages) sans dépendance externe : `parsePayrollPayload`, `parseCnpsPayload`, `parseAiScoringPayload`, `parseEmailPayload`, `parseLegalWatchPayload` — payloads invalides loggés + skip (ne pas crasher le worker) + protocole http(s) obligatoire sur legal-watch sourceUrl (anti-SSRF file://, gopher://) | ✓ concurrency 5/worker, removeOnComplete 100 derniers + removeOnFail 1000 derniers (anti-saturation Redis), cap LEGAL_WATCH_MAX_SOURCES=100 (anti config rogue qui définirait 10000 sources cron) | log structurel Pino sur completed/failed (sans body HTML email / sans stack PII) — l'audit_log persistant relève des handlers métier (à câbler quand les stubs seront implémentés). |
@@ -227,6 +240,42 @@ Le module recrutement combine l'analyse Claude/Mistral à un workflow Kanban pou
 - **A07** rate-limit anti-abus IA (3/min pré-sélection lot, 10/min analyse unitaire), MFA TOTP disponible
 - **A09** audit log dédié pour chaque hire/reject (`recruitment.hired` / `recruitment.rejected`) + pour chaque batch (`recruitment.preselect_batch`) + traçabilité IA (`recruitment.analyze_cv`). Tous non bloquants
 - **A10** messages d'erreur génériques côté client, détails uniquement dans les logs serveur
+
+---
+
+## Cabinet de recrutement (acteur multi-tenant)
+
+Un **cabinet de recrutement** est une organisation multi-utilisateurs qui gère **plusieurs entreprises clientes** (tenants, Côte d'Ivoire uniquement), tout en garantissant l'isolation des données. Le super_admin pilote les cabinets ; un cabinet peut aussi onboarder ses propres clients.
+
+| Aspect | Détail |
+| --- | --- |
+| **Rôles** | `agency_owner` (gère cabinet, membres, clients) · `agency_member` (recruteur) |
+| **Re-scoping de token** | Login cabinet → contexte plateforme ; `POST /agency/sessions/activate` → **JWT scopé** (admin délégué) sur le tenant client, **TTL 30 min**, re-validé au refresh. Toutes les routes RH existantes fonctionnent inchangées (zéro régression). |
+| **Isolation & sécurité** | Point de contrôle unique, garde-fou CI serveur, journalisation **on-behalf** (`agency.session.activated`), révocation immédiate à la suspension (blacklist des sessions). |
+| **Onboarding** | Le cabinet crée une entreprise cliente CI (réutilise le pipeline de provisionnement) ; rattachement automatique. L'**adresse d'expéditeur** des invitations est celle du cabinet. |
+| **Frontend** | Portail `/agency/*` (dashboard, clients, membres, paramètres) + sélecteur d'entreprise + bannière « agissant pour … ». Pilotage super_admin : `/platform/agencies`. |
+
+Tables (schema `platform`, aucun schéma tenant modifié) : `agencies`, `agency_users`, `agency_tenants`, `brand_assets` (logos servis par `/public/brand/:id`). Guide client : [`docs/GUIDE-CABINET-RECRUTEMENT.md`](docs/GUIDE-CABINET-RECRUTEMENT.md).
+
+---
+
+## Connectivité (intégrations tenant)
+
+Menu **Paramètres → Connectivité** (admin tenant) pour interfacer NexusRH à d'autres outils, de manière flexible :
+
+| Mécanisme | Usage | Sécurité |
+| --- | --- | --- |
+| **Webhooks sortants** | Pousser les événements RH (`employee.created`, `absence.approved`, `expense.approved`…) vers une URL externe ; journal de livraison + retry. | Signature **HMAC SHA-256** (`X-NexusRH-Signature`), secret affiché une seule fois, **anti-SSRF**. |
+| **Clés API entrantes** | Un outil externe lit les données via `/integrations/v1/*` (employés, bulletins). | Clés `nxk_{slug}.{rand}` **hachées**, **scopes** (`employees:read`, `payroll:read`…), révocables, dernière utilisation tracée. |
+| **Connecteurs REST génériques** | Brancher une API tierce (base URL + auth Bearer/Basic/clé). | Secret **chiffré AES-256**, bouton « Tester », **anti-SSRF**. |
+
+Émission d'événements **non bloquante** (best-effort, ne casse jamais le flux RH). Tables tenant : `integration_webhooks`, `integration_api_keys`, `integration_connectors`, `webhook_deliveries`.
+
+---
+
+## Sourcing IA — pays automatique selon le tenant
+
+Le sourcing IA (recrutement) adapte le choix des pays au tenant : un tenant **mono-pays** ne voit **aucun sélecteur** (le pays du tenant est utilisé) ; un tenant **multi-pays** (filiales/multi_country) conserve la sélection. La règle est **imposée côté serveur** (OWASP A01 — `resolveSourcingCountries`) : un tenant mono-pays ne peut pas sourcer hors de son pays même via une requête forgée.
 
 ---
 

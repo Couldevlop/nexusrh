@@ -44,9 +44,25 @@ périmètre (autre tenant, autre filiale, autre RAF).
 - Page carrières publique : seules les offres `status='open' AND visibility IN ('external','both')`
   remontent. Les offres internes ne fuitent jamais.
 
-**Conclusion** : conforme. Pas de SSRF possible (pas de fetch sortant
-piloté par input utilisateur, sauf le service IA qui parle à des
-endpoints fixés en config — URL non modifiable par le client).
+- **Cabinet de recrutement** : un utilisateur de cabinet n'accède à un tenant
+  client que via un **point de contrôle unique** (`assertAgencyCanActOnTenant` :
+  membre ∈ cabinet ∧ tenant rattaché actif ∧ tenant CI ∧ schéma valide), qui
+  émet un **token scopé TTL 30 min** (re-validé au refresh). Les endpoints owner
+  sont scopés à l'`agencyId` **du token**, jamais du body.
+- **Cloisonnement contexte-plateforme** : un acteur `schemaName='platform'`
+  (super_admin / cabinet hors session) atteignant une route tenant reçoit
+  **403** (garde central dans `app.ts`) — fin des 500 par requête sur
+  `platform.<table_tenant>`. Golden : `platform-context-guard.golden.test.ts`.
+
+**SSRF (depuis l'ajout de la Connectivité)** : NexusRH effectue désormais des
+appels **sortants** pilotés par la configuration tenant (webhooks, connecteurs
+REST). Ils sont protégés par un **garde anti-SSRF** (`services/ssrf-guard.ts`) :
+http(s) uniquement, pas d'identifiants dans l'URL, **blocage des IP privées /
+loopback / link-local / metadata** (169.254.169.254…) après **résolution DNS**,
+et `redirect: 'error'` (aucun suivi de redirection — anti DNS-rebinding). Le
+service IA, lui, parle toujours à des endpoints fixés en config.
+
+**Conclusion** : conforme.
 
 ---
 
@@ -272,6 +288,41 @@ atomique. **À planifier dans un sprint d'hygiène.**
 5. **`pnpm audit` automatisé** dans CI/CD (déjà ?) — à vérifier.
 6. **Validation signature LLM** (HMAC sur les réponses) si offert par
    Anthropic/Mistral à l'avenir.
+
+---
+
+---
+
+## Addendum — modules récents (cabinet de recrutement & connectivité)
+
+### Cabinet de recrutement (acteur multi-tenant)
+- **A01** : point de contrôle unique `assertAgencyCanActOnTenant` (membre ∈ cabinet
+  ∧ tenant rattaché ∧ actif ∧ **CI** ∧ schéma valide) ; token scopé **TTL 30 min**
+  re-validé au refresh ; CRUD cabinets réservé super_admin ; endpoints owner
+  scopés à l'`agencyId` du token. Golden d'isolation : un cabinet scopé sur le
+  tenant A ne peut pas activer/atteindre le tenant B.
+- **A04** : mots de passe owner/membres bcrypt(12) ; secrets jamais en clair.
+- **A07** : login cabinet réutilise lockout + MFA + rate-limit ; révocation
+  immédiate (blacklist des `sub`) à la suspension d'un cabinet.
+- **A09** : `agency.session.activated` (on-behalf), `agency.activate.denied`,
+  CRUD/attach/detach/suspend, `agency.client_tenant.created`.
+- **Garde-fou CI** : rattachement/onboarding refusés (422) hors Côte d'Ivoire.
+
+### Connectivité (webhooks / clés API / connecteurs)
+- **A01** : CRUD admin tenant only ; API publique `/integrations/v1/*` par **clé
+  API à scopes** (`employees:read`…), scope insuffisant → 403.
+- **A02 (chiffrement)** : secrets de connecteurs **AES-256** ; clés API **hachées
+  SHA-256** (jamais stockées en clair, préfixe non secret) ; webhooks **signés
+  HMAC SHA-256** (en-têtes NexusRH non écrasables par la config).
+- **A05 (injection)** : Zod strict, whitelist d'événements et de scopes.
+- **A09** : `integration.webhook/apikey/connector.*`.
+- **A10 (SSRF)** : garde sur tout appel sortant (IP privées/loopback/metadata
+  bloquées, DNS résolu, pas de suivi de redirection) — voir A01 ci-dessus.
+
+### Sourcing IA — pays imposé serveur
+- **A01** : `resolveSourcingCountries` force le pays du tenant pour un tenant
+  mono-pays (le `countries` du client est ignoré) ; multi-pays = sélection
+  validée. Empêche un tenant mono-pays de sourcer hors de son pays.
 
 ---
 
