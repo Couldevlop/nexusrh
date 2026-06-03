@@ -115,11 +115,13 @@ export async function deliverWebhook(
       const res = await fetch(wh.target_url, {
         method: 'POST',
         headers: {
+          // En-têtes personnalisés d'abord : les en-têtes NexusRH (dont la
+          // signature HMAC) ne doivent jamais pouvoir être écrasés par la config.
+          ...(wh.headers ?? {}),
           'Content-Type': 'application/json',
           'User-Agent': 'NexusRH-Webhook/1',
           'X-NexusRH-Event': event,
           'X-NexusRH-Signature': `sha256=${signature}`,
-          ...(wh.headers ?? {}),
         },
         body,
         signal: ctrl.signal,
