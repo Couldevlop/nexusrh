@@ -975,7 +975,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const { month } = request.query as { month?: string }
       try {
         const res = await pool.query(`
-          SELECT ve.*, e.first_name, e.last_name, e.registration_number
+          SELECT ve.*, e.first_name, e.last_name, e.employee_number AS registration_number
           FROM "${schema}".variable_elements ve
           JOIN "${schema}".employees e ON e.id = ve.employee_id
           WHERE ($1::text IS NULL OR ve.month = $1)
@@ -998,14 +998,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         employee_id: string; rule_code: string; amount: number; month: string; description?: string
       }
       try {
+        // Le moteur de paie lit les éléments variables par period_id (colonne
+        // NOT NULL) : on résout la période depuis le mois. Sans période ouverte
+        // pour ce mois → 400 clair (au lieu d'un 500 NOT NULL).
+        const per = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".pay_periods WHERE month = $1 LIMIT 1`, [body.month],
+        )
+        const periodId = per.rows[0]?.id
+        if (!periodId) {
+          return reply.status(400).send({ error: `Aucune période de paie pour le mois ${body.month}. Créez d'abord la période.` })
+        }
         const res = await pool.query(`
           INSERT INTO "${schema}".variable_elements
-            (employee_id, rule_code, amount, month, description)
-          VALUES ($1,$2,$3,$4,$5)
+            (employee_id, period_id, rule_code, amount, month, description)
+          VALUES ($1,$2,$3,$4,$5,$6)
           ON CONFLICT (employee_id, rule_code, month)
-            DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description
+            DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description, period_id = EXCLUDED.period_id
           RETURNING *
-        `, [body.employee_id, body.rule_code, body.amount, body.month, body.description || null])
+        `, [body.employee_id, periodId, body.rule_code, body.amount, body.month, body.description || null])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)

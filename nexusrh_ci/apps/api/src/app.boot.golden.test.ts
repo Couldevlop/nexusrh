@@ -86,6 +86,8 @@ const PROTECTED_ENDPOINTS: Array<{
   { module: 'agency',           method: 'GET',  url: '/agency/my-tenants' },
   { module: 'agency',           method: 'POST', url: '/agency/sessions/activate' },
   { module: 'brand',            method: 'POST', url: '/platform/brand/logo' },
+  { module: 'integrations',     method: 'GET',  url: '/integrations/webhooks' },
+  { module: 'integrations',     method: 'GET',  url: '/integrations/v1/employees' },
 ]
 
 let app: FastifyInstance

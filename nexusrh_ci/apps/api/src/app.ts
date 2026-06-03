@@ -49,6 +49,7 @@ import aiRoutes           from './modules/ai/ai.routes.js'
 import { referentielsRoutes } from './modules/referentiels/referentiels.routes.js'
 import agencyRoutes       from './modules/agency/agency.routes.js'
 import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
+import integrationsRoutes from './modules/integrations/integrations.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -179,6 +180,29 @@ export async function buildApp() {
     }
   })
 
+  // ── Cloisonnement contexte plateforme → routes tenant (OWASP A01) ────────────
+  // Un acteur en CONTEXTE plateforme (super_admin, ou cabinet hors session
+  // scopée — schemaName='platform') ne doit jamais atteindre une route tenant :
+  // sinon les handlers interrogent platform.<table_tenant> → 500. On renvoie un
+  // 403 net. Les sessions cabinet SCOPÉES (schemaName='tenant_x') ne sont pas
+  // concernées et agissent normalement. Sans token valide → on laisse la route
+  // gérer son 401 (et les pages publiques /careers passent sans token).
+  fastify.addHook('preHandler', async (request, reply) => {
+    const url = (request.url.split('?')[0] ?? '')
+    if (
+      url === '/health' ||
+      url.startsWith('/auth/') ||
+      url.startsWith('/platform/') ||
+      url.startsWith('/agency/') ||
+      url.startsWith('/public/') ||
+      url.startsWith('/docs')
+    ) return
+    try { await request.jwtVerify() } catch { return }
+    if ((request.user as { schemaName?: string }).schemaName === 'platform') {
+      return reply.status(403).send({ error: 'Action hors de votre périmètre' })
+    }
+  })
+
   // ── Middleware maintenance : bloque tous les accès tenant sauf super_admin ───
   fastify.addHook('onRequest', async (request, reply) => {
     const url = request.url
@@ -241,6 +265,7 @@ export async function buildApp() {
   await fastify.register(agencyRoutes,       { prefix: '/agency' })
   await fastify.register(brandRoutes,        { prefix: '/platform/brand' })
   await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
+  await fastify.register(integrationsRoutes, { prefix: '/integrations' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {

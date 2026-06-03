@@ -6,9 +6,10 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
+import ConnectivityTab from './ConnectivityTab'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface TenantSettings {
@@ -68,6 +69,7 @@ const TABS = [
   { id: 'data-import',   label: 'Reprise de données',icon: Database },
   { id: 'mfa',           label: 'Sécurité (MFA)',    icon: Lock },
   { id: 'ai',            label: 'IA (clé & modèle)', icon: Bot },
+  { id: 'connectivity',  label: 'Connectivité',      icon: Plug },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -112,6 +114,7 @@ export default function SettingsPage() {
       {tab === 'data-import'   && <DataImportTab />}
       {tab === 'mfa'           && <MfaSettingsPage />}
       {tab === 'ai'            && <AiTab qc={qc} />}
+      {tab === 'connectivity'  && <ConnectivityTab />}
     </div>
   )
 }

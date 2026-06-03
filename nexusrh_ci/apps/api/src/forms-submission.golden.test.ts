@@ -170,6 +170,11 @@ const FORMS: FormEndpoint[] = [
   { method: 'POST',  url: `/agency/agencies/${UUID}/suspend`,   scope: 'platform' },
   { method: 'POST',  url: `/agency/agencies/${UUID}/reactivate`, scope: 'platform' },
   { method: 'POST',  url: `/agency/agencies/${UUID}/tenants`,   scope: 'platform' },
+  // ── Connectivité (admin tenant) ──
+  { method: 'POST',  url: '/integrations/webhooks',             scope: 'tenant' },
+  { method: 'POST',  url: '/integrations/api-keys',             scope: 'tenant' },
+  { method: 'POST',  url: '/integrations/connectors',           scope: 'tenant' },
+  { method: 'PATCH', url: `/integrations/webhooks/${UUID}`,     scope: 'tenant' },
   // ── Cabinets de recrutement (utilisateur cabinet) ──
   { method: 'POST',  url: '/agency/sessions/activate',          scope: 'agency' },
   { method: 'POST',  url: '/agency/sessions/deactivate',        scope: 'agency' },

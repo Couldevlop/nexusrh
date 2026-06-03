@@ -797,6 +797,10 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // Pays + pack législatif de la filiale (multi-pays — Palier 3)
   await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
   await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`)
+  // RAF (Responsable Administratif Filiale) — aligné sur ensureTenantSchema :
+  // sans cette colonne, le seed des filiales SOTRA (raf_user_id) échoue sur une
+  // base neuve provisionnée sans passer par la migration lazy.
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS raf_user_id uuid`)
 
   // Colonne month sur variable_elements (migration lazy)
   await q(`ALTER TABLE ${s}.variable_elements ADD COLUMN IF NOT EXISTS month varchar(7)`)
@@ -827,6 +831,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
   await q(`ALTER TABLE ${s}.cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
   await q(`ALTER TABLE ${s}.disa_records      ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  // Indemnité d'absence + bordereau CNPS — référencés par le moteur de paie
+  // (INSERT) et le self-service /payroll/my-payslips (SELECT). Absents du CREATE
+  // initial → sans ces ALTER, calculate et « Mes bulletins » échouent (500).
+  await q(`ALTER TABLE ${s}.pay_slips ADD COLUMN IF NOT EXISTS indemnite_absence numeric(12,0) DEFAULT 0`)
+  await q(`ALTER TABLE ${s}.pay_slips ADD COLUMN IF NOT EXISTS bordereau_cnps jsonb`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON ${s}.pay_slips(legal_entity_id)`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON ${s}.cnps_declarations(legal_entity_id)`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON ${s}.disa_records(legal_entity_id)`)

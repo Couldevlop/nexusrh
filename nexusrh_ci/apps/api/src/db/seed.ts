@@ -716,7 +716,7 @@ async function main() {
          source, ai_score, ai_recommendation, ai_match_percentage,
          ai_summary, ai_strengths, ai_gaps, ai_model_used, ai_analyzed_at)
       VALUES ($1,$2,$3,$4,$5,$6,'careers_page',$7,$8,$9,$10,$11,$12,$13,
-              CASE WHEN $7 IS NULL THEN NULL ELSE now() END)
+              CASE WHEN $7::int IS NULL THEN NULL ELSE now() END)
       ON CONFLICT DO NOTHING
     `, [
       jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`,

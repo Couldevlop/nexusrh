@@ -36,6 +36,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_method varchar(30) DEFAULT 'mobile_money'`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_status varchar(20) DEFAULT 'pending'`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_reference varchar(100)`,
+    `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS indemnite_absence numeric(12,0) DEFAULT 0`,
+    `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS bordereau_cnps jsonb`,
     `ALTER TABLE "${schemaName}".absences ADD COLUMN IF NOT EXISTS validation_level int NOT NULL DEFAULT 0`,
     `ALTER TABLE "${schemaName}".expense_reports ADD COLUMN IF NOT EXISTS validation_level int NOT NULL DEFAULT 0`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS evaluator_id uuid`,
@@ -198,6 +200,61 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at          timestamptz NOT NULL DEFAULT now(),
       updated_at          timestamptz NOT NULL DEFAULT now()
     )`,
+
+    // ── Connectivité : intégrations tenant (webhooks / clés API / connecteurs) ──
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".integration_webhooks (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name         varchar(150) NOT NULL,
+      target_url   text NOT NULL,
+      secret_enc   text NOT NULL,
+      events       text[] NOT NULL DEFAULT '{}',
+      headers      jsonb NOT NULL DEFAULT '{}',
+      is_active    boolean NOT NULL DEFAULT true,
+      created_by   uuid,
+      last_delivery_at timestamptz,
+      last_status  int,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      updated_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".integration_api_keys (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name         varchar(150) NOT NULL,
+      key_prefix   varchar(40) NOT NULL,
+      key_hash     varchar(128) NOT NULL UNIQUE,
+      scopes       text[] NOT NULL DEFAULT '{}',
+      is_active    boolean NOT NULL DEFAULT true,
+      created_by   uuid,
+      last_used_at timestamptz,
+      expires_at   timestamptz,
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_api_keys_hash_idx" ON "${schemaName}".integration_api_keys(key_hash) WHERE is_active`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".integration_connectors (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name         varchar(150) NOT NULL,
+      base_url     text NOT NULL,
+      auth_type    varchar(20) NOT NULL DEFAULT 'none',
+      auth_secret_enc text,
+      auth_header_name varchar(80),
+      default_headers  jsonb NOT NULL DEFAULT '{}',
+      is_active    boolean NOT NULL DEFAULT true,
+      created_by   uuid,
+      last_test_at timestamptz,
+      last_test_status int,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      updated_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".webhook_deliveries (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      webhook_id  uuid NOT NULL,
+      event       varchar(80) NOT NULL,
+      status      int,
+      ok          boolean NOT NULL DEFAULT false,
+      attempt     int NOT NULL DEFAULT 1,
+      response_excerpt text,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_wh_deliveries_idx" ON "${schemaName}".webhook_deliveries(webhook_id, created_at DESC)`,
   ]
 
   for (const sql of alters) {

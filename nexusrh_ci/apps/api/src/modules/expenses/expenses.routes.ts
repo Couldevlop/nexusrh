@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { config } from '../../config.js'
+import { emitIntegrationEvent } from '../../services/integrations.service.js'
+import { decryptIfPresent } from '../../utils/crypto.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -279,6 +281,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           totalAmount: res.rows[0].total_amount,
           employeeId:  res.rows[0].employee_id,
         }, request.ip ?? null)
+        emitIntegrationEvent(pool, schema, 'expense.approved', {
+          id, employeeId: res.rows[0].employee_id, totalAmount: res.rows[0].total_amount,
+        }, decryptIfPresent)
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
