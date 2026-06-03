@@ -3,6 +3,8 @@ import { Pool } from 'pg'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { emitIntegrationEvent } from '../../services/integrations.service.js'
+import { decryptIfPresent } from '../../utils/crypto.js'
 
 const rawPool = new Pool({ connectionString: config.database.url })
 
@@ -274,6 +276,12 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         { level: nextLevel, totalLevels: levelsCount, fullyApproved: isApproved,
           employeeId: absence.employee_id },
         request.ip ?? null)
+
+      if (isApproved) {
+        emitIntegrationEvent(rawPool, schema, 'absence.approved', {
+          id, employeeId: absence.employee_id, days: absence.days,
+        }, decryptIfPresent)
+      }
 
       return reply.send({
         data: res.rows[0],

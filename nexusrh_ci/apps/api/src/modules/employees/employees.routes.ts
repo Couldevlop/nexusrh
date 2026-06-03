@@ -7,6 +7,7 @@ import { createTenantSchema } from '../../db/schema/tenant.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { config } from '../../config.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
+import { emitIntegrationEvent } from '../../services/integrations.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -204,6 +205,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         email: body.email ?? null, jobTitle: body.jobTitle ?? null,
         baseSalary: body.baseSalary,
       }, request.ip ?? null)
+
+      // Connectivité : notifie les outils externes abonnés (non bloquant).
+      emitIntegrationEvent(pool, schema, 'employee.created', {
+        id: res.rows[0].id, firstName: body.firstName, lastName: body.lastName,
+        email: body.email ?? null, jobTitle: body.jobTitle ?? null,
+      }, decryptIfPresent)
 
       return reply.status(201).send({ data: res.rows[0] })
     },

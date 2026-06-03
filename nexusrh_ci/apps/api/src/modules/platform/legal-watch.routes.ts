@@ -164,7 +164,7 @@ const legalWatchRoutes: FastifyPluginAsync = async (fastify) => {
           LIMIT $${params.length - 1} OFFSET $${params.length}
       `, params)
       const countRes = await pool.query(
-        `SELECT count(*)::int AS cnt FROM droit_ci.article_proposals ${where}`,
+        `SELECT count(*)::int AS cnt FROM droit_ci.article_proposals p ${where}`,
         s === 'all' ? [] : [s],
       )
       return reply.send({ data: res.rows, total: countRes.rows[0]?.cnt ?? 0 })
