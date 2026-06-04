@@ -190,7 +190,7 @@ describe('GET /recruitment/jobs/:id — la liste protège le binaire CV', () => 
     const apps = res.json().data.applications as Array<Record<string, unknown>>
     expect(apps).toHaveLength(2)
     expect(apps[0]).not.toHaveProperty('cv_blob')
-    expect(apps[0].has_cv).toBe(true)
-    expect(apps[1].has_cv).toBe(false)
+    expect(apps[0]?.has_cv).toBe(true)
+    expect(apps[1]?.has_cv).toBe(false)
   })
 })
