@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Briefcase, Plus, Users, MapPin, ChevronRight, Eye,
   CheckCircle, XCircle, ArrowRight, Sparkles, Upload, Globe, Lock,
-  Wand2, Mail, Linkedin, Loader2,
+  Wand2, Mail, Linkedin, Loader2, FileText,
   Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
   Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
   Link2, Share2, Copy, MoreHorizontal,
@@ -60,6 +60,7 @@ interface Application {
   cv_mime_type?: string | null
   cv_filename?: string | null
   cv_size_bytes?: number | null
+  has_cv?: boolean
   source?: string | null
   created_at: string
 }
@@ -1022,11 +1023,21 @@ export default function RecruitmentPage() {
                           />
                         </div>
                         <p className="text-xs text-muted-foreground truncate">{app.email}</p>
-                        {app.source === 'internal' && (
-                          <span className="mt-1 inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                            Interne
-                          </span>
-                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {app.source === 'internal' && (
+                            <span className="inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                              Interne
+                            </span>
+                          )}
+                          {(app.has_cv || app.cv_filename) && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
+                              title="CV reçu — cliquez sur la carte pour le consulter"
+                            >
+                              <FileText className="h-2.5 w-2.5" /> CV
+                            </span>
+                          )}
+                        </div>
                         {app.job_title && !selectedJob && (
                           <p className="text-xs text-primary mt-1 truncate">{app.job_title}</p>
                         )}

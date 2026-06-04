@@ -51,6 +51,21 @@ const publicApplySchema = z.object({
   cv_text:      z.string().max(50000).optional(),
 })
 
+// Limite de taille du CV déposé via la page carrières publique (5 Mo) — plus
+// stricte que l'upload RH authentifié (10 Mo) pour limiter l'abus anonyme.
+const PUBLIC_CV_MAX_BYTES = 5 * 1024 * 1024
+
+/**
+ * Retire le binaire du CV (`cv_blob`) d'une ligne de candidature et expose à la
+ * place un drapeau `has_cv`. Évite de transporter le binaire (lourd) dans les
+ * listes ; le CV se récupère à la demande via GET /applications/:id/cv-file.
+ */
+function stripCvBlob(row: Record<string, unknown>): Record<string, unknown> {
+  const has_cv = row.cv_blob != null
+  delete row.cv_blob
+  return { ...row, has_cv }
+}
+
 type JobBody = {
   title?: string
   department_id?: string | null
@@ -243,7 +258,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const appsRes = await pool.query(
           `SELECT * FROM "${schema}".applications WHERE job_id = $1 ORDER BY created_at DESC`, [id]
         )
-        return reply.send({ data: { ...jobRes.rows[0], applications: appsRes.rows } })
+        const applications = appsRes.rows.map((r) => stripCvBlob(r as Record<string, unknown>))
+        return reply.send({ data: { ...jobRes.rows[0], applications } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -498,7 +514,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       sql += ` ORDER BY a.created_at DESC`
       try {
         const res = await pool.query(sql, params)
-        return reply.send({ data: res.rows })
+        return reply.send({ data: res.rows.map((r) => stripCvBlob(r as Record<string, unknown>)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1197,8 +1213,47 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     handler: async (request, reply) => {
       const { tenantSlug, jobId } = request.params as { tenantSlug: string; jobId: string }
+
+      // Entrée flexible : JSON (compat historique) OU multipart/form-data quand le
+      // candidat joint un fichier CV. On normalise vers `fields` + un `cv` éventuel.
+      const fields: Record<string, string> = {}
+      let cvPart: { buf: Buffer; mime: string; filename: string } | null = null
+
+      if (typeof request.isMultipart === 'function' && request.isMultipart()) {
+        try {
+          for await (const part of request.parts()) {
+            if (part.type === 'file') {
+              if (part.fieldname === 'cv') {
+                // OWASP A03 (content-type spoofing) : allowlist stricte du MIME.
+                const mime = (part.mimetype || '').toLowerCase()
+                if (!CV_ALLOWED_MIMES.has(mime)) {
+                  part.file.resume() // drainer le flux pour libérer la connexion
+                  return reply.status(400).send({
+                    error: 'Format de CV non autorisé. Accepté : PDF, DOC, DOCX, TXT.',
+                  })
+                }
+                const buf = await part.toBuffer()
+                if (buf.byteLength > PUBLIC_CV_MAX_BYTES) {
+                  return reply.status(400).send({ error: 'CV trop volumineux (max 5 Mo).' })
+                }
+                cvPart = { buf, mime, filename: part.filename || 'cv.bin' }
+              } else {
+                part.file.resume() // ignorer tout autre fichier
+              }
+            } else if (typeof part.value === 'string') {
+              fields[part.fieldname] = part.value
+            }
+          }
+        } catch {
+          // Dépassement de la limite globale (10 Mo) ou flux multipart invalide
+          return reply.status(400).send({ error: 'CV invalide ou trop volumineux (max 5 Mo).' })
+        }
+      } else {
+        Object.assign(fields, (request.body ?? {}) as Record<string, unknown>)
+      }
+
       // Zod validation stricte (OWASP A03 Injection + A04 Insecure Design)
-      const parsed = publicApplySchema.safeParse(request.body)
+      const parsed = publicApplySchema.safeParse(fields)
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'Validation échouée',
@@ -1206,6 +1261,14 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const body = parsed.data
+
+      // Prétention salariale optionnelle (string en multipart, number en JSON).
+      let expectedSalary: number | null = null
+      const rawSalary = (fields as Record<string, unknown>).expected_salary
+      if (rawSalary != null && rawSalary !== '') {
+        const n = Number(rawSalary)
+        if (Number.isFinite(n) && n >= 0 && n <= 1_000_000_000) expectedSalary = Math.floor(n)
+      }
 
       const tenant = await pool.query<{ schema_name: string; name: string }>(
         `SELECT schema_name, name FROM platform.tenants
@@ -1236,15 +1299,38 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Lecture du CV reçu : on stocke le binaire (consultation RH via /cv-file) ET
+      // le texte extrait (analyse IA / pré-tri). Extraction PDF native via unpdf.
+      let cvText: string | null = body.cv_text ?? null
+      let cvBlob: Buffer | null = null
+      let cvMime: string | null = null
+      let cvFilename: string | null = null
+      let cvSize: number | null = null
+      let cvUrl: string | null = null
+      if (cvPart) {
+        cvBlob = cvPart.buf
+        cvMime = cvPart.mime
+        cvFilename = cvPart.filename
+        cvSize = cvPart.buf.byteLength
+        cvUrl = `local://${cvPart.filename}`
+        try {
+          cvText = await extractCvText(cvPart.buf, cvPart.mime)
+        } catch {
+          // Extraction non bloquante : le binaire reste consultable par le RH.
+        }
+      }
+
       const res = await pool.query<{ id: string }>(`
         INSERT INTO "${schema}".applications
           (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
+           cv_blob, cv_mime_type, cv_filename, cv_size_bytes, cv_url, expected_salary,
            stage, source)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'new','careers_page')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page')
         RETURNING id
       `, [
         jobId, body.first_name, body.last_name, body.email,
-        body.phone ?? null, body.cover_letter ?? null, body.cv_text ?? null,
+        body.phone ?? null, body.cover_letter ?? null, cvText,
+        cvBlob, cvMime, cvFilename, cvSize, cvUrl, expectedSalary,
       ])
 
       // Audit log non-bloquant (OWASP A09)
@@ -1252,7 +1338,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         `INSERT INTO "${schema}".audit_log (action, entity, entity_id, changes, ip_address)
          VALUES ('public.application_submitted', 'application', $1, $2, $3)`,
         [res.rows[0]!.id,
-         JSON.stringify({ jobId, jobTitle: job.rows[0].title, source: 'careers_page' }),
+         JSON.stringify({ jobId, jobTitle: job.rows[0].title, source: 'careers_page', hasCv: !!cvPart }),
          request.ip ?? null],
       ).catch(() => { /* table absente → ignore */ })
 
