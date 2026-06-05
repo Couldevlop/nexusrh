@@ -9,6 +9,11 @@ import { blacklistTokenSafe } from '../../services/redis.js'
 import { assertAgencyCanActOnTenant, assertTenantIsCI } from '../../services/agency.service.js'
 import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
 import { sendWelcomeAgencyEmail } from '../../services/email.js'
+import {
+  getOfflineMessagePolicy,
+  resolveOfflineMessage,
+  invalidateOfflineStatusCache,
+} from '../../services/offline-status.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -491,21 +496,61 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // Suspension : status + révocation immédiate des tokens des membres (blacklist par sub).
+  // Mise hors ligne avec message configurable (variable système surchageable) ;
+  // option `includeClients` = mettre aussi hors ligne les tenants clients du cabinet.
   fastify.post('/agencies/:id/suspend', {
     preHandler: [fastify.authorize('super_admin')],
-    schema: { tags: ['agency'], summary: 'Suspendre un cabinet (super_admin)' },
+    schema: { tags: ['agency'], summary: 'Mettre un cabinet hors ligne (super_admin, avec message)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      const res = await pool.query(`UPDATE platform.agencies SET status='suspended', updated_at=now() WHERE id=$1 RETURNING id`, [id])
+      // OWASP A03 — body optionnel validé strictement.
+      const parsed = z.object({
+        message: z.string().max(2000).optional(),
+        includeClients: z.boolean().optional(),
+      }).safeParse(request.body ?? {})
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Corps de requête invalide (message ≤ 2000 caractères)' })
+      }
+      const policy = await getOfflineMessagePolicy(pool)
+      const message = resolveOfflineMessage(parsed.data.message, policy)
+      if (message === null) {
+        return reply.status(400).send({
+          error: 'Un message hors-ligne est obligatoire (politique plateforme). Renseignez-le ou définissez le message par défaut dans les paramètres.',
+        })
+      }
+      const res = await pool.query(
+        `UPDATE platform.agencies SET status='suspended', offline_message=$2, updated_at=now() WHERE id=$1 RETURNING id`,
+        [id, message || null]
+      ).catch(() =>
+        // Repli pré-migration (colonne offline_message absente)
+        pool.query(`UPDATE platform.agencies SET status='suspended', updated_at=now() WHERE id=$1 RETURNING id`, [id])
+      )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Cabinet introuvable' })
+
+      // « Un cabinet et ses clients hors usage » : cascade optionnelle sur les
+      // tenants clients rattachés (non détachés). Même message hors-ligne.
+      let clientsSuspended = 0
+      if (parsed.data.includeClients === true) {
+        const cascade = await pool.query(
+          `UPDATE platform.tenants t
+           SET status = 'suspended', offline_message = $2, updated_at = now()
+           FROM platform.agency_tenants at
+           WHERE at.tenant_id = t.id AND at.agency_id = $1 AND at.detached_at IS NULL
+           RETURNING t.id`,
+          [id, message || null]
+        ).catch(() => ({ rows: [] as { id: string }[] }))
+        clientsSuspended = cascade.rows.length
+      }
+
       // Révoque immédiatement les sessions actives (contexte + scopées) des membres.
       const members = await pool.query<{ id: string }>(`SELECT id FROM platform.agency_users WHERE agency_id = $1`, [id])
       const ttl = 60 * 60 * 24 * 7
       await Promise.all(members.rows.map(m => blacklistTokenSafe(m.id, ttl)))
+      invalidateOfflineStatusCache()
       auditLogPlatform(request.user.sub, 'agency.suspended', 'agency', id,
-        { membersRevoked: members.rows.length }, request.ip ?? null)
-      return reply.send({ data: { id, status: 'suspended' } })
+        { membersRevoked: members.rows.length, offlineMessage: message, clientsSuspended }, request.ip ?? null)
+      return reply.send({ data: { id, status: 'suspended', offlineMessage: message, clientsSuspended } })
     },
   })
 
@@ -515,10 +560,33 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      const res = await pool.query(`UPDATE platform.agencies SET status='active', updated_at=now() WHERE id=$1 RETURNING id`, [id])
+      const parsed = z.object({ includeClients: z.boolean().optional() }).safeParse(request.body ?? {})
+      if (!parsed.success) return reply.status(400).send({ error: 'Corps de requête invalide' })
+      const res = await pool.query(
+        `UPDATE platform.agencies SET status='active', offline_message=NULL, updated_at=now() WHERE id=$1 RETURNING id`, [id]
+      ).catch(() =>
+        pool.query(`UPDATE platform.agencies SET status='active', updated_at=now() WHERE id=$1 RETURNING id`, [id])
+      )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Cabinet introuvable' })
-      auditLogPlatform(request.user.sub, 'agency.reactivated', 'agency', id, {}, request.ip ?? null)
-      return reply.send({ data: { id, status: 'active' } })
+
+      // Cascade optionnelle : réactiver aussi les tenants clients rattachés.
+      let clientsReactivated = 0
+      if (parsed.data.includeClients === true) {
+        const cascade = await pool.query(
+          `UPDATE platform.tenants t
+           SET status = 'active', offline_message = NULL, updated_at = now()
+           FROM platform.agency_tenants at
+           WHERE at.tenant_id = t.id AND at.agency_id = $1 AND at.detached_at IS NULL
+             AND t.status = 'suspended'
+           RETURNING t.id`,
+          [id]
+        ).catch(() => ({ rows: [] as { id: string }[] }))
+        clientsReactivated = cascade.rows.length
+      }
+      invalidateOfflineStatusCache()
+      auditLogPlatform(request.user.sub, 'agency.reactivated', 'agency', id,
+        { clientsReactivated }, request.ip ?? null)
+      return reply.send({ data: { id, status: 'active', clientsReactivated } })
     },
   })
 

@@ -6,6 +6,11 @@ import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
 import { sendPasswordResetEmail } from '../../services/email.js'
 import { maintenanceCache } from '../../cache.js'
+import {
+  getOfflineMessagePolicy,
+  resolveOfflineMessage,
+  invalidateOfflineStatusCache,
+} from '../../services/offline-status.service.js'
 import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
@@ -249,15 +254,45 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /platform/tenants/:id/suspend ────────────────────────────────────
+  // Mise hors ligne d'un tenant (et donc de ses filiales — même schéma) avec un
+  // message affiché aux utilisateurs bloqués. Le message par défaut est la
+  // variable système `offline_message_default` ; `offline_message_required`
+  // (variable système) le rend obligatoire.
   fastify.post('/tenants/:id/suspend', {
     preHandler: [fastify.authorize('super_admin')],
-    schema: { tags: ['platform'], summary: 'Suspendre un tenant' },
+    schema: { tags: ['platform'], summary: 'Mettre un tenant hors ligne (avec message)' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
-      await pool.query(
-        `UPDATE platform.tenants SET status = 'suspended', updated_at = now() WHERE id = $1`, [id]
+      // OWASP A03 — body optionnel validé strictement.
+      const parsed = z.object({ message: z.string().max(2000).optional() })
+        .safeParse(request.body ?? {})
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Message hors-ligne invalide (2000 caractères max)' })
+      }
+      const policy = await getOfflineMessagePolicy(pool)
+      const message = resolveOfflineMessage(parsed.data.message, policy)
+      if (message === null) {
+        return reply.status(400).send({
+          error: 'Un message hors-ligne est obligatoire (politique plateforme). Renseignez-le ou définissez le message par défaut dans les paramètres.',
+        })
+      }
+      const res = await pool.query(
+        `UPDATE platform.tenants SET status = 'suspended', offline_message = $2, updated_at = now()
+         WHERE id = $1 RETURNING id`,
+        [id, message || null]
+      ).catch(() =>
+        // Repli pré-migration (colonne offline_message absente)
+        pool.query(
+          `UPDATE platform.tenants SET status = 'suspended', updated_at = now() WHERE id = $1 RETURNING id`, [id]
+        )
       )
-      return reply.send({ message: 'Tenant suspendu' })
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      invalidateOfflineStatusCache()
+      auditLogPlatform(
+        (request.user as { sub: string }).sub, 'tenant.suspend', 'tenant', id,
+        { offlineMessage: message }, request.ip ?? null,
+      )
+      return reply.send({ message: 'Tenant mis hors ligne', offlineMessage: message })
     },
   })
 
@@ -268,7 +303,16 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
       await pool.query(
-        `UPDATE platform.tenants SET status = 'active', updated_at = now() WHERE id = $1`, [id]
+        `UPDATE platform.tenants SET status = 'active', offline_message = NULL, updated_at = now() WHERE id = $1`, [id]
+      ).catch(() =>
+        pool.query(
+          `UPDATE platform.tenants SET status = 'active', updated_at = now() WHERE id = $1`, [id]
+        )
+      )
+      invalidateOfflineStatusCache()
+      auditLogPlatform(
+        (request.user as { sub: string }).sub, 'tenant.reactivate', 'tenant', id,
+        {}, request.ip ?? null,
       )
       return reply.send({ message: 'Tenant réactivé' })
     },
@@ -460,6 +504,8 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
             lockout_max_attempts      int     NOT NULL DEFAULT 5,
             lockout_window_minutes    int     NOT NULL DEFAULT 15,
             lockout_duration_minutes  int     NOT NULL DEFAULT 15,
+            offline_message_default   text    NOT NULL DEFAULT 'Ce site est temporairement hors service. Veuillez contacter votre administrateur.',
+            offline_message_required  boolean NOT NULL DEFAULT true,
             created_at      timestamptz  NOT NULL DEFAULT now(),
             updated_at      timestamptz  NOT NULL DEFAULT now()
           )
@@ -495,6 +541,8 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         'mfa_required_super_admin','mfa_required_tenant_users',
         'password_max_age_days','password_history_count','breach_check_enabled',
         'lockout_enabled','lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes',
+        // ── Mise hors ligne (variable système : message + caractère obligatoire) ──
+        'offline_message_default','offline_message_required',
       ]
       // OWASP A03 — coercition de type avant écriture (les toggles/nombres
       // arrivent parfois en string depuis le frontend). Les booleans/ints sont
@@ -502,7 +550,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       const BOOL_FIELDS = new Set([
         'maintenance_mode','allow_new_tenants','ai_enabled',
         'mfa_required_super_admin','mfa_required_tenant_users','breach_check_enabled',
-        'lockout_enabled',
+        'lockout_enabled','offline_message_required',
       ])
       const INT_FIELDS = new Set(['max_tenants','default_trial_days','password_max_age_days','password_history_count',
         'lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes'])
@@ -521,6 +569,9 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           if (k === 'password_max_age_days') v = Math.min(n, 3650)
           else if (k === 'password_history_count') v = Math.min(n, 50)
           else v = n
+        } else if (k === 'offline_message_default') {
+          // OWASP A03 — texte libre borné (affiché tel quel, jamais interprété)
+          v = String(rawV ?? '').slice(0, 2000)
         }
         sets.push(`${k} = $${idx++}`); vals.push(v)
       }

@@ -33,6 +33,9 @@ interface PlatformSettings {
   lockout_max_attempts: number
   lockout_window_minutes: number
   lockout_duration_minutes: number
+  // ── Mise hors ligne (tenant / cabinet) : variable système ──
+  offline_message_default?: string
+  offline_message_required?: boolean
   aiConfigured: boolean
   smtpConfigured: boolean
   version: string
@@ -492,6 +495,25 @@ export default function PlatformSettings() {
                   <p className="text-xs text-red-700">Attention : activer le mode maintenance rendra l'application inaccessible pour tous les utilisateurs.</p>
                 </div>
               )}
+
+              {/* ── Mise hors ligne (tenant / cabinet) : variable système ── */}
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <p className="text-sm font-semibold">Mise hors ligne d'un tenant ou d'un cabinet</p>
+                <Field label="Message hors-ligne par défaut"
+                  hint="Variable système : pré-remplit le message affiché aux utilisateurs quand un tenant ou un cabinet est mis hors ligne. Modifiable au cas par cas au moment de l'action.">
+                  <textarea className={inputCls} rows={3} maxLength={2000}
+                    value={settings.offline_message_default ?? ''}
+                    onChange={e => update('offline_message_default', e.target.value)} />
+                </Field>
+                <Toggle
+                  checked={settings.offline_message_required !== false}
+                  onChange={v => update('offline_message_required', v)}
+                  label="Message obligatoire lors d'une mise hors ligne" />
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Activé : impossible de mettre un tenant/cabinet hors ligne sans message (fourni ou par défaut).
+                  Désactivé : le message est facultatif (un message générique est affiché à défaut).
+                </p>
+              </div>
             </>
           )}
 

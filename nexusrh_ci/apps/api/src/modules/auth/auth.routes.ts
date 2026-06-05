@@ -14,6 +14,7 @@ import {
   toLockoutPolicy,
 } from '../../services/security-policy.service.js'
 import { isPasswordBreached } from '../../services/breach-check.service.js'
+import { DEFAULT_OFFLINE_MESSAGE } from '../../services/offline-status.service.js'
 import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
@@ -161,30 +162,81 @@ interface AgencyCandidate {
   first_name: string; last_name: string; mfa_enabled: boolean
   is_active: boolean; password_changed_at: string | null
   agency_id: string; agency_name: string; agency_status: string
+  agency_offline_message: string | null
   primary_color: string | null; logo_url: string | null; city: string | null
 }
 
 // Cabinet de recrutement : lookup d'un utilisateur dans platform.agency_users.
 // Non bloquant si les tables n'existent pas encore (bases pré-migration). Un
-// cabinet suspendu ou un user inactif → null (login refusé, pas de fuite de motif).
+// user inactif → null (login refusé, pas de fuite de motif). Un cabinet suspendu
+// est retourné AVEC son statut : le handler ne révèle le message hors-ligne
+// qu'après vérification du mot de passe (OWASP A07 — pas de fuite d'existence).
 async function findAgencyUser(email: string): Promise<AgencyCandidate | null> {
   try {
     const r = await pool.query<AgencyCandidate>(
       `SELECT au.id, au.email, au.password_hash, au.role, au.first_name, au.last_name,
               au.mfa_enabled, au.is_active, au.password_changed_at,
               a.id AS agency_id, a.name AS agency_name, a.status AS agency_status,
+              a.offline_message AS agency_offline_message,
               a.primary_color, a.logo_url, a.city
        FROM platform.agency_users au
        JOIN platform.agencies a ON a.id = au.agency_id
        WHERE au.email = $1 LIMIT 1`,
       [email],
+    ).catch(() =>
+      // Repli pré-migration : colonne offline_message absente.
+      pool.query<AgencyCandidate>(
+        `SELECT au.id, au.email, au.password_hash, au.role, au.first_name, au.last_name,
+                au.mfa_enabled, au.is_active, au.password_changed_at,
+                a.id AS agency_id, a.name AS agency_name, a.status AS agency_status,
+                NULL AS agency_offline_message,
+                a.primary_color, a.logo_url, a.city
+         FROM platform.agency_users au
+         JOIN platform.agencies a ON a.id = au.agency_id
+         WHERE au.email = $1 LIMIT 1`,
+        [email],
+      )
     )
     const row = r.rows[0]
-    if (!row || !row.is_active || row.agency_status !== 'active') return null
+    if (!row || !row.is_active) return null
     return row
   } catch {
     return null
   }
+}
+
+// Tenant hors ligne : recherche d'identifiants VALIDES sur un tenant suspendu.
+// Appelé uniquement quand le chemin nominal (tenants actifs) n'a rien trouvé →
+// zéro régression. Le message hors-ligne n'est retourné que si le mot de passe
+// est correct (OWASP A07 — un attaquant ne peut pas sonder les tenants suspendus).
+async function findSuspendedTenantLogin(
+  email: string,
+  password: string,
+): Promise<{ schemaName: string; userId: string; message: string | null } | null> {
+  try {
+    const tenantsRes = await pool.query<{ schema_name: string; offline_message: string | null }>(
+      `SELECT schema_name, offline_message FROM platform.tenants WHERE status = 'suspended'`
+    ).catch(() =>
+      pool.query<{ schema_name: string; offline_message: string | null }>(
+        `SELECT schema_name, NULL AS offline_message FROM platform.tenants WHERE status = 'suspended'`
+      )
+    )
+    for (const tenant of tenantsRes.rows) {
+      if (!SCHEMA_NAME_RE.test(tenant.schema_name)) continue
+      try {
+        const userRes = await pool.query<{ id: string; password_hash: string; is_active: boolean }>(
+          `SELECT id, password_hash, is_active FROM "${tenant.schema_name}".users WHERE email = $1 LIMIT 1`,
+          [email],
+        )
+        const user = userRes.rows[0]
+        if (!user || !user.is_active) continue
+        if (await bcrypt.compare(password, user.password_hash)) {
+          return { schemaName: tenant.schema_name, userId: user.id, message: tenant.offline_message ?? null }
+        }
+      } catch { /* schéma incomplet : ignorer */ }
+    }
+  } catch { /* table/colonne absente : ignorer */ }
+  return null
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -338,6 +390,18 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           if (agencyUser && await bcrypt.compare(password, agencyUser.password_hash)) {
             await clearFailures(redisLockoutStore, email)
 
+            // Cabinet mis hors ligne par le super_admin : identifiants corrects
+            // mais accès refusé, avec le message configuré (OWASP A07 — le
+            // message n'est révélé qu'après vérification du mot de passe).
+            if (agencyUser.agency_status !== 'active') {
+              auditLogAuth('platform', agencyUser.id, 'auth.login.blocked_offline',
+                { scope: 'agency', agencyId: agencyUser.agency_id }, ip, ua)
+              return reply.status(503).send({
+                error: agencyUser.agency_offline_message || DEFAULT_OFFLINE_MESSAGE,
+                offline: true,
+              })
+            }
+
             // MFA actif : challenge TOTP (contexte plateforme).
             if (agencyUser.mfa_enabled) {
               const challenge = buildMfaChallenge(fastify, {
@@ -411,6 +475,20 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 city:         agencyUser.city,
               },
               redirectTo: pwdResetRequired ? '/change-password' : '/agency/dashboard',
+            })
+          }
+
+          // Tenant mis hors ligne : si les identifiants sont VALIDES sur un
+          // tenant suspendu, on renvoie le message hors-ligne configuré plutôt
+          // qu'un 401 trompeur. Vérifié en dernier → zéro régression sur le
+          // chemin nominal. Mot de passe correct → pas de compteur de lockout.
+          const offlineLogin = await findSuspendedTenantLogin(email, password)
+          if (offlineLogin) {
+            await clearFailures(redisLockoutStore, email)
+            auditLogAuth(offlineLogin.schemaName, offlineLogin.userId, 'auth.login.blocked_offline', {}, ip, ua)
+            return reply.status(503).send({
+              error: offlineLogin.message || DEFAULT_OFFLINE_MESSAGE,
+              offline: true,
             })
           }
 

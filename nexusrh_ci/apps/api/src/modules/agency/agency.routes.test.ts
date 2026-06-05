@@ -180,6 +180,7 @@ describe('CRUD cabinets (super_admin)', () => {
 
   it('suspendre un cabinet → 200 + blacklist des sessions membres', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] })                           // politique message hors-ligne (défauts)
       .mockResolvedValueOnce({ rows: [{ id: AG }] })                 // update status
       .mockResolvedValueOnce({ rows: [{ id: 'au1' }, { id: 'au2' }] }) // members
     const res = await app.inject({ method: 'POST', url: `/agency/agencies/${AG}/suspend`,

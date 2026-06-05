@@ -2,6 +2,11 @@ import Fastify from 'fastify'
 import { Pool } from 'pg'
 import { config } from './config.js'
 import { maintenanceCache } from './cache.js'
+import {
+  getTenantOfflineStatus,
+  getAgencyOfflineStatus,
+  DEFAULT_OFFLINE_MESSAGE,
+} from './services/offline-status.service.js'
 
 // Cache TTL 30s pour le flag maintenance (évite une requête DB par request)
 const maintenancePool = new Pool({ connectionString: config.database.url })
@@ -50,6 +55,7 @@ import { referentielsRoutes } from './modules/referentiels/referentiels.routes.j
 import agencyRoutes       from './modules/agency/agency.routes.js'
 import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
 import integrationsRoutes from './modules/integrations/integrations.routes.js'
+import onboardingRoutes from './modules/onboarding/onboarding.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -231,6 +237,62 @@ export async function buildApp() {
     })
   })
 
+  // ── Middleware hors-ligne : tenant ou cabinet suspendu → 503 + message ──────
+  // OWASP A01 — une session déjà ouverte sur un tenant/cabinet mis hors usage
+  // par le super_admin est bloquée en ≤ 30s (cache statut par organisation),
+  // pas seulement au prochain login. Le message configuré est renvoyé au client
+  // (flag `offline: true` → page hors-ligne côté web).
+  fastify.addHook('onRequest', async (request, reply) => {
+    const url = request.url
+    // Mêmes exemptions que la maintenance : auth (le login gère lui-même le cas
+    // hors-ligne), portail super_admin, assets publics, health, docs.
+    if (
+      url === '/health' ||
+      url.startsWith('/auth/') ||
+      url.startsWith('/platform/') ||
+      url.startsWith('/public/') ||
+      url.startsWith('/docs')
+    ) return
+
+    let user: { schemaName?: string; role?: string; actorType?: string; agencyId?: string }
+    try {
+      await request.jwtVerify()
+      user = request.user as typeof user
+    } catch {
+      return // non authentifié → l'auth de la route répondra 401
+    }
+    if (user.role === 'super_admin') return
+
+    try {
+      // Cabinet suspendu : bloque ses utilisateurs (y compris session re-scopée
+      // sur un tenant client).
+      if (user.actorType === 'agency' && user.agencyId) {
+        const st = await getAgencyOfflineStatus(maintenancePool, user.agencyId)
+        if (st.offline) {
+          return reply.status(503).send({
+            error: st.message || DEFAULT_OFFLINE_MESSAGE,
+            statusCode: 503,
+            offline: true,
+          })
+        }
+      }
+      // Tenant suspendu : bloque tous ses utilisateurs (filiales incluses —
+      // elles vivent dans le même schéma).
+      if (user.schemaName && user.schemaName !== 'platform') {
+        const st = await getTenantOfflineStatus(maintenancePool, user.schemaName)
+        if (st.offline) {
+          return reply.status(503).send({
+            error: st.message || DEFAULT_OFFLINE_MESSAGE,
+            statusCode: 503,
+            offline: true,
+          })
+        }
+      }
+    } catch {
+      // Vérification impossible (DB) : fail-open, cohérent avec la maintenance.
+    }
+  })
+
   // ── Health check ─────────────────────────────────────────────────────────────
   fastify.get('/health', {
     schema: { hide: true },
@@ -266,6 +328,7 @@ export async function buildApp() {
   await fastify.register(brandRoutes,        { prefix: '/platform/brand' })
   await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
   await fastify.register(integrationsRoutes, { prefix: '/integrations' })
+  await fastify.register(onboardingRoutes,   { prefix: '/onboarding' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {
