@@ -8,6 +8,8 @@ interface EmployeeDetails {
   phone: string; gender: string; birth_date: string; nni: string
   cnps_number: string; job_title: string; job_level: string
   contract_type: string; hire_date: string; base_salary: string
+  weekly_hours: string | null; professional_category: string | null
+  iban: string | null; bank_name: string | null
   department_name: string; manager_first_name: string; manager_last_name: string
   mobile_money_provider: string; mobile_money_phone: string
   marital_status: string; children_count: number; city: string
@@ -82,6 +84,8 @@ export default function EmployeeDetail() {
             ['Type de contrat', emp.contract_type?.toUpperCase()],
             ['Date d\'embauche', emp.hire_date ? formatDate(emp.hire_date) : '—'],
             ['Salaire brut mensuel', formatFCFA(parseInt(emp.base_salary ?? '0'))],
+            ['Heures hebdomadaires', emp.weekly_hours ? `${parseFloat(emp.weekly_hours)} h` : '40 h'],
+            ['Catégorie professionnelle', emp.professional_category ?? '—'],
             ['Département', emp.department_name],
             ['Manager', emp.manager_first_name ? `${emp.manager_first_name} ${emp.manager_last_name}` : '—'],
           ].map(([k, v]) => (
@@ -92,14 +96,30 @@ export default function EmployeeDetail() {
           ))}
 
           <div className="mt-4 pt-4 border-t border-border">
-            <h3 className="text-sm font-semibold mb-2">Mobile Money</h3>
+            <h3 className="text-sm font-semibold mb-2">Paiement</h3>
             {emp.mobile_money_provider ? (
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{PROVIDER_LABEL[emp.mobile_money_provider] ?? emp.mobile_money_provider}</span>
                 <span className="font-mono">{emp.mobile_money_phone}</span>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Non renseigné</p>
+              <p className="text-sm text-muted-foreground">Mobile Money non renseigné</p>
+            )}
+            {emp.iban ? (
+              <div className="mt-2 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">RIB / IBAN</span>
+                  <span className="font-mono text-xs">{emp.iban}</span>
+                </div>
+                {emp.bank_name && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Banque</span>
+                    <span className="font-medium">{emp.bank_name}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">RIB non renseigné</p>
             )}
           </div>
         </div>

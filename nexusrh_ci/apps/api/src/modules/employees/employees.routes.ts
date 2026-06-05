@@ -8,6 +8,7 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { config } from '../../config.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
+import { autoStartOnboarding } from '../../services/onboarding.service.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -32,6 +33,13 @@ const createEmployeeSchema = z.object({
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
   hireDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   baseSalary:          z.number().int().min(0).max(100_000_000),
+  // Temps de travail hebdomadaire (heures) — base légale CI : 40h
+  weeklyHours:         z.number().min(1).max(60).optional(),
+  // Catégorie professionnelle (convention collective : 1ère-6ème cat., AM, cadre…)
+  professionalCategory: z.string().max(50).optional(),
+  // RIB — chiffré AES-256 en base (RGPD, même traitement que le NNI)
+  iban:                z.string().max(50).optional(),
+  bankName:            z.string().max(100).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
@@ -57,6 +65,10 @@ const patchEmployeeSchema = z.object({
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
   hireDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   baseSalary:          z.number().int().min(0).max(100_000_000).optional(),
+  weeklyHours:         z.number().min(1).max(60).optional(),
+  professionalCategory: z.string().max(50).optional(),
+  iban:                z.string().max(50).optional(),
+  bankName:            z.string().max(100).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
@@ -67,8 +79,10 @@ const patchEmployeeSchema = z.object({
 
 // Champs qu'un employee a le droit de modifier sur son propre profil (subset
 // strict de patchEmployeeSchema). Les autres clés sont écartées même en self.
+// L'IBAN est modifiable par l'employé (self-service paie) — chiffré en base.
 const EMPLOYEE_SELF_FIELDS = new Set([
   'phone', 'address', 'mobileMoneyProvider', 'mobileMoneyPhone', 'profilePhotoUrl',
+  'iban', 'bankName',
 ])
 
 function auditLogEmployee(
@@ -154,6 +168,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const emp = res.rows[0]
       if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
+      if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
       return reply.send({ data: emp })
     },
   })
@@ -184,8 +199,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
            (first_name, last_name, email, phone, birth_date, gender,
             nni, cnps_number, mobile_money_provider, mobile_money_phone,
             department_id, manager_id, job_title, job_level, contract_type,
-            hire_date, base_salary, city, marital_status, children_count)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+            hire_date, base_salary, weekly_hours, professional_category,
+            iban, bank_name, city, marital_status, children_count)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
          RETURNING *`,
         [
           body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
@@ -195,6 +211,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           body.departmentId ?? null, body.managerId ?? null,
           body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
           body.hireDate ?? null, body.baseSalary,
+          // Base légale CI : 40h hebdomadaires par défaut
+          body.weeklyHours ?? 40, body.professionalCategory ?? null,
+          // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
+          encryptIfPresent(body.iban), body.bankName ?? null,
           body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
         ]
       )
@@ -211,6 +231,17 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         id: res.rows[0].id, firstName: body.firstName, lastName: body.lastName,
         email: body.email ?? null, jobTitle: body.jobTitle ?? null,
       }, decryptIfPresent)
+
+      // Parcours d'intégration : auto-création depuis le modèle le plus
+      // pertinent (séniorité / type de poste). Non bloquant — la création de
+      // l'employé ne doit jamais échouer à cause de l'onboarding.
+      autoStartOnboarding(pool, schema, {
+        id: res.rows[0].id,
+        job_title: body.jobTitle ?? null,
+        job_level: body.jobLevel ?? null,
+        department_id: body.departmentId ?? null,
+        hire_date: body.hireDate ?? null,
+      }, request.user.sub).catch(() => { /* best-effort */ })
 
       return reply.status(201).send({ data: res.rows[0] })
     },
@@ -265,7 +296,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       for (const [k, v] of Object.entries(body)) {
         const dbKey = k.replace(/([A-Z])/g, '_$1').toLowerCase()
         sets.push(`${dbKey} = $${idx++}`)
-        vals.push(dbKey === 'nni' ? encryptIfPresent(v as string) : v)
+        // RGPD — NNI et IBAN chiffrés AES-256 avant écriture
+        vals.push(dbKey === 'nni' || dbKey === 'iban' ? encryptIfPresent(v as string) : v)
         modifiedKeys.push(dbKey)
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
