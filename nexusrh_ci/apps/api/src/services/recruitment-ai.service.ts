@@ -882,4 +882,5 @@ export const __internals = {
   buildSourcingPrompt,
   normalizeSourcing,
   computeSourcingRichness,
+  buildSourcingRecommendation,
 }

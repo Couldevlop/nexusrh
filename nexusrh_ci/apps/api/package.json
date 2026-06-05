@@ -25,7 +25,7 @@
     "payroll:fixtures:approve": "tsx src/services/golden/approve-fixture.ts",
     "rns:calibrate": "tsx src/scripts/rns-calibrate.ts",
     "demo:multi-filiales": "tsx --env-file=../../.env src/scripts/enable-multi-filiales-sotra.ts",
-    "demo:syrse-groupe":   "tsx --env-file=../../.env src/scripts/enable-syrse-groupe.ts"
+    "demo:syrse-groupe": "tsx --env-file=../../.env src/scripts/enable-syrse-groupe.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
@@ -69,6 +69,7 @@
     "@types/pg": "^8.11.6",
     "@types/qrcode": "^1.5.5",
     "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "1.6.1",
     "drizzle-kit": "^0.22.7",
     "tsx": "^4.15.7",
     "typescript": "^5.4.5",
