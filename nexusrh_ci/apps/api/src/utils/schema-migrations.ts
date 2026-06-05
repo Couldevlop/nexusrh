@@ -1,6 +1,7 @@
 import { Pool } from 'pg'
 import { config } from '../config.js'
 import { assertValidSchemaName } from './schema-name.js'
+import { onboardingTableStatements } from '../db/onboarding-tables.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 const migratedSchemas = new Set<string>()
@@ -23,6 +24,12 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS children_count int DEFAULT 0`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS city varchar(100) DEFAULT 'Abidjan'`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS user_id uuid`,
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS profile_photo_url text`,
+    // Dossier salarié complet : temps de travail, catégorie conventionnelle, RIB
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS weekly_hours numeric(4,1) DEFAULT 40`,
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS professional_category varchar(50)`,
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS iban varchar(255)`,
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS bank_name varchar(100)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS retention_score numeric(3,2)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS burnout_risk varchar(10)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS ai_score_factors jsonb DEFAULT '[]'`,
@@ -255,6 +262,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at  timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_wh_deliveries_idx" ON "${schemaName}".webhook_deliveries(webhook_id, created_at DESC)`,
+
+    // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
+    ...onboardingTableStatements(schemaName),
   ]
 
   for (const sql of alters) {
@@ -312,6 +322,14 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_window_minutes int NOT NULL DEFAULT 15`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS lockout_duration_minutes int NOT NULL DEFAULT 15`,
 
+    // ── Mise hors ligne (tenant / cabinet) avec message configurable ──────────
+    // Variable système : message hors-ligne par défaut + caractère obligatoire.
+    // Le message effectif est stocké sur le tenant/cabinet au moment de la
+    // suspension (offline_message) et affiché aux utilisateurs bloqués.
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS offline_message_default text NOT NULL DEFAULT 'Ce site est temporairement hors service. Veuillez contacter votre administrateur.'`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS offline_message_required boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS offline_message text`,
+
     // ── Singleton : une SEULE ligne de configuration plateforme ───────────────
     // Corrige un bug historique : les routes faisaient `INSERT ... DEFAULT VALUES
     // ON CONFLICT DO NOTHING` sans contrainte d'unicité → une nouvelle ligne à
@@ -361,6 +379,8 @@ export async function ensurePlatformSchema(): Promise<void> {
     // super_admin utilisent l'expéditeur OpenLab par défaut.)
     `ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_email varchar(255)`,
     `ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS sender_name varchar(150)`,
+    // Message affiché aux utilisateurs d'un cabinet mis hors ligne.
+    `ALTER TABLE platform.agencies ADD COLUMN IF NOT EXISTS offline_message text`,
     `CREATE TABLE IF NOT EXISTS platform.agency_users (
       id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       agency_id           uuid NOT NULL REFERENCES platform.agencies(id) ON DELETE CASCADE,

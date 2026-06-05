@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CreditCard, Calendar,
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
-  Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers,
+  Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -41,10 +41,11 @@ const HR_NAV: NavItem[] = [
   { to: '/absences',      label: 'Absences',         icon: Calendar,   end: true },
   { to: '/expenses-rh',   label: 'Notes de frais',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
   { to: '/recruitment',   label: 'Recrutement',      icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
+  { to: '/onboarding',    label: 'Intégration',      icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
   { to: '/training',      label: 'Formations FDFP',  icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/careers',       label: 'Carrières',        icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
   { to: '/cnps',          label: 'CNPS & DISA',      icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/cnps/audit',    label: 'Audit social',     icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
+  { to: '/cnps/audit',    label: 'Audit de conformité', icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
   { to: '/mobile-money',  label: 'Mobile Money',     icon: Smartphone, end: true, roles: ['admin','hr_manager'] },
   { to: '/referentiels',  label: 'Référentiel Droit', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
   { to: '/reporting',     label: 'Reporting',        icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },

@@ -46,6 +46,7 @@ const PREFIX: Record<string, string> = {
   'agency/agency.routes.ts': '/agency',
   'platform/brand.routes.ts': '/platform/brand',
   'integrations/integrations.routes.ts': '/integrations',
+  'onboarding/onboarding.routes.ts': '/onboarding',
 }
 
 function walk(dir: string, exts: RegExp): string[] {
