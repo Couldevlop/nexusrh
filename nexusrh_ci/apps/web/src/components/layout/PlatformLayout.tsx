@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import nexusrhLogo from '@/assets/NexusRH.png'
 
 const NAV = [
   { to: '/platform/dashboard',    label: 'Tableau de bord', icon: LayoutDashboard },
@@ -31,14 +32,9 @@ export default function PlatformLayout() {
       <aside className="flex h-full w-64 flex-col border-r border-border bg-slate-900 text-white">
         {/* Header */}
         <div className="border-b border-slate-700 p-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500 text-sm font-bold">
-              N
-            </div>
-            <div>
-              <p className="text-sm font-bold">NexusRH CI</p>
-              <p className="text-xs text-slate-400">Portail plateforme</p>
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <img src={nexusrhLogo} alt="NexusRH" className="h-10 w-auto self-start object-contain" />
+            <p className="text-xs text-slate-400">Portail plateforme</p>
           </div>
         </div>
 
