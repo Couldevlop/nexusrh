@@ -103,19 +103,27 @@ describe('POST /auth/login — branche cabinet', () => {
     expect(decoded.schemaName).toBe('platform')
   })
 
-  it('cabinet suspendu → 401 (pas de connexion)', async () => {
+  it('cabinet suspendu + bons identifiants → 503 + message hors-ligne (jamais sans mot de passe valide)', async () => {
+    // Contrat « mise hors ligne » : un cabinet suspendu par le super_admin
+    // renvoie le message configuré APRÈS vérification du mot de passe (OWASP
+    // A07 — pas de fuite d'existence ; pas de compteur de lockout : le mot de
+    // passe est correct).
     const hash = await bcrypt.hash('Cabinet1234!', 4)
     queryMock
       .mockResolvedValueOnce(POLICY)
       .mockResolvedValueOnce({ rows: [] })  // platform_users
       .mockResolvedValueOnce({ rows: [] })  // tenants
-      .mockResolvedValueOnce({ rows: [agencyRow({ password_hash: hash, agency_status: 'suspended' })] })
-      .mockResolvedValueOnce({ rows: [] })  // audit failed
+      .mockResolvedValueOnce({ rows: [agencyRow({ password_hash: hash, agency_status: 'suspended',
+        agency_offline_message: 'Cabinet hors service.' })] })
+      .mockResolvedValueOnce({ rows: [] })  // audit blocked_offline
     const res = await app.inject({ method: 'POST', url: '/auth/login',
       payload: { email: 'owner@cabinet.ci', password: 'Cabinet1234!' } })
-    expect(res.statusCode).toBe(401)
-    expect(registerMock).toHaveBeenCalledTimes(1)
-    expect(clearMock).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(503)
+    const body = JSON.parse(res.body)
+    expect(body.offline).toBe(true)
+    expect(body.error).toBe('Cabinet hors service.')
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(clearMock).toHaveBeenCalledTimes(1)
   })
 
   it('utilisateur cabinet inactif → 401', async () => {
@@ -125,23 +133,27 @@ describe('POST /auth/login — branche cabinet', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [agencyRow({ password_hash: hash, is_active: false })] })
+      .mockResolvedValueOnce({ rows: [] })  // tenants suspendus vide (findSuspendedTenantLogin)
       .mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({ method: 'POST', url: '/auth/login',
       payload: { email: 'owner@cabinet.ci', password: 'Cabinet1234!' } })
     expect(res.statusCode).toBe(401)
   })
 
-  it('mauvais mot de passe cabinet → 401', async () => {
+  it('mauvais mot de passe cabinet → 401 (même si le cabinet est suspendu : pas de fuite)', async () => {
     const hash = await bcrypt.hash('Cabinet1234!', 4)
     queryMock
       .mockResolvedValueOnce(POLICY)
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [agencyRow({ password_hash: hash })] })
+      .mockResolvedValueOnce({ rows: [agencyRow({ password_hash: hash, agency_status: 'suspended',
+        agency_offline_message: 'SECRET — réservé aux identifiants valides.' })] })
+      .mockResolvedValueOnce({ rows: [] })  // tenants suspendus vide (findSuspendedTenantLogin)
       .mockResolvedValueOnce({ rows: [] })  // audit failed
     const res = await app.inject({ method: 'POST', url: '/auth/login',
       payload: { email: 'owner@cabinet.ci', password: 'WRONG_PASSWORD!' } })
     expect(res.statusCode).toBe(401)
+    expect(res.body).not.toContain('SECRET')
     expect(registerMock).toHaveBeenCalledTimes(1)
   })
 

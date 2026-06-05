@@ -55,6 +55,22 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('nexusrh:maintenance'))
     }
 
+    // Tenant/cabinet mis hors ligne par le super_admin : déconnexion + message
+    // (configuré côté plateforme) affiché sur la page de connexion. Les routes
+    // /auth/* sont exclues : le composant LoginPage affiche lui-même l'erreur.
+    if (error.response?.status === 503 && error.response?.data?.offline) {
+      const url: string = error.config?.url ?? ''
+      if (!url.includes('/auth/')) {
+        const message: string = typeof error.response.data.error === 'string'
+          ? error.response.data.error : ''
+        try { sessionStorage.setItem('nexusrh:offline-message', message) } catch { /* quota */ }
+        if (useAuthStore.getState().token) {
+          useAuthStore.getState().logout()
+          window.location.href = '/login'
+        }
+      }
+    }
+
     if (error.response?.status === 401) {
       // Ne pas intercepter les routes /auth/* — le composant gère l'erreur lui-même
       const url: string = error.config?.url ?? ''

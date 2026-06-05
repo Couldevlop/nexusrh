@@ -14,6 +14,12 @@ interface Tenant {
   has_subsidiaries?: boolean
   payroll_mode?: 'single_country' | 'multi_country'
   default_country_code?: string
+  offline_message?: string | null
+}
+
+interface OfflinePolicySettings {
+  offline_message_default?: string
+  offline_message_required?: boolean
 }
 
 export default function PlatformTenantDetail() {
@@ -26,15 +32,32 @@ export default function PlatformTenantDetail() {
   const [repairFirst, setRepairFirst] = useState('')
   const [repairLast, setRepairLast] = useState('')
 
+  const [showOfflineDialog, setShowOfflineDialog] = useState(false)
+  const [offlineMessage, setOfflineMessage] = useState('')
+
   const { data, isLoading } = useQuery<{ data: Tenant }>({
     queryKey: ['tenant', id],
     queryFn: () => api.get(`/platform/tenants/${id}`).then(r => r.data),
   })
 
-  const suspendMut = useMutation({
-    mutationFn: () => api.post(`/platform/tenants/${id}/suspend`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenant', id] }),
+  // Variable système : message hors-ligne par défaut + caractère obligatoire.
+  const { data: settingsData } = useQuery<{ data: OfflinePolicySettings }>({
+    queryKey: ['platform-settings'],
+    queryFn: () => api.get('/platform/settings').then(r => r.data),
+    staleTime: 60_000,
   })
+  const offlineDefault = settingsData?.data?.offline_message_default ?? ''
+  const offlineRequired = settingsData?.data?.offline_message_required !== false
+
+  const suspendMut = useMutation({
+    mutationFn: (message: string) => api.post(`/platform/tenants/${id}/suspend`, { message }),
+    onSuccess: () => {
+      setShowOfflineDialog(false)
+      void queryClient.invalidateQueries({ queryKey: ['tenant', id] })
+    },
+  })
+  const suspendErrMsg = (suspendMut.error as { response?: { data?: { error?: string } } } | null)
+    ?.response?.data?.error ?? null
 
   const reactivateMut = useMutation({
     mutationFn: () => api.post(`/platform/tenants/${id}/reactivate`),
@@ -142,14 +165,25 @@ export default function PlatformTenantDetail() {
       {/* Actions */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-4">Actions</h2>
+        {tenant.status === 'suspended' && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
+            <p className="font-medium text-red-800 mb-1">Tenant hors ligne</p>
+            <p className="text-red-700">
+              Message affiché aux utilisateurs : « {tenant.offline_message || 'Ce site est temporairement hors service. Veuillez contacter votre administrateur.'} »
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-3">
           {tenant.status !== 'suspended' ? (
             <button
-              onClick={() => suspendMut.mutate()}
+              onClick={() => {
+                setOfflineMessage(offlineDefault)
+                setShowOfflineDialog(true)
+              }}
               disabled={suspendMut.isPending}
               className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">
               <Power className="h-4 w-4" />
-              Suspendre
+              Mettre hors ligne
             </button>
           ) : (
             <button
@@ -169,6 +203,47 @@ export default function PlatformTenantDetail() {
             Réinitialiser mot de passe admin
           </button>
         </div>
+
+        {/* Dialogue de mise hors ligne : message affiché aux utilisateurs.
+            Pré-rempli avec la variable système (paramètres plateforme). */}
+        {showOfflineDialog && (
+          <div className="mt-4 rounded-lg border border-red-300 bg-red-50/70 p-4 text-sm space-y-3">
+            <div>
+              <p className="font-semibold text-red-900 mb-1 flex items-center gap-2">
+                <Power className="h-4 w-4" /> Mettre « {tenant.name} » hors ligne
+              </p>
+              <p className="text-xs text-red-800">
+                Tous les utilisateurs du tenant (filiales incluses) seront bloqués et verront ce message.
+                {offlineRequired ? ' Le message est obligatoire (politique plateforme).' : ' Le message est facultatif.'}
+              </p>
+            </div>
+            <textarea
+              value={offlineMessage}
+              onChange={(e) => setOfflineMessage(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="Message affiché aux utilisateurs (ex. : maintenance, suspension contractuelle…)"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            {suspendErrMsg && (
+              <p className="text-xs font-medium text-red-700">{suspendErrMsg}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => suspendMut.mutate(offlineMessage.trim())}
+                disabled={suspendMut.isPending || (offlineRequired && !offlineMessage.trim())}
+                className="flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">
+                <Power className="h-4 w-4" />
+                Confirmer la mise hors ligne
+              </button>
+              <button
+                onClick={() => setShowOfflineDialog(false)}
+                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm hover:bg-red-50">
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
 
         {resetErrMsg && !resetResult && (
           <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">

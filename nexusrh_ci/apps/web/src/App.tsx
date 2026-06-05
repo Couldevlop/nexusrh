@@ -81,8 +81,12 @@ const MobileMoneyPage  = lazy(() => import('@/pages/mobile-money/MobileMoneyPage
 // ── Référentiel Droit CI ──────────────────────────────────────────────────────
 const ReferentielsPage = lazy(() => import('@/pages/referentiels/ReferentielsPage'))
 
+// ── Parcours d'intégration (onboarding) ──────────────────────────────────────
+const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
+
 // ── Espace employé ────────────────────────────────────────────────────────────
 const MonEspace        = lazy(() => import('@/pages/mon-espace/MonEspace'))
+const MonIntegration   = lazy(() => import('@/pages/mon-espace/MonIntegration'))
 const MesAbsences      = lazy(() => import('@/pages/mon-espace/MesAbsences'))
 const MesBulletins     = lazy(() => import('@/pages/mon-espace/MesBulletins'))
 const MesNotesDesFrais = lazy(() => import('@/pages/mon-espace/MesNotesDesFrais'))
@@ -219,6 +223,12 @@ export default function App() {
               </RoleGuard>
             } />
 
+            <Route path="onboarding" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
+                <OnboardingPage />
+              </RoleGuard>
+            } />
+
             <Route path="training" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <TrainingPage />
@@ -280,6 +290,7 @@ export default function App() {
             </RoleGuard>
           }>
             <Route index               element={<MonEspace />} />
+            <Route path="integration"  element={<MonIntegration />} />
             <Route path="absences"     element={<MesAbsences />} />
             <Route path="bulletins"    element={<MesBulletins />} />
             <Route path="frais"        element={<MesNotesDesFrais />} />

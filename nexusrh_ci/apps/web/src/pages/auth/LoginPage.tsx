@@ -1,4 +1,6 @@
 import openlabLogo from "@/assets/OPENLAB.png";
+import nexusrhLogo from "@/assets/NexusRH.png";
+import nexusrhLogoDark from "@/assets/NexusRH-dark.png";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -109,6 +111,17 @@ export default function LoginPage() {
   // (on ne réutilise jamais le token restreint).
   const [forcedReason, setForcedReason] = useState<null | "expired" | "breached">(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  // Message hors-ligne mémorisé par l'intercepteur API : la session a été
+  // coupée parce que le tenant/cabinet a été mis hors ligne par la plateforme.
+  const [offlineNotice] = useState<string | null>(() => {
+    try {
+      const m = sessionStorage.getItem("nexusrh:offline-message");
+      if (m !== null) sessionStorage.removeItem("nexusrh:offline-message");
+      return m;
+    } catch {
+      return null;
+    }
+  });
   const [pendingAuth, setPendingAuth] = useState<{
     user: AuthUser;
     token: string;
@@ -194,10 +207,16 @@ export default function LoginPage() {
       // d'emails ("user introuvable" vs "mot de passe incorrect" trahit
       // l'existence d'un compte). On affiche le message API uniquement si
       // c'est une erreur 400 de validation (format), pas pour 401/4xx auth.
-      const e = err as { response?: { status?: number; data?: { error?: string } } };
+      const e = err as { response?: { status?: number; data?: { error?: string; offline?: boolean } } };
       const isValidation = e.response?.status === 400;
+      // Tenant/cabinet mis hors ligne : le message configuré par la plateforme
+      // est affiché tel quel (le serveur ne le renvoie qu'après vérification du
+      // mot de passe — pas de risque d'énumération).
+      const isOffline = e.response?.status === 503 && e.response?.data?.offline === true;
       setError(
-        isValidation
+        isOffline
+          ? (e.response?.data?.error ?? "Ce site est temporairement hors service.")
+          : isValidation
           ? (e.response?.data?.error ?? "Format invalide")
           : "Identifiants invalides ou compte non autorisé",
       );
@@ -300,11 +319,8 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/70 to-black/60" />
         {/* Contenu */}
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur font-black text-lg">
-              N
-            </div>
-            <span className="text-xl font-black">NexusRH CI</span>
+          <div className="flex items-center">
+            <img src={nexusrhLogo} alt="NexusRH CI" className="h-14 w-auto object-contain drop-shadow" />
           </div>
           <div>
             <h2 className="text-4xl font-black leading-tight mb-4">
@@ -350,9 +366,9 @@ export default function LoginPage() {
 
           {/* En-tête */}
           <div className="mb-8">
-            <div className="lg:hidden flex items-center gap-3 mb-6">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-black text-sm text-primary-foreground">N</div>
-              <span className="font-black text-lg">NexusRH CI</span>
+            <div className="lg:hidden flex items-center mb-6">
+              {/* Variante sombre du logo (sans fond) — lisible sur surface claire */}
+              <img src={nexusrhLogoDark} alt="NexusRH CI" className="h-9 w-auto object-contain" />
             </div>
             {mfaChallenge ? (
               <div className="flex items-center gap-3">
@@ -387,6 +403,14 @@ export default function LoginPage() {
               </div>
             )}
           </div>
+
+          {/* Site mis hors ligne pendant la session : message configuré plateforme */}
+          {offlineNotice !== null && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold mb-0.5">Site hors ligne</p>
+              <p>{offlineNotice || "Ce site est temporairement hors service. Veuillez contacter votre administrateur."}</p>
+            </div>
+          )}
 
           {/* Carte formulaire */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">

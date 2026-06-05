@@ -1,6 +1,7 @@
 import { Pool } from 'pg'
 import { config } from '../config.js'
 import { assertValidSchemaName } from '../utils/schema-name.js'
+import { onboardingTableStatements } from './onboarding-tables.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -361,6 +362,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     exit_reason           varchar(100),
     base_salary           numeric(12,0) NOT NULL DEFAULT 0,
     currency              varchar(3) DEFAULT 'XOF',
+    weekly_hours          numeric(4,1) DEFAULT 40,
+    professional_category varchar(50),
     address               jsonb DEFAULT '{}',
     city                  varchar(100) DEFAULT 'Abidjan',
     iban                  varchar(255),
@@ -740,6 +743,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     data       jsonb DEFAULT '{}',
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
+
+  // Parcours d'intégration (onboarding) — DDL partagé avec la migration lazy
+  for (const stmt of onboardingTableStatements(schemaName)) {
+    await q(stmt)
+  }
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
