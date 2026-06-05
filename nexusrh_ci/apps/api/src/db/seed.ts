@@ -14,6 +14,7 @@ import {
   seedAbsenceTypesCI,
 } from './provisioning.js'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
+import { captureExistingCredentials, restorePreservedCredentials } from './seed-credentials.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -111,12 +112,140 @@ const CABINET_DEPTS = [
   { name: 'Finance',          size: 3,  baseSalaryRange: [150_000, 300_000] as [number, number] },
 ]
 
+// ── Parcours d'intégration : modèles + parcours de démo ──────────────────────
+interface SeedOnbStep {
+  title: string; description: string; phase: string; owner: string; offset: number
+  resources?: Array<{ type: string; title: string; url: string }>
+}
+
+const ONB_STEPS_STANDARD: SeedOnbStep[] = [
+  { title: 'Signature du contrat et collecte des pièces', description: 'Contrat signé, CNI/NNI, RIB ou numéro Mobile Money, photo d\'identité.', phase: 'before_start', owner: 'hr', offset: -7,
+    resources: [{ type: 'document', title: 'Liste des pièces à fournir', url: '' }] },
+  { title: 'Préparation du poste de travail et des accès', description: 'Badge, uniforme le cas échéant, comptes informatiques, téléphone.', phase: 'before_start', owner: 'it', offset: -3 },
+  { title: 'Annonce de l\'arrivée à l\'équipe', description: 'Message du manager à l\'équipe : rôle, parcours, date d\'arrivée.', phase: 'before_start', owner: 'manager', offset: -2 },
+  { title: 'Désignation du parrain / de la marraine', description: 'Un pair expérimenté accompagne le nouveau collaborateur pendant 3 mois.', phase: 'before_start', owner: 'manager', offset: -2 },
+  { title: 'Accueil et visite du site', description: 'Accueil RH, tour des locaux/dépôt, présentation des consignes de sécurité.', phase: 'day_one', owner: 'hr', offset: 0,
+    resources: [{ type: 'document', title: 'Livret d\'accueil', url: '' }, { type: 'link', title: 'Site SOTRA', url: 'https://www.sotra.ci' }] },
+  { title: 'Remise du matériel et des équipements', description: 'Matériel de travail, EPI, badge d\'accès, signature de la décharge.', phase: 'day_one', owner: 'it', offset: 0 },
+  { title: 'Déjeuner d\'équipe', description: 'Premier déjeuner avec l\'équipe et le parrain.', phase: 'day_one', owner: 'buddy', offset: 0 },
+  { title: 'Lire le règlement intérieur et le livret d\'accueil', description: 'Prendre connaissance des règles internes et confirmer la lecture.', phase: 'first_week', owner: 'employee', offset: 3,
+    resources: [{ type: 'document', title: 'Règlement intérieur', url: '' }] },
+  { title: 'Formation sécurité obligatoire', description: 'Module sécurité (consignes générales + spécifiques au poste).', phase: 'first_week', owner: 'hr', offset: 4,
+    resources: [{ type: 'video', title: 'Vidéo consignes de sécurité', url: '' }] },
+  { title: 'Point objectifs avec le manager', description: 'Définition des objectifs de la période d\'essai et des attendus du poste.', phase: 'first_week', owner: 'manager', offset: 5 },
+  { title: 'Vérifier l\'immatriculation CNPS', description: 'S\'assurer que la déclaration CNPS du salarié est effective.', phase: 'first_week', owner: 'hr', offset: 5,
+    resources: [{ type: 'link', title: 'Portail CNPS', url: 'https://www.cnps.ci' }] },
+  { title: 'Compléter son profil dans NexusRH', description: 'Photo, téléphone, personne à prévenir, numéro Mobile Money.', phase: 'first_week', owner: 'employee', offset: 5 },
+  { title: 'Rencontres des interlocuteurs clés', description: 'RH, paie, sécurité, représentants du personnel.', phase: 'first_month', owner: 'buddy', offset: 15 },
+  { title: 'Point d\'étape à 30 jours', description: 'Feedback mutuel manager/collaborateur : intégration, charge, besoins de formation.', phase: 'first_month', owner: 'manager', offset: 30 },
+  { title: 'Auto-évaluation de l\'intégration', description: 'Questionnaire de ressenti : accueil, clarté du rôle, outils, ambiance.', phase: 'first_month', owner: 'employee', offset: 30 },
+  { title: 'Bilan de période d\'essai', description: 'Entretien de confirmation, décision et plan de développement.', phase: 'probation_end', owner: 'hr', offset: 85 },
+]
+
+const ONB_STEPS_CONDUCTEUR: SeedOnbStep[] = [
+  { title: 'Vérification du permis et visite médicale', description: 'Permis D en cours de validité + aptitude médicale à la conduite.', phase: 'before_start', owner: 'hr', offset: -5 },
+  { title: 'Dotation uniforme et carte professionnelle', description: 'Uniforme SOTRA, carte pro, badge dépôt.', phase: 'day_one', owner: 'hr', offset: 0 },
+  { title: 'Formation conduite réseau et billettique', description: 'Prise en main des lignes, procédure billettique, gestes métiers.', phase: 'first_week', owner: 'manager', offset: 2,
+    resources: [{ type: 'video', title: 'Procédures billettique', url: '' }] },
+  { title: 'Conduite en double avec un titulaire', description: '3 jours de doublon avec un conducteur expérimenté (parrain).', phase: 'first_week', owner: 'buddy', offset: 3 },
+  { title: 'Évaluation de conduite', description: 'Validation par le chef de dépôt avant affectation de ligne.', phase: 'first_month', owner: 'manager', offset: 12 },
+  { title: 'Bilan de période d\'essai', description: 'Entretien de confirmation avec le chef de dépôt et les RH.', phase: 'probation_end', owner: 'hr', offset: 85 },
+]
+
+const ONB_STEPS_CADRE: SeedOnbStep[] = [
+  { title: 'Préparation du dossier cadre', description: 'Contrat cadre, clauses spécifiques, véhicule/téléphone de fonction.', phase: 'before_start', owner: 'hr', offset: -7 },
+  { title: 'Rendez-vous avec la Direction Générale', description: 'Présentation de la stratégie et des priorités de la direction.', phase: 'day_one', owner: 'manager', offset: 0 },
+  { title: 'Tour des directions', description: 'Rencontre de chaque directeur : enjeux, attentes mutuelles.', phase: 'first_week', owner: 'manager', offset: 4 },
+  { title: 'Lecture du plan stratégique', description: 'S\'approprier le plan stratégique et les indicateurs clés.', phase: 'first_week', owner: 'employee', offset: 5,
+    resources: [{ type: 'document', title: 'Plan stratégique (interne)', url: '' }] },
+  { title: 'Feuille de route à 90 jours', description: 'Construire et présenter sa feuille de route 30/60/90 jours.', phase: 'first_month', owner: 'employee', offset: 21 },
+  { title: 'Point d\'étape à 45 jours', description: 'Revue de la feuille de route avec le N+1.', phase: 'first_month', owner: 'manager', offset: 45 },
+  { title: 'Bilan de période d\'essai cadre', description: 'Entretien de confirmation (3 mois, renouvelable).', phase: 'probation_end', owner: 'hr', offset: 85 },
+]
+
+async function seedOnboarding(schema: string, employeeIds: string[]): Promise<void> {
+  const insertTemplate = async (
+    name: string, description: string, seniority: string, keywords: string | null,
+    isDefault: boolean, steps: SeedOnbStep[],
+  ): Promise<string> => {
+    const tpl = await pool.query<{ id: string }>(`
+      INSERT INTO "${schema}".onboarding_templates (name, description, seniority, job_keywords, is_default, is_active)
+      VALUES ($1, $2, $3, $4, $5, true) RETURNING id
+    `, [name, description, seniority, keywords, isDefault])
+    let order = 0
+    for (const s of steps) {
+      await pool.query(`
+        INSERT INTO "${schema}".onboarding_template_steps
+          (template_id, title, description, phase, owner_role, due_offset_days, sort_order, resources)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [tpl.rows[0]!.id, s.title, s.description, s.phase, s.owner, s.offset, order++, JSON.stringify(s.resources ?? [])])
+    }
+    return tpl.rows[0]!.id
+  }
+
+  const tplStandardId = await insertTemplate(
+    'Parcours d\'intégration standard',
+    'Parcours générique : pré-boarding, jour J, première semaine, premier mois, fin de période d\'essai.',
+    'any', null, true, ONB_STEPS_STANDARD)
+  await insertTemplate(
+    'Intégration Conducteur & Agents terrain',
+    'Parcours métier transport : permis, doublon avec un titulaire, évaluation de conduite.',
+    'any', 'conducteur, chauffeur, receveur, contrôleur, régulateur', false, ONB_STEPS_CONDUCTEUR)
+  await insertTemplate(
+    'Intégration Cadre & Management',
+    'Parcours cadre : immersion direction, feuille de route 30/60/90, bilan d\'essai renforcé.',
+    'cadre', 'chef, responsable, directeur, drh, daf, dsi, manager', false, ONB_STEPS_CADRE)
+
+  // Parcours de démo : instanciation manuelle (dates relatives à AUJOURD'HUI
+  // pour une démo réaliste : étapes faites, en cours, et une en retard).
+  const dayOffset = (n: number): string => {
+    const d = new Date(); d.setDate(d.getDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+  const createJourney = async (employeeId: string, startedDaysAgo: number, doneRatio: number): Promise<void> => {
+    const j = await pool.query<{ id: string }>(`
+      INSERT INTO "${schema}".onboarding_journeys (employee_id, template_id, template_name, status, started_at)
+      VALUES ($1, $2, 'Parcours d''intégration standard', 'in_progress', now() - interval '${startedDaysAgo} days')
+      RETURNING id
+    `, [employeeId, tplStandardId])
+    const total = ONB_STEPS_STANDARD.length
+    const doneCount = Math.floor(total * doneRatio)
+    for (let i = 0; i < total; i++) {
+      const s = ONB_STEPS_STANDARD[i]!
+      const status = i < doneCount ? 'done' : i === doneCount ? 'in_progress' : 'todo'
+      await pool.query(`
+        INSERT INTO "${schema}".onboarding_steps
+          (journey_id, title, description, phase, owner_role, status, due_date, sort_order, resources, completed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $6 = 'done' THEN now() ELSE NULL END)
+      `, [j.rows[0]!.id, s.title, s.description, s.phase, s.owner, status,
+          dayOffset(s.offset - startedDaysAgo), i, JSON.stringify(s.resources ?? [])])
+    }
+    // Statut du parcours recalculé si tout est terminé
+    if (doneRatio >= 1) {
+      await pool.query(
+        `UPDATE "${schema}".onboarding_journeys SET status = 'completed', completed_at = now() WHERE id = $1`,
+        [j.rows[0]!.id])
+    }
+  }
+
+  // Kouassi (employe@sotra.ci) : parcours bien entamé, avec une étape en retard
+  if (employeeIds[0]) await createJourney(employeeIds[0], 10, 0.45)
+  // Deux autres recrues : un parcours qui démarre + un parcours terminé
+  if (employeeIds[1]) await createJourney(employeeIds[1], 1, 0)
+  if (employeeIds[2]) await createJourney(employeeIds[2], 95, 1)
+}
+
 // ── Main seed ─────────────────────────────────────────────────────────────────
 async function main() {
   console.log('NexusRH CI — Initialisation du seed...')
 
+  const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting']
+
+  // Les mots de passe changés par les utilisateurs survivent au re-seed.
+  const preservedCredentials = await captureExistingCredentials(pool, TENANT_SCHEMAS)
+
   // Nettoyage idempotent : drop des schémas tenant pour repartir propre
-  for (const schema of ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting']) {
+  for (const schema of TENANT_SCHEMAS) {
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     console.log(`[0] Schéma ${schema} supprimé (reset)`)
   }
@@ -141,8 +270,9 @@ async function main() {
   await pool.query(`
     INSERT INTO platform.platform_users (email, password_hash, first_name, last_name, role, is_active)
     VALUES ('superadmin@nexusrh-ci.com', $1, 'Super', 'Admin', 'super_admin', true)
-    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
+    ON CONFLICT (email) DO NOTHING
   `, [superAdminHash])
+  // (DO NOTHING : un mot de passe super_admin changé survit au re-seed)
   console.log('[2/10] Super admin créé: superadmin@nexusrh-ci.com / SuperAdmin1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -418,6 +548,12 @@ async function main() {
       )
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PARCOURS D'INTÉGRATION (ONBOARDING) — modèles + parcours de démo
+  // ─────────────────────────────────────────────────────────────────────────────
+  await seedOnboarding(sotraSchema, sotraEmployees.map((e) => e.id))
+  console.log('[6b] Onboarding : 3 modèles + 3 parcours de démo (SOTRA)')
 
   // Types d'absence (récupérer les IDs)
   const absTypeRes = await pool.query<{ id: string; code: string }>(
@@ -1405,8 +1541,9 @@ async function main() {
     VALUES
       ($1, 'owner@cabinet-talents.ci',     $2, 'Awa',   'Koné',    'agency_owner',  true),
       ($1, 'recruteur@cabinet-talents.ci', $2, 'Jean',  'Brou',    'agency_member', true)
-    ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
+    ON CONFLICT (email) DO UPDATE SET is_active = true
   `, [agencyId, agencyHash])
+  // (pas de reset du password_hash : un mot de passe cabinet changé survit au re-seed)
 
   // Rattachement aux 2 entreprises clientes CI (SOTRA + Cabinet Expertise).
   for (const tid of [sotraTenantId, cabinetRes.rows[0]!.id]) {
@@ -1417,6 +1554,12 @@ async function main() {
     `, [agencyId, tid])
   }
   console.log('[10b] Cabinet Talents CI créé + rattaché à SOTRA et Cabinet Expertise')
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RESTAURATION DES CREDENTIALS — les mots de passe changés par les
+  // utilisateurs avant ce re-seed reprennent le dessus sur les valeurs de démo.
+  // ─────────────────────────────────────────────────────────────────────────────
+  await restorePreservedCredentials(pool, preservedCredentials)
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
