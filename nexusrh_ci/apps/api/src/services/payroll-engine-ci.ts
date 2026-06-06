@@ -117,9 +117,14 @@ function getCreditImpot(
 }
 
 /**
- * Évalue une formule de rubrique de paie (whitelist sécurisée)
+ * Évalue une formule de rubrique de paie (whitelist sécurisée).
+ *
+ * Exporté pour test unitaire : cette fonction n'est pas (encore) appelée par
+ * le moteur lui-même mais reste l'évaluateur de référence des formules de
+ * rubriques (`payroll_rules.formula`), utilisé par les seeds/provisioning et
+ * destiné au moteur de paie générique piloté par règles.
  */
-function evalFormule(formula: string, vars: Record<string, number>): number {
+export function evalFormule(formula: string, vars: Record<string, number>): number {
   // Si formule commence par VAR: → lire directement une variable
   if (formula.startsWith('VAR:')) {
     const key = formula.slice(4)

@@ -91,7 +91,7 @@ describe('POST /auth/mfa/setup — génère secret + QR + backup codes (OWASP A0
     expect(body.secret).toMatch(/^[A-Z2-7]+$/)  // base32
     expect(body.backupCodes).toHaveLength(10)
     expect(body.backupCodes[0]).toMatch(/^[A-HJ-NP-Z2-9]{10}$/)
-  }, 20_000)  // bcrypt 12 rounds × 10 codes = ~3-5s
+  }, 60_000)  // bcrypt 12 rounds × 10 codes = ~3-5s (bien plus sous instrumentation coverage)
 })
 
 describe('POST /auth/mfa/verify — active MFA après scan du QR (OWASP A03)', () => {
