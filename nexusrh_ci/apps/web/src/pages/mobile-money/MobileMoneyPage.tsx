@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { Smartphone, Loader2, Send, ArrowLeftRight } from 'lucide-react'
 
@@ -35,6 +36,7 @@ const PROVIDER_COLOR: Record<string, string> = {
 }
 
 export default function MobileMoneyPage() {
+  const { t } = useTranslation('mobileMoney')
   const [month, setMonth] = useState('')
   const [campaignResult, setCampaignResult] = useState<CampaignResult | null>(null)
   const { data: paymentsData, isLoading, refetch } = useQuery<{ data: PaymentRecord[] }>({
@@ -61,21 +63,21 @@ export default function MobileMoneyPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Mobile Money — Virements salaires</h1>
-        <p className="text-sm text-muted-foreground mt-1">Wave · MTN MoMo · Orange Money CI</p>
+        <h1 className="text-2xl font-bold">{t('page.title')}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t('page.subtitle')}</p>
       </div>
 
       {/* Créer une campagne */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-4 flex items-center gap-2">
-          <ArrowLeftRight className="h-4 w-4" /> Nouvelle campagne de virement
+          <ArrowLeftRight className="h-4 w-4" /> {t('campaign.newTitle')}
         </h2>
         <div className="flex items-end gap-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Mois de paie</label>
+            <label className="text-sm font-medium mb-1 block">{t('campaign.payMonth')}</label>
             <select value={month} onChange={e => setMonth(e.target.value)}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
-              <option value="">-- Sélectionner --</option>
+              <option value="">{t('campaign.selectMonth')}</option>
               {Array.from({ length: 12 }, (_, i) => {
                 const d = new Date()
                 d.setMonth(d.getMonth() - i)
@@ -89,13 +91,13 @@ export default function MobileMoneyPage() {
             disabled={!month || campaignMut.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {campaignMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Préparer la campagne
+            {t('campaign.prepare')}
           </button>
         </div>
 
         {campaignMut.isError && (
           <p className="mt-2 text-sm text-destructive">
-            {(campaignMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur réseau'}
+            {(campaignMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('campaign.networkError')}
           </p>
         )}
       </div>
@@ -110,7 +112,7 @@ export default function MobileMoneyPage() {
             </p>
             {!campaignResult.allPaid && (
               <p className="text-xs text-amber-600 mt-1">
-                Allez dans <strong>Paie → Clôturer une période</strong> pour ce mois, puis revenez.
+                <Trans i18nKey="campaign.goToPayrollHint" ns="mobileMoney" components={{ strong: <strong /> }} />
               </p>
             )}
           </div>
@@ -122,10 +124,10 @@ export default function MobileMoneyPage() {
       {campaignResult && campaignResult.paySlips.length > 0 && campaignResult.reference && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
           <h3 className="font-semibold text-blue-800 mb-3">
-            Campagne prête — {campaignResult.paySlips.length} virements
+            {t('campaign.readyTitle', { count: campaignResult.paySlips.length })}
           </h3>
           <p className="text-sm text-blue-700 mb-4">
-            Total : <strong>{formatFCFA(campaignResult.paySlips.reduce((s, p) => s + p.amount, 0))}</strong>
+            {t('campaign.total')}<strong>{formatFCFA(campaignResult.paySlips.reduce((s, p) => s + p.amount, 0))}</strong>
           </p>
           <div className="max-h-48 overflow-auto mb-4 space-y-1">
             {campaignResult.paySlips.slice(0, 10).map(s => (
@@ -141,7 +143,7 @@ export default function MobileMoneyPage() {
             ))}
             {campaignResult.paySlips.length > 10 && (
               <p className="text-xs text-muted-foreground text-center">
-                + {campaignResult.paySlips.length - 10} autres...
+                {t('campaign.moreOthers', { count: campaignResult.paySlips.length - 10 })}
               </p>
             )}
           </div>
@@ -155,11 +157,11 @@ export default function MobileMoneyPage() {
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {executeMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               <Send className="h-4 w-4" />
-              Lancer les virements
+              {t('campaign.execute')}
             </button>
             <button onClick={() => setCampaignResult(null)}
               className="rounded-lg border border-blue-200 px-4 py-2 text-sm text-blue-700 hover:bg-blue-100">
-              Annuler
+              {t('campaign.cancel')}
             </button>
           </div>
         </div>
@@ -168,7 +170,7 @@ export default function MobileMoneyPage() {
       {/* Historique */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-6 py-4">
-          <h2 className="font-semibold">Historique des paiements</h2>
+          <h2 className="font-semibold">{t('history.title')}</h2>
         </div>
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
@@ -178,12 +180,12 @@ export default function MobileMoneyPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="p-4">Employé</th>
-                <th className="p-4">Période</th>
-                <th className="p-4">Opérateur · Numéro</th>
-                <th className="p-4 text-right">Montant</th>
-                <th className="p-4">Statut</th>
-                <th className="p-4">Référence</th>
+                <th className="p-4">{t('history.employee')}</th>
+                <th className="p-4">{t('history.period')}</th>
+                <th className="p-4">{t('history.providerNumber')}</th>
+                <th className="p-4 text-right">{t('history.amount')}</th>
+                <th className="p-4">{t('history.status')}</th>
+                <th className="p-4">{t('history.reference')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -204,7 +206,7 @@ export default function MobileMoneyPage() {
                       p.status === 'failed' ? 'bg-red-100 text-red-700' :
                       'bg-yellow-100 text-yellow-700'
                     }`}>
-                      {p.status === 'completed' ? 'Réussi' : p.status === 'failed' ? 'Échec' : 'En attente'}
+                      {p.status === 'completed' ? t('status.completed') : p.status === 'failed' ? t('status.failed') : t('status.pending')}
                     </span>
                     {p.error_message && <p className="text-xs text-destructive mt-0.5 truncate max-w-[150px]">{p.error_message}</p>}
                   </td>
@@ -217,7 +219,7 @@ export default function MobileMoneyPage() {
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-muted-foreground">
                     <Smartphone className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    Aucun paiement enregistré
+                    {t('history.empty')}
                   </td>
                 </tr>
               )}

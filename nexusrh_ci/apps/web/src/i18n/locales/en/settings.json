@@ -1,0 +1,561 @@
+{
+  "title": "Settings",
+  "loading": "Loading...",
+  "error": "Error",
+  "tabs": {
+    "general": "General",
+    "users": "Users",
+    "departments": "Departments",
+    "absenceTypes": "Absence types",
+    "payrollRules": "Payroll items",
+    "legalEntities": "Legal entities",
+    "workflow": "Workflow",
+    "dataImport": "Data migration",
+    "mfa": "Security (MFA)",
+    "ai": "AI (key & model)",
+    "connectivity": "Connectivity"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "hr_manager": "HR Manager",
+    "hr_officer": "HR Officer",
+    "manager": "Manager",
+    "employee": "Employee",
+    "readonly": "Read only"
+  },
+  "ruleTypes": {
+    "earning": "Earning",
+    "deduction": "Deduction",
+    "employee_contrib": "Employee contribution",
+    "employer_contrib": "Employer contribution"
+  },
+  "ai": {
+    "encryptionUnavailable": "Key encryption is not configured on the platform (ENCRYPTION_KEY). Key entry is disabled. Contact the platform administrator.",
+    "intro": "Configure your tenant's API key and model. Without a key, the AI uses the platform key (fallback). Keys are encrypted (AES-256) and are never displayed again.",
+    "providerClaude": "Claude (Anthropic)",
+    "providerMistral": "Mistral",
+    "badge": {
+      "tenantKey": "Tenant key {{mask}}",
+      "platformFallback": "Platform key fallback",
+      "noKey": "No key"
+    },
+    "apiKeyLabel": "{{provider}} API key",
+    "apiKeyConfiguredPlaceholder": "Configured ({{mask}}) — leave empty to keep",
+    "apiKeyEmptyPlaceholder": "Paste your key to enable it",
+    "clearKey": "Clear the key (revert to platform fallback)",
+    "modelLabel": "{{provider}} model",
+    "modelDefaultOption": "— Platform default model —",
+    "preferredProviderLabel": "Preferred provider (chat & sourcing)",
+    "saved": "AI configuration saved.",
+    "save": "Save",
+    "saving": "Saving...",
+    "saveError": "Error while saving."
+  },
+  "general": {
+    "companyInfo": "Company information",
+    "fields": {
+      "name": "Company name",
+      "city": "City (CI)",
+      "cnpsNumber": "Employer CNPS no.",
+      "dgiNumber": "DGI no.",
+      "rccm": "RCCM",
+      "atRate": "CNPS AT rate (e.g. 0.03)"
+    },
+    "sector": "Business sector",
+    "selectOption": "— Select —",
+    "sectors": {
+      "transport": "Transport",
+      "commerce": "Trade",
+      "industrie": "Industry",
+      "services": "Services",
+      "btp": "Construction",
+      "finance": "Finance",
+      "sante": "Healthcare",
+      "ong": "NGO",
+      "public": "Public"
+    },
+    "appearance": "Appearance & theme",
+    "primaryColor": "Primary color",
+    "secondaryColor": "Secondary color",
+    "security": "Security",
+    "mfaRequiredLabel": "Enforce MFA for all employees of this tenant",
+    "mfaRequiredHint": "Hardens the platform policy — you can enforce it here even if it is not globally mandatory, but you cannot relax it if the platform already requires it.",
+    "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employees",
+    "save": "Save",
+    "saving": "Saving...",
+    "updated": "Settings updated."
+  },
+  "users": {
+    "add": "Add a user",
+    "table": {
+      "user": "User",
+      "role": "Role",
+      "jobTitle": "Job title",
+      "lastLogin": "Last login",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "never": "Never",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "resetPasswordTitle": "Reset password",
+    "confirmReset": "Reset {{name}}'s password?",
+    "confirmDelete": "Delete this user?",
+    "empty": "No users",
+    "resetResult": {
+      "title": "Password reset",
+      "description": "New temporary password for <0>{{name}}</0>:",
+      "emailSent": "Email sent to the user",
+      "emailNotSent": "Email not sent — share this password manually.",
+      "close": "Close"
+    },
+    "createResult": {
+      "title": "User created!",
+      "tempPasswordLabel": "Temporary password:",
+      "hint": "Share this password securely.",
+      "close": "Close"
+    },
+    "form": {
+      "title": "Add a user",
+      "email": "Email *",
+      "firstName": "First name *",
+      "lastName": "Last name *",
+      "role": "Role",
+      "department": "Department",
+      "noDepartment": "— None —",
+      "status": "Status",
+      "active": "Active",
+      "inactive": "Inactive",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating..."
+    }
+  },
+  "departments": {
+    "add": "New department",
+    "manager": "Manager: {{name}}",
+    "codePlaceholder": "Code",
+    "ok": "OK",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete this department?",
+    "empty": "No departments",
+    "form": {
+      "title": "New department",
+      "name": "Name *",
+      "namePlaceholder": "e.g. Operations Division",
+      "code": "Code",
+      "codePlaceholder": "EXPL",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating..."
+    }
+  },
+  "absenceTypes": {
+    "add": "New type",
+    "table": {
+      "type": "Type",
+      "code": "Code",
+      "calculation": "Calculation",
+      "maxDaysPerYear": "Max days/year",
+      "paid": "Paid",
+      "approval": "Approval",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "workingDays": "Working days",
+    "calendarDays": "Calendar days",
+    "yes": "Yes",
+    "no": "No",
+    "approvalRequired": "Required",
+    "approvalAuto": "Auto",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "confirmDelete": "Delete this type?",
+    "form": {
+      "title": "New absence type",
+      "code": "Code *",
+      "codePlaceholder": "RTT",
+      "label": "Label *",
+      "labelPlaceholder": "Time off in lieu",
+      "color": "Color",
+      "maxDaysPerYear": "Max days/year",
+      "maxDaysPlaceholder": "26",
+      "calculationMode": "Calculation mode",
+      "workingDaysOption": "Working days (CI Labor Code)",
+      "calendarDaysOption": "Calendar days",
+      "isPaid": "Paid absence",
+      "requiresApproval": "Approval required",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating..."
+    }
+  },
+  "payrollRules": {
+    "count_one": "{{count}} item configured — Compliant with CNPS 2024 & ITS/DGI CI",
+    "count_other": "{{count}} item(s) configured — Compliant with CNPS 2024 & ITS/DGI CI",
+    "add": "New item",
+    "table": {
+      "code": "Code",
+      "label": "Label",
+      "type": "Type",
+      "formulaOrRate": "Formula / Rate",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "confirmDelete": "Delete this item?",
+    "form": {
+      "title": "New payroll item",
+      "code": "Code *",
+      "codePlaceholder": "6000",
+      "type": "Type *",
+      "label": "Label *",
+      "labelPlaceholder": "Performance bonus",
+      "formula": "Formula (e.g. BRUT_MENSUEL * 0.05)",
+      "formulaPlaceholder": "VAR:PRIME_RENDEMENT",
+      "rate": "Rate (if contribution, e.g. 0.063)",
+      "description": "Description",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating..."
+    }
+  },
+  "legalEntities": {
+    "countries": {
+      "CIV": "Côte d'Ivoire",
+      "SEN": "Senegal",
+      "BEN": "Benin",
+      "TGO": "Togo",
+      "BFA": "Burkina Faso",
+      "MLI": "Mali",
+      "NER": "Niger",
+      "CMR": "Cameroon",
+      "TCD": "Chad",
+      "NGA": "Nigeria",
+      "GHA": "Ghana"
+    },
+    "help": {
+      "titleSubsidiaries": "Group subsidiaries",
+      "titleSingle": "Legal entity",
+      "textSubsidiaries": "Each subsidiary represents an establishment with its own CNPS no., RCCM, country and legislation pack. <0>Employees are linked to a subsidiary through their record</0>. The payroll engine then applies the legislation pack of the employee's subsidiary (CNPS, IPRES, etc. depending on the country). CNPS/DISA can be generated per subsidiary or consolidated.",
+      "textSingle": "Enter your company's legal information here (employer CNPS no., RCCM, AT rate, collective agreement). This information is used on payslips, contracts and social declarations."
+    },
+    "newSubsidiary": "New subsidiary",
+    "fillEntity": "Fill in the entity",
+    "subsidiaryBadge": "Subsidiary",
+    "entityMeta": "{{legalForm}} · {{city}} · {{country}}",
+    "employeesTitle": "Linked employees",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirmDelete": "Delete this entity?",
+    "card": {
+      "cnps": "CNPS: ",
+      "dgi": "DGI: ",
+      "rccm": "RCCM: ",
+      "atRate": "AT rate: ",
+      "legislationPack": "Legislation pack: ",
+      "collectiveAgreement": "CBA: "
+    },
+    "empty": "No legal entity — create your first entity (head office or subsidiary).",
+    "modal": {
+      "editSubsidiary": "Edit subsidiary",
+      "editEntity": "Edit legal entity",
+      "newSubsidiary": "New subsidiary",
+      "newEntity": "Main legal entity",
+      "name": "Legal name *",
+      "namePlaceholderSubsidiary": "e.g. SOTRA Bouaké",
+      "namePlaceholderSingle": "e.g. OpenLab Consulting",
+      "complianceTitle": "Legal compliance by country",
+      "country": "Country",
+      "legislationPack": "Legislation pack",
+      "legislationPackPlaceholder": "ci_2024",
+      "engineApplied": "Applied payroll engine: ",
+      "legalForm": "Legal form",
+      "city": "City",
+      "cityPlaceholder": "Abidjan",
+      "cnpsNumber": "Employer CNPS no.",
+      "dgiNumber": "DGI no.",
+      "rccm": "RCCM",
+      "atRate": "CNPS AT rate (0.02 = 2%)",
+      "collectiveAgreement": "Applicable collective agreement",
+      "collectiveAgreementPlaceholder": "e.g. CI Urban Transport Agreement",
+      "address": "Address",
+      "cancel": "Cancel",
+      "updating": "Updating...",
+      "creating": "Creating...",
+      "save": "Save",
+      "createSubsidiary": "Create subsidiary"
+    }
+  },
+  "dataImport": {
+    "templates": {
+      "employees": {
+        "label": "Employees",
+        "description": "Personal details, job, department, salary — main file"
+      },
+      "departments": {
+        "label": "Departments",
+        "description": "Organizational structure and managers"
+      },
+      "absences": {
+        "label": "Absence history",
+        "description": "Past absences and leave balances"
+      },
+      "pay_slips": {
+        "label": "Payslips",
+        "description": "Historical payslips (net, CNPS contributions, ITS)"
+      },
+      "contracts": {
+        "label": "OHADA contracts",
+        "description": "Permanent, fixed-term, apprenticeship with CI legal clauses"
+      },
+      "mobile_money": {
+        "label": "Mobile Money",
+        "description": "Wave / MTN / Orange numbers per employee"
+      },
+      "expenses": {
+        "label": "Expense reports",
+        "description": "Expense report and reimbursement history"
+      }
+    },
+    "validation": {
+      "wrongFormat": "Incorrect format — only .csv files are accepted",
+      "emptyFile": "The file is empty or contains no data",
+      "missingCols_one": "{{count}} missing column",
+      "missingCols_other": "{{count}} missing columns",
+      "extraCols_one": "{{count}} unknown column (will be ignored)",
+      "extraCols_other": "{{count}} unknown columns (will be ignored)"
+    },
+    "header": {
+      "title": "Historical data migration",
+      "description": "Download the CSV template for each section, fill it in with your data, then upload it directly on the card. Columns in red indicate a blocking non-conformity. The import is incremental — duplicates are ignored."
+    },
+    "generateUsers": {
+      "title": "Generate user access",
+      "description": "Creates an account + sends an email with a temporary password for each employee without access",
+      "withoutAccount": "without account",
+      "stats": {
+        "activeEmployees": "Active employees",
+        "withAccess": "With access",
+        "withoutAccess": "Without access"
+      },
+      "defaultError": "Error during generation",
+      "resultMessage": "{{created}} account(s) created out of {{total}} employees",
+      "resultStats": {
+        "created": "Created",
+        "emailsSent": "Emails sent",
+        "emailsFailed": "Emails failed"
+      },
+      "smtpError": "SMTP error: {{error}}",
+      "generating": "Generating...",
+      "action": "Generate access + send emails",
+      "allHaveAccount": "All active employees already have an account."
+    },
+    "modules": {
+      "title": "Data migration modules",
+      "description": "Click <0>Import</0> to expand the upload area of each section. First download the <1>Template</1>, fill it in, then upload it."
+    },
+    "card": {
+      "downloadTitle": "Download the CSV template",
+      "template": "Template",
+      "import": "Import",
+      "requiredColumns": "Required columns ({{count}})",
+      "dropHint": "Drag the filled CSV file or",
+      "browse": "Browse",
+      "fileSize": "({{size}} KB)",
+      "blockedTitle": "Non-conforming file — import blocked",
+      "blockedHint": "Download the template to get the exact columns.",
+      "warningTitle": "Warning — extra columns detected",
+      "serverErrorDefault": "Error during import. Check the data.",
+      "successTitle": "Import successful",
+      "resultStats": {
+        "total": "Total",
+        "inserted": "Imported",
+        "skipped": "Skipped"
+      },
+      "warnings_one": "{{count}} warning",
+      "warnings_other": "{{count}} warning(s)",
+      "importAnother": "Import another file",
+      "importing": "Importing...",
+      "validateAndImport": "Validate and import"
+    }
+  },
+  "workflow": {
+    "levelNames": {
+      "directManager": "Direct manager",
+      "hrManager": "HR Director / HR Manager",
+      "accounting": "Accounting",
+      "generalManagement": "General Management",
+      "ceo": "CEO / Managing Director"
+    },
+    "modules": {
+      "absences": {
+        "label": "Absences",
+        "desc": "Approval of absence requests"
+      },
+      "expenses": {
+        "label": "Expense reports",
+        "desc": "Validation of expense reports"
+      },
+      "payroll": {
+        "label": "Payroll closing",
+        "desc": "Validation before Mobile Money transfer"
+      }
+    },
+    "title": "Approval workflow — Configurable levels",
+    "description": "Define up to 5 hierarchical levels per module. Each level corresponds to an additional approver before finalization.",
+    "levelBadge_one": "{{count}} level",
+    "levelBadge_other": "{{count}} levels",
+    "chain": "Chain: {{chain}}",
+    "save": "Save workflow",
+    "saving": "Saving...",
+    "saved": "Workflow updated",
+    "constants": {
+      "title": "CI legal constants 2024",
+      "subtitle": "Automatically updated via the platform's Law Store.",
+      "smigMonthly": "Monthly SMIG",
+      "smigMonthlyValue": "75 000 FCFA (2026)",
+      "leavePerMonth": "Leave / month worked",
+      "leavePerMonthValue": "2.5 working days",
+      "cnpsRetirementEmployee": "CNPS retirement (employee)",
+      "cnpsRetirementEmployeeValue": "6.3 %",
+      "cnpsRetirementEmployer": "CNPS retirement (employer)",
+      "cnpsRetirementEmployerValue": "7.7 %",
+      "retirementCeiling": "Retirement ceiling / month",
+      "retirementCeilingValue": "1 647 315 FCFA",
+      "atPfCeiling": "AT/PF ceiling / month",
+      "atPfCeilingValue": "70 000 FCFA",
+      "itsAbatement": "ITS — Standard allowance",
+      "itsAbatementValue": "15 % of gross",
+      "fdfpContribution": "FDFP contribution",
+      "fdfpContributionValue": "0.4 % of payroll"
+    }
+  },
+  "connectivity": {
+    "intro": "Connect NexusRH to your tools: <0>webhooks</0> (push HR events), <1>API keys</1> (let a tool read your data), <2>REST connectors</2> (plug in a third-party API). Encrypted secrets, HMAC signatures, SSRF protection.",
+    "sub": {
+      "webhooks": "Webhooks",
+      "apiKeys": "API keys",
+      "connectors": "Connectors"
+    },
+    "secretBox": {
+      "warning": "Copy this value — it will not be shown again:",
+      "copied": "Copied",
+      "copy": "Copy",
+      "close": "Close"
+    },
+    "defaultError": "Error",
+    "webhooks": {
+      "count_one": "{{count}} webhook",
+      "count_other": "{{count}} webhook(s)",
+      "add": "New webhook",
+      "name": "Name",
+      "namePlaceholder": "e.g. Slack HR",
+      "targetUrl": "Target URL (https)",
+      "targetUrlPlaceholder": "https://hooks.example.com/...",
+      "events": "Events",
+      "create": "Create",
+      "active": "● active",
+      "inactive": "○ inactive",
+      "testTitle": "Test",
+      "toggleTitle": "Enable/disable",
+      "deleteTitle": "Delete",
+      "testOk": "OK (HTTP {{status}})",
+      "testFailed": "Failed ({{status}})",
+      "testNetwork": "network",
+      "empty": "No webhook configured."
+    },
+    "apiKeys": {
+      "count_one": "{{count}} key — used in the header <0>Authorization: Bearer nxk_…</0> on <1>/integrations/v1/*</1>",
+      "count_other": "{{count}} key(s) — used in the header <0>Authorization: Bearer nxk_…</0> on <1>/integrations/v1/*</1>",
+      "add": "New key",
+      "name": "Name",
+      "namePlaceholder": "e.g. Power BI connector",
+      "scopes": "Scopes",
+      "generate": "Generate the key",
+      "table": {
+        "name": "Name",
+        "prefix": "Prefix",
+        "scopes": "Scopes",
+        "lastUsed": "Last used",
+        "status": "Status"
+      },
+      "active": "Active",
+      "revoked": "Revoked",
+      "toggleTitle": "Enable/revoke",
+      "deleteTitle": "Delete",
+      "empty": "No API key."
+    },
+    "connectors": {
+      "count_one": "{{count}} outbound REST connector",
+      "count_other": "{{count}} outbound REST connector(s)",
+      "add": "New connector",
+      "name": "Name",
+      "namePlaceholder": "e.g. Accounting API",
+      "baseUrl": "Base URL (https)",
+      "baseUrlPlaceholder": "https://api.example.com",
+      "auth": "Authentication",
+      "authNone": "None",
+      "authBearer": "Bearer token",
+      "authBasic": "Basic (user:pass)",
+      "authApiKey": "API key (header)",
+      "headerName": "Header name",
+      "headerNamePlaceholder": "X-API-Key",
+      "secret": "Secret (AES-256 encrypted)",
+      "secretPlaceholderBasic": "user:password",
+      "secretPlaceholderToken": "token / key",
+      "create": "Create",
+      "active": "● active",
+      "inactive": "○ inactive",
+      "authLabel": "auth: {{type}}",
+      "testTitle": "Test",
+      "deleteTitle": "Delete",
+      "empty": "No connector."
+    }
+  },
+  "mfa": {
+    "title": "Two-factor authentication",
+    "subtitle": "Strengthen your account security with an authenticator app (Google Authenticator, Authy, 1Password, Bitwarden…).",
+    "setupError": "Error during MFA setup",
+    "verifySuccess": "✅ MFA enabled. At your next login, you will be asked for a code.",
+    "verifyError": "Invalid code. Check the time on your phone.",
+    "disableSuccess": "MFA disabled.",
+    "disableError": "Error during deactivation.",
+    "statusConfigurable": "MFA: configurable from this area",
+    "statusLoggedOut": "MFA: please log in",
+    "statusHint": "When MFA is active, you will be asked for a 6-digit code at every login, in addition to your password.",
+    "initializing": "Initializing…",
+    "enable": "Enable MFA",
+    "disable": "Disable",
+    "setup": {
+      "step1Title": "1. Scan the QR code",
+      "step1Desc": "Open your authenticator app, add an account, then scan this QR:",
+      "qrAlt": "MFA QR code",
+      "manualHint": "Or enter this code manually:",
+      "copy": "Copy",
+      "step2Title": "2. Save your backup codes (shown ONLY once)",
+      "step2Desc": "If you lose your phone, these codes will let you recover access. Each code can be used only once.",
+      "copyAll": "Copy all codes",
+      "step3Title": "3. Confirm with a first code",
+      "step3Desc": "Enter the 6-digit code shown by your app to complete activation.",
+      "codePlaceholder": "123 456",
+      "verifying": "Verifying…",
+      "activate": "Activate"
+    },
+    "disablePanel": {
+      "title": "Disable MFA?",
+      "desc": "Enter your current password to confirm. The backup codes will also be purged.",
+      "passwordPlaceholder": "Your password",
+      "disabling": "Disabling…",
+      "disable": "Disable MFA",
+      "cancel": "Cancel"
+    }
+  }
+}

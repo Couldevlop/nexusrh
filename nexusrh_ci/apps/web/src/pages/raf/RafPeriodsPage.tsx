@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { Send, Loader2, CheckCircle2, ClipboardList, Building2 } from 'lucide-react'
 
@@ -30,14 +31,15 @@ interface RafPeriod {
   completed_by_site_at: string | null
 }
 
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  sent_to_sites:     { label: 'À compléter',  color: 'bg-amber-100 text-amber-800 border-amber-200' },
-  completed_by_site: { label: 'Soumise',      color: 'bg-blue-100 text-blue-800 border-blue-200' },
-  validated_central: { label: 'Validée',      color: 'bg-green-100 text-green-800 border-green-200' },
-  closed:            { label: 'Clôturée',     color: 'bg-gray-100 text-gray-800 border-gray-200' },
+const STATUS_COLOR: Record<string, string> = {
+  sent_to_sites:     'bg-amber-100 text-amber-800 border-amber-200',
+  completed_by_site: 'bg-blue-100 text-blue-800 border-blue-200',
+  validated_central: 'bg-green-100 text-green-800 border-green-200',
+  closed:            'bg-gray-100 text-gray-800 border-gray-200',
 }
 
 export default function RafPeriodsPage() {
+  const { t } = useTranslation('raf')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery<{ data: RafPeriod[] }>({
@@ -65,17 +67,16 @@ export default function RafPeriodsPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ClipboardList className="h-6 w-6" /> Paie de ma filiale
+          <ClipboardList className="h-6 w-6" /> {t('title')}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Périodes à compléter pour la (les) filiale(s) sous votre responsabilité.
-          Saisissez les variables locales (heures supp, primes, absences) avant de soumettre.
+          {t('subtitle')}
         </p>
       </div>
 
       {toSubmit.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>{toSubmit.length}</strong> période{toSubmit.length > 1 ? 's' : ''} en attente de votre soumission
+          <Trans i18nKey="pendingBanner" ns="raf" count={toSubmit.length} components={{ strong: <strong /> }} />
         </div>
       )}
 
@@ -83,26 +84,29 @@ export default function RafPeriodsPage() {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr className="text-left">
-              <th className="px-4 py-3 font-semibold">Mois</th>
-              <th className="px-4 py-3 font-semibold">Filiale</th>
-              <th className="px-4 py-3 font-semibold">Pack législatif</th>
-              <th className="px-4 py-3 font-semibold">Statut</th>
-              <th className="px-4 py-3 font-semibold text-right">Masse brute</th>
-              <th className="px-4 py-3 font-semibold text-right">Net à payer</th>
-              <th className="px-4 py-3 font-semibold text-right">Action</th>
+              <th className="px-4 py-3 font-semibold">{t('colMonth')}</th>
+              <th className="px-4 py-3 font-semibold">{t('colSubsidiary')}</th>
+              <th className="px-4 py-3 font-semibold">{t('colPack')}</th>
+              <th className="px-4 py-3 font-semibold">{t('colStatus')}</th>
+              <th className="px-4 py-3 font-semibold text-right">{t('colGross')}</th>
+              <th className="px-4 py-3 font-semibold text-right">{t('colNet')}</th>
+              <th className="px-4 py-3 font-semibold text-right">{t('colAction')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">{t('loading')}</td></tr>
             )}
             {!isLoading && periods.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                Aucune période en attente. La RH centrale n'a pas encore initié la paie du mois ou ne vous a pas assigné de filiale.
+                {t('empty')}
               </td></tr>
             )}
             {periods.map(p => {
-              const meta = STATUS_LABEL[p.status] ?? { label: p.status, color: 'bg-muted text-foreground' }
+              const meta = {
+                label: STATUS_COLOR[p.status] ? t(`statuses.${p.status}`) : p.status,
+                color: STATUS_COLOR[p.status] ?? 'bg-muted text-foreground',
+              }
               const entity = p.legal_entity_id ? entityMap.get(p.legal_entity_id) : null
               return (
                 <tr key={p.id} className="hover:bg-muted/30">
@@ -113,7 +117,7 @@ export default function RafPeriodsPage() {
                         <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                         {entity.name}
                         {entity.cnps_number && (
-                          <span className="text-xs text-muted-foreground">· CNPS {entity.cnps_number}</span>
+                          <span className="text-xs text-muted-foreground">{t('cnpsLabel', { number: entity.cnps_number })}</span>
                         )}
                       </span>
                     ) : <span className="text-muted-foreground">—</span>}
@@ -135,7 +139,7 @@ export default function RafPeriodsPage() {
                     {p.status === 'sent_to_sites' ? (
                       <button
                         onClick={() => {
-                          if (confirm(`Soumettre la paie ${p.month} ? Les bulletins seront générés et le brouillon transmis à la direction centrale.`)) {
+                          if (confirm(t('submitConfirm', { month: p.month }))) {
                             submitMut.mutate(p.id)
                           }
                         }}
@@ -143,7 +147,7 @@ export default function RafPeriodsPage() {
                         className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                       >
                         {submitMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                        Soumettre
+                        {t('submit')}
                       </button>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -158,7 +162,7 @@ export default function RafPeriodsPage() {
 
       {submitMut.isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {(submitMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur lors de la soumission'}
+          {(submitMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('submitError')}
         </div>
       )}
     </div>

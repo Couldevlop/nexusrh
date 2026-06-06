@@ -1,0 +1,33 @@
+{
+  "title": "Leave",
+  "requestsCount_one": "{{count}} request",
+  "requestsCount_other": "{{count}} request(s)",
+  "status": {
+    "submitted": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected"
+  },
+  "table": {
+    "employee": "Employee",
+    "type": "Type",
+    "period": "Period",
+    "days": "Days",
+    "reason": "Reason",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "halfDay": "½d",
+  "fullDays": "{{count}}d",
+  "noReason": "—",
+  "actions": {
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "empty": "No {{status}} leave",
+  "rejectModal": {
+    "title": "Rejection reason",
+    "placeholder": "Explain the reason for rejection (optional)...",
+    "cancel": "Cancel",
+    "confirm": "Confirm rejection"
+  }
+}

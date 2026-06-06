@@ -1,0 +1,102 @@
+{
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "clients": "Mes clients",
+    "members": "Membres",
+    "settings": "Paramètres",
+    "title": "Cabinet",
+    "subtitle": "Cabinet de recrutement",
+    "roleOwner": "Propriétaire",
+    "roleMember": "Recruteur",
+    "logout": "Déconnexion"
+  },
+  "common": {
+    "loading": "Chargement…",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "ci": "Côte d'Ivoire",
+    "ciShort": "CI",
+    "createError": "Erreur lors de la création",
+    "tempPassword": "Mot de passe temporaire :",
+    "active": "Actif",
+    "inactive": "Inactif"
+  },
+  "actingAsBanner": {
+    "actingFor": "Vous agissez pour <0>{{tenant}}</0>",
+    "viaAgency": " via le cabinet <0>{{agency}}</0>",
+    "leave": "Quitter"
+  },
+  "tenantSwitcher": {
+    "loading": "Chargement…",
+    "empty": "Aucune entreprise cliente. Créez-en une depuis « Mes clients ».",
+    "accessDenied": "Accès au tenant refusé"
+  },
+  "dashboard": {
+    "title": "Tableau de bord cabinet",
+    "subtitle": "Pilotez vos entreprises clientes et votre équipe.",
+    "clientCount": "Entreprises clientes",
+    "memberCount": "Membres du cabinet",
+    "accessClientTitle": "Accéder à une entreprise cliente",
+    "accessClientSubtitle": "Sélectionnez une entreprise pour gérer ses ressources humaines en son nom."
+  },
+  "clients": {
+    "title": "Mes entreprises clientes",
+    "subtitle": "Entreprises (Côte d'Ivoire) gérées par votre cabinet.",
+    "newButton": "Nouvelle entreprise",
+    "createdTitle": "Entreprise créée ✓",
+    "adminLabel": "Admin :",
+    "tempPasswordNote": "Transmis par email via l'adresse de votre cabinet.",
+    "fields": {
+      "name": "Nom de l'entreprise",
+      "slug": "Slug (identifiant)",
+      "adminEmail": "Email administrateur",
+      "city": "Ville",
+      "logo": "Logo de l'entreprise"
+    },
+    "submit": "Créer l'entreprise",
+    "empty": "Aucune entreprise cliente pour le moment."
+  },
+  "members": {
+    "title": "Membres du cabinet",
+    "subtitle": "Recruteurs et propriétaires de votre cabinet.",
+    "inviteButton": "Inviter un membre",
+    "createdTitle": "Membre créé ✓",
+    "fields": {
+      "email": "Email",
+      "role": "Rôle",
+      "firstName": "Prénom",
+      "lastName": "Nom"
+    },
+    "roleMember": "Recruteur",
+    "roleOwner": "Propriétaire",
+    "submit": "Créer le membre",
+    "table": {
+      "member": "Membre",
+      "email": "Email",
+      "role": "Rôle",
+      "status": "Statut"
+    },
+    "empty": "Aucun membre."
+  },
+  "settings": {
+    "title": "Paramètres du cabinet",
+    "subtitle": "Identité visuelle et adresse d'envoi des invitations.",
+    "logo": "Logo du cabinet",
+    "fields": {
+      "name": "Nom du cabinet",
+      "city": "Ville",
+      "contactEmail": "Email de contact",
+      "contactPhone": "Téléphone",
+      "primaryColor": "Couleur primaire",
+      "senderEmail": "Email expéditeur",
+      "senderName": "Nom expéditeur"
+    },
+    "senderSection": {
+      "title": "Adresse d'envoi des invitations",
+      "hint": "Les emails de connexion envoyés aux entreprises que VOUS créez partiront avec cette adresse en expéditeur (Reply-To)."
+    },
+    "saveError": "Erreur lors de l'enregistrement",
+    "save": "Enregistrer",
+    "saved": "Enregistré ✓"
+  }
+}

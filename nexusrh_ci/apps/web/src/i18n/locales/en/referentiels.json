@@ -1,0 +1,58 @@
+{
+  "sources": {
+    "code_travail_ci": "CI Labour Code",
+    "code_travail_ci_short": "LC",
+    "convention_collective": "Collective Agreements",
+    "convention_collective_short": "CA"
+  },
+  "countries": {
+    "CIV": "Côte d'Ivoire",
+    "BEN": "Benin",
+    "TGO": "Togo",
+    "BFA": "Burkina Faso",
+    "SEN": "Senegal",
+    "MLI": "Mali",
+    "NER": "Niger",
+    "TCD": "Chad",
+    "NGA": "Nigeria"
+  },
+  "chips": {
+    "smig": "Minimum wage",
+    "preavis": "notice period",
+    "congesMaternite": "maternity leave",
+    "cnpsRetraite": "CNPS pension",
+    "licenciement": "dismissal"
+  },
+  "sidebar": {
+    "summary": "Contents",
+    "noArticle": "No article"
+  },
+  "tabs": {
+    "all": "All",
+    "codeTravail": "Labour Code",
+    "conventions": "Agreements"
+  },
+  "header": {
+    "title": "Legal Reference",
+    "titleWithCountry": "Legal Reference — {{country}}",
+    "subtitle": "Labour Code · Collective Agreements · Full-text search"
+  },
+  "subsidiary": {
+    "applicableLabel": "Articles applicable to your subsidiary:",
+    "allCountries": "All countries",
+    "backToMine": "Back to my subsidiary's country ({{country}})"
+  },
+  "search": {
+    "placeholder": "Search a term, article, payroll item… (⌘K)",
+    "resultCount_one": "<0>{{count}}</0> result for <1>\"{{query}}\"</1>",
+    "resultCount_other": "<0>{{count}}</0> results for <1>\"{{query}}\"</1>",
+    "error": "Unable to load results — check your connection or reload the page.",
+    "payrollBadge": "payroll",
+    "noResultTitle": "No result for \"{{query}}\"",
+    "noResultHint": "Change the term or switch the source filter"
+  },
+  "welcome": {
+    "title": "Ivorian Legal Reference",
+    "subtitle": "Search or browse the contents to explore the CI Labour Code and the collective agreements."
+  }
+}

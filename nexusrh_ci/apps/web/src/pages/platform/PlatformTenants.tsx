@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { Building2, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -10,6 +11,7 @@ interface Tenant {
 }
 
 export default function PlatformTenants() {
+  const { t: tt } = useTranslation('platform')
   const navigate = useNavigate()
 
   const { data, isLoading } = useQuery<{ data: Tenant[]; total: number }>({
@@ -24,20 +26,23 @@ export default function PlatformTenants() {
     trial: 'bg-yellow-100 text-yellow-700',
     suspended: 'bg-red-100 text-red-700',
   }
+  const statusLabel: Record<string, string> = {
+    active: tt('status.active'), trial: tt('status.trial'), suspended: tt('status.suspended'),
+  }
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tenants</h1>
-          <p className="text-sm text-muted-foreground mt-1">{data?.total ?? 0} entreprise(s) enregistrée(s)</p>
+          <h1 className="text-2xl font-bold">{tt('tenants.title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{tt('tenants.count', { count: data?.total ?? 0 })}</p>
         </div>
         <button
           onClick={() => navigate('/platform/tenants/new')}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
-          Nouveau tenant
+          {tt('tenants.newButton')}
         </button>
       </div>
 
@@ -50,11 +55,11 @@ export default function PlatformTenants() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="p-4">Entreprise</th>
-                <th className="p-4">Ville · Secteur</th>
-                <th className="p-4">Plan</th>
-                <th className="p-4 text-right">Max employés</th>
-                <th className="p-4">Statut</th>
+                <th className="p-4">{tt('tenants.table.company')}</th>
+                <th className="p-4">{tt('tenants.table.cityCategory')}</th>
+                <th className="p-4">{tt('tenants.table.plan')}</th>
+                <th className="p-4 text-right">{tt('tenants.table.maxEmployees')}</th>
+                <th className="p-4">{tt('tenants.table.status')}</th>
                 <th className="p-4"></th>
               </tr>
             </thead>
@@ -75,6 +80,7 @@ export default function PlatformTenants() {
                   <td className="p-4 text-muted-foreground">
                     {t.city ?? '—'} · {t.sector ?? '—'}
                   </td>
+                  {/* plan_type is an API key, kept verbatim with capitalize styling */}
                   <td className="p-4">
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
                       {t.plan_type}
@@ -83,7 +89,7 @@ export default function PlatformTenants() {
                   <td className="p-4 text-right text-muted-foreground">{t.max_employees}</td>
                   <td className="p-4">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[t.status] ?? ''}`}>
-                      {t.status}
+                      {statusLabel[t.status] ?? t.status}
                     </span>
                   </td>
                   <td className="p-4">
@@ -91,7 +97,7 @@ export default function PlatformTenants() {
                       onClick={() => navigate(`/platform/tenants/${t.id}`)}
                       className="text-xs text-primary hover:underline"
                     >
-                      Gérer
+                      {tt('common.manage')}
                     </button>
                   </td>
                 </tr>
@@ -100,7 +106,7 @@ export default function PlatformTenants() {
                 <tr>
                   <td colSpan={6} className="p-12 text-center text-muted-foreground">
                     <Building2 className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    <p>Aucun tenant créé</p>
+                    <p>{tt('tenants.empty')}</p>
                   </td>
                 </tr>
               )}

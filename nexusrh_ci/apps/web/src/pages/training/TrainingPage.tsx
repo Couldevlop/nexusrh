@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api, formatDate, formatFCFA } from '@/lib/api'
 import { BookOpen, Plus, Clock, Users, CheckCircle, Award, FileText, Loader2, UserPlus } from 'lucide-react'
 
@@ -26,11 +28,15 @@ interface Enrollment {
 
 interface EmployeeLite { id: string; first_name: string; last_name: string }
 
-const FORMAT_LABELS: Record<string, string> = {
-  presentiel: 'Présentiel', distanciel: 'Distanciel', hybride: 'Hybride',
+const FORMAT_KEYS: Record<string, string> = {
+  presentiel: 'presentiel', distanciel: 'distanciel', hybride: 'hybride', 'e-learning': 'elearning',
 }
+// Libellé traduit d'un format ; repli sur la valeur brute (API) si inconnu.
+const formatLabel = (t: TFunction, format: string) =>
+  FORMAT_KEYS[format] ? t(`formats.${FORMAT_KEYS[format]}`) : format
 
 export default function TrainingPage() {
+  const { t } = useTranslation('training')
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<'catalog' | 'sessions' | 'enrollments' | 'fdfp'>('catalog')
   const [fdfpForm, setFdfpForm] = useState({
@@ -137,19 +143,19 @@ export default function TrainingPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Formations & FDFP</h1>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {catalog.length} formation(s) · {catalog.filter(t => t.is_fdfp_eligible).length} éligibles FDFP
+            {t('summary', { count: catalog.length, eligible: catalog.filter(c => c.is_fdfp_eligible).length })}
           </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowNewTraining(true)}
             className="flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
-            <Plus className="h-4 w-4" /> Nouvelle formation
+            <Plus className="h-4 w-4" /> {t('header.newTraining')}
           </button>
           <button onClick={() => setShowNewSession(true)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Planifier une session
+            <Plus className="h-4 w-4" /> {t('header.planSession')}
           </button>
         </div>
       </div>
@@ -157,13 +163,13 @@ export default function TrainingPage() {
       {/* Tabs */}
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
         {([
-          ['catalog', 'Catalogue'],
-          ['sessions', 'Sessions'],
-          ['enrollments', 'Inscriptions'],
-          ['fdfp', `FDFP Remboursement (${fdfpEligible.length})`],
-        ] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+          ['catalog', t('tabs.catalog')],
+          ['sessions', t('tabs.sessions')],
+          ['enrollments', t('tabs.enrollments')],
+          ['fdfp', t('tabs.fdfp', { count: fdfpEligible.length })],
+        ] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === key ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             {label}
           </button>
         ))}
@@ -194,12 +200,12 @@ export default function TrainingPage() {
                 {training.duration && (
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {training.duration} {training.duration_unit === 'hours' ? 'h' : 'j'}
+                    {training.duration} {training.duration_unit === 'hours' ? t('duration.hours') : t('duration.days')}
                   </span>
                 )}
-                <span>{FORMAT_LABELS[training.format] ?? training.format}</span>
+                <span>{formatLabel(t, training.format)}</span>
                 <span className="flex items-center gap-1">
-                  <BookOpen className="h-3 w-3" />{training.sessions_count} session(s)
+                  <BookOpen className="h-3 w-3" />{t('catalog.sessionsCount', { count: training.sessions_count })}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -207,7 +213,7 @@ export default function TrainingPage() {
                   onClick={() => { setNewSession(p => ({ ...p, training_id: training.id })); setShowNewSession(true) }}
                   className="flex-1 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
                 >
-                  + Planifier session
+                  {t('catalog.planSession')}
                 </button>
               </div>
             </div>
@@ -215,7 +221,7 @@ export default function TrainingPage() {
           {catalog.length === 0 && (
             <div className="col-span-3 p-8 text-center text-muted-foreground">
               <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
-              Aucune formation dans le catalogue
+              {t('catalog.empty')}
             </div>
           )}
         </div>
@@ -227,13 +233,13 @@ export default function TrainingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="p-4">Formation</th>
-                <th className="p-4">Date</th>
-                <th className="p-4">Lieu / Formateur</th>
-                <th className="p-4 text-center">Inscriptions</th>
-                <th className="p-4">Format</th>
-                <th className="p-4">Statut</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-4">{t('sessions.table.training')}</th>
+                <th className="p-4">{t('sessions.table.date')}</th>
+                <th className="p-4">{t('sessions.table.locationTrainer')}</th>
+                <th className="p-4 text-center">{t('sessions.table.enrollments')}</th>
+                <th className="p-4">{t('sessions.table.format')}</th>
+                <th className="p-4">{t('sessions.table.status')}</th>
+                <th className="p-4 text-right">{t('sessions.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -243,7 +249,7 @@ export default function TrainingPage() {
                     <p className="font-medium">{s.training_title}</p>
                     {s.category && <p className="text-xs text-muted-foreground">{s.category}</p>}
                     {s.is_fdfp_eligible && (
-                      <span className="text-xs text-green-600 font-medium">FDFP éligible</span>
+                      <span className="text-xs text-green-600 font-medium">{t('sessions.fdfpEligible')}</span>
                     )}
                   </td>
                   <td className="p-4">
@@ -266,20 +272,24 @@ export default function TrainingPage() {
                       />
                     </div>
                   </td>
-                  <td className="p-4">{FORMAT_LABELS[s.format] ?? s.format}</td>
+                  <td className="p-4">{formatLabel(t, s.format)}</td>
                   <td className="p-4">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       s.status === 'planned' ? 'bg-blue-100 text-blue-700' :
                       s.status === 'completed' ? 'bg-green-100 text-green-700' :
                       'bg-muted text-muted-foreground'
-                    }`}>{s.status}</span>
+                    }`}>{
+                      s.status === 'planned' ? t('sessions.status.planned')
+                        : s.status === 'completed' ? t('sessions.status.completed')
+                        : s.status
+                    }</span>
                   </td>
                   <td className="p-4 text-right">
                     {s.status === 'planned' && (
                       <button
                         onClick={() => { setParticipantsSession(s.id); setParticipantsPick([]) }}
                         className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5">
-                        <UserPlus className="h-3.5 w-3.5" /> Participants
+                        <UserPlus className="h-3.5 w-3.5" /> {t('sessions.participants')}
                       </button>
                     )}
                   </td>
@@ -289,7 +299,7 @@ export default function TrainingPage() {
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    Aucune session planifiée
+                    {t('sessions.empty')}
                   </td>
                 </tr>
               )}
@@ -304,11 +314,11 @@ export default function TrainingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="p-4">Employé</th>
-                <th className="p-4">Formation</th>
-                <th className="p-4">Date session</th>
-                <th className="p-4">Lieu</th>
-                <th className="p-4">Statut</th>
+                <th className="p-4">{t('enrollments.table.employee')}</th>
+                <th className="p-4">{t('enrollments.table.training')}</th>
+                <th className="p-4">{t('enrollments.table.sessionDate')}</th>
+                <th className="p-4">{t('enrollments.table.location')}</th>
+                <th className="p-4">{t('enrollments.table.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -319,15 +329,15 @@ export default function TrainingPage() {
                   </td>
                   <td className="p-4">{e.training_title}</td>
                   <td className="p-4">{formatDate(e.session_start)}</td>
-                  <td className="p-4 text-muted-foreground">{e.location ?? '—'}</td>
+                  <td className="p-4 text-muted-foreground">{e.location ?? t('enrollments.noLocation')}</td>
                   <td className="p-4">
                     {e.completed_at ? (
                       <span className="flex items-center gap-1 text-xs font-medium text-green-700">
-                        <CheckCircle className="h-3 w-3" /> Terminée
+                        <CheckCircle className="h-3 w-3" /> {t('enrollments.completed')}
                       </span>
                     ) : (
                       <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                        Inscrit
+                        {t('enrollments.enrolled')}
                       </span>
                     )}
                   </td>
@@ -337,7 +347,7 @@ export default function TrainingPage() {
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-muted-foreground">
                     <Award className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    Aucune inscription
+                    {t('enrollments.empty')}
                   </td>
                 </tr>
               )}
@@ -352,17 +362,16 @@ export default function TrainingPage() {
           {/* Explication FDFP */}
           <div className="rounded-xl border border-green-200 bg-green-50 p-5">
             <h2 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
-              <Award className="h-4 w-4" /> FDFP — Fonds de Développement de la Formation Professionnelle
+              <Award className="h-4 w-4" /> {t('fdfp.heading')}
             </h2>
             <p className="text-sm text-green-700 mb-3">
-              En tant qu'entreprise de plus de 10 salariés, vous versez <strong>0,4 % de votre masse salariale</strong> au FDFP.
-              Vous pouvez récupérer une partie de cette contribution en finançant des formations agréées FDFP.
+              <Trans t={t} i18nKey="fdfp.intro" components={{ strong: <strong /> }} />
             </p>
             <div className="grid grid-cols-3 gap-3 text-xs">
               {[
-                { label: 'Formations éligibles catalogue', value: `${fdfpEligible.length} formations` },
-                { label: 'Contribution légale', value: '0,4 % masse salariale' },
-                { label: 'Délai remboursement', value: '30–60 jours FDFP' },
+                { label: t('fdfp.stats.eligibleLabel'), value: t('fdfp.stats.eligibleValue', { count: fdfpEligible.length }) },
+                { label: t('fdfp.stats.contributionLabel'), value: t('fdfp.stats.contributionValue') },
+                { label: t('fdfp.stats.delayLabel'), value: t('fdfp.stats.delayValue') },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-white rounded-lg p-3 border border-green-200">
                   <p className="text-muted-foreground">{label}</p>
@@ -375,34 +384,34 @@ export default function TrainingPage() {
           {/* Formations éligibles */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="border-b border-border px-5 py-3">
-              <h3 className="font-semibold">Formations agréées FDFP dans votre catalogue</h3>
+              <h3 className="font-semibold">{t('fdfp.eligibleTable.heading')}</h3>
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                  <th className="p-3">Formation</th>
-                  <th className="p-3">Catégorie</th>
-                  <th className="p-3">Format</th>
-                  <th className="p-3 text-center">Durée</th>
-                  <th className="p-3 text-center">Sessions</th>
+                  <th className="p-3">{t('fdfp.eligibleTable.training')}</th>
+                  <th className="p-3">{t('fdfp.eligibleTable.category')}</th>
+                  <th className="p-3">{t('fdfp.eligibleTable.format')}</th>
+                  <th className="p-3 text-center">{t('fdfp.eligibleTable.duration')}</th>
+                  <th className="p-3 text-center">{t('fdfp.eligibleTable.sessions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {fdfpEligible.map(t => (
-                  <tr key={t.id} className="hover:bg-muted/20">
-                    <td className="p-3 font-medium">{t.title}</td>
-                    <td className="p-3 text-muted-foreground text-xs">{t.category ?? '—'}</td>
-                    <td className="p-3 text-xs">{FORMAT_LABELS[t.format] ?? t.format}</td>
+                {fdfpEligible.map(training => (
+                  <tr key={training.id} className="hover:bg-muted/20">
+                    <td className="p-3 font-medium">{training.title}</td>
+                    <td className="p-3 text-muted-foreground text-xs">{training.category ?? t('fdfp.eligibleTable.noCategory')}</td>
+                    <td className="p-3 text-xs">{formatLabel(t, training.format)}</td>
                     <td className="p-3 text-center text-xs">
-                      {t.duration ? `${t.duration} ${t.duration_unit === 'hours' ? 'h' : 'j'}` : '—'}
+                      {training.duration ? `${training.duration} ${training.duration_unit === 'hours' ? t('duration.hours') : t('duration.days')}` : t('fdfp.eligibleTable.noDuration')}
                     </td>
-                    <td className="p-3 text-center">{t.sessions_count}</td>
+                    <td className="p-3 text-center">{training.sessions_count}</td>
                   </tr>
                 ))}
                 {fdfpEligible.length === 0 && (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-muted-foreground text-sm">
-                      Aucune formation marquée FDFP éligible — cochez "Agréé FDFP" lors de la création
+                      {t('fdfp.eligibleTable.empty')}
                     </td>
                   </tr>
                 )}
@@ -413,16 +422,16 @@ export default function TrainingPage() {
           {/* Formulaire demande remboursement */}
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Nouvelle demande de remboursement FDFP
+              <FileText className="h-4 w-4" /> {t('fdfp.form.heading')}
             </h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {[
-                { field: 'training_title' as const, label: 'Intitulé formation *', type: 'text', placeholder: 'Ex. Leadership & Management' },
-                { field: 'provider_name' as const, label: 'Organisme de formation *', type: 'text', placeholder: 'Ex. CFAO Training CI' },
-                { field: 'fdfp_code' as const, label: 'Code agrément FDFP', type: 'text', placeholder: 'Ex. FDFP/CI/2024/1234' },
-                { field: 'session_date' as const, label: 'Date de la session *', type: 'date', placeholder: '' },
-                { field: 'employees_count' as const, label: 'Nombre de salariés formés *', type: 'number', placeholder: '1' },
-                { field: 'total_cost' as const, label: 'Coût total formation (FCFA) *', type: 'number', placeholder: '250000' },
+                { field: 'training_title' as const, label: t('fdfp.form.trainingTitle'), type: 'text', placeholder: t('fdfp.form.trainingTitlePlaceholder') },
+                { field: 'provider_name' as const, label: t('fdfp.form.provider'), type: 'text', placeholder: t('fdfp.form.providerPlaceholder') },
+                { field: 'fdfp_code' as const, label: t('fdfp.form.fdfpCode'), type: 'text', placeholder: t('fdfp.form.fdfpCodePlaceholder') },
+                { field: 'session_date' as const, label: t('fdfp.form.sessionDate'), type: 'date', placeholder: '' },
+                { field: 'employees_count' as const, label: t('fdfp.form.employeesCount'), type: 'number', placeholder: t('fdfp.form.employeesCountPlaceholder') },
+                { field: 'total_cost' as const, label: t('fdfp.form.totalCost'), type: 'number', placeholder: t('fdfp.form.totalCostPlaceholder') },
               ].map(({ field, label, type, placeholder }) => (
                 <div key={field}>
                   <label className="text-sm font-medium mb-1 block">{label}</label>
@@ -436,7 +445,7 @@ export default function TrainingPage() {
 
             {fdfpForm.total_cost && parseInt(fdfpForm.total_cost) > 0 && (
               <div className="mt-4 rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
-                Montant remboursable estimé (40–60%) : {formatFCFA(Math.floor(parseInt(fdfpForm.total_cost) * 0.5))} FCFA
+                {t('fdfp.form.estimate', { amount: formatFCFA(Math.floor(parseInt(fdfpForm.total_cost) * 0.5)) })}
               </div>
             )}
 
@@ -447,22 +456,21 @@ export default function TrainingPage() {
                 className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
                 {fdfpMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 <FileText className="h-4 w-4" />
-                Soumettre la demande FDFP
+                {t('fdfp.form.submit')}
               </button>
               {fdfpSuccess && (
                 <span className="flex items-center gap-1.5 text-sm text-green-600">
-                  <CheckCircle className="h-4 w-4" /> Demande enregistrée — en attente de traitement FDFP
+                  <CheckCircle className="h-4 w-4" /> {t('fdfp.form.success')}
                 </span>
               )}
               {fdfpMut.isError && (
                 <span className="text-sm text-destructive">
-                  {(fdfpMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur'}
+                  {(fdfpMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('fdfp.form.error')}
                 </span>
               )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              La demande sera transmise à votre gestionnaire RH pour validation, puis envoyée au FDFP CI.
-              Délai de traitement : 30 à 60 jours ouvrables.
+              {t('fdfp.form.note')}
             </p>
           </div>
         </div>
@@ -472,47 +480,47 @@ export default function TrainingPage() {
       {showNewSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewSession(false)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-4">Planifier une session</h3>
+            <h3 className="font-semibold mb-4">{t('sessionModal.title')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Formation *</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.training')}</label>
                 <select value={newSession.training_id}
                   onChange={e => setNewSession(p => ({ ...p, training_id: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                  <option value="">— Sélectionner —</option>
-                  {catalog.map(t => (
-                    <option key={t.id} value={t.id}>{t.title}</option>
+                  <option value="">{t('sessionModal.selectPlaceholder')}</option>
+                  {catalog.map(training => (
+                    <option key={training.id} value={training.id}>{training.title}</option>
                   ))}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Date début *</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.startDate')}</label>
                   <input type="date" value={newSession.start_date}
                     onChange={e => setNewSession(p => ({ ...p, start_date: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Date fin</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.endDate')}</label>
                   <input type="date" value={newSession.end_date}
                     onChange={e => setNewSession(p => ({ ...p, end_date: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Lieu</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.location')}</label>
                 <input value={newSession.location} onChange={e => setNewSession(p => ({ ...p, location: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
-                  placeholder="Salle de formation, Abidjan" />
+                  placeholder={t('sessionModal.locationPlaceholder')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Formateur</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.trainer')}</label>
                   <input value={newSession.trainer} onChange={e => setNewSession(p => ({ ...p, trainer: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Places max</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('sessionModal.maxPlaces')}</label>
                   <input type="number" value={newSession.max_places}
                     onChange={e => setNewSession(p => ({ ...p, max_places: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
@@ -520,18 +528,18 @@ export default function TrainingPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
-                  Participants ({sessionEmployees.length} sélectionné{sessionEmployees.length > 1 ? 's' : ''})
+                  {t('sessionModal.participants', { count: sessionEmployees.length })}
                 </label>
                 <EmployeePicker employees={employees} selected={sessionEmployees} onChange={setSessionEmployees} />
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
               <button onClick={() => { setShowNewSession(false); setSessionEmployees([]) }}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('sessionModal.cancel')}</button>
               <button onClick={() => createSession.mutate(newSession)}
                 disabled={!newSession.training_id || !newSession.start_date || createSession.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {createSession.isPending ? 'Création...' : 'Créer la session'}
+                {createSession.isPending ? t('sessionModal.creating') : t('sessionModal.create')}
               </button>
             </div>
           </div>
@@ -541,52 +549,52 @@ export default function TrainingPage() {
       {showNewTraining && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-xl bg-background p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold">Nouvelle formation</h3>
+            <h3 className="mb-4 text-lg font-semibold">{t('trainingModal.title')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Titre <span className="text-destructive">*</span></label>
+                <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.name')} <span className="text-destructive">*</span></label>
                 <input value={newTraining.title} onChange={e => setNewTraining(p => ({ ...p, title: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="Ex : Gestion de la paie CI" />
+                  placeholder={t('trainingModal.namePlaceholder')} />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Description</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.description')}</label>
                 <textarea value={newTraining.description} onChange={e => setNewTraining(p => ({ ...p, description: e.target.value }))}
                   rows={2}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="Objectifs, contenu…" />
+                  placeholder={t('trainingModal.descriptionPlaceholder')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Durée</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.duration')}</label>
                   <input type="number" min="1" value={newTraining.duration}
                     onChange={e => setNewTraining(p => ({ ...p, duration: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Unité</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.unit')}</label>
                   <select value={newTraining.duration_unit} onChange={e => setNewTraining(p => ({ ...p, duration_unit: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                    <option value="hours">Heures</option>
-                    <option value="days">Jours</option>
+                    <option value="hours">{t('trainingModal.unitHours')}</option>
+                    <option value="days">{t('trainingModal.unitDays')}</option>
                   </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Format</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.format')}</label>
                   <select value={newTraining.format} onChange={e => setNewTraining(p => ({ ...p, format: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                    <option value="presentiel">Présentiel</option>
-                    <option value="e-learning">E-learning</option>
-                    <option value="hybride">Hybride</option>
+                    <option value="presentiel">{t('trainingModal.formatPresentiel')}</option>
+                    <option value="e-learning">{t('trainingModal.formatElearning')}</option>
+                    <option value="hybride">{t('trainingModal.formatHybride')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Catégorie</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('trainingModal.category')}</label>
                   <input value={newTraining.category} onChange={e => setNewTraining(p => ({ ...p, category: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
-                    placeholder="RH, Technique, Management…" />
+                    placeholder={t('trainingModal.categoryPlaceholder')} />
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
@@ -594,17 +602,17 @@ export default function TrainingPage() {
                   onChange={e => setNewTraining(p => ({ ...p, is_fdfp_eligible: e.target.checked }))}
                   className="h-4 w-4 rounded border-border accent-primary" />
                 <label htmlFor="fdfp" className="text-sm text-muted-foreground cursor-pointer">
-                  Éligible FDFP (remboursement possible)
+                  {t('trainingModal.fdfpEligible')}
                 </label>
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
               <button onClick={() => setShowNewTraining(false)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('trainingModal.cancel')}</button>
               <button onClick={() => createTraining.mutate(newTraining)}
                 disabled={!newTraining.title.trim() || createTraining.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {createTraining.isPending ? 'Création...' : 'Créer la formation'}
+                {createTraining.isPending ? t('trainingModal.creating') : t('trainingModal.create')}
               </button>
             </div>
           </div>
@@ -615,18 +623,18 @@ export default function TrainingPage() {
       {participantsSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setParticipantsSession(null)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">Ajouter des participants</h3>
+            <h3 className="font-semibold mb-1">{t('participantsModal.title')}</h3>
             <p className="text-xs text-muted-foreground mb-3">
-              Sélectionnez les employés à inscrire à cette session.
+              {t('participantsModal.subtitle')}
             </p>
             <EmployeePicker employees={employees} selected={participantsPick} onChange={setParticipantsPick} />
             <div className="mt-5 flex gap-2 justify-end">
               <button onClick={() => setParticipantsSession(null)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('participantsModal.cancel')}</button>
               <button onClick={() => addParticipants.mutate()}
                 disabled={participantsPick.length === 0 || addParticipants.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {addParticipants.isPending ? 'Ajout...' : `Inscrire (${participantsPick.length})`}
+                {addParticipants.isPending ? t('participantsModal.adding') : t('participantsModal.enroll', { count: participantsPick.length })}
               </button>
             </div>
           </div>
@@ -641,6 +649,7 @@ export default function TrainingPage() {
 function EmployeePicker({ employees, selected, onChange }: {
   employees: EmployeeLite[]; selected: string[]; onChange: (ids: string[]) => void
 }) {
+  const { t } = useTranslation('training')
   const [q, setQ] = useState('')
   const filtered = employees.filter(e =>
     `${e.first_name} ${e.last_name}`.toLowerCase().includes(q.toLowerCase()))
@@ -648,7 +657,7 @@ function EmployeePicker({ employees, selected, onChange }: {
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
   return (
     <div className="mt-1">
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un employé…"
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('picker.search')}
         className="mb-2 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
       <div className="max-h-48 overflow-auto rounded-lg border border-border divide-y divide-border">
         {filtered.map(e => (
@@ -658,7 +667,7 @@ function EmployeePicker({ employees, selected, onChange }: {
             {e.first_name} {e.last_name}
           </label>
         ))}
-        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Aucun employé.</p>}
+        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{t('picker.empty')}</p>}
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -11,30 +12,10 @@ interface Message {
   streaming?: boolean
 }
 
-const SUGGESTIONS: Record<string, string[]> = {
-  admin: [
-    'Comment calculer la prime d\'ancienneté CI ?',
-    'Quelles sont les étapes pour licencier un salarié ?',
-    'Comment déclarer un nouvel embauché à la CNPS ?',
-  ],
-  hr_manager: [
-    'Quel est le délai légal pour la DISA ?',
-    'Comment calculer les congés pour 7 mois de travail ?',
-    'Que dit le CT CI sur les heures supplémentaires de nuit ?',
-  ],
-  hr_officer: [
-    'Comment saisir une absence maladie ?',
-    'Quels documents pour un contrat CDD CI ?',
-    'Calcul de l\'ITS pour un salaire de 350 000 FCFA ?',
-  ],
-  manager: [
-    'Comment approuver une absence sur NexusRH CI ?',
-    'Quelles sont mes obligations envers mon équipe ?',
-    'Délai préavis pour un salarié de 3 ans d\'ancienneté ?',
-  ],
-}
+const SUGGESTION_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager'] as const
 
 export default function AiChat() {
+  const { t } = useTranslation('dashboard')
   const user = useAuthStore(s => s.user)
   const tenantConfig = useAuthStore(s => s.tenantConfig)
   const [open, setOpen] = useState(false)
@@ -50,7 +31,10 @@ export default function AiChat() {
   })
 
   const aiAvailable = statusData?.available ?? false
-  const suggestions = SUGGESTIONS[user?.role ?? ''] ?? SUGGESTIONS['hr_manager']!
+  const suggestionRole = SUGGESTION_ROLES.includes((user?.role ?? '') as typeof SUGGESTION_ROLES[number])
+    ? (user?.role as typeof SUGGESTION_ROLES[number])
+    : 'hr_manager'
+  const suggestions = t(`aiChat.suggestions.${suggestionRole}`, { returnObjects: true }) as string[]
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -84,7 +68,7 @@ export default function AiChat() {
         }),
       })
 
-      if (!response.ok) throw new Error('Erreur IA')
+      if (!response.ok) throw new Error(t('aiChat.error'))
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
@@ -113,7 +97,7 @@ export default function AiChat() {
         }
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Erreur de connexion'
+      const errMsg = err instanceof Error ? err.message : t('aiChat.connectionError')
       setMessages(prev => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -140,7 +124,7 @@ export default function AiChat() {
           'bg-primary text-primary-foreground hover:opacity-90',
           open && 'rotate-12',
         )}
-        title="Assistant IA RH CI"
+        title={t('aiChat.fabTitle')}
       >
         {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
       </button>
@@ -154,9 +138,9 @@ export default function AiChat() {
               <Bot className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white">Assistant RH CI</p>
+              <p className="text-sm font-semibold text-white">{t('aiChat.headerTitle')}</p>
               <p className="text-xs text-white/70 truncate">
-                {aiAvailable ? `Propulsé par Claude AI · ${tenantConfig?.name ?? ''}` : 'Mode limité'}
+                {aiAvailable ? t('aiChat.poweredBy', { tenant: tenantConfig?.name ?? '' }) : t('aiChat.limitedMode')}
               </p>
             </div>
             <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white">
@@ -169,7 +153,7 @@ export default function AiChat() {
             <div className="flex items-start gap-3 bg-amber-50 p-4 border-b border-amber-200">
               <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-800">
-                {statusData?.message ?? 'IA non disponible. Configurez ANTHROPIC_API_KEY pour activer l\'assistant.'}
+                {statusData?.message ?? t('aiChat.unavailableDefault')}
               </p>
             </div>
           )}
@@ -179,7 +163,7 @@ export default function AiChat() {
             {messages.length === 0 && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground text-center">
-                  Posez une question sur le droit social CI, la CNPS, l'ITS ou la paie
+                  {t('aiChat.emptyPrompt')}
                 </p>
                 <div className="space-y-2">
                   {suggestions.map(s => (
@@ -211,7 +195,7 @@ export default function AiChat() {
                     : msg.streaming && (
                         <span className="flex items-center gap-1">
                           <Loader2 className="h-3 w-3 animate-spin" />
-                          <span className="text-xs opacity-60">Rédaction...</span>
+                          <span className="text-xs opacity-60">{t('aiChat.writing')}</span>
                         </span>
                       )
                   }
@@ -228,7 +212,7 @@ export default function AiChat() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() } }}
-                placeholder={aiAvailable ? 'Votre question RH CI...' : 'IA non disponible'}
+                placeholder={aiAvailable ? t('aiChat.inputPlaceholder') : t('aiChat.inputPlaceholderUnavailable')}
                 disabled={!aiAvailable || streaming}
                 rows={1}
                 className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none disabled:opacity-50"
@@ -246,7 +230,7 @@ export default function AiChat() {
               </button>
             </div>
             <p className="mt-1 text-xs text-muted-foreground text-center">
-              Code du Travail CI · CNPS 2024 · ITS/DGI · OHADA
+              {t('aiChat.footer')}
             </p>
           </div>
         </div>

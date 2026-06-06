@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import openlabLogo from '@/assets/OPENLAB.png'
 import {
   LayoutDashboard, Users, CreditCard, Calendar,
@@ -7,11 +8,13 @@ import {
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
   to: string
-  label: string
+  /** Clé de traduction dans le namespace `nav` */
+  labelKey: string
   icon: React.ElementType
   roles?: string[]
   end?: boolean
@@ -24,32 +27,32 @@ interface NavItem {
 }
 
 const HR_NAV: NavItem[] = [
-  { to: '/dashboard',     label: 'Tableau de bord', icon: LayoutDashboard, end: true },
-  { to: '/employees',     label: 'Employés',         icon: Users,      end: true },
-  { to: '/contracts',     label: 'Contrats OHADA',   icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/payroll',       label: 'Paie',             icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true },
+  { to: '/dashboard',     labelKey: 'dashboard', icon: LayoutDashboard, end: true },
+  { to: '/employees',     labelKey: 'employees',  icon: Users,      end: true },
+  { to: '/contracts',     labelKey: 'contracts',  icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/payroll',       labelKey: 'payroll',    icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true },
   // Workflow multi-filiales — visible UNIQUEMENT pour les tenants à filiales :
   //  - RH centrale (admin/hr_manager) : pilotage complet (initier draft, décliner,
   //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
   //  - RAF site : son unique point d'accès (soumission de SA filiale, filtré
   //    server-side sur raf_user_id = user.sub) → /raf/periods
-  { to: '/payroll/multi-filiales', label: 'Paie multi-filiales', icon: Layers, end: true,
+  { to: '/payroll/multi-filiales', labelKey: 'payrollMulti', icon: Layers, end: true,
     roles: ['admin','hr_manager'], requiresSubsidiaries: true },
-  { to: '/raf/periods',   label: 'Paie de ma filiale', icon: ClipboardList, end: true,
+  { to: '/raf/periods',   labelKey: 'payrollRaf', icon: ClipboardList, end: true,
     roles: ['raf_site'], requiresSubsidiaries: true },
-  { to: '/payroll/simulateur-its', label: 'Simulateur ITS', icon: Calculator, roles: ['admin','hr_manager','hr_officer'] },
-  { to: '/absences',      label: 'Absences',         icon: Calendar,   end: true },
-  { to: '/expenses-rh',   label: 'Notes de frais',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
-  { to: '/recruitment',   label: 'Recrutement',      icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/onboarding',    label: 'Intégration',      icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/training',      label: 'Formations FDFP',  icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/careers',       label: 'Carrières',        icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/cnps',          label: 'CNPS & DISA',      icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/cnps/audit',    label: 'Audit de conformité', icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
-  { to: '/mobile-money',  label: 'Mobile Money',     icon: Smartphone, end: true, roles: ['admin','hr_manager'] },
-  { to: '/referentiels',  label: 'Référentiel Droit', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/reporting',     label: 'Reporting',        icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/settings',      label: 'Paramètres',       icon: Settings,   end: true, roles: ['admin'] },
+  { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'] },
+  { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true },
+  { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
+  { to: '/recruitment',   labelKey: 'recruitment', icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
+  { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
+  { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
+  { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
+  { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'] },
+  { to: '/referentiels',  labelKey: 'referentiels', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/settings',      labelKey: 'settings',   icon: Settings,   end: true, roles: ['admin'] },
 ]
 
 interface SidebarProps {
@@ -58,6 +61,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
+  const { t } = useTranslation('nav')
+  const { t: tc } = useTranslation('common')
   const { user, tenantConfig, logout } = useAuthStore()
   const initials = tenantConfig?.name
     ? tenantConfig.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
@@ -96,7 +101,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{tenantConfig?.name ?? 'NexusRH CI'}</p>
+            <p className="truncate text-sm font-semibold">{tenantConfig?.name ?? t('appName')}</p>
             {tenantConfig?.city && (
               <p className="text-xs text-muted-foreground">{tenantConfig.city}</p>
             )}
@@ -111,7 +116,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {navItems.map(({ to, labelKey, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -125,16 +130,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{label}</span>
+              <span className="flex-1">{t(labelKey)}</span>
               <ChevronRight className="h-3 w-3 opacity-30" />
             </NavLink>
           ))}
         </nav>
 
-        {/* OpenLab signature */}
+        {/* Langue + OpenLab signature */}
+        <div className="px-3 pb-1 flex items-center justify-center">
+          <LanguageSwitcher />
+        </div>
         <div className="px-3 pb-2 flex items-center justify-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
           <img src={openlabLogo} alt="OpenLab Consulting" className="h-5 w-auto object-contain" />
-          <span className="text-[10px] text-muted-foreground leading-tight">by OpenLab Consulting</span>
+          <span className="text-[10px] text-muted-foreground leading-tight">{t('byOpenlab')}</span>
         </div>
 
         {/* User footer */}
@@ -147,7 +155,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <p className="truncate text-sm font-medium">{user?.firstName} {user?.lastName}</p>
               <p className="truncate text-xs text-muted-foreground capitalize">{user?.role?.replace('_', ' ')}</p>
             </div>
-            <button onClick={logout} className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Déconnexion">
+            <button onClick={logout} className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title={tc('actions.logout')}>
               <LogOut className="h-4 w-4" />
             </button>
           </div>

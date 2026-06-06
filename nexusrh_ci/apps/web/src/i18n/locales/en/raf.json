@@ -1,0 +1,25 @@
+{
+  "statuses": {
+    "sent_to_sites": "To complete",
+    "completed_by_site": "Submitted",
+    "validated_central": "Validated",
+    "closed": "Closed"
+  },
+  "title": "My subsidiary's payroll",
+  "subtitle": "Periods to complete for the subsidiary/subsidiaries under your responsibility. Enter the local variables (overtime, bonuses, absences) before submitting.",
+  "pendingBanner_one": "<strong>{{count}}</strong> period awaiting your submission",
+  "pendingBanner_other": "<strong>{{count}}</strong> periods awaiting your submission",
+  "colMonth": "Month",
+  "colSubsidiary": "Subsidiary",
+  "colPack": "Legislative pack",
+  "colStatus": "Status",
+  "colGross": "Gross payroll",
+  "colNet": "Net pay",
+  "colAction": "Action",
+  "loading": "Loading…",
+  "empty": "No pending period. Central HR has not yet initiated this month's payroll or has not assigned you a subsidiary.",
+  "cnpsLabel": "· CNPS {{number}}",
+  "submit": "Submit",
+  "submitConfirm": "Submit the {{month}} payroll? Payslips will be generated and the draft sent to central management.",
+  "submitError": "Error during submission"
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Loader2, Save } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -12,6 +13,7 @@ interface AgencyMe {
 }
 
 export default function AgencySettings() {
+  const { t } = useTranslation('agency')
   const qc = useQueryClient()
   const isOwner = useAuthStore((s) => s.user?.role) === 'agency_owner'
   const [form, setForm] = useState({
@@ -41,41 +43,41 @@ export default function AgencySettings() {
     onSuccess: () => { setSaved(true); setError(null); qc.invalidateQueries({ queryKey: ['agency-me'] }); setTimeout(() => setSaved(false), 2500) },
     onError: (err: unknown) => {
       const ax = err as { response?: { data?: { error?: string } } }
-      setError(ax.response?.data?.error ?? 'Erreur lors de l\'enregistrement')
+      setError(ax.response?.data?.error ?? t('settings.saveError'))
     },
   })
 
-  if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+  if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}</div>
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Paramètres du cabinet</h1>
-        <p className="text-sm text-muted-foreground">Identité visuelle et adresse d'envoi des invitations.</p>
+        <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
       </div>
 
       <form onSubmit={(e) => { e.preventDefault(); save.mutate() }} className="space-y-5 rounded-xl border border-border bg-card p-6">
-        <LogoUpload value={form.logoUrl} onChange={(url) => setForm({ ...form, logoUrl: url })} label="Logo du cabinet" />
+        <LogoUpload value={form.logoUrl} onChange={(url) => setForm({ ...form, logoUrl: url })} label={t('settings.logo')} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Nom du cabinet" value={form.name} onChange={(v) => setForm({ ...form, name: v })} disabled={!isOwner} />
-          <Field label="Ville" value={form.city} onChange={(v) => setForm({ ...form, city: v })} disabled={!isOwner} />
-          <Field label="Email de contact" type="email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} disabled={!isOwner} />
-          <Field label="Téléphone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} disabled={!isOwner} />
+          <Field label={t('settings.fields.name')} value={form.name} onChange={(v) => setForm({ ...form, name: v })} disabled={!isOwner} />
+          <Field label={t('settings.fields.city')} value={form.city} onChange={(v) => setForm({ ...form, city: v })} disabled={!isOwner} />
+          <Field label={t('settings.fields.contactEmail')} type="email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} disabled={!isOwner} />
+          <Field label={t('settings.fields.contactPhone')} value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} disabled={!isOwner} />
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Couleur primaire</label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings.fields.primaryColor')}</label>
             <input type="color" value={form.primaryColor} onChange={(e) => setForm({ ...form, primaryColor: e.target.value })}
               disabled={!isOwner} className="h-10 w-20 rounded border border-gray-200" />
           </div>
         </div>
 
         <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-          <p className="mb-3 text-sm font-semibold text-indigo-900">Adresse d'envoi des invitations</p>
+          <p className="mb-3 text-sm font-semibold text-indigo-900">{t('settings.senderSection.title')}</p>
           <p className="mb-3 text-xs text-indigo-700">
-            Les emails de connexion envoyés aux entreprises que VOUS créez partiront avec cette adresse en expéditeur (Reply-To).
+            {t('settings.senderSection.hint')}
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Email expéditeur" type="email" value={form.senderEmail} onChange={(v) => setForm({ ...form, senderEmail: v })} disabled={!isOwner} />
-            <Field label="Nom expéditeur" value={form.senderName} onChange={(v) => setForm({ ...form, senderName: v })} disabled={!isOwner} />
+            <Field label={t('settings.fields.senderEmail')} type="email" value={form.senderEmail} onChange={(v) => setForm({ ...form, senderEmail: v })} disabled={!isOwner} />
+            <Field label={t('settings.fields.senderName')} value={form.senderName} onChange={(v) => setForm({ ...form, senderName: v })} disabled={!isOwner} />
           </div>
         </div>
 
@@ -84,7 +86,7 @@ export default function AgencySettings() {
           <button type="submit" disabled={save.isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60">
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saved ? 'Enregistré ✓' : 'Enregistrer'}
+            {saved ? t('settings.saved') : t('settings.save')}
           </button>
         )}
       </form>

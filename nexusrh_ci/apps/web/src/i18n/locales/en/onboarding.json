@@ -1,0 +1,126 @@
+{
+  "title": "Onboarding journeys",
+  "subtitle": "Structured onboarding: pre-boarding, day one, first weeks, end of probation — with buddy program and resources.",
+  "tabs": {
+    "journeys": "Journeys",
+    "templates": "Templates"
+  },
+  "phases": {
+    "before_start": "Before arrival",
+    "day_one": "Day one",
+    "first_week": "First week",
+    "first_month": "First month",
+    "probation_end": "End of probation"
+  },
+  "owners": {
+    "hr": "HR",
+    "manager": "Manager",
+    "employee": "Employee",
+    "it": "IT",
+    "buddy": "Buddy"
+  },
+  "seniorities": {
+    "any": "All",
+    "junior": "Junior",
+    "confirme": "Experienced",
+    "senior": "Senior",
+    "cadre": "Executive",
+    "direction": "Management"
+  },
+  "kanban": {
+    "todo": "To do",
+    "in_progress": "In progress",
+    "done": "Done",
+    "columnCount": "({{count}})",
+    "dropHint": "Drag a step here"
+  },
+  "journeyStatus": {
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "in_progress": "In progress"
+  },
+  "loading": "Loading…",
+  "list": {
+    "kpi": {
+      "inProgress": "Journeys in progress",
+      "completed": "Completed journeys",
+      "late": "Overdue steps"
+    },
+    "table": {
+      "collaborator": "Employee",
+      "job": "Position",
+      "hireDate": "Hire date",
+      "progress": "Progress",
+      "late": "Overdue",
+      "status": "Status"
+    },
+    "noJob": "—",
+    "noHireDate": "—",
+    "noLate": "—",
+    "empty": "No journey. Journeys are created automatically when an employee is added (according to active templates)."
+  },
+  "board": {
+    "back": "All journeys",
+    "noJob": "—",
+    "hiredOn": " · hired on {{date}}",
+    "manager": "Manager: {{firstName}} {{lastName}}",
+    "addStep": "Step",
+    "stepForm": {
+      "title": "Step title",
+      "phase": "Phase",
+      "owner": "Owner",
+      "add": "Add"
+    },
+    "stepCard": {
+      "delete": "Delete",
+      "late": " · overdue"
+    }
+  },
+  "templates": {
+    "newTemplate": "New template",
+    "generateAi": "Generate with AI",
+    "ai": {
+      "heading": "AI generation of an onboarding journey",
+      "intro": "The AI designs a complete journey (pre-boarding → end of probation, owners, due dates, resources) based on HR best practices. The result is a draft: review and adjust before saving.",
+      "jobTitle": "Job title *",
+      "seniorityPlaceholder": "Seniority (optional)",
+      "departmentPlaceholder": "Department (optional)",
+      "generating": "Generating…",
+      "generate": "Generate journey",
+      "errorDefault": "AI generation unavailable"
+    },
+    "editor": {
+      "editTitle": "Edit template",
+      "newTitle": "New journey template",
+      "name": "Name *",
+      "seniority": "Target seniority",
+      "jobKeywords": "Job keywords (comma-separated)",
+      "jobKeywordsPlaceholder": "driver, conductor, inspector…",
+      "isDefault": "Default template (used if no other matches)",
+      "description": "Description",
+      "stepsCount": "Steps ({{count}})",
+      "addStep": "Add a step",
+      "stepTitlePlaceholder": "Title",
+      "dueOffsetTitle": "Due date (days after hire, negative = before)",
+      "dueOffsetUnit": "d",
+      "noSteps": "No step — add one or generate the journey with AI.",
+      "save": "Save template",
+      "cancel": "Cancel",
+      "errorDefault": "Save error"
+    },
+    "table": {
+      "template": "Template",
+      "seniority": "Seniority",
+      "jobKeywords": "Job keywords",
+      "steps": "Steps",
+      "status": "Status",
+      "default": "Default",
+      "noKeywords": "—",
+      "active": "Active",
+      "inactive": "Inactive",
+      "edit": "Edit",
+      "delete": "Delete",
+      "empty": "No template. Create one or generate it with AI."
+    }
+  }
+}

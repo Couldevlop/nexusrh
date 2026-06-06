@@ -1,0 +1,150 @@
+{
+  "title": "Formations & FDFP",
+  "summary": "{{count}} formation(s) · {{eligible}} éligibles FDFP",
+  "formats": {
+    "presentiel": "Présentiel",
+    "distanciel": "Distanciel",
+    "hybride": "Hybride",
+    "elearning": "E-learning"
+  },
+  "header": {
+    "newTraining": "Nouvelle formation",
+    "planSession": "Planifier une session"
+  },
+  "tabs": {
+    "catalog": "Catalogue",
+    "sessions": "Sessions",
+    "enrollments": "Inscriptions",
+    "fdfp": "FDFP Remboursement ({{count}})"
+  },
+  "duration": {
+    "hours": "h",
+    "days": "j"
+  },
+  "catalog": {
+    "sessionsCount": "{{count}} session(s)",
+    "planSession": "+ Planifier session",
+    "empty": "Aucune formation dans le catalogue"
+  },
+  "sessions": {
+    "table": {
+      "training": "Formation",
+      "date": "Date",
+      "locationTrainer": "Lieu / Formateur",
+      "enrollments": "Inscriptions",
+      "format": "Format",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "fdfpEligible": "FDFP éligible",
+    "status": {
+      "planned": "Planifiée",
+      "completed": "Terminée"
+    },
+    "participants": "Participants",
+    "empty": "Aucune session planifiée"
+  },
+  "enrollments": {
+    "table": {
+      "employee": "Employé",
+      "training": "Formation",
+      "sessionDate": "Date session",
+      "location": "Lieu",
+      "status": "Statut"
+    },
+    "noLocation": "—",
+    "completed": "Terminée",
+    "enrolled": "Inscrit",
+    "empty": "Aucune inscription"
+  },
+  "fdfp": {
+    "heading": "FDFP — Fonds de Développement de la Formation Professionnelle",
+    "intro": "En tant qu'entreprise de plus de 10 salariés, vous versez <strong>0,4 % de votre masse salariale</strong> au FDFP. Vous pouvez récupérer une partie de cette contribution en finançant des formations agréées FDFP.",
+    "stats": {
+      "eligibleLabel": "Formations éligibles catalogue",
+      "eligibleValue": "{{count}} formations",
+      "contributionLabel": "Contribution légale",
+      "contributionValue": "0,4 % masse salariale",
+      "delayLabel": "Délai remboursement",
+      "delayValue": "30–60 jours FDFP"
+    },
+    "eligibleTable": {
+      "heading": "Formations agréées FDFP dans votre catalogue",
+      "training": "Formation",
+      "category": "Catégorie",
+      "format": "Format",
+      "duration": "Durée",
+      "sessions": "Sessions",
+      "noCategory": "—",
+      "noDuration": "—",
+      "empty": "Aucune formation marquée FDFP éligible — cochez \"Agréé FDFP\" lors de la création"
+    },
+    "form": {
+      "heading": "Nouvelle demande de remboursement FDFP",
+      "trainingTitle": "Intitulé formation *",
+      "trainingTitlePlaceholder": "Ex. Leadership & Management",
+      "provider": "Organisme de formation *",
+      "providerPlaceholder": "Ex. CFAO Training CI",
+      "fdfpCode": "Code agrément FDFP",
+      "fdfpCodePlaceholder": "Ex. FDFP/CI/2024/1234",
+      "sessionDate": "Date de la session *",
+      "employeesCount": "Nombre de salariés formés *",
+      "employeesCountPlaceholder": "1",
+      "totalCost": "Coût total formation (FCFA) *",
+      "totalCostPlaceholder": "250000",
+      "estimate": "Montant remboursable estimé (40–60%) : {{amount}} FCFA",
+      "submit": "Soumettre la demande FDFP",
+      "success": "Demande enregistrée — en attente de traitement FDFP",
+      "error": "Erreur",
+      "note": "La demande sera transmise à votre gestionnaire RH pour validation, puis envoyée au FDFP CI. Délai de traitement : 30 à 60 jours ouvrables."
+    }
+  },
+  "sessionModal": {
+    "title": "Planifier une session",
+    "training": "Formation *",
+    "selectPlaceholder": "— Sélectionner —",
+    "startDate": "Date début *",
+    "endDate": "Date fin",
+    "location": "Lieu",
+    "locationPlaceholder": "Salle de formation, Abidjan",
+    "trainer": "Formateur",
+    "maxPlaces": "Places max",
+    "participants_one": "Participants ({{count}} sélectionné)",
+    "participants_other": "Participants ({{count}} sélectionnés)",
+    "cancel": "Annuler",
+    "creating": "Création...",
+    "create": "Créer la session"
+  },
+  "trainingModal": {
+    "title": "Nouvelle formation",
+    "name": "Titre",
+    "namePlaceholder": "Ex : Gestion de la paie CI",
+    "description": "Description",
+    "descriptionPlaceholder": "Objectifs, contenu…",
+    "duration": "Durée",
+    "unit": "Unité",
+    "unitHours": "Heures",
+    "unitDays": "Jours",
+    "format": "Format",
+    "formatPresentiel": "Présentiel",
+    "formatElearning": "E-learning",
+    "formatHybride": "Hybride",
+    "category": "Catégorie",
+    "categoryPlaceholder": "RH, Technique, Management…",
+    "fdfpEligible": "Éligible FDFP (remboursement possible)",
+    "cancel": "Annuler",
+    "creating": "Création...",
+    "create": "Créer la formation"
+  },
+  "participantsModal": {
+    "title": "Ajouter des participants",
+    "subtitle": "Sélectionnez les employés à inscrire à cette session.",
+    "cancel": "Annuler",
+    "adding": "Ajout...",
+    "enroll": "Inscrire ({{count}})"
+  },
+  "picker": {
+    "search": "Rechercher un employé…",
+    "empty": "Aucun employé."
+  }
+}

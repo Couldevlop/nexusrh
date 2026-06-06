@@ -1,0 +1,126 @@
+{
+  "title": "Parcours d'intégration",
+  "subtitle": "Onboarding structuré : pré-boarding, jour J, premières semaines, fin d'essai — avec parrainage et ressources.",
+  "tabs": {
+    "journeys": "Parcours",
+    "templates": "Modèles"
+  },
+  "phases": {
+    "before_start": "Avant l'arrivée",
+    "day_one": "Jour J",
+    "first_week": "Première semaine",
+    "first_month": "Premier mois",
+    "probation_end": "Fin de période d'essai"
+  },
+  "owners": {
+    "hr": "RH",
+    "manager": "Manager",
+    "employee": "Collaborateur",
+    "it": "IT",
+    "buddy": "Parrain"
+  },
+  "seniorities": {
+    "any": "Toutes",
+    "junior": "Junior",
+    "confirme": "Confirmé",
+    "senior": "Senior",
+    "cadre": "Cadre",
+    "direction": "Direction"
+  },
+  "kanban": {
+    "todo": "À faire",
+    "in_progress": "En cours",
+    "done": "Terminé",
+    "columnCount": "({{count}})",
+    "dropHint": "Glissez une étape ici"
+  },
+  "journeyStatus": {
+    "completed": "Terminé",
+    "cancelled": "Annulé",
+    "in_progress": "En cours"
+  },
+  "loading": "Chargement…",
+  "list": {
+    "kpi": {
+      "inProgress": "Parcours en cours",
+      "completed": "Parcours terminés",
+      "late": "Étapes en retard"
+    },
+    "table": {
+      "collaborator": "Collaborateur",
+      "job": "Poste",
+      "hireDate": "Embauche",
+      "progress": "Progression",
+      "late": "Retards",
+      "status": "Statut"
+    },
+    "noJob": "—",
+    "noHireDate": "—",
+    "noLate": "—",
+    "empty": "Aucun parcours. Les parcours se créent automatiquement à la création d'un employé (selon les modèles actifs)."
+  },
+  "board": {
+    "back": "Tous les parcours",
+    "noJob": "—",
+    "hiredOn": " · embauché(e) le {{date}}",
+    "manager": "Manager : {{firstName}} {{lastName}}",
+    "addStep": "Étape",
+    "stepForm": {
+      "title": "Titre de l'étape",
+      "phase": "Phase",
+      "owner": "Responsable",
+      "add": "Ajouter"
+    },
+    "stepCard": {
+      "delete": "Supprimer",
+      "late": " · en retard"
+    }
+  },
+  "templates": {
+    "newTemplate": "Nouveau modèle",
+    "generateAi": "Générer avec l'IA",
+    "ai": {
+      "heading": "Génération IA d'un parcours d'intégration",
+      "intro": "L'IA conçoit un parcours complet (pré-boarding → fin d'essai, responsables, échéances, ressources) selon les meilleures pratiques RH. Le résultat est un brouillon : relisez et ajustez avant d'enregistrer.",
+      "jobTitle": "Intitulé du poste *",
+      "seniorityPlaceholder": "Séniorité (optionnel)",
+      "departmentPlaceholder": "Département (optionnel)",
+      "generating": "Génération en cours…",
+      "generate": "Générer le parcours",
+      "errorDefault": "Génération IA indisponible"
+    },
+    "editor": {
+      "editTitle": "Modifier le modèle",
+      "newTitle": "Nouveau modèle de parcours",
+      "name": "Nom *",
+      "seniority": "Séniorité ciblée",
+      "jobKeywords": "Mots-clés du poste (séparés par des virgules)",
+      "jobKeywordsPlaceholder": "conducteur, chauffeur, contrôleur…",
+      "isDefault": "Modèle par défaut (utilisé si aucun autre ne correspond)",
+      "description": "Description",
+      "stepsCount": "Étapes ({{count}})",
+      "addStep": "Ajouter une étape",
+      "stepTitlePlaceholder": "Titre",
+      "dueOffsetTitle": "Échéance (jours après embauche, négatif = avant)",
+      "dueOffsetUnit": "j",
+      "noSteps": "Aucune étape — ajoutez-en ou générez le parcours avec l'IA.",
+      "save": "Enregistrer le modèle",
+      "cancel": "Annuler",
+      "errorDefault": "Erreur d'enregistrement"
+    },
+    "table": {
+      "template": "Modèle",
+      "seniority": "Séniorité",
+      "jobKeywords": "Mots-clés poste",
+      "steps": "Étapes",
+      "status": "Statut",
+      "default": "Par défaut",
+      "noKeywords": "—",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "empty": "Aucun modèle. Créez-en un ou générez-le avec l'IA."
+    }
+  }
+}

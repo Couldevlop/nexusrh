@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { FileText, Eye } from 'lucide-react'
 import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
@@ -13,6 +14,7 @@ interface PaySlip {
 }
 
 export default function PaySlipsPage() {
+  const { t } = useTranslation('payroll')
   const [month, setMonth] = useState('')
   const [openSlipId, setOpenSlipId] = useState<string | null>(null)
 
@@ -33,15 +35,15 @@ export default function PaySlipsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Bulletins de paie</h1>
-          <p className="text-sm text-muted-foreground mt-1">{slips.length} bulletins</p>
+          <h1 className="text-2xl font-bold">{t('payslips.title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('payslips.count', { count: slips.length })}</p>
         </div>
         <select
           value={month}
           onChange={e => setMonth(e.target.value)}
           className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
         >
-          <option value="">Tous les mois</option>
+          <option value="">{t('payslips.allMonths')}</option>
           {Array.from({ length: 12 }, (_, i) => {
             const d = new Date()
             d.setMonth(d.getMonth() - i)
@@ -61,13 +63,13 @@ export default function PaySlipsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                  <th className="p-4">Employé</th>
-                  <th className="p-4">Période</th>
-                  <th className="p-4 text-right">Brut</th>
-                  <th className="p-4 text-right">Net à payer</th>
-                  <th className="p-4 text-right">CNPS sal.</th>
-                  <th className="p-4 text-right">ITS</th>
-                  <th className="p-4">Paiement</th>
+                  <th className="p-4">{t('payslips.colEmployee')}</th>
+                  <th className="p-4">{t('payslips.colPeriod')}</th>
+                  <th className="p-4 text-right">{t('payslips.colGross')}</th>
+                  <th className="p-4 text-right">{t('payslips.colNet')}</th>
+                  <th className="p-4 text-right">{t('payslips.colCnps')}</th>
+                  <th className="p-4 text-right">{t('payslips.colIts')}</th>
+                  <th className="p-4">{t('payslips.colPayment')}</th>
                   <th className="p-4 text-right"></th>
                 </tr>
               </thead>
@@ -89,7 +91,7 @@ export default function PaySlipsPage() {
                     <td className="p-4 text-right font-mono text-blue-600">{formatFCFA(parseInt(slip.its ?? '0'))}</td>
                     <td className="p-4">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${payStatusColor[slip.payment_status] ?? 'bg-muted text-muted-foreground'}`}>
-                        {slip.payment_status === 'paid' ? 'Payé' : slip.payment_status === 'pending' ? 'En attente' : slip.payment_status}
+                        {slip.payment_status === 'paid' ? t('payslips.payStatus.paid') : slip.payment_status === 'pending' ? t('payslips.payStatus.pending') : slip.payment_status}
                       </span>
                       <p className="text-xs text-muted-foreground mt-0.5 capitalize">{slip.payment_method?.replace('_', ' ')}</p>
                     </td>
@@ -102,7 +104,7 @@ export default function PaySlipsPage() {
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-muted-foreground">
                       <FileText className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                      Aucun bulletin pour cette période
+                      {t('payslips.empty')}
                     </td>
                   </tr>
                 )}

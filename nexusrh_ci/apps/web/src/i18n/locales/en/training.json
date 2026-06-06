@@ -1,0 +1,150 @@
+{
+  "title": "Training & FDFP",
+  "summary": "{{count}} training(s) · {{eligible}} FDFP eligible",
+  "formats": {
+    "presentiel": "In person",
+    "distanciel": "Remote",
+    "hybride": "Hybrid",
+    "elearning": "E-learning"
+  },
+  "header": {
+    "newTraining": "New training",
+    "planSession": "Schedule a session"
+  },
+  "tabs": {
+    "catalog": "Catalog",
+    "sessions": "Sessions",
+    "enrollments": "Enrollments",
+    "fdfp": "FDFP Reimbursement ({{count}})"
+  },
+  "duration": {
+    "hours": "h",
+    "days": "d"
+  },
+  "catalog": {
+    "sessionsCount": "{{count}} session(s)",
+    "planSession": "+ Schedule session",
+    "empty": "No training in the catalog"
+  },
+  "sessions": {
+    "table": {
+      "training": "Training",
+      "date": "Date",
+      "locationTrainer": "Location / Trainer",
+      "enrollments": "Enrollments",
+      "format": "Format",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "fdfpEligible": "FDFP eligible",
+    "status": {
+      "planned": "Scheduled",
+      "completed": "Completed"
+    },
+    "participants": "Participants",
+    "empty": "No scheduled session"
+  },
+  "enrollments": {
+    "table": {
+      "employee": "Employee",
+      "training": "Training",
+      "sessionDate": "Session date",
+      "location": "Location",
+      "status": "Status"
+    },
+    "noLocation": "—",
+    "completed": "Completed",
+    "enrolled": "Enrolled",
+    "empty": "No enrollment"
+  },
+  "fdfp": {
+    "heading": "FDFP — Vocational Training Development Fund",
+    "intro": "As a company with more than 10 employees, you contribute <strong>0.4% of your payroll</strong> to the FDFP. You can recover part of this contribution by funding FDFP-approved training.",
+    "stats": {
+      "eligibleLabel": "Eligible catalog trainings",
+      "eligibleValue": "{{count}} trainings",
+      "contributionLabel": "Legal contribution",
+      "contributionValue": "0.4% of payroll",
+      "delayLabel": "Reimbursement time",
+      "delayValue": "30–60 FDFP days"
+    },
+    "eligibleTable": {
+      "heading": "FDFP-approved trainings in your catalog",
+      "training": "Training",
+      "category": "Category",
+      "format": "Format",
+      "duration": "Duration",
+      "sessions": "Sessions",
+      "noCategory": "—",
+      "noDuration": "—",
+      "empty": "No training marked FDFP eligible — check \"FDFP approved\" when creating"
+    },
+    "form": {
+      "heading": "New FDFP reimbursement request",
+      "trainingTitle": "Training title *",
+      "trainingTitlePlaceholder": "e.g. Leadership & Management",
+      "provider": "Training provider *",
+      "providerPlaceholder": "e.g. CFAO Training CI",
+      "fdfpCode": "FDFP approval code",
+      "fdfpCodePlaceholder": "e.g. FDFP/CI/2024/1234",
+      "sessionDate": "Session date *",
+      "employeesCount": "Number of employees trained *",
+      "employeesCountPlaceholder": "1",
+      "totalCost": "Total training cost (FCFA) *",
+      "totalCostPlaceholder": "250000",
+      "estimate": "Estimated reimbursable amount (40–60%): {{amount}} FCFA",
+      "submit": "Submit FDFP request",
+      "success": "Request saved — pending FDFP processing",
+      "error": "Error",
+      "note": "The request will be forwarded to your HR manager for validation, then sent to FDFP CI. Processing time: 30 to 60 working days."
+    }
+  },
+  "sessionModal": {
+    "title": "Schedule a session",
+    "training": "Training *",
+    "selectPlaceholder": "— Select —",
+    "startDate": "Start date *",
+    "endDate": "End date",
+    "location": "Location",
+    "locationPlaceholder": "Training room, Abidjan",
+    "trainer": "Trainer",
+    "maxPlaces": "Max places",
+    "participants_one": "Participants ({{count}} selected)",
+    "participants_other": "Participants ({{count}} selected)",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create session"
+  },
+  "trainingModal": {
+    "title": "New training",
+    "name": "Title",
+    "namePlaceholder": "e.g. CI payroll management",
+    "description": "Description",
+    "descriptionPlaceholder": "Objectives, content…",
+    "duration": "Duration",
+    "unit": "Unit",
+    "unitHours": "Hours",
+    "unitDays": "Days",
+    "format": "Format",
+    "formatPresentiel": "In person",
+    "formatElearning": "E-learning",
+    "formatHybride": "Hybrid",
+    "category": "Category",
+    "categoryPlaceholder": "HR, Technical, Management…",
+    "fdfpEligible": "FDFP eligible (reimbursement possible)",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create training"
+  },
+  "participantsModal": {
+    "title": "Add participants",
+    "subtitle": "Select the employees to enroll in this session.",
+    "cancel": "Cancel",
+    "adding": "Adding...",
+    "enroll": "Enroll ({{count}})"
+  },
+  "picker": {
+    "search": "Search for an employee…",
+    "empty": "No employee."
+  }
+}

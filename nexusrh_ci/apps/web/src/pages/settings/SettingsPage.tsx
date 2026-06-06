@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, formatFCFA } from '@/lib/api'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
@@ -47,34 +49,34 @@ interface LegalEntity {
 interface WorkflowConfig { id: string; module: string; levels_count: number }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrateur', hr_manager: 'Responsable RH',
-  hr_officer: 'Chargé RH', manager: 'Manager',
-  employee: 'Employé', readonly: 'Lecture seule',
+// Rôles disponibles (clé technique = valeur API ; libellé traduit via roles.<key>).
+const ROLE_KEYS = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly'] as const
+// Couleur par type de rubrique (clé technique = valeur API ; libellé traduit via ruleTypes.<key>).
+const RULE_TYPE_COLORS: Record<string, string> = {
+  earning:          'bg-green-100 text-green-700',
+  deduction:        'bg-red-100 text-red-700',
+  employee_contrib: 'bg-orange-100 text-orange-700',
+  employer_contrib: 'bg-blue-100 text-blue-700',
 }
-const RULE_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  earning:             { label: 'Gain',            color: 'bg-green-100 text-green-700' },
-  deduction:           { label: 'Retenue',          color: 'bg-red-100 text-red-700' },
-  employee_contrib:    { label: 'Cotis. salariale', color: 'bg-orange-100 text-orange-700' },
-  employer_contrib:    { label: 'Cotis. patronale', color: 'bg-blue-100 text-blue-700' },
-}
+const RULE_TYPE_KEYS = ['earning', 'deduction', 'employee_contrib', 'employer_contrib'] as const
 const TABS = [
-  { id: 'general',        label: 'Général',           icon: Settings },
-  { id: 'users',          label: 'Utilisateurs',      icon: Users },
-  { id: 'departments',    label: 'Départements',      icon: Building2 },
-  { id: 'absence-types',  label: 'Types absences',    icon: FileText },
-  { id: 'payroll-rules',  label: 'Rubriques de paie', icon: Banknote },
-  { id: 'legal-entities', label: 'Entités juridiques',icon: Layers },
-  { id: 'workflow',       label: 'Workflow',          icon: GitBranch },
-  { id: 'data-import',   label: 'Reprise de données',icon: Database },
-  { id: 'mfa',           label: 'Sécurité (MFA)',    icon: Lock },
-  { id: 'ai',            label: 'IA (clé & modèle)', icon: Bot },
-  { id: 'connectivity',  label: 'Connectivité',      icon: Plug },
+  { id: 'general',        labelKey: 'tabs.general',       icon: Settings },
+  { id: 'users',          labelKey: 'tabs.users',         icon: Users },
+  { id: 'departments',    labelKey: 'tabs.departments',   icon: Building2 },
+  { id: 'absence-types',  labelKey: 'tabs.absenceTypes',  icon: FileText },
+  { id: 'payroll-rules',  labelKey: 'tabs.payrollRules',  icon: Banknote },
+  { id: 'legal-entities', labelKey: 'tabs.legalEntities', icon: Layers },
+  { id: 'workflow',       labelKey: 'tabs.workflow',      icon: GitBranch },
+  { id: 'data-import',   labelKey: 'tabs.dataImport',    icon: Database },
+  { id: 'mfa',           labelKey: 'tabs.mfa',           icon: Lock },
+  { id: 'ai',            labelKey: 'tabs.ai',            icon: Bot },
+  { id: 'connectivity',  labelKey: 'tabs.connectivity',  icon: Plug },
 ] as const
 type TabId = typeof TABS[number]['id']
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function SettingsPage() {
+  const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const { tenantConfig } = useAuthStore()
   // Onglet initial sélectionnable par URL (?tab=mfa) — utilisé notamment par la
@@ -88,18 +90,18 @@ export default function SettingsPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Paramètres</h1>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground mt-1">{tenantConfig?.name}</p>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/30 p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, labelKey, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               tab === id ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}>
-            <Icon className="h-3.5 w-3.5" />{label}
+            <Icon className="h-3.5 w-3.5" />{t(labelKey)}
           </button>
         ))}
       </div>
@@ -131,6 +133,7 @@ interface AiConfig {
 }
 
 function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const { data, isLoading } = useQuery<{ data: AiConfig }>({
     queryKey: ['settings-ai'],
     queryFn: () => api.get('/settings/ai').then(r => r.data),
@@ -153,7 +156,7 @@ function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     },
   })
 
-  if (isLoading || !cfg) return <div className="p-8 text-center text-muted-foreground">Chargement...</div>
+  if (isLoading || !cfg) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
 
   const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring'
   const modelsOf = (provider: string) => cfg.models.filter(m => m.provider === provider)
@@ -169,13 +172,13 @@ function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{label}</h3>
           <span className={`text-xs rounded-full px-2 py-0.5 ${current.hasKey ? 'bg-green-100 text-green-700' : platformFallback ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-            {current.hasKey ? `Clé tenant ${current.keyMask}` : platformFallback ? 'Repli clé plateforme' : 'Aucune clé'}
+            {current.hasKey ? t('ai.badge.tenantKey', { mask: current.keyMask }) : platformFallback ? t('ai.badge.platformFallback') : t('ai.badge.noKey')}
           </span>
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground">Clé API {label}</label>
+          <label className="text-xs font-medium text-muted-foreground">{t('ai.apiKeyLabel', { provider: label })}</label>
           <input type="password" autoComplete="new-password" className={inputCls}
-            placeholder={current.hasKey ? `Configurée (${current.keyMask}) — laisser vide pour conserver` : 'Collez votre clé pour l\'activer'}
+            placeholder={current.hasKey ? t('ai.apiKeyConfiguredPlaceholder', { mask: current.keyMask }) : t('ai.apiKeyEmptyPlaceholder')}
             value={(form as Record<string, string>)[keyField] ?? ''}
             onChange={e => setForm(p => ({ ...p, [keyField]: e.target.value }))}
             disabled={!cfg.encryptionAvailable} />
@@ -183,16 +186,16 @@ function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             <button type="button"
               onClick={() => setForm(p => ({ ...p, [keyField]: '' }))}
               className="mt-1 text-xs text-red-600 hover:underline">
-              Effacer la clé (revenir au repli plateforme)
+              {t('ai.clearKey')}
             </button>
           )}
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground">Modèle {label}</label>
+          <label className="text-xs font-medium text-muted-foreground">{t('ai.modelLabel', { provider: label })}</label>
           <select className={inputCls}
             value={(form as Record<string, string>)[modelField] ?? current.model ?? ''}
             onChange={e => setForm(p => ({ ...p, [modelField]: e.target.value }))}>
-            <option value="">— Modèle plateforme par défaut —</option>
+            <option value="">{t('ai.modelDefaultOption')}</option>
             {models.map(m => <option key={m.modelId} value={m.modelId}>{m.displayName}</option>)}
           </select>
         </div>
@@ -205,45 +208,40 @@ function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {!cfg.encryptionAvailable && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
           <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-800">
-            Le chiffrement des clés n'est pas configuré côté plateforme (ENCRYPTION_KEY).
-            La saisie d'une clé est désactivée. Contactez l'administrateur de la plateforme.
-          </p>
+          <p className="text-xs text-amber-800">{t('ai.encryptionUnavailable')}</p>
         </div>
       )}
-      <p className="text-sm text-muted-foreground">
-        Configurez la clé API et le modèle de votre tenant. Sans clé, l'IA utilise la clé de la
-        plateforme (repli). Les clés sont chiffrées (AES-256) et ne sont jamais réaffichées.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('ai.intro')}</p>
 
-      <ProviderBlock provider="claude"  label="Claude (Anthropic)" current={cfg.claude}  platformFallback={cfg.platformClaude} />
-      <ProviderBlock provider="mistral" label="Mistral"           current={cfg.mistral} platformFallback={cfg.platformMistral} />
+      <ProviderBlock provider="claude"  label={t('ai.providerClaude')} current={cfg.claude}  platformFallback={cfg.platformClaude} />
+      <ProviderBlock provider="mistral" label={t('ai.providerMistral')} current={cfg.mistral} platformFallback={cfg.platformMistral} />
 
       <div className="rounded-xl border border-border p-4">
-        <label className="text-xs font-medium text-muted-foreground">Fournisseur préféré (chat & sourcing)</label>
+        <label className="text-xs font-medium text-muted-foreground">{t('ai.preferredProviderLabel')}</label>
         <select className={inputCls}
           value={form.preferredProvider ?? cfg.preferredProvider}
           onChange={e => setForm(p => ({ ...p, preferredProvider: e.target.value as 'claude' | 'mistral' }))}>
-          <option value="claude">Claude (Anthropic)</option>
-          <option value="mistral">Mistral</option>
+          <option value="claude">{t('ai.providerClaude')}</option>
+          <option value="mistral">{t('ai.providerMistral')}</option>
         </select>
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        {saved && <span className="text-xs text-green-600">Configuration IA enregistrée.</span>}
+        {saved && <span className="text-xs text-green-600">{t('ai.saved')}</span>}
         <button onClick={() => save.mutate(form)}
           disabled={Object.keys(form).length === 0 || save.isPending}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-          <Save className="h-4 w-4" />{save.isPending ? 'Enregistrement...' : 'Enregistrer'}
+          <Save className="h-4 w-4" />{save.isPending ? t('ai.saving') : t('ai.save')}
         </button>
       </div>
-      {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur lors de l\'enregistrement.'}</p>}
+      {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('ai.saveError')}</p>}
     </div>
   )
 }
 
 // ── Tab: Général ──────────────────────────────────────────────────────────────
 function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [form, setForm] = useState<Partial<TenantSettings>>({})
   const { data } = useQuery<{ data: TenantSettings }>({
     queryKey: ['settings-tenant'],
@@ -254,7 +252,7 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings-tenant'] }); setForm({}) },
   })
   const s = data?.data
-  if (!s) return <div className="p-8 text-center text-muted-foreground">Chargement...</div>
+  if (!s) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
 
   const field = (key: keyof TenantSettings, label: string, type = 'text') => (
     <div key={key}>
@@ -269,32 +267,32 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <div className="max-w-2xl space-y-6">
       <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-        <h2 className="font-semibold">Informations entreprise</h2>
+        <h2 className="font-semibold">{t('general.companyInfo')}</h2>
         <div className="grid grid-cols-2 gap-4">
-          {field('name', 'Nom entreprise')}
-          {field('city', 'Ville (CI)')}
-          {field('cnps_number', 'N° CNPS employeur')}
-          {field('dgi_number', 'N° DGI')}
-          {field('rccm', 'RCCM')}
-          {field('at_rate', 'Taux AT CNPS (ex: 0.03)')}
+          {field('name', t('general.fields.name'))}
+          {field('city', t('general.fields.city'))}
+          {field('cnps_number', t('general.fields.cnpsNumber'))}
+          {field('dgi_number', t('general.fields.dgiNumber'))}
+          {field('rccm', t('general.fields.rccm'))}
+          {field('at_rate', t('general.fields.atRate'))}
         </div>
 
-        <h2 className="font-semibold pt-2">Secteur d'activité</h2>
+        <h2 className="font-semibold pt-2">{t('general.sector')}</h2>
         <select defaultValue={s.sector || ''}
           onChange={e => setForm(p => ({ ...p, sector: e.target.value }))}
           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-          <option value="">— Sélectionner —</option>
+          <option value="">{t('general.selectOption')}</option>
           {['transport','commerce','industrie','services','btp','finance','sante','ong','public'].map(v => (
-            <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+            <option key={v} value={v}>{t(`general.sectors.${v}`)}</option>
           ))}
         </select>
 
-        <h2 className="font-semibold pt-2">Apparence & thème</h2>
+        <h2 className="font-semibold pt-2">{t('general.appearance')}</h2>
         <div className="grid grid-cols-2 gap-4">
           {(['primary_color', 'secondary_color'] as const).map(k => (
             <div key={k}>
               <label className="text-xs font-medium text-muted-foreground">
-                {k === 'primary_color' ? 'Couleur primaire' : 'Couleur secondaire'}
+                {k === 'primary_color' ? t('general.primaryColor') : t('general.secondaryColor')}
               </label>
               <div className="mt-1 flex items-center gap-2">
                 <input type="color" defaultValue={(s as unknown as Record<string,string>)[k]}
@@ -308,34 +306,32 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           ))}
         </div>
 
-        <h2 className="font-semibold pt-2">Sécurité</h2>
+        <h2 className="font-semibold pt-2">{t('general.security')}</h2>
         <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
           <input type="checkbox"
             defaultChecked={!!s.mfa_required}
             onChange={e => setForm(p => ({ ...p, mfa_required: e.target.checked }))}
             className="mt-0.5 h-4 w-4" />
           <span className="text-sm">
-            <span className="font-medium">Imposer le MFA à tous les employés de ce tenant</span>
-            <span className="block text-xs text-muted-foreground">
-              Durcit la politique plateforme — vous pouvez l'imposer ici même si elle n'est pas globalement obligatoire,
-              mais pas l'assouplir si la plateforme l'exige déjà.
-            </span>
+            <span className="font-medium">{t('general.mfaRequiredLabel')}</span>
+            <span className="block text-xs text-muted-foreground">{t('general.mfaRequiredHint')}</span>
           </span>
         </label>
 
         <div className="pt-2 flex items-center justify-between border-t border-border">
           <p className="text-xs text-muted-foreground">
-            Plan <span className="font-semibold">{s.plan_type}</span> ·
-            Max {s.max_users} users · Max {s.max_employees} employés
+            <Trans i18nKey="general.planSummary" ns="settings"
+              values={{ plan: s.plan_type, maxUsers: s.max_users, maxEmployees: s.max_employees }}
+              components={[<span className="font-semibold" />]} />
           </p>
           <button onClick={() => update.mutate(form)}
             disabled={Object.keys(form).length === 0 || update.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             <Save className="h-4 w-4" />
-            {update.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
+            {update.isPending ? t('general.saving') : t('general.save')}
           </button>
         </div>
-        {update.isSuccess && <p className="text-xs text-green-600">Paramètres mis à jour.</p>}
+        {update.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
       </div>
     </div>
   )
@@ -345,6 +341,7 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 const EMPTY_USER_FORM = { email: '', first_name: '', last_name: '', role: 'employee', department_id: '', is_active: true }
 
 function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
   const [tempPwd, setTempPwd] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_USER_FORM)
@@ -388,7 +385,7 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       <div className="flex justify-end">
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Ajouter un utilisateur
+          <Plus className="h-4 w-4" /> {t('users.add')}
         </button>
       </div>
 
@@ -396,12 +393,12 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-              <th className="p-4">Utilisateur</th>
-              <th className="p-4">Rôle</th>
-              <th className="p-4">Poste</th>
-              <th className="p-4">Dernière connexion</th>
-              <th className="p-4">Statut</th>
-              <th className="p-4">Actions</th>
+              <th className="p-4">{t('users.table.user')}</th>
+              <th className="p-4">{t('users.table.role')}</th>
+              <th className="p-4">{t('users.table.jobTitle')}</th>
+              <th className="p-4">{t('users.table.lastLogin')}</th>
+              <th className="p-4">{t('users.table.status')}</th>
+              <th className="p-4">{t('users.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -413,32 +410,32 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </td>
                 <td className="p-4">
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {ROLE_LABELS[u.role] ?? u.role}
+                    {ROLE_KEYS.includes(u.role as typeof ROLE_KEYS[number]) ? t(`roles.${u.role}`) : u.role}
                   </span>
                 </td>
                 <td className="p-4 text-muted-foreground">{u.job_title ?? '—'}</td>
                 <td className="p-4 text-xs text-muted-foreground">
-                  {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('fr-CI') : 'Jamais'}
+                  {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('fr-CI') : t('users.never')}
                 </td>
                 <td className="p-4">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {u.is_active ? 'Actif' : 'Inactif'}
+                    {u.is_active ? t('users.active') : t('users.inactive')}
                   </span>
                 </td>
                 <td className="p-4">
                   <div className="flex items-center gap-2">
                     <button onClick={() => toggle.mutate({ id: u.id, is_active: !u.is_active })}
                       className={`text-xs ${u.is_active ? 'text-orange-600 hover:underline' : 'text-green-600 hover:underline'}`}>
-                      {u.is_active ? 'Désactiver' : 'Activer'}
+                      {u.is_active ? t('users.deactivate') : t('users.activate')}
                     </button>
                     <button
-                      onClick={() => { if (confirm(`Réinitialiser le mot de passe de ${u.first_name} ${u.last_name} ?`)) resetPwd.mutate({ id: u.id }) }}
+                      onClick={() => { if (confirm(t('users.confirmReset', { name: `${u.first_name} ${u.last_name}` }))) resetPwd.mutate({ id: u.id }) }}
                       disabled={resetPwd.isPending}
-                      title="Réinitialiser le mot de passe"
+                      title={t('users.resetPasswordTitle')}
                       className="text-blue-500 hover:text-blue-700 disabled:opacity-40">
                       <RefreshCw className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => { if (confirm('Supprimer cet utilisateur ?')) remove.mutate(u.id) }}
+                    <button onClick={() => { if (confirm(t('users.confirmDelete'))) remove.mutate(u.id) }}
                       className="text-red-500 hover:text-red-700"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </td>
@@ -446,7 +443,7 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             ))}
             {users.length === 0 && (
               <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">
-                <Users className="mx-auto mb-2 h-8 w-8 opacity-30" />Aucun utilisateur
+                <Users className="mx-auto mb-2 h-8 w-8 opacity-30" />{t('users.empty')}
               </td></tr>
             )}
           </tbody>
@@ -458,8 +455,11 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setResetResult(null); setCopied(false) }}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl text-center space-y-3" onClick={e => e.stopPropagation()}>
             <RefreshCw className="mx-auto h-9 w-9 text-blue-500" />
-            <h3 className="font-semibold">Mot de passe réinitialisé</h3>
-            <p className="text-sm text-muted-foreground">Nouveau mot de passe temporaire pour <strong>{resetResult.name}</strong> :</p>
+            <h3 className="font-semibold">{t('users.resetResult.title')}</h3>
+            <p className="text-sm text-muted-foreground">
+              <Trans i18nKey="users.resetResult.description" ns="settings"
+                values={{ name: resetResult.name }} components={[<strong />]} />
+            </p>
             <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-3">
               <span className="flex-1 font-mono text-base font-bold tracking-wider">{resetResult.pwd}</span>
               <button onClick={() => { void navigator.clipboard.writeText(resetResult.pwd); setCopied(true) }}
@@ -468,11 +468,11 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               </button>
             </div>
             {resetResult.emailSent
-              ? <p className="text-xs text-green-600 flex items-center justify-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Email envoyé à l'utilisateur</p>
-              : <p className="text-xs text-amber-600">Email non envoyé — communiquez ce mot de passe manuellement.</p>
+              ? <p className="text-xs text-green-600 flex items-center justify-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> {t('users.resetResult.emailSent')}</p>
+              : <p className="text-xs text-amber-600">{t('users.resetResult.emailNotSent')}</p>
             }
             <button onClick={() => { setResetResult(null); setCopied(false) }}
-              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Fermer</button>
+              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t('users.resetResult.close')}</button>
           </div>
         </div>
       )}
@@ -483,65 +483,65 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             {tempPwd ? (
               <div className="text-center space-y-3">
                 <ShieldCheck className="mx-auto h-10 w-10 text-green-600" />
-                <h3 className="font-semibold">Utilisateur créé !</h3>
-                <p className="text-sm text-muted-foreground">Mot de passe temporaire :</p>
+                <h3 className="font-semibold">{t('users.createResult.title')}</h3>
+                <p className="text-sm text-muted-foreground">{t('users.createResult.tempPasswordLabel')}</p>
                 <div className="rounded-lg bg-muted px-4 py-3 font-mono text-lg font-bold tracking-widest">{tempPwd}</div>
-                <p className="text-xs text-muted-foreground">Communiquez ce mot de passe de façon sécurisée.</p>
+                <p className="text-xs text-muted-foreground">{t('users.createResult.hint')}</p>
                 <button onClick={() => { setShowNew(false); setTempPwd(null); setForm(EMPTY_USER_FORM) }}
-                  className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Fermer</button>
+                  className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t('users.createResult.close')}</button>
               </div>
             ) : (
               <>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Ajouter un utilisateur</h3>
+                  <h3 className="font-semibold">{t('users.form.title')}</h3>
                   <button onClick={() => setShowNew(false)}><X className="h-4 w-4" /></button>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Email *</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('users.form.email')}</label>
                     <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                       type="email" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {(['first_name', 'last_name'] as const).map(k => (
                       <div key={k}>
-                        <label className="text-xs font-medium text-muted-foreground">{k === 'first_name' ? 'Prénom' : 'Nom'} *</label>
+                        <label className="text-xs font-medium text-muted-foreground">{k === 'first_name' ? t('users.form.firstName') : t('users.form.lastName')}</label>
                         <input value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
                           className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                       </div>
                     ))}
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Rôle</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('users.form.role')}</label>
                     <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                      {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      {ROLE_KEYS.map(v => <option key={v} value={v}>{t(`roles.${v}`)}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Département</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('users.form.department')}</label>
                     <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                      <option value="">— Aucun —</option>
+                      <option value="">{t('users.form.noDepartment')}</option>
                       {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Statut</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('users.form.status')}</label>
                     <select value={form.is_active ? 'true' : 'false'} onChange={e => setForm(p => ({ ...p, is_active: e.target.value === 'true' }))}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                      <option value="true">Actif</option>
-                      <option value="false">Inactif</option>
+                      <option value="true">{t('users.form.active')}</option>
+                      <option value="false">{t('users.form.inactive')}</option>
                     </select>
                   </div>
                 </div>
                 <div className="mt-5 flex gap-2 justify-end">
                   <button onClick={() => setShowNew(false)}
-                    className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+                    className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('users.form.cancel')}</button>
                   <button onClick={() => create.mutate(form)}
                     disabled={!form.email || !form.first_name || !form.last_name || create.isPending}
                     className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    {create.isPending ? 'Création...' : 'Créer'}
+                    {create.isPending ? t('users.form.creating') : t('users.form.create')}
                   </button>
                 </div>
               </>
@@ -555,6 +555,7 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
 // ── Tab: Départements ─────────────────────────────────────────────────────────
 function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
   const [editing, setEditing] = useState<{ id: string; name: string; code: string } | null>(null)
   const [form, setForm] = useState({ name: '', code: '' })
@@ -576,7 +577,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/departments/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-departments'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? 'Erreur'),
+    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
   })
 
   return (
@@ -584,7 +585,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       <div className="flex justify-end">
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Nouveau département
+          <Plus className="h-4 w-4" /> {t('departments.add')}
         </button>
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -595,13 +596,13 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <input value={editing.name} onChange={e => setEditing(p => p ? { ...p, name: e.target.value } : p)}
                   className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm outline-none" />
                 <input value={editing.code} onChange={e => setEditing(p => p ? { ...p, code: e.target.value } : p)}
-                  placeholder="Code" className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm outline-none" />
+                  placeholder={t('departments.codePlaceholder')} className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm outline-none" />
                 <div className="flex gap-2">
                   <button onClick={() => update.mutate(editing)}
                     className="flex items-center gap-1 rounded bg-primary px-2 py-1 text-xs text-primary-foreground">
-                    <Check className="h-3 w-3" /> OK
+                    <Check className="h-3 w-3" /> {t('departments.ok')}
                   </button>
-                  <button onClick={() => setEditing(null)} className="rounded border border-border px-2 py-1 text-xs">Annuler</button>
+                  <button onClick={() => setEditing(null)} className="rounded border border-border px-2 py-1 text-xs">{t('departments.cancel')}</button>
                 </div>
               </div>
             ) : (
@@ -609,7 +610,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <div>
                   <p className="font-medium">{d.name}</p>
                   {d.code && <p className="text-xs text-muted-foreground">{d.code}</p>}
-                  {d.manager_name && <p className="text-xs text-muted-foreground mt-1">Manager : {d.manager_name}</p>}
+                  {d.manager_name && <p className="text-xs text-muted-foreground mt-1">{t('departments.manager', { name: d.manager_name })}</p>}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="flex items-center gap-1 text-sm font-medium text-primary">
@@ -617,7 +618,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   </span>
                   <button onClick={() => setEditing({ id: d.id, name: d.name, code: d.code ?? '' })}
                     className="text-muted-foreground hover:text-foreground"><Edit2 className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => { if (confirm('Supprimer ce département ?')) remove.mutate(d.id) }}
+                  <button onClick={() => { if (confirm(t('departments.confirmDelete'))) remove.mutate(d.id) }}
                     className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
@@ -626,7 +627,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         ))}
         {depts.length === 0 && (
           <div className="col-span-3 p-8 text-center text-muted-foreground">
-            <Building2 className="mx-auto mb-2 h-8 w-8 opacity-30" />Aucun département
+            <Building2 className="mx-auto mb-2 h-8 w-8 opacity-30" />{t('departments.empty')}
           </div>
         )}
       </div>
@@ -634,24 +635,24 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {showNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNew(false)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-4">Nouveau département</h3>
+            <h3 className="font-semibold mb-4">{t('departments.form.title')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Nom *</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('departments.form.name')}</label>
                 <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="Ex: Direction Exploitation" />
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('departments.form.namePlaceholder')} />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Code</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('departments.form.code')}</label>
                 <input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="EXPL" />
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('departments.form.codePlaceholder')} />
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('departments.form.cancel')}</button>
               <button onClick={() => create.mutate(form)} disabled={!form.name || create.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {create.isPending ? 'Création...' : 'Créer'}
+                {create.isPending ? t('departments.form.creating') : t('departments.form.create')}
               </button>
             </div>
           </div>
@@ -663,6 +664,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
 // ── Tab: Types d'absences ─────────────────────────────────────────────────────
 function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState({ code: '', label: '', color: '#6366F1', requires_approval: true, is_paid: true, max_days_per_year: '', calculation_mode: 'working_days' })
 
@@ -686,7 +688,7 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/absence-types/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-absence-types'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? 'Erreur'),
+    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
   })
 
   return (
@@ -694,7 +696,7 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       <div className="flex justify-end">
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Nouveau type
+          <Plus className="h-4 w-4" /> {t('absenceTypes.add')}
         </button>
       </div>
 
@@ -702,35 +704,35 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-              <th className="p-4">Type</th>
-              <th className="p-4">Code</th>
-              <th className="p-4">Calcul</th>
-              <th className="p-4">Max jours/an</th>
-              <th className="p-4">Payé</th>
-              <th className="p-4">Approbation</th>
-              <th className="p-4">Statut</th>
-              <th className="p-4">Actions</th>
+              <th className="p-4">{t('absenceTypes.table.type')}</th>
+              <th className="p-4">{t('absenceTypes.table.code')}</th>
+              <th className="p-4">{t('absenceTypes.table.calculation')}</th>
+              <th className="p-4">{t('absenceTypes.table.maxDaysPerYear')}</th>
+              <th className="p-4">{t('absenceTypes.table.paid')}</th>
+              <th className="p-4">{t('absenceTypes.table.approval')}</th>
+              <th className="p-4">{t('absenceTypes.table.status')}</th>
+              <th className="p-4">{t('absenceTypes.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {types.map(t => (
-              <tr key={t.id} className="hover:bg-muted/30">
+            {types.map(at => (
+              <tr key={at.id} className="hover:bg-muted/30">
                 <td className="p-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: t.color }} />
-                    <span className="font-medium">{t.label}</span>
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: at.color }} />
+                    <span className="font-medium">{at.label}</span>
                   </div>
                 </td>
-                <td className="p-4 font-mono text-xs text-muted-foreground">{t.code}</td>
-                <td className="p-4 text-xs">{t.calculation_mode === 'working_days' ? 'Jours ouvrables' : 'Jours calendaires'}</td>
-                <td className="p-4">{t.max_days_per_year ?? '—'}</td>
-                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${t.is_paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.is_paid ? 'Oui' : 'Non'}</span></td>
-                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${t.requires_approval ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>{t.requires_approval ? 'Requise' : 'Auto'}</span></td>
-                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${t.is_active ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>{t.is_active ? 'Actif' : 'Inactif'}</span></td>
+                <td className="p-4 font-mono text-xs text-muted-foreground">{at.code}</td>
+                <td className="p-4 text-xs">{at.calculation_mode === 'working_days' ? t('absenceTypes.workingDays') : t('absenceTypes.calendarDays')}</td>
+                <td className="p-4">{at.max_days_per_year ?? '—'}</td>
+                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${at.is_paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{at.is_paid ? t('absenceTypes.yes') : t('absenceTypes.no')}</span></td>
+                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${at.requires_approval ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>{at.requires_approval ? t('absenceTypes.approvalRequired') : t('absenceTypes.approvalAuto')}</span></td>
+                <td className="p-4"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${at.is_active ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>{at.is_active ? t('absenceTypes.active') : t('absenceTypes.inactive')}</span></td>
                 <td className="p-4 flex items-center gap-2">
-                  <button onClick={() => toggleActive.mutate({ id: t.id, is_active: !t.is_active })}
-                    className="text-xs text-muted-foreground hover:text-foreground">{t.is_active ? 'Désactiver' : 'Activer'}</button>
-                  <button onClick={() => { if (confirm('Supprimer ce type ?')) remove.mutate(t.id) }}
+                  <button onClick={() => toggleActive.mutate({ id: at.id, is_active: !at.is_active })}
+                    className="text-xs text-muted-foreground hover:text-foreground">{at.is_active ? t('absenceTypes.deactivate') : t('absenceTypes.activate')}</button>
+                  <button onClick={() => { if (confirm(t('absenceTypes.confirmDelete'))) remove.mutate(at.id) }}
                     className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </td>
               </tr>
@@ -742,56 +744,56 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {showNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNew(false)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-4">Nouveau type d'absence</h3>
+            <h3 className="font-semibold mb-4">{t('absenceTypes.form.title')}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Code *</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('absenceTypes.form.code')}</label>
                   <input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="RTT" />
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('absenceTypes.form.codePlaceholder')} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Libellé *</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('absenceTypes.form.label')}</label>
                   <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="Récupération" />
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('absenceTypes.form.labelPlaceholder')} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Couleur</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('absenceTypes.form.color')}</label>
                   <input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
                     className="mt-1 h-9 w-full cursor-pointer rounded-lg border border-input" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Max jours/an</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('absenceTypes.form.maxDaysPerYear')}</label>
                   <input value={form.max_days_per_year} onChange={e => setForm(p => ({ ...p, max_days_per_year: e.target.value }))}
-                    type="number" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="26" />
+                    type="number" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('absenceTypes.form.maxDaysPlaceholder')} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Mode de calcul</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('absenceTypes.form.calculationMode')}</label>
                 <select value={form.calculation_mode} onChange={e => setForm(p => ({ ...p, calculation_mode: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                  <option value="working_days">Jours ouvrables (Code Travail CI)</option>
-                  <option value="calendar_days">Jours calendaires</option>
+                  <option value="working_days">{t('absenceTypes.form.workingDaysOption')}</option>
+                  <option value="calendar_days">{t('absenceTypes.form.calendarDaysOption')}</option>
                 </select>
               </div>
               <div className="flex gap-6">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={form.is_paid} onChange={e => setForm(p => ({ ...p, is_paid: e.target.checked }))} />
-                  Absence payée
+                  {t('absenceTypes.form.isPaid')}
                 </label>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={form.requires_approval} onChange={e => setForm(p => ({ ...p, requires_approval: e.target.checked }))} />
-                  Approbation requise
+                  {t('absenceTypes.form.requiresApproval')}
                 </label>
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('absenceTypes.form.cancel')}</button>
               <button onClick={() => create.mutate(form)} disabled={!form.code || !form.label || create.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {create.isPending ? 'Création...' : 'Créer'}
+                {create.isPending ? t('absenceTypes.form.creating') : t('absenceTypes.form.create')}
               </button>
             </div>
           </div>
@@ -803,6 +805,7 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
 // ── Tab: Rubriques de paie ────────────────────────────────────────────────────
 function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState({ code: '', name: '', type: 'earning', formula: '', rate: '', description: '' })
 
@@ -832,11 +835,11 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {rules.length} rubrique(s) configurée(s) — Conformes CNPS 2024 & ITS/DGI CI
+          {t('payrollRules.count', { count: rules.length })}
         </p>
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Nouvelle rubrique
+          <Plus className="h-4 w-4" /> {t('payrollRules.add')}
         </button>
       </div>
 
@@ -844,17 +847,20 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-              <th className="p-3">Code</th>
-              <th className="p-3">Libellé</th>
-              <th className="p-3">Type</th>
-              <th className="p-3">Formule / Taux</th>
-              <th className="p-3">Statut</th>
-              <th className="p-3">Actions</th>
+              <th className="p-3">{t('payrollRules.table.code')}</th>
+              <th className="p-3">{t('payrollRules.table.label')}</th>
+              <th className="p-3">{t('payrollRules.table.type')}</th>
+              <th className="p-3">{t('payrollRules.table.formulaOrRate')}</th>
+              <th className="p-3">{t('payrollRules.table.status')}</th>
+              <th className="p-3">{t('payrollRules.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rules.map(r => {
-              const typeInfo = RULE_TYPE_LABELS[r.type] ?? { label: r.type, color: 'bg-muted text-muted-foreground' }
+              const typeInfo = {
+                label: (RULE_TYPE_KEYS as readonly string[]).includes(r.type) ? t(`ruleTypes.${r.type}`) : r.type,
+                color: RULE_TYPE_COLORS[r.type] ?? 'bg-muted text-muted-foreground',
+              }
               return (
                 <tr key={r.id} className={`hover:bg-muted/30 ${!r.is_active ? 'opacity-50' : ''}`}>
                   <td className="p-3 font-mono text-xs font-bold">{r.code}</td>
@@ -870,15 +876,15 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   </td>
                   <td className="p-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
-                      {r.is_active ? 'Active' : 'Inactive'}
+                      {r.is_active ? t('payrollRules.active') : t('payrollRules.inactive')}
                     </span>
                   </td>
                   <td className="p-3 flex items-center gap-2">
                     <button onClick={() => toggleActive.mutate({ id: r.id, is_active: !r.is_active })}
                       className="text-xs text-muted-foreground hover:text-foreground">
-                      {r.is_active ? 'Désactiver' : 'Activer'}
+                      {r.is_active ? t('payrollRules.deactivate') : t('payrollRules.activate')}
                     </button>
-                    <button onClick={() => { if (confirm('Supprimer cette rubrique ?')) remove.mutate(r.id) }}
+                    <button onClick={() => { if (confirm(t('payrollRules.confirmDelete'))) remove.mutate(r.id) }}
                       className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                   </td>
                 </tr>
@@ -891,48 +897,48 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {showNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNew(false)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-4">Nouvelle rubrique de paie</h3>
+            <h3 className="font-semibold mb-4">{t('payrollRules.form.title')}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Code *</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.code')}</label>
                   <input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="6000" />
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('payrollRules.form.codePlaceholder')} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Type *</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.type')}</label>
                   <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
-                    {Object.entries(RULE_TYPE_LABELS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
+                    {RULE_TYPE_KEYS.map(v => <option key={v} value={v}>{t(`ruleTypes.${v}`)}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Libellé *</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.label')}</label>
                 <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder="Prime de rendement" />
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" placeholder={t('payrollRules.form.labelPlaceholder')} />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Formule (ex: BRUT_MENSUEL * 0.05)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.formula')}</label>
                 <input value={form.formula} onChange={e => setForm(p => ({ ...p, formula: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono outline-none" placeholder="VAR:PRIME_RENDEMENT" />
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono outline-none" placeholder={t('payrollRules.form.formulaPlaceholder')} />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Taux (si cotisation, ex: 0.063)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.rate')}</label>
                 <input value={form.rate} onChange={e => setForm(p => ({ ...p, rate: e.target.value }))}
                   type="number" step="0.001" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Description</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('payrollRules.form.description')}</label>
                 <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              <button onClick={() => setShowNew(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('payrollRules.form.cancel')}</button>
               <button onClick={() => create.mutate(form)} disabled={!form.code || !form.name || create.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {create.isPending ? 'Création...' : 'Créer'}
+                {create.isPending ? t('payrollRules.form.creating') : t('payrollRules.form.create')}
               </button>
             </div>
           </div>
@@ -943,18 +949,20 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 }
 
 // ── Tab: Entités juridiques ───────────────────────────────────────────────────
-const COUNTRY_OPTIONS: Array<{ code: string; label: string; flag: string; pack: string; currency: string }> = [
-  { code: 'CIV', label: 'Côte d\'Ivoire',  flag: '🇨🇮', pack: 'ci_2024', currency: 'XOF' },
-  { code: 'SEN', label: 'Sénégal',         flag: '🇸🇳', pack: 'sn_2024', currency: 'XOF' },
-  { code: 'BEN', label: 'Bénin',           flag: '🇧🇯', pack: 'bj_2024', currency: 'XOF' },
-  { code: 'TGO', label: 'Togo',            flag: '🇹🇬', pack: 'tg_2024', currency: 'XOF' },
-  { code: 'BFA', label: 'Burkina Faso',    flag: '🇧🇫', pack: 'bf_2024', currency: 'XOF' },
-  { code: 'MLI', label: 'Mali',            flag: '🇲🇱', pack: 'ml_2024', currency: 'XOF' },
-  { code: 'NER', label: 'Niger',           flag: '🇳🇪', pack: 'ne_2024', currency: 'XOF' },
-  { code: 'CMR', label: 'Cameroun',        flag: '🇨🇲', pack: 'cm_2024', currency: 'XAF' },
-  { code: 'TCD', label: 'Tchad',           flag: '🇹🇩', pack: 'td_2024', currency: 'XAF' },
-  { code: 'NGA', label: 'Nigeria',         flag: '🇳🇬', pack: 'ng_2024', currency: 'NGN' },
-  { code: 'GHA', label: 'Ghana',           flag: '🇬🇭', pack: 'gh_2024', currency: 'GHS' },
+// Libellé du pays traduit via legalEntities.countries.<code> ; ici uniquement
+// les données techniques (code, drapeau, pack législatif, devise).
+const COUNTRY_OPTIONS: Array<{ code: string; flag: string; pack: string; currency: string }> = [
+  { code: 'CIV', flag: '🇨🇮', pack: 'ci_2024', currency: 'XOF' },
+  { code: 'SEN', flag: '🇸🇳', pack: 'sn_2024', currency: 'XOF' },
+  { code: 'BEN', flag: '🇧🇯', pack: 'bj_2024', currency: 'XOF' },
+  { code: 'TGO', flag: '🇹🇬', pack: 'tg_2024', currency: 'XOF' },
+  { code: 'BFA', flag: '🇧🇫', pack: 'bf_2024', currency: 'XOF' },
+  { code: 'MLI', flag: '🇲🇱', pack: 'ml_2024', currency: 'XOF' },
+  { code: 'NER', flag: '🇳🇪', pack: 'ne_2024', currency: 'XOF' },
+  { code: 'CMR', flag: '🇨🇲', pack: 'cm_2024', currency: 'XAF' },
+  { code: 'TCD', flag: '🇹🇩', pack: 'td_2024', currency: 'XAF' },
+  { code: 'NGA', flag: '🇳🇬', pack: 'ng_2024', currency: 'NGN' },
+  { code: 'GHA', flag: '🇬🇭', pack: 'gh_2024', currency: 'GHS' },
 ]
 
 interface LegalEntityForm {
@@ -972,6 +980,7 @@ const EMPTY_LE_FORM: LegalEntityForm = {
 }
 
 function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<LegalEntityForm>(EMPTY_LE_FORM)
@@ -1024,12 +1033,12 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       setEditingId(null)
       qc.invalidateQueries({ queryKey: ['settings-legal-entities'] })
     },
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? 'Erreur'),
+    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/legal-entities/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-legal-entities'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? 'Erreur'),
+    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
   })
 
   const LEGAL_FORMS = ['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'GIE', 'Association', 'ONG', 'Établissement public']
@@ -1044,22 +1053,15 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {/* Bloc d'aide adapté au mode du tenant */}
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 text-sm text-blue-900">
         <p className="font-semibold mb-1">
-          {hasSubsidiaries ? 'Filiales du groupe' : 'Entité juridique'}
+          {hasSubsidiaries ? t('legalEntities.help.titleSubsidiaries') : t('legalEntities.help.titleSingle')}
         </p>
         {hasSubsidiaries ? (
           <p className="text-xs text-blue-800/90">
-            Chaque filiale représente un établissement avec ses propres N° CNPS,
-            RCCM, pays et pack législatif. <strong>Les employés sont rattachés à
-            une filiale via leur fiche</strong>. Le moteur de paie applique alors
-            le pack législatif de la filiale du salarié (CNPS, IPRES, etc. selon
-            le pays). CNPS/DISA peut être générée par filiale ou consolidée.
+            <Trans t={t} i18nKey="legalEntities.help.textSubsidiaries" components={[<strong />]} />
           </p>
         ) : (
           <p className="text-xs text-blue-800/90">
-            Renseignez ici les informations légales de votre entreprise
-            (N° CNPS employeur, RCCM, taux AT, convention collective). Ces
-            informations sont utilisées sur les bulletins de paie, contrats
-            et déclarations sociales.
+            {t('legalEntities.help.textSingle')}
           </p>
         )}
       </div>
@@ -1069,7 +1071,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           <button onClick={openCreate}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
             <Plus className="h-4 w-4" />
-            {hasSubsidiaries ? 'Nouvelle filiale' : 'Renseigner l\'entité'}
+            {hasSubsidiaries ? t('legalEntities.newSubsidiary') : t('legalEntities.fillEntity')}
           </button>
         </div>
       )}
@@ -1087,42 +1089,42 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       {e.name}
                       {hasSubsidiaries && (
                         <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
-                          Filiale
+                          {t('legalEntities.subsidiaryBadge')}
                         </span>
                       )}
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      {e.legal_form} · {e.city} · {countryOpt.label}
+                      {t('legalEntities.entityMeta', { legalForm: e.legal_form, city: e.city, country: t(`legalEntities.countries.${countryOpt.code}`) })}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-sm font-medium text-primary" title="Employés rattachés">
+                  <span className="flex items-center gap-1 text-sm font-medium text-primary" title={t('legalEntities.employeesTitle')}>
                     <Users className="h-3.5 w-3.5" />{e.employees_count}
                   </span>
                   <button onClick={() => openEdit(e)}
-                    className="text-muted-foreground hover:text-primary" title="Modifier">
+                    className="text-muted-foreground hover:text-primary" title={t('legalEntities.edit')}>
                     <Settings className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => { if (confirm('Supprimer cette entité ?')) remove.mutate(e.id) }}
-                    className="text-red-400 hover:text-red-600" title="Supprimer">
+                  <button onClick={() => { if (confirm(t('legalEntities.confirmDelete'))) remove.mutate(e.id) }}
+                    className="text-red-400 hover:text-red-600" title={t('legalEntities.delete')}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                {e.cnps_number && <div><span className="text-muted-foreground">CNPS : </span><span className="font-mono">{e.cnps_number}</span></div>}
-                {e.dgi_number  && <div><span className="text-muted-foreground">DGI : </span><span className="font-mono">{e.dgi_number}</span></div>}
-                {e.rccm        && <div><span className="text-muted-foreground">RCCM : </span><span className="font-mono">{e.rccm}</span></div>}
-                <div><span className="text-muted-foreground">Taux AT : </span><span className="font-medium">{(parseFloat(e.at_rate) * 100).toFixed(2)} %</span></div>
+                {e.cnps_number && <div><span className="text-muted-foreground">{t('legalEntities.card.cnps')}</span><span className="font-mono">{e.cnps_number}</span></div>}
+                {e.dgi_number  && <div><span className="text-muted-foreground">{t('legalEntities.card.dgi')}</span><span className="font-mono">{e.dgi_number}</span></div>}
+                {e.rccm        && <div><span className="text-muted-foreground">{t('legalEntities.card.rccm')}</span><span className="font-mono">{e.rccm}</span></div>}
+                <div><span className="text-muted-foreground">{t('legalEntities.card.atRate')}</span><span className="font-medium">{(parseFloat(e.at_rate) * 100).toFixed(2)} %</span></div>
                 {e.legislation_pack_code && (
                   <div className="col-span-2">
-                    <span className="text-muted-foreground">Pack législatif : </span>
+                    <span className="text-muted-foreground">{t('legalEntities.card.legislationPack')}</span>
                     <code className="rounded bg-muted px-1.5 py-0.5">{e.legislation_pack_code}</code>
                     <span className="ml-1 text-muted-foreground">({countryOpt.currency})</span>
                   </div>
                 )}
-                {e.collective_agreement && <div className="col-span-2"><span className="text-muted-foreground">CCN : </span>{e.collective_agreement}</div>}
+                {e.collective_agreement && <div className="col-span-2"><span className="text-muted-foreground">{t('legalEntities.card.collectiveAgreement')}</span>{e.collective_agreement}</div>}
               </div>
             </div>
           )
@@ -1130,7 +1132,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         {entities.length === 0 && (
           <div className="col-span-2 rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
             <Layers className="mx-auto mb-2 h-8 w-8 opacity-30" />
-            Aucune entité juridique — créez votre première entité (siège social ou filiale).
+            {t('legalEntities.empty')}
           </div>
         )}
       </div>
@@ -1143,27 +1145,27 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
               <h3 className="font-semibold">
                 {editingId
-                  ? (hasSubsidiaries ? 'Modifier la filiale' : 'Modifier l\'entité juridique')
-                  : (hasSubsidiaries ? 'Nouvelle filiale' : 'Entité juridique principale')}
+                  ? (hasSubsidiaries ? t('legalEntities.modal.editSubsidiary') : t('legalEntities.modal.editEntity'))
+                  : (hasSubsidiaries ? t('legalEntities.modal.newSubsidiary') : t('legalEntities.modal.newEntity'))}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Raison sociale *</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.name')}</label>
                 <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  placeholder={hasSubsidiaries ? "Ex: SOTRA Bouaké" : "Ex: OpenLab Consulting"} />
+                  placeholder={hasSubsidiaries ? t('legalEntities.modal.namePlaceholderSubsidiary') : t('legalEntities.modal.namePlaceholderSingle')} />
               </div>
 
               {/* Pays + Pack législatif — visible uniquement si tenant multi-pays */}
               {hasSubsidiaries && (
               <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
-                <p className="text-xs font-semibold text-blue-900">Conformité légale par pays</p>
+                <p className="text-xs font-semibold text-blue-900">{t('legalEntities.modal.complianceTitle')}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Pays</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.country')}</label>
                     <select value={form.country_code}
                       onChange={e => {
                         const c = COUNTRY_OPTIONS.find(x => x.code === e.target.value)
@@ -1175,21 +1177,21 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       }}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
                       {COUNTRY_OPTIONS.map(c => (
-                        <option key={c.code} value={c.code}>{c.flag} {c.label} · {c.currency}</option>
+                        <option key={c.code} value={c.code}>{c.flag} {t(`legalEntities.countries.${c.code}`)} · {c.currency}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Pack législatif</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.legislationPack')}</label>
                     <input value={form.legislation_pack_code}
                       onChange={e => setForm(p => ({ ...p, legislation_pack_code: e.target.value }))}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono"
-                      placeholder="ci_2024" />
+                      placeholder={t('legalEntities.modal.legislationPackPlaceholder')} />
                   </div>
                 </div>
                 {selectedCountry && (
                   <p className="text-[11px] text-blue-700">
-                    Moteur de paie appliqué : <code className="bg-blue-100 px-1 rounded">{form.legislation_pack_code}</code>
+                    {t('legalEntities.modal.engineApplied')}<code className="bg-blue-100 px-1 rounded">{form.legislation_pack_code}</code>
                     {' '}({selectedCountry.currency})
                   </p>
                 )}
@@ -1199,46 +1201,46 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               {/* Identité OHADA */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Forme juridique</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.legalForm')}</label>
                   <select value={form.legal_form} onChange={e => setForm(p => ({ ...p, legal_form: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
                     {LEGAL_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Ville</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.city')}</label>
                   <input value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
-                    placeholder="Abidjan" />
+                    placeholder={t('legalEntities.modal.cityPlaceholder')} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">N° CNPS employeur</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.cnpsNumber')}</label>
                   <input value={form.cnps_number} onChange={e => setForm(p => ({ ...p, cnps_number: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">N° DGI</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.dgiNumber')}</label>
                   <input value={form.dgi_number} onChange={e => setForm(p => ({ ...p, dgi_number: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">RCCM</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.rccm')}</label>
                   <input value={form.rccm} onChange={e => setForm(p => ({ ...p, rccm: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Taux AT CNPS (0.02 = 2%)</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.atRate')}</label>
                   <input value={form.at_rate} onChange={e => setForm(p => ({ ...p, at_rate: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">Convention collective applicable</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.collectiveAgreement')}</label>
                   <input value={form.collective_agreement} onChange={e => setForm(p => ({ ...p, collective_agreement: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none"
-                    placeholder="Ex: Convention Transport Urbain CI" />
+                    placeholder={t('legalEntities.modal.collectiveAgreementPlaceholder')} />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">Adresse</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.address')}</label>
                   <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
                 </div>
@@ -1247,12 +1249,12 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
             <div className="sticky bottom-0 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
               <button onClick={() => setShowModal(false)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('legalEntities.modal.cancel')}</button>
               <button onClick={() => save.mutate(form)} disabled={!form.name || save.isPending}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {save.isPending
-                  ? (editingId ? 'Mise à jour...' : 'Création...')
-                  : (editingId ? 'Enregistrer' : (hasSubsidiaries ? 'Créer la filiale' : 'Enregistrer'))}
+                  ? (editingId ? t('legalEntities.modal.updating') : t('legalEntities.modal.creating'))
+                  : (editingId ? t('legalEntities.modal.save') : (hasSubsidiaries ? t('legalEntities.modal.createSubsidiary') : t('legalEntities.modal.save')))}
               </button>
             </div>
           </div>
@@ -1266,8 +1268,6 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
 interface ImportTemplate {
   id: string
-  label: string
-  description: string
   icon: React.ElementType
   color: string
   headers: string[]
@@ -1278,8 +1278,6 @@ interface ImportTemplate {
 const IMPORT_TEMPLATES: ImportTemplate[] = [
   {
     id: 'employees',
-    label: 'Employés',
-    description: 'État civil, poste, département, salaire — fichier principal',
     icon: Users2,
     color: 'bg-blue-100 text-blue-600',
     endpoint: '/settings/import/employees',
@@ -1291,8 +1289,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'departments',
-    label: 'Départements',
-    description: 'Structure organisationnelle et responsables',
     icon: Building2,
     color: 'bg-purple-100 text-purple-600',
     endpoint: '/settings/import/departments',
@@ -1307,8 +1303,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'absences',
-    label: 'Historique absences',
-    description: 'Absences passées et soldes de congés',
     icon: CalendarDays,
     color: 'bg-orange-100 text-orange-600',
     endpoint: '/settings/import/absences',
@@ -1320,8 +1314,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'pay_slips',
-    label: 'Bulletins de paie',
-    description: 'Bulletins historiques (net, cotisations CNPS, ITS)',
     icon: Banknote,
     color: 'bg-green-100 text-green-600',
     endpoint: '/settings/import/pay-slips',
@@ -1333,8 +1325,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'contracts',
-    label: 'Contrats OHADA',
-    description: 'CDI, CDD, apprentissage avec clauses légales CI',
     icon: FileText,
     color: 'bg-slate-100 text-slate-600',
     endpoint: '/settings/import/contracts',
@@ -1346,8 +1336,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'mobile_money',
-    label: 'Mobile Money',
-    description: 'Numéros Wave / MTN / Orange par employé',
     icon: Smartphone,
     color: 'bg-teal-100 text-teal-600',
     endpoint: '/settings/import/mobile-money',
@@ -1359,8 +1347,6 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
   {
     id: 'expenses',
-    label: 'Notes de frais',
-    description: 'Historique des notes de frais et remboursements',
     icon: Receipt,
     color: 'bg-rose-100 text-rose-600',
     endpoint: '/settings/import/expenses',
@@ -1415,9 +1401,12 @@ interface UsersStatus { totalEmployees: number; withAccount: number; withoutAcco
 
 // ── Composant carte d'import individuelle ──────────────────────────────────
 
+// Les messages sont produits à l'affichage via t() à partir de messageKey + count
+// (i18n des pluriels). Les types techniques restent en anglais (valeurs internes).
 interface ValidationIssue {
   type: 'missing_col' | 'extra_col' | 'empty_file' | 'wrong_format' | 'row_error'
-  message: string
+  messageKey: string
+  count?: number
   details?: string[]
 }
 
@@ -1426,11 +1415,11 @@ function validateFile(file: File, template: ImportTemplate, text: string): Valid
   const { headers, rows } = parseCSV(text)
 
   if (!file.name.toLowerCase().endsWith('.csv')) {
-    issues.push({ type: 'wrong_format', message: 'Format incorrect — seuls les fichiers .csv sont acceptés' })
+    issues.push({ type: 'wrong_format', messageKey: 'dataImport.validation.wrongFormat' })
     return issues
   }
   if (headers.length === 0 || rows.length === 0) {
-    issues.push({ type: 'empty_file', message: 'Le fichier est vide ou ne contient pas de données' })
+    issues.push({ type: 'empty_file', messageKey: 'dataImport.validation.emptyFile' })
     return issues
   }
 
@@ -1438,7 +1427,8 @@ function validateFile(file: File, template: ImportTemplate, text: string): Valid
   if (missing.length > 0) {
     issues.push({
       type: 'missing_col',
-      message: `${missing.length} colonne${missing.length > 1 ? 's' : ''} manquante${missing.length > 1 ? 's' : ''}`,
+      messageKey: 'dataImport.validation.missingCols',
+      count: missing.length,
       details: missing,
     })
   }
@@ -1447,7 +1437,8 @@ function validateFile(file: File, template: ImportTemplate, text: string): Valid
   if (extra.length > 0) {
     issues.push({
       type: 'extra_col',
-      message: `${extra.length} colonne${extra.length > 1 ? 's' : ''} inconnue${extra.length > 1 ? 's' : ''} (sera ignorée${extra.length > 1 ? 's' : ''})`,
+      messageKey: 'dataImport.validation.extraCols',
+      count: extra.length,
       details: extra,
     })
   }
@@ -1456,6 +1447,7 @@ function validateFile(file: File, template: ImportTemplate, text: string): Valid
 }
 
 function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate; onSuccess: () => void }) {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState<File | null>(null)
@@ -1490,7 +1482,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
       onSuccess()
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
-      setServerError(e.response?.data?.error ?? 'Erreur lors de l\'import. Vérifiez les données.')
+      setServerError(e.response?.data?.error ?? t('dataImport.card.serverErrorDefault'))
     } finally {
       setUploading(false)
     }
@@ -1504,16 +1496,16 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
           <template.icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">{template.label}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
+          <p className="font-semibold text-sm">{t(`dataImport.templates.${template.id}.label`)}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{t(`dataImport.templates.${template.id}.description`)}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={e => { e.stopPropagation(); downloadTemplate(template) }}
-            title="Télécharger le modèle CSV"
+            title={t('dataImport.card.downloadTitle')}
             className="flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
           >
-            <Download className="h-3 w-3" /> Modèle
+            <Download className="h-3 w-3" /> {t('dataImport.card.template')}
           </button>
           <button
             onClick={() => { setOpen(o => !o); setFile(null); setIssues([]); setResult(null); setServerError(null) }}
@@ -1521,7 +1513,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
               open ? 'bg-primary text-primary-foreground' : 'border border-border bg-background hover:bg-accent'
             }`}
           >
-            <Upload className="h-3 w-3" /> Importer
+            <Upload className="h-3 w-3" /> {t('dataImport.card.import')}
           </button>
         </div>
       </div>
@@ -1532,7 +1524,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
           {/* Colonnes requises */}
           <div className="rounded-lg bg-muted/40 px-3 py-2">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-              Colonnes requises ({template.headers.length})
+              {t('dataImport.card.requiredColumns', { count: template.headers.length })}
             </p>
             <div className="flex flex-wrap gap-1">
               {template.headers.map(h => (
@@ -1563,7 +1555,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
                 <div className="flex items-center justify-center gap-2">
                   <FileText className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">{file.name}</span>
-                  <span className="text-xs text-muted-foreground">({(file.size / 1024).toFixed(1)} Ko)</span>
+                  <span className="text-xs text-muted-foreground">{t('dataImport.card.fileSize', { size: (file.size / 1024).toFixed(1) })}</span>
                   <button onClick={() => { setFile(null); setIssues([]); setServerError(null) }}
                     className="ml-1 text-muted-foreground hover:text-destructive">
                     <X className="h-3.5 w-3.5" />
@@ -1572,9 +1564,9 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
               ) : (
                 <>
                   <Upload className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
-                  <p className="text-xs text-muted-foreground">Glissez le fichier CSV rempli ou</p>
+                  <p className="text-xs text-muted-foreground">{t('dataImport.card.dropHint')}</p>
                   <label className="mt-2 inline-block cursor-pointer rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
-                    Parcourir
+                    {t('dataImport.card.browse')}
                     <input type="file" accept=".csv" className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = '' }} />
                   </label>
@@ -1589,12 +1581,12 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
                 <p className="text-xs font-semibold text-red-800">
-                  Fichier non conforme — import bloqué
+                  {t('dataImport.card.blockedTitle')}
                 </p>
               </div>
               {blockingIssues.map((issue, i) => (
                 <div key={i} className="pl-6">
-                  <p className="text-xs text-red-700 font-medium">• {issue.message}</p>
+                  <p className="text-xs text-red-700 font-medium">• {t(issue.messageKey, { count: issue.count })}</p>
                   {issue.details && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {issue.details.map(d => (
@@ -1605,7 +1597,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
                 </div>
               ))}
               <p className="pl-6 text-[10px] text-red-600">
-                Téléchargez le modèle pour obtenir les colonnes exactes.
+                {t('dataImport.card.blockedHint')}
               </p>
             </div>
           )}
@@ -1615,11 +1607,11 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                <p className="text-xs font-semibold text-amber-800">Avertissement — colonnes supplémentaires détectées</p>
+                <p className="text-xs font-semibold text-amber-800">{t('dataImport.card.warningTitle')}</p>
               </div>
               {warningIssues.map((issue, i) => (
                 <div key={i} className="pl-6">
-                  <p className="text-xs text-amber-700">• {issue.message}</p>
+                  <p className="text-xs text-amber-700">• {t(issue.messageKey, { count: issue.count })}</p>
                   {issue.details && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {issue.details.map(d => (
@@ -1645,13 +1637,13 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
             <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <p className="text-sm font-semibold text-green-800">Import réussi</p>
+                <p className="text-sm font-semibold text-green-800">{t('dataImport.card.successTitle')}</p>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[
-                  { label: 'Total', value: result.total, cls: 'text-foreground' },
-                  { label: 'Importées', value: result.inserted, cls: 'text-green-700' },
-                  { label: 'Ignorées', value: result.skipped, cls: 'text-amber-700' },
+                  { label: t('dataImport.card.resultStats.total'), value: result.total, cls: 'text-foreground' },
+                  { label: t('dataImport.card.resultStats.inserted'), value: result.inserted, cls: 'text-green-700' },
+                  { label: t('dataImport.card.resultStats.skipped'), value: result.skipped, cls: 'text-amber-700' },
                 ].map(({ label, value, cls }) => (
                   <div key={label} className="rounded bg-white border border-green-100 py-2">
                     <p className={`text-lg font-bold ${cls}`}>{value}</p>
@@ -1661,14 +1653,14 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
               </div>
               {result.errors.length > 0 && (
                 <div className="rounded border border-amber-200 bg-amber-50 p-2 max-h-28 overflow-auto">
-                  <p className="text-[10px] font-semibold text-amber-800 mb-1">{result.errors.length} avertissement(s)</p>
+                  <p className="text-[10px] font-semibold text-amber-800 mb-1">{t('dataImport.card.warnings', { count: result.errors.length })}</p>
                   {result.errors.map((err, i) => (
                     <p key={i} className="text-[10px] text-amber-700">• {err}</p>
                   ))}
                 </div>
               )}
               <button onClick={() => setResult(null)} className="text-xs text-green-700 underline hover:text-green-900">
-                Importer un autre fichier
+                {t('dataImport.card.importAnother')}
               </button>
             </div>
           )}
@@ -1681,8 +1673,8 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
             >
               {uploading
-                ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Import en cours...</>
-                : <><Upload className="h-3.5 w-3.5" /> Valider et importer</>
+                ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> {t('dataImport.card.importing')}</>
+                : <><Upload className="h-3.5 w-3.5" /> {t('dataImport.card.validateAndImport')}</>
               }
             </button>
           )}
@@ -1695,6 +1687,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
 // ── DataImportTab ─────────────────────────────────────────────────────────────
 
 function DataImportTab() {
+  const { t } = useTranslation('settings')
   const [genResult, setGenResult] = useState<GenerateUsersResult | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
@@ -1717,7 +1710,7 @@ function DataImportTab() {
       void refetchStatus()
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
-      setGenError(e.response?.data?.error ?? 'Erreur lors de la génération')
+      setGenError(e.response?.data?.error ?? t('dataImport.generateUsers.defaultError'))
     } finally {
       setGenerating(false)
     }
@@ -1729,10 +1722,9 @@ function DataImportTab() {
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
         <Database className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
         <div>
-          <p className="font-semibold text-blue-800 text-sm">Reprise de données historiques</p>
+          <p className="font-semibold text-blue-800 text-sm">{t('dataImport.header.title')}</p>
           <p className="text-xs text-blue-600 mt-0.5">
-            Téléchargez le modèle CSV de chaque section, renseignez-le avec vos données, puis uploadez-le directement sur la carte.
-            Les colonnes en rouge indiquent une non-conformité bloquante. L'import est incrémental — les doublons sont ignorés.
+            {t('dataImport.header.description')}
           </p>
         </div>
       </div>
@@ -1745,16 +1737,16 @@ function DataImportTab() {
               <KeyRound className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-semibold">Générer les accès utilisateurs</h2>
+              <h2 className="font-semibold">{t('dataImport.generateUsers.title')}</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Crée un compte + envoie un email avec mot de passe temporaire pour chaque employé sans accès
+                {t('dataImport.generateUsers.description')}
               </p>
             </div>
           </div>
           {status && (
             <div className="text-right shrink-0">
               <p className="text-2xl font-bold text-primary">{status.withoutAccount}</p>
-              <p className="text-xs text-muted-foreground">sans compte</p>
+              <p className="text-xs text-muted-foreground">{t('dataImport.generateUsers.withoutAccount')}</p>
             </div>
           )}
         </div>
@@ -1762,9 +1754,9 @@ function DataImportTab() {
         {status && (
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Employés actifs', value: status.totalEmployees, color: 'text-foreground' },
-              { label: 'Avec accès', value: status.withAccount, color: 'text-green-600' },
-              { label: 'Sans accès', value: status.withoutAccount, color: status.withoutAccount > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+              { label: t('dataImport.generateUsers.stats.activeEmployees'), value: status.totalEmployees, color: 'text-foreground' },
+              { label: t('dataImport.generateUsers.stats.withAccess'), value: status.withAccount, color: 'text-green-600' },
+              { label: t('dataImport.generateUsers.stats.withoutAccess'), value: status.withoutAccount, color: status.withoutAccount > 0 ? 'text-amber-600' : 'text-muted-foreground' },
             ].map(({ label, value, color }) => (
               <div key={label} className="rounded-lg border border-border bg-muted/30 p-3 text-center">
                 <p className={`text-xl font-bold ${color}`}>{value}</p>
@@ -1785,17 +1777,17 @@ function DataImportTab() {
             <div className="flex items-center gap-2">
               <CheckCircle2 className={`h-4 w-4 ${genResult.emailFailed > 0 && genResult.emailSent === 0 ? 'text-amber-600' : 'text-green-600'}`} />
               <p className={`font-medium text-sm ${genResult.emailFailed > 0 && genResult.emailSent === 0 ? 'text-amber-800' : 'text-green-800'}`}>
-                {genResult.message ?? `${genResult.created} compte(s) créé(s) sur ${genResult.total} employés`}
+                {genResult.message ?? t('dataImport.generateUsers.resultMessage', { created: genResult.created, total: genResult.total })}
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div><p className="font-bold text-green-700">{genResult.created}</p><p className="text-muted-foreground">Créés</p></div>
-              <div><p className="font-bold text-blue-700">{genResult.emailSent}</p><p className="text-muted-foreground">Emails envoyés</p></div>
-              <div><p className="font-bold text-amber-700">{genResult.emailFailed}</p><p className="text-muted-foreground">Emails échoués</p></div>
+              <div><p className="font-bold text-green-700">{genResult.created}</p><p className="text-muted-foreground">{t('dataImport.generateUsers.resultStats.created')}</p></div>
+              <div><p className="font-bold text-blue-700">{genResult.emailSent}</p><p className="text-muted-foreground">{t('dataImport.generateUsers.resultStats.emailsSent')}</p></div>
+              <div><p className="font-bold text-amber-700">{genResult.emailFailed}</p><p className="text-muted-foreground">{t('dataImport.generateUsers.resultStats.emailsFailed')}</p></div>
             </div>
             {genResult.emailFailed > 0 && genResult.emailError && (
               <div className="rounded bg-amber-100 border border-amber-200 px-3 py-2 text-xs text-amber-800 font-mono break-all">
-                Erreur SMTP : {genResult.emailError}
+                {t('dataImport.generateUsers.smtpError', { error: genResult.emailError })}
               </div>
             )}
           </div>
@@ -1807,29 +1799,28 @@ function DataImportTab() {
           className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40"
         >
           {generating
-            ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />Génération en cours...</>
-            : <><Mail className="h-4 w-4" />Générer les accès + envoyer les emails</>
+            ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />{t('dataImport.generateUsers.generating')}</>
+            : <><Mail className="h-4 w-4" />{t('dataImport.generateUsers.action')}</>
           }
         </button>
         {(status?.withoutAccount ?? 0) === 0 && !generating && (
           <p className="text-xs text-green-600 flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Tous les employés actifs ont déjà un compte.
+            <CheckCircle2 className="h-3.5 w-3.5" /> {t('dataImport.generateUsers.allHaveAccount')}
           </p>
         )}
       </div>
 
       {/* Grille des templates avec upload intégré */}
       <div>
-        <h2 className="font-semibold mb-1">Modules de reprise de données</h2>
+        <h2 className="font-semibold mb-1">{t('dataImport.modules.title')}</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Cliquez sur <strong>Importer</strong> pour déplier la zone d'upload de chaque section.
-          Téléchargez d'abord le <strong>Modèle</strong>, remplissez-le, puis uploadez-le.
+          <Trans t={t} i18nKey="dataImport.modules.description" components={[<strong />, <strong />]} />
         </p>
         <div className="space-y-2">
-          {IMPORT_TEMPLATES.map(t => (
+          {IMPORT_TEMPLATES.map(tpl => (
             <TemplateImportCard
-              key={t.id}
-              template={t}
+              key={tpl.id}
+              template={tpl}
               onSuccess={() => { setHasImported(true); void refetchStatus() }}
             />
           ))}
@@ -1840,30 +1831,18 @@ function DataImportTab() {
 }
 
 // ── Tab: Workflow ─────────────────────────────────────────────────────────────
-const LEVEL_NAMES = ['Manager direct', 'DRH / RH Manager', 'Comptabilité', 'Direction Générale', 'PDG / Gérant']
+// Clés de traduction des niveaux d'approbation (libellés via workflow.levelNames.<key>).
+const LEVEL_NAME_KEYS = ['directManager', 'hrManager', 'accounting', 'generalManagement', 'ceo'] as const
 
-const MODULE_META: Record<string, { label: string; desc: string; icon: React.ElementType; color: string }> = {
-  absences: {
-    label: 'Absences',
-    desc:  'Approbation des demandes d\'absence',
-    icon:  CalendarDays,
-    color: 'bg-orange-100 text-orange-600',
-  },
-  expenses: {
-    label: 'Notes de frais',
-    desc:  'Validation des notes de frais',
-    icon:  Receipt,
-    color: 'bg-rose-100 text-rose-600',
-  },
-  payroll: {
-    label: 'Clôture de paie',
-    desc:  'Validation avant virement Mobile Money',
-    icon:  Banknote,
-    color: 'bg-green-100 text-green-600',
-  },
+// Icône + couleur par module ; libellé/description traduits via workflow.modules.<module>.*
+const MODULE_META: Record<string, { icon: React.ElementType; color: string }> = {
+  absences: { icon: CalendarDays, color: 'bg-orange-100 text-orange-600' },
+  expenses: { icon: Receipt,      color: 'bg-rose-100 text-rose-600' },
+  payroll:  { icon: Banknote,     color: 'bg-green-100 text-green-600' },
 }
 
 function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
   const [localConfigs, setLocalConfigs] = useState<Record<string, number>>({})
 
   const { data } = useQuery<{ data: WorkflowConfig[] }>({
@@ -1890,15 +1869,16 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     <div className="max-w-2xl space-y-4">
       <div className="rounded-xl border border-border bg-card p-6 space-y-5">
         <div>
-          <h2 className="font-semibold">Workflow d'approbation — Niveaux paramétrables</h2>
+          <h2 className="font-semibold">{t('workflow.title')}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Définissez jusqu'à 5 niveaux hiérarchiques par module. Chaque niveau correspond à un approbateur supplémentaire avant finalisation.
+            {t('workflow.description')}
           </p>
         </div>
 
         {allModules.map(module => {
           const meta = MODULE_META[module]!
           const current = localConfigs[module] ?? configMap[module]?.levels_count ?? 1
+          const chainFor = (count: number) => LEVEL_NAME_KEYS.slice(0, count).map(k => t(`workflow.levelNames.${k}`)).join(' → ')
           return (
             <div key={module} className="rounded-lg border border-border p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -1906,18 +1886,18 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <meta.icon className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{meta.label}</p>
-                  <p className="text-xs text-muted-foreground">{meta.desc}</p>
+                  <p className="font-medium text-sm">{t(`workflow.modules.${module}.label`)}</p>
+                  <p className="text-xs text-muted-foreground">{t(`workflow.modules.${module}.desc`)}</p>
                 </div>
                 <span className="ml-auto rounded-full bg-primary/10 text-primary text-xs font-bold px-2 py-0.5">
-                  {current} niveau{current > 1 ? 'x' : ''}
+                  {t('workflow.levelBadge', { count: current })}
                 </span>
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {[1, 2, 3, 4, 5].map(n => (
                   <button key={n}
                     onClick={() => setLocalConfigs(p => ({ ...p, [module]: n }))}
-                    title={LEVEL_NAMES.slice(0, n).join(' → ')}
+                    title={chainFor(n)}
                     className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       current === n
                         ? 'border-primary bg-primary text-primary-foreground'
@@ -1928,7 +1908,7 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Chaîne : {LEVEL_NAMES.slice(0, current).join(' → ')}
+                {t('workflow.chain', { chain: chainFor(current) })}
               </p>
             </div>
           )
@@ -1939,25 +1919,25 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             disabled={save.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             <Save className="h-4 w-4" />
-            {save.isPending ? 'Sauvegarde...' : 'Sauvegarder le workflow'}
+            {save.isPending ? t('workflow.saving') : t('workflow.save')}
           </button>
-          {save.isSuccess && <span className="text-xs text-green-600">✓ Workflow mis à jour</span>}
+          {save.isSuccess && <span className="text-xs text-green-600">✓ {t('workflow.saved')}</span>}
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-6 space-y-3">
-        <h2 className="font-semibold">Constantes légales CI 2024</h2>
-        <p className="text-xs text-muted-foreground">Mis à jour automatiquement via le Store de Lois de la plateforme.</p>
+        <h2 className="font-semibold">{t('workflow.constants.title')}</h2>
+        <p className="text-xs text-muted-foreground">{t('workflow.constants.subtitle')}</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
           {[
-            ['SMIG mensuel', '75 000 FCFA (2026)'],
-            ['Congés / mois travaillé', '2,5 jours ouvrables'],
-            ['CNPS retraite (salarié)', '6,3 %'],
-            ['CNPS retraite (patronal)', '7,7 %'],
-            ['Plafond retraite / mois', '1 647 315 FCFA'],
-            ['Plafond AT/PF / mois', '70 000 FCFA'],
-            ['ITS — Abattement forfaitaire', '15 % du brut'],
-            ['Contribution FDFP', '0,4 % masse salariale'],
+            [t('workflow.constants.smigMonthly'), t('workflow.constants.smigMonthlyValue')],
+            [t('workflow.constants.leavePerMonth'), t('workflow.constants.leavePerMonthValue')],
+            [t('workflow.constants.cnpsRetirementEmployee'), t('workflow.constants.cnpsRetirementEmployeeValue')],
+            [t('workflow.constants.cnpsRetirementEmployer'), t('workflow.constants.cnpsRetirementEmployerValue')],
+            [t('workflow.constants.retirementCeiling'), t('workflow.constants.retirementCeilingValue')],
+            [t('workflow.constants.atPfCeiling'), t('workflow.constants.atPfCeilingValue')],
+            [t('workflow.constants.itsAbatement'), t('workflow.constants.itsAbatementValue')],
+            [t('workflow.constants.fdfpContribution'), t('workflow.constants.fdfpContributionValue')],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between border-b border-border pb-2 last:border-0">
               <span className="text-muted-foreground">{k}</span>

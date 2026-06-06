@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
@@ -124,16 +126,24 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
     : <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"><XCircle className="h-3 w-3" />{label}</span>
 }
 
-function StatusBadge({ status }: { status: string }) {
+const STATUS_LABEL_KEY: Record<string, string> = {
+  soumise: 'audit.declarationsTab.statusSoumise',
+  generee: 'audit.declarationsTab.statusGeneree',
+  brouillon: 'audit.declarationsTab.statusBrouillon',
+  en_retard: 'audit.declarationsTab.statusEnRetard',
+}
+
+function StatusBadge({ status, t }: { status: string; t: TFunction }) {
   const map: Record<string, string> = {
     soumise: 'bg-green-100 text-green-700',
     generee: 'bg-blue-100 text-blue-700',
     brouillon: 'bg-gray-100 text-gray-600',
     en_retard: 'bg-red-100 text-red-700',
   }
+  const labelKey = STATUS_LABEL_KEY[status]
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? 'bg-gray-100 text-gray-600'}`}>
-      {status}
+      {labelKey ? t(labelKey) : status}
     </span>
   )
 }
@@ -159,17 +169,18 @@ function KpiCard({ icon: Icon, label, value, sub, color }: {
 
 type Tab = 'overview' | 'salaries' | 'cotisations' | 'declarations' | 'params'
 
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'overview',      label: 'Vue d\'ensemble', icon: Shield },
-  { id: 'salaries',      label: 'Salariés',        icon: Users },
-  { id: 'cotisations',   label: 'Cotisations',     icon: BarChart3 },
-  { id: 'declarations',  label: 'Déclarations',    icon: FileText },
-  { id: 'params',        label: 'Paramètres',      icon: Settings },
+const TABS: { id: Tab; labelKey: string; icon: React.ElementType }[] = [
+  { id: 'overview',      labelKey: 'audit.tabs.overview',     icon: Shield },
+  { id: 'salaries',      labelKey: 'audit.tabs.salaries',     icon: Users },
+  { id: 'cotisations',   labelKey: 'audit.tabs.cotisations',  icon: BarChart3 },
+  { id: 'declarations',  labelKey: 'audit.tabs.declarations', icon: FileText },
+  { id: 'params',        labelKey: 'audit.tabs.params',       icon: Settings },
 ]
 
 // ── Page principale ──────────────────────────────────────────────────────────
 
 export default function CnpsAuditPage() {
+  const { t } = useTranslation('cnps')
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [params, setParams] = useState<AuditParams>(defaultParams)
   const [draftParams, setDraftParams] = useState<AuditParams>(defaultParams)
@@ -210,9 +221,9 @@ export default function CnpsAuditPage() {
         <div className="flex items-center gap-3">
           <ClipboardCheck className="h-6 w-6 text-primary" />
           <div>
-            <h1 className="text-xl font-bold">Audit de conformité sociale</h1>
+            <h1 className="text-xl font-bold">{t('audit.title')}</h1>
             <p className="text-sm text-muted-foreground">
-              CNPS · DGI · Code du Travail CI · Année {params.year}
+              {t('audit.subtitle', { year: params.year })}
             </p>
           </div>
         </div>
@@ -224,14 +235,14 @@ export default function CnpsAuditPage() {
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
             <Download className="h-4 w-4" />
-            RNS {params.year} (PDF)
+            {t('audit.rnsPdf', { year: params.year })}
           </a>
           <a
             href={`/api/cnps/rns/${params.year}/export`}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
             <Download className="h-4 w-4" />
-            RNS CSV
+            {t('audit.rnsCsv')}
           </a>
           <button
             onClick={() => void refetch()}
@@ -239,14 +250,14 @@ export default function CnpsAuditPage() {
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Actualiser
+            {t('audit.refresh')}
           </button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-0 border-b bg-card shrink-0 px-6">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -257,7 +268,7 @@ export default function CnpsAuditPage() {
             }`}
           >
             <Icon className="h-4 w-4" />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>
@@ -267,18 +278,18 @@ export default function CnpsAuditPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground">
             <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-            Analyse en cours…
+            {t('audit.analyzing')}
           </div>
         ) : !data ? (
           <div className="flex items-center justify-center py-24 text-muted-foreground">
-            Aucune donnée disponible
+            {t('audit.noData')}
           </div>
         ) : (
           <div className="p-6 space-y-6">
-            {activeTab === 'overview'     && <TabOverview     data={data} scoreColor={scoreColor} scoreBg={scoreBg} score={score} />}
-            {activeTab === 'salaries'     && <TabSalaries     data={data} />}
-            {activeTab === 'cotisations'  && <TabCotisations  data={data} />}
-            {activeTab === 'declarations' && <TabDeclarations data={data} />}
+            {activeTab === 'overview'     && <TabOverview     data={data} scoreColor={scoreColor} scoreBg={scoreBg} score={score} t={t} />}
+            {activeTab === 'salaries'     && <TabSalaries     data={data} t={t} />}
+            {activeTab === 'cotisations'  && <TabCotisations  data={data} t={t} />}
+            {activeTab === 'declarations' && <TabDeclarations data={data} t={t} />}
             {activeTab === 'params'       && (
               <TabParams
                 draft={draftParams}
@@ -286,6 +297,7 @@ export default function CnpsAuditPage() {
                 onApply={applyParams}
                 isFetching={isFetching}
                 result={data ?? null}
+                t={t}
               />
             )}
           </div>
@@ -297,8 +309,8 @@ export default function CnpsAuditPage() {
 
 // ── Tab 1 — Vue d'ensemble ───────────────────────────────────────────────────
 
-function TabOverview({ data, scoreColor, scoreBg, score }: {
-  data: AuditResult; scoreColor: string; scoreBg: string; score: number
+function TabOverview({ data, scoreColor, scoreBg, score, t }: {
+  data: AuditResult; scoreColor: string; scoreBg: string; score: number; t: TFunction
 }) {
   const bloquants     = data.anomalies.filter(a => a.severity === 'bloquant')
   const avertissements = data.anomalies.filter(a => a.severity === 'avertissement')
@@ -310,7 +322,7 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
         <div className="flex items-center gap-6">
           <div className="text-center shrink-0">
             <div className={`text-6xl font-bold leading-none ${scoreColor}`}>{score}</div>
-            <div className="text-xs text-muted-foreground mt-1 font-medium">Score /100</div>
+            <div className="text-xs text-muted-foreground mt-1 font-medium">{t('audit.overview.scoreOutOf')}</div>
           </div>
           <div className="w-px h-16 bg-border shrink-0" />
           <div className="flex-1 space-y-2">
@@ -318,30 +330,30 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
               {data.statut === 'conforme'
                 ? <CheckCircle className="h-5 w-5 text-green-600" />
                 : <AlertTriangle className="h-5 w-5 text-amber-500" />}
-              <span className="font-semibold capitalize text-lg">
-                {data.statut.replace('_', ' ')}
+              <span className="font-semibold text-lg">
+                {t(`audit.statut.${data.statut}`)}
               </span>
             </div>
             <div className="flex flex-wrap gap-4 text-sm">
-              <span className="text-red-600 font-medium">{data.resume.bloquants} bloquant(s)</span>
-              <span className="text-amber-600 font-medium">{data.resume.avertissements} avertissement(s)</span>
-              <span className="text-muted-foreground">{data.resume.employesActifs ?? data.resume.totalEmployes} employés actifs</span>
-              <span className="text-muted-foreground">SMIG {fmt(data.smigReference)} FCFA</span>
+              <span className="text-red-600 font-medium">{t('audit.overview.blockers', { count: data.resume.bloquants })}</span>
+              <span className="text-amber-600 font-medium">{t('audit.overview.warnings', { count: data.resume.avertissements })}</span>
+              <span className="text-muted-foreground">{t('audit.overview.activeEmployees', { count: data.resume.employesActifs ?? data.resume.totalEmployes })}</span>
+              <span className="text-muted-foreground">{t('audit.overview.smig', { value: fmt(data.smigReference) })}</span>
             </div>
           </div>
           {data.kpis && (
             <div className="flex gap-3 shrink-0">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">{pct(data.kpis.tauxImmatriculation)}</div>
-                <div className="text-xs text-muted-foreground">Immatriculation CNPS</div>
+                <div className="text-xs text-muted-foreground">{t('audit.overview.cnpsRegistration')}</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-emerald-600">{pct(data.kpis.tauxSmig)}</div>
-                <div className="text-xs text-muted-foreground">Conformes SMIG</div>
+                <div className="text-xs text-muted-foreground">{t('audit.overview.smigCompliant')}</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-purple-600">{pct(data.kpis.tauxMobile)}</div>
-                <div className="text-xs text-muted-foreground">Mobile Money</div>
+                <div className="text-xs text-muted-foreground">{t('audit.overview.mobileMoney')}</div>
               </div>
             </div>
           )}
@@ -350,30 +362,30 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard icon={Users} label="Total employés" value={String(data.resume.totalEmployes)}
-          sub={`${data.resume.nbSansNni ?? 0} sans NNI`} color="bg-blue-100 text-blue-700" />
-        <KpiCard icon={TrendingUp} label="Masse salariale"
+        <KpiCard icon={Users} label={t('audit.overview.totalEmployees')} value={String(data.resume.totalEmployes)}
+          sub={t('audit.overview.withoutNni', { count: data.resume.nbSansNni ?? 0 })} color="bg-blue-100 text-blue-700" />
+        <KpiCard icon={TrendingUp} label={t('audit.overview.grossPayroll')}
           value={data.kpis ? `${fmt(data.kpis.masseSalariale)} FCFA` : '—'}
-          sub={data.kpis ? `${data.kpis.nbBulletins} bulletins` : undefined}
+          sub={data.kpis ? t('audit.overview.payslipsCount', { count: data.kpis.nbBulletins }) : undefined}
           color="bg-emerald-100 text-emerald-700" />
-        <KpiCard icon={Shield} label="Cotisations CNPS"
+        <KpiCard icon={Shield} label={t('audit.overview.cnpsContributions')}
           value={data.kpis ? `${fmt(data.kpis.totalCnpsSal + data.kpis.totalCnpsPat)} FCFA` : '—'}
-          sub={data.kpis ? `Sal. ${fmt(data.kpis.totalCnpsSal)} · Pat. ${fmt(data.kpis.totalCnpsPat)}` : undefined}
+          sub={data.kpis ? t('audit.overview.cnpsBreakdown', { employee: fmt(data.kpis.totalCnpsSal), employer: fmt(data.kpis.totalCnpsPat) }) : undefined}
           color="bg-orange-100 text-orange-700" />
-        <KpiCard icon={FileText} label="ITS / DGI"
+        <KpiCard icon={FileText} label={t('audit.overview.itsDgi')}
           value={data.kpis ? `${fmt(data.kpis.totalIts)} FCFA` : '—'}
-          sub={data.kpis ? `${data.kpis.declarationsSoumises} décl. soumises` : undefined}
+          sub={data.kpis ? t('audit.overview.declarationsSubmitted', { count: data.kpis.declarationsSoumises }) : undefined}
           color="bg-violet-100 text-violet-700" />
       </div>
 
       {/* Statut employeur */}
       {data.employeur && (
         <div className="rounded-xl border p-4">
-          <p className="mb-3 font-semibold">Statut réglementaire employeur</p>
+          <p className="mb-3 font-semibold">{t('audit.overview.employerStatus')}</p>
           <div className="flex flex-wrap gap-3">
-            <Badge ok={data.employeur.cnpsOk} label="N° CNPS employeur" />
-            <Badge ok={data.employeur.dgiOk}  label="N° DGI / NIF" />
-            <Badge ok={data.employeur.rccmOk} label="RCCM" />
+            <Badge ok={data.employeur.cnpsOk} label={t('audit.overview.employerCnps')} />
+            <Badge ok={data.employeur.dgiOk}  label={t('audit.overview.employerDgi')} />
+            <Badge ok={data.employeur.rccmOk} label={t('audit.overview.employerRccm')} />
           </div>
         </div>
       )}
@@ -382,26 +394,26 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-xl border p-4 text-center">
           <div className="text-3xl font-bold text-red-600">{data.resume.nbSansNni ?? 0}</div>
-          <div className="text-sm text-muted-foreground mt-1">Sans NNI</div>
+          <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.withoutNniLabel')}</div>
         </div>
         <div className="rounded-xl border p-4 text-center">
           <div className="text-3xl font-bold text-amber-600">{data.resume.nbSansCnps ?? 0}</div>
-          <div className="text-sm text-muted-foreground mt-1">Non immatriculés CNPS</div>
+          <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.notRegisteredCnps')}</div>
         </div>
         <div className="rounded-xl border p-4 text-center">
           <div className="text-3xl font-bold text-orange-600">{data.resume.nbSousSmig ?? 0}</div>
-          <div className="text-sm text-muted-foreground mt-1">Sous le SMIG</div>
+          <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.belowSmig')}</div>
         </div>
         <div className="rounded-xl border p-4 text-center">
           <div className="text-3xl font-bold text-purple-600">{data.resume.nbSansMobile ?? 0}</div>
-          <div className="text-sm text-muted-foreground mt-1">Sans Mobile Money</div>
+          <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.withoutMobile')}</div>
         </div>
       </div>
 
       {/* Recommandations */}
       {data.recommandations.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1">
-          <p className="font-semibold text-amber-800 mb-2">Recommandations</p>
+          <p className="font-semibold text-amber-800 mb-2">{t('audit.overview.recommendations')}</p>
           {data.recommandations.map((r, i) => (
             <p key={i} className="text-sm text-amber-800">• {r}</p>
           ))}
@@ -411,7 +423,7 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
       {/* Anomalies bloquantes */}
       {bloquants.length > 0 && (
         <AnomalieSection
-          title="Anomalies bloquantes"
+          title={t('audit.overview.blockingAnomalies')}
           items={bloquants}
           icon={<XCircle className="h-5 w-5 text-red-500" />}
           badgeClass="bg-red-100 text-red-700"
@@ -419,7 +431,7 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
       )}
       {avertissements.length > 0 && (
         <AnomalieSection
-          title="Avertissements"
+          title={t('audit.overview.warningAnomalies')}
           items={avertissements}
           icon={<AlertTriangle className="h-5 w-5 text-amber-500" />}
           badgeClass="bg-amber-100 text-amber-700"
@@ -430,14 +442,14 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
         <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-6">
           <CheckCircle className="h-8 w-8 text-green-600 shrink-0" />
           <div>
-            <p className="font-semibold text-green-800">Aucune anomalie détectée</p>
-            <p className="text-sm text-green-700">Dossier social en ordre — prêt pour le contrôle CNPS.</p>
+            <p className="font-semibold text-green-800">{t('audit.overview.noAnomaliesTitle')}</p>
+            <p className="text-sm text-green-700">{t('audit.overview.noAnomaliesSub')}</p>
           </div>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-right">
-        Généré le {new Date(data.generatedAt).toLocaleString('fr-CI')}
+        {t('audit.overview.generatedOn', { date: new Date(data.generatedAt).toLocaleString('fr-CI') })}
       </p>
     </div>
   )
@@ -445,7 +457,7 @@ function TabOverview({ data, scoreColor, scoreBg, score }: {
 
 // ── Tab 2 — Salariés ─────────────────────────────────────────────────────────
 
-function TabSalaries({ data }: { data: AuditResult }) {
+function TabSalaries({ data, t }: { data: AuditResult; t: TFunction }) {
   const [search, setSearch] = useState('')
   const [filterIssues, setFilterIssues] = useState(false)
 
@@ -463,7 +475,7 @@ function TabSalaries({ data }: { data: AuditResult }) {
       <div className="flex items-center gap-3">
         <input
           type="text"
-          placeholder="Rechercher un salarié…"
+          placeholder={t('audit.salaries.searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -475,9 +487,9 @@ function TabSalaries({ data }: { data: AuditResult }) {
             onChange={e => setFilterIssues(e.target.checked)}
             className="rounded"
           />
-          Anomalies uniquement
+          {t('audit.salaries.issuesOnly')}
         </label>
-        <span className="text-sm text-muted-foreground">{rows.length} salarié(s)</span>
+        <span className="text-sm text-muted-foreground">{t('audit.salaries.count', { count: rows.length })}</span>
       </div>
 
       <div className="rounded-xl border overflow-hidden">
@@ -485,14 +497,14 @@ function TabSalaries({ data }: { data: AuditResult }) {
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Salarié</th>
-                <th className="px-4 py-3 text-left font-medium">Poste / Dép.</th>
-                <th className="px-4 py-3 text-center font-medium">NNI</th>
-                <th className="px-4 py-3 text-center font-medium">CNPS</th>
-                <th className="px-4 py-3 text-center font-medium">SMIG</th>
-                <th className="px-4 py-3 text-center font-medium">Mobile</th>
-                <th className="px-4 py-3 text-right font-medium">Net (mois réf.)</th>
-                <th className="px-4 py-3 text-center font-medium">Score</th>
+                <th className="px-4 py-3 text-left font-medium">{t('audit.salaries.employee')}</th>
+                <th className="px-4 py-3 text-left font-medium">{t('audit.salaries.positionDept')}</th>
+                <th className="px-4 py-3 text-center font-medium">{t('audit.salaries.nni')}</th>
+                <th className="px-4 py-3 text-center font-medium">{t('audit.salaries.cnps')}</th>
+                <th className="px-4 py-3 text-center font-medium">{t('audit.salaries.smig')}</th>
+                <th className="px-4 py-3 text-center font-medium">{t('audit.salaries.mobile')}</th>
+                <th className="px-4 py-3 text-right font-medium">{t('audit.salaries.netRefMonth')}</th>
+                <th className="px-4 py-3 text-center font-medium">{t('audit.salaries.score')}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -532,7 +544,7 @@ function TabSalaries({ data }: { data: AuditResult }) {
                       {e.moisRef && <div className="text-xs text-muted-foreground">{e.moisRef}</div>}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`font-bold ${scoreColor}`}>{score}/4</span>
+                      <span className={`font-bold ${scoreColor}`}>{t('audit.salaries.scoreValue', { score })}</span>
                     </td>
                   </tr>
                 )
@@ -547,7 +559,7 @@ function TabSalaries({ data }: { data: AuditResult }) {
 
 // ── Tab 3 — Cotisations ──────────────────────────────────────────────────────
 
-function TabCotisations({ data }: { data: AuditResult }) {
+function TabCotisations({ data, t }: { data: AuditResult; t: TFunction }) {
   const mensuel = data.mensuel ?? []
   const plafonds = data.plafonds
 
@@ -565,17 +577,17 @@ function TabCotisations({ data }: { data: AuditResult }) {
   // Pie répartition dernier mois
   const last = mensuel[mensuel.length - 1]
   const pieData = last ? [
-    { name: 'Net versé',     value: Math.round(last.net),    fill: '#10B981' },
-    { name: 'CNPS salarié', value: Math.round(last.cnpsSal), fill: '#F97316' },
-    { name: 'CNPS patronal',value: Math.round(last.cnpsPat), fill: '#FB923C' },
-    { name: 'ITS / DGI',   value: Math.round(last.its),      fill: '#8B5CF6' },
+    { name: t('audit.cotisations.netPaid'),      value: Math.round(last.net),    fill: '#10B981' },
+    { name: t('audit.cotisations.employeeCnps'), value: Math.round(last.cnpsSal), fill: '#F97316' },
+    { name: t('audit.cotisations.employerCnps'), value: Math.round(last.cnpsPat), fill: '#FB923C' },
+    { name: t('audit.cotisations.itsDgi'),       value: Math.round(last.its),      fill: '#8B5CF6' },
   ].filter(d => d.value > 0) : []
 
   // Area charge patronale
   const areaData = composed.map(d => ({
     mois: d.mois,
-    'Charge patronale': d.cnpsPat,
-    'Charge salariale': d.cnpsSal + d.its,
+    employerCharge: d.cnpsPat,
+    employeeCharge: d.cnpsSal + d.its,
   }))
 
   const tickFmt = (v: number) =>
@@ -588,15 +600,15 @@ function TabCotisations({ data }: { data: AuditResult }) {
       {data.kpis && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: 'CNPS salarié',  value: data.kpis.totalCnpsSal, color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
-            { label: 'CNPS patronal', value: data.kpis.totalCnpsPat, color: 'text-amber-600',  bg: 'bg-amber-50 border-amber-200' },
-            { label: 'ITS / DGI',    value: data.kpis.totalIts,      color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
-            { label: 'Net versé',    value: data.kpis.totalNet,      color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+            { label: t('audit.cotisations.employeeCnps'), value: data.kpis.totalCnpsSal, color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
+            { label: t('audit.cotisations.employerCnps'), value: data.kpis.totalCnpsPat, color: 'text-amber-600',  bg: 'bg-amber-50 border-amber-200' },
+            { label: t('audit.cotisations.itsDgi'),       value: data.kpis.totalIts,      color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
+            { label: t('audit.cotisations.netPaid'),      value: data.kpis.totalNet,      color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
           ].map(({ label, value, color, bg }) => (
             <div key={label} className={`rounded-xl border p-4 text-center ${bg}`}>
               <div className={`text-2xl font-bold ${color}`}>{fmt(value)}</div>
               <div className="text-xs text-muted-foreground mt-1 font-medium">{label}</div>
-              <div className="text-xs text-muted-foreground">cumulé annuel</div>
+              <div className="text-xs text-muted-foreground">{t('audit.cotisations.annualCumulative')}</div>
             </div>
           ))}
         </div>
@@ -606,8 +618,8 @@ function TabCotisations({ data }: { data: AuditResult }) {
       <div className="rounded-xl border bg-card p-5">
         <div className="mb-1 flex items-start justify-between">
           <div>
-            <p className="font-semibold">Décomposition mensuelle des charges</p>
-            <p className="text-xs text-muted-foreground">Cotisations CNPS (salarié + patronal), ITS et net versé · FCFA</p>
+            <p className="font-semibold">{t('audit.cotisations.monthlyBreakdownTitle')}</p>
+            <p className="text-xs text-muted-foreground">{t('audit.cotisations.monthlyBreakdownSub')}</p>
           </div>
         </div>
         {composed.length > 0 ? (
@@ -629,16 +641,16 @@ function TabCotisations({ data }: { data: AuditResult }) {
                 labelStyle={{ fontWeight: 700 }}
               />
               <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="cnpsSal"  name="CNPS salarié"  stackId="a" fill="#F97316" radius={[0,0,0,0]} />
-              <Bar yAxisId="left" dataKey="cnpsPat"  name="CNPS patronal" stackId="a" fill="#FB923C" radius={[0,0,0,0]} />
-              <Bar yAxisId="left" dataKey="its"       name="ITS / DGI"    stackId="a" fill="#8B5CF6" radius={[3,3,0,0]} />
-              <Line yAxisId="right" type="monotone" dataKey="net"  name="Net versé" stroke="#10B981" strokeWidth={2.5} dot={{ r: 4, fill: '#10B981' }} />
-              <Line yAxisId="right" type="monotone" dataKey="masse" name="Masse brute" stroke="#4F46E5" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
+              <Bar yAxisId="left" dataKey="cnpsSal"  name={t('audit.cotisations.employeeCnps')}  stackId="a" fill="#F97316" radius={[0,0,0,0]} />
+              <Bar yAxisId="left" dataKey="cnpsPat"  name={t('audit.cotisations.employerCnps')} stackId="a" fill="#FB923C" radius={[0,0,0,0]} />
+              <Bar yAxisId="left" dataKey="its"       name={t('audit.cotisations.itsDgi')}    stackId="a" fill="#8B5CF6" radius={[3,3,0,0]} />
+              <Line yAxisId="right" type="monotone" dataKey="net"  name={t('audit.cotisations.netPaid')} stroke="#10B981" strokeWidth={2.5} dot={{ r: 4, fill: '#10B981' }} />
+              <Line yAxisId="right" type="monotone" dataKey="masse" name={t('audit.cotisations.grossPayroll')} stroke="#4F46E5" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         ) : (
           <div className="flex h-72 items-center justify-center text-muted-foreground text-sm">
-            Aucune donnée mensuelle disponible
+            {t('audit.cotisations.noMonthlyData')}
           </div>
         )}
       </div>
@@ -648,8 +660,8 @@ function TabCotisations({ data }: { data: AuditResult }) {
 
         {/* Répartition coût employeur — Pie */}
         <div className="rounded-xl border bg-card p-5">
-          <p className="font-semibold mb-1">Répartition du coût employeur</p>
-          <p className="text-xs text-muted-foreground mb-3">Dernier mois · {last?.mois?.slice(0,7) ?? '—'}</p>
+          <p className="font-semibold mb-1">{t('audit.cotisations.employerCostTitle')}</p>
+          <p className="text-xs text-muted-foreground mb-3">{t('audit.cotisations.lastMonth', { month: last?.mois?.slice(0,7) ?? '—' })}</p>
           {pieData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
@@ -674,13 +686,13 @@ function TabCotisations({ data }: { data: AuditResult }) {
                 ))}
               </div>
             </>
-          ) : <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">Aucune donnée</div>}
+          ) : <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">{t('audit.cotisations.noData')}</div>}
         </div>
 
         {/* Charges salariales vs patronales — Area empilée */}
         <div className="rounded-xl border bg-card p-5">
-          <p className="font-semibold mb-1">Charges salariales vs patronales</p>
-          <p className="text-xs text-muted-foreground mb-3">Évolution mensuelle · FCFA</p>
+          <p className="font-semibold mb-1">{t('audit.cotisations.chargesTitle')}</p>
+          <p className="text-xs text-muted-foreground mb-3">{t('audit.cotisations.chargesSub')}</p>
           {areaData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={areaData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -699,22 +711,22 @@ function TabCotisations({ data }: { data: AuditResult }) {
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={tickFmt} />
                 <Tooltip formatter={(v: number, n: string) => [`${fmt(v)} FCFA`, n]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="Charge patronale" stroke="#4F46E5" strokeWidth={2} fill="url(#gradPat)" />
-                <Area type="monotone" dataKey="Charge salariale"  stroke="#F97316" strokeWidth={2} fill="url(#gradSal)" />
+                <Area type="monotone" dataKey="employerCharge" name={t('audit.cotisations.employerCharge')} stroke="#4F46E5" strokeWidth={2} fill="url(#gradPat)" />
+                <Area type="monotone" dataKey="employeeCharge" name={t('audit.cotisations.employeeCharge')} stroke="#F97316" strokeWidth={2} fill="url(#gradSal)" />
               </AreaChart>
             </ResponsiveContainer>
-          ) : <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Aucune donnée</div>}
+          ) : <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">{t('audit.cotisations.noData')}</div>}
         </div>
       </div>
 
       {/* Analyse plafonds */}
       {plafonds && (
         <div className="rounded-xl border p-4 space-y-3">
-          <p className="font-semibold">Analyse des plafonds CNPS</p>
+          <p className="font-semibold">{t('audit.cotisations.ceilingsTitle')}</p>
           <div className="grid gap-4 md:grid-cols-2">
             {[
-              { label: 'Plafond Retraite', value: plafonds.plafondRetraite, nb: plafonds.nbAuDessusRetraite },
-              { label: 'Plafond AT / PF', value: plafonds.plafondAtPf, nb: plafonds.nbAuDessusAtPf },
+              { label: t('audit.cotisations.ceilingRetirement'), value: plafonds.plafondRetraite, nb: plafonds.nbAuDessusRetraite },
+              { label: t('audit.cotisations.ceilingAtPf'), value: plafonds.plafondAtPf, nb: plafonds.nbAuDessusAtPf },
             ].map(p => (
               <div key={p.label} className="rounded-lg bg-muted/40 p-3">
                 <p className="text-sm font-medium">{p.label}</p>
@@ -725,8 +737,8 @@ function TabCotisations({ data }: { data: AuditResult }) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   <span className={p.nb > 0 ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
-                    {p.nb} salarié(s)
-                  </span>{' '}au-dessus du plafond
+                    {t('audit.cotisations.employeesAboveCeiling', { count: p.nb })}
+                  </span>{' '}{t('audit.cotisations.aboveCeilingSuffix')}
                 </p>
               </div>
             ))}
@@ -737,7 +749,7 @@ function TabCotisations({ data }: { data: AuditResult }) {
       {/* Mobile Money */}
       {(data.mobileMoney ?? []).length > 0 && (
         <div className="rounded-xl border p-4">
-          <p className="font-semibold mb-3">Répartition Mobile Money</p>
+          <p className="font-semibold mb-3">{t('audit.cotisations.mobileMoneyTitle')}</p>
           <div className="flex flex-wrap gap-3">
             {(data.mobileMoney ?? []).map(m => (
               <div key={m.provider} className="flex items-center gap-2 rounded-lg border px-4 py-2">
@@ -755,10 +767,10 @@ function TabCotisations({ data }: { data: AuditResult }) {
 
 // ── Tab 4 — Déclarations ─────────────────────────────────────────────────────
 
-function TabDeclarations({ data }: { data: AuditResult }) {
+function TabDeclarations({ data, t }: { data: AuditResult; t: TFunction }) {
   const quarters: { q: number; label: string; items: DeclarationRow[] }[] = [1, 2, 3, 4].map(q => ({
     q,
-    label: `T${q} ${data.year ?? new Date().getFullYear()}`,
+    label: t('audit.declarationsTab.quarterLabel', { quarter: q, year: data.year ?? new Date().getFullYear() }),
     items: (data.declarations ?? []).filter(d => d.trimestre === q),
   }))
 
@@ -769,7 +781,7 @@ function TabDeclarations({ data }: { data: AuditResult }) {
           <div key={q} className="rounded-xl border overflow-hidden">
             <div className="border-b bg-muted/50 px-4 py-2 font-medium text-sm">{label}</div>
             {items.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-muted-foreground">Aucune déclaration</p>
+              <p className="px-4 py-3 text-sm text-muted-foreground">{t('audit.declarationsTab.none')}</p>
             ) : (
               <div className="divide-y">
                 {items.map((d, i) => (
@@ -777,10 +789,10 @@ function TabDeclarations({ data }: { data: AuditResult }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{d.mois}</p>
                       <p className="text-xs text-muted-foreground">
-                        {d.employeesCount} employé(s) · {fmt(d.totalCotisations)} FCFA
+                        {t('audit.declarationsTab.employeesAmount', { count: d.employeesCount, amount: fmt(d.totalCotisations) })}
                       </p>
                     </div>
-                    <StatusBadge status={d.status} />
+                    <StatusBadge status={d.status} t={t} />
                   </div>
                 ))}
               </div>
@@ -790,10 +802,10 @@ function TabDeclarations({ data }: { data: AuditResult }) {
       </div>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-        <p className="font-semibold mb-1">Rappel réglementaire</p>
-        <p>• Dépôt e-CNPS mensuel : avant le <strong>15 du mois M+1</strong></p>
-        <p>• DISA annuelle : avant le <strong>31 janvier N+1</strong></p>
-        <p>• Sanction retard : amende + intérêts de retard (Loi 99-477)</p>
+        <p className="font-semibold mb-1">{t('audit.declarationsTab.reminderTitle')}</p>
+        <p>• <Trans i18nKey="audit.declarationsTab.reminderMonthly" ns="cnps" components={{ strong: <strong /> }} /></p>
+        <p>• <Trans i18nKey="audit.declarationsTab.reminderDisa" ns="cnps" components={{ strong: <strong /> }} /></p>
+        <p>• {t('audit.declarationsTab.reminderSanction')}</p>
       </div>
     </div>
   )
@@ -801,12 +813,13 @@ function TabDeclarations({ data }: { data: AuditResult }) {
 
 // ── Tab 5 — Paramètres audit ──────────────────────────────────────────────────
 
-function TabParams({ draft, onChange, onApply, isFetching, result }: {
+function TabParams({ draft, onChange, onApply, isFetching, result, t }: {
   draft: AuditParams
   onChange: (p: AuditParams) => void
   onApply: () => void
   isFetching: boolean
   result: AuditResult | null
+  t: TFunction
 }) {
   const toggle = (key: keyof AuditParams) => {
     if (key === 'year') return
@@ -814,12 +827,12 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
   }
 
   const checks: { key: keyof AuditParams; label: string; desc: string }[] = [
-    { key: 'checkEmployeur', label: 'Statut employeur',        desc: 'Vérifie N° CNPS, DGI, RCCM' },
-    { key: 'checkCnps',      label: 'Immatriculation CNPS',    desc: 'NNI et matricule CNPS de chaque salarié' },
-    { key: 'checkSmig',      label: 'Conformité SMIG',         desc: `Net payable ≥ ${draft.year >= 2026 ? '75 000' : '60 000'} FCFA` },
-    { key: 'checkDecl',      label: 'Déclarations mensuelles', desc: 'Présence et statut e-CNPS' },
-    { key: 'checkMobile',    label: 'Mobile Money',            desc: 'Numéro enregistré par salarié' },
-    { key: 'checkPlafonds',  label: 'Plafonds CNPS',           desc: 'Retraite 1 647 315 FCFA · AT/PF 70 000 FCFA' },
+    { key: 'checkEmployeur', label: t('audit.params.checkEmployerLabel'), desc: t('audit.params.checkEmployerDesc') },
+    { key: 'checkCnps',      label: t('audit.params.checkCnpsLabel'),     desc: t('audit.params.checkCnpsDesc') },
+    { key: 'checkSmig',      label: t('audit.params.checkSmigLabel'),     desc: t('audit.params.checkSmigDesc', { value: draft.year >= 2026 ? '75 000' : '60 000' }) },
+    { key: 'checkDecl',      label: t('audit.params.checkDeclLabel'),     desc: t('audit.params.checkDeclDesc') },
+    { key: 'checkMobile',    label: t('audit.params.checkMobileLabel'),   desc: t('audit.params.checkMobileDesc') },
+    { key: 'checkPlafonds',  label: t('audit.params.checkPlafondsLabel'), desc: t('audit.params.checkPlafondsDesc') },
   ]
 
   const activeChecks = checks.filter(c => draft[c.key] as boolean)
@@ -833,7 +846,7 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
       {/* Colonne gauche — Formulaire */}
       <div className="w-80 shrink-0 space-y-5">
         <div className="rounded-xl border p-4 space-y-3">
-          <p className="font-semibold text-sm">Année d'audit</p>
+          <p className="font-semibold text-sm">{t('audit.params.auditYear')}</p>
           <select
             value={draft.year}
             onChange={e => onChange({ ...draft, year: Number(e.target.value) })}
@@ -847,7 +860,7 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
         </div>
 
         <div className="rounded-xl border p-4 space-y-3">
-          <p className="font-semibold text-sm">Contrôles à effectuer</p>
+          <p className="font-semibold text-sm">{t('audit.params.checksToRun')}</p>
           {checks.map(({ key, label, desc }) => (
             <label key={key} className="flex items-start gap-3 cursor-pointer group select-none">
               <input
@@ -871,8 +884,8 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity"
         >
           {isFetching
-            ? <><Spiral /> Analyse en cours…</>
-            : <><RefreshCw className="h-4 w-4" /> Lancer l'audit ({activeChecks.length} contrôle{activeChecks.length > 1 ? 's' : ''})</>
+            ? <><Spiral /> {t('audit.params.analyzing')}</>
+            : <><RefreshCw className="h-4 w-4" /> {t('audit.params.runAudit', { count: activeChecks.length })}</>
           }
         </button>
       </div>
@@ -891,9 +904,9 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
               <ShieldCheck className="absolute inset-0 m-auto h-8 w-8 text-primary" />
             </div>
             <div>
-              <p className="font-semibold text-lg">Audit en cours…</p>
+              <p className="font-semibold text-lg">{t('audit.params.auditInProgress')}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Vérification de {activeChecks.length} critère{activeChecks.length > 1 ? 's' : ''} · Année {draft.year}
+                {t('audit.params.checkingCriteria', { count: activeChecks.length, year: draft.year })}
               </p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
                 {activeChecks.map(c => (
@@ -909,19 +922,19 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
             <div className="flex items-center gap-4 mb-5">
               <div className="text-center shrink-0">
                 <div className={`text-5xl font-black leading-none ${scoreColor}`}>{score}</div>
-                <div className="text-xs text-muted-foreground font-medium mt-1">Score /100</div>
+                <div className="text-xs text-muted-foreground font-medium mt-1">{t('audit.params.scoreOutOf')}</div>
               </div>
               <div>
-                <p className="font-bold text-lg capitalize">{result.statut.replace('_', ' ')}</p>
-                <p className="text-sm text-muted-foreground">Audit {result.year} · {new Date(result.generatedAt).toLocaleString('fr-CI')}</p>
+                <p className="font-bold text-lg">{t(`audit.statut.${result.statut}`)}</p>
+                <p className="text-sm text-muted-foreground">{t('audit.params.auditMeta', { year: result.year, date: new Date(result.generatedAt).toLocaleString('fr-CI') })}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               {[
-                { label: 'Bloquants',        value: result.resume.bloquants,         color: 'text-red-600 bg-red-50 border-red-200' },
-                { label: 'Avertissements',   value: result.resume.avertissements,    color: 'text-amber-600 bg-amber-50 border-amber-200' },
-                { label: 'Sans NNI',         value: result.resume.nbSansNni ?? 0,    color: 'text-orange-600 bg-orange-50 border-orange-200' },
-                { label: 'Sous SMIG',        value: result.resume.nbSousSmig ?? 0,   color: 'text-rose-600 bg-rose-50 border-rose-200' },
+                { label: t('audit.params.blockers'),    value: result.resume.bloquants,         color: 'text-red-600 bg-red-50 border-red-200' },
+                { label: t('audit.params.warnings'),     value: result.resume.avertissements,    color: 'text-amber-600 bg-amber-50 border-amber-200' },
+                { label: t('audit.params.withoutNni'),   value: result.resume.nbSansNni ?? 0,    color: 'text-orange-600 bg-orange-50 border-orange-200' },
+                { label: t('audit.params.belowSmig'),    value: result.resume.nbSousSmig ?? 0,   color: 'text-rose-600 bg-rose-50 border-rose-200' },
               ].map(({ label, value, color }) => (
                 <div key={label} className={`rounded-xl border p-3 text-center ${color}`}>
                   <div className="text-2xl font-bold">{value}</div>
@@ -931,14 +944,14 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
             </div>
             {result.recommandations.length > 0 && (
               <div className="rounded-xl bg-white/60 border border-amber-200 p-3 space-y-1">
-                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Recommandations</p>
+                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">{t('audit.params.recommendations')}</p>
                 {result.recommandations.slice(0, 3).map((r, i) => (
                   <p key={i} className="text-xs text-amber-700">· {r}</p>
                 ))}
               </div>
             )}
             <p className="text-xs text-muted-foreground text-right mt-3">
-              Consultez les onglets ci-dessus pour le détail complet
+              {t('audit.params.seeTabs')}
             </p>
           </div>
         ) : (
@@ -947,8 +960,8 @@ function TabParams({ draft, onChange, onApply, isFetching, result }: {
               <ShieldCheck className="h-10 w-10 opacity-30" />
             </div>
             <div>
-              <p className="font-medium">Configurez et lancez l'audit</p>
-              <p className="text-sm mt-1">Sélectionnez l'année et les critères,<br/>puis cliquez sur « Lancer l'audit »</p>
+              <p className="font-medium">{t('audit.params.configurePrompt')}</p>
+              <p className="text-sm mt-1"><Trans i18nKey="audit.params.configureHint" ns="cnps" components={{ br: <br /> }} /></p>
             </div>
           </div>
         )}

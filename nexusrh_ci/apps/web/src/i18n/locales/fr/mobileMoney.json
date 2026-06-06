@@ -1,0 +1,34 @@
+{
+  "page": {
+    "title": "Mobile Money — Virements salaires",
+    "subtitle": "Wave · MTN MoMo · Orange Money CI"
+  },
+  "campaign": {
+    "newTitle": "Nouvelle campagne de virement",
+    "payMonth": "Mois de paie",
+    "selectMonth": "-- Sélectionner --",
+    "prepare": "Préparer la campagne",
+    "networkError": "Erreur réseau",
+    "readyTitle": "Campagne prête — {{count}} virements",
+    "total": "Total : ",
+    "moreOthers": "+ {{count}} autres...",
+    "execute": "Lancer les virements",
+    "cancel": "Annuler",
+    "goToPayrollHint": "Allez dans <strong>Paie → Clôturer une période</strong> pour ce mois, puis revenez."
+  },
+  "history": {
+    "title": "Historique des paiements",
+    "employee": "Employé",
+    "period": "Période",
+    "providerNumber": "Opérateur · Numéro",
+    "amount": "Montant",
+    "status": "Statut",
+    "reference": "Référence",
+    "empty": "Aucun paiement enregistré"
+  },
+  "status": {
+    "completed": "Réussi",
+    "failed": "Échec",
+    "pending": "En attente"
+  }
+}

@@ -1,0 +1,561 @@
+{
+  "title": "Paramètres",
+  "loading": "Chargement...",
+  "error": "Erreur",
+  "tabs": {
+    "general": "Général",
+    "users": "Utilisateurs",
+    "departments": "Départements",
+    "absenceTypes": "Types absences",
+    "payrollRules": "Rubriques de paie",
+    "legalEntities": "Entités juridiques",
+    "workflow": "Workflow",
+    "dataImport": "Reprise de données",
+    "mfa": "Sécurité (MFA)",
+    "ai": "IA (clé & modèle)",
+    "connectivity": "Connectivité"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "hr_manager": "Responsable RH",
+    "hr_officer": "Chargé RH",
+    "manager": "Manager",
+    "employee": "Employé",
+    "readonly": "Lecture seule"
+  },
+  "ruleTypes": {
+    "earning": "Gain",
+    "deduction": "Retenue",
+    "employee_contrib": "Cotis. salariale",
+    "employer_contrib": "Cotis. patronale"
+  },
+  "ai": {
+    "encryptionUnavailable": "Le chiffrement des clés n'est pas configuré côté plateforme (ENCRYPTION_KEY). La saisie d'une clé est désactivée. Contactez l'administrateur de la plateforme.",
+    "intro": "Configurez la clé API et le modèle de votre tenant. Sans clé, l'IA utilise la clé de la plateforme (repli). Les clés sont chiffrées (AES-256) et ne sont jamais réaffichées.",
+    "providerClaude": "Claude (Anthropic)",
+    "providerMistral": "Mistral",
+    "badge": {
+      "tenantKey": "Clé tenant {{mask}}",
+      "platformFallback": "Repli clé plateforme",
+      "noKey": "Aucune clé"
+    },
+    "apiKeyLabel": "Clé API {{provider}}",
+    "apiKeyConfiguredPlaceholder": "Configurée ({{mask}}) — laisser vide pour conserver",
+    "apiKeyEmptyPlaceholder": "Collez votre clé pour l'activer",
+    "clearKey": "Effacer la clé (revenir au repli plateforme)",
+    "modelLabel": "Modèle {{provider}}",
+    "modelDefaultOption": "— Modèle plateforme par défaut —",
+    "preferredProviderLabel": "Fournisseur préféré (chat & sourcing)",
+    "saved": "Configuration IA enregistrée.",
+    "save": "Enregistrer",
+    "saving": "Enregistrement...",
+    "saveError": "Erreur lors de l'enregistrement."
+  },
+  "general": {
+    "companyInfo": "Informations entreprise",
+    "fields": {
+      "name": "Nom entreprise",
+      "city": "Ville (CI)",
+      "cnpsNumber": "N° CNPS employeur",
+      "dgiNumber": "N° DGI",
+      "rccm": "RCCM",
+      "atRate": "Taux AT CNPS (ex: 0.03)"
+    },
+    "sector": "Secteur d'activité",
+    "selectOption": "— Sélectionner —",
+    "sectors": {
+      "transport": "Transport",
+      "commerce": "Commerce",
+      "industrie": "Industrie",
+      "services": "Services",
+      "btp": "Btp",
+      "finance": "Finance",
+      "sante": "Sante",
+      "ong": "Ong",
+      "public": "Public"
+    },
+    "appearance": "Apparence & thème",
+    "primaryColor": "Couleur primaire",
+    "secondaryColor": "Couleur secondaire",
+    "security": "Sécurité",
+    "mfaRequiredLabel": "Imposer le MFA à tous les employés de ce tenant",
+    "mfaRequiredHint": "Durcit la politique plateforme — vous pouvez l'imposer ici même si elle n'est pas globalement obligatoire, mais pas l'assouplir si la plateforme l'exige déjà.",
+    "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employés",
+    "save": "Sauvegarder",
+    "saving": "Sauvegarde...",
+    "updated": "Paramètres mis à jour."
+  },
+  "users": {
+    "add": "Ajouter un utilisateur",
+    "table": {
+      "user": "Utilisateur",
+      "role": "Rôle",
+      "jobTitle": "Poste",
+      "lastLogin": "Dernière connexion",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "never": "Jamais",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "deactivate": "Désactiver",
+    "activate": "Activer",
+    "resetPasswordTitle": "Réinitialiser le mot de passe",
+    "confirmReset": "Réinitialiser le mot de passe de {{name}} ?",
+    "confirmDelete": "Supprimer cet utilisateur ?",
+    "empty": "Aucun utilisateur",
+    "resetResult": {
+      "title": "Mot de passe réinitialisé",
+      "description": "Nouveau mot de passe temporaire pour <0>{{name}}</0> :",
+      "emailSent": "Email envoyé à l'utilisateur",
+      "emailNotSent": "Email non envoyé — communiquez ce mot de passe manuellement.",
+      "close": "Fermer"
+    },
+    "createResult": {
+      "title": "Utilisateur créé !",
+      "tempPasswordLabel": "Mot de passe temporaire :",
+      "hint": "Communiquez ce mot de passe de façon sécurisée.",
+      "close": "Fermer"
+    },
+    "form": {
+      "title": "Ajouter un utilisateur",
+      "email": "Email *",
+      "firstName": "Prénom *",
+      "lastName": "Nom *",
+      "role": "Rôle",
+      "department": "Département",
+      "noDepartment": "— Aucun —",
+      "status": "Statut",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création..."
+    }
+  },
+  "departments": {
+    "add": "Nouveau département",
+    "manager": "Manager : {{name}}",
+    "codePlaceholder": "Code",
+    "ok": "OK",
+    "cancel": "Annuler",
+    "confirmDelete": "Supprimer ce département ?",
+    "empty": "Aucun département",
+    "form": {
+      "title": "Nouveau département",
+      "name": "Nom *",
+      "namePlaceholder": "Ex: Direction Exploitation",
+      "code": "Code",
+      "codePlaceholder": "EXPL",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création..."
+    }
+  },
+  "absenceTypes": {
+    "add": "Nouveau type",
+    "table": {
+      "type": "Type",
+      "code": "Code",
+      "calculation": "Calcul",
+      "maxDaysPerYear": "Max jours/an",
+      "paid": "Payé",
+      "approval": "Approbation",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "workingDays": "Jours ouvrables",
+    "calendarDays": "Jours calendaires",
+    "yes": "Oui",
+    "no": "Non",
+    "approvalRequired": "Requise",
+    "approvalAuto": "Auto",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "deactivate": "Désactiver",
+    "activate": "Activer",
+    "confirmDelete": "Supprimer ce type ?",
+    "form": {
+      "title": "Nouveau type d'absence",
+      "code": "Code *",
+      "codePlaceholder": "RTT",
+      "label": "Libellé *",
+      "labelPlaceholder": "Récupération",
+      "color": "Couleur",
+      "maxDaysPerYear": "Max jours/an",
+      "maxDaysPlaceholder": "26",
+      "calculationMode": "Mode de calcul",
+      "workingDaysOption": "Jours ouvrables (Code Travail CI)",
+      "calendarDaysOption": "Jours calendaires",
+      "isPaid": "Absence payée",
+      "requiresApproval": "Approbation requise",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création..."
+    }
+  },
+  "payrollRules": {
+    "count_one": "{{count}} rubrique configurée — Conformes CNPS 2024 & ITS/DGI CI",
+    "count_other": "{{count}} rubrique(s) configurée(s) — Conformes CNPS 2024 & ITS/DGI CI",
+    "add": "Nouvelle rubrique",
+    "table": {
+      "code": "Code",
+      "label": "Libellé",
+      "type": "Type",
+      "formulaOrRate": "Formule / Taux",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Désactiver",
+    "activate": "Activer",
+    "confirmDelete": "Supprimer cette rubrique ?",
+    "form": {
+      "title": "Nouvelle rubrique de paie",
+      "code": "Code *",
+      "codePlaceholder": "6000",
+      "type": "Type *",
+      "label": "Libellé *",
+      "labelPlaceholder": "Prime de rendement",
+      "formula": "Formule (ex: BRUT_MENSUEL * 0.05)",
+      "formulaPlaceholder": "VAR:PRIME_RENDEMENT",
+      "rate": "Taux (si cotisation, ex: 0.063)",
+      "description": "Description",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création..."
+    }
+  },
+  "legalEntities": {
+    "countries": {
+      "CIV": "Côte d'Ivoire",
+      "SEN": "Sénégal",
+      "BEN": "Bénin",
+      "TGO": "Togo",
+      "BFA": "Burkina Faso",
+      "MLI": "Mali",
+      "NER": "Niger",
+      "CMR": "Cameroun",
+      "TCD": "Tchad",
+      "NGA": "Nigeria",
+      "GHA": "Ghana"
+    },
+    "help": {
+      "titleSubsidiaries": "Filiales du groupe",
+      "titleSingle": "Entité juridique",
+      "textSubsidiaries": "Chaque filiale représente un établissement avec ses propres N° CNPS, RCCM, pays et pack législatif. <0>Les employés sont rattachés à une filiale via leur fiche</0>. Le moteur de paie applique alors le pack législatif de la filiale du salarié (CNPS, IPRES, etc. selon le pays). CNPS/DISA peut être générée par filiale ou consolidée.",
+      "textSingle": "Renseignez ici les informations légales de votre entreprise (N° CNPS employeur, RCCM, taux AT, convention collective). Ces informations sont utilisées sur les bulletins de paie, contrats et déclarations sociales."
+    },
+    "newSubsidiary": "Nouvelle filiale",
+    "fillEntity": "Renseigner l'entité",
+    "subsidiaryBadge": "Filiale",
+    "entityMeta": "{{legalForm}} · {{city}} · {{country}}",
+    "employeesTitle": "Employés rattachés",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "confirmDelete": "Supprimer cette entité ?",
+    "card": {
+      "cnps": "CNPS : ",
+      "dgi": "DGI : ",
+      "rccm": "RCCM : ",
+      "atRate": "Taux AT : ",
+      "legislationPack": "Pack législatif : ",
+      "collectiveAgreement": "CCN : "
+    },
+    "empty": "Aucune entité juridique — créez votre première entité (siège social ou filiale).",
+    "modal": {
+      "editSubsidiary": "Modifier la filiale",
+      "editEntity": "Modifier l'entité juridique",
+      "newSubsidiary": "Nouvelle filiale",
+      "newEntity": "Entité juridique principale",
+      "name": "Raison sociale *",
+      "namePlaceholderSubsidiary": "Ex: SOTRA Bouaké",
+      "namePlaceholderSingle": "Ex: OpenLab Consulting",
+      "complianceTitle": "Conformité légale par pays",
+      "country": "Pays",
+      "legislationPack": "Pack législatif",
+      "legislationPackPlaceholder": "ci_2024",
+      "engineApplied": "Moteur de paie appliqué : ",
+      "legalForm": "Forme juridique",
+      "city": "Ville",
+      "cityPlaceholder": "Abidjan",
+      "cnpsNumber": "N° CNPS employeur",
+      "dgiNumber": "N° DGI",
+      "rccm": "RCCM",
+      "atRate": "Taux AT CNPS (0.02 = 2%)",
+      "collectiveAgreement": "Convention collective applicable",
+      "collectiveAgreementPlaceholder": "Ex: Convention Transport Urbain CI",
+      "address": "Adresse",
+      "cancel": "Annuler",
+      "updating": "Mise à jour...",
+      "creating": "Création...",
+      "save": "Enregistrer",
+      "createSubsidiary": "Créer la filiale"
+    }
+  },
+  "dataImport": {
+    "templates": {
+      "employees": {
+        "label": "Employés",
+        "description": "État civil, poste, département, salaire — fichier principal"
+      },
+      "departments": {
+        "label": "Départements",
+        "description": "Structure organisationnelle et responsables"
+      },
+      "absences": {
+        "label": "Historique absences",
+        "description": "Absences passées et soldes de congés"
+      },
+      "pay_slips": {
+        "label": "Bulletins de paie",
+        "description": "Bulletins historiques (net, cotisations CNPS, ITS)"
+      },
+      "contracts": {
+        "label": "Contrats OHADA",
+        "description": "CDI, CDD, apprentissage avec clauses légales CI"
+      },
+      "mobile_money": {
+        "label": "Mobile Money",
+        "description": "Numéros Wave / MTN / Orange par employé"
+      },
+      "expenses": {
+        "label": "Notes de frais",
+        "description": "Historique des notes de frais et remboursements"
+      }
+    },
+    "validation": {
+      "wrongFormat": "Format incorrect — seuls les fichiers .csv sont acceptés",
+      "emptyFile": "Le fichier est vide ou ne contient pas de données",
+      "missingCols_one": "{{count}} colonne manquante",
+      "missingCols_other": "{{count}} colonnes manquantes",
+      "extraCols_one": "{{count}} colonne inconnue (sera ignorée)",
+      "extraCols_other": "{{count}} colonnes inconnues (seront ignorées)"
+    },
+    "header": {
+      "title": "Reprise de données historiques",
+      "description": "Téléchargez le modèle CSV de chaque section, renseignez-le avec vos données, puis uploadez-le directement sur la carte. Les colonnes en rouge indiquent une non-conformité bloquante. L'import est incrémental — les doublons sont ignorés."
+    },
+    "generateUsers": {
+      "title": "Générer les accès utilisateurs",
+      "description": "Crée un compte + envoie un email avec mot de passe temporaire pour chaque employé sans accès",
+      "withoutAccount": "sans compte",
+      "stats": {
+        "activeEmployees": "Employés actifs",
+        "withAccess": "Avec accès",
+        "withoutAccess": "Sans accès"
+      },
+      "defaultError": "Erreur lors de la génération",
+      "resultMessage": "{{created}} compte(s) créé(s) sur {{total}} employés",
+      "resultStats": {
+        "created": "Créés",
+        "emailsSent": "Emails envoyés",
+        "emailsFailed": "Emails échoués"
+      },
+      "smtpError": "Erreur SMTP : {{error}}",
+      "generating": "Génération en cours...",
+      "action": "Générer les accès + envoyer les emails",
+      "allHaveAccount": "Tous les employés actifs ont déjà un compte."
+    },
+    "modules": {
+      "title": "Modules de reprise de données",
+      "description": "Cliquez sur <0>Importer</0> pour déplier la zone d'upload de chaque section. Téléchargez d'abord le <1>Modèle</1>, remplissez-le, puis uploadez-le."
+    },
+    "card": {
+      "downloadTitle": "Télécharger le modèle CSV",
+      "template": "Modèle",
+      "import": "Importer",
+      "requiredColumns": "Colonnes requises ({{count}})",
+      "dropHint": "Glissez le fichier CSV rempli ou",
+      "browse": "Parcourir",
+      "fileSize": "({{size}} Ko)",
+      "blockedTitle": "Fichier non conforme — import bloqué",
+      "blockedHint": "Téléchargez le modèle pour obtenir les colonnes exactes.",
+      "warningTitle": "Avertissement — colonnes supplémentaires détectées",
+      "serverErrorDefault": "Erreur lors de l'import. Vérifiez les données.",
+      "successTitle": "Import réussi",
+      "resultStats": {
+        "total": "Total",
+        "inserted": "Importées",
+        "skipped": "Ignorées"
+      },
+      "warnings_one": "{{count}} avertissement",
+      "warnings_other": "{{count}} avertissement(s)",
+      "importAnother": "Importer un autre fichier",
+      "importing": "Import en cours...",
+      "validateAndImport": "Valider et importer"
+    }
+  },
+  "workflow": {
+    "levelNames": {
+      "directManager": "Manager direct",
+      "hrManager": "DRH / RH Manager",
+      "accounting": "Comptabilité",
+      "generalManagement": "Direction Générale",
+      "ceo": "PDG / Gérant"
+    },
+    "modules": {
+      "absences": {
+        "label": "Absences",
+        "desc": "Approbation des demandes d'absence"
+      },
+      "expenses": {
+        "label": "Notes de frais",
+        "desc": "Validation des notes de frais"
+      },
+      "payroll": {
+        "label": "Clôture de paie",
+        "desc": "Validation avant virement Mobile Money"
+      }
+    },
+    "title": "Workflow d'approbation — Niveaux paramétrables",
+    "description": "Définissez jusqu'à 5 niveaux hiérarchiques par module. Chaque niveau correspond à un approbateur supplémentaire avant finalisation.",
+    "levelBadge_one": "{{count}} niveau",
+    "levelBadge_other": "{{count}} niveaux",
+    "chain": "Chaîne : {{chain}}",
+    "save": "Sauvegarder le workflow",
+    "saving": "Sauvegarde...",
+    "saved": "Workflow mis à jour",
+    "constants": {
+      "title": "Constantes légales CI 2024",
+      "subtitle": "Mis à jour automatiquement via le Store de Lois de la plateforme.",
+      "smigMonthly": "SMIG mensuel",
+      "smigMonthlyValue": "75 000 FCFA (2026)",
+      "leavePerMonth": "Congés / mois travaillé",
+      "leavePerMonthValue": "2,5 jours ouvrables",
+      "cnpsRetirementEmployee": "CNPS retraite (salarié)",
+      "cnpsRetirementEmployeeValue": "6,3 %",
+      "cnpsRetirementEmployer": "CNPS retraite (patronal)",
+      "cnpsRetirementEmployerValue": "7,7 %",
+      "retirementCeiling": "Plafond retraite / mois",
+      "retirementCeilingValue": "1 647 315 FCFA",
+      "atPfCeiling": "Plafond AT/PF / mois",
+      "atPfCeilingValue": "70 000 FCFA",
+      "itsAbatement": "ITS — Abattement forfaitaire",
+      "itsAbatementValue": "15 % du brut",
+      "fdfpContribution": "Contribution FDFP",
+      "fdfpContributionValue": "0,4 % masse salariale"
+    }
+  },
+  "connectivity": {
+    "intro": "Interfacez NexusRH à vos outils : <0>webhooks</0> (pousser les événements RH), <1>clés API</1> (laisser un outil lire vos données), <2>connecteurs REST</2> (brancher une API tierce). Secrets chiffrés, signatures HMAC, protection SSRF.",
+    "sub": {
+      "webhooks": "Webhooks",
+      "apiKeys": "Clés API",
+      "connectors": "Connecteurs"
+    },
+    "secretBox": {
+      "warning": "Copiez cette valeur — elle ne sera plus affichée :",
+      "copied": "Copié",
+      "copy": "Copier",
+      "close": "Fermer"
+    },
+    "defaultError": "Erreur",
+    "webhooks": {
+      "count_one": "{{count}} webhook",
+      "count_other": "{{count}} webhook(s)",
+      "add": "Nouveau webhook",
+      "name": "Nom",
+      "namePlaceholder": "Ex : Slack RH",
+      "targetUrl": "URL cible (https)",
+      "targetUrlPlaceholder": "https://hooks.exemple.com/...",
+      "events": "Événements",
+      "create": "Créer",
+      "active": "● actif",
+      "inactive": "○ inactif",
+      "testTitle": "Tester",
+      "toggleTitle": "Activer/désactiver",
+      "deleteTitle": "Supprimer",
+      "testOk": "OK (HTTP {{status}})",
+      "testFailed": "Échec ({{status}})",
+      "testNetwork": "réseau",
+      "empty": "Aucun webhook configuré."
+    },
+    "apiKeys": {
+      "count_one": "{{count}} clé — utilisées en en-tête <0>Authorization: Bearer nxk_…</0> sur <1>/integrations/v1/*</1>",
+      "count_other": "{{count}} clé(s) — utilisées en en-tête <0>Authorization: Bearer nxk_…</0> sur <1>/integrations/v1/*</1>",
+      "add": "Nouvelle clé",
+      "name": "Nom",
+      "namePlaceholder": "Ex : Connecteur Power BI",
+      "scopes": "Portées (scopes)",
+      "generate": "Générer la clé",
+      "table": {
+        "name": "Nom",
+        "prefix": "Préfixe",
+        "scopes": "Scopes",
+        "lastUsed": "Dernière utilisation",
+        "status": "Statut"
+      },
+      "active": "Active",
+      "revoked": "Révoquée",
+      "toggleTitle": "Activer/révoquer",
+      "deleteTitle": "Supprimer",
+      "empty": "Aucune clé API."
+    },
+    "connectors": {
+      "count_one": "{{count}} connecteur REST sortant",
+      "count_other": "{{count}} connecteur(s) REST sortant(s)",
+      "add": "Nouveau connecteur",
+      "name": "Nom",
+      "namePlaceholder": "Ex : API Comptabilité",
+      "baseUrl": "URL de base (https)",
+      "baseUrlPlaceholder": "https://api.exemple.com",
+      "auth": "Authentification",
+      "authNone": "Aucune",
+      "authBearer": "Bearer token",
+      "authBasic": "Basic (user:pass)",
+      "authApiKey": "Clé API (en-tête)",
+      "headerName": "Nom de l'en-tête",
+      "headerNamePlaceholder": "X-API-Key",
+      "secret": "Secret (chiffré AES-256)",
+      "secretPlaceholderBasic": "user:password",
+      "secretPlaceholderToken": "token / clé",
+      "create": "Créer",
+      "active": "● actif",
+      "inactive": "○ inactif",
+      "authLabel": "auth: {{type}}",
+      "testTitle": "Tester",
+      "deleteTitle": "Supprimer",
+      "empty": "Aucun connecteur."
+    }
+  },
+  "mfa": {
+    "title": "Authentification à deux facteurs",
+    "subtitle": "Renforcez la sécurité de votre compte avec une application d'authentification (Google Authenticator, Authy, 1Password, Bitwarden…).",
+    "setupError": "Erreur lors du setup MFA",
+    "verifySuccess": "✅ MFA activée. À la prochaine connexion, on vous demandera un code.",
+    "verifyError": "Code invalide. Vérifiez l'heure de votre téléphone.",
+    "disableSuccess": "MFA désactivée.",
+    "disableError": "Erreur lors de la désactivation.",
+    "statusConfigurable": "MFA : configurable depuis cet espace",
+    "statusLoggedOut": "MFA : connectez-vous",
+    "statusHint": "Lorsque la MFA est active, on vous demandera un code à 6 chiffres à chaque connexion, en plus de votre mot de passe.",
+    "initializing": "Initialisation…",
+    "enable": "Activer la MFA",
+    "disable": "Désactiver",
+    "setup": {
+      "step1Title": "1. Scannez le QR code",
+      "step1Desc": "Ouvrez votre application d'authentification, ajoutez un compte, puis scannez ce QR :",
+      "qrAlt": "QR code MFA",
+      "manualHint": "Ou saisissez ce code manuellement :",
+      "copy": "Copier",
+      "step2Title": "2. Sauvegardez vos codes de secours (montrés UNE SEULE fois)",
+      "step2Desc": "Si vous perdez votre téléphone, ces codes vous permettront de récupérer l'accès. Chaque code n'est utilisable qu'une fois.",
+      "copyAll": "Copier tous les codes",
+      "step3Title": "3. Confirmez avec un premier code",
+      "step3Desc": "Saisissez le code à 6 chiffres affiché par votre application pour terminer l'activation.",
+      "codePlaceholder": "123 456",
+      "verifying": "Vérification…",
+      "activate": "Activer"
+    },
+    "disablePanel": {
+      "title": "Désactiver la MFA ?",
+      "desc": "Saisissez votre mot de passe actuel pour confirmer. Les codes de secours seront aussi purgés.",
+      "passwordPlaceholder": "Votre mot de passe",
+      "disabling": "Désactivation…",
+      "disable": "Désactiver la MFA",
+      "cancel": "Annuler"
+    }
+  }
+}

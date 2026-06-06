@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { Calendar, FileText, ShieldCheck } from 'lucide-react'
@@ -24,6 +25,7 @@ interface AccessLog {
 }
 
 export default function MonEspace() {
+  const { t } = useTranslation('monEspace')
   const user = useAuthStore(s => s.user)
   const tenantConfig = useAuthStore(s => s.tenantConfig)
 
@@ -56,33 +58,33 @@ export default function MonEspace() {
   const recentAbsences = absences.slice(0, 3)
 
   const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-    pending:   { label: 'En attente', color: 'bg-yellow-100 text-yellow-700' },
-    submitted: { label: 'En attente', color: 'bg-yellow-100 text-yellow-700' },
-    approved:  { label: 'Approuvée',  color: 'bg-green-100 text-green-700' },
-    rejected:  { label: 'Refusée',    color: 'bg-red-100 text-red-700' },
-    cancelled: { label: 'Annulée',    color: 'bg-gray-100 text-gray-600' },
+    pending:   { label: t('common.status.pending'),   color: 'bg-yellow-100 text-yellow-700' },
+    submitted: { label: t('common.status.pending'),   color: 'bg-yellow-100 text-yellow-700' },
+    approved:  { label: t('common.status.approved'),  color: 'bg-green-100 text-green-700' },
+    rejected:  { label: t('common.status.rejected'),  color: 'bg-red-100 text-red-700' },
+    cancelled: { label: t('common.status.cancelled'), color: 'bg-gray-100 text-gray-600' },
   }
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Bonjour, {user?.firstName} 👋</h1>
-        <p className="text-sm text-muted-foreground mt-1">{tenantConfig?.name} · Espace personnel</p>
+        <h1 className="text-2xl font-bold">{t('dashboard.greeting', { name: user?.firstName })}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t('dashboard.subtitle', { tenant: tenantConfig?.name })}</p>
       </div>
 
       {/* Soldes congés */}
       {balances.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <Calendar className="h-4 w-4" /> Mes soldes congés
+            <Calendar className="h-4 w-4" /> {t('dashboard.leaveBalances')}
           </h2>
           <div className="grid grid-cols-2 gap-4">
             {balances.map(b => (
               <div key={b.absence_type_id} className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="font-medium">{b.label}</span>
-                  <span className="text-muted-foreground">{b.remaining}j restants / {b.acquired}j</span>
+                  <span className="text-muted-foreground">{t('dashboard.remainingOfAcquired', { remaining: b.remaining, acquired: b.acquired })}</span>
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div
@@ -94,15 +96,15 @@ export default function MonEspace() {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{b.taken}j pris</span>
-                  {b.pending > 0 && <span className="text-yellow-600">{b.pending}j en attente</span>}
+                  <span>{t('dashboard.taken', { count: b.taken })}</span>
+                  {b.pending > 0 && <span className="text-yellow-600">{t('dashboard.pending', { count: b.pending })}</span>}
                 </div>
               </div>
             ))}
           </div>
           <Link to="/mon-espace/absences"
             className="mt-4 block text-center text-sm text-primary hover:underline">
-            Demander une absence →
+            {t('dashboard.requestAbsence')}
           </Link>
         </div>
       )}
@@ -111,7 +113,7 @@ export default function MonEspace() {
         {/* Dernier bulletin */}
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <FileText className="h-4 w-4" /> Mon dernier bulletin
+            <FileText className="h-4 w-4" /> {t('dashboard.lastPayslip')}
           </h2>
           {lastSlip ? (
             <div>
@@ -119,28 +121,28 @@ export default function MonEspace() {
                 <div>
                   <p className="text-sm text-muted-foreground capitalize">{formatMonth(lastSlip.month)}</p>
                   <p className="text-2xl font-bold mt-1">{formatFCFA(parseInt(lastSlip.net_payable ?? '0'))}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Net à payer</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('dashboard.netPayable')}</p>
                 </div>
                 {!lastSlip.viewed_by_employee_at && (
                   <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                    Nouveau
+                    {t('common.status.new')}
                   </span>
                 )}
               </div>
               <Link to="/mon-espace/bulletins"
                 className="mt-4 block text-sm text-primary hover:underline">
-                Voir tous mes bulletins →
+                {t('dashboard.viewAllPayslips')}
               </Link>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Aucun bulletin disponible</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.noPayslip')}</p>
           )}
         </div>
 
         {/* Absences récentes */}
         <div className="rounded-xl border border-border bg-card p-6">
           <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <Calendar className="h-4 w-4" /> Mes absences récentes
+            <Calendar className="h-4 w-4" /> {t('dashboard.recentAbsences')}
           </h2>
           {recentAbsences.length > 0 ? (
             <div className="space-y-3">
@@ -149,7 +151,7 @@ export default function MonEspace() {
                   <div>
                     <p className="text-sm font-medium">{abs.type_label}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDate(abs.start_date)} — {abs.days}j
+                      {t('dashboard.absenceDays', { date: formatDate(abs.start_date), count: abs.days })}
                     </p>
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONFIG[abs.status]?.color ?? 'bg-muted'}`}>
@@ -159,21 +161,21 @@ export default function MonEspace() {
               ))}
               <Link to="/mon-espace/absences"
                 className="block text-sm text-primary hover:underline mt-2">
-                Voir toutes mes absences →
+                {t('dashboard.viewAllAbsences')}
               </Link>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Aucune absence</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.noAbsence')}</p>
           )}
         </div>
       </div>
       {/* Journal d'accès ARTCI */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-3 flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4" /> Journal d'accès — Conformité ARTCI
+          <ShieldCheck className="h-4 w-4" /> {t('dashboard.accessLog')}
         </h2>
         <p className="text-xs text-muted-foreground mb-3">
-          Conformément à la loi CI 2013-450, vous pouvez consulter qui a accédé à vos données RH.
+          {t('dashboard.accessLogIntro')}
         </p>
         {accessLogs.length > 0 ? (
           <div className="space-y-1.5">
@@ -193,7 +195,7 @@ export default function MonEspace() {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">Aucun accès enregistré récemment</p>
+          <p className="text-xs text-muted-foreground">{t('dashboard.noAccessLog')}</p>
         )}
       </div>
     </div>

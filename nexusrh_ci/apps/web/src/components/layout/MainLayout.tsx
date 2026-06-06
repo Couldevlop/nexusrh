@@ -1,32 +1,36 @@
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Sidebar } from './Sidebar'
 import AiChat from '@/components/ai/AiChat'
 import { AlertTriangle, Menu } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 
-const ROUTE_LABELS: Record<string, string> = {
-  '/dashboard': 'Tableau de bord',
-  '/employees': 'Employés',
-  '/contracts': 'Contrats OHADA',
-  '/payroll': 'Paie',
-  '/absences': 'Absences',
-  '/expenses-rh': 'Notes de frais',
-  '/recruitment': 'Recrutement',
-  '/training': 'Formations FDFP',
-  '/careers': 'Carrières',
-  '/cnps': 'CNPS & DISA',
-  '/mobile-money': 'Mobile Money',
-  '/reporting': 'Reporting',
-  '/settings': 'Paramètres',
+/** Route → clé du namespace `nav` (libellés traduits FR/EN). */
+const ROUTE_LABEL_KEYS: Record<string, string> = {
+  '/dashboard': 'dashboard',
+  '/employees': 'employees',
+  '/contracts': 'contracts',
+  '/payroll': 'payroll',
+  '/absences': 'absences',
+  '/expenses-rh': 'expenses',
+  '/recruitment': 'recruitment',
+  '/training': 'training',
+  '/careers': 'careers',
+  '/cnps': 'cnps',
+  '/mobile-money': 'mobileMoney',
+  '/reporting': 'reporting',
+  '/settings': 'settings',
 }
 
 export default function MainLayout() {
+  const { t } = useTranslation('nav')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { tenantConfig } = useAuthStore()
   const location = useLocation()
-  const pageTitle = ROUTE_LABELS[location.pathname] ?? 'NexusRH CI'
+  const labelKey = ROUTE_LABEL_KEYS[location.pathname]
+  const pageTitle = labelKey ? t(labelKey) : t('appName')
 
   return (
     <div className="flex h-screen overflow-hidden flex-col">
@@ -67,6 +71,7 @@ export default function MainLayout() {
 }
 
 function MaintenanceBanner() {
+  const { t } = useTranslation('nav')
   const [visible, setVisible] = useState(false)
 
   if (!visible) return null
@@ -74,7 +79,7 @@ function MaintenanceBanner() {
   return (
     <div className="flex items-center gap-3 bg-amber-500 px-4 py-2 text-sm font-medium text-white">
       <AlertTriangle className="h-4 w-4 shrink-0" />
-      <span>Service en maintenance — Certaines fonctionnalités sont temporairement indisponibles.</span>
+      <span>{t('maintenance')}</span>
       <button onClick={() => setVisible(false)} className="ml-auto text-white/80 hover:text-white">✕</button>
     </div>
   )

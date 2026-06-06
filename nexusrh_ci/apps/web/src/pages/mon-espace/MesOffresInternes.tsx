@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { apecMetaPairs } from '@/lib/apec'
 import { Briefcase, MapPin, Send, CheckCircle, Lock } from 'lucide-react'
@@ -30,11 +31,10 @@ interface InternalJob {
   recruitment_process?: string | null
 }
 
-const CONTRACT_LABELS: Record<string, string> = {
-  cdi: 'CDI', cdd: 'CDD', stage: 'Stage', apprentissage: 'Apprentissage',
-}
-
 export default function MesOffresInternes() {
+  const { t } = useTranslation('monEspace')
+  const contractLabel = (type: string) =>
+    t(`offers.contractTypes.${type}`, { defaultValue: type.toUpperCase() })
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<InternalJob | null>(null)
   const [coverLetter, setCoverLetter] = useState('')
@@ -54,7 +54,7 @@ export default function MesOffresInternes() {
         phone: vars.phone || undefined,
       }),
     onSuccess: () => {
-      setSuccess('Candidature envoyée avec succès — votre RH va en être informé.')
+      setSuccess(t('offers.applicationSent'))
       setError(null)
       setSelected(null)
       setCoverLetter('')
@@ -63,7 +63,7 @@ export default function MesOffresInternes() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Erreur lors de la candidature')
+      setError(msg ?? t('offers.applicationError'))
       setSuccess(null)
     },
   })
@@ -77,9 +77,9 @@ export default function MesOffresInternes() {
           <Lock className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold md:text-2xl">Offres internes</h1>
+          <h1 className="text-xl font-bold md:text-2xl">{t('offers.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Postes ouverts en interne qui correspondent à votre profil
+            {t('offers.subtitle')}
           </p>
         </div>
       </div>
@@ -97,9 +97,9 @@ export default function MesOffresInternes() {
       ) : jobs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-10 text-center">
           <Briefcase className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-          <p className="font-medium">Aucune offre interne pour le moment</p>
+          <p className="font-medium">{t('offers.emptyTitle')}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Les offres ciblées qui correspondent à votre profil apparaîtront ici.
+            {t('offers.emptyHint')}
           </p>
         </div>
       ) : (
@@ -115,7 +115,7 @@ export default function MesOffresInternes() {
                 </div>
                 {job.already_applied > 0 && (
                   <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                    <CheckCircle className="h-3 w-3" /> Candidature envoyée
+                    <CheckCircle className="h-3 w-3" /> {t('offers.applied')}
                   </span>
                 )}
               </div>
@@ -125,7 +125,7 @@ export default function MesOffresInternes() {
                   <MapPin className="h-3 w-3" /> {job.location}
                 </span>
                 <span className="rounded-md bg-muted/60 px-2 py-1 font-medium text-foreground">
-                  {CONTRACT_LABELS[job.contract_type] ?? job.contract_type.toUpperCase()}
+                  {contractLabel(job.contract_type)}
                 </span>
                 {job.salary_min && job.salary_max && (
                   <span className="rounded-md bg-primary/10 px-2 py-1 font-medium text-primary">
@@ -134,7 +134,7 @@ export default function MesOffresInternes() {
                 )}
                 {job.target_min_seniority_months !== null && (
                   <span className="rounded-md bg-purple-50 px-2 py-1 text-purple-700">
-                    Ancienneté min : {job.target_min_seniority_months} mois
+                    {t('offers.minSeniority', { count: job.target_min_seniority_months })}
                   </span>
                 )}
               </div>
@@ -146,7 +146,7 @@ export default function MesOffresInternes() {
               <div className="mt-4 flex justify-end">
                 <button onClick={() => { setSelected(job); setError(null); setSuccess(null) }}
                   className="flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5">
-                  Voir l'offre <Send className="h-3.5 w-3.5" />
+                  {t('offers.viewOffer')} <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -180,36 +180,35 @@ export default function MesOffresInternes() {
             <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-3">
               {selected.description && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Description du poste</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.jobDescription')}</p>
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.description}</p>
                 </div>
               )}
               {selected.requirements && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Profil recherché</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.candidateProfile')}</p>
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.requirements}</p>
                 </div>
               )}
               {selected.benefits && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Avantages</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.benefits')}</p>
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.benefits}</p>
                 </div>
               )}
               {selected.recruitment_process && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Processus de recrutement</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.recruitmentProcess')}</p>
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.recruitment_process}</p>
                 </div>
               )}
               {!selected.description && !selected.requirements && (
-                <p className="text-sm text-muted-foreground">Aucun détail supplémentaire fourni pour cette offre.</p>
+                <p className="text-sm text-muted-foreground">{t('offers.noDetails')}</p>
               )}
             </div>
 
             <p className="mt-3 text-xs text-muted-foreground">
-              Votre profil employé sera transmis automatiquement. Ajoutez une lettre
-              de motivation pour expliquer votre intérêt.
+              {t('offers.profileNote')}
             </p>
 
             {error && (
@@ -218,15 +217,15 @@ export default function MesOffresInternes() {
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Téléphone (facultatif)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('offers.phoneOptional')}</label>
                 <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                  placeholder="+225 07 XX XX XX XX"
+                  placeholder={t('offers.phonePlaceholder')}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Lettre de motivation *</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('offers.coverLetter')}</label>
                 <textarea value={coverLetter} onChange={e => setCoverLetter(e.target.value)}
-                  rows={6} placeholder="Expliquez en quelques lignes pourquoi vous postulez à ce poste…"
+                  rows={6} placeholder={t('offers.coverLetterPlaceholder')}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
               </div>
             </div>
@@ -234,12 +233,12 @@ export default function MesOffresInternes() {
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setSelected(null)}
                 className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
-                Annuler
+                {t('common.cancel')}
               </button>
               <button onClick={() => apply.mutate({ id: selected.id, cover_letter: coverLetter, phone })}
                 disabled={apply.isPending || coverLetter.trim().length < 10}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {apply.isPending ? 'Envoi…' : 'Envoyer ma candidature'}
+                {apply.isPending ? t('offers.sending') : t('offers.sendApplication')}
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -31,6 +32,7 @@ function downloadCSV(rows: (string|number)[][], filename: string) {
 }
 
 export default function ReportingPage() {
+  const { t } = useTranslation('reporting')
   const [year, setYear] = useState(currentYear)
 
   const { data: overviewData, isLoading } = useQuery<{ data: OverviewData }>({
@@ -49,7 +51,7 @@ export default function ReportingPage() {
   if (!overview && !isLoading) return (
     <div className="flex flex-col items-center justify-center p-24 text-muted-foreground">
       <BarChart3 className="h-12 w-12 opacity-20 mb-3" />
-      <p className="font-medium">Aucune donnée pour {year}</p>
+      <p className="font-medium">{t('noDataForYear', { year })}</p>
     </div>
   )
 
@@ -74,7 +76,7 @@ export default function ReportingPage() {
   }))
 
   const deptChart = depts.map(d => {
-    const dept = d.department ?? 'Sans département'
+    const dept = d.department ?? t('absence.noDepartment')
     return {
       name: dept.length > 12 ? dept.slice(0, 12) + '…' : dept,
       effectifs: d.count,
@@ -90,38 +92,41 @@ export default function ReportingPage() {
 
   // Radar KPIs managériaux
   const radarData = [
-    { kpi: 'CNPS',       value: totals.totalGross > 0 ? Math.min(100, Math.round((1-(totals.totalCnps/totals.totalGross))*100)) : 100 },
-    { kpi: 'Net/Brut',   value: totals.totalGross > 0 ? Math.round((totals.totalNet/totals.totalGross)*100) : 0 },
-    { kpi: 'Présence',   value: Math.max(0, 100-parseFloat(txAbsenteisme)) },
-    { kpi: 'Recrutement',value: (overview?.recruitmentByStatus?.find(r=>r.status==='hired')?.count ?? 0) > 0 ? 80 : 40 },
-    { kpi: 'Formation',  value: 65 },
-    { kpi: 'Stabilité',  value: 75 },
+    { kpi: t('radar.cnps'),       value: totals.totalGross > 0 ? Math.min(100, Math.round((1-(totals.totalCnps/totals.totalGross))*100)) : 100 },
+    { kpi: t('radar.netGross'),   value: totals.totalGross > 0 ? Math.round((totals.totalNet/totals.totalGross)*100) : 0 },
+    { kpi: t('radar.presence'),   value: Math.max(0, 100-parseFloat(txAbsenteisme)) },
+    { kpi: t('radar.recruitment'),value: (overview?.recruitmentByStatus?.find(r=>r.status==='hired')?.count ?? 0) > 0 ? 80 : 40 },
+    { kpi: t('radar.training'),  value: 65 },
+    { kpi: t('radar.stability'),  value: 75 },
   ]
 
   // Coût employeur pie
   const coutPie = [
-    { name: 'Net versé',     value: totals.totalNet,  fill: '#10B981' },
-    { name: 'CNPS patronal', value: Math.round(totals.totalCnps * 0.55), fill: '#F97316' },
-    { name: 'CNPS salarial', value: Math.round(totals.totalCnps * 0.45), fill: '#FB923C' },
-    { name: 'ITS / DGI',    value: totals.totalIts,  fill: '#8B5CF6' },
+    { name: t('series.netPaid'),     value: totals.totalNet,  fill: '#10B981' },
+    { name: t('series.cnpsEmployer'), value: Math.round(totals.totalCnps * 0.55), fill: '#F97316' },
+    { name: t('series.cnpsEmployee'), value: Math.round(totals.totalCnps * 0.45), fill: '#FB923C' },
+    { name: t('series.itsDgi'),    value: totals.totalIts,  fill: '#8B5CF6' },
   ].filter(d => d.value > 0)
 
   const fmtK = (v: number) => v >= 1_000 ? `${(v/1_000).toFixed(0)}M` : `${v}k`
 
   const handleExport = () => {
-    const header = ['Mois','Brut (FCFA)','Net (FCFA)','CNPS (FCFA)','ITS (FCFA)','Ratio Net/Brut']
+    const header = [
+      t('export.colMonth'), t('export.colGross'), t('export.colNet'),
+      t('export.colCnps'), t('export.colIts'), t('export.colRatio'),
+    ]
     const rows = payEvol.map(p => [
       p.month, p.total_gross, p.total_net, p.total_cnps, p.total_its??0,
       p.total_gross > 0 ? `${Math.round((p.total_net/p.total_gross)*100)}%` : ''
     ])
     downloadCSV([
-      [`=== REPORTING RH ${year} ===`],
-      [`Effectifs actifs : ${overview?.activeEmployees ?? 0}`],
-      [`Masse salariale : ${formatFCFA(totals.totalGross)}`],
-      [`Taux absentéisme : ${txAbsenteisme}%`], [],
+      [t('export.reportTitle', { year })],
+      [t('export.activeEmployees', { count: overview?.activeEmployees ?? 0 })],
+      [t('export.payroll', { value: formatFCFA(totals.totalGross) })],
+      [t('export.absenteeism', { value: txAbsenteisme })], [],
       header, ...rows,
-      [], ['Département','Effectifs','Salaire moyen (FCFA)'],
-      ...depts.map(d => [d.department ?? 'Sans département', d.count, Math.round(d.avg_salary)]),
+      [], [t('export.colDept'), t('export.colHeadcount'), t('export.colAvgSalary')],
+      ...depts.map(d => [d.department ?? t('absence.noDepartment'), d.count, Math.round(d.avg_salary)]),
     ], `reporting-rh-${year}.csv`)
   }
 
@@ -131,8 +136,8 @@ export default function ReportingPage() {
       {/* En-tête */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reporting RH</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Tableau de bord décisionnel · Contrôle de gestion sociale</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={year} onChange={e => setYear(parseInt(e.target.value))}
@@ -141,11 +146,11 @@ export default function ReportingPage() {
           </select>
           <button onClick={handleExport}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-            <Download className="h-4 w-4 text-green-600" /> Excel
+            <Download className="h-4 w-4 text-green-600" /> {t('actions.excel')}
           </button>
           <button onClick={() => window.print()}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-            <Printer className="h-4 w-4 text-red-500" /> PDF
+            <Printer className="h-4 w-4 text-red-500" /> {t('actions.pdf')}
           </button>
         </div>
       </div>
@@ -158,23 +163,23 @@ export default function ReportingPage() {
         <>
           {/* ── KPI Décisionnel ────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KCard icon={Users}       color="blue"   label="Effectifs actifs"     value={String(overview?.activeEmployees ?? 0)} sub={`${depts.length} dép.`} />
-            <KCard icon={CreditCard}  color="orange" label="Masse salariale"       value={formatFCFA(totals.totalGross)}  sub={`${year}`} />
-            <KCard icon={FileText}    color="violet" label="Charges sociales"      value={formatFCFA(totals.totalCnps + totals.totalIts)} sub="CNPS + ITS" />
-            <KCard icon={Percent}     color="teal"   label="Ratio Net/Brut"
+            <KCard icon={Users}       color="blue"   label={t('kpi.headcount')}     value={String(overview?.activeEmployees ?? 0)} sub={t('kpi.headcountSub', { count: depts.length })} />
+            <KCard icon={CreditCard}  color="orange" label={t('kpi.payroll')}       value={formatFCFA(totals.totalGross)}  sub={`${year}`} />
+            <KCard icon={FileText}    color="violet" label={t('kpi.socialCharges')} value={formatFCFA(totals.totalCnps + totals.totalIts)} sub={t('kpi.socialChargesSub')} />
+            <KCard icon={Percent}     color="teal"   label={t('kpi.netGrossRatio')}
               value={totals.totalGross > 0 ? `${Math.round((totals.totalNet/totals.totalGross)*100)} %` : '—'}
-              sub="Part versée salariés" />
-            <KCard icon={Activity}    color="emerald" label="Taux absentéisme"    value={`${txAbsenteisme} %`} sub={`${totalAbsDays} jours`} />
-            <KCard icon={TrendingUp}  color="amber"  label="Net total versé"      value={formatFCFA(totals.totalNet)} sub="Salaires nets" />
-            <KCard icon={Target}      color="red"    label="Coût employeur total"  value={formatFCFA(totals.totalGross + Math.round(totals.totalCnps * 0.55))} sub="Brut + charges pat." />
-            <KCard icon={AlertTriangle} color="rose" label="Absences totales"     value={`${totalAbsDays} j`} sub={`${absTypes.reduce((s,a)=>s+a.count,0)} demandes`} />
+              sub={t('kpi.netGrossRatioSub')} />
+            <KCard icon={Activity}    color="emerald" label={t('kpi.absenteeism')}  value={`${txAbsenteisme} %`} sub={t('kpi.absenteeismSub', { count: totalAbsDays })} />
+            <KCard icon={TrendingUp}  color="amber"  label={t('kpi.netTotal')}      value={formatFCFA(totals.totalNet)} sub={t('kpi.netTotalSub')} />
+            <KCard icon={Target}      color="red"    label={t('kpi.employerCost')}  value={formatFCFA(totals.totalGross + Math.round(totals.totalCnps * 0.55))} sub={t('kpi.employerCostSub')} />
+            <KCard icon={AlertTriangle} color="rose" label={t('kpi.totalAbsences')} value={`${totalAbsDays} ${t('kpi.daysSuffix')}`} sub={t('kpi.totalAbsencesSub', { count: absTypes.reduce((s,a)=>s+a.count,0) })} />
           </div>
 
           {/* ── Graphique 1 : Évolution masse salariale (ComposedChart) ── */}
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="mb-4">
-              <p className="font-semibold">Évolution de la masse salariale {year}</p>
-              <p className="text-xs text-muted-foreground">Brut · Net · CNPS · ITS · Ratio Net/Brut (axe droit) — en milliers FCFA</p>
+              <p className="font-semibold">{t('charts.payrollEvolution', { year })}</p>
+              <p className="text-xs text-muted-foreground">{t('charts.payrollEvolutionSub')}</p>
             </div>
             {payChart.length > 0 ? (
               <ResponsiveContainer width="100%" height={290}>
@@ -184,16 +189,16 @@ export default function ReportingPage() {
                   <YAxis yAxisId="l" tick={{ fontSize: 10 }} tickFormatter={fmtK} />
                   <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 10 }} unit="%" domain={[0,100]} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number, n: string) => n === 'Ratio %' ? [`${v}%`] : [`${v.toLocaleString('fr-CI')} k FCFA`, n]} />
+                    formatter={(v: number, n: string) => n === t('series.ratioPct') ? [`${v}%`] : [t('charts.tooltipThousandsFcfa', { value: v.toLocaleString('fr-CI') }), n]} />
                   <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="l" dataKey="brut"  name="Brut"  fill="#4F46E5" radius={[2,2,0,0]} />
-                  <Bar yAxisId="l" dataKey="net"   name="Net"   fill="#10B981" radius={[2,2,0,0]} />
-                  <Bar yAxisId="l" dataKey="cnps"  name="CNPS"  fill="#F97316" radius={[2,2,0,0]} />
-                  <Bar yAxisId="l" dataKey="its"   name="ITS"   fill="#8B5CF6" radius={[2,2,0,0]} />
-                  <Line yAxisId="r" type="monotone" dataKey="ratio" name="Ratio %" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 4 }} strokeDasharray="4 2" />
+                  <Bar yAxisId="l" dataKey="brut"  name={t('series.gross')}  fill="#4F46E5" radius={[2,2,0,0]} />
+                  <Bar yAxisId="l" dataKey="net"   name={t('series.net')}   fill="#10B981" radius={[2,2,0,0]} />
+                  <Bar yAxisId="l" dataKey="cnps"  name={t('series.cnps')}  fill="#F97316" radius={[2,2,0,0]} />
+                  <Bar yAxisId="l" dataKey="its"   name={t('series.its')}   fill="#8B5CF6" radius={[2,2,0,0]} />
+                  <Line yAxisId="r" type="monotone" dataKey="ratio" name={t('series.ratioPct')} stroke="#EF4444" strokeWidth={2.5} dot={{ r: 4 }} strokeDasharray="4 2" />
                 </ComposedChart>
               </ResponsiveContainer>
-            ) : <Empty />}
+            ) : <Empty label={t('noData')} />}
           </div>
 
           {/* ── Graphiques 2+3 ────────────────────────────────── */}
@@ -201,8 +206,8 @@ export default function ReportingPage() {
 
             {/* Répartition coût employeur — Pie donut */}
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <p className="font-semibold mb-1">Décomposition coût employeur</p>
-              <p className="text-xs text-muted-foreground mb-3">Total annuel {year}</p>
+              <p className="font-semibold mb-1">{t('charts.employerCostBreakdown')}</p>
+              <p className="text-xs text-muted-foreground mb-3">{t('charts.employerCostBreakdownSub', { year })}</p>
               {coutPie.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height={160}>
@@ -226,27 +231,27 @@ export default function ReportingPage() {
                     ))}
                   </div>
                 </>
-              ) : <Empty />}
+              ) : <Empty label={t('noData')} />}
             </div>
 
             {/* Radar KPIs managériaux */}
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <p className="font-semibold mb-1">Tableau de bord de pilotage</p>
-              <p className="text-xs text-muted-foreground mb-3">Score sur 100 par dimension RH</p>
+              <p className="font-semibold mb-1">{t('charts.pilotDashboard')}</p>
+              <p className="text-xs text-muted-foreground mb-3">{t('charts.pilotDashboardSub')}</p>
               <ResponsiveContainer width="100%" height={210}>
                 <RadarChart data={radarData} margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
                   <PolarGrid stroke="hsl(var(--border))" />
                   <PolarAngleAxis dataKey="kpi" tick={{ fontSize: 11 }} />
-                  <Radar name="Score" dataKey="value" stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.25} dot={{ r: 3 }} />
-                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v}/100`]} />
+                  <Radar name={t('series.score')} dataKey="value" stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.25} dot={{ r: 3 }} />
+                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [t('charts.tooltipScore', { value: v })]} />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
 
             {/* Effectifs par département */}
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <p className="font-semibold mb-1">Effectifs par département</p>
-              <p className="text-xs text-muted-foreground mb-3">Salaire moyen (axe droite, en k FCFA)</p>
+              <p className="font-semibold mb-1">{t('charts.headcountByDept')}</p>
+              <p className="text-xs text-muted-foreground mb-3">{t('charts.headcountByDeptSub')}</p>
               {deptChart.length > 0 ? (
                 <ResponsiveContainer width="100%" height={210}>
                   <ComposedChart data={deptChart} layout="vertical" margin={{ top: 0, right: 32, left: 0, bottom: 0 }}>
@@ -254,12 +259,12 @@ export default function ReportingPage() {
                     <XAxis type="number" tick={{ fontSize: 10 }} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={72} />
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                      formatter={(v: number, n: string) => [n === 'Sal. moy (k)' ? `${v}k FCFA` : `${v} emp.`, n]} />
-                    <Bar dataKey="effectifs" name="Effectifs" fill="#4F46E5" radius={[0,3,3,0]} />
-                    <Line dataKey="salaireMoyen" name="Sal. moy (k)" stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} />
+                      formatter={(v: number, n: string) => [n === t('series.avgSalaryK') ? t('charts.tooltipAvgSalaryK', { value: v }) : t('charts.tooltipEmployees', { value: v }), n]} />
+                    <Bar dataKey="effectifs" name={t('series.headcount')} fill="#4F46E5" radius={[0,3,3,0]} />
+                    <Line dataKey="salaireMoyen" name={t('series.avgSalaryK')} stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
-              ) : <Empty />}
+              ) : <Empty label={t('noData')} />}
             </div>
           </div>
 
@@ -268,8 +273,8 @@ export default function ReportingPage() {
 
             {/* Absentéisme mensuel — Area */}
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <p className="font-semibold mb-1">Évolution de l'absentéisme {year}</p>
-              <p className="text-xs text-muted-foreground mb-3">Jours d'absence cumulés par mois</p>
+              <p className="font-semibold mb-1">{t('charts.absenteeismEvolution', { year })}</p>
+              <p className="text-xs text-muted-foreground mb-3">{t('charts.absenteeismEvolutionSub')}</p>
               {absChart.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={absChart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -283,19 +288,19 @@ export default function ReportingPage() {
                     <XAxis dataKey="m" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                      formatter={(v: number, n: string) => [n === 'jours' ? `${v} jours` : `${v} demandes`, n]} />
+                      formatter={(v: number, n: string) => [n === 'jours' ? t('charts.tooltipDays', { value: v }) : t('charts.tooltipRequests', { value: v }), n]} />
                     <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                    <Area type="monotone" dataKey="jours" name="Jours abs." stroke="#EF4444" strokeWidth={2} fill="url(#gradAbs)" />
-                    <Line type="monotone" dataKey="count" name="Demandes" stroke="#F97316" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                    <Area type="monotone" dataKey="jours" name={t('series.absenceDays')} stroke="#EF4444" strokeWidth={2} fill="url(#gradAbs)" />
+                    <Line type="monotone" dataKey="count" name={t('series.requests')} stroke="#F97316" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : <Empty />}
+              ) : <Empty label={t('noData')} />}
             </div>
 
             {/* Absences par type */}
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <p className="font-semibold mb-1">Répartition par type d'absence</p>
-              <p className="text-xs text-muted-foreground mb-4">{year} · jours consommés</p>
+              <p className="font-semibold mb-1">{t('charts.absencesByType')}</p>
+              <p className="text-xs text-muted-foreground mb-4">{t('charts.absencesByTypeSub', { year })}</p>
               {absTypes.length > 0 ? (
                 <div className="space-y-3">
                   {absTypes.map((a, i) => (
@@ -305,8 +310,8 @@ export default function ReportingPage() {
                           <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: a.type_color || PALETTE[i % PALETTE.length] }} />
                           <span className="text-muted-foreground">{a.type_label}</span>
                         </span>
-                        <span className="font-semibold">{a.total_days}j
-                          <span className="ml-1 text-xs text-muted-foreground font-normal">({a.count} dem.)</span>
+                        <span className="font-semibold">{t('absence.daysShort', { count: a.total_days })}
+                          <span className="ml-1 text-xs text-muted-foreground font-normal">{t('absence.requestsShort', { count: a.count })}</span>
                         </span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -319,7 +324,7 @@ export default function ReportingPage() {
                     </div>
                   ))}
                 </div>
-              ) : <Empty />}
+              ) : <Empty label={t('noData')} />}
             </div>
           </div>
 
@@ -327,22 +332,22 @@ export default function ReportingPage() {
           {payEvol.length > 0 && (
             <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b bg-muted/30">
-                <p className="font-semibold">Récapitulatif mensuel {year}</p>
+                <p className="font-semibold">{t('table.title', { year })}</p>
                 <button onClick={handleExport}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-                  <Download className="h-3.5 w-3.5" /> Exporter
+                  <Download className="h-3.5 w-3.5" /> {t('table.export')}
                 </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted-foreground uppercase tracking-wide bg-muted/20">
-                      <th className="px-5 py-3">Mois</th>
-                      <th className="px-5 py-3 text-right">Brut</th>
-                      <th className="px-5 py-3 text-right">Net</th>
-                      <th className="px-5 py-3 text-right">CNPS</th>
-                      <th className="px-5 py-3 text-right">ITS/DGI</th>
-                      <th className="px-5 py-3 text-right">Ratio</th>
+                      <th className="px-5 py-3">{t('table.month')}</th>
+                      <th className="px-5 py-3 text-right">{t('table.gross')}</th>
+                      <th className="px-5 py-3 text-right">{t('table.net')}</th>
+                      <th className="px-5 py-3 text-right">{t('table.cnps')}</th>
+                      <th className="px-5 py-3 text-right">{t('table.itsDgi')}</th>
+                      <th className="px-5 py-3 text-right">{t('table.ratio')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -364,7 +369,7 @@ export default function ReportingPage() {
                       )
                     })}
                     <tr className="bg-muted/40 font-semibold text-sm border-t-2">
-                      <td className="px-5 py-3">TOTAL {year}</td>
+                      <td className="px-5 py-3">{t('table.total', { year })}</td>
                       <td className="px-5 py-3 text-right font-mono">{formatFCFA(totals.totalGross)}</td>
                       <td className="px-5 py-3 text-right font-mono text-emerald-700">{formatFCFA(totals.totalNet)}</td>
                       <td className="px-5 py-3 text-right font-mono text-orange-600">{formatFCFA(totals.totalCnps)}</td>
@@ -411,6 +416,6 @@ function KCard({ icon: Icon, color, label, value, sub }: {
   )
 }
 
-function Empty() {
-  return <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">Aucune donnée</div>
+function Empty({ label }: { label: string }) {
+  return <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">{label}</div>
 }

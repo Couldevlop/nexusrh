@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatDate } from '@/lib/api'
 import { Calendar, CheckCircle, XCircle } from 'lucide-react'
 
@@ -12,13 +13,14 @@ interface Absence {
   created_at: string
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  submitted:  { label: 'En attente',  color: 'bg-yellow-100 text-yellow-700' },
-  approved:   { label: 'Approuvée',   color: 'bg-green-100 text-green-700' },
-  rejected:   { label: 'Refusée',     color: 'bg-red-100 text-red-700' },
+const STATUS_COLOR: Record<string, string> = {
+  submitted: 'bg-yellow-100 text-yellow-700',
+  approved:  'bg-green-100 text-green-700',
+  rejected:  'bg-red-100 text-red-700',
 }
 
 export default function AbsencesPage() {
+  const { t } = useTranslation('absences')
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<string>('submitted')
   const [rejectId, setRejectId] = useState<string | null>(null)
@@ -50,8 +52,8 @@ export default function AbsencesPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Absences</h1>
-          <p className="text-sm text-muted-foreground mt-1">{absences.length} demande(s)</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('requestsCount', { count: absences.length })}</p>
         </div>
 
         <div className="flex gap-2">
@@ -65,7 +67,7 @@ export default function AbsencesPage() {
                   : 'border border-border bg-card text-muted-foreground hover:bg-accent'
               }`}
             >
-              {STATUS_CONFIG[s]?.label ?? s}
+              {t(`status.${s}`)}
             </button>
           ))}
         </div>
@@ -80,13 +82,13 @@ export default function AbsencesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="p-4">Employé</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Période</th>
-                <th className="p-4 text-center">Jours</th>
-                <th className="p-4">Motif</th>
-                <th className="p-4">Statut</th>
-                {statusFilter === 'submitted' && <th className="p-4">Actions</th>}
+                <th className="p-4">{t('table.employee')}</th>
+                <th className="p-4">{t('table.type')}</th>
+                <th className="p-4">{t('table.period')}</th>
+                <th className="p-4 text-center">{t('table.days')}</th>
+                <th className="p-4">{t('table.reason')}</th>
+                <th className="p-4">{t('table.status')}</th>
+                {statusFilter === 'submitted' && <th className="p-4">{t('table.actions')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -104,13 +106,13 @@ export default function AbsencesPage() {
                   <td className="p-4">
                     <p className="text-xs">{formatDate(abs.start_date)} → {formatDate(abs.end_date)}</p>
                   </td>
-                  <td className="p-4 text-center">{abs.half_day ? '½j' : `${abs.days}j`}</td>
+                  <td className="p-4 text-center">{abs.half_day ? t('halfDay') : t('fullDays', { count: abs.days })}</td>
                   <td className="p-4 max-w-[200px] truncate text-muted-foreground">
-                    {abs.reason ?? '—'}
+                    {abs.reason ?? t('noReason')}
                   </td>
                   <td className="p-4">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONFIG[abs.status]?.color ?? 'bg-muted'}`}>
-                      {STATUS_CONFIG[abs.status]?.label ?? abs.status}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[abs.status] ?? 'bg-muted'}`}>
+                      {STATUS_COLOR[abs.status] ? t(`status.${abs.status}`) : abs.status}
                     </span>
                   </td>
                   {statusFilter === 'submitted' && (
@@ -121,13 +123,13 @@ export default function AbsencesPage() {
                           disabled={approveMut.isPending}
                           className="flex items-center gap-1 rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50"
                         >
-                          <CheckCircle className="h-3 w-3" /> Approuver
+                          <CheckCircle className="h-3 w-3" /> {t('actions.approve')}
                         </button>
                         <button
                           onClick={() => setRejectId(abs.id)}
                           className="flex items-center gap-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
                         >
-                          <XCircle className="h-3 w-3" /> Refuser
+                          <XCircle className="h-3 w-3" /> {t('actions.reject')}
                         </button>
                       </div>
                     </td>
@@ -138,7 +140,7 @@ export default function AbsencesPage() {
                 <tr>
                   <td colSpan={statusFilter === 'submitted' ? 7 : 6} className="p-8 text-center text-muted-foreground">
                     <Calendar className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    Aucune absence {STATUS_CONFIG[statusFilter]?.label?.toLowerCase()}
+                    {t('empty', { status: t(`status.${statusFilter}`).toLowerCase() })}
                   </td>
                 </tr>
               )}
@@ -151,24 +153,24 @@ export default function AbsencesPage() {
       {rejectId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRejectId(null)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-3">Motif du refus</h3>
+            <h3 className="font-semibold mb-3">{t('rejectModal.title')}</h3>
             <textarea
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
-              placeholder="Expliquer la raison du refus (optionnel)..."
+              placeholder={t('rejectModal.placeholder')}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none resize-none"
               rows={3}
             />
             <div className="mt-4 flex gap-2 justify-end">
               <button onClick={() => setRejectId(null)}
                 className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
-                Annuler
+                {t('rejectModal.cancel')}
               </button>
               <button
                 onClick={() => rejectMut.mutate({ id: rejectId, reason: rejectReason })}
                 disabled={rejectMut.isPending}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
-                Confirmer le refus
+                {t('rejectModal.confirm')}
               </button>
             </div>
           </div>

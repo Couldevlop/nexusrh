@@ -1,0 +1,145 @@
+{
+  "title": "Employees",
+  "subtitle_one": "{{count}} active employee",
+  "subtitle_other": "{{count}} active employee(s)",
+  "newEmployee": "New employee",
+  "searchPlaceholder": "Search for an employee...",
+  "noEmployeesFound": "No employee found",
+  "loadingEmployee": "Loading...",
+  "employeeNotFound": "Employee not found",
+  "created": {
+    "message": "<strong>{{name}}</strong> created. Their onboarding journey starts automatically (visible in the Onboarding tab)."
+  },
+  "table": {
+    "employee": "Employee",
+    "jobAndDepartment": "Job & Department",
+    "grossSalary": "Gross salary",
+    "mobileMoney": "Mobile Money",
+    "contract": "Contract",
+    "hireDate": "Hire date"
+  },
+  "form": {
+    "title": "New employee",
+    "sections": {
+      "identity": "Identity",
+      "jobAndContract": "Job & contract",
+      "compensationAndPayment": "Compensation & payment",
+      "familySituation": "Family situation",
+      "familySituationHint": "(affects the ITS tax credit)"
+    },
+    "fields": {
+      "firstName": "First name *",
+      "lastName": "Last name *",
+      "gender": "Gender",
+      "email": "Email",
+      "phone": "Phone",
+      "birthDate": "Date of birth",
+      "nni": "NNI (encrypted)",
+      "cnpsNumber": "CNPS no.",
+      "city": "City",
+      "jobTitle": "Job title",
+      "department": "Department",
+      "seniority": "Seniority",
+      "professionalCategory": "Professional category",
+      "contractType": "Contract type",
+      "hireDate": "Hire date",
+      "weeklyHours": "Weekly hours *",
+      "baseSalary": "Monthly gross salary (FCFA) *",
+      "mobileMoneyProvider": "Mobile Money operator",
+      "mobileMoneyPhone": "Mobile Money no.",
+      "iban": "Bank details / IBAN (AES-256 encrypted)",
+      "bankName": "Bank",
+      "maritalStatus": "Marital status",
+      "childrenCount": "Dependent children"
+    },
+    "placeholders": {
+      "phone": "+225 07 XX XX XX XX",
+      "professionalCategory": "e.g. 3rd category",
+      "baseSalary": "≥ 75,000",
+      "mobileMoneyPhone": "+2250XXXXXXXXX",
+      "iban": "CIxx xxxx xxxx xxxx xxxx xxxx xxxx"
+    },
+    "gender": {
+      "male": "Male",
+      "female": "Female",
+      "other": "Other"
+    },
+    "seniorityOptions": {
+      "junior": "Junior",
+      "confirme": "Experienced",
+      "senior": "Senior",
+      "cadre": "Executive",
+      "direction": "Management"
+    },
+    "maritalOptions": {
+      "single": "Single",
+      "married": "Married",
+      "divorced": "Divorced",
+      "widowed": "Widowed",
+      "cohabiting": "Cohabiting"
+    },
+    "providers": {
+      "wave": "Wave",
+      "mtn": "MTN MoMo",
+      "orange": "Orange Money",
+      "cofina": "COFINA"
+    },
+    "onboardingHint": "An <strong>onboarding journey</strong> will be created automatically based on seniority and role (templates configured in Onboarding → Templates).",
+    "errors": {
+      "salaryBelowSmig": "The gross salary must be ≥ 75,000 FCFA (minimum wage).",
+      "createGeneric": "Error while creating"
+    },
+    "submit": "Create employee",
+    "submitting": "Creating..."
+  },
+  "delete": {
+    "title": "Archive employee",
+    "intro": "You are about to archive <strong>{{name}}</strong>. The employee will no longer be active but their data will be kept.",
+    "checkingPending": "Checking pending actions...",
+    "pendingTitle": "Pending actions for this employee",
+    "pendingHint": "Close these actions before archiving, or force the removal below.",
+    "error": "Error while archiving. Please try again.",
+    "forceArchive": "Force archive",
+    "forcing": "Archiving...",
+    "confirmArchive": "Confirm archiving",
+    "archiving": "Archiving..."
+  },
+  "detail": {
+    "back": "Back to employees",
+    "personalInfo": "Personal information",
+    "contractualInfo": "Contractual information",
+    "payment": "Payment",
+    "mobileMoneyNotSet": "Mobile Money not set",
+    "ibanNotSet": "Bank details not set",
+    "fields": {
+      "email": "Email",
+      "phone": "Phone",
+      "gender": "Gender",
+      "birthDate": "Date of birth",
+      "nni": "NNI",
+      "cnpsNumber": "CNPS no.",
+      "familySituation": "Family situation",
+      "childrenCount": "Dependent children",
+      "city": "City",
+      "contractType": "Contract type",
+      "hireDate": "Hire date",
+      "baseSalary": "Monthly gross salary",
+      "weeklyHours": "Weekly hours",
+      "professionalCategory": "Professional category",
+      "department": "Department",
+      "manager": "Manager",
+      "iban": "Bank details / IBAN",
+      "bankName": "Bank"
+    },
+    "genderValues": {
+      "male": "Male",
+      "female": "Female"
+    },
+    "maritalValues": {
+      "single": "Single",
+      "married": "Married",
+      "divorced": "Divorced",
+      "widowed": "Widowed"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "title": "Notes de frais",
+  "summary": "{{count}} note(s) · {{total}} total",
+  "status": {
+    "draft": "Brouillon",
+    "submitted": "Soumise",
+    "approved": "Approuvée",
+    "paid": "Remboursée",
+    "rejected": "Refusée"
+  },
+  "table": {
+    "employee": "Employé",
+    "title": "Titre",
+    "month": "Mois",
+    "amount": "Montant",
+    "status": "Statut",
+    "submittedAt": "Date soumission",
+    "actions": "Actions"
+  },
+  "noDate": "—",
+  "actions": {
+    "approve": "Approuver",
+    "reject": "Refuser",
+    "pay": "Rembourser"
+  },
+  "empty": "Aucune note de frais {{status}}",
+  "rejectModal": {
+    "title": "Motif du refus",
+    "placeholder": "Expliquer la raison du refus (optionnel)...",
+    "cancel": "Annuler",
+    "confirm": "Confirmer le refus"
+  }
+}

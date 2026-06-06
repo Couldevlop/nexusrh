@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import { refreshCsrfToken, clearCsrfToken } from '@/lib/api'
+import './i18n' // initialise i18next (FR par défaut, EN) avant le premier rendu
 import './index.css'
 
 const queryClient = new QueryClient({

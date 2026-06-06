@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { api, formatFCFA } from '@/lib/api'
+import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
 import { Building2, Users, TrendingUp, AlertCircle } from 'lucide-react'
 
 interface DashStats {
@@ -16,6 +17,7 @@ interface Tenant {
 }
 
 export default function PlatformDashboard() {
+  const { t } = useTranslation('platform')
   const { data: statsData } = useQuery<{ data: DashStats }>({
     queryKey: ['platform-stats'],
     queryFn: () => api.get('/platform/dashboard').then(r => r.data),
@@ -30,7 +32,7 @@ export default function PlatformDashboard() {
   const tenants = tenantsData?.data ?? []
 
   const statusLabel: Record<string, string> = {
-    active: 'Actif', trial: 'Trial', suspended: 'Suspendu',
+    active: t('status.active'), trial: t('status.trial'), suspended: t('status.suspended'),
   }
   const statusColor: Record<string, string> = {
     active: 'bg-green-100 text-green-700',
@@ -38,24 +40,24 @@ export default function PlatformDashboard() {
     suspended: 'bg-red-100 text-red-700',
   }
   const planLabel: Record<string, string> = {
-    trial: 'Trial', starter: 'Starter', business: 'Business',
-    enterprise: 'Enterprise', public_sector: 'Secteur Public',
+    trial: t('plans.trial'), starter: t('plans.starter'), business: t('plans.business'),
+    enterprise: t('plans.enterprise'), public_sector: t('plans.public_sector'),
   }
 
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Tableau de bord plateforme</h1>
-        <p className="text-sm text-muted-foreground mt-1">NexusRH CI — OpenLab Consulting</p>
+        <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
-          { label: 'Tenants actifs',   value: stats?.activeCount ?? 0,    icon: Building2, color: 'bg-green-50 text-green-600' },
-          { label: 'En trial',          value: stats?.trialCount ?? 0,     icon: TrendingUp, color: 'bg-yellow-50 text-yellow-600' },
-          { label: 'Suspendus',          value: stats?.suspendedCount ?? 0, icon: AlertCircle, color: 'bg-red-50 text-red-600' },
-          { label: 'Total tenants',     value: stats?.totalCount ?? 0,     icon: Users, color: 'bg-blue-50 text-blue-600' },
+          { label: t('dashboard.kpi.activeTenants'), value: stats?.activeCount ?? 0,    icon: Building2, color: 'bg-green-50 text-green-600' },
+          { label: t('dashboard.kpi.trial'),         value: stats?.trialCount ?? 0,     icon: TrendingUp, color: 'bg-yellow-50 text-yellow-600' },
+          { label: t('dashboard.kpi.suspended'),     value: stats?.suspendedCount ?? 0, icon: AlertCircle, color: 'bg-red-50 text-red-600' },
+          { label: t('dashboard.kpi.totalTenants'),  value: stats?.totalCount ?? 0,     icon: Users, color: 'bg-blue-50 text-blue-600' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-start justify-between">
@@ -74,10 +76,10 @@ export default function PlatformDashboard() {
       {/* Liste tenants */}
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold">Tenants récents</h2>
+          <h2 className="font-semibold">{t('dashboard.recentTenants')}</h2>
           <a href="/platform/tenants/new"
             className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
-            + Créer un tenant
+            {t('dashboard.createTenant')}
           </a>
         </div>
 
@@ -85,11 +87,11 @@ export default function PlatformDashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="pb-2 pr-4">Entreprise</th>
-                <th className="pb-2 pr-4">Ville</th>
-                <th className="pb-2 pr-4">Plan</th>
-                <th className="pb-2 pr-4">Max employés</th>
-                <th className="pb-2">Statut</th>
+                <th className="pb-2 pr-4">{t('dashboard.table.company')}</th>
+                <th className="pb-2 pr-4">{t('dashboard.table.city')}</th>
+                <th className="pb-2 pr-4">{t('dashboard.table.plan')}</th>
+                <th className="pb-2 pr-4">{t('dashboard.table.maxEmployees')}</th>
+                <th className="pb-2">{t('dashboard.table.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -118,7 +120,7 @@ export default function PlatformDashboard() {
               {tenants.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-muted-foreground">
-                    Aucun tenant créé
+                    {t('dashboard.empty')}
                   </td>
                 </tr>
               )}

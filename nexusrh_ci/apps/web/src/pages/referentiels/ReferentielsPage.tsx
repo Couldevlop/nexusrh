@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation, Trans } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Search, BookOpen, Scale, ChevronDown, ChevronRight,
@@ -29,11 +30,19 @@ function useDebounce<T>(value: T, ms: number): T {
 }
 
 const SRC = {
-  code_travail_ci:     { label: 'Code du Travail CI', short: 'CDT', badge: 'bg-blue-50 text-blue-700 border-blue-200', Icon: BookOpen },
-  convention_collective:{ label: 'Conventions Collectives', short: 'CC', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: Scale },
+  code_travail_ci:      { badge: 'bg-blue-50 text-blue-700 border-blue-200', Icon: BookOpen },
+  convention_collective:{ badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: Scale },
 } as const
 
-const CHIPS = ['SMIG', 'préavis', 'congés maternité', 'CNPS retraite', 'licenciement']
+// Les libellés des chips sont traduits, mais le terme de recherche reste en
+// français car l'index plein-texte (Code du Travail CI) est en français.
+const CHIPS = [
+  { key: 'smig',             query: 'SMIG' },
+  { key: 'preavis',          query: 'préavis' },
+  { key: 'congesMaternite',  query: 'congés maternité' },
+  { key: 'cnpsRetraite',     query: 'CNPS retraite' },
+  { key: 'licenciement',     query: 'licenciement' },
+] as const
 
 /* ─── LivreNode — composant isolé pour respecter les règles des hooks ─── */
 function LivreNode({ srcKey, livre, onOpen }: {
@@ -41,6 +50,7 @@ function LivreNode({ srcKey, livre, onOpen }: {
   livre: Bucket
   onOpen: (a: ArticleHit) => void
 }) {
+  const { t } = useTranslation('referentiels')
   const [open, setOpen] = useState(false)
 
   const { data, isFetching } = useQuery<{ total: number; hits: ArticleHit[] }>({
@@ -99,7 +109,7 @@ function LivreNode({ srcKey, livre, onOpen }: {
                 </button>
               ))}
               {data?.hits.length === 0 && (
-                <p className="text-xs text-gray-300 py-1 px-2">Aucun article</p>
+                <p className="text-xs text-gray-300 py-1 px-2">{t('sidebar.noArticle')}</p>
               )}
             </div>
           </motion.div>
@@ -109,10 +119,7 @@ function LivreNode({ srcKey, livre, onOpen }: {
   )
 }
 
-const COUNTRY_LABELS: Record<string, string> = {
-  CIV: 'Côte d\'Ivoire', BEN: 'Bénin', TGO: 'Togo', BFA: 'Burkina Faso',
-  SEN: 'Sénégal', MLI: 'Mali', NER: 'Niger', TCD: 'Tchad', NGA: 'Nigeria',
-}
+const COUNTRY_CODES = ['CIV', 'BEN', 'TGO', 'BFA', 'SEN', 'MLI', 'NER', 'TCD', 'NGA'] as const
 
 interface MyCountry {
   countryCode: string | null
@@ -123,6 +130,10 @@ interface MyCountry {
 
 /* ─── Page principale ────────────────────────────────────────────────────── */
 export default function ReferentielsPage() {
+  const { t } = useTranslation('referentiels')
+  // Libellé pays : clé i18n si connue, sinon le code brut (données API).
+  const countryLabel = (code: string) =>
+    (COUNTRY_CODES as readonly string[]).includes(code) ? t(`countries.${code}`) : code
   const [query, setQuery]   = useState('')
   const [source, setSource] = useState<'all' | 'code_travail_ci' | 'convention_collective'>('all')
   const [countryFilter, setCountryFilter] = useState<string | null>(null)
@@ -241,7 +252,7 @@ export default function ReferentielsPage() {
         <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shrink-0">
           <Scale className="h-3 w-3 text-white" />
         </div>
-        <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Sommaire</span>
+        <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">{t('sidebar.summary')}</span>
       </div>
 
       {!tree && <div className="space-y-2">{[1,2].map(i=><div key={i} className="h-8 bg-gray-100 rounded-lg animate-pulse"/>)}</div>}
@@ -259,7 +270,7 @@ export default function ReferentielsPage() {
             >
               <div className="flex items-center gap-2 min-w-0">
                 <Icon className="h-3.5 w-3.5 text-gray-400 group-hover:text-blue-500 shrink-0 transition-colors" />
-                <span className="text-xs font-semibold text-gray-700 truncate">{cfg?.label ?? node.key}</span>
+                <span className="text-xs font-semibold text-gray-700 truncate">{cfg ? t(`sources.${node.key}`) : node.key}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span className="text-xs text-gray-400 tabular-nums">{node.doc_count}</span>
@@ -320,7 +331,7 @@ export default function ReferentielsPage() {
         lg:translate-x-0 lg:shadow-none lg:h-full
       `}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 lg:hidden">
-          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Sommaire</span>
+          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">{t('sidebar.summary')}</span>
           <button onClick={() => setDrawer(false)} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
             <X className="h-4 w-4" />
           </button>
@@ -339,9 +350,11 @@ export default function ReferentielsPage() {
             </button>
             <div className="flex-1 min-w-0">
               <h1 className="text-lg font-bold text-gray-900">
-                Référentiel Juridique{countryFilter ? ` — ${COUNTRY_LABELS[countryFilter] ?? countryFilter}` : ''}
+                {countryFilter
+                  ? t('header.titleWithCountry', { country: countryLabel(countryFilter) })
+                  : t('header.title')}
               </h1>
-              <p className="text-xs text-gray-400">Code du Travail · Conventions Collectives · Recherche plein texte</p>
+              <p className="text-xs text-gray-400">{t('header.subtitle')}</p>
             </div>
           </div>
 
@@ -349,16 +362,16 @@ export default function ReferentielsPage() {
           {isMultiCountry && (
             <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50/50 px-3 py-2 flex flex-wrap items-center gap-2">
               <span className="text-xs text-purple-700">
-                Articles applicables à votre filiale :
+                {t('subsidiary.applicableLabel')}
               </span>
               <select
                 value={countryFilter ?? ''}
                 onChange={e => setCountryFilter(e.target.value || null)}
                 className="rounded-md border border-purple-200 bg-white px-2 py-1 text-xs font-medium text-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
               >
-                <option value="">Tous les pays</option>
-                {Object.entries(COUNTRY_LABELS).map(([code, label]) => (
-                  <option key={code} value={code}>{label} ({code})</option>
+                <option value="">{t('subsidiary.allCountries')}</option>
+                {COUNTRY_CODES.map(code => (
+                  <option key={code} value={code}>{countryLabel(code)} ({code})</option>
                 ))}
               </select>
               {myCountry?.countryCode && countryFilter !== myCountry.countryCode && (
@@ -366,7 +379,7 @@ export default function ReferentielsPage() {
                   onClick={() => setCountryFilter(myCountry.countryCode)}
                   className="text-[11px] text-purple-700 underline hover:text-purple-900"
                 >
-                  Revenir au pays de ma filiale ({myCountry.countryCode})
+                  {t('subsidiary.backToMine', { country: myCountry.countryCode })}
                 </button>
               )}
             </div>
@@ -382,7 +395,7 @@ export default function ReferentielsPage() {
             <input
               ref={inputRef} type="text" autoFocus
               className="w-full pl-10 pr-10 py-2.5 text-sm bg-white border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:text-gray-300"
-              placeholder="Rechercher un terme, article, rubrique paie… (⌘K)"
+              placeholder={t('search.placeholder')}
               value={query} onChange={e => setQuery(e.target.value)}
             />
             {query
@@ -400,7 +413,7 @@ export default function ReferentielsPage() {
                     ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                     : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600'
                 }`}>
-                {k === 'all' ? 'Tout' : k === 'code_travail_ci' ? 'Code du Travail' : 'Conventions'}
+                {k === 'all' ? t('tabs.all') : k === 'code_travail_ci' ? t('tabs.codeTravail') : t('tabs.conventions')}
               </button>
             ))}
           </div>
@@ -410,8 +423,16 @@ export default function ReferentielsPage() {
             {data && dq.length >= 2 && (
               <motion.p key="c" initial={{ opacity: 0, y:-4 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0 }}
                 className="text-xs text-gray-400 mb-3">
-                <span className="font-semibold text-gray-600">{data.total}</span> résultat{data.total>1?'s':''} pour{' '}
-                <span className="text-blue-600">« {dq} »</span>
+                <Trans
+                  i18nKey="search.resultCount"
+                  ns="referentiels"
+                  count={data.total}
+                  values={{ count: data.total, query: dq }}
+                  components={[
+                    <span className="font-semibold text-gray-600" />,
+                    <span className="text-blue-600" />,
+                  ]}
+                />
               </motion.p>
             )}
           </AnimatePresence>
@@ -419,7 +440,7 @@ export default function ReferentielsPage() {
           {/* Erreur API */}
           {isError && dq.length >= 2 && (
             <div className="text-center py-10 text-sm text-red-400">
-              Impossible de charger les résultats — vérifiez votre connexion ou rechargez la page.
+              {t('search.error')}
             </div>
           )}
 
@@ -460,12 +481,12 @@ export default function ReferentielsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${cfg?.badge ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                            {cfg?.short ?? hit.source}
+                            {cfg ? t(`sources.${hit.source}_short`) : hit.source}
                           </span>
                           <span className="text-xs text-gray-400 font-mono">{hit.article_numero}</span>
                           {hit.payroll_codes && hit.payroll_codes.length > 0 && (
                             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                              <Info className="h-3 w-3" />paie
+                              <Info className="h-3 w-3" />{t('search.payrollBadge')}
                             </span>
                           )}
                         </div>
@@ -494,8 +515,8 @@ export default function ReferentielsPage() {
               <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
                 <Search className="h-6 w-6 text-gray-300" />
               </div>
-              <p className="text-sm font-medium text-gray-700 mb-1">Aucun résultat pour « {dq} »</p>
-              <p className="text-xs text-gray-400">Modifiez le terme ou changez le filtre de source</p>
+              <p className="text-sm font-medium text-gray-700 mb-1">{t('search.noResultTitle', { query: dq })}</p>
+              <p className="text-xs text-gray-400">{t('search.noResultHint')}</p>
             </motion.div>
           )}
 
@@ -505,15 +526,15 @@ export default function ReferentielsPage() {
               <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mx-auto mb-4">
                 <Scale className="h-7 w-7 text-blue-400" />
               </div>
-              <h2 className="text-sm font-bold text-gray-700 mb-1.5">Référentiel Juridique Ivoirien</h2>
+              <h2 className="text-sm font-bold text-gray-700 mb-1.5">{t('welcome.title')}</h2>
               <p className="text-xs text-gray-400 mb-5 max-w-xs mx-auto leading-relaxed">
-                Recherchez ou naviguez dans le sommaire pour explorer le Code du Travail CI et les conventions collectives.
+                {t('welcome.subtitle')}
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
-                {CHIPS.map(t => (
-                  <button key={t} onClick={() => { setQuery(t); inputRef.current?.focus() }}
+                {CHIPS.map(chip => (
+                  <button key={chip.key} onClick={() => { setQuery(chip.query); inputRef.current?.focus() }}
                     className="text-xs px-3 py-1.5 bg-white border border-gray-200 rounded-full text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all shadow-sm">
-                    {t}
+                    {t(`chips.${chip.key}`)}
                   </button>
                 ))}
               </div>

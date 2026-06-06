@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import {
   Building2, Send, Loader2, CheckCircle2, Lock, Layers,
@@ -42,20 +44,20 @@ interface WfPeriod {
   closed_at: string | null
 }
 
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  draft_central:     { label: 'Brouillon',     color: 'bg-slate-100 text-slate-700 border-slate-200' },
-  sent_to_sites:     { label: 'À compléter',   color: 'bg-amber-100 text-amber-800 border-amber-200' },
-  completed_by_site: { label: 'Soumise',       color: 'bg-blue-100 text-blue-800 border-blue-200' },
-  validated_central: { label: 'Consolidée',    color: 'bg-green-100 text-green-800 border-green-200' },
-  closed:            { label: 'Clôturée',      color: 'bg-gray-200 text-gray-700 border-gray-300' },
+const STATUS_COLOR: Record<string, string> = {
+  draft_central:     'bg-slate-100 text-slate-700 border-slate-200',
+  sent_to_sites:     'bg-amber-100 text-amber-800 border-amber-200',
+  completed_by_site: 'bg-blue-100 text-blue-800 border-blue-200',
+  validated_central: 'bg-green-100 text-green-800 border-green-200',
+  closed:            'bg-gray-200 text-gray-700 border-gray-300',
 }
 
 // Étapes de la frise parent (l'ordre du workflow central).
 const PARENT_STEPS = [
-  { key: 'draft_central',     label: 'Brouillon',  icon: PlayCircle },
-  { key: 'sent_to_sites',     label: 'Décliné',    icon: Send },
-  { key: 'validated_central', label: 'Consolidé',  icon: ShieldCheck },
-  { key: 'closed',            label: 'Clôturé',    icon: Lock },
+  { key: 'draft_central',     labelKey: 'multiSites.steps.draft',        icon: PlayCircle },
+  { key: 'sent_to_sites',     labelKey: 'multiSites.steps.declined',     icon: Send },
+  { key: 'validated_central', labelKey: 'multiSites.steps.consolidated', icon: ShieldCheck },
+  { key: 'closed',            labelKey: 'multiSites.steps.closed',       icon: Lock },
 ]
 const SUBMITTED_STATES = ['completed_by_site', 'validated_central', 'closed']
 
@@ -70,6 +72,7 @@ function apiError(err: unknown, fallback: string): string {
 }
 
 export default function PayrollMultiSitesPage() {
+  const { t } = useTranslation('payroll')
   const qc = useQueryClient()
   const [month, setMonth] = useState(currentMonthValue())
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -87,22 +90,22 @@ export default function PayrollMultiSitesPage() {
   const createDraft = useMutation({
     mutationFn: (m: string) => api.post('/payroll-workflow/periods', { month: m }),
     onSuccess: invalidate,
-    onError: onError('Impossible de créer le brouillon'),
+    onError: onError(t('multiSites.errors.createDraft')),
   })
   const sendToSites = useMutation({
     mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/send-to-sites`, {}),
     onSuccess: invalidate,
-    onError: onError('Échec de la déclinaison aux filiales'),
+    onError: onError(t('multiSites.errors.sendToSites')),
   })
   const validateCentral = useMutation({
     mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/validate-central`),
     onSuccess: invalidate,
-    onError: onError('Échec de la consolidation'),
+    onError: onError(t('multiSites.errors.consolidate')),
   })
   const closePeriod = useMutation({
     mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/close`),
     onSuccess: invalidate,
-    onError: onError('Échec de la clôture'),
+    onError: onError(t('multiSites.errors.close')),
   })
   const busy = createDraft.isPending || sendToSites.isPending || validateCentral.isPending || closePeriod.isPending
 
@@ -117,18 +120,17 @@ export default function PayrollMultiSitesPage() {
       {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Layers className="h-6 w-6" /> Paie multi-filiales
+          <Layers className="h-6 w-6" /> {t('multiSites.title')}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Pilotage centralisé : initiez le brouillon du mois, déclinez-le aux filiales,
-          suivez la soumission de chaque RAF, puis consolidez et clôturez.
+          {t('multiSites.subtitle')}
         </p>
       </div>
 
       {/* Initier le draft du mois */}
       <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-end gap-3">
         <div className="flex-1">
-          <label className="block text-xs font-semibold text-muted-foreground mb-1">Mois de paie</label>
+          <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('multiSites.monthLabel')}</label>
           <input
             type="month"
             value={month}
@@ -142,7 +144,7 @@ export default function PayrollMultiSitesPage() {
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {createDraft.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-          Initier le brouillon
+          {t('multiSites.initDraft')}
         </button>
       </div>
 
@@ -155,13 +157,13 @@ export default function PayrollMultiSitesPage() {
 
       {isLoading && (
         <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-muted-foreground">
-          Chargement…
+          {t('multiSites.loading')}
         </div>
       )}
 
       {!isLoading && parents.length === 0 && (
         <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center text-muted-foreground">
-          Aucune paie multi-filiales en cours. Choisissez un mois et cliquez « Initier le brouillon ».
+          {t('multiSites.emptyParents')}
         </div>
       )}
 
@@ -188,17 +190,17 @@ export default function PayrollMultiSitesPage() {
                   <button
                     onClick={() => setOpenTimelineId(prev => prev === parent.id ? null : parent.id)}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50"
-                    title="Voir l'évolution du draft (qui a fait quoi, quand)"
+                    title={t('multiSites.trackTitle')}
                   >
                     <History className="h-3.5 w-3.5" />
-                    Suivi
+                    {t('multiSites.track')}
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTimelineId === parent.id ? 'rotate-180' : ''}`} />
                   </button>
                   {parent.status === 'draft_central' && (
                     <ActionBtn
                       onClick={() => sendToSites.mutate(parent.id)}
                       loading={sendToSites.isPending} disabled={busy}
-                      icon={Send} label="Décliner aux filiales"
+                      icon={Send} label={t('multiSites.sendToSites')}
                     />
                   )}
                   {parent.status === 'sent_to_sites' && (
@@ -207,14 +209,14 @@ export default function PayrollMultiSitesPage() {
                       loading={validateCentral.isPending}
                       disabled={busy || !allSubmitted}
                       icon={ShieldCheck}
-                      label={allSubmitted ? 'Consolider la paie' : `Consolider (${submitted}/${total} soumises)`}
+                      label={allSubmitted ? t('multiSites.consolidate') : t('multiSites.consolidatePartial', { submitted, total })}
                     />
                   )}
                   {parent.status === 'validated_central' && (
                     <ActionBtn
                       onClick={() => closePeriod.mutate(parent.id)}
                       loading={closePeriod.isPending} disabled={busy}
-                      icon={Lock} label="Clôturer la paie"
+                      icon={Lock} label={t('multiSites.closePayroll')}
                     />
                   )}
                 </div>
@@ -234,7 +236,7 @@ export default function PayrollMultiSitesPage() {
                         : 'bg-muted text-muted-foreground border-border'
                       }`}>
                         {done ? <CheckCircle2 className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
-                        {step.label}
+                        {t(step.labelKey)}
                       </div>
                       {i < PARENT_STEPS.length - 1 && <ChevronRight className="h-3 w-3 text-muted-foreground/40" />}
                     </div>
@@ -246,7 +248,7 @@ export default function PayrollMultiSitesPage() {
               {total > 0 && parent.status !== 'closed' && (
                 <div className="px-4 pb-2">
                   <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                    <span>Soumissions des filiales</span>
+                    <span>{t('multiSites.submissions')}</span>
                     <span className="tabular-nums">{submitted}/{total}</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
@@ -262,18 +264,18 @@ export default function PayrollMultiSitesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr className="text-left">
-                    <th className="px-4 py-2 font-semibold">Filiale</th>
-                    <th className="px-4 py-2 font-semibold">Pack</th>
-                    <th className="px-4 py-2 font-semibold">RAF</th>
-                    <th className="px-4 py-2 font-semibold">Statut</th>
-                    <th className="px-4 py-2 font-semibold text-right">Masse brute</th>
-                    <th className="px-4 py-2 font-semibold text-right">Net à payer</th>
+                    <th className="px-4 py-2 font-semibold">{t('multiSites.colSubsidiary')}</th>
+                    <th className="px-4 py-2 font-semibold">{t('multiSites.colPack')}</th>
+                    <th className="px-4 py-2 font-semibold">{t('multiSites.colRaf')}</th>
+                    <th className="px-4 py-2 font-semibold">{t('multiSites.colStatus')}</th>
+                    <th className="px-4 py-2 font-semibold text-right">{t('multiSites.colGross')}</th>
+                    <th className="px-4 py-2 font-semibold text-right">{t('multiSites.colNet')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {total === 0 && (
                     <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                      Pas encore décliné aux filiales. Cliquez « Décliner aux filiales ».
+                      {t('multiSites.notDeclined')}
                     </td></tr>
                   )}
                   {kids.map(k => (
@@ -287,8 +289,8 @@ export default function PayrollMultiSitesPage() {
                       <td className="px-4 py-2.5 text-xs font-mono">{k.legislation_pack_code ?? '—'}</td>
                       <td className="px-4 py-2.5">
                         {k.raf_user_id
-                          ? <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3 w-3" /> assigné</span>
-                          : <span className="inline-flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3" /> non assigné</span>}
+                          ? <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3 w-3" /> {t('multiSites.rafAssigned')}</span>
+                          : <span className="inline-flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3" /> {t('multiSites.rafUnassigned')}</span>}
                       </td>
                       <td className="px-4 py-2.5"><StatusBadge status={k.status} /></td>
                       <td className="px-4 py-2.5 text-right tabular-nums">
@@ -304,7 +306,7 @@ export default function PayrollMultiSitesPage() {
                 {total > 0 && (parent.total_gross || parent.total_net) && (
                   <tfoot className="bg-muted/40 font-semibold">
                     <tr>
-                      <td className="px-4 py-2.5" colSpan={4}>Total consolidé ({total} filiale{total > 1 ? 's' : ''})</td>
+                      <td className="px-4 py-2.5" colSpan={4}>{t('multiSites.consolidatedTotal', { count: total })}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">
                         {parent.total_gross ? formatFCFA(parseInt(parent.total_gross)) : '—'}
                       </td>
@@ -329,11 +331,13 @@ export default function PayrollMultiSitesPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, color: 'bg-muted text-foreground border-border' }
+  const { t } = useTranslation('payroll')
+  const color = STATUS_COLOR[status] ?? 'bg-muted text-foreground border-border'
+  const label = STATUS_COLOR[status] ? t(`statuses.${status}`) : status
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.color}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${color}`}>
       {SUBMITTED_STATES.includes(status) && status !== 'sent_to_sites' && <CheckCircle2 className="h-3 w-3" />}
-      {meta.label}
+      {label}
     </span>
   )
 }
@@ -383,18 +387,19 @@ function formatDateTime(iso: string): string {
   }).format(d)
 }
 
-function eventDetail(ev: WfEvent): string | null {
+function eventDetail(ev: WfEvent, t: TFunction): string | null {
   const d = ev.detail ?? {}
   const parts: string[] = []
-  if (typeof d.sitesCount === 'number') parts.push(`${d.sitesCount} filiale${d.sitesCount > 1 ? 's' : ''}`)
-  if (typeof d.inserted === 'number') parts.push(`${d.inserted} bulletin${d.inserted > 1 ? 's' : ''}`)
-  if (typeof d.totalGross === 'number') parts.push(`brut ${formatFCFA(d.totalGross)}`)
-  if (typeof d.sumGross === 'number') parts.push(`brut consolidé ${formatFCFA(d.sumGross)}`)
-  if (typeof d.sumNet === 'number') parts.push(`net ${formatFCFA(d.sumNet)}`)
+  if (typeof d.sitesCount === 'number') parts.push(t('multiSites.timeline.detailSubsidiaries', { count: d.sitesCount }))
+  if (typeof d.inserted === 'number') parts.push(t('multiSites.timeline.detailPayslips', { count: d.inserted }))
+  if (typeof d.totalGross === 'number') parts.push(t('multiSites.timeline.detailGross', { amount: formatFCFA(d.totalGross) }))
+  if (typeof d.sumGross === 'number') parts.push(t('multiSites.timeline.detailGrossConsolidated', { amount: formatFCFA(d.sumGross) }))
+  if (typeof d.sumNet === 'number') parts.push(t('multiSites.timeline.detailNet', { amount: formatFCFA(d.sumNet) }))
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
 function DraftTimeline({ periodId }: { periodId: string }) {
+  const { t } = useTranslation('payroll')
   const { data, isLoading, isError } = useQuery<{
     data: { period: { month: string; status: string }; totalSites: number; events: WfEvent[] }
   }>({
@@ -405,22 +410,22 @@ function DraftTimeline({ periodId }: { periodId: string }) {
   return (
     <div className="border-t border-border bg-muted/20 px-4 py-3">
       <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <History className="h-3.5 w-3.5" /> Évolution du draft
+        <History className="h-3.5 w-3.5" /> {t('multiSites.timeline.heading')}
       </h3>
 
       {isLoading && (
         <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Chargement de la chronologie…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t('multiSites.timeline.loading')}
         </div>
       )}
 
       {isError && (
-        <p className="py-2 text-sm text-destructive">Impossible de charger la chronologie.</p>
+        <p className="py-2 text-sm text-destructive">{t('multiSites.timeline.error')}</p>
       )}
 
       {!isLoading && !isError && data && data.data.events.length === 0 && (
         <p className="py-2 text-sm text-muted-foreground">
-          Aucun événement enregistré pour ce draft.
+          {t('multiSites.timeline.empty')}
         </p>
       )}
 
@@ -430,7 +435,7 @@ function DraftTimeline({ periodId }: { periodId: string }) {
           <span className="absolute left-1.5 top-1 bottom-1 w-px bg-border" aria-hidden />
           {data.data.events.map((ev, i) => {
             const Icon = EVENT_ICON[ev.action] ?? Clock
-            const detail = eventDetail(ev)
+            const detail = eventDetail(ev, t)
             return (
               <li key={i} className="relative">
                 <span className="absolute -left-[18px] top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border bg-card">

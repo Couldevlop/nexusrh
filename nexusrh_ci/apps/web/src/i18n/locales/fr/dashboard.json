@@ -1,0 +1,131 @@
+{
+  "title": "Tableau de bord",
+  "defaultTenant": "NexusRH CI",
+  "actions": {
+    "excel": "Excel",
+    "pdf": "PDF",
+    "export": "Exporter"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "hr_manager": "Responsable RH",
+    "hr_officer": "Chargé RH",
+    "manager": "Manager",
+    "readonly": "Lecture seule"
+  },
+  "kpi": {
+    "headcount": "Effectifs actifs",
+    "headcountSub": "{{count}} départements",
+    "payroll": "Masse salariale",
+    "cnps": "Cotisations CNPS",
+    "cnpsSub": "Mois en cours",
+    "absencesToday": "Absences aujourd'hui",
+    "absencesTodaySub": "{{count}} employé(s) absent(s)",
+    "absencesTodayNone": "Aucune absence",
+    "its": "ITS / DGI",
+    "itsSub": "Retenues du mois",
+    "netTotal": "Net total versé",
+    "netTotalSub": "Salaires nets mois",
+    "payslipsGenerated": "Bulletins générés",
+    "payslipsGeneratedSub": "sur {{count}} période(s)",
+    "payrollTrend": "Tendance salariale",
+    "payrollTrendSub": "vs mois précédent"
+  },
+  "charts": {
+    "payrollEvolution": "Évolution masse salariale",
+    "payrollEvolutionSub": "6 derniers mois · en milliers FCFA",
+    "employerCostBreakdown": "Répartition coût employeur",
+    "employerCostBreakdownSub": "Dernier mois clos",
+    "headcountByDept": "Effectifs par département",
+    "headcountByDeptSub": "{{count}} employés actifs",
+    "payslipsHeadcount": "Bulletins / Effectifs",
+    "payslipsHeadcountSub": "6 derniers mois",
+    "cnpsIndicators": "Indicateurs CNPS",
+    "cnpsIndicatorsSub": "Taux de conformité estimés",
+    "cnpsIndicatorsFootnote": "Basé sur le dernier audit · ",
+    "cnpsIndicatorsAuditLink": "Voir l'audit complet →",
+    "tooltipThousandsFcfa": "{{value}} k FCFA",
+    "noData": "Aucune donnée",
+    "unavailable": "Données indisponibles"
+  },
+  "series": {
+    "gross": "Brut",
+    "net": "Net",
+    "cnps": "CNPS",
+    "its": "ITS",
+    "netPaid": "Net versé",
+    "cnpsTotal": "CNPS total",
+    "itsDgi": "ITS / DGI",
+    "employees": "Employés"
+  },
+  "compliance": {
+    "cnps": "CNPS",
+    "smig": "SMIG",
+    "mobile": "Mobile"
+  },
+  "table": {
+    "title": "Périodes de paie",
+    "subtitle": "{{count}} période(s) disponibles",
+    "period": "Période",
+    "gross": "Brut",
+    "netPaid": "Net versé",
+    "cnps": "CNPS",
+    "itsDgi": "ITS/DGI",
+    "employerCharge": "Charge pat."
+  },
+  "alerts": {
+    "cnpsTitle": "Déclaration CNPS mensuelle",
+    "cnpsText": "Dépôt e-CNPS avant le 15 du mois suivant. Vérifiez l'onglet CNPS & DISA.",
+    "disaTitle": "DISA annuelle",
+    "disaText": "La Déclaration Individuelle des Salaires est due avant le 31 janvier N+1."
+  },
+  "aiChat": {
+    "fabTitle": "Assistant IA RH CI",
+    "headerTitle": "Assistant RH CI",
+    "poweredBy": "Propulsé par Claude AI · {{tenant}}",
+    "limitedMode": "Mode limité",
+    "unavailableDefault": "IA non disponible. Configurez ANTHROPIC_API_KEY pour activer l'assistant.",
+    "emptyPrompt": "Posez une question sur le droit social CI, la CNPS, l'ITS ou la paie",
+    "writing": "Rédaction...",
+    "inputPlaceholder": "Votre question RH CI...",
+    "inputPlaceholderUnavailable": "IA non disponible",
+    "footer": "Code du Travail CI · CNPS 2024 · ITS/DGI · OHADA",
+    "error": "Erreur IA",
+    "connectionError": "Erreur de connexion",
+    "suggestions": {
+      "admin": [
+        "Comment calculer la prime d'ancienneté CI ?",
+        "Quelles sont les étapes pour licencier un salarié ?",
+        "Comment déclarer un nouvel embauché à la CNPS ?"
+      ],
+      "hr_manager": [
+        "Quel est le délai légal pour la DISA ?",
+        "Comment calculer les congés pour 7 mois de travail ?",
+        "Que dit le CT CI sur les heures supplémentaires de nuit ?"
+      ],
+      "hr_officer": [
+        "Comment saisir une absence maladie ?",
+        "Quels documents pour un contrat CDD CI ?",
+        "Calcul de l'ITS pour un salaire de 350 000 FCFA ?"
+      ],
+      "manager": [
+        "Comment approuver une absence sur NexusRH CI ?",
+        "Quelles sont mes obligations envers mon équipe ?",
+        "Délai préavis pour un salarié de 3 ans d'ancienneté ?"
+      ]
+    }
+  },
+  "export": {
+    "dashboardTitle": "=== TABLEAU DE BORD RH ===",
+    "company": "Société : {{name}}",
+    "exportedOn": "Exporté le : {{date}}",
+    "colPeriod": "Période",
+    "colGross": "Brut (FCFA)",
+    "colNet": "Net (FCFA)",
+    "colCnps": "CNPS (FCFA)",
+    "colIts": "ITS (FCFA)",
+    "colHeadcount": "Nb employés",
+    "colDept": "Département",
+    "colDeptHeadcount": "Effectifs"
+  }
+}

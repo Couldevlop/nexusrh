@@ -1,0 +1,657 @@
+{
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "tenants": "Tenants",
+    "agencies": "Cabinets",
+    "legalWatch": "Veille juridique",
+    "settings": "Paramètres",
+    "portal": "Portail plateforme",
+    "superAdmin": "Super Admin",
+    "logout": "Déconnexion"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "save": "Enregistrer",
+    "manage": "Gérer",
+    "back": "Retour",
+    "createError": "Erreur lors de la création"
+  },
+  "status": {
+    "active": "Actif",
+    "trial": "Trial",
+    "suspended": "Suspendu"
+  },
+  "plans": {
+    "trial": "Trial",
+    "starter": "Starter",
+    "business": "Business",
+    "enterprise": "Enterprise",
+    "public_sector": "Secteur Public"
+  },
+  "dashboard": {
+    "title": "Tableau de bord plateforme",
+    "subtitle": "NexusRH CI — OpenLab Consulting",
+    "kpi": {
+      "activeTenants": "Tenants actifs",
+      "trial": "En trial",
+      "suspended": "Suspendus",
+      "totalTenants": "Total tenants"
+    },
+    "recentTenants": "Tenants récents",
+    "createTenant": "+ Créer un tenant",
+    "table": {
+      "company": "Entreprise",
+      "city": "Ville",
+      "plan": "Plan",
+      "maxEmployees": "Max employés",
+      "status": "Statut"
+    },
+    "empty": "Aucun tenant créé"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "count": "{{count}} entreprise(s) enregistrée(s)",
+    "newButton": "Nouveau tenant",
+    "table": {
+      "company": "Entreprise",
+      "cityCategory": "Ville · Secteur",
+      "plan": "Plan",
+      "maxEmployees": "Max employés",
+      "status": "Statut"
+    },
+    "empty": "Aucun tenant créé"
+  },
+  "tenantNew": {
+    "back": "Retour",
+    "title": "Créer un nouveau tenant",
+    "successTitle": "Tenant créé avec succès",
+    "successDesc": "L'admin a été créé avec un mot de passe temporaire.",
+    "successSeeded": " Des données de démonstration sont en cours d'injection.",
+    "adminEmail": "Email admin :",
+    "tempPassword": "Mot de passe temporaire :",
+    "viewTenants": "Voir les tenants",
+    "createAnother": "Créer un autre",
+    "step1": "1. Informations entreprise",
+    "step2": "2. Administrateur principal",
+    "step3": "3. Apparence",
+    "step4": "4. Options avancées",
+    "step5": "5. Structure de l'entreprise",
+    "fields": {
+      "name": "Nom de l'entreprise *",
+      "slug": "Slug *",
+      "plan": "Plan *",
+      "sector": "Secteur d'activité *",
+      "city": "Ville *",
+      "cnpsNumber": "N° CNPS employeur",
+      "dgiNumber": "N° DGI",
+      "firstName": "Prénom *",
+      "lastName": "Nom *",
+      "adminEmail": "Email admin *",
+      "phone": "Téléphone (+225)",
+      "primaryColor": "Couleur primaire",
+      "secondaryColor": "Couleur secondaire"
+    },
+    "atRate": "Taux AT CNPS : {{rate}}",
+    "planOptions": {
+      "trial": "Trial (30j gratuit)",
+      "starter": "Starter",
+      "business": "Business",
+      "enterprise": "Enterprise",
+      "public_sector": "Secteur Public"
+    },
+    "sectors": {
+      "commerce": "Commerce & Distribution",
+      "services": "Services & Conseil",
+      "finance": "Finance & Banque",
+      "education": "Éducation & Formation",
+      "sante": "Santé",
+      "btp": "BTP & Construction",
+      "transport": "Transport & Logistique",
+      "industrie": "Industrie & Manufacture",
+      "agriculture": "Agriculture",
+      "extraction": "Extraction & Mines",
+      "public": "Secteur public & ONG"
+    },
+    "seedDemo": {
+      "label": "Injecter des données de démonstration",
+      "hint": "Crée automatiquement 8 employés ivoiriens, 3 mois de bulletins de paie, des absences et des formations dans ce tenant."
+    },
+    "subsidiaries": {
+      "intro": "Par défaut : entreprise mono-pays Côte d'Ivoire. Activer cette option si l'entreprise possède des filiales dans plusieurs pays UEMOA / hors UEMOA et souhaite une paie centralisée avec déclinaison locale par filiale.",
+      "label": "Entreprise multi-pays avec filiales",
+      "hint": "Active la gestion des packs législatifs par pays (CI, BF, SN, ML, TG, BJ, NE…), le workflow paie centralisé draft → RAF site → central, et l'onglet « Filiales & législations » dans les paramètres du tenant.",
+      "defaultCountry": "Pays principal (siège)",
+      "afterCreate": "Les autres filiales pourront être ajoutées après création depuis « Paramètres → Filiales & législations »."
+    },
+    "countries": {
+      "CIV": "Côte d'Ivoire (CIV)",
+      "BFA": "Burkina Faso (BFA)",
+      "SEN": "Sénégal (SEN)",
+      "MLI": "Mali (MLI)",
+      "TGO": "Togo (TGO)",
+      "BEN": "Bénin (BEN)",
+      "NER": "Niger (NER)",
+      "GNB": "Guinée-Bissau (GNB)"
+    },
+    "errors": {
+      "nameRequired": "Nom requis",
+      "slugFormat": "Slug: minuscules, chiffres et tirets uniquement",
+      "sectorRequired": "Secteur requis",
+      "cityRequired": "Ville requise",
+      "emailInvalid": "Email invalide",
+      "firstNameRequired": "Prénom requis",
+      "lastNameRequired": "Nom requis",
+      "createError": "Erreur lors de la création"
+    },
+    "submit": "Créer le tenant",
+    "submitting": "Création en cours..."
+  },
+  "tenantDetail": {
+    "notFound": "Tenant introuvable",
+    "back": "Retour aux tenants",
+    "multiCountryBadge": "Multi-pays · {{country}}",
+    "info": {
+      "city": "Ville",
+      "sector": "Secteur",
+      "plan": "Plan",
+      "atRate": "Taux AT CNPS",
+      "cnpsNumber": "N° CNPS",
+      "dgiNumber": "N° DGI",
+      "maxUsers": "Max utilisateurs",
+      "maxEmployees": "Max employés",
+      "payrollMode": "Mode paie",
+      "defaultCountry": "Pays principal",
+      "payrollModeMulti": "Multi-pays (centralisée)",
+      "payrollModeSingle": "Mono-pays (CI)",
+      "dash": "—"
+    },
+    "subsidiaries": {
+      "title": "Structure multi-pays",
+      "toggleLabel": "Activer la gestion multi-pays / filiales",
+      "hintOn": "Le tenant utilise des packs législatifs par pays et le workflow paie centralisé draft → RAF site → central.",
+      "hintOff": "Tenant mono-pays Côte d'Ivoire : moteur paie CI 2024 standard, pas d'onglet « Filiales & législations »."
+    },
+    "actions": {
+      "title": "Actions",
+      "offlineTitle": "Tenant hors ligne",
+      "offlineMessageShown": "Message affiché aux utilisateurs : « {{message}} »",
+      "defaultOfflineMessage": "Ce site est temporairement hors service. Veuillez contacter votre administrateur.",
+      "setOffline": "Mettre hors ligne",
+      "reactivate": "Réactiver",
+      "resetPassword": "Réinitialiser mot de passe admin"
+    },
+    "offlineDialog": {
+      "title": "Mettre « {{name}} » hors ligne",
+      "desc": "Tous les utilisateurs du tenant (filiales incluses) seront bloqués et verront ce message.",
+      "required": " Le message est obligatoire (politique plateforme).",
+      "optional": " Le message est facultatif.",
+      "placeholder": "Message affiché aux utilisateurs (ex. : maintenance, suspension contractuelle…)",
+      "confirm": "Confirmer la mise hors ligne",
+      "cancel": "Annuler"
+    },
+    "reset": {
+      "errorTitle": "Réinitialisation impossible",
+      "forceRepair": "Forcer la réparation du tenant",
+      "repairTitle": "Réparation du tenant",
+      "repairDesc": "Renseignez l'email et le nom de l'administrateur. Le schéma sera (re)provisionné si absent, puis l'admin sera créé/mis à jour avec un mot de passe temporaire.",
+      "emailPlaceholder": "Email admin",
+      "firstNamePlaceholder": "Prénom",
+      "lastNamePlaceholder": "Nom",
+      "launchRepair": "Lancer la réparation",
+      "cancel": "Annuler",
+      "successTitle": "Mot de passe réinitialisé",
+      "email": "Email :",
+      "newPassword": "Nouveau mot de passe :",
+      "saveNote": "Notez ce mot de passe maintenant — il ne sera plus affiché après refresh."
+    },
+    "theme": {
+      "title": "Thème",
+      "primaryColor": "Couleur primaire",
+      "secondaryColor": "Couleur secondaire"
+    }
+  },
+  "agencies": {
+    "title": "Cabinets de recrutement",
+    "subtitle": "Cabinets gérant plusieurs entreprises clientes (Côte d'Ivoire).",
+    "newButton": "Nouveau cabinet",
+    "createdTitle": "Cabinet créé ✓",
+    "ownerLabel": "Owner :",
+    "tempPassword": "Mot de passe temporaire :",
+    "fields": {
+      "name": "Nom du cabinet",
+      "slug": "Slug",
+      "ownerEmail": "Email du propriétaire",
+      "city": "Ville",
+      "senderEmail": "Email expéditeur (invitations)",
+      "senderName": "Nom expéditeur",
+      "logo": "Logo du cabinet"
+    },
+    "submit": "Créer le cabinet",
+    "table": {
+      "agency": "Cabinet",
+      "city": "Ville",
+      "members": "Membres",
+      "clients": "Clients",
+      "status": "Statut"
+    },
+    "statusActive": "Actif",
+    "statusSuspended": "Suspendu",
+    "empty": "Aucun cabinet."
+  },
+  "agencyDetail": {
+    "back": "Cabinets",
+    "statusActive": "Actif",
+    "statusSuspended": "Suspendu",
+    "setOffline": "Mettre hors ligne",
+    "reactivateWithClients": "Réactiver (avec ses clients)",
+    "offlineTitle": "Cabinet hors ligne",
+    "offlineMessageShown": "Message affiché aux utilisateurs : « {{message}} »",
+    "defaultOfflineMessage": "Ce site est temporairement hors service. Veuillez contacter votre administrateur.",
+    "offlineDialog": {
+      "title": "Mettre « {{name}} » hors ligne",
+      "desc": "Les membres du cabinet seront bloqués et verront ce message.",
+      "required": " Le message est obligatoire (politique plateforme).",
+      "optional": " Le message est facultatif.",
+      "placeholder": "Message affiché aux utilisateurs (ex. : maintenance, suspension contractuelle…)",
+      "includeClients": "Mettre aussi hors ligne les <0>{{count}}</0> entreprise(s) cliente(s) rattachée(s) (leurs utilisateurs verront le même message)",
+      "confirm": "Confirmer la mise hors ligne",
+      "cancel": "Annuler"
+    },
+    "messages": {
+      "attached": "Entreprise rattachée ✓",
+      "detached": "Entreprise détachée",
+      "error": "Erreur",
+      "suspended": "Cabinet mis hors ligne",
+      "suspendedWithClients": "Cabinet mis hors ligne (+ {{count}} entreprise(s) cliente(s))",
+      "reactivated": "Cabinet réactivé",
+      "reactivatedWithClients": "Cabinet réactivé (+ {{count}} entreprise(s) cliente(s))"
+    },
+    "clients": {
+      "title": "Entreprises clientes",
+      "attachLabel": "Rattacher une entreprise (CI)",
+      "selectPlaceholder": "— Choisir une entreprise —",
+      "attach": "Rattacher",
+      "cityFallback": "CI",
+      "detach": "Détacher",
+      "empty": "Aucune entreprise rattachée."
+    },
+    "members": {
+      "title": "Membres",
+      "roleOwner": "Propriétaire",
+      "roleMember": "Recruteur",
+      "active": "Actif",
+      "inactive": "Inactif"
+    }
+  },
+  "settings": {
+    "title": "Paramètres Plateforme",
+    "subtitle": "Configuration globale NexusRH CI · v{{version}} · {{environment}}",
+    "saved": "Enregistré",
+    "save": "Enregistrer",
+    "systemStatus": {
+      "aiClaude": "IA Claude",
+      "aiOk": "API key configurée",
+      "aiKo": "ANTHROPIC_API_KEY manquant",
+      "smtp": "Email SMTP",
+      "smtpOk": "Transporter actif",
+      "smtpKo": "SMTP_USER manquant",
+      "maintenance": "Mode maintenance",
+      "maintenanceOn": "ACTIF — site inaccessible",
+      "maintenanceOff": "Désactivé",
+      "newTenants": "Nouveaux tenants",
+      "newTenantsOpen": "Inscriptions ouvertes",
+      "newTenantsClosed": "Fermé"
+    },
+    "tabs": {
+      "general": "Général",
+      "security": "Sécurité",
+      "notifications": "Notifications",
+      "ai": "IA & Claude",
+      "legal": "Entreprise",
+      "storeLois": "Store de Lois",
+      "multiLeg": "Multi-législatif",
+      "sourcingIa": "Sourcing IA"
+    },
+    "general": {
+      "title": "Paramètres généraux",
+      "appName": "Nom de l'application",
+      "appNameHint": "Affiché dans les emails et l'interface",
+      "trialDays": "Période d'essai par défaut (jours)",
+      "maxTenants": "Nombre max de tenants",
+      "maxTenantsHint": "0 = illimité",
+      "allowNewTenants": "Autoriser la création de nouveaux tenants",
+      "maintenanceMode": "Mode maintenance (bloque tous les accès)",
+      "maintenanceWarning": "Attention : activer le mode maintenance rendra l'application inaccessible pour tous les utilisateurs.",
+      "offline": {
+        "title": "Mise hors ligne d'un tenant ou d'un cabinet",
+        "defaultMessage": "Message hors-ligne par défaut",
+        "defaultMessageHint": "Variable système : pré-remplit le message affiché aux utilisateurs quand un tenant ou un cabinet est mis hors ligne. Modifiable au cas par cas au moment de l'action.",
+        "required": "Message obligatoire lors d'une mise hors ligne",
+        "requiredHint": "Activé : impossible de mettre un tenant/cabinet hors ligne sans message (fourni ou par défaut). Désactivé : le message est facultatif (un message générique est affiché à défaut)."
+      }
+    },
+    "security": {
+      "title": "Sécurité de la plateforme",
+      "mfaTitle": "Authentification à deux facteurs (MFA)",
+      "mfaSuperAdmin": "Imposer le MFA aux super_admin",
+      "mfaSuperAdminHint": "Désactivé : les super_admin accèdent à la plateforme sans MFA (peuvent créer des tenants). Activé : le MFA doit être configuré avant tout accès.",
+      "mfaTenantUsers": "Imposer le MFA à tous les employés des tenants",
+      "mfaTenantUsersHint": "Politique globale. Chaque tenant peut la <0>durcir</0> (jamais l'assouplir) depuis ses propres paramètres.",
+      "passwordTitle": "Cycle de vie des mots de passe",
+      "passwordMaxAge": "Durée de vie du mot de passe (jours)",
+      "passwordMaxAgeHint": "0 = pas d'expiration. Au-delà, l'utilisateur doit le changer à la connexion.",
+      "passwordHistory": "Historique anti-réutilisation",
+      "passwordHistoryHint": "Nombre de derniers mots de passe interdits à la réutilisation (0 = aucun).",
+      "breachCheck": "Vérifier les mots de passe contre les fuites connues (HaveIBeenPwned)",
+      "breachCheckHint": "À chaque connexion (si accès internet), le mot de passe est comparé — en k-anonymat, sans jamais quitter le serveur — aux fuites connues. S'il est compromis, le changement est imposé. Sans internet : contrôle ignoré (non bloquant).",
+      "lockoutTitle": "Verrouillage de compte (anti-force brute)",
+      "lockoutEnabled": "Verrouiller un compte après trop d'échecs de connexion",
+      "lockoutMaxAttempts": "Seuil d'échecs",
+      "lockoutMaxAttemptsHint": "0 = désactivé",
+      "lockoutWindow": "Fenêtre (min)",
+      "lockoutWindowHint": "comptage",
+      "lockoutDuration": "Durée verrou (min)",
+      "lockoutDurationHint": "blocage",
+      "lockoutSummary": "Après {{attempts}} échecs en {{window}} min, le compte est bloqué {{duration}} min (réponse 423). Le rate-limiting par IP reste actif en complément ; en cas de panne Redis, le verrouillage est ignoré (fail-open).",
+      "envTitle": "Autres mesures (configurées via .env)",
+      "env": {
+        "jwtSecret": "JWT Secret",
+        "jwtSecretStatus": "Configuré",
+        "jwtExpiration": "JWT Expiration",
+        "jwtExpirationStatus": "7 jours",
+        "mfaAvailable": "MFA disponible",
+        "mfaAvailableStatus": "TOTP activé",
+        "bcrypt": "Bcrypt rounds",
+        "bcryptStatus": "12 rounds",
+        "cors": "CORS",
+        "corsStatus": "Configuré",
+        "rateLimit": "Rate limiting",
+        "rateLimitStatus": "Actif"
+      },
+      "recommendationsTitle": "Recommandations CI :",
+      "recommendations": {
+        "https": "Utiliser HTTPS en production (certificat Let's Encrypt)",
+        "mfa": "Activer MFA pour tous les comptes super_admin",
+        "backup": "Configurer un backup PostgreSQL quotidien",
+        "sovereign": "Hébergement souverain CI pour clients secteur public"
+      }
+    },
+    "notifications": {
+      "title": "Notifications & Email",
+      "smtpOk": "Email SMTP configuré et opérationnel",
+      "smtpKo": "SMTP non configuré — les emails ne seront pas envoyés",
+      "supportEmail": "Email de support",
+      "supportEmailHint": "Affiché dans les emails envoyés aux clients",
+      "supportPhone": "Téléphone de support CI",
+      "supportPhoneHint": "Format : +225 XX XX XX XX XX",
+      "supportWhatsapp": "WhatsApp support",
+      "supportWhatsappHint": "Affiché dans les emails de bienvenue tenant · Format +225 XXXXXXXXXX",
+      "welcomeSignature": "Signature email de bienvenue",
+      "welcomeSignatureHint": "Texte affiché en bas de l'email envoyé à la création d'un tenant",
+      "defaultSignature": "L'équipe NexusRH CI · OpenLab Consulting · Abidjan",
+      "autoEmailsTitle": "Emails déclenchés automatiquement",
+      "autoEmails": {
+        "welcome": "Bienvenue admin à la création du tenant",
+        "resetPassword": "Réinitialisation mot de passe admin",
+        "payslip": "Bulletin de paie disponible (employé)",
+        "absence": "Demande d'absence en attente (manager)",
+        "expense": "Note de frais à valider"
+      }
+    },
+    "ai": {
+      "title": "Intelligence Artificielle — Claude AI",
+      "operationalTitle": "Claude AI opérationnel",
+      "missingKeyTitle": "Clé API manquante",
+      "operationalDesc": "L'assistant IA est disponible pour tous les utilisateurs autorisés (admin, RH, managers)",
+      "missingKeyDesc": "Ajoutez ANTHROPIC_API_KEY dans votre .env pour activer l'assistant IA",
+      "enableToggle": "Activer l'assistant IA dans l'interface",
+      "featuresTitle": "Fonctionnalités IA activées",
+      "features": {
+        "chat": "Chat assistant RH CI (CNPS, CT, OHADA)",
+        "chatRoles": "Admin, RH, Managers",
+        "simulator": "Simulateur ITS/IGR quotient familial",
+        "simulatorRoles": "Tous (POST /ai/simulate-its)",
+        "docs": "Génération documents RH (CDI, lettre...)",
+        "docsRoles": "Admin, RH",
+        "retention": "Score rétention employés (analyse IA)",
+        "retentionRoles": "Admin, RH Manager"
+      },
+      "modelTitle": "Modèle utilisé",
+      "modelNote": "Calibré contexte ivoirien : Code du Travail CI, CNPS 2024, barème ITS/DGI, OHADA, Mobile Money CI"
+    },
+    "legal": {
+      "title": "Informations légales — OpenLab Consulting",
+      "legalName": "Raison sociale éditeur",
+      "defaultLegalName": "OpenLab Consulting",
+      "address": "Adresse",
+      "defaultAddress": "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire",
+      "complianceTitle": "Conformité réglementaire CI",
+      "compliance": {
+        "dataLaw": "Données hébergées conformément à la loi CI 2013-450 sur la protection des données personnelles",
+        "labourCode": "Respect du Code du Travail CI (loi n°2015-532 du 20 juillet 2015)",
+        "cnps": "Déclarations CNPS conformes à la réglementation 2024",
+        "disa": "Génération DISA conforme loi 99-477 du 2 août 1999",
+        "ohada": "Contrats OHADA — Acte Uniforme révisé sur le droit commercial"
+      }
+    },
+    "storeLois": {
+      "title": "Store de Lois — CI 2024",
+      "subtitle": "Constantes légales appliquées par le moteur de paie. Mis à jour lors des changements législatifs.",
+      "badge": "CI · Version 2024 · En vigueur",
+      "edit": "Modifier",
+      "warning": "<0>Important :</0> Toute modification est journalisée dans les logs d'audit. Les changements de SMIG sont notifiés aux tenants concernés. Vérifiez les textes légaux avant de modifier.",
+      "categories": {
+        "smig": "SMIG & Salaires",
+        "cnps": "CNPS — Cotisations",
+        "its": "ITS / DGI — Impôt",
+        "conges": "Congés & Absences",
+        "fdfp": "FDFP — Formation"
+      },
+      "constants": {
+        "SMIG_MENSUEL": "SMIG mensuel",
+        "SMIG_HORAIRE": "SMIG horaire (173,33h)",
+        "PLAFOND_CNPS_AT_PF_MENSUEL": "Plafond AT / PF / Maternité",
+        "PLAFOND_CNPS_RETRAITE_MENSUEL": "Plafond retraite",
+        "TAUX_CNPS_RETRAITE_SAL": "Retraite salarial",
+        "TAUX_CNPS_RETRAITE_PAT": "Retraite patronal",
+        "TAUX_CNPS_PF_PAT": "Prestations familiales pat.",
+        "TAUX_CNPS_MATERNITE_PAT": "Assurance maternité pat.",
+        "TAUX_CNPS_AT_COMMERCE": "AT — Commerce/Services",
+        "TAUX_CNPS_AT_BTP": "AT — BTP/Transport",
+        "TAUX_CNPS_AT_INDUSTRIE": "AT — Industrie",
+        "TAUX_CNPS_AT_EXTRACTION": "AT — Extraction/Mines",
+        "ABATTEMENT_ITS": "Abattement forfaitaire ITS",
+        "CREDIT_IMPOT_MARIE": "Crédit impôt — marié(e)",
+        "CREDIT_IMPOT_1ENFANT": "Crédit impôt — 1 enfant",
+        "CREDIT_IMPOT_2ENFANTS": "Crédit impôt — 2 enfants",
+        "CREDIT_IMPOT_3ENFANTS_PLUS": "Crédit impôt — 3 enfants+",
+        "CONGES_JOURS_PAR_MOIS": "Congés par mois travaillé",
+        "CONTRIBUTION_FDFP": "Contribution FDFP (>10 sal)"
+      }
+    },
+    "multiLeg": {
+      "title": "Multi-législatif — Couverture Afrique",
+      "subtitle": "Moteurs de paie par pays. Chaque pays a ses propres taux sociaux, barèmes fiscaux et constantes légales.",
+      "activeCount": "{{count}} actifs",
+      "statusActive": "Actif",
+      "statusPlanned": "Planifié",
+      "engine": "Moteur de paie",
+      "smig": "SMIG mensuel",
+      "onDemand": "Disponible sur demande — contactez OpenLab Consulting",
+      "coverageTitle": "Couverture régionale Afrique",
+      "coverage": {
+        "uemoa": "<0>UEMOA</0> — Côte d'Ivoire (prod), Sénégal, Bénin, Togo, Burkina Faso, Mali, Niger · XOF",
+        "cemac": "<0>CEMAC</0> — Cameroun, Tchad · XAF",
+        "ecowas": "<0>CEDEAO hors UEMOA</0> — Nigeria (NGN), Ghana (GHS)"
+      },
+      "architectureTitle": "Architecture technique",
+      "architectureDesc": "Chaque moteur de paie est un module indépendant (<0>payroll-engine-ci</0>, <1>payroll-engine-sn</1>…). Le middleware résout automatiquement le bon moteur selon le pays du tenant. Les constantes légales sont versionées dans <2>platform.legal_constants</2>."
+    },
+    "sourcingIa": {
+      "title": "Sourcing IA — Configuration paramétrable",
+      "subtitle": "Tout est paramétrable : modèles IA, plateformes par pays, prompts système, slider profils, budget max, pondérations de richesse. Les changements sont propagés immédiatement (cache invalidé).",
+      "sections": {
+        "models": "Modèles IA",
+        "platforms": "Plateformes",
+        "prompts": "Prompts système",
+        "advanced": "Paramètres avancés"
+      },
+      "models": {
+        "count": "{{count}} modèle(s) configuré(s). Tarifs en EUR par million de tokens.",
+        "addButton": "Ajouter un modèle",
+        "table": {
+          "provider": "Fournisseur",
+          "model": "Modèle",
+          "inputCost": "Coût input/1M",
+          "outputCost": "Coût output/1M",
+          "maxTokens": "Max tokens",
+          "active": "Actif"
+        },
+        "edit": "Modifier",
+        "delete": "Supprimer",
+        "deleteConfirm": "Supprimer ce modèle ?",
+        "empty": "Aucun modèle. Le système utilise les valeurs par défaut (Claude Sonnet 4 + Mistral Large).",
+        "modal": {
+          "editTitle": "Modifier le modèle",
+          "newTitle": "Nouveau modèle IA",
+          "provider": "Fournisseur",
+          "providerClaude": "Anthropic (Claude)",
+          "providerMistral": "Mistral AI",
+          "providerOpenai": "OpenAI",
+          "modelId": "Identifiant modèle",
+          "displayName": "Nom affiché",
+          "maxTokens": "Max tokens",
+          "inputCost": "Coût input / 1M (EUR)",
+          "outputCost": "Coût output / 1M (EUR)",
+          "active": "Actif",
+          "order": "Ordre",
+          "cancel": "Annuler",
+          "save": "Enregistrer",
+          "saving": "Enregistrement…"
+        }
+      },
+      "platforms": {
+        "count": "{{count}} plateforme(s). {{panafrican}} panafricaines + {{local}} locales.",
+        "addButton": "Nouvelle plateforme",
+        "groupPanafrican": "Panafricaines / Globales",
+        "groupCountry": "Pays : {{country}}",
+        "inactive": "(inactif)",
+        "profiles": "~{{count}} profils",
+        "deleteConfirm": "Supprimer cette plateforme ?",
+        "empty": "Aucune plateforme configurée. Le système utilise les valeurs par défaut.",
+        "groupCount": "{{title}} ({{count}})",
+        "modal": {
+          "editTitle": "Modifier la plateforme",
+          "newTitle": "Nouvelle plateforme de sourcing",
+          "code": "Code (slug)",
+          "name": "Nom",
+          "countryCode": "Code pays (CI, SN, NG…)",
+          "url": "URL",
+          "estPool": "Pool estimé",
+          "active": "Active",
+          "panafrican": "Panafricaine",
+          "cancel": "Annuler",
+          "save": "Enregistrer",
+          "saving": "Enregistrement…"
+        }
+      },
+      "prompts": {
+        "tip": "<0>Astuce :</0> laisser vide pour utiliser le prompt par défaut codé en dur dans le service. Le prompt fourni ici remplace intégralement le prompt par défaut pour le modèle concerné.",
+        "claudeLabel": "Prompt système Claude (Anthropic)",
+        "mistralLabel": "Prompt système Mistral",
+        "promptPlaceholder": "Tu es un expert RH...",
+        "save": "Enregistrer les prompts"
+      },
+      "advanced": {
+        "sliderTitle": "Slider profils (limite par requête)",
+        "min": "Min",
+        "max": "Max",
+        "default": "Défaut",
+        "budgetTitle": "Budget max par requête",
+        "budgetUnit": "EUR · 0 = pas de limite",
+        "budgetHint": "Log warning si une requête dépasse ce budget (audit_log à venir). N'interrompt pas la requête.",
+        "weightsTitle": "Pondérations score de richesse (JSON)",
+        "weightsInvalid": "JSON pondérations invalide",
+        "save": "Enregistrer les paramètres"
+      }
+    }
+  },
+  "legalWatch": {
+    "title": "Veille réglementaire",
+    "subtitle": "Détection automatique des mises à jour d'articles juridiques par IA. Chaque proposition est revue manuellement avant remplacement de l'article publié.",
+    "newProposal": "Nouvelle proposition",
+    "viewAll": "Voir toutes les propositions",
+    "loading": "Chargement…",
+    "emptyTitle": "Aucune proposition « {{status}} »",
+    "emptyHint": "Cliquez sur « Nouvelle proposition » pour soumettre un texte à analyser par l'IA, ou attendez le passage du worker de veille (cron quotidien).",
+    "status": {
+      "pending": "En attente",
+      "approved": "Approuvée",
+      "rejected": "Rejetée",
+      "superseded": "Remplacée",
+      "all": "Toutes"
+    },
+    "risk": {
+      "high": "Impact fort",
+      "medium": "Impact moyen",
+      "low": "Impact faible"
+    },
+    "row": {
+      "newArticle": "(Nouvel article)",
+      "aiConfidence": "{{confidence}}% IA",
+      "noSummary": "Pas de résumé disponible",
+      "source": "source"
+    },
+    "analyzer": {
+      "eyebrow": "Veille réglementaire",
+      "title": "Soumettre un texte à l'analyse IA",
+      "subtitle": "Claude compare le texte avec l'article actuel (si fourni) et propose un diff structuré.",
+      "articleId": "Article ID",
+      "articleIdPlaceholder": "ex: ct_ci_art_36",
+      "articleIdHint": "Vide = nouvel article",
+      "country": "Pays (ISO-3)",
+      "source": "Source",
+      "sourceOptions": {
+        "code_travail": "Code du Travail",
+        "convention_collective": "Convention collective",
+        "jo": "Journal Officiel",
+        "dgi": "DGI",
+        "cnps": "CNPS"
+      },
+      "sourceUrl": "URL source (optionnel)",
+      "sourceUrlPlaceholder": "https://www.dgi.gouv.ci/...",
+      "proposedText": "Texte proposé *",
+      "proposedTextCount": "({{count}} / 30 000)",
+      "proposedTextPlaceholder": "Collez ici le texte légal complet à analyser (article, décret, circulaire…)",
+      "context": "Contexte (optionnel)",
+      "contextPlaceholder": "ex: Article 36 CNPS — modification taux retraite 2026",
+      "error": "Erreur lors de l'analyse IA",
+      "cancel": "Annuler",
+      "analyze": "Analyser avec Claude",
+      "analyzing": "Analyse Claude en cours…"
+    },
+    "review": {
+      "newArticle": "(Nouvel article)",
+      "confidence": "Confiance {{confidence}}%",
+      "aiSummary": "Résumé IA",
+      "aiReasoning": "Raisonnement détaillé IA",
+      "comparison": "Comparaison",
+      "viewSide": "Côte à côte",
+      "viewUnified": "Unifié",
+      "currentText": "Texte actuel",
+      "currentTextEmpty": "— (nouvel article, aucun texte actuel)",
+      "proposedText": "Texte proposé",
+      "notes": "Notes de revue (optionnel)",
+      "notesPlaceholder": "ex: Confirmé via JO n°123 du 12/05/2026",
+      "notesByLabel": "Notes de revue (par {{author}})",
+      "defaultReviewer": "super_admin",
+      "close": "Fermer",
+      "cancel": "Annuler",
+      "reject": "Rejeter",
+      "approve": "Approuver et publier",
+      "error": "Erreur"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "contractTypes": {
+    "cdi": "Permanent (CDI)",
+    "cdd": "Fixed-term (CDD)",
+    "stage": "Internship",
+    "freelance": "Freelance",
+    "apprentissage": "Apprenticeship",
+    "interim": "Temp work"
+  },
+  "salary": {
+    "from": "From {{value}}",
+    "upTo": "Up to {{value}}"
+  },
+  "timeAgo": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "days": "{{count}} days ago",
+    "weeks_one": "{{count}} week ago",
+    "weeks_other": "{{count}} weeks ago",
+    "months_one": "{{count}} month ago",
+    "months_other": "{{count}} months ago"
+  },
+  "error": {
+    "notFoundTitle": "Company not found",
+    "notFoundText": "This careers page does not exist or is no longer available."
+  },
+  "hero": {
+    "title": "Our job openings",
+    "openPositions_one": "{{count}} open position",
+    "openPositions_other": "{{count}} open positions",
+    "searchPlaceholder": "Search for a position..."
+  },
+  "list": {
+    "empty": "No job offer matches your search."
+  },
+  "footer": {
+    "poweredBy": "Powered by <brand>NexusRH CI</brand>"
+  },
+  "card": {
+    "viewOffer": "View offer"
+  },
+  "detail": {
+    "jobDescription": "Job description",
+    "profileSought": "Desired profile",
+    "benefits": "Benefits",
+    "recruitmentProcess": "Recruitment process",
+    "apply": "Apply"
+  },
+  "apply": {
+    "title": "Apply — {{title}}",
+    "firstName": "First name *",
+    "lastName": "Last name *",
+    "email": "Email *",
+    "phone": "Phone",
+    "expectedSalary": "Salary expectation (FCFA)",
+    "cvLabel": "Resume (PDF, DOC, DOCX or TXT — max 5 MB)",
+    "chooseFile": "Choose a file…",
+    "coverLetter": "Cover letter",
+    "cvTooLarge": "Resume too large (max 5 MB).",
+    "genericError": "An error occurred. Please try again.",
+    "submit": "Send my application",
+    "successTitle": "Application sent!",
+    "successText": "Thank you. We will review your profile and get back to you if your application is shortlisted."
+  },
+  "common": {
+    "close": "Close"
+  }
+}
