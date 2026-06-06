@@ -990,12 +990,15 @@ export default function RecruitmentPage() {
                 <div
                   key={stage}
                   className="flex-shrink-0 w-60"
-                  onDragOver={e => { e.preventDefault(); setDragOverStage(stage) }}
+                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverStage(stage) }}
                   onDragLeave={() => setDragOverStage(null)}
                   onDrop={e => {
                     e.preventDefault()
-                    if (draggedId && draggedId !== stage) {
-                      updateStage.mutate({ id: draggedId, stage })
+                    // Repli dataTransfer : si le re-render a fait perdre l'état React,
+                    // l'id voyage aussi dans l'événement natif.
+                    const droppedId = draggedId ?? e.dataTransfer.getData('text/plain')
+                    if (droppedId) {
+                      updateStage.mutate({ id: droppedId, stage })
                     }
                     setDraggedId(null)
                     setDragOverStage(null)
@@ -1010,7 +1013,15 @@ export default function RecruitmentPage() {
                       <div
                         key={app.id}
                         draggable
-                        onDragStart={() => setDraggedId(app.id)}
+                        onDragStart={(e) => {
+                          // Firefox exige setData pour démarrer un drag HTML5.
+                          e.dataTransfer.setData('text/plain', app.id)
+                          e.dataTransfer.effectAllowed = 'move'
+                          // CRITIQUE : différer le setState. Le re-render synchrone change
+                          // la classe (opacity-40) du nœud traîné PENDANT dragstart, ce qui
+                          // fait avorter le drag sur Chromium.
+                          window.setTimeout(() => setDraggedId(app.id), 0)
+                        }}
                         onDragEnd={() => { setDraggedId(null); setDragOverStage(null) }}
                         onClick={() => setSelectedApp(app)}
                         className={`rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:border-primary select-none transition-opacity ${draggedId === app.id ? 'opacity-40' : 'opacity-100'} ${selectedAppIds.includes(app.id) ? 'ring-2 ring-primary border-primary' : ''}`}
