@@ -1,0 +1,145 @@
+{
+  "title": "Employés",
+  "subtitle_one": "{{count}} employé actif",
+  "subtitle_other": "{{count}} employé(s) actif(s)",
+  "newEmployee": "Nouvel employé",
+  "searchPlaceholder": "Rechercher un employé...",
+  "noEmployeesFound": "Aucun employé trouvé",
+  "loadingEmployee": "Chargement...",
+  "employeeNotFound": "Employé introuvable",
+  "created": {
+    "message": "<strong>{{name}}</strong> créé(e). Son parcours d'intégration démarre automatiquement (visible dans l'onglet Intégration)."
+  },
+  "table": {
+    "employee": "Employé",
+    "jobAndDepartment": "Poste & Département",
+    "grossSalary": "Salaire brut",
+    "mobileMoney": "Mobile Money",
+    "contract": "Contrat",
+    "hireDate": "Date d'embauche"
+  },
+  "form": {
+    "title": "Nouvel employé",
+    "sections": {
+      "identity": "Identité",
+      "jobAndContract": "Poste & contrat",
+      "compensationAndPayment": "Rémunération & paiement",
+      "familySituation": "Situation familiale",
+      "familySituationHint": "(impacte le crédit d'impôt ITS)"
+    },
+    "fields": {
+      "firstName": "Prénom *",
+      "lastName": "Nom *",
+      "gender": "Sexe",
+      "email": "Email",
+      "phone": "Téléphone",
+      "birthDate": "Date de naissance",
+      "nni": "NNI (chiffré)",
+      "cnpsNumber": "N° CNPS",
+      "city": "Ville",
+      "jobTitle": "Intitulé du poste",
+      "department": "Département",
+      "seniority": "Séniorité",
+      "professionalCategory": "Catégorie professionnelle",
+      "contractType": "Type de contrat",
+      "hireDate": "Date d'embauche",
+      "weeklyHours": "Heures hebdomadaires *",
+      "baseSalary": "Salaire brut mensuel (FCFA) *",
+      "mobileMoneyProvider": "Opérateur Mobile Money",
+      "mobileMoneyPhone": "N° Mobile Money",
+      "iban": "RIB / IBAN (chiffré AES-256)",
+      "bankName": "Banque",
+      "maritalStatus": "Statut marital",
+      "childrenCount": "Enfants à charge"
+    },
+    "placeholders": {
+      "phone": "+225 07 XX XX XX XX",
+      "professionalCategory": "ex. 3ème catégorie",
+      "baseSalary": "≥ 75 000",
+      "mobileMoneyPhone": "+2250XXXXXXXXX",
+      "iban": "CIxx xxxx xxxx xxxx xxxx xxxx xxxx"
+    },
+    "gender": {
+      "male": "Masculin",
+      "female": "Féminin",
+      "other": "Autre"
+    },
+    "seniorityOptions": {
+      "junior": "Junior",
+      "confirme": "Confirmé",
+      "senior": "Senior",
+      "cadre": "Cadre",
+      "direction": "Direction"
+    },
+    "maritalOptions": {
+      "single": "Célibataire",
+      "married": "Marié(e)",
+      "divorced": "Divorcé(e)",
+      "widowed": "Veuf/Veuve",
+      "cohabiting": "Concubinage"
+    },
+    "providers": {
+      "wave": "Wave",
+      "mtn": "MTN MoMo",
+      "orange": "Orange Money",
+      "cofina": "COFINA"
+    },
+    "onboardingHint": "Un <strong>parcours d'intégration</strong> sera créé automatiquement selon la séniorité et le poste (modèles configurés dans Intégration → Modèles).",
+    "errors": {
+      "salaryBelowSmig": "Le salaire brut doit être ≥ 75 000 FCFA (SMIG).",
+      "createGeneric": "Erreur lors de la création"
+    },
+    "submit": "Créer l'employé",
+    "submitting": "Création..."
+  },
+  "delete": {
+    "title": "Archiver l'employé",
+    "intro": "Vous allez archiver <strong>{{name}}</strong>. L'employé ne sera plus actif mais ses données seront conservées.",
+    "checkingPending": "Vérification des actions en attente...",
+    "pendingTitle": "Actions en attente sur cet employé",
+    "pendingHint": "Clôturez ces actions avant d'archiver, ou forcez la suppression ci-dessous.",
+    "error": "Erreur lors de la suppression. Réessayez.",
+    "forceArchive": "Forcer l'archivage",
+    "forcing": "Archivage...",
+    "confirmArchive": "Confirmer l'archivage",
+    "archiving": "Archivage..."
+  },
+  "detail": {
+    "back": "Retour aux employés",
+    "personalInfo": "Informations personnelles",
+    "contractualInfo": "Informations contractuelles",
+    "payment": "Paiement",
+    "mobileMoneyNotSet": "Mobile Money non renseigné",
+    "ibanNotSet": "RIB non renseigné",
+    "fields": {
+      "email": "Email",
+      "phone": "Téléphone",
+      "gender": "Genre",
+      "birthDate": "Date de naissance",
+      "nni": "NNI",
+      "cnpsNumber": "N° CNPS",
+      "familySituation": "Situation familiale",
+      "childrenCount": "Enfants à charge",
+      "city": "Ville",
+      "contractType": "Type de contrat",
+      "hireDate": "Date d'embauche",
+      "baseSalary": "Salaire brut mensuel",
+      "weeklyHours": "Heures hebdomadaires",
+      "professionalCategory": "Catégorie professionnelle",
+      "department": "Département",
+      "manager": "Manager",
+      "iban": "RIB / IBAN",
+      "bankName": "Banque"
+    },
+    "genderValues": {
+      "male": "Homme",
+      "female": "Femme"
+    },
+    "maritalValues": {
+      "single": "Célibataire",
+      "married": "Marié(e)",
+      "divorced": "Divorcé(e)",
+      "widowed": "Veuf/Veuve"
+    }
+  }
+}

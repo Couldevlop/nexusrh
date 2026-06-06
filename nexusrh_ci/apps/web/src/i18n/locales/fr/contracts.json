@@ -1,0 +1,129 @@
+{
+  "title": "Contrats OHADA",
+  "subtitle": "Gestion des contrats de travail — Code du Travail CI",
+  "newContract": "Nouveau contrat",
+  "types": {
+    "cdi": "CDI",
+    "cdd": "CDD",
+    "saisonnier": "Saisonnier",
+    "apprentissage": "Apprentissage",
+    "stage": "Stage",
+    "mise_a_disposition": "Mise à dispo."
+  },
+  "typesLong": {
+    "cdi": "CDI — Contrat à Durée Indéterminée",
+    "cdd": "CDD — Contrat à Durée Déterminée",
+    "saisonnier": "Contrat Saisonnier",
+    "apprentissage": "Contrat d'Apprentissage (FDFP)",
+    "stage": "Stage Conventionné",
+    "mise_a_disposition": "Mise à Disposition"
+  },
+  "statuses": {
+    "active": "Actif",
+    "terminated": "Résilié",
+    "suspended": "Suspendu",
+    "expired": "Expiré"
+  },
+  "terminationReasons": {
+    "resignation": "Démission",
+    "dismissal": "Licenciement",
+    "conventional": "Rupture conventionnelle",
+    "end_of_cdd": "Fin de CDD",
+    "retirement": "Départ en retraite",
+    "other": "Autre"
+  },
+  "badges": {
+    "ohadaClause": "Clause OHADA",
+    "nonCompetition": "Non-concurrence"
+  },
+  "kpis": {
+    "activeContracts": "Contrats actifs",
+    "cdi": "CDI",
+    "cdd": "CDD",
+    "payroll": "Masse salariale"
+  },
+  "trialAlert": "<strong>{{count}} période(s) d'essai</strong> expirent dans les 15 prochains jours",
+  "filters": {
+    "active": "Actifs",
+    "terminated": "Résiliés",
+    "all": "Tous",
+    "allTypes": "Tous types"
+  },
+  "table": {
+    "employee": "Employé",
+    "department": "Département",
+    "type": "Type",
+    "status": "Statut",
+    "grossSalary": "Salaire brut",
+    "start": "Début",
+    "endOrTrial": "Fin / Essai",
+    "actions": "Actions",
+    "trialPrefix": "Essai :",
+    "view": "Voir"
+  },
+  "empty": {
+    "title": "Aucun contrat trouvé",
+    "hint": "Modifiez les filtres ou créez un nouveau contrat"
+  },
+  "legal": {
+    "title": "Code du Travail CI — Rappels",
+    "line1": "• CDD : durée max 2 ans, 2 renouvellements, délai de carence = 1/3 de la durée",
+    "line2": "• Essai CDI : 15 jours (employé) · 1 mois (cadre) — renouvelable 1 fois",
+    "line3": "• Contrat d'apprentissage : FDFP + visa Direction Emploi obligatoire",
+    "line4": "• Préavis CDI (< 1 an) : 1 mois · (1–5 ans) : 2 mois · (> 5 ans) : 3 mois",
+    "line5": "• SMIG mensuel : <strong>75 000 FCFA</strong> (revalorisation 2026)"
+  },
+  "detail": {
+    "title": "Contrat — {{name}}",
+    "fields": {
+      "jobTitle": "Poste",
+      "level": "Niveau",
+      "baseSalary": "Salaire de base",
+      "weeklyHours": "Heures / semaine",
+      "startDate": "Date de début",
+      "endDate": "Date de fin",
+      "trialEndDate": "Fin période d'essai",
+      "convention": "Convention collective",
+      "telecommuting": "Télétravail",
+      "cnpsAffiliation": "Affiliation CNPS"
+    },
+    "telecommutingValue": "{{count}} j/sem",
+    "renewCdd": "Renouveler le CDD",
+    "newEndDate": "Nouvelle date de fin",
+    "confirmRenewal": "Confirmer le renouvellement",
+    "terminate": "Rompre le contrat",
+    "terminationTitle": "Rupture de contrat",
+    "reason": "Motif",
+    "effectiveDate": "Date effective",
+    "commentOptional": "Commentaire (optionnel)",
+    "confirmTermination": "Confirmer la rupture",
+    "inProgress": "En cours…"
+  },
+  "new": {
+    "title": "Nouveau contrat OHADA",
+    "employee": "Employé *",
+    "selectEmployee": "-- Sélectionner un employé --",
+    "contractType": "Type de contrat *",
+    "startDate": "Date de début *",
+    "endDate": "Date de fin",
+    "jobTitle": "Intitulé de poste",
+    "jobTitlePlaceholder": "Ex: Chauffeur confirmé",
+    "level": "Niveau / Catégorie",
+    "levelPlaceholder": "Ex: Cadre, Agent de maîtrise",
+    "baseSalary": "Salaire brut mensuel (FCFA) *",
+    "baseSalaryPlaceholder": "Ex: 250000",
+    "weeklyHours": "Heures / semaine",
+    "convention": "Convention collective",
+    "conventionPlaceholder": "Ex: Transport urbain CI, Commerce général CI…",
+    "telecommutingDays": "Jours de télétravail / semaine",
+    "clausesTitle": "Clauses OHADA",
+    "clauses": {
+      "cnpsAffiliation": "Affiliation CNPS obligatoire",
+      "ohadaClause": "Clause OHADA (droit applicable)",
+      "nonCompetition": "Clause de non-concurrence"
+    },
+    "smigWarning": "Le salaire doit être supérieur ou égal au SMIG (75 000 FCFA — revalorisation 2026)",
+    "submit": "Créer le contrat",
+    "submitting": "Création en cours…"
+  }
+}

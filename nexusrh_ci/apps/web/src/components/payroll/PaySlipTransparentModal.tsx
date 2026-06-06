@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import {
   X, Loader2, Calculator, TrendingUp, History, Eye, ChevronDown, ChevronRight,
@@ -54,6 +55,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 }
 
 function ExpandableLine({ line }: { line: ExplainedLine }) {
+  const { t } = useTranslation('payroll')
   const [open, setOpen] = useState(false)
   const isNegative = line.type !== 'earning'
   const colorCls = CATEGORY_COLOR[line.category] ?? CATEGORY_COLOR.other
@@ -76,7 +78,7 @@ function ExpandableLine({ line }: { line: ExplainedLine }) {
             {isNegative ? '−' : ''}{formatFCFA(Math.abs(line.amount))}
           </p>
           {line.type === 'employer_contribution' && (
-            <p className="text-[10px] text-muted-foreground">part employeur</p>
+            <p className="text-[10px] text-muted-foreground">{t('transparency.employerPart')}</p>
           )}
         </div>
       </button>
@@ -84,28 +86,28 @@ function ExpandableLine({ line }: { line: ExplainedLine }) {
       {open && (
         <div className="px-4 pb-4 pt-2 border-t border-current/10 space-y-3 bg-white/40">
           <div>
-            <p className="text-[11px] uppercase tracking-wider font-semibold opacity-70">Formule</p>
+            <p className="text-[11px] uppercase tracking-wider font-semibold opacity-70">{t('transparency.line.formula')}</p>
             <p className="text-sm mt-1">{line.formulaHuman}</p>
           </div>
           {line.baseLabel && (
             <div>
-              <p className="text-[11px] uppercase tracking-wider font-semibold opacity-70">Base de calcul</p>
+              <p className="text-[11px] uppercase tracking-wider font-semibold opacity-70">{t('transparency.line.calcBase')}</p>
               <p className="text-sm mt-1">{line.baseLabel}</p>
             </div>
           )}
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div className="rounded bg-white/60 p-2">
-              <p className="opacity-60">Base appliquée</p>
+              <p className="opacity-60">{t('transparency.line.appliedBase')}</p>
               <p className="font-mono font-semibold mt-0.5">{formatFCFA(line.base)}</p>
             </div>
             {line.rate !== undefined && (
               <div className="rounded bg-white/60 p-2">
-                <p className="opacity-60">Taux</p>
+                <p className="opacity-60">{t('transparency.line.rate')}</p>
                 <p className="font-mono font-semibold mt-0.5">{(line.rate * 100).toFixed(2)} %</p>
               </div>
             )}
             <div className="rounded bg-white/60 p-2">
-              <p className="opacity-60">Résultat</p>
+              <p className="opacity-60">{t('transparency.line.result')}</p>
               <p className="font-mono font-semibold mt-0.5">{formatFCFA(Math.abs(line.amount))}</p>
             </div>
           </div>
@@ -138,6 +140,7 @@ function DeltaIndicator({ current, previous }: { current: number; previous: numb
 export default function PaySlipTransparentModal({
   slipId, onClose,
 }: { slipId: string; onClose: () => void }) {
+  const { t } = useTranslation('payroll')
   const [tab, setTab] = useState<'detail' | 'comparison' | 'audit'>('detail')
 
   const { data, isLoading, error } = useQuery<TransparencyData>({
@@ -157,7 +160,7 @@ export default function PaySlipTransparentModal({
           <div>
             <div className="flex items-center gap-2">
               <Eye className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold">Bulletin transparent</h3>
+              <h3 className="text-lg font-semibold">{t('transparency.title')}</h3>
             </div>
             {data && (
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -165,7 +168,7 @@ export default function PaySlipTransparentModal({
                 {data.employee.jobTitle && ` · ${data.employee.jobTitle}`}
                 {' · '}
                 <span className="capitalize">{formatMonth(data.slip.month)}</span>
-                {data.employee.cnpsNumber && ` · CNPS ${data.employee.cnpsNumber}`}
+                {data.employee.cnpsNumber && ` · ${t('transparency.headerSuffixCnps', { number: data.employee.cnpsNumber })}`}
               </p>
             )}
           </div>
@@ -185,19 +188,19 @@ export default function PaySlipTransparentModal({
             {/* KPI bandeau */}
             <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-border bg-muted/20">
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Brut</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiGross')}</p>
                 <p className="text-lg font-bold font-mono mt-0.5">{formatFCFA(data.slip.grossSalary)}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">CNPS sal.</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiCnpsSal')}</p>
                 <p className="text-lg font-bold font-mono mt-0.5 text-orange-600">−{formatFCFA(data.slip.totalCnpsSal)}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">ITS</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiIts')}</p>
                 <p className="text-lg font-bold font-mono mt-0.5 text-rose-600">−{formatFCFA(data.slip.its)}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Net à payer</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiNet')}</p>
                 <p className="text-lg font-bold font-mono mt-0.5 text-green-700">{formatFCFA(data.slip.netPayable)}</p>
               </div>
             </div>
@@ -205,18 +208,18 @@ export default function PaySlipTransparentModal({
             {/* Tabs */}
             <div className="flex border-b border-border px-6 bg-card">
               {([
-                { id: 'detail',     label: 'Détail',     Icon: Calculator },
-                { id: 'comparison', label: 'Comparer',   Icon: TrendingUp },
-                { id: 'audit',      label: 'Audit',      Icon: History },
-              ] as const).map(t => (
+                { id: 'detail',     label: t('transparency.tabs.detail'),     Icon: Calculator },
+                { id: 'comparison', label: t('transparency.tabs.comparison'), Icon: TrendingUp },
+                { id: 'audit',      label: t('transparency.tabs.audit'),      Icon: History },
+              ] as const).map(tabItem => (
                 <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
+                  key={tabItem.id}
+                  onClick={() => setTab(tabItem.id)}
                   className={`px-4 py-3 text-sm font-medium flex items-center gap-2 border-b-2 -mb-px transition ${
-                    tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                    tab === tabItem.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <t.Icon className="h-4 w-4" /> {t.label}
+                  <tabItem.Icon className="h-4 w-4" /> {tabItem.label}
                 </button>
               ))}
             </div>
@@ -225,13 +228,13 @@ export default function PaySlipTransparentModal({
               {tab === 'detail' && (
                 <div className="space-y-4">
                   <p className="text-xs text-muted-foreground">
-                    Chaque ligne est dépliable. Cliquez pour voir la formule, la base, le taux et la référence légale CI.
+                    {t('transparency.detail.intro')}
                   </p>
 
                   {/* Gains */}
                   <section>
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                      Gains · {formatFCFA(data.totals.earnings)}
+                      {t('transparency.detail.earnings', { amount: formatFCFA(data.totals.earnings) })}
                     </h4>
                     <div className="space-y-2">
                       {data.lines.filter(l => l.type === 'earning').map(l => (
@@ -243,7 +246,7 @@ export default function PaySlipTransparentModal({
                   {/* Retenues salarié */}
                   <section>
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                      Retenues salarié · −{formatFCFA(data.totals.employeeContributions)}
+                      {t('transparency.detail.employeeDeductions', { amount: formatFCFA(data.totals.employeeContributions) })}
                     </h4>
                     <div className="space-y-2">
                       {data.lines.filter(l => l.type === 'employee_contribution' || l.type === 'deduction').map(l => (
@@ -256,7 +259,7 @@ export default function PaySlipTransparentModal({
                   {data.lines.some(l => l.type === 'employer_contribution') && (
                     <section>
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                        Cotisations employeur (informatif) · {formatFCFA(data.totals.employerContributions)}
+                        {t('transparency.detail.employerContributions', { amount: formatFCFA(data.totals.employerContributions) })}
                       </h4>
                       <div className="space-y-2">
                         {data.lines.filter(l => l.type === 'employer_contribution').map(l => (
@@ -269,19 +272,19 @@ export default function PaySlipTransparentModal({
                   {/* Récap final */}
                   <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
                     <div className="flex justify-between items-center mb-2 text-sm">
-                      <span>Salaire brut</span>
+                      <span>{t('transparency.detail.grossSalary')}</span>
                       <span className="font-mono">{formatFCFA(data.slip.grossSalary)}</span>
                     </div>
                     <div className="flex justify-between items-center mb-2 text-sm text-rose-700">
-                      <span>− Retenues totales</span>
+                      <span>{t('transparency.detail.totalDeductions')}</span>
                       <span className="font-mono">−{formatFCFA(data.slip.totalDeductions)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t border-primary/20 text-base font-bold">
-                      <span className="text-primary">Net à payer</span>
+                      <span className="text-primary">{t('transparency.detail.netPayable')}</span>
                       <span className="font-mono text-primary">{formatFCFA(data.slip.netPayable)}</span>
                     </div>
                     <div className="mt-3 pt-3 border-t border-primary/10 text-xs text-muted-foreground flex justify-between">
-                      <span>Coût total employeur</span>
+                      <span>{t('transparency.detail.employerCost')}</span>
                       <span className="font-mono">{formatFCFA(data.slip.employerCost)}</span>
                     </div>
                   </div>
@@ -291,27 +294,27 @@ export default function PaySlipTransparentModal({
               {tab === 'comparison' && (
                 <div className="space-y-4">
                   <p className="text-xs text-muted-foreground">
-                    Comparaison avec les bulletins précédents — détection des écarts inhabituels.
+                    {t('transparency.comparison.intro')}
                   </p>
                   {data.comparison.length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
                       <TrendingUp className="mx-auto h-8 w-8 opacity-30 mb-2" />
-                      Pas d'historique disponible pour cet employé
+                      {t('transparency.comparison.empty')}
                     </div>
                   ) : (
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-muted-foreground text-xs uppercase tracking-wider">
-                          <th className="py-2">Mois</th>
-                          <th className="py-2 text-right">Brut</th>
-                          <th className="py-2 text-right">CNPS sal.</th>
-                          <th className="py-2 text-right">ITS</th>
-                          <th className="py-2 text-right">Net</th>
+                          <th className="py-2">{t('transparency.comparison.colMonth')}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colGross')}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colCnps')}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colIts')}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colNet')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr className="border-b border-border bg-primary/5">
-                          <td className="py-2 font-semibold capitalize">{formatMonth(data.slip.month)} (actuel)</td>
+                          <td className="py-2 font-semibold capitalize">{t('transparency.comparison.current', { month: formatMonth(data.slip.month) })}</td>
                           <td className="py-2 text-right font-mono">{formatFCFA(data.slip.grossSalary)}</td>
                           <td className="py-2 text-right font-mono text-orange-600">{formatFCFA(data.slip.totalCnpsSal)}</td>
                           <td className="py-2 text-right font-mono text-rose-600">{formatFCFA(data.slip.its)}</td>
@@ -346,36 +349,36 @@ export default function PaySlipTransparentModal({
               {tab === 'audit' && (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Historique complet des actions sur ce bulletin (génération, paiement, modifications).
+                    {t('transparency.audit.intro')}
                   </p>
 
                   <div className="rounded-lg border border-border p-3 space-y-2 text-sm bg-muted/20">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Période</span>
+                      <span className="text-muted-foreground">{t('transparency.audit.period')}</span>
                       <span className="capitalize">{formatMonth(data.slip.month)} · {data.period.status}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Généré le</span>
+                      <span className="text-muted-foreground">{t('transparency.audit.generatedAt')}</span>
                       <span>{data.slip.generatedAt ? new Date(data.slip.generatedAt).toLocaleString('fr-FR') : '—'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Consulté par l'employé</span>
-                      <span>{data.slip.viewedAt ? new Date(data.slip.viewedAt).toLocaleString('fr-FR') : 'Pas encore'}</span>
+                      <span className="text-muted-foreground">{t('transparency.audit.viewedByEmployee')}</span>
+                      <span>{data.slip.viewedAt ? new Date(data.slip.viewedAt).toLocaleString('fr-FR') : t('transparency.audit.notYet')}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Paiement</span>
+                      <span className="text-muted-foreground">{t('transparency.audit.payment')}</span>
                       <span className="flex items-center gap-1">
                         {data.slip.paymentStatus === 'paid' ? (
-                          <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Payé</>
+                          <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> {t('transparency.audit.paid')}</>
                         ) : (
-                          'En attente'
+                          t('transparency.audit.pending')
                         )}
                         {data.slip.paymentMethod && ` · ${data.slip.paymentMethod.replace('_', ' ')}`}
                       </span>
                     </div>
                     {data.slip.paymentReference && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Référence</span>
+                        <span className="text-muted-foreground">{t('transparency.audit.reference')}</span>
                         <span className="font-mono text-xs">{data.slip.paymentReference}</span>
                       </div>
                     )}
@@ -383,7 +386,7 @@ export default function PaySlipTransparentModal({
 
                   {data.audit.length === 0 ? (
                     <div className="text-center text-muted-foreground py-6 text-sm">
-                      Aucun événement d'audit additionnel
+                      {t('transparency.audit.noEvents')}
                     </div>
                   ) : (
                     <ol className="space-y-2">
@@ -393,7 +396,7 @@ export default function PaySlipTransparentModal({
                           <div className="flex-1">
                             <p className="font-medium">{a.action} <span className="text-muted-foreground">· {a.entity}</span></p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {a.actorName ?? 'Système'} · {new Date(a.createdAt).toLocaleString('fr-FR')}
+                              {a.actorName ?? t('transparency.audit.system')} · {new Date(a.createdAt).toLocaleString('fr-FR')}
                             </p>
                           </div>
                         </li>

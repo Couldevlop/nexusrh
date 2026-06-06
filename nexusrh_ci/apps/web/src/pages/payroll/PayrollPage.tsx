@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -33,13 +34,15 @@ interface WorkflowState {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string; Icon: typeof Lock }> = {
-    open: { label: 'Ouverte', cls: 'bg-gray-100 text-gray-700', Icon: Clock },
-    pending_validation: { label: 'En validation', cls: 'bg-amber-100 text-amber-800', Icon: ShieldAlert },
-    closed: { label: 'Clôturée', cls: 'bg-green-100 text-green-700', Icon: CheckCircle2 },
+  const { t } = useTranslation('payroll')
+  const map: Record<string, { cls: string; Icon: typeof Lock }> = {
+    open: { cls: 'bg-gray-100 text-gray-700', Icon: Clock },
+    pending_validation: { cls: 'bg-amber-100 text-amber-800', Icon: ShieldAlert },
+    closed: { cls: 'bg-green-100 text-green-700', Icon: CheckCircle2 },
   }
   const cfg = map[status] ?? map.open
-  const { Icon, label, cls } = cfg!
+  const { Icon, cls } = cfg!
+  const label = map[status] ? t(`statuses.${status}`) : t('statuses.open')
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
       <Icon className="h-3 w-3" /> {label}
@@ -48,6 +51,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function WorkflowModal({ month, onClose }: { month: string; onClose: () => void }) {
+  const { t } = useTranslation('payroll')
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   const [notes, setNotes] = useState('')
@@ -98,10 +102,10 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
           <div>
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              Workflow de validation — {formatMonth(month)}
+              {t('workflow.title', { month: formatMonth(month) })}
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Séparation des tâches (SOX/SoD) · L'initiateur ne peut pas s'auto-approuver
+              {t('workflow.subtitle')}
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 hover:bg-accent"><X className="h-5 w-5" /></button>
@@ -117,11 +121,11 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
             <div className="rounded-lg border border-border bg-muted/30 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">Statut actuel</p>
+                  <p className="text-xs text-muted-foreground">{t('workflow.currentStatus')}</p>
                   <div className="mt-1"><StatusBadge status={data.period.status} /></div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Niveaux requis</p>
+                  <p className="text-xs text-muted-foreground">{t('workflow.requiredLevels')}</p>
                   <p className="text-xl font-bold text-primary">{data.currentLevel} / {data.requiredLevels}</p>
                 </div>
               </div>
@@ -136,7 +140,7 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
 
             {/* Timeline */}
             <div>
-              <h4 className="mb-3 text-sm font-semibold">Timeline</h4>
+              <h4 className="mb-3 text-sm font-semibold">{t('workflow.timeline')}</h4>
               <ol className="space-y-3">
                 {/* Étape 0 : Initiation */}
                 <li className="flex gap-3">
@@ -144,9 +148,9 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                     <Users className="h-4 w-4" />
                   </div>
                   <div className="flex-1 rounded-lg border border-border bg-card p-3">
-                    <p className="text-sm font-medium">Clôture initiée</p>
+                    <p className="text-sm font-medium">{t('workflow.initiated')}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {data.period.initiatorName ?? (data.period.initiatedBy ? `Utilisateur ${data.period.initiatedBy.slice(0, 8)}` : 'Inconnu')}
+                      {data.period.initiatorName ?? (data.period.initiatedBy ? t('workflow.unknownUser', { id: data.period.initiatedBy.slice(0, 8) }) : t('workflow.unknown'))}
                       {' · '}
                       {data.period.initiatedAt ? new Date(data.period.initiatedAt).toLocaleString('fr-FR') : '—'}
                     </p>
@@ -160,9 +164,9 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                       <CheckCircle2 className="h-4 w-4" />
                     </div>
                     <div className="flex-1 rounded-lg border border-green-200 bg-green-50 p-3">
-                      <p className="text-sm font-medium text-green-900">Niveau {a.level} approuvé</p>
+                      <p className="text-sm font-medium text-green-900">{t('workflow.levelApproved', { level: a.level })}</p>
                       <p className="text-xs text-green-700 mt-0.5">
-                        {a.approverName ?? `Utilisateur ${a.approverId.slice(0, 8)}`}
+                        {a.approverName ?? t('workflow.unknownUser', { id: a.approverId.slice(0, 8) })}
                         {a.approverRole ? ` (${a.approverRole})` : ''}
                         {' · '}
                         {new Date(a.approvedAt).toLocaleString('fr-FR')}
@@ -179,7 +183,7 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                       <Clock className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1 rounded-lg border border-dashed border-border p-3">
-                      <p className="text-sm text-muted-foreground">Niveau {data.currentLevel + i + 1} en attente</p>
+                      <p className="text-sm text-muted-foreground">{t('workflow.levelPending', { level: data.currentLevel + i + 1 })}</p>
                     </div>
                   </li>
                 ))}
@@ -191,7 +195,7 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                       <Lock className="h-4 w-4" />
                     </div>
                     <div className="flex-1 rounded-lg border border-green-300 bg-green-100 p-3">
-                      <p className="text-sm font-semibold text-green-900">Période clôturée définitivement</p>
+                      <p className="text-sm font-semibold text-green-900">{t('workflow.finalClosed')}</p>
                     </div>
                   </li>
                 )}
@@ -203,9 +207,9 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>
-                  {!canActOnRole && <p>Votre rôle ne permet pas la validation paie (admin ou hr_manager requis).</p>}
-                  {isInitiator && <p>Vous avez initié cette clôture — un autre approbateur doit valider (séparation des tâches).</p>}
-                  {alreadyApproved && <p>Vous avez déjà approuvé un niveau — un autre approbateur doit prendre le relais.</p>}
+                  {!canActOnRole && <p>{t('workflow.sodRoleForbidden')}</p>}
+                  {isInitiator && <p>{t('workflow.sodInitiator')}</p>}
+                  {alreadyApproved && <p>{t('workflow.sodAlreadyApproved')}</p>}
                 </div>
               </div>
             )}
@@ -213,12 +217,12 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
             {/* Actions */}
             {periodStatus === 'pending_validation' && canActOnRole && !isInitiator && !alreadyApproved && !rejectMode && (
               <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                <label className="block text-xs font-medium">Notes (optionnel)</label>
+                <label className="block text-xs font-medium">{t('workflow.notesLabel')}</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={2}
-                  placeholder="Vérifié les totaux, conforme au mois précédent…"
+                  placeholder={t('workflow.notesPlaceholder')}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
                 />
                 {approveError && (
@@ -233,13 +237,13 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                     className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   >
                     {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Approuver le niveau {data.currentLevel + 1}
+                    {t('workflow.approveLevel', { level: data.currentLevel + 1 })}
                   </button>
                   <button
                     onClick={() => setRejectMode(true)}
                     className="flex items-center gap-2 rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
                   >
-                    <XCircle className="h-4 w-4" /> Rejeter
+                    <XCircle className="h-4 w-4" /> {t('workflow.reject')}
                   </button>
                 </div>
               </div>
@@ -248,12 +252,12 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
             {/* Mode rejet */}
             {rejectMode && (
               <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-                <label className="block text-xs font-medium text-destructive">Motif du rejet (obligatoire, min. 5 caractères)</label>
+                <label className="block text-xs font-medium text-destructive">{t('workflow.rejectReasonLabel')}</label>
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   rows={3}
-                  placeholder="Ex : écart inexpliqué sur la CNPS retraite, à recalculer…"
+                  placeholder={t('workflow.rejectReasonPlaceholder')}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
                 />
                 {rejectError && (
@@ -268,13 +272,13 @@ function WorkflowModal({ month, onClose }: { month: string; onClose: () => void 
                     className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
                   >
                     {rejectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                    Confirmer le rejet (réouvre la période)
+                    {t('workflow.confirmReject')}
                   </button>
                   <button
                     onClick={() => { setRejectMode(false); setReason('') }}
                     className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent"
                   >
-                    Annuler
+                    {t('workflow.cancel')}
                   </button>
                 </div>
               </div>
@@ -300,6 +304,7 @@ function RejectionHistoryBanner({ month: _month }: { month: string }) {
 interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
 
 export default function PayrollPage() {
+  const { t } = useTranslation('payroll')
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   const tenantConfig = useAuthStore(s => s.tenantConfig)
@@ -367,15 +372,15 @@ export default function PayrollPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Paie CI — Clôture mensuelle</h1>
+          <h1 className="text-2xl font-bold">{t('page.title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Moteur CNPS 2024 + ITS/DGI · Devise : FCFA (XOF) · Workflow paramétrable (SoD)
+            {t('page.subtitle')}
           </p>
         </div>
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <ShieldAlert className="h-4 w-4" />
-            <strong>{pendingCount}</strong> période{pendingCount > 1 ? 's' : ''} en attente de validation
+            <Trans i18nKey="page.pendingBanner" ns="payroll" count={pendingCount} components={{ strong: <strong /> }} />
           </div>
         )}
       </div>
@@ -383,25 +388,24 @@ export default function PayrollPage() {
       {/* Clôture */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-1 flex items-center gap-2">
-          <Lock className="h-4 w-4" /> Initier la clôture d'une période
+          <Lock className="h-4 w-4" /> {t('close.title')}
         </h2>
         <p className="text-xs text-muted-foreground mb-4">
-          La clôture passe d'abord en <strong>« En validation »</strong>. Un autre approbateur (admin / hr_manager)
-          doit confirmer pour finaliser la période (séparation des tâches obligatoire).
+          <Trans i18nKey="close.intro" ns="payroll" components={{ strong: <strong /> }} />
         </p>
 
         <div className="flex items-end gap-3 flex-wrap">
           <div>
-            <label className="text-sm font-medium mb-1 block">Mois à clôturer</label>
+            <label className="text-sm font-medium mb-1 block">{t('close.monthLabel')}</label>
             <select
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
             >
-              <option value="">-- Sélectionner --</option>
+              <option value="">{t('close.monthPlaceholder')}</option>
               {availableMonths.map(m => (
                 <option key={m} value={m} disabled={monthIsLocked(m)}>
-                  {formatMonth(m)}{monthIsLocked(m) ? ' (verrouillée)' : ''}
+                  {formatMonth(m)}{monthIsLocked(m) ? t('close.monthLocked') : ''}
                 </option>
               ))}
             </select>
@@ -410,14 +414,14 @@ export default function PayrollPage() {
           {hasSubsidiaries && (
             <div>
               <label className="text-sm font-medium mb-1 block">
-                Filiale <span className="text-red-500">*</span>
+                {t('close.subsidiaryLabel')} <span className="text-red-500">*</span>
               </label>
               <select
                 value={selectedEntityId}
                 onChange={e => setSelectedEntityId(e.target.value)}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[200px]"
               >
-                <option value="">-- Sélectionner une filiale --</option>
+                <option value="">{t('close.subsidiaryPlaceholder')}</option>
                 {legalEntities.map(le => (
                   <option key={le.id} value={le.id}>
                     {le.name}{le.city ? ` (${le.city})` : ''}{le.cnps_number ? ` — CNPS ${le.cnps_number}` : ''}
@@ -425,7 +429,7 @@ export default function PayrollPage() {
                 ))}
               </select>
               <p className="text-xs text-muted-foreground mt-1">
-                Chaque filiale a son numéro CNPS → clôture distincte
+                {t('close.subsidiaryHint')}
               </p>
             </div>
           )}
@@ -437,13 +441,13 @@ export default function PayrollPage() {
           >
             {closeMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             <Lock className="h-4 w-4" />
-            Initier la clôture
+            {t('close.submit')}
           </button>
         </div>
 
         {closeMut.isError && (
           <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-            {(closeMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Erreur lors de la clôture'}
+            {(closeMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('close.error')}
           </div>
         )}
 
@@ -451,18 +455,18 @@ export default function PayrollPage() {
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <p className="font-medium text-amber-900 mb-2 flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />
-              {closingResult.message ?? `Période en attente de validation — ${closingResult.employeesCount ?? 0} bulletins générés`}
+              {closingResult.message ?? t('close.resultDefault', { count: closingResult.employeesCount ?? 0 })}
             </p>
             {closingResult.totals && (
               <div className="grid grid-cols-2 gap-2 text-sm text-amber-800">
-                <p>Masse brute : <strong>{formatFCFA(closingResult.totals['grossSalary'] ?? 0)}</strong></p>
-                <p>Net à payer : <strong>{formatFCFA(closingResult.totals['netPayable'] ?? 0)}</strong></p>
-                <p>CNPS : <strong>{formatFCFA(closingResult.totals['cnps'] ?? 0)}</strong></p>
-                <p>ITS : <strong>{formatFCFA(closingResult.totals['its'] ?? 0)}</strong></p>
+                <p>{t('close.resultGross')} <strong>{formatFCFA(closingResult.totals['grossSalary'] ?? 0)}</strong></p>
+                <p>{t('close.resultNet')} <strong>{formatFCFA(closingResult.totals['netPayable'] ?? 0)}</strong></p>
+                <p>{t('close.resultCnps')} <strong>{formatFCFA(closingResult.totals['cnps'] ?? 0)}</strong></p>
+                <p>{t('close.resultIts')} <strong>{formatFCFA(closingResult.totals['its'] ?? 0)}</strong></p>
               </div>
             )}
             <p className="mt-2 text-xs text-amber-700">
-              → Demandez à un autre admin/hr_manager de valider depuis le tableau ci-dessous.
+              {t('close.resultHint')}
             </p>
           </div>
         )}
@@ -471,14 +475,14 @@ export default function PayrollPage() {
       {/* Livre de paie numérique */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-4 flex items-center gap-2">
-          <BookOpen className="h-4 w-4" /> Livre de paie numérique
+          <BookOpen className="h-4 w-4" /> {t('livre.title')}
         </h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Export CSV format Inspection du Travail CI — récapitulatif annuel de tous les bulletins.
+          {t('livre.intro')}
         </p>
         <div className="flex items-end gap-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Année</label>
+            <label className="text-sm font-medium mb-1 block">{t('livre.yearLabel')}</label>
             <select value={livreYear} onChange={e => setLivreYear(e.target.value)}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
               {[0, 1, 2, 3].map(i => {
@@ -493,22 +497,22 @@ export default function PayrollPage() {
             className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
             {livreLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Exporter CSV
+            {t('livre.exportCsv')}
           </button>
         </div>
         <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
-          <span>• 20 colonnes règlementaires</span>
-          <span>• Totaux mensuels inclus</span>
-          <span>• En-tête employeur (CNPS, RCCM)</span>
-          <span>• Encodage UTF-8</span>
+          <span>{t('livre.feature1')}</span>
+          <span>{t('livre.feature2')}</span>
+          <span>{t('livre.feature3')}</span>
+          <span>{t('livre.feature4')}</span>
         </div>
       </div>
 
       {/* Historique des périodes */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="border-b border-border px-6 py-4 flex items-center justify-between">
-          <h2 className="font-semibold">Historique des périodes</h2>
-          <p className="text-xs text-muted-foreground">Cliquez sur une période en validation pour voir le workflow</p>
+          <h2 className="font-semibold">{t('history.title')}</h2>
+          <p className="text-xs text-muted-foreground">{t('history.hint')}</p>
         </div>
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
@@ -518,12 +522,12 @@ export default function PayrollPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="p-4">Période</th>
-                <th className="p-4 text-right">Brut total</th>
-                <th className="p-4 text-right">Net total</th>
-                <th className="p-4 text-right">CNPS total</th>
-                <th className="p-4 text-right">ITS total</th>
-                <th className="p-4">Statut</th>
+                <th className="p-4">{t('history.colPeriod')}</th>
+                <th className="p-4 text-right">{t('history.colGross')}</th>
+                <th className="p-4 text-right">{t('history.colNet')}</th>
+                <th className="p-4 text-right">{t('history.colCnps')}</th>
+                <th className="p-4 text-right">{t('history.colIts')}</th>
+                <th className="p-4">{t('history.colStatus')}</th>
                 <th className="p-4 text-right"></th>
               </tr>
             </thead>
@@ -536,7 +540,7 @@ export default function PayrollPage() {
                     <td className="p-4 font-medium capitalize">
                       {formatMonth(p.month)}
                       {p.rejection_reason && (
-                        <p className="mt-1 text-xs text-destructive italic">Rejetée : « {p.rejection_reason} »</p>
+                        <p className="mt-1 text-xs text-destructive italic">{t('history.rejected', { reason: p.rejection_reason })}</p>
                       )}
                     </td>
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(p.total_gross ?? '0'))}</td>
@@ -554,7 +558,7 @@ export default function PayrollPage() {
                               : 'border-border text-muted-foreground hover:bg-accent'
                           }`}
                         >
-                          {canValidate ? 'Valider' : 'Voir workflow'}
+                          {canValidate ? t('history.validate') : t('history.viewWorkflow')}
                           <ChevronRight className="h-3 w-3" />
                         </button>
                       )}
@@ -563,7 +567,7 @@ export default function PayrollPage() {
                           onClick={() => setWorkflowMonth(p.month)}
                           className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
                         >
-                          Audit <ChevronRight className="h-3 w-3" />
+                          {t('history.audit')} <ChevronRight className="h-3 w-3" />
                         </button>
                       )}
                     </td>
@@ -574,7 +578,7 @@ export default function PayrollPage() {
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     <Calculator className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    Aucune période de paie
+                    {t('history.empty')}
                   </td>
                 </tr>
               )}

@@ -1,0 +1,102 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "clients": "My clients",
+    "members": "Members",
+    "settings": "Settings",
+    "title": "Agency",
+    "subtitle": "Recruitment agency",
+    "roleOwner": "Owner",
+    "roleMember": "Recruiter",
+    "logout": "Log out"
+  },
+  "common": {
+    "loading": "Loading…",
+    "close": "Close",
+    "cancel": "Cancel",
+    "ci": "Côte d'Ivoire",
+    "ciShort": "CI",
+    "createError": "Error during creation",
+    "tempPassword": "Temporary password:",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "actingAsBanner": {
+    "actingFor": "You are acting for <0>{{tenant}}</0>",
+    "viaAgency": " via the agency <0>{{agency}}</0>",
+    "leave": "Leave"
+  },
+  "tenantSwitcher": {
+    "loading": "Loading…",
+    "empty": "No client company yet. Create one from \"My clients\".",
+    "accessDenied": "Tenant access denied"
+  },
+  "dashboard": {
+    "title": "Agency dashboard",
+    "subtitle": "Manage your client companies and your team.",
+    "clientCount": "Client companies",
+    "memberCount": "Agency members",
+    "accessClientTitle": "Access a client company",
+    "accessClientSubtitle": "Select a company to manage its human resources on its behalf."
+  },
+  "clients": {
+    "title": "My client companies",
+    "subtitle": "Companies (Côte d'Ivoire) managed by your agency.",
+    "newButton": "New company",
+    "createdTitle": "Company created ✓",
+    "adminLabel": "Admin:",
+    "tempPasswordNote": "Sent by email via your agency's address.",
+    "fields": {
+      "name": "Company name",
+      "slug": "Slug (identifier)",
+      "adminEmail": "Administrator email",
+      "city": "City",
+      "logo": "Company logo"
+    },
+    "submit": "Create company",
+    "empty": "No client company yet."
+  },
+  "members": {
+    "title": "Agency members",
+    "subtitle": "Recruiters and owners of your agency.",
+    "inviteButton": "Invite a member",
+    "createdTitle": "Member created ✓",
+    "fields": {
+      "email": "Email",
+      "role": "Role",
+      "firstName": "First name",
+      "lastName": "Last name"
+    },
+    "roleMember": "Recruiter",
+    "roleOwner": "Owner",
+    "submit": "Create member",
+    "table": {
+      "member": "Member",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status"
+    },
+    "empty": "No members."
+  },
+  "settings": {
+    "title": "Agency settings",
+    "subtitle": "Visual identity and invitation sending address.",
+    "logo": "Agency logo",
+    "fields": {
+      "name": "Agency name",
+      "city": "City",
+      "contactEmail": "Contact email",
+      "contactPhone": "Phone",
+      "primaryColor": "Primary color",
+      "senderEmail": "Sender email",
+      "senderName": "Sender name"
+    },
+    "senderSection": {
+      "title": "Invitation sending address",
+      "hint": "Login emails sent to companies YOU create will go out with this address as the sender (Reply-To)."
+    },
+    "saveError": "Error while saving",
+    "save": "Save",
+    "saved": "Saved ✓"
+  }
+}

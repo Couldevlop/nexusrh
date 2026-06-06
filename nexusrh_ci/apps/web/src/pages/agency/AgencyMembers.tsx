@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Plus, Loader2, UserCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 
@@ -9,6 +10,7 @@ interface Member {
 }
 
 export default function AgencyMembers() {
+  const { t } = useTranslation('agency')
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ email: '', firstName: '', lastName: '', role: 'agency_member' })
@@ -29,7 +31,7 @@ export default function AgencyMembers() {
     },
     onError: (err: unknown) => {
       const ax = err as { response?: { data?: { error?: string } } }
-      setError(ax.response?.data?.error ?? 'Erreur lors de la création')
+      setError(ax.response?.data?.error ?? t('common.createError'))
     },
   })
 
@@ -39,12 +41,12 @@ export default function AgencyMembers() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Membres du cabinet</h1>
-          <p className="text-sm text-muted-foreground">Recruteurs et propriétaires de votre cabinet.</p>
+          <h1 className="text-2xl font-bold">{t('members.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('members.subtitle')}</p>
         </div>
         <button onClick={() => { setShowForm((v) => !v); setResult(null) }}
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Inviter un membre
+          <Plus className="h-4 w-4" /> {t('members.inviteButton')}
         </button>
       </div>
 
@@ -52,28 +54,28 @@ export default function AgencyMembers() {
         <div className="rounded-xl border border-border bg-card p-5">
           {result ? (
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-emerald-700">Membre créé ✓</p>
-              <p className="text-sm">Mot de passe temporaire : <code className="rounded bg-muted px-2 py-0.5">{result.tempPassword}</code></p>
-              <button onClick={() => { setShowForm(false); setResult(null) }} className="mt-2 text-sm text-primary hover:underline">Fermer</button>
+              <p className="text-sm font-semibold text-emerald-700">{t('members.createdTitle')}</p>
+              <p className="text-sm">{t('common.tempPassword')} <code className="rounded bg-muted px-2 py-0.5">{result.tempPassword}</code></p>
+              <button onClick={() => { setShowForm(false); setResult(null) }} className="mt-2 text-sm text-primary hover:underline">{t('common.close')}</button>
             </div>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); create.mutate() }} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
+              <Field label={t('members.fields.email')} type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Rôle</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('members.fields.role')}</label>
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
-                  <option value="agency_member">Recruteur</option>
-                  <option value="agency_owner">Propriétaire</option>
+                  <option value="agency_member">{t('members.roleMember')}</option>
+                  <option value="agency_owner">{t('members.roleOwner')}</option>
                 </select>
               </div>
-              <Field label="Prénom" value={form.firstName} onChange={(v) => setForm({ ...form, firstName: v })} />
-              <Field label="Nom" value={form.lastName} onChange={(v) => setForm({ ...form, lastName: v })} />
+              <Field label={t('members.fields.firstName')} value={form.firstName} onChange={(v) => setForm({ ...form, firstName: v })} />
+              <Field label={t('members.fields.lastName')} value={form.lastName} onChange={(v) => setForm({ ...form, lastName: v })} />
               {error && <p className="sm:col-span-2 text-sm text-red-600">{error}</p>}
               <div className="sm:col-span-2">
                 <button type="submit" disabled={create.isPending}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60">
-                  {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Créer le membre
+                  {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {t('members.submit')}
                 </button>
               </div>
             </form>
@@ -82,23 +84,23 @@ export default function AgencyMembers() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}</div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="px-4 py-3">Membre</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Rôle</th><th className="px-4 py-3">Statut</th></tr>
+              <tr><th className="px-4 py-3">{t('members.table.member')}</th><th className="px-4 py-3">{t('members.table.email')}</th><th className="px-4 py-3">{t('members.table.role')}</th><th className="px-4 py-3">{t('members.table.status')}</th></tr>
             </thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id} className="border-t border-border">
                   <td className="px-4 py-3"><div className="flex items-center gap-2"><UserCircle className="h-5 w-5 text-muted-foreground" /> {m.first_name} {m.last_name}</div></td>
                   <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                  <td className="px-4 py-3">{m.role === 'agency_owner' ? 'Propriétaire' : 'Recruteur'}</td>
-                  <td className="px-4 py-3">{m.is_active ? <span className="text-emerald-600">Actif</span> : <span className="text-red-500">Inactif</span>}</td>
+                  <td className="px-4 py-3">{m.role === 'agency_owner' ? t('members.roleOwner') : t('members.roleMember')}</td>
+                  <td className="px-4 py-3">{m.is_active ? <span className="text-emerald-600">{t('common.active')}</span> : <span className="text-red-500">{t('common.inactive')}</span>}</td>
                 </tr>
               ))}
-              {members.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Aucun membre.</td></tr>}
+              {members.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">{t('members.empty')}</td></tr>}
             </tbody>
           </table>
         </div>

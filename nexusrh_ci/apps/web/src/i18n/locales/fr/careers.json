@@ -1,0 +1,132 @@
+{
+  "evaluationStatus": {
+    "draft": "Brouillon",
+    "in_progress": "En cours",
+    "completed": "Finalisé"
+  },
+  "evaluationType": {
+    "annual": "Annuel",
+    "trial_end": "Fin période essai",
+    "mid_year": "Mi-année",
+    "exit": "Départ"
+  },
+  "my": {
+    "heroTitle": "Mon parcours · {{name}}",
+    "heroSubtitle": "Vos entretiens, compétences, et opportunités d'évolution interne.",
+    "kpis": {
+      "evaluations": "Entretiens",
+      "lastPrefix": "Dernier : {{value}}",
+      "globalScore": "Note globale",
+      "skills": "Compétences",
+      "skillsMastered": "{{count}} maîtrisées",
+      "toDevelop": "À développer",
+      "skillsGap": "Skills gap"
+    },
+    "lastEvaluation": "Dernier entretien",
+    "byEvaluator": "par {{name}}",
+    "scoreBlocks": {
+      "global": "Global",
+      "performance": "Performance",
+      "skills": "Compétences"
+    },
+    "managerComments": "Commentaires manager",
+    "noEvaluation": "Aucun entretien enregistré pour le moment.",
+    "internalMobility": "Mobilité interne",
+    "internalOffers": {
+      "title": "Voir les offres internes",
+      "subtitle": "Postes ouverts en interne pour votre profil",
+      "cta": "Découvrir"
+    },
+    "trainingCatalog": {
+      "title": "Catalogue formations",
+      "subtitle": "Développez vos compétences",
+      "cta": "Explorer"
+    },
+    "mySkills": "Mes compétences",
+    "skillsToDevelop": "{{count}} à développer",
+    "noSkills": "Aucune compétence évaluée. Demandez à votre manager une cartographie de vos compétences.",
+    "defaultCategory": "Général",
+    "skillLevel": "Niveau {{level}}/5",
+    "skillTarget": "Cible : {{target}}",
+    "evaluationsHistory": "Historique de mes entretiens"
+  },
+  "kpiCards": {
+    "directTeam": "Équipe directe",
+    "members": "Collaborateurs",
+    "evaluationsLed": "Entretiens menés",
+    "toFinalize": "À finaliser",
+    "draftsOrInProgress": "Brouillons / en cours",
+    "averageScore": "Note moyenne",
+    "teamPerformance": "Performance équipe",
+    "totalEvaluations": "Total entretiens",
+    "tenantGlobal": "Global tenant",
+    "completionRate": "Taux complétion",
+    "finalizedCount": "{{count}} finalisés",
+    "drafts": "Brouillons",
+    "toProcess": "À traiter"
+  },
+  "hr": {
+    "heroTitleManager": "Mon équipe — Talents & Performance",
+    "heroTitleAdmin": "Carrières & Compétences",
+    "heroSubtitleManager": "Pilotez la performance et la progression de votre équipe directe. Tous les entretiens et compétences sont filtrés selon votre périmètre managérial.",
+    "heroSubtitleAdmin": "Vue d'ensemble des entretiens, scores et 9-box matrice pour tout le tenant. Identifiez les talents et planifiez la mobilité.",
+    "newEvaluation": "Nouvel entretien"
+  },
+  "team": {
+    "membersTitle": "Membres de l'équipe",
+    "membersCount": "{{count}} collaborateur(s)",
+    "evaluationCount_one": "{{count}} entretien",
+    "evaluationCount_other": "{{count}} entretiens",
+    "noEvaluation": "Aucun entretien"
+  },
+  "tabs": {
+    "evaluations": "Entretiens",
+    "nineBox": "Matrice 9-box"
+  },
+  "table": {
+    "employee": "Employé",
+    "type": "Type",
+    "evaluator": "Évaluateur",
+    "globalScore": "Score global",
+    "performance": "Performance",
+    "skills": "Compétences",
+    "status": "Statut",
+    "actions": "Actions",
+    "start": "Démarrer",
+    "finalize": "Finaliser",
+    "noEvaluations": "Aucun entretien pour {{year}}"
+  },
+  "nineBox": {
+    "intro": "Positionnement des {{count}} employé(s) évalués en {{year}} (Performance × Potentiel)",
+    "empty": "Aucun entretien finalisé pour {{year}}",
+    "axes": {
+      "performance": "Performance",
+      "potential": "Potentiel"
+    },
+    "levels": {
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé"
+    },
+    "boxes": {
+      "star": "⭐ Stars",
+      "high_perf": "🚀 Hautes performances",
+      "expert": "🎯 Experts",
+      "high_pot": "💡 Haut potentiel",
+      "core": "✅ Contributeurs clés",
+      "solid": "📊 Solides",
+      "enigma": "❓ Énigmes",
+      "inconsistent": "⚠️ Incohérents",
+      "risk": "🔴 À risque"
+    }
+  },
+  "newEvalModal": {
+    "title": "Créer un entretien",
+    "employee": "Employé *",
+    "selectEmployee": "— Sélectionner —",
+    "type": "Type",
+    "year": "Année",
+    "submit": "Créer",
+    "submitting": "Création..."
+  }
+}

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslation, Trans } from "react-i18next";
 import { api } from "@/lib/api";
 import {
   useAuthStore,
@@ -13,22 +14,24 @@ import {
   type TenantConfig,
   type AgencyConfig,
 } from "@/stores/authStore";
+import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { Loader2, Eye, EyeOff, ShieldCheck, CheckCircle } from "lucide-react";
 
 // ── Schémas Zod ──────────────────────────────────────────────────────────────
+// Les messages portent une clé i18n (namespace auth) résolue à l'affichage.
 
 const loginSchema = z.object({
-  email: z.string().email("Email invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  email: z.string().email("auth:validation.emailInvalid"),
+  password: z.string().min(1, "auth:validation.passwordRequired"),
 });
 
 const STRONG_PASSWORD = z
   .string()
-  .min(12, "Minimum 12 caractères")
-  .regex(/[A-Z]/, "Au moins une majuscule")
-  .regex(/[a-z]/, "Au moins une minuscule")
-  .regex(/[0-9]/, "Au moins un chiffre")
-  .regex(/[^A-Za-z0-9]/, "Au moins un caractère spécial (!@#$…)");
+  .min(12, "auth:validation.minChars")
+  .regex(/[A-Z]/, "auth:validation.uppercase")
+  .regex(/[a-z]/, "auth:validation.lowercase")
+  .regex(/[0-9]/, "auth:validation.digit")
+  .regex(/[^A-Za-z0-9]/, "auth:validation.special");
 
 const changeSchema = z
   .object({
@@ -36,7 +39,7 @@ const changeSchema = z
     confirmPassword: z.string(),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {
-    message: "Les mots de passe ne correspondent pas",
+    message: "auth:validation.passwordsMismatch",
     path: ["confirmPassword"],
   });
 
@@ -46,12 +49,13 @@ type ChangeForm = z.infer<typeof changeSchema>;
 // ── Indicateur de force ───────────────────────────────────────────────────────
 
 function PasswordStrength({ value }: { value: string }) {
+  const { t } = useTranslation("auth");
   const checks = [
-    { label: "12 caractères", ok: value.length >= 12 },
-    { label: "Majuscule", ok: /[A-Z]/.test(value) },
-    { label: "Minuscule", ok: /[a-z]/.test(value) },
-    { label: "Chiffre", ok: /[0-9]/.test(value) },
-    { label: "Caractère spécial", ok: /[^A-Za-z0-9]/.test(value) },
+    { label: t("strength.chars"), ok: value.length >= 12 },
+    { label: t("strength.uppercase"), ok: /[A-Z]/.test(value) },
+    { label: t("strength.lowercase"), ok: /[a-z]/.test(value) },
+    { label: t("strength.digit"), ok: /[0-9]/.test(value) },
+    { label: t("strength.special"), ok: /[^A-Za-z0-9]/.test(value) },
   ];
   const score = checks.filter((c) => c.ok).length;
   const color =
@@ -93,6 +97,7 @@ function PasswordStrength({ value }: { value: string }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function LoginPage() {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
 
@@ -215,10 +220,10 @@ export default function LoginPage() {
       const isOffline = e.response?.status === 503 && e.response?.data?.offline === true;
       setError(
         isOffline
-          ? (e.response?.data?.error ?? "Ce site est temporairement hors service.")
+          ? (e.response?.data?.error ?? t("errors.offlineFallback"))
           : isValidation
-          ? (e.response?.data?.error ?? "Format invalide")
-          : "Identifiants invalides ou compte non autorisé",
+          ? (e.response?.data?.error ?? t("errors.invalidFormat"))
+          : t("errors.invalidCredentials"),
       );
     }
   };
@@ -242,7 +247,7 @@ export default function LoginPage() {
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: string } } };
-      setError(e.response?.data?.error ?? "Code MFA invalide ou expiré");
+      setError(e.response?.data?.error ?? t("mfa.invalidCode"));
     } finally {
       setMfaSubmitting(false);
     }
@@ -279,8 +284,8 @@ export default function LoginPage() {
         loginForm.reset();
         setInfoMsg(
           forcedReason === "breached"
-            ? "Mot de passe mis à jour (l'ancien figurait dans une fuite). Reconnectez-vous."
-            : "Mot de passe mis à jour (l'ancien avait expiré). Reconnectez-vous.",
+            ? t("change.successBreached")
+            : t("change.successExpired"),
         );
         return;
       }
@@ -298,7 +303,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       setError(
-        e.response?.data?.error ?? "Erreur lors du changement de mot de passe",
+        e.response?.data?.error ?? t("change.error"),
       );
     }
   };
@@ -312,7 +317,7 @@ export default function LoginPage() {
         {/* Photo de fond */}
         <img
           src="https://images.unsplash.com/photo-1531482615713-2afd69097998?w=1200&q=80"
-          alt="Équipe professionnelle"
+          alt={t("branding.imageAlt")}
           className="absolute inset-0 h-full w-full object-cover grayscale"
         />
         {/* Overlay gradient */}
@@ -324,18 +329,18 @@ export default function LoginPage() {
           </div>
           <div>
             <h2 className="text-4xl font-black leading-tight mb-4">
-              La RH Intelligente,
+              {t("branding.heading")}
               <br />
-              au service de
+              {t("branding.headingLine2")}
               <br />
-              l'Afrique qui avance
+              {t("branding.headingLine3")}
             </h2>
             <div className="space-y-3 mb-8">
               {[
-                "Conformité CNPS & ITS/DGI native",
-                "Paiement salaires Mobile Money",
-                "Assistant IA Anthropic intégré",
-                "Multi-tenant · Multi-entreprise",
+                t("branding.feature1"),
+                t("branding.feature2"),
+                t("branding.feature3"),
+                t("branding.feature4"),
               ].map((f) => (
                 <div
                   key={f}
@@ -353,7 +358,7 @@ export default function LoginPage() {
                 className="h-7 w-auto object-contain brightness-0 invert opacity-70"
               />
               <span className="text-xs text-white/50">
-                OpenLab Consulting · Abidjan, Côte d'Ivoire
+                {t("branding.company")}
               </span>
             </div>
           </div>
@@ -361,7 +366,11 @@ export default function LoginPage() {
       </div>
 
       {/* Panel droit — formulaire */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-gray-50 lg:bg-white">
+      <div className="relative flex flex-1 flex-col items-center justify-center px-6 py-12 bg-gray-50 lg:bg-white">
+        {/* Sélecteur de langue — coin supérieur droit */}
+        <div className="absolute right-6 top-6">
+          <LanguageSwitcher />
+        </div>
         <div className="w-full max-w-md">
 
           {/* En-tête */}
@@ -376,14 +385,14 @@ export default function LoginPage() {
                   <ShieldCheck className="h-5 w-5 text-indigo-600" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-gray-900">Vérification en 2 étapes</h1>
-                  <p className="text-xs text-gray-500">Saisissez le code de votre application d'authentification</p>
+                  <h1 className="text-lg font-bold text-gray-900">{t("mfa.title")}</h1>
+                  <p className="text-xs text-gray-500">{t("mfa.subtitle")}</p>
                 </div>
               </div>
             ) : !mustChange ? (
               <>
-                <h1 className="text-2xl font-bold text-gray-900">Bienvenue</h1>
-                <p className="mt-1 text-sm text-gray-500">Connectez-vous à votre espace RH</p>
+                <h1 className="text-2xl font-bold text-gray-900">{t("login.title")}</h1>
+                <p className="mt-1 text-sm text-gray-500">{t("login.subtitle")}</p>
               </>
             ) : (
               <div className="flex items-center gap-3">
@@ -391,13 +400,13 @@ export default function LoginPage() {
                   <ShieldCheck className="h-5 w-5 text-amber-600" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-gray-900">Sécurisation du compte</h1>
+                  <h1 className="text-lg font-bold text-gray-900">{t("change.title")}</h1>
                   <p className="text-xs text-gray-500">
                     {forcedReason === "breached"
-                      ? "Mot de passe compromis (fuite de données) — changement requis"
+                      ? t("change.reasonBreached")
                       : forcedReason === "expired"
-                      ? "Mot de passe expiré — changement requis"
-                      : "Première connexion — changement requis"}
+                      ? t("change.reasonExpired")
+                      : t("change.reasonFirst")}
                   </p>
                 </div>
               </div>
@@ -407,8 +416,8 @@ export default function LoginPage() {
           {/* Site mis hors ligne pendant la session : message configuré plateforme */}
           {offlineNotice !== null && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <p className="font-semibold mb-0.5">Site hors ligne</p>
-              <p>{offlineNotice || "Ce site est temporairement hors service. Veuillez contacter votre administrateur."}</p>
+              <p className="font-semibold mb-0.5">{t("offline.title")}</p>
+              <p>{offlineNotice || t("offline.fallback")}</p>
             </div>
           )}
 
@@ -420,7 +429,7 @@ export default function LoginPage() {
               <form onSubmit={(e) => { e.preventDefault(); void onMfaVerify(); }} className="space-y-5">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Code à 6 chiffres (ou code de secours 10 caractères)
+                    {t("mfa.codeLabel")}
                   </label>
                   <input
                     autoFocus
@@ -429,11 +438,11 @@ export default function LoginPage() {
                     maxLength={10}
                     value={mfaCode}
                     onChange={(e) => setMfaCode(e.target.value)}
-                    placeholder="123 456"
+                    placeholder={t("mfa.codePlaceholder")}
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-center text-lg font-mono tracking-widest text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                   <p className="mt-1.5 text-xs text-gray-500">
-                    Le code change toutes les 30 secondes dans votre app (Google Authenticator, Authy, 1Password…)
+                    {t("mfa.codeHint")}
                   </p>
                 </div>
                 {error && (
@@ -446,14 +455,14 @@ export default function LoginPage() {
                   disabled={mfaSubmitting || mfaCode.trim().length < 6}
                   className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
                 >
-                  {mfaSubmitting ? "Vérification…" : "Valider"}
+                  {mfaSubmitting ? t("mfa.submitting") : t("mfa.submit")}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setMfaChallenge(null); setMfaCode(""); setError(null); }}
                   className="w-full text-xs text-gray-500 hover:text-gray-700"
                 >
-                  ← Annuler et revenir à la connexion
+                  {t("mfa.cancel")}
                 </button>
               </form>
             )}
@@ -468,28 +477,28 @@ export default function LoginPage() {
                 )}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Adresse email
+                    {t("login.emailLabel")}
                   </label>
                   <input
                     {...loginForm.register("email")}
                     type="email"
-                    placeholder="vous@entreprise.ci"
+                    placeholder={t("login.emailPlaceholder")}
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                   {loginForm.formState.errors.email && (
-                    <p className="mt-1.5 text-xs text-red-500">{loginForm.formState.errors.email.message}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{t(loginForm.formState.errors.email.message ?? "")}</p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Mot de passe
+                    {t("login.passwordLabel")}
                   </label>
                   <div className="relative">
                     <input
                       {...loginForm.register("password")}
                       type={showPwd ? "text" : "password"}
-                      placeholder="••••••••"
+                      placeholder={t("login.passwordPlaceholder")}
                       className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                     <button type="button" onClick={() => setShowPwd(v => !v)}
@@ -498,7 +507,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                   {loginForm.formState.errors.password && (
-                    <p className="mt-1.5 text-xs text-red-500">{loginForm.formState.errors.password.message}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{t(loginForm.formState.errors.password.message ?? "")}</p>
                   )}
                 </div>
 
@@ -512,12 +521,12 @@ export default function LoginPage() {
                 <button type="submit" disabled={loginForm.formState.isSubmitting}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.98] disabled:opacity-60">
                   {loginForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {loginForm.formState.isSubmitting ? "Connexion…" : "Se connecter"}
+                  {loginForm.formState.isSubmitting ? t("login.submitting") : t("login.submit")}
                 </button>
 
                 <div className="text-center">
                   <a href="/forgot-password" className="text-xs text-gray-500 hover:text-primary hover:underline">
-                    Mot de passe oublié ?
+                    {t("login.forgotPassword")}
                   </a>
                 </div>
               </form>
@@ -527,18 +536,18 @@ export default function LoginPage() {
             {!mfaChallenge && mustChange && (
               <form onSubmit={changeForm.handleSubmit(onChangePassword)} className="space-y-5">
                 <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
-                  Définissez un mot de passe fort : <strong>12 caractères minimum</strong>, majuscule, chiffre et caractère spécial.
+                  <Trans i18nKey="change.policyHint" ns="auth" components={{ strong: <strong /> }} />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Nouveau mot de passe
+                    {t("change.newPasswordLabel")}
                   </label>
                   <div className="relative">
                     <input
                       {...changeForm.register("newPassword")}
                       type={showNewPwd ? "text" : "password"}
-                      placeholder="Minimum 12 caractères"
+                      placeholder={t("change.newPasswordPlaceholder")}
                       className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                     <button type="button" onClick={() => setShowNewPwd(v => !v)}
@@ -548,22 +557,22 @@ export default function LoginPage() {
                   </div>
                   {pwdValue && <PasswordStrength value={pwdValue} />}
                   {changeForm.formState.errors.newPassword && (
-                    <p className="mt-1.5 text-xs text-red-500">{changeForm.formState.errors.newPassword.message}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{t(changeForm.formState.errors.newPassword.message ?? "")}</p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Confirmer
+                    {t("change.confirmLabel")}
                   </label>
                   <input
                     {...changeForm.register("confirmPassword")}
                     type="password"
-                    placeholder="••••••••••••"
+                    placeholder={t("change.confirmPlaceholder")}
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                   {changeForm.formState.errors.confirmPassword && (
-                    <p className="mt-1.5 text-xs text-red-500">{changeForm.formState.errors.confirmPassword.message}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{t(changeForm.formState.errors.confirmPassword.message ?? "")}</p>
                   )}
                 </div>
 
@@ -577,7 +586,7 @@ export default function LoginPage() {
                 <button type="submit" disabled={changeForm.formState.isSubmitting}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.98] disabled:opacity-60">
                   {changeForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {changeForm.formState.isSubmitting ? "Enregistrement…" : "Valider et accéder"}
+                  {changeForm.formState.isSubmitting ? t("change.submitting") : t("change.submit")}
                 </button>
               </form>
             )}
@@ -586,7 +595,7 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-6 flex items-center justify-center gap-2 opacity-50 hover:opacity-80 transition-opacity">
             <img src={openlabLogo} alt="OpenLab" className="h-5 w-auto object-contain" />
-            <span className="text-xs text-gray-400">OpenLab Consulting · Abidjan, Côte d'Ivoire</span>
+            <span className="text-xs text-gray-400">{t("footer.company")}</span>
           </div>
         </div>
       </div>

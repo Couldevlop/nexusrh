@@ -1,0 +1,58 @@
+{
+  "sources": {
+    "code_travail_ci": "Code du Travail CI",
+    "code_travail_ci_short": "CDT",
+    "convention_collective": "Conventions Collectives",
+    "convention_collective_short": "CC"
+  },
+  "countries": {
+    "CIV": "Côte d'Ivoire",
+    "BEN": "Bénin",
+    "TGO": "Togo",
+    "BFA": "Burkina Faso",
+    "SEN": "Sénégal",
+    "MLI": "Mali",
+    "NER": "Niger",
+    "TCD": "Tchad",
+    "NGA": "Nigeria"
+  },
+  "chips": {
+    "smig": "SMIG",
+    "preavis": "préavis",
+    "congesMaternite": "congés maternité",
+    "cnpsRetraite": "CNPS retraite",
+    "licenciement": "licenciement"
+  },
+  "sidebar": {
+    "summary": "Sommaire",
+    "noArticle": "Aucun article"
+  },
+  "tabs": {
+    "all": "Tout",
+    "codeTravail": "Code du Travail",
+    "conventions": "Conventions"
+  },
+  "header": {
+    "title": "Référentiel Juridique",
+    "titleWithCountry": "Référentiel Juridique — {{country}}",
+    "subtitle": "Code du Travail · Conventions Collectives · Recherche plein texte"
+  },
+  "subsidiary": {
+    "applicableLabel": "Articles applicables à votre filiale :",
+    "allCountries": "Tous les pays",
+    "backToMine": "Revenir au pays de ma filiale ({{country}})"
+  },
+  "search": {
+    "placeholder": "Rechercher un terme, article, rubrique paie… (⌘K)",
+    "resultCount_one": "<0>{{count}}</0> résultat pour <1>« {{query}} »</1>",
+    "resultCount_other": "<0>{{count}}</0> résultats pour <1>« {{query}} »</1>",
+    "error": "Impossible de charger les résultats — vérifiez votre connexion ou rechargez la page.",
+    "payrollBadge": "paie",
+    "noResultTitle": "Aucun résultat pour « {{query}} »",
+    "noResultHint": "Modifiez le terme ou changez le filtre de source"
+  },
+  "welcome": {
+    "title": "Référentiel Juridique Ivoirien",
+    "subtitle": "Recherchez ou naviguez dans le sommaire pour explorer le Code du Travail CI et les conventions collectives."
+  }
+}

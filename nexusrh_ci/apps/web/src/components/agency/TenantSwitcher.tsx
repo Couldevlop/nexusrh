@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Building2, ChevronRight, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore, type TenantConfig } from '@/stores/authStore'
@@ -16,6 +17,7 @@ interface ClientTenant {
  */
 export function TenantSwitcher() {
   const navigate = useNavigate()
+  const { t: tt } = useTranslation('agency')
   const activateTenant = useAuthStore((s) => s.activateTenant)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -34,19 +36,19 @@ export function TenantSwitcher() {
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { error?: string } } }
-      setError(ax.response?.data?.error ?? 'Accès au tenant refusé')
+      setError(ax.response?.data?.error ?? tt('tenantSwitcher.accessDenied'))
     } finally {
       setBusy(null)
     }
   }
 
   if (isLoading) {
-    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {tt('tenantSwitcher.loading')}</div>
   }
 
   const tenants = data?.data ?? []
   if (tenants.length === 0) {
-    return <p className="text-sm text-muted-foreground">Aucune entreprise cliente. Créez-en une depuis « Mes clients ».</p>
+    return <p className="text-sm text-muted-foreground">{tt('tenantSwitcher.empty')}</p>
   }
 
   return (
@@ -64,7 +66,7 @@ export function TenantSwitcher() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-semibold">{t.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{t.city ?? 'Côte d\'Ivoire'} · {t.plan_type}</p>
+            <p className="truncate text-xs text-muted-foreground">{t.city ?? tt('common.ci')} · {t.plan_type}</p>
           </div>
           {busy === t.id ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>

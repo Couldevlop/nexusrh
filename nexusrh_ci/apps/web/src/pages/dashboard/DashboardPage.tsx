@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -56,6 +57,7 @@ const PALETTE = ['#4F46E5', '#F97316', '#10B981', '#8B5CF6', '#EF4444', '#0EA5E9
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { t } = useTranslation('dashboard')
   const user = useAuthStore(s => s.user)
   const tenantConfig = useAuthStore(s => s.tenantConfig)
   const printRef = useRef<HTMLDivElement>(null)
@@ -108,27 +110,30 @@ export default function DashboardPage() {
 
   // Distribution masse salariale
   const paiePie = [
-    { name: 'Net versé',   value: parseInt(last?.total_net ?? '0'),  fill: '#10B981' },
-    { name: 'CNPS total',  value: parseInt(last?.total_cnps ?? '0'), fill: '#F97316' },
-    { name: 'ITS / DGI',  value: parseInt(last?.total_its  ?? '0'), fill: '#8B5CF6' },
+    { name: t('series.netPaid'),  value: parseInt(last?.total_net ?? '0'),  fill: '#10B981' },
+    { name: t('series.cnpsTotal'), value: parseInt(last?.total_cnps ?? '0'), fill: '#F97316' },
+    { name: t('series.itsDgi'),   value: parseInt(last?.total_its  ?? '0'), fill: '#8B5CF6' },
   ].filter(d => d.value > 0)
 
   // Conformité radiale (fictif si pas d'audit)
   const conformiteData = [
-    { name: 'CNPS', value: 85, fill: '#F97316' },
-    { name: 'SMIG', value: 97, fill: '#10B981' },
-    { name: 'Mobile', value: 78, fill: '#4F46E5' },
+    { name: t('compliance.cnps'), value: 85, fill: '#F97316' },
+    { name: t('compliance.smig'), value: 97, fill: '#10B981' },
+    { name: t('compliance.mobile'), value: 78, fill: '#4F46E5' },
   ]
 
   const roleLabel: Record<string, string> = {
-    admin: 'Administrateur', hr_manager: 'Responsable RH',
-    hr_officer: 'Chargé RH', manager: 'Manager', readonly: 'Lecture seule',
+    admin: t('roles.admin'), hr_manager: t('roles.hr_manager'),
+    hr_officer: t('roles.hr_officer'), manager: t('roles.manager'), readonly: t('roles.readonly'),
   }
 
   // ── Exports ────────────────────────────────────────────────────────────────
 
   const handleExportXLSX = () => {
-    const header = ['Période', 'Brut (FCFA)', 'Net (FCFA)', 'CNPS (FCFA)', 'ITS (FCFA)', 'Nb employés']
+    const header = [
+      t('export.colPeriod'), t('export.colGross'), t('export.colNet'),
+      t('export.colCnps'), t('export.colIts'), t('export.colHeadcount'),
+    ]
     const rows = periods.slice(0, 12).map(p => [
       formatMonth(p.month),
       parseInt(p.total_gross ?? '0'),
@@ -137,11 +142,11 @@ export default function DashboardPage() {
       parseInt(p.total_its ?? '0'),
       p.employee_count ?? 0,
     ])
-    const deptHeader = ['Département', 'Effectifs']
+    const deptHeader = [t('export.colDept'), t('export.colDeptHeadcount')]
     const deptRows = deptData.map(d => [d.name, d.value])
     downloadCSV(
-      [['=== TABLEAU DE BORD RH ==='], [`Société : ${tenantConfig?.name ?? ''}`],
-       [`Exporté le : ${new Date().toLocaleDateString('fr-CI')}`], [],
+      [[t('export.dashboardTitle')], [t('export.company', { name: tenantConfig?.name ?? '' })],
+       [t('export.exportedOn', { date: new Date().toLocaleDateString('fr-CI') })], [],
        header, ...rows, [], deptHeader, ...deptRows],
       `nexusrh-dashboard-${new Date().toISOString().slice(0, 10)}.csv`
     )
@@ -167,20 +172,20 @@ export default function DashboardPage() {
         {/* ── En-tête ──────────────────────────────────────────── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Tableau de bord</h1>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{t('title')}</h1>
             <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-              {tenantConfig?.name ?? 'NexusRH CI'} · {roleLabel[user?.role ?? ''] ?? user?.role}
+              {tenantConfig?.name ?? t('defaultTenant')} · {roleLabel[user?.role ?? ''] ?? user?.role}
               · {new Date().toLocaleDateString('fr-CI', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
           <div className="no-print flex items-center gap-2">
             <button onClick={handleExportXLSX}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium hover:bg-muted">
-              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" /> Excel
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" /> {t('actions.excel')}
             </button>
             <button onClick={handlePrint}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium hover:bg-muted">
-              <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" /> PDF
+              <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" /> {t('actions.pdf')}
             </button>
           </div>
         </div>
@@ -188,53 +193,53 @@ export default function DashboardPage() {
         {/* ── KPI Cards ────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard
-            label="Effectifs actifs"
+            label={t('kpi.headcount')}
             value={employees.length > 0 ? String(employees.length) : '—'}
             icon={Users} color="blue"
-            sub={`${deptData.length} départements`}
+            sub={t('kpi.headcountSub', { count: deptData.length })}
           />
           <KpiCard
-            label="Masse salariale"
+            label={t('kpi.payroll')}
             value={grossLast > 0 ? formatFCFA(grossLast) : '—'}
             icon={CreditCard} color="orange"
             trend={trend}
             sub={last ? formatMonth(last.month) : undefined}
           />
           <KpiCard
-            label="Cotisations CNPS"
+            label={t('kpi.cnps')}
             value={formatFCFA(parseInt(last?.total_cnps ?? '0'))}
             icon={ShieldCheck} color="emerald"
-            sub="Mois en cours"
+            sub={t('kpi.cnpsSub')}
           />
           <KpiCard
-            label="Absences aujourd'hui"
+            label={t('kpi.absencesToday')}
             value={String(absToday.length)}
             icon={Calendar} color="red"
-            sub={absToday.length > 0 ? `${absToday.length} employé(s) absent(s)` : 'Aucune absence'}
+            sub={absToday.length > 0 ? t('kpi.absencesTodaySub', { count: absToday.length }) : t('kpi.absencesTodayNone')}
           />
           <KpiCard
-            label="ITS / DGI"
+            label={t('kpi.its')}
             value={formatFCFA(parseInt(last?.total_its ?? '0'))}
             icon={FileText} color="violet"
-            sub="Retenues du mois"
+            sub={t('kpi.itsSub')}
           />
           <KpiCard
-            label="Net total versé"
+            label={t('kpi.netTotal')}
             value={formatFCFA(parseInt(last?.total_net ?? '0'))}
             icon={Activity} color="teal"
-            sub="Salaires nets mois"
+            sub={t('kpi.netTotalSub')}
           />
           <KpiCard
-            label="Bulletins générés"
+            label={t('kpi.payslipsGenerated')}
             value={periods.length > 0 ? String(periods.reduce((s, p) => s + (p.employee_count ?? 0), 0)) : '—'}
             icon={Briefcase} color="amber"
-            sub={`sur ${periods.length} période(s)`}
+            sub={t('kpi.payslipsGeneratedSub', { count: periods.length })}
           />
           <KpiCard
-            label="Tendance salariale"
+            label={t('kpi.payrollTrend')}
             value={trend !== 0 ? `${trend > 0 ? '+' : ''}${trend.toFixed(1)} %` : '—'}
             icon={TrendingUp} color={trend >= 0 ? 'green' : 'red'}
-            sub="vs mois précédent"
+            sub={t('kpi.payrollTrendSub')}
           />
         </div>
 
@@ -245,8 +250,8 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="font-semibold">Évolution masse salariale</h2>
-                <p className="text-xs text-muted-foreground">6 derniers mois · en milliers FCFA</p>
+                <h2 className="font-semibold">{t('charts.payrollEvolution')}</h2>
+                <p className="text-xs text-muted-foreground">{t('charts.payrollEvolutionSub')}</p>
               </div>
             </div>
             {chartData.length > 0 ? (
@@ -258,24 +263,24 @@ export default function DashboardPage() {
                     tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}M` : `${v}k`} />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number, n: string) => [`${v.toLocaleString('fr-CI')} k FCFA`, n]}
+                    formatter={(v: number, n: string) => [t('charts.tooltipThousandsFcfa', { value: v.toLocaleString('fr-CI') }), n]}
                   />
                   <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="brut" name="Brut" fill="#4F46E5" radius={[3,3,0,0]} />
-                  <Bar dataKey="net"  name="Net"  fill="#10B981" radius={[3,3,0,0]} />
-                  <Line dataKey="cnps" name="CNPS" stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} type="monotone" />
-                  <Line dataKey="its"  name="ITS"  stroke="#8B5CF6" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" type="monotone" />
+                  <Bar dataKey="brut" name={t('series.gross')} fill="#4F46E5" radius={[3,3,0,0]} />
+                  <Bar dataKey="net"  name={t('series.net')}  fill="#10B981" radius={[3,3,0,0]} />
+                  <Line dataKey="cnps" name={t('series.cnps')} stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} type="monotone" />
+                  <Line dataKey="its"  name={t('series.its')}  stroke="#8B5CF6" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" type="monotone" />
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-60 items-center justify-center text-muted-foreground text-sm">Aucune donnée</div>
+              <div className="flex h-60 items-center justify-center text-muted-foreground text-sm">{t('charts.noData')}</div>
             )}
           </div>
 
           {/* Répartition masse salariale (Pie) */}
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h2 className="font-semibold mb-1">Répartition coût employeur</h2>
-            <p className="text-xs text-muted-foreground mb-4">Dernier mois clos</p>
+            <h2 className="font-semibold mb-1">{t('charts.employerCostBreakdown')}</h2>
+            <p className="text-xs text-muted-foreground mb-4">{t('charts.employerCostBreakdownSub')}</p>
             {paiePie.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={160}>
@@ -300,7 +305,7 @@ export default function DashboardPage() {
                 </div>
               </>
             ) : (
-              <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">Aucune donnée</div>
+              <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">{t('charts.noData')}</div>
             )}
           </div>
         </div>
@@ -310,8 +315,8 @@ export default function DashboardPage() {
 
           {/* Effectifs par département */}
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h2 className="font-semibold mb-1">Effectifs par département</h2>
-            <p className="text-xs text-muted-foreground mb-4">{employees.length} employés actifs</p>
+            <h2 className="font-semibold mb-1">{t('charts.headcountByDept')}</h2>
+            <p className="text-xs text-muted-foreground mb-4">{t('charts.headcountByDeptSub', { count: employees.length })}</p>
             {deptData.length > 0 ? (
               <div className="space-y-3">
                 {deptData.map(d => (
@@ -333,14 +338,14 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">Aucune donnée</div>
+              <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">{t('charts.noData')}</div>
             )}
           </div>
 
           {/* Évolution effectifs (Area) */}
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h2 className="font-semibold mb-1">Bulletins / Effectifs</h2>
-            <p className="text-xs text-muted-foreground mb-4">6 derniers mois</p>
+            <h2 className="font-semibold mb-1">{t('charts.payslipsHeadcount')}</h2>
+            <p className="text-xs text-muted-foreground mb-4">{t('charts.payslipsHeadcountSub')}</p>
             {chartData.some(d => d.nb > 0) ? (
               <ResponsiveContainer width="100%" height={200}>
                 <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -354,18 +359,18 @@ export default function DashboardPage() {
                   <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  <Area type="monotone" dataKey="nb" name="Employés" stroke="#4F46E5" strokeWidth={2} fill="url(#gradNb)" />
+                  <Area type="monotone" dataKey="nb" name={t('series.employees')} stroke="#4F46E5" strokeWidth={2} fill="url(#gradNb)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Données indisponibles</div>
+              <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">{t('charts.unavailable')}</div>
             )}
           </div>
 
           {/* Indicateurs CNPS — barres circulaires */}
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h2 className="font-semibold mb-1">Indicateurs CNPS</h2>
-            <p className="text-xs text-muted-foreground mb-4">Taux de conformité estimés</p>
+            <h2 className="font-semibold mb-1">{t('charts.cnpsIndicators')}</h2>
+            <p className="text-xs text-muted-foreground mb-4">{t('charts.cnpsIndicatorsSub')}</p>
             <div className="space-y-4">
               {conformiteData.map(d => (
                 <div key={d.name}>
@@ -383,7 +388,7 @@ export default function DashboardPage() {
               ))}
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
-              Basé sur le dernier audit · <a href="/cnps/audit" className="text-primary hover:underline">Voir l'audit complet →</a>
+              {t('charts.cnpsIndicatorsFootnote')}<a href="/cnps/audit" className="text-primary hover:underline">{t('charts.cnpsIndicatorsAuditLink')}</a>
             </p>
           </div>
         </div>
@@ -393,24 +398,24 @@ export default function DashboardPage() {
           <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <div>
-                <h2 className="font-semibold">Périodes de paie</h2>
-                <p className="text-xs text-muted-foreground">{periods.length} période(s) disponibles</p>
+                <h2 className="font-semibold">{t('table.title')}</h2>
+                <p className="text-xs text-muted-foreground">{t('table.subtitle', { count: periods.length })}</p>
               </div>
               <button onClick={handleExportXLSX}
                 className="no-print flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border rounded-lg px-3 py-1.5">
-                <Download className="h-3.5 w-3.5" /> Exporter
+                <Download className="h-3.5 w-3.5" /> {t('actions.export')}
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 text-left text-xs text-muted-foreground uppercase tracking-wide">
-                    <th className="px-5 py-3">Période</th>
-                    <th className="px-5 py-3 text-right">Brut</th>
-                    <th className="px-5 py-3 text-right">Net versé</th>
-                    <th className="px-5 py-3 text-right">CNPS</th>
-                    <th className="px-5 py-3 text-right">ITS/DGI</th>
-                    <th className="px-5 py-3 text-right">Charge pat.</th>
+                    <th className="px-5 py-3">{t('table.period')}</th>
+                    <th className="px-5 py-3 text-right">{t('table.gross')}</th>
+                    <th className="px-5 py-3 text-right">{t('table.netPaid')}</th>
+                    <th className="px-5 py-3 text-right">{t('table.cnps')}</th>
+                    <th className="px-5 py-3 text-right">{t('table.itsDgi')}</th>
+                    <th className="px-5 py-3 text-right">{t('table.employerCharge')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -446,14 +451,14 @@ export default function DashboardPage() {
           <AlertCard
             color="orange"
             icon={AlertCircle}
-            title="Déclaration CNPS mensuelle"
-            text="Dépôt e-CNPS avant le 15 du mois suivant. Vérifiez l'onglet CNPS & DISA."
+            title={t('alerts.cnpsTitle')}
+            text={t('alerts.cnpsText')}
           />
           <AlertCard
             color="blue"
             icon={ShieldCheck}
-            title="DISA annuelle"
-            text="La Déclaration Individuelle des Salaires est due avant le 31 janvier N+1."
+            title={t('alerts.disaTitle')}
+            text={t('alerts.disaText')}
           />
         </div>
 

@@ -1,0 +1,33 @@
+{
+  "title": "Absences",
+  "requestsCount_one": "{{count}} demande",
+  "requestsCount_other": "{{count}} demande(s)",
+  "status": {
+    "submitted": "En attente",
+    "approved": "Approuvée",
+    "rejected": "Refusée"
+  },
+  "table": {
+    "employee": "Employé",
+    "type": "Type",
+    "period": "Période",
+    "days": "Jours",
+    "reason": "Motif",
+    "status": "Statut",
+    "actions": "Actions"
+  },
+  "halfDay": "½j",
+  "fullDays": "{{count}}j",
+  "noReason": "—",
+  "actions": {
+    "approve": "Approuver",
+    "reject": "Refuser"
+  },
+  "empty": "Aucune absence {{status}}",
+  "rejectModal": {
+    "title": "Motif du refus",
+    "placeholder": "Expliquer la raison du refus (optionnel)...",
+    "cancel": "Annuler",
+    "confirm": "Confirmer le refus"
+  }
+}

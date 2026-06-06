@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useTranslation, Trans } from 'react-i18next'
 import axios from 'axios'
 import { MailCheck, ArrowLeft } from 'lucide-react'
 
 const schema = z.object({
-  email: z.string().email('Email invalide').max(254),
+  email: z.string().email('auth:validation.emailInvalid').max(254),
 })
 type Form = z.infer<typeof schema>
 
@@ -19,6 +20,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
  * n'existe pas. Le message à l'utilisateur est volontairement générique.
  */
 export default function ForgotPasswordPage() {
+  const { t } = useTranslation('auth')
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Form>({
     resolver: zodResolver(schema),
   })
@@ -41,9 +43,9 @@ export default function ForgotPasswordPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-black text-sm text-primary-foreground">N</div>
             <span className="font-black text-lg">NexusRH CI</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Mot de passe oublié ?</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('forgot.title')}</h1>
           <p className="mt-2 text-sm text-gray-500">
-            Saisissez votre email, nous vous enverrons un lien pour réinitialiser votre mot de passe.
+            {t('forgot.subtitle')}
           </p>
         </div>
 
@@ -54,31 +56,30 @@ export default function ForgotPasswordPage() {
                 <MailCheck className="h-7 w-7 text-green-600" />
               </div>
               <h2 className="text-base font-semibold text-gray-900 mb-2">
-                Vérifiez votre boîte mail
+                {t('forgot.sentTitle')}
               </h2>
               <p className="text-sm text-gray-600 leading-relaxed">
-                Si un compte existe avec cet email, vous allez recevoir un lien de réinitialisation
-                dans quelques instants. <strong>Le lien est valable 15 minutes.</strong>
+                <Trans i18nKey="forgot.sentBody" ns="auth" components={{ strong: <strong /> }} />
               </p>
               <p className="mt-4 text-xs text-gray-400">
-                Pensez à vérifier vos spams si vous ne voyez rien arriver.
+                {t('forgot.sentSpam')}
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Adresse email
+                  {t('forgot.emailLabel')}
                 </label>
                 <input
                   {...register('email')}
                   type="email"
                   autoFocus
-                  placeholder="vous@entreprise.ci"
+                  placeholder={t('forgot.emailPlaceholder')}
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
                 {errors.email && (
-                  <p className="mt-1.5 text-xs text-red-500">{errors.email.message}</p>
+                  <p className="mt-1.5 text-xs text-red-500">{t(errors.email.message ?? '')}</p>
                 )}
               </div>
               <button
@@ -86,7 +87,7 @@ export default function ForgotPasswordPage() {
                 disabled={isSubmitting}
                 className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
               >
-                {isSubmitting ? 'Envoi en cours…' : 'Envoyer le lien de réinitialisation'}
+                {isSubmitting ? t('forgot.submitting') : t('forgot.submit')}
               </button>
             </form>
           )}
@@ -96,7 +97,7 @@ export default function ForgotPasswordPage() {
           to="/login"
           className="mt-6 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
         >
-          <ArrowLeft className="h-4 w-4" /> Retour à la connexion
+          <ArrowLeft className="h-4 w-4" /> {t('forgot.backToLogin')}
         </Link>
       </div>
     </div>

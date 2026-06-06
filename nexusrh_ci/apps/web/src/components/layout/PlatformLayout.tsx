@@ -1,20 +1,23 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { LayoutDashboard, Building2, LogOut, Settings, Scale, Briefcase } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
+import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import nexusrhLogo from '@/assets/NexusRH.png'
 
 const NAV = [
-  { to: '/platform/dashboard',    label: 'Tableau de bord', icon: LayoutDashboard },
-  { to: '/platform/tenants',      label: 'Tenants',          icon: Building2 },
-  { to: '/platform/agencies',     label: 'Cabinets',         icon: Briefcase },
-  { to: '/platform/legal-watch',  label: 'Veille juridique', icon: Scale, badgeKey: 'pending' },
-  { to: '/platform/settings',     label: 'Paramètres',       icon: Settings },
+  { to: '/platform/dashboard',    labelKey: 'nav.dashboard',  icon: LayoutDashboard },
+  { to: '/platform/tenants',      labelKey: 'nav.tenants',    icon: Building2 },
+  { to: '/platform/agencies',     labelKey: 'nav.agencies',   icon: Briefcase },
+  { to: '/platform/legal-watch',  labelKey: 'nav.legalWatch', icon: Scale, badgeKey: 'pending' },
+  { to: '/platform/settings',     labelKey: 'nav.settings',   icon: Settings },
 ] as const
 
 export default function PlatformLayout() {
+  const { t } = useTranslation('platform')
   const { user, logout } = useAuthStore()
   // Badge dynamique : nombre de propositions de veille juridique en attente.
   // Silencieux si endpoint indisponible (fallback 0).
@@ -34,7 +37,7 @@ export default function PlatformLayout() {
         <div className="border-b border-slate-700 p-4">
           <div className="flex flex-col gap-1.5">
             <img src={nexusrhLogo} alt="NexusRH" className="h-10 w-auto self-start object-contain" />
-            <p className="text-xs text-slate-400">Portail plateforme</p>
+            <p className="text-xs text-slate-400">{t('nav.portal')}</p>
           </div>
         </div>
 
@@ -55,7 +58,7 @@ export default function PlatformLayout() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">{t(item.labelKey)}</span>
                 {badgeCount > 0 && (
                   <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {badgeCount > 99 ? '99+' : badgeCount}
@@ -66,6 +69,11 @@ export default function PlatformLayout() {
           })}
         </nav>
 
+        {/* Langue */}
+        <div className="px-3 pb-2 flex items-center justify-center">
+          <LanguageSwitcher />
+        </div>
+
         {/* User */}
         <div className="border-t border-slate-700 p-3">
           <div className="flex items-center gap-3 rounded-md px-3 py-2">
@@ -74,9 +82,9 @@ export default function PlatformLayout() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white">{user?.firstName}</p>
-              <p className="text-xs text-slate-400">Super Admin</p>
+              <p className="text-xs text-slate-400">{t('nav.superAdmin')}</p>
             </div>
-            <button onClick={logout} className="text-slate-400 hover:text-red-400" title="Déconnexion">
+            <button onClick={logout} className="text-slate-400 hover:text-red-400" title={t('nav.logout')}>
               <LogOut className="h-4 w-4" />
             </button>
           </div>

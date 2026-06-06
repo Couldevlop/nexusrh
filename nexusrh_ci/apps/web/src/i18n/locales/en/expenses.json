@@ -1,0 +1,33 @@
+{
+  "title": "Expense reports",
+  "summary": "{{count}} report(s) · {{total}} total",
+  "status": {
+    "draft": "Draft",
+    "submitted": "Submitted",
+    "approved": "Approved",
+    "paid": "Reimbursed",
+    "rejected": "Rejected"
+  },
+  "table": {
+    "employee": "Employee",
+    "title": "Title",
+    "month": "Month",
+    "amount": "Amount",
+    "status": "Status",
+    "submittedAt": "Submission date",
+    "actions": "Actions"
+  },
+  "noDate": "—",
+  "actions": {
+    "approve": "Approve",
+    "reject": "Reject",
+    "pay": "Reimburse"
+  },
+  "empty": "No {{status}} expense report",
+  "rejectModal": {
+    "title": "Rejection reason",
+    "placeholder": "Explain the reason for rejection (optional)...",
+    "cancel": "Cancel",
+    "confirm": "Confirm rejection"
+  }
+}

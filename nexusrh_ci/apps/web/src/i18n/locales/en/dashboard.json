@@ -1,0 +1,131 @@
+{
+  "title": "Dashboard",
+  "defaultTenant": "NexusRH CI",
+  "actions": {
+    "excel": "Excel",
+    "pdf": "PDF",
+    "export": "Export"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "hr_manager": "HR Manager",
+    "hr_officer": "HR Officer",
+    "manager": "Manager",
+    "readonly": "Read-only"
+  },
+  "kpi": {
+    "headcount": "Active headcount",
+    "headcountSub": "{{count}} departments",
+    "payroll": "Payroll mass",
+    "cnps": "CNPS contributions",
+    "cnpsSub": "Current month",
+    "absencesToday": "Absences today",
+    "absencesTodaySub": "{{count}} employee(s) absent",
+    "absencesTodayNone": "No absences",
+    "its": "ITS / DGI",
+    "itsSub": "Monthly withholdings",
+    "netTotal": "Total net paid",
+    "netTotalSub": "Net salaries this month",
+    "payslipsGenerated": "Payslips generated",
+    "payslipsGeneratedSub": "over {{count}} period(s)",
+    "payrollTrend": "Payroll trend",
+    "payrollTrendSub": "vs previous month"
+  },
+  "charts": {
+    "payrollEvolution": "Payroll mass evolution",
+    "payrollEvolutionSub": "Last 6 months · in thousands FCFA",
+    "employerCostBreakdown": "Employer cost breakdown",
+    "employerCostBreakdownSub": "Last closed month",
+    "headcountByDept": "Headcount by department",
+    "headcountByDeptSub": "{{count}} active employees",
+    "payslipsHeadcount": "Payslips / Headcount",
+    "payslipsHeadcountSub": "Last 6 months",
+    "cnpsIndicators": "CNPS indicators",
+    "cnpsIndicatorsSub": "Estimated compliance rates",
+    "cnpsIndicatorsFootnote": "Based on the latest audit · ",
+    "cnpsIndicatorsAuditLink": "View full audit →",
+    "tooltipThousandsFcfa": "{{value}} k FCFA",
+    "noData": "No data",
+    "unavailable": "Data unavailable"
+  },
+  "series": {
+    "gross": "Gross",
+    "net": "Net",
+    "cnps": "CNPS",
+    "its": "ITS",
+    "netPaid": "Net paid",
+    "cnpsTotal": "Total CNPS",
+    "itsDgi": "ITS / DGI",
+    "employees": "Employees"
+  },
+  "compliance": {
+    "cnps": "CNPS",
+    "smig": "SMIG",
+    "mobile": "Mobile"
+  },
+  "table": {
+    "title": "Pay periods",
+    "subtitle": "{{count}} period(s) available",
+    "period": "Period",
+    "gross": "Gross",
+    "netPaid": "Net paid",
+    "cnps": "CNPS",
+    "itsDgi": "ITS/DGI",
+    "employerCharge": "Empl. charge"
+  },
+  "alerts": {
+    "cnpsTitle": "Monthly CNPS declaration",
+    "cnpsText": "Submit e-CNPS before the 15th of the following month. Check the CNPS & DISA tab.",
+    "disaTitle": "Annual DISA",
+    "disaText": "The Individual Salary Declaration is due before January 31 of year N+1."
+  },
+  "aiChat": {
+    "fabTitle": "CI HR AI Assistant",
+    "headerTitle": "CI HR Assistant",
+    "poweredBy": "Powered by Claude AI · {{tenant}}",
+    "limitedMode": "Limited mode",
+    "unavailableDefault": "AI unavailable. Set ANTHROPIC_API_KEY to enable the assistant.",
+    "emptyPrompt": "Ask a question about CI labor law, CNPS, ITS or payroll",
+    "writing": "Writing...",
+    "inputPlaceholder": "Your CI HR question...",
+    "inputPlaceholderUnavailable": "AI unavailable",
+    "footer": "CI Labor Code · CNPS 2024 · ITS/DGI · OHADA",
+    "error": "AI error",
+    "connectionError": "Connection error",
+    "suggestions": {
+      "admin": [
+        "How do I calculate the CI seniority bonus?",
+        "What are the steps to dismiss an employee?",
+        "How do I register a new hire with the CNPS?"
+      ],
+      "hr_manager": [
+        "What is the legal deadline for the DISA?",
+        "How do I calculate leave for 7 months of work?",
+        "What does the CI Labor Code say about night overtime?"
+      ],
+      "hr_officer": [
+        "How do I record a sick leave?",
+        "Which documents are needed for a CI fixed-term contract?",
+        "ITS calculation for a salary of 350,000 FCFA?"
+      ],
+      "manager": [
+        "How do I approve an absence on NexusRH CI?",
+        "What are my obligations toward my team?",
+        "Notice period for an employee with 3 years of seniority?"
+      ]
+    }
+  },
+  "export": {
+    "dashboardTitle": "=== HR DASHBOARD ===",
+    "company": "Company: {{name}}",
+    "exportedOn": "Exported on: {{date}}",
+    "colPeriod": "Period",
+    "colGross": "Gross (FCFA)",
+    "colNet": "Net (FCFA)",
+    "colCnps": "CNPS (FCFA)",
+    "colIts": "ITS (FCFA)",
+    "colHeadcount": "Headcount",
+    "colDept": "Department",
+    "colDeptHeadcount": "Headcount"
+  }
+}

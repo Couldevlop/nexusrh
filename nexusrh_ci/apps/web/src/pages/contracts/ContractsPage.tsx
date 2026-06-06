@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -34,39 +35,26 @@ interface Contract {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  cdi:              { label: 'CDI',              color: 'bg-green-100 text-green-700' },
-  cdd:              { label: 'CDD',              color: 'bg-blue-100 text-blue-700' },
-  saisonnier:       { label: 'Saisonnier',       color: 'bg-yellow-100 text-yellow-700' },
-  apprentissage:    { label: 'Apprentissage',    color: 'bg-purple-100 text-purple-700' },
-  stage:            { label: 'Stage',            color: 'bg-orange-100 text-orange-700' },
-  mise_a_disposition: { label: 'Mise à dispo.', color: 'bg-gray-100 text-gray-600' },
+// Couleurs uniquement : les libellés sont résolus via i18n (types.<value> /
+// statuses.<value> / typesLong.<value> / terminationReasons.<value>).
+const TYPE_COLOR: Record<string, string> = {
+  cdi:              'bg-green-100 text-green-700',
+  cdd:              'bg-blue-100 text-blue-700',
+  saisonnier:       'bg-yellow-100 text-yellow-700',
+  apprentissage:    'bg-purple-100 text-purple-700',
+  stage:            'bg-orange-100 text-orange-700',
+  mise_a_disposition: 'bg-gray-100 text-gray-600',
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  active:     { label: 'Actif',    color: 'bg-green-100 text-green-700' },
-  terminated: { label: 'Résilié', color: 'bg-red-100 text-red-700' },
-  suspended:  { label: 'Suspendu', color: 'bg-yellow-100 text-yellow-700' },
-  expired:    { label: 'Expiré',  color: 'bg-gray-100 text-gray-600' },
+const STATUS_COLOR: Record<string, string> = {
+  active:     'bg-green-100 text-green-700',
+  terminated: 'bg-red-100 text-red-700',
+  suspended:  'bg-yellow-100 text-yellow-700',
+  expired:    'bg-gray-100 text-gray-600',
 }
 
-const CONTRACT_TYPES = [
-  { value: 'cdi', label: 'CDI — Contrat à Durée Indéterminée' },
-  { value: 'cdd', label: 'CDD — Contrat à Durée Déterminée' },
-  { value: 'saisonnier', label: 'Contrat Saisonnier' },
-  { value: 'apprentissage', label: "Contrat d'Apprentissage (FDFP)" },
-  { value: 'stage', label: 'Stage Conventionné' },
-  { value: 'mise_a_disposition', label: 'Mise à Disposition' },
-]
-
-const TERMINATION_REASONS = [
-  { value: 'resignation', label: 'Démission' },
-  { value: 'dismissal', label: 'Licenciement' },
-  { value: 'conventional', label: 'Rupture conventionnelle' },
-  { value: 'end_of_cdd', label: 'Fin de CDD' },
-  { value: 'retirement', label: 'Départ en retraite' },
-  { value: 'other', label: 'Autre' },
-]
+const CONTRACT_TYPE_VALUES = ['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition'] as const
+const TERMINATION_REASON_VALUES = ['resignation', 'dismissal', 'conventional', 'end_of_cdd', 'retirement', 'other'] as const
 
 // ── Employee selector helper ──────────────────────────────────────────────────
 interface EmployeeOption { id: string; first_name: string; last_name: string; registration_number: string }
@@ -78,6 +66,8 @@ function ContractDetailModal({ contract, onClose, canManage }: {
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation('contracts')
+  const { t: tCommon } = useTranslation('common')
   const [showTerminate, setShowTerminate] = useState(false)
   const [showRenew, setShowRenew] = useState(false)
   const [terminationDate, setTerminationDate] = useState(new Date().toISOString().split('T')[0]!)
@@ -110,7 +100,7 @@ function ContractDetailModal({ contract, onClose, canManage }: {
       <div className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-xl overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div>
-            <h2 className="text-lg font-semibold">Contrat — {contract.first_name} {contract.last_name}</h2>
+            <h2 className="text-lg font-semibold">{t('detail.title', { name: `${contract.first_name} ${contract.last_name}` })}</h2>
             <p className="text-sm text-muted-foreground">{contract.registration_number}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -121,20 +111,20 @@ function ContractDetailModal({ contract, onClose, canManage }: {
         <div className="p-6 space-y-5">
           {/* Badges type + statut */}
           <div className="flex gap-2 flex-wrap">
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${TYPE_CONFIG[contract.type]?.color}`}>
-              {TYPE_CONFIG[contract.type]?.label}
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${TYPE_COLOR[contract.type]}`}>
+              {t(`types.${contract.type}`)}
             </span>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_CONFIG[contract.status]?.color}`}>
-              {STATUS_CONFIG[contract.status]?.label}
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[contract.status]}`}>
+              {t(`statuses.${contract.status}`)}
             </span>
             {contract.ohada_clause && (
               <span className="rounded-full bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-semibold">
-                Clause OHADA
+                {t('badges.ohadaClause')}
               </span>
             )}
             {contract.non_competition_clause && (
               <span className="rounded-full bg-pink-100 text-pink-700 px-3 py-1 text-xs font-semibold">
-                Non-concurrence
+                {t('badges.nonCompetition')}
               </span>
             )}
           </div>
@@ -142,49 +132,49 @@ function ContractDetailModal({ contract, onClose, canManage }: {
           {/* Grille infos */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Poste</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.jobTitle')}</p>
               <p className="font-medium">{contract.job_title ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Niveau</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.level')}</p>
               <p className="font-medium">{contract.job_level ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Salaire de base</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.baseSalary')}</p>
               <p className="font-bold text-primary">{formatFCFA(Number(contract.base_salary))}</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Heures / semaine</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.weeklyHours')}</p>
               <p className="font-medium">{contract.working_hours}h</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Date de début</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.startDate')}</p>
               <p className="font-medium">{formatDate(contract.start_date)}</p>
             </div>
             {contract.end_date && (
               <div>
-                <p className="text-muted-foreground text-xs mb-1">Date de fin</p>
+                <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.endDate')}</p>
                 <p className="font-medium">{formatDate(contract.end_date)}</p>
               </div>
             )}
             {contract.trial_end_date && (
               <div>
-                <p className="text-muted-foreground text-xs mb-1">Fin période d'essai</p>
+                <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.trialEndDate')}</p>
                 <p className="font-medium">{formatDate(contract.trial_end_date)}</p>
               </div>
             )}
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Convention collective</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.convention')}</p>
               <p className="font-medium">{contract.convention ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Télétravail</p>
-              <p className="font-medium">{contract.telecommuting_days} j/sem</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.telecommuting')}</p>
+              <p className="font-medium">{t('detail.telecommutingValue', { count: contract.telecommuting_days })}</p>
             </div>
             <div>
-              <p className="text-muted-foreground text-xs mb-1">Affiliation CNPS</p>
+              <p className="text-muted-foreground text-xs mb-1">{t('detail.fields.cnpsAffiliation')}</p>
               <p className={`font-medium ${contract.cnps_affiliation ? 'text-green-600' : 'text-red-600'}`}>
-                {contract.cnps_affiliation ? 'Oui' : 'Non'}
+                {contract.cnps_affiliation ? tCommon('labels.yes') : tCommon('labels.no')}
               </p>
             </div>
           </div>
@@ -196,24 +186,24 @@ function ContractDetailModal({ contract, onClose, canManage }: {
                 <button onClick={() => setShowRenew(true)}
                   className="flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
-                  Renouveler le CDD
+                  {t('detail.renewCdd')}
                 </button>
               )}
 
               {showRenew && (
                 <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
-                  <p className="text-sm font-medium text-blue-800">Nouvelle date de fin</p>
+                  <p className="text-sm font-medium text-blue-800">{t('detail.newEndDate')}</p>
                   <input type="date" value={newEndDate} onChange={e => setNewEndDate(e.target.value)}
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
                   <div className="flex gap-2">
                     <button onClick={() => renewMut.mutate()}
                       disabled={!newEndDate || renewMut.isPending}
                       className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                      {renewMut.isPending ? 'En cours…' : 'Confirmer le renouvellement'}
+                      {renewMut.isPending ? t('detail.inProgress') : t('detail.confirmRenewal')}
                     </button>
                     <button onClick={() => setShowRenew(false)}
                       className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-accent">
-                      Annuler
+                      {tCommon('actions.cancel')}
                     </button>
                   </div>
                 </div>
@@ -223,29 +213,29 @@ function ContractDetailModal({ contract, onClose, canManage }: {
                 <button onClick={() => setShowTerminate(true)}
                   className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 transition-colors">
                   <AlertTriangle className="h-4 w-4" />
-                  Rompre le contrat
+                  {t('detail.terminate')}
                 </button>
               )}
 
               {showTerminate && (
                 <div className="rounded-lg bg-red-50 border border-red-200 p-4 space-y-3">
-                  <p className="text-sm font-semibold text-red-800">Rupture de contrat</p>
+                  <p className="text-sm font-semibold text-red-800">{t('detail.terminationTitle')}</p>
                   <div>
-                    <label className="block text-xs font-medium text-red-700 mb-1">Motif</label>
+                    <label className="block text-xs font-medium text-red-700 mb-1">{t('detail.reason')}</label>
                     <select value={terminationReason} onChange={e => setTerminationReason(e.target.value)}
                       className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm">
-                      {TERMINATION_REASONS.map(r => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
+                      {TERMINATION_REASON_VALUES.map(r => (
+                        <option key={r} value={r}>{t(`terminationReasons.${r}`)}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-red-700 mb-1">Date effective</label>
+                    <label className="block text-xs font-medium text-red-700 mb-1">{t('detail.effectiveDate')}</label>
                     <input type="date" value={terminationDate} onChange={e => setTerminationDate(e.target.value)}
                       className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-red-700 mb-1">Commentaire (optionnel)</label>
+                    <label className="block text-xs font-medium text-red-700 mb-1">{t('detail.commentOptional')}</label>
                     <textarea value={terminationComment} onChange={e => setTerminationComment(e.target.value)}
                       rows={2} className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm resize-none" />
                   </div>
@@ -253,11 +243,11 @@ function ContractDetailModal({ contract, onClose, canManage }: {
                     <button onClick={() => terminateMut.mutate()}
                       disabled={terminateMut.isPending}
                       className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
-                      {terminateMut.isPending ? 'En cours…' : 'Confirmer la rupture'}
+                      {terminateMut.isPending ? t('detail.inProgress') : t('detail.confirmTermination')}
                     </button>
                     <button onClick={() => setShowTerminate(false)}
                       className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-accent">
-                      Annuler
+                      {tCommon('actions.cancel')}
                     </button>
                   </div>
                 </div>
@@ -273,6 +263,8 @@ function ContractDetailModal({ contract, onClose, canManage }: {
 // ── New contract form ─────────────────────────────────────────────────────────
 function NewContractModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation('contracts')
+  const { t: tCommon } = useTranslation('common')
 
   const { data: empData } = useQuery<{ data: EmployeeOption[] }>({
     queryKey: ['employees-list'],
@@ -316,7 +308,7 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-xl overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-lg font-semibold">Nouveau contrat OHADA</h2>
+          <h2 className="text-lg font-semibold">{t('new.title')}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <XCircle className="h-5 w-5" />
           </button>
@@ -325,10 +317,10 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
         <div className="p-6 space-y-4">
           {/* Employé */}
           <div>
-            <label className="block text-sm font-medium mb-1">Employé *</label>
+            <label className="block text-sm font-medium mb-1">{t('new.employee')}</label>
             <select value={form.employee_id} onChange={e => update('employee_id', e.target.value)}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-              <option value="">-- Sélectionner un employé --</option>
+              <option value="">{t('new.selectEmployee')}</option>
               {employees.map(emp => (
                 <option key={emp.id} value={emp.id}>
                   {emp.first_name} {emp.last_name} ({emp.registration_number})
@@ -340,16 +332,16 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           {/* Type + dates */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Type de contrat *</label>
+              <label className="block text-sm font-medium mb-1">{t('new.contractType')}</label>
               <select value={form.type} onChange={e => update('type', e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-                {CONTRACT_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {CONTRACT_TYPE_VALUES.map(v => (
+                  <option key={v} value={v}>{t(`typesLong.${v}`)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Date de début *</label>
+              <label className="block text-sm font-medium mb-1">{t('new.startDate')}</label>
               <input type="date" value={form.start_date} onChange={e => update('start_date', e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             </div>
@@ -358,7 +350,7 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           {/* Fin de contrat (CDD) */}
           {form.type !== 'cdi' && (
             <div>
-              <label className="block text-sm font-medium mb-1">Date de fin</label>
+              <label className="block text-sm font-medium mb-1">{t('new.endDate')}</label>
               <input type="date" value={form.end_date} onChange={e => update('end_date', e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             </div>
@@ -367,15 +359,15 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           {/* Poste + niveau */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Intitulé de poste</label>
+              <label className="block text-sm font-medium mb-1">{t('new.jobTitle')}</label>
               <input type="text" value={form.job_title} onChange={e => update('job_title', e.target.value)}
-                placeholder="Ex: Chauffeur confirmé"
+                placeholder={t('new.jobTitlePlaceholder')}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Niveau / Catégorie</label>
+              <label className="block text-sm font-medium mb-1">{t('new.level')}</label>
               <input type="text" value={form.job_level} onChange={e => update('job_level', e.target.value)}
-                placeholder="Ex: Cadre, Agent de maîtrise"
+                placeholder={t('new.levelPlaceholder')}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             </div>
           </div>
@@ -383,14 +375,14 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           {/* Salaire + heures */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Salaire brut mensuel (FCFA) *</label>
+              <label className="block text-sm font-medium mb-1">{t('new.baseSalary')}</label>
               <input type="number" value={form.base_salary} onChange={e => update('base_salary', e.target.value)}
-                placeholder="Ex: 250000"
+                placeholder={t('new.baseSalaryPlaceholder')}
                 min="60000"
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Heures / semaine</label>
+              <label className="block text-sm font-medium mb-1">{t('new.weeklyHours')}</label>
               <input type="number" value={form.working_hours} onChange={e => update('working_hours', e.target.value)}
                 min="1" max="48"
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
@@ -399,15 +391,15 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
 
           {/* Convention */}
           <div>
-            <label className="block text-sm font-medium mb-1">Convention collective</label>
+            <label className="block text-sm font-medium mb-1">{t('new.convention')}</label>
             <input type="text" value={form.convention} onChange={e => update('convention', e.target.value)}
-              placeholder="Ex: Transport urbain CI, Commerce général CI…"
+              placeholder={t('new.conventionPlaceholder')}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           </div>
 
           {/* Télétravail */}
           <div>
-            <label className="block text-sm font-medium mb-1">Jours de télétravail / semaine</label>
+            <label className="block text-sm font-medium mb-1">{t('new.telecommutingDays')}</label>
             <input type="number" value={form.telecommuting_days} onChange={e => update('telecommuting_days', e.target.value)}
               min="0" max="5"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
@@ -415,11 +407,11 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
 
           {/* Clauses */}
           <div className="rounded-lg border border-border p-4 space-y-3 bg-muted/30">
-            <p className="text-sm font-medium text-muted-foreground">Clauses OHADA</p>
+            <p className="text-sm font-medium text-muted-foreground">{t('new.clausesTitle')}</p>
             {[
-              { field: 'cnps_affiliation', label: 'Affiliation CNPS obligatoire' },
-              { field: 'ohada_clause', label: 'Clause OHADA (droit applicable)' },
-              { field: 'non_competition_clause', label: 'Clause de non-concurrence' },
+              { field: 'cnps_affiliation', label: t('new.clauses.cnpsAffiliation') },
+              { field: 'ohada_clause', label: t('new.clauses.ohadaClause') },
+              { field: 'non_competition_clause', label: t('new.clauses.nonCompetition') },
             ].map(({ field, label }) => (
               <label key={field} className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -436,7 +428,7 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           {form.base_salary && parseInt(form.base_salary) < 75000 && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-center gap-2 text-sm text-red-700">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              Le salaire doit être supérieur ou égal au SMIG (75 000 FCFA — revalorisation 2026)
+              {t('new.smigWarning')}
             </div>
           )}
 
@@ -445,11 +437,11 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
               onClick={() => createMut.mutate()}
               disabled={!form.employee_id || !form.start_date || !form.base_salary || createMut.isPending}
               className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity">
-              {createMut.isPending ? 'Création en cours…' : 'Créer le contrat'}
+              {createMut.isPending ? t('new.submitting') : t('new.submit')}
             </button>
             <button onClick={onClose}
               className="rounded-lg border border-border px-5 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent">
-              Annuler
+              {tCommon('actions.cancel')}
             </button>
           </div>
         </div>
@@ -460,6 +452,8 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ContractsPage() {
+  const { t } = useTranslation('contracts')
+  const { t: tCommon } = useTranslation('common')
   const user = useAuthStore(s => s.user)
   const canManage = ['admin', 'hr_manager'].includes(user?.role ?? '')
   const canCreate = canManage
@@ -503,17 +497,17 @@ export default function ContractsPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <FileText className="h-6 w-6 text-primary" />
-            Contrats OHADA
+            {t('title')}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestion des contrats de travail — Code du Travail CI
+            {t('subtitle')}
           </p>
         </div>
         {canCreate && (
           <button onClick={() => setShowNew(true)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity">
             <Plus className="h-4 w-4" />
-            Nouveau contrat
+            {t('newContract')}
           </button>
         )}
       </div>
@@ -521,10 +515,10 @@ export default function ContractsPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          { label: 'Contrats actifs', value: stats.total, icon: FileText, color: 'text-primary' },
-          { label: 'CDI', value: stats.cdi, icon: CheckCircle, color: 'text-green-600' },
-          { label: 'CDD', value: stats.cdd, icon: RefreshCw, color: 'text-blue-600' },
-          { label: 'Masse salariale', value: formatFCFA(stats.masseSalariale), icon: Building2, color: 'text-purple-600' },
+          { label: t('kpis.activeContracts'), value: stats.total, icon: FileText, color: 'text-primary' },
+          { label: t('kpis.cdi'), value: stats.cdi, icon: CheckCircle, color: 'text-green-600' },
+          { label: t('kpis.cdd'), value: stats.cdd, icon: RefreshCw, color: 'text-blue-600' },
+          { label: t('kpis.payroll'), value: formatFCFA(stats.masseSalariale), icon: Building2, color: 'text-purple-600' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-3">
@@ -543,7 +537,9 @@ export default function ContractsPage() {
         <div className="flex items-center gap-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
-            <strong>{stats.trialExpiringSoon} période(s) d'essai</strong> expirent dans les 15 prochains jours
+            <Trans t={t} i18nKey="trialAlert"
+              values={{ count: stats.trialExpiringSoon }}
+              components={{ strong: <strong /> }} />
           </span>
         </div>
       )}
@@ -552,9 +548,9 @@ export default function ContractsPage() {
       <div className="flex flex-wrap gap-3">
         <div className="flex gap-1.5">
           {[
-            { value: 'active', label: 'Actifs' },
-            { value: 'terminated', label: 'Résiliés' },
-            { value: 'all', label: 'Tous' },
+            { value: 'active', label: t('filters.active') },
+            { value: 'terminated', label: t('filters.terminated') },
+            { value: 'all', label: t('filters.all') },
           ].map(f => (
             <button key={f.value} onClick={() => setStatusFilter(f.value)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -573,16 +569,16 @@ export default function ContractsPage() {
                 ? 'bg-primary text-primary-foreground'
                 : 'border border-border bg-card text-muted-foreground hover:bg-accent'
             }`}>
-            Tous types
+            {t('filters.allTypes')}
           </button>
-          {CONTRACT_TYPES.map(t => (
-            <button key={t.value} onClick={() => setTypeFilter(t.value)}
+          {CONTRACT_TYPE_VALUES.map(v => (
+            <button key={v} onClick={() => setTypeFilter(v)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                typeFilter === t.value
+                typeFilter === v
                   ? 'bg-primary text-primary-foreground'
                   : 'border border-border bg-card text-muted-foreground hover:bg-accent'
               }`}>
-              {TYPE_CONFIG[t.value]?.label ?? t.label}
+              {t(`types.${v}`)}
             </button>
           ))}
         </div>
@@ -593,26 +589,26 @@ export default function ContractsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mr-2" />
-            Chargement…
+            {tCommon('messages.loading')}
           </div>
         ) : contracts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <FileText className="h-10 w-10 mb-3 opacity-30" />
-            <p className="font-medium">Aucun contrat trouvé</p>
-            <p className="text-sm mt-1">Modifiez les filtres ou créez un nouveau contrat</p>
+            <p className="font-medium">{t('empty.title')}</p>
+            <p className="text-sm mt-1">{t('empty.hint')}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-muted/30">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Employé</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Département</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Salaire brut</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Début</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fin / Essai</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.employee')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.department')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.type')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.status')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.grossSalary')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.start')}</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('table.endOrTrial')}</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t('table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -638,13 +634,13 @@ export default function ContractsPage() {
                       {contract.department_name ?? '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_CONFIG[contract.type]?.color ?? ''}`}>
-                        {TYPE_CONFIG[contract.type]?.label ?? contract.type}
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_COLOR[contract.type] ?? ''}`}>
+                        {t(`types.${contract.type}`, { defaultValue: contract.type })}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_CONFIG[contract.status]?.color ?? ''}`}>
-                        {STATUS_CONFIG[contract.status]?.label ?? contract.status}
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLOR[contract.status] ?? ''}`}>
+                        {t(`statuses.${contract.status}`, { defaultValue: contract.status })}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-medium text-primary">
@@ -656,7 +652,7 @@ export default function ContractsPage() {
                     <td className="px-4 py-3">
                       {contract.trial_end_date && contract.status === 'active' ? (
                         <span className={`text-xs ${trialAlert ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
-                          {trialAlert && '⚠ '}Essai : {formatDate(contract.trial_end_date)}
+                          {trialAlert && '⚠ '}{t('table.trialPrefix')} {formatDate(contract.trial_end_date)}
                         </span>
                       ) : contract.end_date ? (
                         <span className="text-xs text-muted-foreground">
@@ -671,7 +667,7 @@ export default function ContractsPage() {
                         <button onClick={() => setSelectedContract(contract)}
                           className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
                           <Eye className="h-3.5 w-3.5" />
-                          Voir
+                          {t('table.view')}
                         </button>
                       </div>
                     </td>
@@ -685,12 +681,12 @@ export default function ContractsPage() {
 
       {/* Info légale CI */}
       <div className="rounded-lg bg-muted/30 border border-border p-4 text-xs text-muted-foreground space-y-1">
-        <p className="font-semibold text-foreground text-sm">Code du Travail CI — Rappels</p>
-        <p>• CDD : durée max 2 ans, 2 renouvellements, délai de carence = 1/3 de la durée</p>
-        <p>• Essai CDI : 15 jours (employé) · 1 mois (cadre) — renouvelable 1 fois</p>
-        <p>• Contrat d'apprentissage : FDFP + visa Direction Emploi obligatoire</p>
-        <p>• Préavis CDI (&lt; 1 an) : 1 mois · (1–5 ans) : 2 mois · (&gt; 5 ans) : 3 mois</p>
-        <p>• SMIG mensuel : <strong>75 000 FCFA</strong> (revalorisation 2026)</p>
+        <p className="font-semibold text-foreground text-sm">{t('legal.title')}</p>
+        <p>{t('legal.line1')}</p>
+        <p>{t('legal.line2')}</p>
+        <p>{t('legal.line3')}</p>
+        <p>{t('legal.line4')}</p>
+        <p><Trans t={t} i18nKey="legal.line5" components={{ strong: <strong /> }} /></p>
       </div>
 
       {/* Modales */}

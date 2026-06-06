@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { ArrowLeft, Power, RefreshCw, AlertTriangle, Wrench } from 'lucide-react'
 import { useState } from 'react'
@@ -23,6 +24,7 @@ interface OfflinePolicySettings {
 }
 
 export default function PlatformTenantDetail() {
+  const { t } = useTranslation('platform')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -79,14 +81,21 @@ export default function PlatformTenantDetail() {
   const canRepair = resetErrStatus === 409  // schema/admin manquant → réparation possible
 
   const tenant = data?.data
-  if (isLoading) return <div className="p-6 text-center text-muted-foreground">Chargement...</div>
-  if (!tenant)   return <div className="p-6 text-center text-destructive">Tenant introuvable</div>
+  if (isLoading) return <div className="p-6 text-center text-muted-foreground">{t('common.loading')}</div>
+  if (!tenant)   return <div className="p-6 text-center text-destructive">{t('tenantDetail.notFound')}</div>
+
+  // Plan : clé technique = valeur API ; libellé traduit si connu, sinon brut.
+  const planLabel = ['trial', 'starter', 'business', 'enterprise', 'public_sector'].includes(tenant.plan_type)
+    ? t(`plans.${tenant.plan_type}`) : tenant.plan_type
+  // Statut : clé technique = valeur API ; libellé traduit si connu, sinon brut.
+  const statusLabel = ['active', 'trial', 'suspended'].includes(tenant.status)
+    ? t(`status.${tenant.status}`) : tenant.status
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <button onClick={() => navigate('/platform/tenants')}
         className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Retour aux tenants
+        <ArrowLeft className="h-4 w-4" /> {t('tenantDetail.back')}
       </button>
 
       {/* Header */}
@@ -104,7 +113,7 @@ export default function PlatformTenantDetail() {
         <div className="flex items-center gap-2">
           {tenant.has_subsidiaries && (
             <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
-              Multi-pays · {tenant.default_country_code ?? 'CIV'}
+              {t('tenantDetail.multiCountryBadge', { country: tenant.default_country_code ?? 'CIV' })}
             </span>
           )}
           <span className={`rounded-full px-3 py-1 text-xs font-medium ${
@@ -112,7 +121,7 @@ export default function PlatformTenantDetail() {
             tenant.status === 'trial'  ? 'bg-yellow-100 text-yellow-700' :
             'bg-red-100 text-red-700'
           }`}>
-            {tenant.status}
+            {statusLabel}
           </span>
         </div>
       </div>
@@ -120,16 +129,16 @@ export default function PlatformTenantDetail() {
       {/* Infos */}
       <div className="grid grid-cols-2 gap-4">
         {[
-          ['Ville', tenant.city],
-          ['Secteur', tenant.sector],
-          ['Plan', tenant.plan_type],
-          ['Taux AT CNPS', `${(parseFloat(tenant.at_rate) * 100).toFixed(1)} %`],
-          ['N° CNPS', tenant.cnps_number ?? '—'],
-          ['N° DGI', tenant.dgi_number ?? '—'],
-          ['Max utilisateurs', String(tenant.max_users)],
-          ['Max employés', String(tenant.max_employees)],
-          ['Mode paie', tenant.payroll_mode === 'multi_country' ? 'Multi-pays (centralisée)' : 'Mono-pays (CI)'],
-          ['Pays principal', tenant.default_country_code ?? 'CIV'],
+          [t('tenantDetail.info.city'), tenant.city],
+          [t('tenantDetail.info.sector'), tenant.sector],
+          [t('tenantDetail.info.plan'), planLabel],
+          [t('tenantDetail.info.atRate'), `${(parseFloat(tenant.at_rate) * 100).toFixed(1)} %`],
+          [t('tenantDetail.info.cnpsNumber'), tenant.cnps_number ?? t('tenantDetail.info.dash')],
+          [t('tenantDetail.info.dgiNumber'), tenant.dgi_number ?? t('tenantDetail.info.dash')],
+          [t('tenantDetail.info.maxUsers'), String(tenant.max_users)],
+          [t('tenantDetail.info.maxEmployees'), String(tenant.max_employees)],
+          [t('tenantDetail.info.payrollMode'), tenant.payroll_mode === 'multi_country' ? t('tenantDetail.info.payrollModeMulti') : t('tenantDetail.info.payrollModeSingle')],
+          [t('tenantDetail.info.defaultCountry'), tenant.default_country_code ?? 'CIV'],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border border-border bg-card p-3">
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -140,7 +149,7 @@ export default function PlatformTenantDetail() {
 
       {/* Toggle filiales (réactif) */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="font-semibold mb-3">Structure multi-pays</h2>
+        <h2 className="font-semibold mb-3">{t('tenantDetail.subsidiaries.title')}</h2>
         <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -152,11 +161,11 @@ export default function PlatformTenantDetail() {
             className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
           />
           <div className="flex-1">
-            <div className="text-sm font-medium">Activer la gestion multi-pays / filiales</div>
+            <div className="text-sm font-medium">{t('tenantDetail.subsidiaries.toggleLabel')}</div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {tenant.has_subsidiaries
-                ? 'Le tenant utilise des packs législatifs par pays et le workflow paie centralisé draft → RAF site → central.'
-                : 'Tenant mono-pays Côte d\'Ivoire : moteur paie CI 2024 standard, pas d\'onglet « Filiales & législations ».'}
+                ? t('tenantDetail.subsidiaries.hintOn')
+                : t('tenantDetail.subsidiaries.hintOff')}
             </p>
           </div>
         </label>
@@ -164,12 +173,12 @@ export default function PlatformTenantDetail() {
 
       {/* Actions */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="font-semibold mb-4">Actions</h2>
+        <h2 className="font-semibold mb-4">{t('tenantDetail.actions.title')}</h2>
         {tenant.status === 'suspended' && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
-            <p className="font-medium text-red-800 mb-1">Tenant hors ligne</p>
+            <p className="font-medium text-red-800 mb-1">{t('tenantDetail.actions.offlineTitle')}</p>
             <p className="text-red-700">
-              Message affiché aux utilisateurs : « {tenant.offline_message || 'Ce site est temporairement hors service. Veuillez contacter votre administrateur.'} »
+              {t('tenantDetail.actions.offlineMessageShown', { message: tenant.offline_message || t('tenantDetail.actions.defaultOfflineMessage') })}
             </p>
           </div>
         )}
@@ -183,7 +192,7 @@ export default function PlatformTenantDetail() {
               disabled={suspendMut.isPending}
               className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">
               <Power className="h-4 w-4" />
-              Mettre hors ligne
+              {t('tenantDetail.actions.setOffline')}
             </button>
           ) : (
             <button
@@ -191,7 +200,7 @@ export default function PlatformTenantDetail() {
               disabled={reactivateMut.isPending}
               className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">
               <Power className="h-4 w-4" />
-              Réactiver
+              {t('tenantDetail.actions.reactivate')}
             </button>
           )}
 
@@ -200,7 +209,7 @@ export default function PlatformTenantDetail() {
             disabled={resetMut.isPending}
             className="flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50">
             <RefreshCw className="h-4 w-4" />
-            Réinitialiser mot de passe admin
+            {t('tenantDetail.actions.resetPassword')}
           </button>
         </div>
 
@@ -210,11 +219,11 @@ export default function PlatformTenantDetail() {
           <div className="mt-4 rounded-lg border border-red-300 bg-red-50/70 p-4 text-sm space-y-3">
             <div>
               <p className="font-semibold text-red-900 mb-1 flex items-center gap-2">
-                <Power className="h-4 w-4" /> Mettre « {tenant.name} » hors ligne
+                <Power className="h-4 w-4" /> {t('tenantDetail.offlineDialog.title', { name: tenant.name })}
               </p>
               <p className="text-xs text-red-800">
-                Tous les utilisateurs du tenant (filiales incluses) seront bloqués et verront ce message.
-                {offlineRequired ? ' Le message est obligatoire (politique plateforme).' : ' Le message est facultatif.'}
+                {t('tenantDetail.offlineDialog.desc')}
+                {offlineRequired ? t('tenantDetail.offlineDialog.required') : t('tenantDetail.offlineDialog.optional')}
               </p>
             </div>
             <textarea
@@ -222,7 +231,7 @@ export default function PlatformTenantDetail() {
               onChange={(e) => setOfflineMessage(e.target.value)}
               rows={3}
               maxLength={2000}
-              placeholder="Message affiché aux utilisateurs (ex. : maintenance, suspension contractuelle…)"
+              placeholder={t('tenantDetail.offlineDialog.placeholder')}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             {suspendErrMsg && (
@@ -234,12 +243,12 @@ export default function PlatformTenantDetail() {
                 disabled={suspendMut.isPending || (offlineRequired && !offlineMessage.trim())}
                 className="flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">
                 <Power className="h-4 w-4" />
-                Confirmer la mise hors ligne
+                {t('tenantDetail.offlineDialog.confirm')}
               </button>
               <button
                 onClick={() => setShowOfflineDialog(false)}
                 className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm hover:bg-red-50">
-                Annuler
+                {t('tenantDetail.offlineDialog.cancel')}
               </button>
             </div>
           </div>
@@ -250,14 +259,14 @@ export default function PlatformTenantDetail() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-amber-900 mb-1">Réinitialisation impossible</p>
+                <p className="font-medium text-amber-900 mb-1">{t('tenantDetail.reset.errorTitle')}</p>
                 <p className="text-amber-800">{resetErrMsg}</p>
                 {canRepair && !showRepairForm && (
                   <button
                     onClick={() => setShowRepairForm(true)}
                     className="mt-3 flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800">
                     <Wrench className="h-3.5 w-3.5" />
-                    Forcer la réparation du tenant
+                    {t('tenantDetail.reset.forceRepair')}
                   </button>
                 )}
               </div>
@@ -269,26 +278,25 @@ export default function PlatformTenantDetail() {
           <div className="mt-4 rounded-lg border border-amber-400 bg-amber-50/70 p-4 text-sm space-y-3">
             <div>
               <p className="font-semibold text-amber-900 mb-1 flex items-center gap-2">
-                <Wrench className="h-4 w-4" /> Réparation du tenant
+                <Wrench className="h-4 w-4" /> {t('tenantDetail.reset.repairTitle')}
               </p>
               <p className="text-xs text-amber-800">
-                Renseignez l'email et le nom de l'administrateur. Le schéma sera (re)provisionné si absent,
-                puis l'admin sera créé/mis à jour avec un mot de passe temporaire.
+                {t('tenantDetail.reset.repairDesc')}
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input
-                type="email" required placeholder="Email admin"
+                type="email" required placeholder={t('tenantDetail.reset.emailPlaceholder')}
                 value={repairEmail} onChange={e => setRepairEmail(e.target.value)}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
               <input
-                type="text" required placeholder="Prénom"
+                type="text" required placeholder={t('tenantDetail.reset.firstNamePlaceholder')}
                 value={repairFirst} onChange={e => setRepairFirst(e.target.value)}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
               <input
-                type="text" required placeholder="Nom"
+                type="text" required placeholder={t('tenantDetail.reset.lastNamePlaceholder')}
                 value={repairLast} onChange={e => setRepairLast(e.target.value)}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
@@ -303,12 +311,12 @@ export default function PlatformTenantDetail() {
                 disabled={resetMut.isPending || !repairEmail.includes('@') || !repairFirst || !repairLast}
                 className="flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">
                 <Wrench className="h-4 w-4" />
-                Lancer la réparation
+                {t('tenantDetail.reset.launchRepair')}
               </button>
               <button
                 onClick={() => setShowRepairForm(false)}
                 className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm hover:bg-amber-50">
-                Annuler
+                {t('tenantDetail.reset.cancel')}
               </button>
             </div>
           </div>
@@ -316,29 +324,29 @@ export default function PlatformTenantDetail() {
 
         {resetResult && (
           <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm">
-            <p className="font-medium text-green-800 mb-1">Mot de passe réinitialisé</p>
-            <p>Email : <strong>{resetResult.adminEmail}</strong></p>
-            <p>Nouveau mot de passe : <code className="rounded bg-white px-1 font-mono select-all">{resetResult.tempPassword}</code></p>
-            <p className="mt-2 text-xs text-green-700">Notez ce mot de passe maintenant — il ne sera plus affiché après refresh.</p>
+            <p className="font-medium text-green-800 mb-1">{t('tenantDetail.reset.successTitle')}</p>
+            <p>{t('tenantDetail.reset.email')} <strong>{resetResult.adminEmail}</strong></p>
+            <p>{t('tenantDetail.reset.newPassword')} <code className="rounded bg-white px-1 font-mono select-all">{resetResult.tempPassword}</code></p>
+            <p className="mt-2 text-xs text-green-700">{t('tenantDetail.reset.saveNote')}</p>
           </div>
         )}
       </div>
 
       {/* Thème */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="font-semibold mb-4">Thème</h2>
+        <h2 className="font-semibold mb-4">{t('tenantDetail.theme.title')}</h2>
         <div className="flex gap-4">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg border" style={{ backgroundColor: tenant.primary_color }} />
             <div>
-              <p className="text-xs text-muted-foreground">Couleur primaire</p>
+              <p className="text-xs text-muted-foreground">{t('tenantDetail.theme.primaryColor')}</p>
               <p className="text-sm font-mono">{tenant.primary_color}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg border" style={{ backgroundColor: tenant.secondary_color }} />
             <div>
-              <p className="text-xs text-muted-foreground">Couleur secondaire</p>
+              <p className="text-xs text-muted-foreground">{t('tenantDetail.theme.secondaryColor')}</p>
               <p className="text-sm font-mono">{tenant.secondary_color}</p>
             </div>
           </div>

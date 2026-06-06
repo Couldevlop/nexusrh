@@ -1,0 +1,25 @@
+{
+  "statuses": {
+    "sent_to_sites": "À compléter",
+    "completed_by_site": "Soumise",
+    "validated_central": "Validée",
+    "closed": "Clôturée"
+  },
+  "title": "Paie de ma filiale",
+  "subtitle": "Périodes à compléter pour la (les) filiale(s) sous votre responsabilité. Saisissez les variables locales (heures supp, primes, absences) avant de soumettre.",
+  "pendingBanner_one": "<strong>{{count}}</strong> période en attente de votre soumission",
+  "pendingBanner_other": "<strong>{{count}}</strong> périodes en attente de votre soumission",
+  "colMonth": "Mois",
+  "colSubsidiary": "Filiale",
+  "colPack": "Pack législatif",
+  "colStatus": "Statut",
+  "colGross": "Masse brute",
+  "colNet": "Net à payer",
+  "colAction": "Action",
+  "loading": "Chargement…",
+  "empty": "Aucune période en attente. La RH centrale n'a pas encore initié la paie du mois ou ne vous a pas assigné de filiale.",
+  "cnpsLabel": "· CNPS {{number}}",
+  "submit": "Soumettre",
+  "submitConfirm": "Soumettre la paie {{month}} ? Les bulletins seront générés et le brouillon transmis à la direction centrale.",
+  "submitError": "Erreur lors de la soumission"
+}

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, formatDate } from '@/lib/api'
 import { BookOpen, Clock, MapPin, CheckCircle, Info } from 'lucide-react'
 
@@ -24,12 +25,11 @@ interface Enrollment {
   duration: number | null; duration_unit: string; format: string
 }
 
-const FORMAT_LABELS: Record<string, string> = {
-  presentiel: 'Présentiel', distanciel: 'Distanciel', hybride: 'Hybride',
-}
-
 export default function MaFormation() {
+  const { t } = useTranslation('monEspace')
   const [tab, setTab] = useState<'catalog' | 'enrolled'>('enrolled')
+  const formatLabel = (f: string) => t(`training.formats.${f}`, { defaultValue: f })
+  const unitLabel = (u: string) => (u === 'hours' ? t('training.unitHours') : t('training.unitDays'))
 
   const { data: catalogData } = useQuery<{ data: Training[] }>({
     queryKey: ['training-catalog-emp'],
@@ -57,17 +57,17 @@ export default function MaFormation() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Ma Formation</h1>
+        <h1 className="text-2xl font-bold">{t('training.title')}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {upcoming.length} inscription(s) à venir · {past.length} terminée(s)
+          {t('training.subtitle', { upcoming: upcoming.length, past: past.length })}
         </p>
       </div>
 
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
-        {(['enrolled', 'catalog'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            {t === 'enrolled' ? 'Mes inscriptions' : 'Catalogue & Sessions'}
+        {(['enrolled', 'catalog'] as const).map(tabKey => (
+          <button key={tabKey} onClick={() => setTab(tabKey)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === tabKey ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            {tabKey === 'enrolled' ? t('training.tabEnrolled') : t('training.tabCatalog')}
           </button>
         ))}
       </div>
@@ -77,7 +77,7 @@ export default function MaFormation() {
         <div className="space-y-4">
           {upcoming.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">À venir</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('training.upcoming')}</h2>
               <div className="grid gap-3">
                 {upcoming.map(e => (
                   <div key={e.id} className="rounded-xl border border-primary/20 bg-primary/5 p-4">
@@ -86,7 +86,7 @@ export default function MaFormation() {
                         <h3 className="font-medium">{e.training_title}</h3>
                         {e.category && <p className="text-xs text-muted-foreground">{e.category}</p>}
                       </div>
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Inscrit</span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">{t('training.enrolled')}</span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -96,8 +96,8 @@ export default function MaFormation() {
                       {e.location && (
                         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{e.location}</span>
                       )}
-                      <span>{FORMAT_LABELS[e.format] ?? e.format}</span>
-                      {e.duration && <span>{e.duration} {e.duration_unit === 'hours' ? 'h' : 'j'}</span>}
+                      <span>{formatLabel(e.format)}</span>
+                      {e.duration && <span>{e.duration} {unitLabel(e.duration_unit)}</span>}
                     </div>
                   </div>
                 ))}
@@ -107,7 +107,7 @@ export default function MaFormation() {
 
           {past.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Terminées</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('training.completed')}</h2>
               <div className="grid gap-3">
                 {past.map(e => (
                   <div key={e.id} className="rounded-xl border border-border bg-card p-4">
@@ -117,7 +117,7 @@ export default function MaFormation() {
                         <p className="text-xs text-muted-foreground">{formatDate(e.session_start)}</p>
                       </div>
                       <span className="flex items-center gap-1 text-xs font-medium text-green-700">
-                        <CheckCircle className="h-3.5 w-3.5" /> Terminée
+                        <CheckCircle className="h-3.5 w-3.5" /> {t('training.completedTag')}
                       </span>
                     </div>
                   </div>
@@ -129,10 +129,10 @@ export default function MaFormation() {
           {enrollments.length === 0 && (
             <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
               <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
-              <p className="mb-3">Aucune inscription pour le moment.</p>
+              <p className="mb-3">{t('training.noEnrollments')}</p>
               <button onClick={() => setTab('catalog')}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
-                Voir le catalogue
+                {t('training.viewCatalog')}
               </button>
             </div>
           )}
@@ -144,13 +144,13 @@ export default function MaFormation() {
         <div className="space-y-6">
           <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Les inscriptions aux formations sont gérées par votre service RH. Vous serez ajouté(e) aux sessions qui vous concernent — retrouvez-les dans « Mes inscriptions ».</span>
+            <span>{t('training.catalogInfo')}</span>
           </div>
-          <p className="text-sm text-muted-foreground">{sessions.length} session(s) planifiée(s)</p>
+          <p className="text-sm text-muted-foreground">{t('training.sessionsPlanned', { count: sessions.length })}</p>
           {sessions.length === 0 ? (
             <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
               <BookOpen className="mx-auto mb-2 h-8 w-8 opacity-30" />
-              Aucune session planifiée pour le moment.
+              {t('training.noSessions')}
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
@@ -165,7 +165,7 @@ export default function MaFormation() {
                         {s.category && <p className="text-xs text-muted-foreground">{s.category}</p>}
                       </div>
                       {isFull && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Complet</span>
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">{t('training.full')}</span>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -175,19 +175,19 @@ export default function MaFormation() {
                       {s.location && (
                         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{s.location}</span>
                       )}
-                      {s.duration && <span>{s.duration} {s.duration_unit === 'hours' ? 'h' : 'j'}</span>}
-                      <span>{FORMAT_LABELS[s.format] ?? s.format}</span>
+                      {s.duration && <span>{s.duration} {unitLabel(s.duration_unit)}</span>}
+                      <span>{formatLabel(s.format)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs">
                         <div className="h-1.5 w-24 rounded-full bg-muted">
                           <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(s.enrolled_count / s.max_places) * 100}%` }} />
                         </div>
-                        <span className="text-muted-foreground">{s.enrolled_count}/{s.max_places} places</span>
+                        <span className="text-muted-foreground">{t('training.placesCount', { enrolled: s.enrolled_count, max: s.max_places })}</span>
                       </div>
                       {isEnrolled && (
                         <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                          <CheckCircle className="h-3.5 w-3.5" /> Inscrit
+                          <CheckCircle className="h-3.5 w-3.5" /> {t('training.enrolled')}
                         </span>
                       )}
                     </div>

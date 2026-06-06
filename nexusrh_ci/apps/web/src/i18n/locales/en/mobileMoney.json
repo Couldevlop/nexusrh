@@ -1,0 +1,34 @@
+{
+  "page": {
+    "title": "Mobile Money — Salary transfers",
+    "subtitle": "Wave · MTN MoMo · Orange Money CI"
+  },
+  "campaign": {
+    "newTitle": "New transfer campaign",
+    "payMonth": "Pay month",
+    "selectMonth": "-- Select --",
+    "prepare": "Prepare campaign",
+    "networkError": "Network error",
+    "readyTitle": "Campaign ready — {{count}} transfers",
+    "total": "Total: ",
+    "moreOthers": "+ {{count}} more...",
+    "execute": "Launch transfers",
+    "cancel": "Cancel",
+    "goToPayrollHint": "Go to <strong>Payroll → Close a period</strong> for this month, then come back."
+  },
+  "history": {
+    "title": "Payment history",
+    "employee": "Employee",
+    "period": "Period",
+    "providerNumber": "Provider · Number",
+    "amount": "Amount",
+    "status": "Status",
+    "reference": "Reference",
+    "empty": "No payment recorded"
+  },
+  "status": {
+    "completed": "Successful",
+    "failed": "Failed",
+    "pending": "Pending"
+  }
+}

@@ -7,6 +7,8 @@
  * utiles). Il peut faire avancer LES étapes qui lui sont assignées.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Rocket, Loader2, FileText, PlayCircle, Link2, CheckCircle2,
   Circle, CalendarDays, UserCheck, PartyPopper,
@@ -26,20 +28,17 @@ interface MyJourney {
   steps: Step[]
 }
 
-const PHASES: Array<{ key: string; label: string; hint: string }> = [
-  { key: 'before_start',  label: 'Avant l\'arrivée',         hint: 'Tout est prêt pour vous accueillir' },
-  { key: 'day_one',       label: 'Jour J',                   hint: 'Bienvenue ! Votre première journée' },
-  { key: 'first_week',    label: 'Première semaine',         hint: 'Prise de repères et formations clés' },
-  { key: 'first_month',   label: 'Premier mois',             hint: 'Montée en compétence et feedbacks' },
-  { key: 'probation_end', label: 'Fin de période d\'essai',  hint: 'Bilan et confirmation' },
+const PHASES: Array<{ key: string; labelKey: string; hintKey: string }> = [
+  { key: 'before_start',  labelKey: 'integration.phases.beforeStart',  hintKey: 'integration.phases.beforeStartHint' },
+  { key: 'day_one',       labelKey: 'integration.phases.dayOne',       hintKey: 'integration.phases.dayOneHint' },
+  { key: 'first_week',    labelKey: 'integration.phases.firstWeek',    hintKey: 'integration.phases.firstWeekHint' },
+  { key: 'first_month',   labelKey: 'integration.phases.firstMonth',   hintKey: 'integration.phases.firstMonthHint' },
+  { key: 'probation_end', labelKey: 'integration.phases.probationEnd', hintKey: 'integration.phases.probationEndHint' },
 ]
-const OWNERS: Record<string, string> = {
-  hr: 'RH', manager: 'Votre manager', employee: 'Vous', it: 'IT', buddy: 'Votre parrain',
-}
 
-function ResourceLink({ r }: { r: Resource }) {
+function ResourceLink({ r, t }: { r: Resource; t: TFunction }) {
   const Icon = r.type === 'video' ? PlayCircle : r.type === 'link' ? Link2 : FileText
-  const label = r.type === 'video' ? 'Vidéo' : r.type === 'link' ? 'Lien' : 'Document'
+  const label = r.type === 'video' ? t('integration.resourceVideo') : r.type === 'link' ? t('integration.resourceLink') : t('integration.resourceDocument')
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
       <Icon className="h-4 w-4 text-primary shrink-0" />
@@ -47,13 +46,15 @@ function ResourceLink({ r }: { r: Resource }) {
         {r.url
           ? <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline truncate block">{r.title}</a>
           : <span className="text-sm truncate block">{r.title}</span>}
-        <span className="text-[10px] uppercase text-muted-foreground">{label}{!r.url ? ' · remis par les RH' : ''}</span>
+        <span className="text-[10px] uppercase text-muted-foreground">{label}{!r.url ? ` · ${t('integration.handedByHr')}` : ''}</span>
       </div>
     </div>
   )
 }
 
 export default function MonIntegration() {
+  const { t } = useTranslation('monEspace')
+  const ownerLabel = (role: string) => t(`integration.owners.${role}`, { defaultValue: role })
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ data: MyJourney | null }>({
     queryKey: ['my-onboarding'],
@@ -66,7 +67,7 @@ export default function MonIntegration() {
   })
 
   if (isLoading) {
-    return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+    return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('integration.loading')}</div>
   }
   const j = data?.data
   if (!j) {
@@ -74,9 +75,9 @@ export default function MonIntegration() {
       <div className="p-6">
         <div className="rounded-xl border border-border bg-card p-10 text-center">
           <Rocket className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-          <p className="font-semibold">Aucun parcours d'intégration en cours</p>
+          <p className="font-semibold">{t('integration.noJourneyTitle')}</p>
           <p className="text-sm text-muted-foreground mt-1">
-            Votre parcours apparaîtra ici dès qu'il sera lancé par les ressources humaines.
+            {t('integration.noJourneyHint')}
           </p>
         </div>
       </div>
@@ -98,16 +99,16 @@ export default function MonIntegration() {
           </div>
           <div className="flex-1 min-w-52">
             <h1 className="text-lg font-bold">
-              {pct === 100 ? 'Intégration terminée — félicitations ! 🎉' : 'Mon parcours d\'intégration'}
+              {pct === 100 ? t('integration.completedTitle') : t('integration.title')}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {j.job_title ?? ''}{j.hire_date ? ` · embauche le ${formatDate(j.hire_date)}` : ''}
-              {(j.manager_first_name || j.manager_last_name) ? ` · manager : ${j.manager_first_name ?? ''} ${j.manager_last_name ?? ''}` : ''}
+              {j.job_title ?? ''}{j.hire_date ? ` · ${t('integration.hiredOn', { date: formatDate(j.hire_date) })}` : ''}
+              {(j.manager_first_name || j.manager_last_name) ? ` · ${t('integration.manager', { name: `${j.manager_first_name ?? ''} ${j.manager_last_name ?? ''}`.trim() })}` : ''}
             </p>
           </div>
           <div className="w-full sm:w-64">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>{done}/{total} étapes</span><span>{pct}%</span>
+              <span>{t('integration.stepsProgress', { done, total })}</span><span>{pct}%</span>
             </div>
             <div className="h-2.5 rounded-full bg-muted overflow-hidden">
               <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
@@ -125,8 +126,8 @@ export default function MonIntegration() {
           <div key={phase.key} className="rounded-xl border border-border bg-card overflow-hidden">
             <div className={`px-5 py-3 border-b border-border flex items-center gap-2 ${phaseDone ? 'bg-emerald-50' : 'bg-muted/40'}`}>
               {phaseDone ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-muted-foreground" />}
-              <p className="font-semibold text-sm">{phase.label}</p>
-              <p className="text-xs text-muted-foreground hidden sm:block">— {phase.hint}</p>
+              <p className="font-semibold text-sm">{t(phase.labelKey)}</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">— {t(phase.hintKey)}</p>
             </div>
             <div className="divide-y divide-border">
               {steps.map((s) => {
@@ -140,7 +141,7 @@ export default function MonIntegration() {
                         <button
                           onClick={() => updateStep.mutate({ id: s.id, status: s.status === 'done' ? 'todo' : 'done' })}
                           disabled={updateStep.isPending}
-                          title={s.status === 'done' ? 'Marquer à refaire' : 'Marquer comme fait'}
+                          title={s.status === 'done' ? t('integration.markUndo') : t('integration.markDone')}
                           className="mt-0.5 shrink-0">
                           {s.status === 'done'
                             ? <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -158,20 +159,20 @@ export default function MonIntegration() {
                         {s.description && <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-                            <UserCheck className="h-3 w-3" />{OWNERS[s.owner_role] ?? s.owner_role}
+                            <UserCheck className="h-3 w-3" />{ownerLabel(s.owner_role)}
                           </span>
                           {s.due_date && (
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${late ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                              <CalendarDays className="h-3 w-3" />{formatDate(s.due_date)}{late ? ' · en retard' : ''}
+                              <CalendarDays className="h-3 w-3" />{formatDate(s.due_date)}{late ? ` · ${t('integration.late')}` : ''}
                             </span>
                           )}
                           {s.status === 'in_progress' && (
-                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">En cours</span>
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">{t('integration.inProgress')}</span>
                           )}
                         </div>
                         {(s.resources ?? []).length > 0 && (
                           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {s.resources.map((r, i) => <ResourceLink key={i} r={r} />)}
+                            {s.resources.map((r, i) => <ResourceLink key={i} r={r} t={t} />)}
                           </div>
                         )}
                       </div>

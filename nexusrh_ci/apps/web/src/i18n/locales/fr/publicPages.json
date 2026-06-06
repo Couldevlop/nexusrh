@@ -1,0 +1,68 @@
+{
+  "contractTypes": {
+    "cdi": "CDI",
+    "cdd": "CDD",
+    "stage": "Stage",
+    "freelance": "Freelance",
+    "apprentissage": "Apprentissage",
+    "interim": "Intérim"
+  },
+  "salary": {
+    "from": "À partir de {{value}}",
+    "upTo": "Jusqu'à {{value}}"
+  },
+  "timeAgo": {
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "days": "Il y a {{count}} jours",
+    "weeks_one": "Il y a {{count}} semaine",
+    "weeks_other": "Il y a {{count}} semaines",
+    "months_one": "Il y a {{count}} mois",
+    "months_other": "Il y a {{count}} mois"
+  },
+  "error": {
+    "notFoundTitle": "Entreprise introuvable",
+    "notFoundText": "Cette page carrières n'existe pas ou n'est plus disponible."
+  },
+  "hero": {
+    "title": "Nos offres d'emploi",
+    "openPositions_one": "{{count}} poste ouvert",
+    "openPositions_other": "{{count}} postes ouverts",
+    "searchPlaceholder": "Rechercher un poste..."
+  },
+  "list": {
+    "empty": "Aucune offre ne correspond à votre recherche."
+  },
+  "footer": {
+    "poweredBy": "Propulsé par <brand>NexusRH CI</brand>"
+  },
+  "card": {
+    "viewOffer": "Voir l'offre"
+  },
+  "detail": {
+    "jobDescription": "Description du poste",
+    "profileSought": "Profil recherché",
+    "benefits": "Avantages",
+    "recruitmentProcess": "Processus de recrutement",
+    "apply": "Postuler"
+  },
+  "apply": {
+    "title": "Postuler — {{title}}",
+    "firstName": "Prénom *",
+    "lastName": "Nom *",
+    "email": "Email *",
+    "phone": "Téléphone",
+    "expectedSalary": "Prétention salariale (FCFA)",
+    "cvLabel": "CV (PDF, DOC, DOCX ou TXT — max 5 Mo)",
+    "chooseFile": "Choisir un fichier…",
+    "coverLetter": "Lettre de motivation",
+    "cvTooLarge": "CV trop volumineux (max 5 Mo).",
+    "genericError": "Une erreur est survenue. Réessayez.",
+    "submit": "Envoyer ma candidature",
+    "successTitle": "Candidature envoyée !",
+    "successText": "Merci. Nous étudierons votre profil et reviendrons vers vous si votre candidature est retenue."
+  },
+  "common": {
+    "close": "Fermer"
+  }
+}

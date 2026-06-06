@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState, useEffect } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
+import i18n from '@/i18n'
 import { api, formatFCFA } from '@/lib/api'
 import {
   EXPERIENCE_OPTIONS, JOB_LEVEL_OPTIONS, WORK_MODE_OPTIONS,
@@ -72,30 +74,32 @@ const STATUS_COLORS: Record<string, string> = {
   paused: 'bg-yellow-100 text-yellow-700',
 }
 
-const VISIBILITY_CONFIG: Record<string, { label: string; color: string; icon: typeof Globe }> = {
-  external: { label: 'Externe',       color: 'bg-blue-100 text-blue-700',     icon: Globe },
-  internal: { label: 'Interne',       color: 'bg-purple-100 text-purple-700', icon: Lock },
-  both:     { label: 'Mixte',         color: 'bg-teal-100 text-teal-700',     icon: Eye  },
+// Couleurs/icônes uniquement — les libellés sont résolus via i18n au rendu
+// (clé technique = valeur API, libellé traduit).
+const VISIBILITY_CONFIG: Record<string, { color: string; icon: typeof Globe }> = {
+  external: { color: 'bg-blue-100 text-blue-700',     icon: Globe },
+  internal: { color: 'bg-purple-100 text-purple-700', icon: Lock },
+  both:     { color: 'bg-teal-100 text-teal-700',     icon: Eye  },
 }
+const visibilityLabel = (v: string) =>
+  i18n.exists(`recruitment:visibility.${v}`) ? i18n.t(`recruitment:visibility.${v}`) : v
 
-const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  new:        { label: 'Nouveau',     color: 'bg-blue-100 text-blue-700' },
-  screening:  { label: 'Présélection', color: 'bg-purple-100 text-purple-700' },
-  interview:  { label: 'Entretien',   color: 'bg-yellow-100 text-yellow-700' },
-  test:       { label: 'Test',        color: 'bg-orange-100 text-orange-700' },
-  offer:      { label: 'Offre',       color: 'bg-indigo-100 text-indigo-700' },
-  hired:      { label: 'Recruté',     color: 'bg-green-100 text-green-700' },
-  rejected:   { label: 'Rejeté',      color: 'bg-red-100 text-red-700' },
+const STAGE_COLORS: Record<string, string> = {
+  new:        'bg-blue-100 text-blue-700',
+  screening:  'bg-purple-100 text-purple-700',
+  interview:  'bg-yellow-100 text-yellow-700',
+  test:       'bg-orange-100 text-orange-700',
+  offer:      'bg-indigo-100 text-indigo-700',
+  hired:      'bg-green-100 text-green-700',
+  rejected:   'bg-red-100 text-red-700',
 }
+const stageLabel = (s: string) =>
+  i18n.exists(`recruitment:stage.${s}`) ? i18n.t(`recruitment:stage.${s}`) : s
 
 const PIPELINE_STAGES = ['new','screening','interview','test','offer','hired','rejected']
 const JOB_LEVELS = ['cadre', 'agent_maitrise', 'employe', 'ouvrier']
-const JOB_LEVEL_LABELS: Record<string, string> = {
-  cadre:          'Cadre',
-  agent_maitrise: 'Agent de maîtrise',
-  employe:        'Employé',
-  ouvrier:        'Ouvrier',
-}
+const jobLevelLabel = (lvl: string) =>
+  i18n.exists(`recruitment:jobLevel.${lvl}`) ? i18n.t(`recruitment:jobLevel.${lvl}`) : lvl
 
 const REC_COLORS: Record<string, string> = {
   strong_yes: 'bg-green-100 text-green-800',
@@ -103,12 +107,8 @@ const REC_COLORS: Record<string, string> = {
   maybe:      'bg-yellow-100 text-yellow-800',
   no:         'bg-red-100 text-red-800',
 }
-const REC_LABELS: Record<string, string> = {
-  strong_yes: 'Très favorable',
-  yes:        'Favorable',
-  maybe:      'À étudier',
-  no:         'Défavorable',
-}
+const recLabel = (r: string) =>
+  i18n.exists(`recruitment:recommendation.${r}`) ? i18n.t(`recruitment:recommendation.${r}`) : r
 
 interface NewJobForm {
   title: string
@@ -148,6 +148,7 @@ const EMPTY_FORM: NewJobForm = {
 }
 
 export default function RecruitmentPage() {
+  const { t } = useTranslation('recruitment')
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<'jobs' | 'pipeline' | 'ai-sourcing'>('jobs')
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
@@ -299,23 +300,23 @@ export default function RecruitmentPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Recrutement</h1>
-          <p className="text-sm text-muted-foreground mt-1">{jobs.length} offre(s) · {applications.length} candidature(s)</p>
+          <h1 className="text-2xl font-bold">{t('header.title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('header.subtitle', { jobs: jobs.length, applications: applications.length })}</p>
         </div>
         <button
           onClick={() => setShowNewJob(true)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
-          <Plus className="h-4 w-4" /> Nouvelle offre
+          <Plus className="h-4 w-4" /> {t('header.newJob')}
         </button>
       </div>
 
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
-        {(['jobs', 'pipeline', 'ai-sourcing'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            {t === 'ai-sourcing' && <Sparkles className="h-3.5 w-3.5" />}
-            {t === 'jobs' ? 'Offres' : t === 'pipeline' ? 'Pipeline Kanban' : 'Sourcing IA'}
+        {(['jobs', 'pipeline', 'ai-sourcing'] as const).map(tabKey => (
+          <button key={tabKey} onClick={() => setTab(tabKey)}
+            className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === tabKey ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            {tabKey === 'ai-sourcing' && <Sparkles className="h-3.5 w-3.5" />}
+            {tabKey === 'jobs' ? t('tabs.jobs') : tabKey === 'pipeline' ? t('tabs.pipeline') : t('tabs.aiSourcing')}
           </button>
         ))}
       </div>
@@ -335,8 +336,8 @@ export default function RecruitmentPage() {
           closed: jobs.filter(j => j.status !== 'open').length,
         }
         const FILTER_LABELS = {
-          all: 'Toutes', external: 'Externes', internal: 'Internes',
-          both: 'Mixtes', closed: 'Fermées',
+          all: t('filters.all'), external: t('filters.external'), internal: t('filters.internal'),
+          both: t('filters.both'), closed: t('filters.closed'),
         }
         return (
           <div className="space-y-3">
@@ -366,14 +367,14 @@ export default function RecruitmentPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="p-3">Poste</th>
-                      <th className="p-3">Visibilité</th>
-                      <th className="p-3">Localisation</th>
-                      <th className="p-3">Contrat</th>
-                      <th className="p-3">Salaire</th>
-                      <th className="p-3 text-center">Cand.</th>
-                      <th className="p-3">Statut</th>
-                      <th className="p-3 text-right">Actions</th>
+                      <th className="p-3">{t('table.position')}</th>
+                      <th className="p-3">{t('table.visibility')}</th>
+                      <th className="p-3">{t('table.location')}</th>
+                      <th className="p-3">{t('table.contract')}</th>
+                      <th className="p-3">{t('table.salary')}</th>
+                      <th className="p-3 text-center">{t('table.candidates')}</th>
+                      <th className="p-3">{t('table.status')}</th>
+                      <th className="p-3 text-right">{t('table.actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -394,7 +395,7 @@ export default function RecruitmentPage() {
                           </td>
                           <td className="p-3">
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${vis?.color ?? ''}`}>
-                              <VisIcon className="h-3 w-3" /> {vis?.label ?? job.visibility}
+                              <VisIcon className="h-3 w-3" /> {visibilityLabel(job.visibility ?? 'external')}
                             </span>
                           </td>
                           <td className="p-3">
@@ -413,13 +414,13 @@ export default function RecruitmentPage() {
                           <td className="p-3 text-center">
                             <button onClick={() => { setSelectedJob(job); setTab('pipeline') }}
                               className="inline-flex items-center justify-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary hover:bg-primary/20"
-                              title="Voir pipeline">
+                              title={t('table.viewPipeline')}>
                               <Users className="h-3 w-3" />{job.applications_count}
                             </button>
                           </td>
                           <td className="p-3">
                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[job.status] ?? 'bg-muted'}`}>
-                              {job.status === 'open' ? 'Ouverte' : job.status === 'closed' ? 'Fermée' : job.status === 'paused' ? 'En pause' : job.status}
+                              {job.status === 'open' ? t('jobStatus.open') : job.status === 'closed' ? t('jobStatus.closed') : job.status === 'paused' ? t('jobStatus.paused') : job.status}
                             </span>
                           </td>
                           <td className="p-3">
@@ -427,14 +428,14 @@ export default function RecruitmentPage() {
                               {isPublic && (
                                 <a href={publicUrl} target="_blank" rel="noopener noreferrer"
                                   className="rounded-md p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                                  title="Aperçu page carrières publique">
+                                  title={t('table.previewPublic')}>
                                   <Eye className="h-4 w-4" />
                                 </a>
                               )}
                               {isPublic && (
                                 <button onClick={() => setSharingJob(job)}
                                   className="rounded-md p-1.5 text-slate-500 hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                                  title="Partager l'offre">
+                                  title={t('table.shareJob')}>
                                   <Share2 className="h-4 w-4" />
                                 </button>
                               )}
@@ -448,22 +449,22 @@ export default function RecruitmentPage() {
                                     ? 'text-slate-500 hover:bg-amber-50 hover:text-amber-600'
                                     : 'text-slate-500 hover:bg-emerald-50 hover:text-emerald-600'
                                 }`}
-                                title={job.status === 'open' ? 'Mettre en pause' : 'Réouvrir'}>
+                                title={job.status === 'open' ? t('table.pause') : t('table.reopen')}>
                                 {job.status === 'open' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                               </button>
                               <button onClick={() => setEditingJob(job)}
                                 className="rounded-md p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                title="Modifier">
+                                title={t('table.edit')}>
                                 <Edit3 className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm(`Supprimer définitivement "${job.title}" ?\nLes candidatures associées seront perdues.`)) {
+                                  if (confirm(t('table.deleteConfirm', { title: job.title }))) {
                                     deleteJob.mutate(job.id)
                                   }
                                 }}
                                 className="rounded-md p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                                title="Supprimer">
+                                title={t('table.delete')}>
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
@@ -476,7 +477,7 @@ export default function RecruitmentPage() {
                         <td colSpan={8} className="p-12 text-center text-muted-foreground">
                           <Briefcase className="mx-auto mb-2 h-10 w-10 opacity-30" />
                           <p className="text-sm">
-                            {jobFilter === 'all' ? 'Aucune offre de recrutement' : `Aucune offre "${FILTER_LABELS[jobFilter]}"`}
+                            {jobFilter === 'all' ? t('table.emptyAll') : t('table.emptyFiltered', { filter: FILTER_LABELS[jobFilter] })}
                           </p>
                         </td>
                       </tr>
@@ -496,7 +497,7 @@ export default function RecruitmentPage() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 text-sm">
                   <button onClick={() => setSelectedJob(null)} className="text-primary hover:underline">
-                    Toutes les offres
+                    {t('pipeline.allJobs')}
                   </button>
                   <ArrowRight className="h-3 w-3 text-muted-foreground" />
                   <span className="font-medium">{selectedJob.title}</span>
@@ -505,16 +506,16 @@ export default function RecruitmentPage() {
                   <button
                     onClick={() => setShowCriteria((v) => !v)}
                     className="text-xs text-muted-foreground hover:text-foreground"
-                    title="Ajouter des critères pour orienter l'analyse IA"
+                    title={t('pipeline.criteriaTitle')}
                   >
-                    {showCriteria ? '− Masquer critères' : '+ Critères du recruteur'}
+                    {showCriteria ? t('pipeline.hideCriteria') : t('pipeline.showCriteria')}
                   </button>
                   <button
                     onClick={() => setShowHistory((v) => !v)}
                     className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                    title="Voir les décisions passées qui alimentent le scoring IA"
+                    title={t('pipeline.learningTitle')}
                   >
-                    <Zap className="h-3 w-3" /> {showHistory ? 'Masquer apprentissage' : 'Historique apprentissage'}
+                    <Zap className="h-3 w-3" /> {showHistory ? t('pipeline.hideLearning') : t('pipeline.showLearning')}
                   </button>
                   <button
                     onClick={() => preselect.mutate({
@@ -522,31 +523,31 @@ export default function RecruitmentPage() {
                       criteria: criteriaFocus.trim() || undefined,
                     })}
                     disabled={preselect.isPending}
-                    title="Analyse toutes les candidatures nouvelles avec l'IA et les classe par score"
+                    title={t('pipeline.preselectTitle')}
                     className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
                     {preselect.isPending
-                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Pré-sélection en cours…</>
-                      : <><Sparkles className="h-3.5 w-3.5" /> Pré-sélectionner avec IA</>}
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('pipeline.preselecting')}</>
+                      : <><Sparkles className="h-3.5 w-3.5" /> {t('pipeline.preselect')}</>}
                   </button>
                 </div>
               </div>
               {showCriteria && (
                 <div className="rounded-lg border border-border bg-muted/20 p-3">
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    Priorités du recruteur (optionnel, max 500 caractères)
+                    {t('pipeline.recruiterPriorities')}
                   </label>
                   <textarea
                     value={criteriaFocus}
                     onChange={(e) => setCriteriaFocus(e.target.value)}
-                    placeholder="Ex : Privilégier les profils avec expérience SAP et anglais courant. Pénaliser les changements d'emploi fréquents (< 1 an)."
+                    placeholder={t('pipeline.recruiterPlaceholder')}
                     rows={3}
                     maxLength={500}
                     className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    Ce texte est injecté dans les exigences de l'offre avant l'analyse IA — il guide le scoring sans remplacer les requirements existants.
-                    {' '}<span className="font-medium text-primary">Sauvegardé automatiquement sur l'offre au lancement de la pré-sélection.</span>
+                    {t('pipeline.criteriaHelp')}
+                    {' '}<span className="font-medium text-primary">{t('pipeline.criteriaSaved')}</span>
                   </p>
                 </div>
               )}
@@ -556,7 +557,7 @@ export default function RecruitmentPage() {
           )}
           {!selectedJob && (
             <p className="text-sm text-muted-foreground">
-              Toutes les candidatures — sélectionnez une offre pour filtrer
+              {t('pipeline.allApplications')}
             </p>
           )}
           {preselect.data && (
@@ -564,36 +565,36 @@ export default function RecruitmentPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
                   <p className="font-medium">
-                    Pré-sélection terminée — {preselect.data.analyzed} analysés
-                    {(preselect.data.toReview ?? 0) > 0 && <span className="text-emerald-700"> · {preselect.data.toReview} à revoir</span>}
-                    {(preselect.data.autoRejected ?? 0) > 0 && <span className="text-red-600"> · {preselect.data.autoRejected} auto-rejetés</span>}
-                    {preselect.data.skipped > 0 && <span className="text-muted-foreground"> · {preselect.data.skipped} ignorés (CV trop court)</span>}
-                    {preselect.data.failed > 0 && <span className="text-red-600"> · {preselect.data.failed} échecs</span>}
+                    {t('pipeline.preselectDone', { count: preselect.data.analyzed })}
+                    {(preselect.data.toReview ?? 0) > 0 && <span className="text-emerald-700">{t('pipeline.toReview', { count: preselect.data.toReview })}</span>}
+                    {(preselect.data.autoRejected ?? 0) > 0 && <span className="text-red-600">{t('pipeline.autoRejected', { count: preselect.data.autoRejected })}</span>}
+                    {preselect.data.skipped > 0 && <span className="text-muted-foreground">{t('pipeline.skipped', { count: preselect.data.skipped })}</span>}
+                    {preselect.data.failed > 0 && <span className="text-red-600">{t('pipeline.failed', { count: preselect.data.failed })}</span>}
                   </p>
                   {(preselect.data.autoRejected ?? 0) > 0 && (
                     <p className="mt-1 text-[11px] text-amber-700">
-                      Les candidats auto-rejetés sont passés en « Rejeté » avec le motif (règles de pré-tri) — réversible manuellement dans le pipeline.
+                      {t('pipeline.autoRejectedNote')}
                     </p>
                   )}
                   {preselect.data.learningExamples != null && preselect.data.learningExamples > 0 && (
                     <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
                       <Zap className="h-3 w-3 text-primary" />
-                      Apprentissage actif : {preselect.data.learningExamples} décision{preselect.data.learningExamples > 1 ? 's' : ''} passée{preselect.data.learningExamples > 1 ? 's' : ''} de votre équipe ont calibré ce scoring
+                      {t('pipeline.learningActive', { count: preselect.data.learningExamples })}
                     </p>
                   )}
                 </div>
                 <button onClick={() => preselect.reset()}
                   className="text-xs text-muted-foreground hover:text-foreground">
-                  Fermer
+                  {t('pipeline.close')}
                 </button>
               </div>
               {preselect.data.top.length > 0 && (
                 <ul className="mt-2 space-y-1">
-                  {preselect.data.top.map((t) => (
-                    <li key={t.id} className="text-xs flex items-center gap-2">
-                      <span className="font-semibold text-foreground">{t.firstName} {t.lastName}</span>
-                      <span className="rounded bg-primary/20 px-1.5 py-0.5 text-primary font-medium">{t.score}/100</span>
-                      <span className="text-muted-foreground">{t.recommendation}</span>
+                  {preselect.data.top.map((row) => (
+                    <li key={row.id} className="text-xs flex items-center gap-2">
+                      <span className="font-semibold text-foreground">{row.firstName} {row.lastName}</span>
+                      <span className="rounded bg-primary/20 px-1.5 py-0.5 text-primary font-medium">{row.score}/100</span>
+                      <span className="text-muted-foreground">{recLabel(row.recommendation)}</span>
                     </li>
                   ))}
                 </ul>
@@ -603,7 +604,7 @@ export default function RecruitmentPage() {
                   onClick={() => setCompareTop3(true)}
                   className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
-                  <Layers className="h-3 w-3" /> Comparer le top {Math.min(3, preselect.data.top.length)} côte à côte
+                  <Layers className="h-3 w-3" /> {t('pipeline.compareTop', { count: Math.min(3, preselect.data.top.length) })}
                 </button>
               )}
               {preselect.data.message && (
@@ -616,18 +617,18 @@ export default function RecruitmentPage() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold flex items-center gap-1.5">
                   <Layers className="h-4 w-4 text-primary" />
-                  Comparaison — Top {Math.min(3, preselect.data.top.length)}
+                  {t('pipeline.comparisonTop', { count: Math.min(3, preselect.data.top.length) })}
                 </h3>
                 <button
                   onClick={() => setCompareTop3(false)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Masquer
+                  {t('pipeline.hide')}
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {preselect.data.top.slice(0, 3).map((t) => {
-                  const app = applications.find((a) => a.id === t.id)
+                {preselect.data.top.slice(0, 3).map((row) => {
+                  const app = applications.find((a) => a.id === row.id)
                   if (!app) return null
                   const strengths = normalizeJsonArray(app.ai_strengths).slice(0, 4)
                   const gaps = normalizeJsonArray(app.ai_gaps).slice(0, 3)
@@ -639,31 +640,31 @@ export default function RecruitmentPage() {
                     yes: 'bg-blue-100 text-blue-700',
                     maybe: 'bg-yellow-100 text-yellow-700',
                     no: 'bg-red-100 text-red-700',
-                  }[t.recommendation] ?? 'bg-gray-100 text-gray-600'
+                  }[row.recommendation] ?? 'bg-gray-100 text-gray-600'
                   return (
-                    <div key={t.id} className="rounded-lg border border-border bg-background p-3 space-y-2">
+                    <div key={row.id} className="rounded-lg border border-border bg-background p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm truncate">{t.firstName} {t.lastName}</p>
+                          <p className="font-semibold text-sm truncate">{row.firstName} {row.lastName}</p>
                           <p className="text-xs text-muted-foreground truncate">{app.email}</p>
                         </div>
                         <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-bold text-primary flex-shrink-0">
-                          {t.score}/100
+                          {row.score}/100
                         </span>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${recoColor}`}>
-                          {t.recommendation.replace('_', ' ')}
+                          {recLabel(row.recommendation)}
                         </span>
                         {app.ai_match_percentage != null && (
                           <span className="text-[10px] text-muted-foreground">
-                            adéquation {app.ai_match_percentage}%
+                            {t('pipeline.match', { value: app.ai_match_percentage })}
                           </span>
                         )}
                       </div>
                       {strengths.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">Forces</p>
+                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">{t('pipeline.strengths')}</p>
                           <ul className="text-xs space-y-0.5">
                             {strengths.map((s, i) => (
                               <li key={i} className="flex gap-1">
@@ -676,7 +677,7 @@ export default function RecruitmentPage() {
                       )}
                       {gaps.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">Manques</p>
+                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">{t('pipeline.gaps')}</p>
                           <ul className="text-xs space-y-0.5">
                             {gaps.map((g, i) => (
                               <li key={i} className="flex gap-1">
@@ -689,7 +690,7 @@ export default function RecruitmentPage() {
                       )}
                       {redFlags.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">Alertes</p>
+                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">{t('pipeline.alerts')}</p>
                           <ul className="text-xs space-y-0.5">
                             {redFlags.map((r, i) => (
                               <li key={i} className="flex gap-1">
@@ -703,7 +704,7 @@ export default function RecruitmentPage() {
                       {signalsUsed.length > 0 && (
                         <div>
                           <p className="text-[10px] font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
-                            <Sparkles className="h-3 w-3" /> Signaux utilisés par l'IA
+                            <Sparkles className="h-3 w-3" /> {t('pipeline.signalsUsed')}
                           </p>
                           <ul className="text-xs space-y-0.5">
                             {signalsUsed.map((s, i) => (
@@ -718,7 +719,7 @@ export default function RecruitmentPage() {
                       {biasNote && (
                         <div className="rounded border border-amber-300 bg-amber-50 p-2">
                           <p className="text-[10px] font-semibold text-amber-800 mb-0.5 flex items-center gap-1">
-                            <ShieldCheck className="h-3 w-3" /> Audit de biais
+                            <ShieldCheck className="h-3 w-3" /> {t('pipeline.biasAudit')}
                           </p>
                           <p className="text-[11px] text-amber-900 leading-snug">{biasNote}</p>
                         </div>
@@ -728,13 +729,13 @@ export default function RecruitmentPage() {
                           onClick={() => setSelectedApp(app)}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-primary hover:bg-primary/5 rounded py-1"
                         >
-                          <Eye className="h-3 w-3" /> Détail
+                          <Eye className="h-3 w-3" /> {t('pipeline.detail')}
                         </button>
                         <button
                           onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
                         >
-                          Entretien
+                          {t('pipeline.interview')}
                         </button>
                       </div>
                     </div>
@@ -745,7 +746,7 @@ export default function RecruitmentPage() {
           )}
           {preselect.isError && (
             <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-              Erreur lors de la pré-sélection. Réessayez plus tard.
+              {t('pipeline.preselectError')}
             </div>
           )}
           {showHistory && selectedJob && (
@@ -753,12 +754,16 @@ export default function RecruitmentPage() {
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold flex items-center gap-1.5">
                   <Zap className="h-4 w-4 text-primary" />
-                  Historique d'apprentissage IA
+                  {t('pipeline.learningHistory')}
                   {historyData && (
                     <span className="text-xs font-normal text-muted-foreground ml-2">
-                      ({historyData.total} décision{historyData.total > 1 ? 's' : ''} ·{' '}
-                      <span className="text-green-700">{historyData.counts.hired} recrutés</span> ·{' '}
-                      <span className="text-red-700">{historyData.counts.rejected} rejetés</span>)
+                      <Trans
+                        i18nKey="pipeline.learningCount"
+                        ns="recruitment"
+                        count={historyData.total}
+                        values={{ count: historyData.total, hired: historyData.counts.hired, rejected: historyData.counts.rejected }}
+                        components={{ hired: <span className="text-green-700" />, rejected: <span className="text-red-700" /> }}
+                      />
                     </span>
                   )}
                 </h3>
@@ -766,15 +771,15 @@ export default function RecruitmentPage() {
                   onClick={() => setShowHistory(false)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Masquer
+                  {t('pipeline.hide')}
                 </button>
               </div>
               {historyLoading && (
-                <p className="text-xs text-muted-foreground italic">Chargement de l'historique…</p>
+                <p className="text-xs text-muted-foreground italic">{t('pipeline.loadingHistory')}</p>
               )}
               {!historyLoading && historyData && historyData.total === 0 && (
                 <p className="text-xs text-muted-foreground italic">
-                  Aucune décision encore enregistrée. Les recrutements/rejets futurs alimenteront automatiquement le scoring IA des prochains batches.
+                  {t('pipeline.noDecisions')}
                 </p>
               )}
               {!historyLoading && historyData && historyData.total > 0 && (
@@ -785,14 +790,14 @@ export default function RecruitmentPage() {
                       <li key={entry.id} className="flex items-start gap-2 text-xs border-l-2 pl-2 py-0.5"
                           style={{ borderColor: isHire ? 'rgb(34 197 94)' : 'rgb(239 68 68)' }}>
                         <span className={`font-semibold flex-shrink-0 ${isHire ? 'text-green-700' : 'text-red-700'}`}>
-                          {isHire ? '✓ Recruté' : '✗ Rejeté'}
+                          {isHire ? t('pipeline.decisionHired') : t('pipeline.decisionRejected')}
                         </span>
                         <span className="text-muted-foreground flex-shrink-0">
                           {new Date(entry.decided_at).toLocaleDateString('fr-FR')}
                         </span>
                         {entry.prior_ai_score != null && (
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0">
-                            IA {entry.prior_ai_score}/100
+                            {t('pipeline.aiScore', { score: entry.prior_ai_score })}
                           </span>
                         )}
                         <span className="text-muted-foreground truncate">{entry.candidate_anchor || '—'}</span>
@@ -802,15 +807,15 @@ export default function RecruitmentPage() {
                 </ul>
               )}
               <p className="text-[10px] text-muted-foreground mt-2 italic">
-                Les 8 décisions les plus récentes sont injectées dans le prompt de la prochaine pré-sélection IA pour calibrer le scoring sur vos préférences réelles.
+                {t('pipeline.learningFooter')}
               </p>
             </div>
           )}
           {selectedAppIds.length >= 1 && (
             <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/10 backdrop-blur px-3 py-2 text-sm">
               <span className="font-medium">
-                {selectedAppIds.length} candidat{selectedAppIds.length > 1 ? 's' : ''} sélectionné{selectedAppIds.length > 1 ? 's' : ''}
-                {selectedAppIds.length === 1 && <span className="text-xs text-muted-foreground ml-2">(sélectionnez-en au moins 2 pour comparer)</span>}
+                {t('pipeline.selectedCount', { count: selectedAppIds.length })}
+                {selectedAppIds.length === 1 && <span className="text-xs text-muted-foreground ml-2">{t('pipeline.selectAtLeastTwo')}</span>}
               </span>
               <div className="flex items-center gap-2">
                 {selectedAppIds.length >= 2 && (
@@ -818,14 +823,14 @@ export default function RecruitmentPage() {
                     onClick={() => setCompareSelected(true)}
                     className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
                   >
-                    <Layers className="h-3.5 w-3.5" /> Comparer ({selectedAppIds.length})
+                    <Layers className="h-3.5 w-3.5" /> {t('pipeline.compareCount', { count: selectedAppIds.length })}
                   </button>
                 )}
                 <button
                   onClick={() => { setSelectedAppIds([]); setCompareSelected(false) }}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Tout désélectionner
+                  {t('pipeline.deselectAll')}
                 </button>
               </div>
             </div>
@@ -835,13 +840,13 @@ export default function RecruitmentPage() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold flex items-center gap-1.5">
                   <Layers className="h-4 w-4 text-primary" />
-                  Comparaison libre — {selectedAppIds.length} candidat{selectedAppIds.length > 1 ? 's' : ''}
+                  {t('pipeline.freeComparison', { count: selectedAppIds.length })}
                 </h3>
                 <button
                   onClick={() => setCompareSelected(false)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Masquer
+                  {t('pipeline.hide')}
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -874,30 +879,30 @@ export default function RecruitmentPage() {
                           </span>
                         ) : (
                           <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground flex-shrink-0">
-                            non analysé
+                            {t('pipeline.notAnalyzed')}
                           </span>
                         )}
                       </div>
                       {isAnalyzed && (
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${recoColor}`}>
-                            {reco.replace('_', ' ')}
+                            {recLabel(reco)}
                           </span>
                           {app.ai_match_percentage != null && (
                             <span className="text-[10px] text-muted-foreground">
-                              adéquation {app.ai_match_percentage}%
+                              {t('pipeline.match', { value: app.ai_match_percentage })}
                             </span>
                           )}
                         </div>
                       )}
                       {!isAnalyzed && (
                         <p className="text-[11px] text-muted-foreground italic">
-                          Lancez la pré-sélection IA pour analyser ce candidat.
+                          {t('pipeline.runPreselectToAnalyze')}
                         </p>
                       )}
                       {strengths.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">Forces</p>
+                          <p className="text-[10px] font-semibold text-green-700 mb-0.5">{t('pipeline.strengths')}</p>
                           <ul className="text-xs space-y-0.5">
                             {strengths.map((s, i) => (
                               <li key={i} className="flex gap-1">
@@ -910,7 +915,7 @@ export default function RecruitmentPage() {
                       )}
                       {gaps.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">Manques</p>
+                          <p className="text-[10px] font-semibold text-orange-700 mb-0.5">{t('pipeline.gaps')}</p>
                           <ul className="text-xs space-y-0.5">
                             {gaps.map((g, i) => (
                               <li key={i} className="flex gap-1">
@@ -923,7 +928,7 @@ export default function RecruitmentPage() {
                       )}
                       {redFlags.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">Alertes</p>
+                          <p className="text-[10px] font-semibold text-red-700 mb-0.5">{t('pipeline.alerts')}</p>
                           <ul className="text-xs space-y-0.5">
                             {redFlags.map((r, i) => (
                               <li key={i} className="flex gap-1">
@@ -937,7 +942,7 @@ export default function RecruitmentPage() {
                       {signalsUsed.length > 0 && (
                         <div>
                           <p className="text-[10px] font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
-                            <Sparkles className="h-3 w-3" /> Signaux utilisés par l'IA
+                            <Sparkles className="h-3 w-3" /> {t('pipeline.signalsUsed')}
                           </p>
                           <ul className="text-xs space-y-0.5">
                             {signalsUsed.map((s, i) => (
@@ -952,7 +957,7 @@ export default function RecruitmentPage() {
                       {biasNote && (
                         <div className="rounded border border-amber-300 bg-amber-50 p-2">
                           <p className="text-[10px] font-semibold text-amber-800 mb-0.5 flex items-center gap-1">
-                            <ShieldCheck className="h-3 w-3" /> Audit de biais
+                            <ShieldCheck className="h-3 w-3" /> {t('pipeline.biasAudit')}
                           </p>
                           <p className="text-[11px] text-amber-900 leading-snug">{biasNote}</p>
                         </div>
@@ -962,13 +967,13 @@ export default function RecruitmentPage() {
                           onClick={() => setSelectedApp(app)}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-primary hover:bg-primary/5 rounded py-1"
                         >
-                          <Eye className="h-3 w-3" /> Détail
+                          <Eye className="h-3 w-3" /> {t('pipeline.detail')}
                         </button>
                         <button
                           onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
                         >
-                          Entretien
+                          {t('pipeline.interview')}
                         </button>
                       </div>
                     </div>
@@ -996,8 +1001,8 @@ export default function RecruitmentPage() {
                     setDragOverStage(null)
                   }}
                 >
-                  <div className={`rounded-t-lg px-3 py-2 flex items-center justify-between ${STAGE_CONFIG[stage]?.color ?? ''}`}>
-                    <span className="text-xs font-semibold">{STAGE_CONFIG[stage]?.label}</span>
+                  <div className={`rounded-t-lg px-3 py-2 flex items-center justify-between ${STAGE_COLORS[stage] ?? ''}`}>
+                    <span className="text-xs font-semibold">{stageLabel(stage)}</span>
                     <span className="rounded-full bg-white/50 px-1.5 py-0.5 text-xs font-bold">{stageApps.length}</span>
                   </div>
                   <div className={`rounded-b-lg min-h-[140px] space-y-2 p-2 border border-t-0 transition-colors ${isOver ? 'bg-primary/5 border-primary border-dashed' : 'bg-muted/20 border-border'}`}>
@@ -1017,8 +1022,8 @@ export default function RecruitmentPage() {
                             checked={selectedAppIds.includes(app.id)}
                             onChange={(e) => { e.stopPropagation(); toggleAppSelected(app.id) }}
                             onClick={(e) => e.stopPropagation()}
-                            title="Sélectionner pour comparaison"
-                            aria-label={`Sélectionner ${app.first_name} ${app.last_name} pour comparaison`}
+                            title={t('pipeline.selectForComparison')}
+                            aria-label={t('pipeline.selectForComparisonAria', { name: `${app.first_name} ${app.last_name}` })}
                             className="h-3.5 w-3.5 accent-primary cursor-pointer flex-shrink-0 mt-0.5"
                           />
                         </div>
@@ -1026,13 +1031,13 @@ export default function RecruitmentPage() {
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           {app.source === 'internal' && (
                             <span className="inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                              Interne
+                              {t('pipeline.internal')}
                             </span>
                           )}
                           {(app.has_cv || app.cv_filename) && (
                             <span
                               className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
-                              title="CV reçu — cliquez sur la carte pour le consulter"
+                              title={t('pipeline.cvReceivedTitle')}
                             >
                               <FileText className="h-2.5 w-2.5" /> CV
                             </span>
@@ -1052,19 +1057,19 @@ export default function RecruitmentPage() {
                         <div className="mt-2 flex gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
                           <button onClick={() => updateStage.mutate({ id: app.id, stage: 'hired' })}
                             className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
-                            <CheckCircle className="h-3 w-3" /> Recruter
+                            <CheckCircle className="h-3 w-3" /> {t('pipeline.recruit')}
                           </button>
                           <span className="text-muted-foreground">·</span>
                           <button onClick={() => updateStage.mutate({ id: app.id, stage: 'rejected' })}
                             className="flex items-center gap-0.5 text-xs text-red-500 hover:text-red-600 font-medium">
-                            <XCircle className="h-3 w-3" /> Rejeter
+                            <XCircle className="h-3 w-3" /> {t('pipeline.reject')}
                           </button>
                         </div>
                       </div>
                     ))}
                     {stageApps.length === 0 && (
                       <div className={`flex items-center justify-center h-20 text-xs rounded-lg border border-dashed ${isOver ? 'border-primary text-primary' : 'border-muted-foreground/30 text-muted-foreground'}`}>
-                        {isOver ? 'Déposer ici' : 'Vide'}
+                        {isOver ? t('pipeline.dropHere') : t('pipeline.empty')}
                       </div>
                     )}
                   </div>
@@ -1157,6 +1162,7 @@ function NewJobModal({
   onSubmit: () => void
   submitting: boolean
 }) {
+  const { t } = useTranslation('recruitment')
   const toggleDept = (id: string) => setForm(p => ({
     ...p,
     target_departments: p.target_departments.includes(id)
@@ -1175,55 +1181,55 @@ function NewJobModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
       <div className="rounded-xl border border-border bg-card w-full max-w-2xl max-h-[min(90vh,720px)] flex flex-col shadow-xl my-auto" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
-          <h3 className="font-semibold">Nouvelle offre d'emploi</h3>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-accent" aria-label="Fermer">
+          <h3 className="font-semibold">{t('newJobModal.title')}</h3>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-accent" aria-label={t('newJobModal.close')}>
             <XCircle className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Titre du poste *</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.jobTitle')}</label>
             <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Ex: Chauffeur Senior" />
+              placeholder={t('newJobModal.jobTitlePlaceholder')} />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Département</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.department')}</label>
             <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              <option value="">— Aucun —</option>
+              <option value="">{t('newJobModal.noDepartment')}</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Localisation</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.location')}</label>
               <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Type de contrat</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.contractType')}</label>
               <select value={form.contract_type} onChange={e => setForm(p => ({ ...p, contract_type: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="cdi">CDI</option>
-                <option value="cdd">CDD</option>
-                <option value="stage">Stage</option>
-                <option value="apprentissage">Apprentissage</option>
+                <option value="cdi">{t('contractType.cdi')}</option>
+                <option value="cdd">{t('contractType.cdd')}</option>
+                <option value="stage">{t('contractType.stage')}</option>
+                <option value="apprentissage">{t('contractType.apprentissage')}</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire min (FCFA)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.salaryMin')}</label>
               <input type="number" value={form.salary_min} onChange={e => setForm(p => ({ ...p, salary_min: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 placeholder="150000" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire max (FCFA)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.salaryMax')}</label>
               <input type="number" value={form.salary_max} onChange={e => setForm(p => ({ ...p, salary_max: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 placeholder="250000" />
@@ -1231,26 +1237,26 @@ function NewJobModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.description')}</label>
             <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Prérequis</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.requirements')}</label>
             <textarea value={form.requirements} onChange={e => setForm(p => ({ ...p, requirements: e.target.value }))}
               rows={2} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
           </div>
 
           {/* ── Structure d'offre APEC (tous optionnels) ── */}
           <div className="border-t border-border pt-3 space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground">Structure de l'offre (standard APEC)</p>
+            <p className="text-xs font-semibold text-muted-foreground">{t('newJobModal.apecStructure')}</p>
             <div className="grid grid-cols-2 gap-3">
               {([
-                { key: 'experience_level',   label: 'Expérience',      opts: EXPERIENCE_OPTIONS },
-                { key: 'job_level',          label: 'Statut',          opts: JOB_LEVEL_OPTIONS },
-                { key: 'required_education', label: 'Formation',       opts: EDUCATION_OPTIONS },
-                { key: 'sector',             label: 'Secteur',         opts: SECTOR_OPTIONS },
-                { key: 'work_mode',          label: 'Mode de travail', opts: WORK_MODE_OPTIONS },
+                { key: 'experience_level',   label: t('newJobModal.experience'),    opts: EXPERIENCE_OPTIONS },
+                { key: 'job_level',          label: t('newJobModal.jobLevelLabel'), opts: JOB_LEVEL_OPTIONS },
+                { key: 'required_education', label: t('newJobModal.education'),      opts: EDUCATION_OPTIONS },
+                { key: 'sector',             label: t('newJobModal.sector'),         opts: SECTOR_OPTIONS },
+                { key: 'work_mode',          label: t('newJobModal.workMode'),       opts: WORK_MODE_OPTIONS },
               ] as const).map(({ key, label, opts }) => (
                 <div key={key}>
                   <label className="text-xs font-medium text-muted-foreground">{label}</label>
@@ -1262,28 +1268,28 @@ function NewJobModal({
                 </div>
               ))}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Date de prise de poste</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.startDate')}</label>
                 <input type="date" value={form.start_date}
                   onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Avantages</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.benefits')}</label>
               <textarea value={form.benefits} onChange={e => setForm(p => ({ ...p, benefits: e.target.value }))}
-                rows={2} placeholder="Mutuelle, primes, télétravail, formation…"
+                rows={2} placeholder={t('newJobModal.benefitsPlaceholder')}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Processus de recrutement</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.recruitmentProcess')}</label>
               <textarea value={form.recruitment_process} onChange={e => setForm(p => ({ ...p, recruitment_process: e.target.value }))}
-                rows={2} placeholder="Entretien RH → test technique → entretien manager…"
+                rows={2} placeholder={t('newJobModal.recruitmentProcessPlaceholder')}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
             </div>
           </div>
 
           <div className="border-t border-border pt-3">
-            <label className="text-xs font-medium text-muted-foreground">Visibilité de l'offre *</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.jobVisibility')}</label>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {(['external', 'internal', 'both'] as const).map(v => {
                 const cfg = VISIBILITY_CONFIG[v]!
@@ -1291,29 +1297,29 @@ function NewJobModal({
                 return (
                   <button key={v} type="button" onClick={() => setForm(p => ({ ...p, visibility: v }))}
                     className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.visibility === v ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
-                    <Icon className="h-4 w-4" /> {cfg.label}
+                    <Icon className="h-4 w-4" /> {visibilityLabel(v)}
                   </button>
                 )
               })}
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              <strong>Externe</strong> : visible sur la page carrières publique.{' '}
-              <strong>Interne</strong> : visible uniquement aux employés ciblés.{' '}
-              <strong>Mixte</strong> : les deux.
+              <strong>{t('newJobModal.visibilityHelpExternal')}</strong>{t('newJobModal.visibilityHelpExternalText')}
+              <strong>{t('newJobModal.visibilityHelpInternal')}</strong>{t('newJobModal.visibilityHelpInternalText')}
+              <strong>{t('newJobModal.visibilityHelpBoth')}</strong>{t('newJobModal.visibilityHelpBothText')}
             </p>
           </div>
 
           {isInternal && (
             <div className="rounded-lg border border-purple-200 bg-purple-50/40 p-3 space-y-3">
               <p className="text-xs font-medium text-purple-700">
-                Critères de ciblage interne (tous optionnels, combinables)
+                {t('newJobModal.internalTargeting')}
               </p>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Départements ciblés</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.targetDepartments')}</label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {departments.length === 0 && (
-                    <span className="text-xs text-muted-foreground italic">Aucun département</span>
+                    <span className="text-xs text-muted-foreground italic">{t('newJobModal.noDepartmentAvailable')}</span>
                   )}
                   {departments.map(d => {
                     const active = form.target_departments.includes(d.id)
@@ -1328,14 +1334,14 @@ function NewJobModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Catégories ciblées</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.targetCategories')}</label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {JOB_LEVELS.map(lvl => {
                     const active = form.target_job_levels.includes(lvl)
                     return (
                       <button key={lvl} type="button" onClick={() => toggleLevel(lvl)}
                         className={`rounded-full border px-2.5 py-1 text-xs ${active ? 'border-purple-500 bg-purple-100 text-purple-700' : 'border-border hover:bg-accent'}`}>
-                        {JOB_LEVEL_LABELS[lvl]}
+                        {jobLevelLabel(lvl)}
                       </button>
                     )
                   })}
@@ -1343,15 +1349,15 @@ function NewJobModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Ancienneté minimum (mois)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.minSeniority')}</label>
                 <input type="number" min="0" value={form.target_min_seniority_months}
                   onChange={e => setForm(p => ({ ...p, target_min_seniority_months: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Ex: 24 (pour 2 ans)" />
+                  placeholder={t('newJobModal.minSeniorityPlaceholder')} />
               </div>
 
               <p className="text-[11px] text-purple-700/80">
-                Si aucun critère n'est sélectionné dans une catégorie, le filtre est désactivé pour cette catégorie (tout le monde matche).
+                {t('newJobModal.targetingHelp')}
               </p>
             </div>
           )}
@@ -1359,10 +1365,10 @@ function NewJobModal({
 
         <div className="sticky bottom-0 z-10 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
           <button onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('newJobModal.cancel')}</button>
           <button onClick={onSubmit} disabled={!form.title || submitting}
             className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {submitting ? 'Création...' : 'Créer l\'offre'}
+            {submitting ? t('newJobModal.creating') : t('newJobModal.create')}
           </button>
         </div>
       </div>
@@ -1379,6 +1385,7 @@ function ApplicationDetailModal({
   onClose: () => void
   onChanged: () => void
 }) {
+  const { t } = useTranslation('recruitment')
   const [model, setModel] = useState<'claude' | 'mistral'>(
     aiCaps.claude ? 'claude' : aiCaps.mistral ? 'mistral' : 'claude',
   )
@@ -1412,7 +1419,7 @@ function ApplicationDetailModal({
       onChanged()
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Erreur upload')
+      setError(msg ?? t('appDetail.errorUpload'))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -1452,7 +1459,7 @@ function ApplicationDetailModal({
       onChanged()
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Erreur analyse IA')
+      setError(msg ?? t('appDetail.errorAnalysis'))
     } finally {
       setAnalyzing(false)
     }
@@ -1479,12 +1486,12 @@ function ApplicationDetailModal({
         <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">CV transmis</span>
+              <span className="text-xs font-medium text-muted-foreground">{t('appDetail.cvTransmitted')}</span>
               {current.cv_filename && (
                 <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={current.cv_filename}>
                   · {current.cv_filename}
                   {current.cv_size_bytes != null && (
-                    <span> ({Math.round(current.cv_size_bytes / 1024)} ko)</span>
+                    <span> {t('appDetail.sizeKo', { size: Math.round(current.cv_size_bytes / 1024) })}</span>
                   )}
                 </span>
               )}
@@ -1493,12 +1500,12 @@ function ApplicationDetailModal({
               {cvBlobUrl && (
                 <a href={cvBlobUrl} download={current.cv_filename ?? 'cv'}
                   className="flex items-center gap-1 text-xs text-primary hover:underline">
-                  <Upload className="h-3 w-3 rotate-180" /> Télécharger
+                  <Upload className="h-3 w-3 rotate-180" /> {t('appDetail.download')}
                 </a>
               )}
               <button onClick={triggerUpload} disabled={uploading}
                 className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
-                <Upload className="h-3 w-3" /> {uploading ? 'Upload...' : 'Téléverser un CV'}
+                <Upload className="h-3 w-3" /> {uploading ? t('appDetail.uploading') : t('appDetail.uploadCv')}
               </button>
               <input ref={fileInputRef} type="file" hidden accept=".txt,.pdf,.doc,.docx" onChange={handleFileChange} />
             </div>
@@ -1522,7 +1529,7 @@ function ApplicationDetailModal({
             </pre>
           ) : (
             <p className="text-xs text-muted-foreground italic">
-              Aucun CV fourni — téléversez un fichier (PDF, DOC, DOCX, TXT — max 10 Mo) ou demandez au candidat de coller son CV dans la lettre de motivation.
+              {t('appDetail.noCv')}
             </p>
           )}
         </div>
@@ -1530,12 +1537,12 @@ function ApplicationDetailModal({
         <div className="mt-4 space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Analyse IA du CV</span>
+            <span className="text-sm font-medium">{t('appDetail.aiCvAnalysis')}</span>
           </div>
 
           {hasAnyModel ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Modèle :</span>
+              <span className="text-xs text-muted-foreground">{t('appDetail.model')}</span>
               {(['claude', 'mistral'] as const).map(m => (
                 <button key={m} type="button"
                   disabled={!aiCaps[m]}
@@ -1543,19 +1550,19 @@ function ApplicationDetailModal({
                   className={`rounded-md px-3 py-1 text-xs font-medium border transition-colors ${
                     model === m ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'
                   } ${!aiCaps[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                  {m === 'claude' ? 'Claude (Anthropic)' : 'Mistral'}
-                  {!aiCaps[m] && ' (clé non configurée)'}
+                  {m === 'claude' ? t('appDetail.claudeAnthropic') : t('appDetail.mistral')}
+                  {!aiCaps[m] && t('appDetail.keyNotConfigured')}
                 </button>
               ))}
               <button onClick={runAnalysis} disabled={analyzing || !current.cv_text}
                 className="ml-auto flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 <Sparkles className="h-3.5 w-3.5" />
-                {analyzing ? 'Analyse en cours…' : 'Lancer l\'analyse'}
+                {analyzing ? t('appDetail.analyzing') : t('appDetail.runAnalysis')}
               </button>
             </div>
           ) : (
             <p className="text-xs text-muted-foreground italic">
-              Aucune clé IA configurée (ANTHROPIC_API_KEY ou MISTRAL_API_KEY). Contactez votre administrateur.
+              {t('appDetail.noAiKey')}
             </p>
           )}
 
@@ -1567,23 +1574,23 @@ function ApplicationDetailModal({
             <div className="space-y-3 rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Score global</p>
+                  <p className="text-xs text-muted-foreground">{t('appDetail.globalScore')}</p>
                   <p className="text-2xl font-bold text-primary">{current.ai_score}%</p>
                 </div>
                 {current.ai_match_percentage !== null && current.ai_match_percentage !== undefined && (
                   <div>
-                    <p className="text-xs text-muted-foreground">Adéquation offre</p>
+                    <p className="text-xs text-muted-foreground">{t('appDetail.offerMatch')}</p>
                     <p className="text-2xl font-bold">{current.ai_match_percentage}%</p>
                   </div>
                 )}
                 {current.ai_recommendation && (
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${REC_COLORS[current.ai_recommendation] ?? 'bg-muted'}`}>
-                    {REC_LABELS[current.ai_recommendation] ?? current.ai_recommendation}
+                    {recLabel(current.ai_recommendation)}
                   </span>
                 )}
                 {current.ai_model_used && (
                   <span className="ml-auto rounded bg-muted px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
-                    via {current.ai_model_used}
+                    {t('appDetail.via', { model: current.ai_model_used })}
                   </span>
                 )}
               </div>
@@ -1593,13 +1600,13 @@ function ApplicationDetailModal({
               )}
 
               {strengths.length > 0 && (
-                <Block title="Points forts" items={strengths} tone="positive" />
+                <Block title={t('appDetail.strengths')} items={strengths} tone="positive" />
               )}
               {gaps.length > 0 && (
-                <Block title="Lacunes" items={gaps} tone="neutral" />
+                <Block title={t('appDetail.gaps')} items={gaps} tone="neutral" />
               )}
               {redFlags.length > 0 && (
-                <Block title="Points d'attention" items={redFlags} tone="warning" />
+                <Block title={t('appDetail.attentionPoints')} items={redFlags} tone="warning" />
               )}
             </div>
           )}
@@ -1641,6 +1648,18 @@ const COUNTRY_FLAGS: Record<string, string> = {
   CIV: '🇨🇮', SEN: '🇸🇳', BEN: '🇧🇯', TGO: '🇹🇬', BFA: '🇧🇫', MLI: '🇲🇱',
   NER: '🇳🇪', CMR: '🇨🇲', TCD: '🇹🇩', NGA: '🇳🇬', GHA: '🇬🇭',
 }
+
+// Catalogue pays (fallback). Le libellé est résolu via i18n au rendu —
+// repli sur le libellé statique si la clé n'existe pas (pays hors liste).
+const COUNTRY_STATIC_LABELS: Record<string, string> = {
+  CI: 'Côte d\'Ivoire', SN: 'Sénégal', BJ: 'Bénin', TG: 'Togo', CM: 'Cameroun',
+  BF: 'Burkina Faso', ML: 'Mali', NG: 'Nigeria', GH: 'Ghana', GA: 'Gabon',
+  CG: 'Congo', CD: 'RD Congo', KE: 'Kenya', TD: 'Tchad', FR: 'France',
+}
+const countryLabel = (code: string, fallback?: string) =>
+  i18n.exists(`recruitment:countries.${code}`)
+    ? i18n.t(`recruitment:countries.${code}`)
+    : (fallback ?? COUNTRY_STATIC_LABELS[code] ?? code)
 
 const COUNTRIES: Array<{ code: string; label: string; flag: string }> = [
   { code: 'CI', label: 'Côte d\'Ivoire', flag: '🇨🇮' },
@@ -1723,12 +1742,8 @@ interface CompareResponse {
   results: { claude: SourcingData | null; mistral: SourcingData | null }
 }
 
-const AVAILABILITY_LABEL: Record<string, string> = {
-  immediate: 'Disponible',
-  '1month':  '< 1 mois',
-  '3months': '~ 3 mois',
-  passive:   'Passif',
-}
+const availabilityLabel = (a: string) =>
+  i18n.exists(`recruitment:availability.${a}`) ? i18n.t(`recruitment:availability.${a}`) : a
 const AVAILABILITY_COLOR: Record<string, string> = {
   immediate: 'bg-green-100 text-green-700',
   '1month':  'bg-emerald-100 text-emerald-700',
@@ -1812,19 +1827,19 @@ function initials(firstName: string, lastName: string): string {
 // Badge match score sémantique : excellent (90+) / très bon (75+) / bon (60+) / faible
 function matchTier(score: number): { label: string; classes: string; ringClasses: string } {
   if (score >= 90) return {
-    label: 'Excellent', classes: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    label: i18n.t('recruitment:matchTier.excellent'), classes: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     ringClasses: 'ring-emerald-400 text-emerald-700',
   }
   if (score >= 75) return {
-    label: 'Très bon', classes: 'bg-green-100 text-green-800 border-green-300',
+    label: i18n.t('recruitment:matchTier.veryGood'), classes: 'bg-green-100 text-green-800 border-green-300',
     ringClasses: 'ring-green-400 text-green-700',
   }
   if (score >= 60) return {
-    label: 'Correct', classes: 'bg-amber-100 text-amber-800 border-amber-300',
+    label: i18n.t('recruitment:matchTier.good'), classes: 'bg-amber-100 text-amber-800 border-amber-300',
     ringClasses: 'ring-amber-400 text-amber-700',
   }
   return {
-    label: 'Faible', classes: 'bg-rose-100 text-rose-800 border-rose-300',
+    label: i18n.t('recruitment:matchTier.low'), classes: 'bg-rose-100 text-rose-800 border-rose-300',
     ringClasses: 'ring-rose-400 text-rose-700',
   }
 }
@@ -1878,6 +1893,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   onTransferred: () => void
   onGoToKanban: (jobId: string) => void
 }) {
+  const { t } = useTranslation('recruitment')
   // Pays par défaut = celui du tenant (CIV→CI, etc.). Si tenant mono-pays,
   // on force ce pays et on masque le sélecteur (UI plus simple et adaptée).
   const tenantConfig = useAuthStore((s) => s.tenantConfig)
@@ -1971,10 +1987,10 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
       await api.post(`/recruitment/jobs/${jobId}/sourced-profiles/${profileRowId}/transfer`)
       await sourcedQuery.refetch()
       onTransferred()
-      setTransferMsg('Profil transféré dans le pipeline')
+      setTransferMsg(t('sourcing.transferOk'))
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setTransferMsg(msg ?? 'Erreur lors du transfert')
+      setTransferMsg(msg ?? t('sourcing.transferError'))
     } finally {
       setTransferringId(null)
     }
@@ -1989,19 +2005,19 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
       await sourcedQuery.refetch()
       onTransferred()
       const n = res.data?.data?.transferred ?? 0
-      setTransferMsg(`${n} profil(s) transféré(s) dans le pipeline`)
+      setTransferMsg(t('sourcing.transferAllOk', { count: n }))
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setTransferMsg(msg ?? 'Erreur lors du transfert en masse')
+      setTransferMsg(msg ?? t('sourcing.transferAllError'))
     } finally {
       setTransferringAll(false)
     }
   }
 
   const run = async () => {
-    if (!jobId) { setError('Sélectionnez une offre'); return }
-    if (countries.length === 0) { setError('Sélectionnez au moins un pays'); return }
-    if (platforms.length === 0) { setError('Sélectionnez au moins une plateforme'); return }
+    if (!jobId) { setError(t('sourcing.selectOffer')); return }
+    if (countries.length === 0) { setError(t('sourcing.selectCountry')); return }
+    if (platforms.length === 0) { setError(t('sourcing.selectPlatform')); return }
 
     setLoading(true)
     setError(null)
@@ -2022,7 +2038,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
       }
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Erreur lors du sourcing IA')
+      setError(msg ?? t('sourcing.sourcingError'))
     } finally {
       setLoading(false)
     }
@@ -2044,17 +2060,15 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-bold text-slate-900">
-              {tenantHasSubsidiaries ? 'Sourcing IA · Multi-pays Afrique' : 'Sourcing IA'}
+              {tenantHasSubsidiaries ? t('sourcing.titleMulti') : t('sourcing.title')}
             </h2>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-              {tenantHasSubsidiaries
-                ? "Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn, Africawork, Emploi.ci, Jobberman et d'autres plateformes locales. Conforme OHADA, devises FCFA / XAF / NGN."
-                : "Génère des profils candidats réalistes pour vos offres, en ciblant LinkedIn et les principales plateformes d'emploi de votre pays."}
+              {tenantHasSubsidiaries ? t('sourcing.introMulti') : t('sourcing.introMono')}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               {tenantHasSubsidiaries ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
-                  <Globe className="h-3.5 w-3.5" /> {countryCatalog.length} pays disponibles
+                  <Globe className="h-3.5 w-3.5" /> {t('sourcing.countriesAvailable', { count: countryCatalog.length })}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
@@ -2062,11 +2076,11 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                 </span>
               )}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-purple-700 border border-purple-200">
-                <Layers className="h-3.5 w-3.5" /> {(platformsQuery.data?.data?.length ?? suggestedPlatforms.length)} plateformes
+                <Layers className="h-3.5 w-3.5" /> {t('sourcing.platformsBadge', { count: platformsQuery.data?.data?.length ?? suggestedPlatforms.length })}
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-pink-700 border border-pink-200">
                 <Sparkles className="h-3.5 w-3.5" />
-                {hasAnyModel ? (canCompare ? 'Claude + Mistral' : (aiCaps.claude ? 'Claude' : 'Mistral')) : 'Aucun modèle IA'}
+                {hasAnyModel ? (canCompare ? 'Claude + Mistral' : (aiCaps.claude ? 'Claude' : 'Mistral')) : t('sourcing.noAiModel')}
               </span>
             </div>
           </div>
@@ -2077,9 +2091,9 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
           <ShieldCheck className="h-5 w-5 flex-shrink-0 text-rose-600" />
           <div>
-            <p className="text-sm font-semibold text-rose-900">Aucun modèle IA configuré</p>
+            <p className="text-sm font-semibold text-rose-900">{t('sourcing.noAiModelTitle')}</p>
             <p className="text-xs text-rose-700 mt-0.5">
-              Définir ANTHROPIC_API_KEY ou MISTRAL_API_KEY côté API. Contactez votre administrateur plateforme.
+              {t('sourcing.noAiModelText')}
             </p>
           </div>
         </div>
@@ -2094,11 +2108,11 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100">
                 <Briefcase className="h-4 w-4 text-indigo-700" />
               </div>
-              <label className="text-sm font-semibold">Offre à sourcer</label>
+              <label className="text-sm font-semibold">{t('sourcing.offerToSource')}</label>
             </div>
             <select value={jobId} onChange={e => setJobId(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none">
-              <option value="">— Choisir une offre —</option>
+              <option value="">{t('sourcing.chooseOffer')}</option>
               {openJobs.map(j => (
                 <option key={j.id} value={j.id}>{j.title} · {j.location}</option>
               ))}
@@ -2120,9 +2134,9 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
                     <Globe className="h-4 w-4 text-purple-700" />
                   </div>
-                  <label className="text-sm font-semibold">Pays cibles</label>
+                  <label className="text-sm font-semibold">{t('sourcing.targetCountries')}</label>
                 </div>
-                <span className="text-xs font-semibold text-purple-700">{countries.length} actif{countries.length > 1 ? 's' : ''}</span>
+                <span className="text-xs font-semibold text-purple-700">{t('sourcing.activeCount', { count: countries.length })}</span>
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {countryCatalog.map(c => {
@@ -2152,7 +2166,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                   <Globe className="h-4 w-4 text-purple-700" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Sourcing ciblé</p>
+                  <p className="text-xs text-muted-foreground">{t('sourcing.targetedSourcing')}</p>
                   <p className="text-sm font-semibold">
                     {COUNTRY_FLAGS[tenantDefaultCountry] ?? '🌍'} {countryCatalog.find(c => c.code === tenantDefaultCountry)?.label ?? tenantDefaultCountry}
                   </p>
@@ -2168,9 +2182,9 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100">
                   <Layers className="h-4 w-4 text-blue-700" />
                 </div>
-                <label className="text-sm font-semibold">Plateformes</label>
+                <label className="text-sm font-semibold">{t('sourcing.platforms')}</label>
               </div>
-              <span className="text-xs font-semibold text-blue-700">{platforms.length} cochée{platforms.length > 1 ? 's' : ''}</span>
+              <span className="text-xs font-semibold text-blue-700">{t('sourcing.checkedCount', { count: platforms.length })}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {suggestedPlatforms.map(p => {
@@ -2196,7 +2210,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100">
                   <Users className="h-4 w-4 text-amber-700" />
                 </div>
-                <label className="text-sm font-semibold">Nombre de profils</label>
+                <label className="text-sm font-semibold">{t('sourcing.profileCount')}</label>
               </div>
               <span className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
                 {maxProfiles}
@@ -2216,7 +2230,7 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100">
                 <Zap className="h-4 w-4 text-pink-700" />
               </div>
-              <label className="text-sm font-semibold">Mode de génération</label>
+              <label className="text-sm font-semibold">{t('sourcing.generationMode')}</label>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setMode('single')}
@@ -2225,24 +2239,24 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                     ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-rose-50 text-pink-900 shadow-sm'
                     : 'border-border hover:border-pink-300'}`}>
                 <Sparkles className="h-4 w-4 mx-auto mb-1" />
-                Simple
+                {t('sourcing.single')}
               </button>
               <button type="button" onClick={() => setMode('compare')}
                 disabled={!canCompare}
-                title={!canCompare ? 'MISTRAL_API_KEY requis pour la comparaison' : ''}
+                title={!canCompare ? t('sourcing.compareRequiresMistral') : ''}
                 className={`rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition-all
                   ${mode === 'compare'
                     ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-rose-50 text-pink-900 shadow-sm'
                     : 'border-border hover:border-pink-300'}
                   ${!canCompare ? 'opacity-40 cursor-not-allowed' : ''}`}>
                 <TrendingUp className="h-4 w-4 mx-auto mb-1" />
-                Comparer
+                {t('sourcing.compare')}
               </button>
             </div>
 
             {mode === 'single' && hasAnyModel && (
               <div className="mt-3">
-                <label className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">Modèle IA</label>
+                <label className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{t('sourcing.aiModel')}</label>
                 <div className="mt-1 flex gap-2">
                   {(['claude', 'mistral'] as const).map(m => (
                     <button key={m} type="button" disabled={!aiCaps[m]}
@@ -2262,8 +2276,8 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
           <button onClick={run} disabled={loading || !jobId || !hasAnyModel}
             className="group relative w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 transition-all hover:shadow-xl hover:shadow-purple-500/40 hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg">
             {loading
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'compare' ? 'Comparaison en cours…' : 'Génération en cours…'}</>
-              : <><Wand2 className="h-4 w-4 group-hover:rotate-12 transition-transform" /> {mode === 'compare' ? 'Lancer la comparaison IA' : 'Générer les profils IA'}</>}
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'compare' ? t('sourcing.comparing') : t('sourcing.generating')}</>
+              : <><Wand2 className="h-4 w-4 group-hover:rotate-12 transition-transform" /> {mode === 'compare' ? t('sourcing.launchCompare') : t('sourcing.generateProfiles')}</>}
           </button>
 
           {error && (
@@ -2287,12 +2301,12 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-emerald-900">
-                      {sourcedRows.length} profil{sourcedRows.length > 1 ? 's' : ''} sourcé{sourcedRows.length > 1 ? 's' : ''}
+                      {t('sourcing.profilesSourced', { count: sourcedRows.length })}
                     </h3>
                     <p className="text-xs text-emerald-700/90 mt-0.5">
                       {pendingCount > 0
-                        ? <><strong>{pendingCount}</strong> à transférer · <strong>{sourcedRows.length - pendingCount}</strong> déjà dans le pipeline</>
-                        : 'Tous transférés vers le pipeline ✓'}
+                        ? <Trans i18nKey="sourcing.pendingTransfer" t={t} values={{ pending: pendingCount, done: sourcedRows.length - pendingCount }} components={{ strong: <strong /> }} />
+                        : t('sourcing.allTransferred')}
                     </p>
                   </div>
                 </div>
@@ -2301,12 +2315,12 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                     <button onClick={transferAll} disabled={transferringAll}
                       className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50">
                       {transferringAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                      Tout transférer ({pendingCount})
+                      {t('sourcing.transferAll', { count: pendingCount })}
                     </button>
                   )}
                   <button onClick={() => onGoToKanban(jobId)}
                     className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white/90 px-3.5 py-2 text-xs font-semibold text-emerald-700 hover:bg-white">
-                    Voir Kanban <ChevronRight className="h-3.5 w-3.5" />
+                    {t('sourcing.viewKanban')} <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -2362,8 +2376,8 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
           {!single && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
             <EmptyState
               icon={Target}
-              title="Aucun profil sourcé pour cette offre"
-              hint="Lancez une génération à gauche pour créer les premiers profils."
+              title={t('sourcing.noProfilesTitle')}
+              hint={t('sourcing.noProfilesHint')}
               tone="info"
             />
           )}
@@ -2371,8 +2385,8 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
           {!jobId && (
             <EmptyState
               icon={Briefcase}
-              title="Sélectionnez une offre"
-              hint="Choisissez une offre à sourcer dans le panneau de gauche pour démarrer."
+              title={t('sourcing.noOfferTitle')}
+              hint={t('sourcing.noOfferHint')}
               tone="indigo"
             />
           )}
@@ -2430,6 +2444,7 @@ function SourcingStrategyCard({ strategy, meta }: {
   strategy: SourcingStrategy
   meta: SourcingResponse['meta']
 }) {
+  const { t } = useTranslation('recruitment')
   return (
     <div className="overflow-hidden rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50/30 to-purple-50/30 shadow-sm">
       {/* Header gradient */}
@@ -2439,8 +2454,8 @@ function SourcingStrategyCard({ strategy, meta }: {
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-indigo-900">Stratégie de sourcing IA</h3>
-            <p className="text-[11px] text-indigo-700/70">Généré par {meta.provider === 'claude' ? 'Claude (Anthropic)' : 'Mistral'}</p>
+            <h3 className="text-sm font-bold text-indigo-900">{t('strategy.title')}</h3>
+            <p className="text-[11px] text-indigo-700/70">{t('strategy.generatedBy', { provider: meta.provider === 'claude' ? t('strategy.claudeAnthropic') : t('strategy.mistral') })}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -2462,7 +2477,7 @@ function SourcingStrategyCard({ strategy, meta }: {
         {strategy.bestPlatforms.length > 0 && (
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
-              <Layers className="h-3.5 w-3.5" /> Plateformes recommandées
+              <Layers className="h-3.5 w-3.5" /> {t('strategy.recommendedPlatforms')}
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {strategy.bestPlatforms.map((p, i) => (
@@ -2483,7 +2498,7 @@ function SourcingStrategyCard({ strategy, meta }: {
         {strategy.booleanSearch && (
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
-              <Target className="h-3.5 w-3.5" /> Requête booléenne LinkedIn
+              <Target className="h-3.5 w-3.5" /> {t('strategy.booleanSearch')}
             </p>
             <code className="block rounded-lg bg-slate-900 px-3 py-2 text-xs text-emerald-300 font-mono border border-slate-700 overflow-x-auto">
               {strategy.booleanSearch}
@@ -2495,16 +2510,16 @@ function SourcingStrategyCard({ strategy, meta }: {
           <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-3">
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="h-4 w-4 text-emerald-700" />
-              <span className="text-xs font-bold text-emerald-900">Benchmark salarial</span>
+              <span className="text-xs font-bold text-emerald-900">{t('strategy.salaryBenchmark')}</span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-bold text-emerald-700 font-mono">
                 {strategy.salaryBenchmark.median.toLocaleString('fr-FR')}
               </span>
-              <span className="text-xs text-emerald-700/70">{strategy.salaryBenchmark.currency} · médiane</span>
+              <span className="text-xs text-emerald-700/70">{t('strategy.median', { currency: strategy.salaryBenchmark.currency })}</span>
             </div>
             <div className="text-[11px] text-emerald-700/80 mt-0.5">
-              Fourchette : {strategy.salaryBenchmark.min.toLocaleString('fr-FR')} – {strategy.salaryBenchmark.max.toLocaleString('fr-FR')} {strategy.salaryBenchmark.currency}
+              {t('strategy.range', { min: strategy.salaryBenchmark.min.toLocaleString('fr-FR'), max: strategy.salaryBenchmark.max.toLocaleString('fr-FR'), currency: strategy.salaryBenchmark.currency })}
             </div>
           </div>
         )}
@@ -2512,13 +2527,13 @@ function SourcingStrategyCard({ strategy, meta }: {
         {strategy.tips.length > 0 && (
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-1.5">
-              <Quote className="h-3.5 w-3.5" /> Conseils
+              <Quote className="h-3.5 w-3.5" /> {t('strategy.tips')}
             </p>
             <ul className="space-y-1.5">
-              {strategy.tips.map((t, i) => (
+              {strategy.tips.map((tip, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
                   <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-indigo-500" />
-                  <span>{t}</span>
+                  <span>{tip}</span>
                 </li>
               ))}
             </ul>
@@ -2538,6 +2553,7 @@ function ProfileCard({ profile, onContact, transferable }: {
     onTransfer: () => void
   }
 }) {
+  const { t } = useTranslation('recruitment')
   const tier = matchTier(profile.matchScore)
   const isTransferred = transferable?.state === 'transferred'
 
@@ -2549,7 +2565,7 @@ function ProfileCard({ profile, onContact, transferable }: {
       {/* Bandeau "Dans le pipeline" si transféré */}
       {isTransferred && (
         <div className="absolute top-0 right-0 z-10 rounded-bl-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-md">
-          <CheckCircle className="inline h-3 w-3 mr-0.5" /> Dans le pipeline
+          <CheckCircle className="inline h-3 w-3 mr-0.5" /> {t('profileCard.inPipeline')}
         </div>
       )}
 
@@ -2578,14 +2594,14 @@ function ProfileCard({ profile, onContact, transferable }: {
         {/* Méta : disponibilité + localisation + expérience */}
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${AVAILABILITY_COLOR[profile.availabilityEstimate] ?? 'bg-muted'}`}>
-            {AVAILABILITY_LABEL[profile.availabilityEstimate] ?? profile.availabilityEstimate}
+            {availabilityLabel(profile.availabilityEstimate)}
           </span>
           <span className="inline-flex items-center gap-1 text-slate-600">
             <MapPin className="h-3 w-3" /> {profile.location}
           </span>
           {profile.experienceYears > 0 && (
             <span className="inline-flex items-center gap-1 text-slate-600">
-              <Briefcase className="h-3 w-3" /> {profile.experienceYears} ans
+              <Briefcase className="h-3 w-3" /> {t('profileCard.years', { count: profile.experienceYears })}
             </span>
           )}
         </div>
@@ -2634,7 +2650,7 @@ function ProfileCard({ profile, onContact, transferable }: {
           <div className="ml-auto flex items-center gap-1.5">
             <button onClick={onContact}
               className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">
-              <Mail className="h-3 w-3" /> Message
+              <Mail className="h-3 w-3" /> {t('profileCard.message')}
             </button>
             {transferable && !isTransferred && (
               <button onClick={transferable.onTransfer}
@@ -2643,7 +2659,7 @@ function ProfileCard({ profile, onContact, transferable }: {
                 {transferable.state === 'transferring'
                   ? <Loader2 className="h-3 w-3 animate-spin" />
                   : <Send className="h-3 w-3" />}
-                Transférer
+                {t('profileCard.transfer')}
               </button>
             )}
           </div>
@@ -2658,8 +2674,9 @@ function CompareReport({ compare, onContact }: {
   compare: CompareResponse
   onContact: (p: SourcingProfile) => void
 }) {
+  const { t } = useTranslation('recruitment')
   const [view, setView] = useState<'claude' | 'mistral'>(compare.comparison.winner)
-  const winnerLabel = compare.comparison.winner === 'claude' ? 'Claude (Anthropic)' : 'Mistral AI'
+  const winnerLabel = compare.comparison.winner === 'claude' ? t('compareReport.winnerClaude') : t('compareReport.winnerMistral')
   const result = view === 'claude' ? compare.results.claude : compare.results.mistral
   const summary = view === 'claude' ? compare.comparison.summary.claude : compare.comparison.summary.mistral
 
@@ -2675,13 +2692,13 @@ function CompareReport({ compare, onContact }: {
                 <TrendingUp className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-amber-900">Comparatif IA</h3>
-                <p className="text-xs text-amber-700">Claude vs Mistral · génération parallèle</p>
+                <h3 className="text-base font-bold text-amber-900">{t('compareReport.title')}</h3>
+                <p className="text-xs text-amber-700">{t('compareReport.subtitle')}</p>
               </div>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
               <Award className="h-4 w-4" />
-              Gagnant : {winnerLabel}
+              {t('compareReport.winner', { winner: winnerLabel })}
             </div>
           </div>
 
@@ -2703,7 +2720,7 @@ function CompareReport({ compare, onContact }: {
                   }`}>
                   {isWinner && (
                     <div className="absolute -top-2 right-3 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                      ✨ Gagnant
+                      {t('compareReport.winnerBadge')}
                     </div>
                   )}
                   <div className="flex items-center justify-between mb-2">
@@ -2718,19 +2735,19 @@ function CompareReport({ compare, onContact }: {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Latence</div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">{t('compareReport.latency')}</div>
                       <div className="font-bold text-slate-800 font-mono">{s.latencyMs}ms</div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Coût</div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">{t('compareReport.cost')}</div>
                       <div className="font-bold text-slate-800 font-mono">{s.estimatedCostEur.toFixed(4)}€</div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Profils</div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">{t('compareReport.profiles')}</div>
                       <div className="font-bold text-slate-800 font-mono">{s.profilesGenerated}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Richesse</div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">{t('compareReport.richness')}</div>
                       <div className="font-bold text-slate-800 font-mono">{s.richnessScore}/100</div>
                     </div>
                   </div>
@@ -2766,7 +2783,7 @@ function CompareReport({ compare, onContact }: {
 
       {/* Toggle vue résultats */}
       <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground">Voir les résultats de :</span>
+        <span className="text-xs font-semibold text-muted-foreground">{t('compareReport.viewResultsOf')}</span>
         <div className="inline-flex gap-1 rounded-lg border border-border bg-card p-1">
           {(['claude', 'mistral'] as const).map(m => (
             <button key={m} onClick={() => setView(m)}
@@ -2809,16 +2826,18 @@ function ContactDialog({ profile, onClose }: {
   profile: SourcingProfile
   onClose: () => void
 }) {
+  const { t } = useTranslation('recruitment')
   const [copied, setCopied] = useState<'subject' | 'body' | null>(null)
 
-  const subject = `Opportunité chez nous — ${profile.currentPosition || 'votre profil'}`
-  const body = `Bonjour ${profile.firstName},
-
-Votre parcours chez ${profile.currentCompany || 'votre entreprise actuelle'} a retenu notre attention. Nous recherchons un(e) ${profile.currentPosition || 'profil similaire'} et pensons que votre expérience à ${profile.location} pourrait être un excellent match.
-
-Seriez-vous ouvert(e) à un premier échange (15-20 min) pour explorer cette opportunité ?
-
-Bonne journée,`
+  const subject = t('contactDialog.subjectTemplate', {
+    position: profile.currentPosition || t('contactDialog.positionFallback'),
+  })
+  const body = t('contactDialog.bodyTemplate', {
+    firstName: profile.firstName,
+    company: profile.currentCompany || t('contactDialog.companyFallback'),
+    position: profile.currentPosition || t('contactDialog.positionBodyFallback'),
+    location: profile.location,
+  })
 
   const copy = (text: string, type: 'subject' | 'body') => {
     navigator.clipboard.writeText(text).then(() => {
@@ -2852,7 +2871,7 @@ Bonne journée,`
             </div>
             <button onClick={onClose}
               className="rounded-full p-1.5 hover:bg-white/60 transition-colors"
-              aria-label="Fermer">
+              aria-label={t('contactDialog.close')}>
               <XCircle className="h-5 w-5 text-slate-500" />
             </button>
           </div>
@@ -2862,10 +2881,10 @@ Bonne journée,`
         <div className="px-6 py-5 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Objet</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{t('contactDialog.subject')}</label>
               <button onClick={() => copy(subject, 'subject')}
                 className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
-                {copied === 'subject' ? <><CheckCircle className="h-3 w-3" /> Copié</> : 'Copier'}
+                {copied === 'subject' ? <><CheckCircle className="h-3 w-3" /> {t('contactDialog.copied')}</> : t('contactDialog.copy')}
               </button>
             </div>
             <input readOnly value={subject}
@@ -2875,10 +2894,10 @@ Bonne journée,`
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Message d'approche</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{t('contactDialog.approachMessage')}</label>
               <button onClick={() => copy(body, 'body')}
                 className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
-                {copied === 'body' ? <><CheckCircle className="h-3 w-3" /> Copié</> : 'Copier'}
+                {copied === 'body' ? <><CheckCircle className="h-3 w-3" /> {t('contactDialog.copied')}</> : t('contactDialog.copy')}
               </button>
             </div>
             <textarea readOnly value={body} rows={8}
@@ -2890,7 +2909,7 @@ Bonne journée,`
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
               <div className="flex items-center gap-2 mb-1">
                 <Linkedin className="h-4 w-4 text-blue-700" />
-                <span className="text-xs font-semibold text-blue-900">Recherche LinkedIn suggérée</span>
+                <span className="text-xs font-semibold text-blue-900">{t('contactDialog.linkedinSuggested')}</span>
               </div>
               <code className="text-[11px] text-blue-800 font-mono break-all">{profile.linkedinSearch}</code>
             </div>
@@ -2902,16 +2921,16 @@ Bonne journée,`
           <button onClick={() => copy(body, 'body')}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
             <Mail className="h-3.5 w-3.5" />
-            Copier le message
+            {t('contactDialog.copyMessage')}
           </button>
           <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-4 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition-colors">
             <Linkedin className="h-3.5 w-3.5" />
-            Rechercher sur LinkedIn
+            {t('contactDialog.searchLinkedin')}
             <ExternalLink className="h-3 w-3 opacity-60" />
           </a>
           <button onClick={onClose} className="ml-auto text-xs font-medium text-slate-500 hover:text-slate-700">
-            Fermer
+            {t('contactDialog.close')}
           </button>
         </div>
       </div>
@@ -2927,6 +2946,7 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
   onClose: () => void
   onSubmit: (patch: Record<string, unknown>) => void
 }) {
+  const { t } = useTranslation('recruitment')
   const [form, setForm] = useState({
     title: job.title,
     department_id: job.department_id ?? '',
@@ -2993,83 +3013,83 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
       <div className="rounded-xl border border-border bg-card w-full max-w-2xl max-h-[min(90vh,720px)] flex flex-col shadow-xl my-auto" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-3 rounded-t-xl">
           <div>
-            <h3 className="font-semibold">Modifier l'offre</h3>
-            {job.reference && <p className="text-[11px] text-muted-foreground">Réf. {job.reference}</p>}
+            <h3 className="font-semibold">{t('editJobModal.title')}</h3>
+            {job.reference && <p className="text-[11px] text-muted-foreground">{t('editJobModal.reference', { reference: job.reference })}</p>}
           </div>
           <button onClick={onClose} className="rounded-full p-1 hover:bg-accent"><XCircle className="h-5 w-5 text-muted-foreground" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Titre du poste *</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.jobTitle')}</label>
             <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Département</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.department')}</label>
             <select value={form.department_id} onChange={e => setForm(p => ({ ...p, department_id: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              <option value="">— Aucun —</option>
+              <option value="">{t('newJobModal.noDepartment')}</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Localisation</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.location')}</label>
               <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Type de contrat</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.contractType')}</label>
               <select value={form.contract_type} onChange={e => setForm(p => ({ ...p, contract_type: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="cdi">CDI</option>
-                <option value="cdd">CDD</option>
-                <option value="stage">Stage</option>
-                <option value="apprentissage">Apprentissage</option>
+                <option value="cdi">{t('contractType.cdi')}</option>
+                <option value="cdd">{t('contractType.cdd')}</option>
+                <option value="stage">{t('contractType.stage')}</option>
+                <option value="apprentissage">{t('contractType.apprentissage')}</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Statut</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('editJobModal.status')}</label>
               <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="open">Ouverte</option>
-                <option value="paused">En pause</option>
-                <option value="closed">Fermée</option>
+                <option value="open">{t('jobStatus.open')}</option>
+                <option value="paused">{t('jobStatus.paused')}</option>
+                <option value="closed">{t('jobStatus.closed')}</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire min (FCFA)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.salaryMin')}</label>
               <input type="number" value={form.salary_min} onChange={e => setForm(p => ({ ...p, salary_min: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Salaire max (FCFA)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.salaryMax')}</label>
               <input type="number" value={form.salary_max} onChange={e => setForm(p => ({ ...p, salary_max: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.description')}</label>
             <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Prérequis</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.requirements')}</label>
             <textarea value={form.requirements} onChange={e => setForm(p => ({ ...p, requirements: e.target.value }))}
               rows={2} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
           </div>
 
           {/* ── Structure d'offre APEC ── */}
           <div className="border-t border-border pt-3 space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground">Structure de l'offre (standard APEC)</p>
+            <p className="text-xs font-semibold text-muted-foreground">{t('newJobModal.apecStructure')}</p>
             <div className="grid grid-cols-2 gap-3">
               {([
-                { key: 'experience_level',   label: 'Expérience',      opts: EXPERIENCE_OPTIONS },
-                { key: 'job_level',          label: 'Statut',          opts: JOB_LEVEL_OPTIONS },
-                { key: 'required_education', label: 'Formation',       opts: EDUCATION_OPTIONS },
-                { key: 'sector',             label: 'Secteur',         opts: SECTOR_OPTIONS },
-                { key: 'work_mode',          label: 'Mode de travail', opts: WORK_MODE_OPTIONS },
+                { key: 'experience_level',   label: t('newJobModal.experience'),    opts: EXPERIENCE_OPTIONS },
+                { key: 'job_level',          label: t('newJobModal.jobLevelLabel'), opts: JOB_LEVEL_OPTIONS },
+                { key: 'required_education', label: t('newJobModal.education'),      opts: EDUCATION_OPTIONS },
+                { key: 'sector',             label: t('newJobModal.sector'),         opts: SECTOR_OPTIONS },
+                { key: 'work_mode',          label: t('newJobModal.workMode'),       opts: WORK_MODE_OPTIONS },
               ] as const).map(({ key, label, opts }) => (
                 <div key={key}>
                   <label className="text-xs font-medium text-muted-foreground">{label}</label>
@@ -3081,28 +3101,28 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
                 </div>
               ))}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Date de prise de poste</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.startDate')}</label>
                 <input type="date" value={form.start_date}
                   onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Avantages</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.benefits')}</label>
               <textarea value={form.benefits} onChange={e => setForm(p => ({ ...p, benefits: e.target.value }))}
-                rows={2} placeholder="Mutuelle, primes, télétravail, formation…"
+                rows={2} placeholder={t('newJobModal.benefitsPlaceholder')}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Processus de recrutement</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.recruitmentProcess')}</label>
               <textarea value={form.recruitment_process} onChange={e => setForm(p => ({ ...p, recruitment_process: e.target.value }))}
-                rows={2} placeholder="Entretien RH → test technique → entretien manager…"
+                rows={2} placeholder={t('newJobModal.recruitmentProcessPlaceholder')}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
             </div>
           </div>
 
           <div className="border-t border-border pt-3">
-            <label className="text-xs font-medium text-muted-foreground">Visibilité de l'offre *</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.jobVisibility')}</label>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {(['external', 'internal', 'both'] as const).map(v => {
                 const cfg = VISIBILITY_CONFIG[v]!
@@ -3110,7 +3130,7 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
                 return (
                   <button key={v} type="button" onClick={() => setForm(p => ({ ...p, visibility: v }))}
                     className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.visibility === v ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}>
-                    <Icon className="h-4 w-4" /> {cfg.label}
+                    <Icon className="h-4 w-4" /> {visibilityLabel(v)}
                   </button>
                 )
               })}
@@ -3119,11 +3139,11 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
 
           {isInternal && (
             <div className="rounded-lg border border-purple-200 bg-purple-50/40 p-3 space-y-3">
-              <p className="text-xs font-medium text-purple-700">Critères de ciblage interne (tous optionnels, combinables)</p>
+              <p className="text-xs font-medium text-purple-700">{t('newJobModal.internalTargeting')}</p>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Départements ciblés</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.targetDepartments')}</label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {departments.length === 0 && <span className="text-xs text-muted-foreground italic">Aucun département</span>}
+                  {departments.length === 0 && <span className="text-xs text-muted-foreground italic">{t('newJobModal.noDepartmentAvailable')}</span>}
                   {departments.map(d => {
                     const active = form.target_departments.includes(d.id)
                     return (
@@ -3136,34 +3156,34 @@ function EditJobModal({ job, departments, submitting, onClose, onSubmit }: {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Catégories ciblées</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.targetCategories')}</label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {JOB_LEVELS.map(lvl => {
                     const active = form.target_job_levels.includes(lvl)
                     return (
                       <button key={lvl} type="button" onClick={() => toggleLevel(lvl)}
                         className={`rounded-full border px-2.5 py-1 text-xs ${active ? 'border-purple-500 bg-purple-100 text-purple-700' : 'border-border hover:bg-accent'}`}>
-                        {JOB_LEVEL_LABELS[lvl]}
+                        {jobLevelLabel(lvl)}
                       </button>
                     )
                   })}
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Ancienneté minimum (mois)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('newJobModal.minSeniority')}</label>
                 <input type="number" min="0" value={form.target_min_seniority_months}
                   onChange={e => setForm(p => ({ ...p, target_min_seniority_months: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Ex: 24 (pour 2 ans)" />
+                  placeholder={t('newJobModal.minSeniorityPlaceholder')} />
               </div>
             </div>
           )}
         </div>
         <div className="sticky bottom-0 z-10 flex gap-2 justify-end border-t border-border bg-card px-5 py-3 rounded-b-xl">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('newJobModal.cancel')}</button>
           <button onClick={submit} disabled={!form.title || submitting}
             className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+            {submitting ? t('editJobModal.saving') : t('editJobModal.save')}
           </button>
         </div>
       </div>
@@ -3178,17 +3198,18 @@ function ShareJobModal({ job, publicUrl, onClose, onCopied }: {
   onClose: () => void
   onCopied: (msg: string) => void
 }) {
+  const { t } = useTranslation('recruitment')
   const fullUrl = publicUrl  // Page carrières du tenant (l'offre est listée dedans)
   const copy = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => onCopied(label)).catch(() => {})
   }
-  const sharePayload = encodeURIComponent(`Découvrez cette offre — ${job.title} — ${fullUrl}`)
+  const sharePayload = encodeURIComponent(t('shareModal.shareText', { title: job.title, url: fullUrl }))
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="rounded-2xl border border-border bg-card w-full max-w-md shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-4 flex items-start justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wider opacity-80">Partager l'offre</p>
+            <p className="text-xs uppercase tracking-wider opacity-80">{t('shareModal.shareJob')}</p>
             <h3 className="text-base font-bold leading-tight mt-0.5">{job.title}</h3>
           </div>
           <button onClick={onClose} className="rounded-full p-1 hover:bg-white/20">
@@ -3198,20 +3219,20 @@ function ShareJobModal({ job, publicUrl, onClose, onCopied }: {
 
         <div className="px-5 py-4 space-y-4">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Lien public</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{t('shareModal.publicLink')}</label>
             <div className="mt-1 flex gap-2">
               <input readOnly value={fullUrl}
                 onClick={e => (e.target as HTMLInputElement).select()}
                 className="flex-1 rounded-lg border border-input bg-slate-50 px-3 py-2 text-xs font-mono" />
-              <button onClick={() => copy(fullUrl, 'Lien copié dans le presse-papier')}
+              <button onClick={() => copy(fullUrl, t('shareModal.linkCopied'))}
                 className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700">
-                <Copy className="h-3.5 w-3.5" /> Copier
+                <Copy className="h-3.5 w-3.5" /> {t('shareModal.copy')}
               </button>
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Partager sur</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{t('shareModal.shareOn')}</label>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(fullUrl)}`}
                 target="_blank" rel="noopener noreferrer"
@@ -3228,7 +3249,7 @@ function ShareJobModal({ job, publicUrl, onClose, onCopied }: {
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:border-sky-300">
                 <Share2 className="h-4 w-4 text-sky-500" /> Twitter / X
               </a>
-              <a href={`mailto:?subject=${encodeURIComponent('Offre — ' + job.title)}&body=${sharePayload}`}
+              <a href={`mailto:?subject=${encodeURIComponent(t('shareModal.emailSubject', { title: job.title }))}&body=${sharePayload}`}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:border-amber-300">
                 <Mail className="h-4 w-4 text-amber-600" /> Email
               </a>
@@ -3237,7 +3258,7 @@ function ShareJobModal({ job, publicUrl, onClose, onCopied }: {
 
           <a href={fullUrl} target="_blank" rel="noopener noreferrer"
             className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg">
-            <ExternalLink className="h-4 w-4" /> Aperçu de la page publique
+            <ExternalLink className="h-4 w-4" /> {t('shareModal.previewPublic')}
           </a>
         </div>
       </div>
@@ -3257,17 +3278,19 @@ function normalizeJsonArray(v: unknown): string[] {
 // 100% configurable par offre (rien en dur). Charge GET, sauvegarde PUT.
 // Les règles s'appliquent au lancement de la pré-sélection (auto-rejet si
 // knockout / score sous seuil). Une donnée candidate inconnue ne rejette jamais.
-const DIPLOMA_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '',         label: '— Aucun minimum —' },
-  { value: 'cep',      label: 'CEP' },
-  { value: 'bepc',     label: 'BEPC / Brevet' },
-  { value: 'cap',      label: 'CAP / BEP' },
-  { value: 'bac',      label: 'Baccalauréat' },
-  { value: 'bac+2',    label: 'Bac+2 (BTS/DUT)' },
-  { value: 'bac+3',    label: 'Bac+3 (Licence)' },
-  { value: 'bac+4',    label: 'Bac+4 (Maîtrise)' },
-  { value: 'bac+5',    label: 'Bac+5 (Master/Ingénieur)' },
-  { value: 'doctorat', label: 'Doctorat' },
+// value = code stocké côté API ; libellé résolu via i18n (clé technique = code,
+// avec normalisation des codes contenant un "+" vers une clé valide).
+const DIPLOMA_OPTION_VALUES: Array<{ value: string; tKey: string }> = [
+  { value: '',         tKey: 'none' },
+  { value: 'cep',      tKey: 'cep' },
+  { value: 'bepc',     tKey: 'bepc' },
+  { value: 'cap',      tKey: 'cap' },
+  { value: 'bac',      tKey: 'bac' },
+  { value: 'bac+2',    tKey: 'bac2' },
+  { value: 'bac+3',    tKey: 'bac3' },
+  { value: 'bac+4',    tKey: 'bac4' },
+  { value: 'bac+5',    tKey: 'bac5' },
+  { value: 'doctorat', tKey: 'doctorat' },
 ]
 
 interface ScreeningCriteriaForm {
@@ -3282,6 +3305,7 @@ interface ScreeningCriteriaForm {
 }
 
 function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
+  const { t } = useTranslation('recruitment')
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<ScreeningCriteriaForm | null>(null)
@@ -3346,7 +3370,7 @@ function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
         className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
       >
         <ShieldCheck className="h-3.5 w-3.5" />
-        {open ? '− Masquer' : '+ Configurer'} les règles de pré-tri (auto-rejet)
+        {(open ? t('screening.hide') : t('screening.configure')) + t('screening.toggleSuffix')}
       </button>
 
       {open && (
@@ -3356,14 +3380,12 @@ function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
           ) : (
             <div className="space-y-3">
               <p className="text-[11px] text-muted-foreground">
-                Critères propres à cette offre. Au lancement de la pré-sélection, un candidat qui échoue à une
-                règle obligatoire (ou dont le score est sous le seuil) est <strong>auto-rejeté</strong> avec le motif.
-                Une information non détectée dans le CV ne provoque jamais de rejet.
+                <Trans i18nKey="screening.intro" t={t} components={{ strong: <strong /> }} />
               </p>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Expérience minimum (années)</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.minExperience')}</span>
                   <input
                     type="number" min={0} max={50} value={form.minExperienceYears}
                     onChange={e => set({ minExperienceYears: e.target.value })}
@@ -3371,43 +3393,43 @@ function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Diplôme minimum</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.minDiploma')}</span>
                   <select
                     value={form.minDiploma}
                     onChange={e => set({ minDiploma: e.target.value })}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   >
-                    {DIPLOMA_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {DIPLOMA_OPTION_VALUES.map(o => <option key={o.value} value={o.value}>{t(`screening.diploma.${o.tKey}`)}</option>)}
                   </select>
                 </label>
               </div>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-medium">Compétences obligatoires (séparées par des virgules)</span>
+                <span className="mb-1 block text-xs font-medium">{t('screening.requiredSkills')}</span>
                 <input
                   value={form.requiredSkills}
                   onChange={e => set({ requiredSkills: e.target.value })}
-                  placeholder="Ex : Permis D, Mécanique, Excel"
+                  placeholder={t('screening.requiredSkillsPlaceholder')}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 />
               </label>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Localisations acceptées (virgules)</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.allowedLocations')}</span>
                   <input
                     value={form.allowedLocations}
                     onChange={e => set({ allowedLocations: e.target.value })}
-                    placeholder="Ex : Abidjan, Bouaké"
+                    placeholder={t('screening.allowedLocationsPlaceholder')}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Langues obligatoires (virgules)</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.requiredLanguages')}</span>
                   <input
                     value={form.requiredLanguages}
                     onChange={e => set({ requiredLanguages: e.target.value })}
-                    placeholder="Ex : Français, Anglais"
+                    placeholder={t('screening.requiredLanguagesPlaceholder')}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </label>
@@ -3415,20 +3437,20 @@ function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Prétention salariale max (FCFA)</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.maxSalary')}</span>
                   <input
                     type="number" min={0} value={form.maxExpectedSalary}
                     onChange={e => set({ maxExpectedSalary: e.target.value })}
-                    placeholder="Ex : 500000"
+                    placeholder={t('screening.maxSalaryPlaceholder')}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium">Auto-rejet si score IA &lt; (0–100)</span>
+                  <span className="mb-1 block text-xs font-medium">{t('screening.autoRejectBelow')}</span>
                   <input
                     type="number" min={0} max={100} value={form.autoRejectBelowScore}
                     onChange={e => set({ autoRejectBelowScore: e.target.value })}
-                    placeholder="Ex : 40"
+                    placeholder={t('screening.autoRejectBelowPlaceholder')}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </label>
@@ -3440,19 +3462,19 @@ function ScreeningCriteriaPanel({ jobId }: { jobId: string }) {
                   onChange={e => set({ knockoutEnabled: e.target.checked })}
                   className="h-4 w-4 rounded border-border"
                 />
-                <span>Activer les règles éliminatoires (décocher = critères indicatifs, seul le seuil de score reste actif)</span>
+                <span>{t('screening.knockoutEnabled')}</span>
               </label>
 
               <div className="flex items-center justify-end gap-2 pt-1">
-                {saved && <span className="text-xs text-emerald-600">Enregistré ✓</span>}
-                {save.isError && <span className="text-xs text-red-600">Erreur d'enregistrement</span>}
+                {saved && <span className="text-xs text-emerald-600">{t('screening.saved')}</span>}
+                {save.isError && <span className="text-xs text-red-600">{t('screening.saveError')}</span>}
                 <button
                   onClick={() => form && save.mutate(form)}
                   disabled={save.isPending}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
                 >
                   {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                  Enregistrer les critères
+                  {t('screening.saveCriteria')}
                 </button>
               </div>
             </div>

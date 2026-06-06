@@ -1,0 +1,657 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "tenants": "Tenants",
+    "agencies": "Agencies",
+    "legalWatch": "Legal watch",
+    "settings": "Settings",
+    "portal": "Platform portal",
+    "superAdmin": "Super Admin",
+    "logout": "Log out"
+  },
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "manage": "Manage",
+    "back": "Back",
+    "createError": "Error during creation"
+  },
+  "status": {
+    "active": "Active",
+    "trial": "Trial",
+    "suspended": "Suspended"
+  },
+  "plans": {
+    "trial": "Trial",
+    "starter": "Starter",
+    "business": "Business",
+    "enterprise": "Enterprise",
+    "public_sector": "Public Sector"
+  },
+  "dashboard": {
+    "title": "Platform dashboard",
+    "subtitle": "NexusRH CI — OpenLab Consulting",
+    "kpi": {
+      "activeTenants": "Active tenants",
+      "trial": "In trial",
+      "suspended": "Suspended",
+      "totalTenants": "Total tenants"
+    },
+    "recentTenants": "Recent tenants",
+    "createTenant": "+ Create a tenant",
+    "table": {
+      "company": "Company",
+      "city": "City",
+      "plan": "Plan",
+      "maxEmployees": "Max employees",
+      "status": "Status"
+    },
+    "empty": "No tenant created"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "count": "{{count}} company(ies) registered",
+    "newButton": "New tenant",
+    "table": {
+      "company": "Company",
+      "cityCategory": "City · Sector",
+      "plan": "Plan",
+      "maxEmployees": "Max employees",
+      "status": "Status"
+    },
+    "empty": "No tenant created"
+  },
+  "tenantNew": {
+    "back": "Back",
+    "title": "Create a new tenant",
+    "successTitle": "Tenant created successfully",
+    "successDesc": "The admin has been created with a temporary password.",
+    "successSeeded": " Demo data is being injected.",
+    "adminEmail": "Admin email:",
+    "tempPassword": "Temporary password:",
+    "viewTenants": "View tenants",
+    "createAnother": "Create another",
+    "step1": "1. Company information",
+    "step2": "2. Main administrator",
+    "step3": "3. Appearance",
+    "step4": "4. Advanced options",
+    "step5": "5. Company structure",
+    "fields": {
+      "name": "Company name *",
+      "slug": "Slug *",
+      "plan": "Plan *",
+      "sector": "Business sector *",
+      "city": "City *",
+      "cnpsNumber": "Employer CNPS no.",
+      "dgiNumber": "DGI no.",
+      "firstName": "First name *",
+      "lastName": "Last name *",
+      "adminEmail": "Admin email *",
+      "phone": "Phone (+225)",
+      "primaryColor": "Primary color",
+      "secondaryColor": "Secondary color"
+    },
+    "atRate": "CNPS work-accident rate: {{rate}}",
+    "planOptions": {
+      "trial": "Trial (30-day free)",
+      "starter": "Starter",
+      "business": "Business",
+      "enterprise": "Enterprise",
+      "public_sector": "Public Sector"
+    },
+    "sectors": {
+      "commerce": "Commerce & Distribution",
+      "services": "Services & Consulting",
+      "finance": "Finance & Banking",
+      "education": "Education & Training",
+      "sante": "Healthcare",
+      "btp": "Construction & Public Works",
+      "transport": "Transport & Logistics",
+      "industrie": "Industry & Manufacturing",
+      "agriculture": "Agriculture",
+      "extraction": "Mining & Extraction",
+      "public": "Public sector & NGOs"
+    },
+    "seedDemo": {
+      "label": "Inject demo data",
+      "hint": "Automatically creates 8 Ivorian employees, 3 months of payslips, absences and trainings in this tenant."
+    },
+    "subsidiaries": {
+      "intro": "Default: single-country Côte d'Ivoire company. Enable this option if the company has subsidiaries in several WAEMU / non-WAEMU countries and wants centralized payroll with local declension per subsidiary.",
+      "label": "Multi-country company with subsidiaries",
+      "hint": "Enables per-country legislative packs (CI, BF, SN, ML, TG, BJ, NE…), the centralized payroll workflow draft → site RAF → central, and the \"Subsidiaries & legislations\" tab in tenant settings.",
+      "defaultCountry": "Main country (headquarters)",
+      "afterCreate": "Other subsidiaries can be added after creation from \"Settings → Subsidiaries & legislations\"."
+    },
+    "countries": {
+      "CIV": "Côte d'Ivoire (CIV)",
+      "BFA": "Burkina Faso (BFA)",
+      "SEN": "Senegal (SEN)",
+      "MLI": "Mali (MLI)",
+      "TGO": "Togo (TGO)",
+      "BEN": "Benin (BEN)",
+      "NER": "Niger (NER)",
+      "GNB": "Guinea-Bissau (GNB)"
+    },
+    "errors": {
+      "nameRequired": "Name required",
+      "slugFormat": "Slug: lowercase, digits and hyphens only",
+      "sectorRequired": "Sector required",
+      "cityRequired": "City required",
+      "emailInvalid": "Invalid email",
+      "firstNameRequired": "First name required",
+      "lastNameRequired": "Last name required",
+      "createError": "Error during creation"
+    },
+    "submit": "Create tenant",
+    "submitting": "Creating..."
+  },
+  "tenantDetail": {
+    "notFound": "Tenant not found",
+    "back": "Back to tenants",
+    "multiCountryBadge": "Multi-country · {{country}}",
+    "info": {
+      "city": "City",
+      "sector": "Sector",
+      "plan": "Plan",
+      "atRate": "CNPS work-accident rate",
+      "cnpsNumber": "CNPS no.",
+      "dgiNumber": "DGI no.",
+      "maxUsers": "Max users",
+      "maxEmployees": "Max employees",
+      "payrollMode": "Payroll mode",
+      "defaultCountry": "Main country",
+      "payrollModeMulti": "Multi-country (centralized)",
+      "payrollModeSingle": "Single-country (CI)",
+      "dash": "—"
+    },
+    "subsidiaries": {
+      "title": "Multi-country structure",
+      "toggleLabel": "Enable multi-country / subsidiary management",
+      "hintOn": "The tenant uses per-country legislative packs and the centralized payroll workflow draft → site RAF → central.",
+      "hintOff": "Single-country Côte d'Ivoire tenant: standard CI 2024 payroll engine, no \"Subsidiaries & legislations\" tab."
+    },
+    "actions": {
+      "title": "Actions",
+      "offlineTitle": "Tenant offline",
+      "offlineMessageShown": "Message shown to users: \"{{message}}\"",
+      "defaultOfflineMessage": "This site is temporarily out of service. Please contact your administrator.",
+      "setOffline": "Take offline",
+      "reactivate": "Reactivate",
+      "resetPassword": "Reset admin password"
+    },
+    "offlineDialog": {
+      "title": "Take \"{{name}}\" offline",
+      "desc": "All tenant users (subsidiaries included) will be blocked and will see this message.",
+      "required": " The message is mandatory (platform policy).",
+      "optional": " The message is optional.",
+      "placeholder": "Message shown to users (e.g. maintenance, contractual suspension…)",
+      "confirm": "Confirm taking offline",
+      "cancel": "Cancel"
+    },
+    "reset": {
+      "errorTitle": "Reset not possible",
+      "forceRepair": "Force tenant repair",
+      "repairTitle": "Tenant repair",
+      "repairDesc": "Enter the administrator's email and name. The schema will be (re)provisioned if missing, then the admin will be created/updated with a temporary password.",
+      "emailPlaceholder": "Admin email",
+      "firstNamePlaceholder": "First name",
+      "lastNamePlaceholder": "Last name",
+      "launchRepair": "Run repair",
+      "cancel": "Cancel",
+      "successTitle": "Password reset",
+      "email": "Email:",
+      "newPassword": "New password:",
+      "saveNote": "Note this password now — it will not be shown again after refresh."
+    },
+    "theme": {
+      "title": "Theme",
+      "primaryColor": "Primary color",
+      "secondaryColor": "Secondary color"
+    }
+  },
+  "agencies": {
+    "title": "Recruitment agencies",
+    "subtitle": "Agencies managing several client companies (Côte d'Ivoire).",
+    "newButton": "New agency",
+    "createdTitle": "Agency created ✓",
+    "ownerLabel": "Owner:",
+    "tempPassword": "Temporary password:",
+    "fields": {
+      "name": "Agency name",
+      "slug": "Slug",
+      "ownerEmail": "Owner email",
+      "city": "City",
+      "senderEmail": "Sender email (invitations)",
+      "senderName": "Sender name",
+      "logo": "Agency logo"
+    },
+    "submit": "Create agency",
+    "table": {
+      "agency": "Agency",
+      "city": "City",
+      "members": "Members",
+      "clients": "Clients",
+      "status": "Status"
+    },
+    "statusActive": "Active",
+    "statusSuspended": "Suspended",
+    "empty": "No agency."
+  },
+  "agencyDetail": {
+    "back": "Agencies",
+    "statusActive": "Active",
+    "statusSuspended": "Suspended",
+    "setOffline": "Take offline",
+    "reactivateWithClients": "Reactivate (with its clients)",
+    "offlineTitle": "Agency offline",
+    "offlineMessageShown": "Message shown to users: \"{{message}}\"",
+    "defaultOfflineMessage": "This site is temporarily out of service. Please contact your administrator.",
+    "offlineDialog": {
+      "title": "Take \"{{name}}\" offline",
+      "desc": "The agency members will be blocked and will see this message.",
+      "required": " The message is mandatory (platform policy).",
+      "optional": " The message is optional.",
+      "placeholder": "Message shown to users (e.g. maintenance, contractual suspension…)",
+      "includeClients": "Also take the attached <0>{{count}}</0> client company(ies) offline (their users will see the same message)",
+      "confirm": "Confirm taking offline",
+      "cancel": "Cancel"
+    },
+    "messages": {
+      "attached": "Company attached ✓",
+      "detached": "Company detached",
+      "error": "Error",
+      "suspended": "Agency taken offline",
+      "suspendedWithClients": "Agency taken offline (+ {{count}} client company(ies))",
+      "reactivated": "Agency reactivated",
+      "reactivatedWithClients": "Agency reactivated (+ {{count}} client company(ies))"
+    },
+    "clients": {
+      "title": "Client companies",
+      "attachLabel": "Attach a company (CI)",
+      "selectPlaceholder": "— Choose a company —",
+      "attach": "Attach",
+      "cityFallback": "CI",
+      "detach": "Detach",
+      "empty": "No company attached."
+    },
+    "members": {
+      "title": "Members",
+      "roleOwner": "Owner",
+      "roleMember": "Recruiter",
+      "active": "Active",
+      "inactive": "Inactive"
+    }
+  },
+  "settings": {
+    "title": "Platform Settings",
+    "subtitle": "Global NexusRH CI configuration · v{{version}} · {{environment}}",
+    "saved": "Saved",
+    "save": "Save",
+    "systemStatus": {
+      "aiClaude": "Claude AI",
+      "aiOk": "API key configured",
+      "aiKo": "ANTHROPIC_API_KEY missing",
+      "smtp": "SMTP Email",
+      "smtpOk": "Transporter active",
+      "smtpKo": "SMTP_USER missing",
+      "maintenance": "Maintenance mode",
+      "maintenanceOn": "ON — site inaccessible",
+      "maintenanceOff": "Disabled",
+      "newTenants": "New tenants",
+      "newTenantsOpen": "Sign-ups open",
+      "newTenantsClosed": "Closed"
+    },
+    "tabs": {
+      "general": "General",
+      "security": "Security",
+      "notifications": "Notifications",
+      "ai": "AI & Claude",
+      "legal": "Company",
+      "storeLois": "Law Store",
+      "multiLeg": "Multi-legislative",
+      "sourcingIa": "AI Sourcing"
+    },
+    "general": {
+      "title": "General settings",
+      "appName": "Application name",
+      "appNameHint": "Shown in emails and the interface",
+      "trialDays": "Default trial period (days)",
+      "maxTenants": "Max number of tenants",
+      "maxTenantsHint": "0 = unlimited",
+      "allowNewTenants": "Allow the creation of new tenants",
+      "maintenanceMode": "Maintenance mode (blocks all access)",
+      "maintenanceWarning": "Warning: enabling maintenance mode will make the application inaccessible to all users.",
+      "offline": {
+        "title": "Taking a tenant or an agency offline",
+        "defaultMessage": "Default offline message",
+        "defaultMessageHint": "System variable: pre-fills the message shown to users when a tenant or agency is taken offline. Editable case by case at action time.",
+        "required": "Message mandatory when taking offline",
+        "requiredHint": "Enabled: a tenant/agency cannot be taken offline without a message (provided or default). Disabled: the message is optional (a generic message is shown by default)."
+      }
+    },
+    "security": {
+      "title": "Platform security",
+      "mfaTitle": "Two-factor authentication (MFA)",
+      "mfaSuperAdmin": "Require MFA for super_admins",
+      "mfaSuperAdminHint": "Disabled: super_admins access the platform without MFA (can create tenants). Enabled: MFA must be configured before any access.",
+      "mfaTenantUsers": "Require MFA for all tenant employees",
+      "mfaTenantUsersHint": "Global policy. Each tenant may <0>strengthen</0> it (never relax it) from its own settings.",
+      "passwordTitle": "Password lifecycle",
+      "passwordMaxAge": "Password lifetime (days)",
+      "passwordMaxAgeHint": "0 = no expiration. Beyond that, the user must change it at login.",
+      "passwordHistory": "Anti-reuse history",
+      "passwordHistoryHint": "Number of recent passwords forbidden from reuse (0 = none).",
+      "breachCheck": "Check passwords against known breaches (HaveIBeenPwned)",
+      "breachCheckHint": "On each login (if internet access), the password is compared — using k-anonymity, never leaving the server — against known breaches. If compromised, a change is enforced. Without internet: check skipped (non-blocking).",
+      "lockoutTitle": "Account lockout (anti-brute-force)",
+      "lockoutEnabled": "Lock an account after too many failed logins",
+      "lockoutMaxAttempts": "Failure threshold",
+      "lockoutMaxAttemptsHint": "0 = disabled",
+      "lockoutWindow": "Window (min)",
+      "lockoutWindowHint": "counting",
+      "lockoutDuration": "Lock duration (min)",
+      "lockoutDurationHint": "blocking",
+      "lockoutSummary": "After {{attempts}} failures in {{window}} min, the account is locked for {{duration}} min (response 423). IP rate-limiting remains active as a complement; if Redis fails, lockout is skipped (fail-open).",
+      "envTitle": "Other measures (configured via .env)",
+      "env": {
+        "jwtSecret": "JWT Secret",
+        "jwtSecretStatus": "Configured",
+        "jwtExpiration": "JWT Expiration",
+        "jwtExpirationStatus": "7 days",
+        "mfaAvailable": "MFA available",
+        "mfaAvailableStatus": "TOTP enabled",
+        "bcrypt": "Bcrypt rounds",
+        "bcryptStatus": "12 rounds",
+        "cors": "CORS",
+        "corsStatus": "Configured",
+        "rateLimit": "Rate limiting",
+        "rateLimitStatus": "Active"
+      },
+      "recommendationsTitle": "CI recommendations:",
+      "recommendations": {
+        "https": "Use HTTPS in production (Let's Encrypt certificate)",
+        "mfa": "Enable MFA for all super_admin accounts",
+        "backup": "Configure a daily PostgreSQL backup",
+        "sovereign": "Sovereign CI hosting for public sector clients"
+      }
+    },
+    "notifications": {
+      "title": "Notifications & Email",
+      "smtpOk": "SMTP email configured and operational",
+      "smtpKo": "SMTP not configured — emails will not be sent",
+      "supportEmail": "Support email",
+      "supportEmailHint": "Shown in emails sent to clients",
+      "supportPhone": "CI support phone",
+      "supportPhoneHint": "Format: +225 XX XX XX XX XX",
+      "supportWhatsapp": "Support WhatsApp",
+      "supportWhatsappHint": "Shown in tenant welcome emails · Format +225 XXXXXXXXXX",
+      "welcomeSignature": "Welcome email signature",
+      "welcomeSignatureHint": "Text shown at the bottom of the email sent on tenant creation",
+      "defaultSignature": "The NexusRH CI team · OpenLab Consulting · Abidjan",
+      "autoEmailsTitle": "Automatically triggered emails",
+      "autoEmails": {
+        "welcome": "Admin welcome on tenant creation",
+        "resetPassword": "Admin password reset",
+        "payslip": "Payslip available (employee)",
+        "absence": "Absence request pending (manager)",
+        "expense": "Expense report to validate"
+      }
+    },
+    "ai": {
+      "title": "Artificial Intelligence — Claude AI",
+      "operationalTitle": "Claude AI operational",
+      "missingKeyTitle": "API key missing",
+      "operationalDesc": "The AI assistant is available to all authorized users (admin, HR, managers)",
+      "missingKeyDesc": "Add ANTHROPIC_API_KEY in your .env to enable the AI assistant",
+      "enableToggle": "Enable the AI assistant in the interface",
+      "featuresTitle": "Enabled AI features",
+      "features": {
+        "chat": "CI HR assistant chat (CNPS, Labour Code, OHADA)",
+        "chatRoles": "Admin, HR, Managers",
+        "simulator": "ITS/IGR family quotient simulator",
+        "simulatorRoles": "All (POST /ai/simulate-its)",
+        "docs": "HR document generation (CDI, letter...)",
+        "docsRoles": "Admin, HR",
+        "retention": "Employee retention score (AI analysis)",
+        "retentionRoles": "Admin, HR Manager"
+      },
+      "modelTitle": "Model used",
+      "modelNote": "Calibrated to the Ivorian context: CI Labour Code, CNPS 2024, ITS/DGI scale, OHADA, Mobile Money CI"
+    },
+    "legal": {
+      "title": "Legal information — OpenLab Consulting",
+      "legalName": "Publisher legal name",
+      "defaultLegalName": "OpenLab Consulting",
+      "address": "Address",
+      "defaultAddress": "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire",
+      "complianceTitle": "CI regulatory compliance",
+      "compliance": {
+        "dataLaw": "Data hosted in accordance with CI law 2013-450 on personal data protection",
+        "labourCode": "Compliance with the CI Labour Code (law no. 2015-532 of 20 July 2015)",
+        "cnps": "CNPS declarations compliant with 2024 regulations",
+        "disa": "DISA generation compliant with law 99-477 of 2 August 1999",
+        "ohada": "OHADA contracts — Revised Uniform Act on commercial law"
+      }
+    },
+    "storeLois": {
+      "title": "Law Store — CI 2024",
+      "subtitle": "Legal constants applied by the payroll engine. Updated on legislative changes.",
+      "badge": "CI · Version 2024 · In force",
+      "edit": "Edit",
+      "warning": "<0>Important:</0> Every change is recorded in the audit logs. SMIG changes are notified to the affected tenants. Verify the legal texts before editing.",
+      "categories": {
+        "smig": "SMIG & Wages",
+        "cnps": "CNPS — Contributions",
+        "its": "ITS / DGI — Tax",
+        "conges": "Leave & Absences",
+        "fdfp": "FDFP — Training"
+      },
+      "constants": {
+        "SMIG_MENSUEL": "Monthly SMIG",
+        "SMIG_HORAIRE": "Hourly SMIG (173.33h)",
+        "PLAFOND_CNPS_AT_PF_MENSUEL": "Work-accident / Family / Maternity ceiling",
+        "PLAFOND_CNPS_RETRAITE_MENSUEL": "Pension ceiling",
+        "TAUX_CNPS_RETRAITE_SAL": "Pension — employee",
+        "TAUX_CNPS_RETRAITE_PAT": "Pension — employer",
+        "TAUX_CNPS_PF_PAT": "Family benefits — employer",
+        "TAUX_CNPS_MATERNITE_PAT": "Maternity insurance — employer",
+        "TAUX_CNPS_AT_COMMERCE": "Work-accident — Commerce/Services",
+        "TAUX_CNPS_AT_BTP": "Work-accident — Construction/Transport",
+        "TAUX_CNPS_AT_INDUSTRIE": "Work-accident — Industry",
+        "TAUX_CNPS_AT_EXTRACTION": "Work-accident — Mining",
+        "ABATTEMENT_ITS": "ITS standard allowance",
+        "CREDIT_IMPOT_MARIE": "Tax credit — married",
+        "CREDIT_IMPOT_1ENFANT": "Tax credit — 1 child",
+        "CREDIT_IMPOT_2ENFANTS": "Tax credit — 2 children",
+        "CREDIT_IMPOT_3ENFANTS_PLUS": "Tax credit — 3+ children",
+        "CONGES_JOURS_PAR_MOIS": "Leave per month worked",
+        "CONTRIBUTION_FDFP": "FDFP contribution (>10 emp.)"
+      }
+    },
+    "multiLeg": {
+      "title": "Multi-legislative — Africa coverage",
+      "subtitle": "Per-country payroll engines. Each country has its own social rates, tax scales and legal constants.",
+      "activeCount": "{{count}} active",
+      "statusActive": "Active",
+      "statusPlanned": "Planned",
+      "engine": "Payroll engine",
+      "smig": "Monthly SMIG",
+      "onDemand": "Available on request — contact OpenLab Consulting",
+      "coverageTitle": "Regional Africa coverage",
+      "coverage": {
+        "uemoa": "<0>WAEMU</0> — Côte d'Ivoire (prod), Senegal, Benin, Togo, Burkina Faso, Mali, Niger · XOF",
+        "cemac": "<0>CEMAC</0> — Cameroon, Chad · XAF",
+        "ecowas": "<0>ECOWAS outside WAEMU</0> — Nigeria (NGN), Ghana (GHS)"
+      },
+      "architectureTitle": "Technical architecture",
+      "architectureDesc": "Each payroll engine is an independent module (<0>payroll-engine-ci</0>, <1>payroll-engine-sn</1>…). The middleware automatically resolves the right engine based on the tenant's country. Legal constants are versioned in <2>platform.legal_constants</2>."
+    },
+    "sourcingIa": {
+      "title": "AI Sourcing — Configurable setup",
+      "subtitle": "Everything is configurable: AI models, platforms per country, system prompts, profile slider, max budget, richness weights. Changes propagate immediately (cache invalidated).",
+      "sections": {
+        "models": "AI models",
+        "platforms": "Platforms",
+        "prompts": "System prompts",
+        "advanced": "Advanced settings"
+      },
+      "models": {
+        "count": "{{count}} model(s) configured. Prices in EUR per million tokens.",
+        "addButton": "Add a model",
+        "table": {
+          "provider": "Provider",
+          "model": "Model",
+          "inputCost": "Input cost/1M",
+          "outputCost": "Output cost/1M",
+          "maxTokens": "Max tokens",
+          "active": "Active"
+        },
+        "edit": "Edit",
+        "delete": "Delete",
+        "deleteConfirm": "Delete this model?",
+        "empty": "No model. The system uses the default values (Claude Sonnet 4 + Mistral Large).",
+        "modal": {
+          "editTitle": "Edit model",
+          "newTitle": "New AI model",
+          "provider": "Provider",
+          "providerClaude": "Anthropic (Claude)",
+          "providerMistral": "Mistral AI",
+          "providerOpenai": "OpenAI",
+          "modelId": "Model identifier",
+          "displayName": "Display name",
+          "maxTokens": "Max tokens",
+          "inputCost": "Input cost / 1M (EUR)",
+          "outputCost": "Output cost / 1M (EUR)",
+          "active": "Active",
+          "order": "Order",
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      },
+      "platforms": {
+        "count": "{{count}} platform(s). {{panafrican}} pan-African + {{local}} local.",
+        "addButton": "New platform",
+        "groupPanafrican": "Pan-African / Global",
+        "groupCountry": "Country: {{country}}",
+        "inactive": "(inactive)",
+        "profiles": "~{{count}} profiles",
+        "deleteConfirm": "Delete this platform?",
+        "empty": "No platform configured. The system uses the default values.",
+        "groupCount": "{{title}} ({{count}})",
+        "modal": {
+          "editTitle": "Edit platform",
+          "newTitle": "New sourcing platform",
+          "code": "Code (slug)",
+          "name": "Name",
+          "countryCode": "Country code (CI, SN, NG…)",
+          "url": "URL",
+          "estPool": "Estimated pool",
+          "active": "Active",
+          "panafrican": "Pan-African",
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      },
+      "prompts": {
+        "tip": "<0>Tip:</0> leave empty to use the default prompt hard-coded in the service. The prompt provided here fully replaces the default prompt for the relevant model.",
+        "claudeLabel": "Claude system prompt (Anthropic)",
+        "mistralLabel": "Mistral system prompt",
+        "promptPlaceholder": "You are an HR expert...",
+        "save": "Save prompts"
+      },
+      "advanced": {
+        "sliderTitle": "Profile slider (limit per request)",
+        "min": "Min",
+        "max": "Max",
+        "default": "Default",
+        "budgetTitle": "Max budget per request",
+        "budgetUnit": "EUR · 0 = no limit",
+        "budgetHint": "Logs a warning if a request exceeds this budget (audit_log coming). Does not interrupt the request.",
+        "weightsTitle": "Richness score weights (JSON)",
+        "weightsInvalid": "Invalid weights JSON",
+        "save": "Save settings"
+      }
+    }
+  },
+  "legalWatch": {
+    "title": "Regulatory watch",
+    "subtitle": "Automatic detection of legal article updates by AI. Each proposal is reviewed manually before replacing the published article.",
+    "newProposal": "New proposal",
+    "viewAll": "View all proposals",
+    "loading": "Loading…",
+    "emptyTitle": "No \"{{status}}\" proposal",
+    "emptyHint": "Click \"New proposal\" to submit a text for AI analysis, or wait for the watch worker to run (daily cron).",
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "superseded": "Superseded",
+      "all": "All"
+    },
+    "risk": {
+      "high": "High impact",
+      "medium": "Medium impact",
+      "low": "Low impact"
+    },
+    "row": {
+      "newArticle": "(New article)",
+      "aiConfidence": "{{confidence}}% AI",
+      "noSummary": "No summary available",
+      "source": "source"
+    },
+    "analyzer": {
+      "eyebrow": "Regulatory watch",
+      "title": "Submit a text for AI analysis",
+      "subtitle": "Claude compares the text with the current article (if provided) and proposes a structured diff.",
+      "articleId": "Article ID",
+      "articleIdPlaceholder": "e.g. ct_ci_art_36",
+      "articleIdHint": "Empty = new article",
+      "country": "Country (ISO-3)",
+      "source": "Source",
+      "sourceOptions": {
+        "code_travail": "Labour Code",
+        "convention_collective": "Collective agreement",
+        "jo": "Official Journal",
+        "dgi": "DGI",
+        "cnps": "CNPS"
+      },
+      "sourceUrl": "Source URL (optional)",
+      "sourceUrlPlaceholder": "https://www.dgi.gouv.ci/...",
+      "proposedText": "Proposed text *",
+      "proposedTextCount": "({{count}} / 30,000)",
+      "proposedTextPlaceholder": "Paste here the full legal text to analyze (article, decree, circular…)",
+      "context": "Context (optional)",
+      "contextPlaceholder": "e.g. Article 36 CNPS — 2026 pension rate change",
+      "error": "Error during AI analysis",
+      "cancel": "Cancel",
+      "analyze": "Analyze with Claude",
+      "analyzing": "Claude analysis in progress…"
+    },
+    "review": {
+      "newArticle": "(New article)",
+      "confidence": "Confidence {{confidence}}%",
+      "aiSummary": "AI summary",
+      "aiReasoning": "Detailed AI reasoning",
+      "comparison": "Comparison",
+      "viewSide": "Side by side",
+      "viewUnified": "Unified",
+      "currentText": "Current text",
+      "currentTextEmpty": "— (new article, no current text)",
+      "proposedText": "Proposed text",
+      "notes": "Review notes (optional)",
+      "notesPlaceholder": "e.g. Confirmed via OJ no. 123 of 12/05/2026",
+      "notesByLabel": "Review notes (by {{author}})",
+      "defaultReviewer": "super_admin",
+      "close": "Close",
+      "cancel": "Cancel",
+      "reject": "Reject",
+      "approve": "Approve and publish",
+      "error": "Error"
+    }
+  }
+}

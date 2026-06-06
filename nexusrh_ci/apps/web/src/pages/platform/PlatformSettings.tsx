@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import React, { useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import {
   Settings, Save, Loader2, Bot, Mail, Shield,
@@ -63,15 +64,15 @@ interface CountryConfig {
   config: { smig?: number; [k: string]: unknown }
 }
 
-const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
-  { key: 'general',       label: 'Général',         icon: Settings   },
-  { key: 'security',      label: 'Sécurité',        icon: Shield     },
-  { key: 'notifications', label: 'Notifications',   icon: Bell       },
-  { key: 'ai',            label: 'IA & Claude',     icon: Bot        },
-  { key: 'legal',         label: 'Entreprise',      icon: Building2  },
-  { key: 'store-lois',    label: 'Store de Lois',   icon: Scale      },
-  { key: 'multi-leg',     label: 'Multi-législatif',icon: Globe      },
-  { key: 'sourcing-ia',   label: 'Sourcing IA',     icon: Sparkles   },
+const TABS: Array<{ key: TabKey; labelKey: string; icon: React.ElementType }> = [
+  { key: 'general',       labelKey: 'general',       icon: Settings   },
+  { key: 'security',      labelKey: 'security',      icon: Shield     },
+  { key: 'notifications', labelKey: 'notifications', icon: Bell       },
+  { key: 'ai',            labelKey: 'ai',            icon: Bot        },
+  { key: 'legal',         labelKey: 'legal',         icon: Building2  },
+  { key: 'store-lois',    labelKey: 'storeLois',     icon: Scale      },
+  { key: 'multi-leg',     labelKey: 'multiLeg',      icon: Globe      },
+  { key: 'sourcing-ia',   labelKey: 'sourcingIa',    icon: Sparkles   },
 ]
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -98,38 +99,34 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   )
 }
 
-// Métadonnées locales pour transformer le JSONB constants en liste affichable
-const CONSTANT_META: Record<string, { label: string; unit: string; category: string }> = {
-  SMIG_MENSUEL:                 { label: 'SMIG mensuel',              unit: 'FCFA',   category: 'smig' },
-  SMIG_HORAIRE:                 { label: 'SMIG horaire (173,33h)',     unit: 'FCFA/h', category: 'smig' },
-  PLAFOND_CNPS_AT_PF_MENSUEL:   { label: 'Plafond AT / PF / Maternité', unit: 'FCFA/mois', category: 'cnps' },
-  PLAFOND_CNPS_RETRAITE_MENSUEL:{ label: 'Plafond retraite',           unit: 'FCFA/mois', category: 'cnps' },
-  TAUX_CNPS_RETRAITE_SAL:       { label: 'Retraite salarial',          unit: '%',      category: 'cnps' },
-  TAUX_CNPS_RETRAITE_PAT:       { label: 'Retraite patronal',          unit: '%',      category: 'cnps' },
-  TAUX_CNPS_PF_PAT:             { label: 'Prestations familiales pat.', unit: '%',     category: 'cnps' },
-  TAUX_CNPS_MATERNITE_PAT:      { label: 'Assurance maternité pat.',   unit: '%',      category: 'cnps' },
-  TAUX_CNPS_AT_COMMERCE:        { label: 'AT — Commerce/Services',     unit: '%',      category: 'cnps' },
-  TAUX_CNPS_AT_BTP:             { label: 'AT — BTP/Transport',         unit: '%',      category: 'cnps' },
-  TAUX_CNPS_AT_INDUSTRIE:       { label: 'AT — Industrie',             unit: '%',      category: 'cnps' },
-  TAUX_CNPS_AT_EXTRACTION:      { label: 'AT — Extraction/Mines',      unit: '%',      category: 'cnps' },
-  ABATTEMENT_ITS:               { label: 'Abattement forfaitaire ITS',  unit: '%',     category: 'its' },
-  CREDIT_IMPOT_MARIE:           { label: "Crédit impôt — marié(e)",    unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_1ENFANT:         { label: 'Crédit impôt — 1 enfant',    unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_2ENFANTS:        { label: 'Crédit impôt — 2 enfants',   unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_3ENFANTS_PLUS:   { label: 'Crédit impôt — 3 enfants+',  unit: 'FCFA/mois', category: 'its' },
-  CONGES_JOURS_PAR_MOIS:        { label: 'Congés par mois travaillé',  unit: 'j/mois', category: 'conges' },
-  CONTRIBUTION_FDFP:            { label: 'Contribution FDFP (>10 sal)', unit: '% masse sal.', category: 'fdfp' },
+// Métadonnées locales pour transformer le JSONB constants en liste affichable.
+// Les libellés sont traduits via i18n (settings.storeLois.constants.<KEY>).
+const CONSTANT_META: Record<string, { unit: string; category: string }> = {
+  SMIG_MENSUEL:                 { unit: 'FCFA',   category: 'smig' },
+  SMIG_HORAIRE:                 { unit: 'FCFA/h', category: 'smig' },
+  PLAFOND_CNPS_AT_PF_MENSUEL:   { unit: 'FCFA/mois', category: 'cnps' },
+  PLAFOND_CNPS_RETRAITE_MENSUEL:{ unit: 'FCFA/mois', category: 'cnps' },
+  TAUX_CNPS_RETRAITE_SAL:       { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_RETRAITE_PAT:       { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_PF_PAT:             { unit: '%',     category: 'cnps' },
+  TAUX_CNPS_MATERNITE_PAT:      { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_AT_COMMERCE:        { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_AT_BTP:             { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_AT_INDUSTRIE:       { unit: '%',      category: 'cnps' },
+  TAUX_CNPS_AT_EXTRACTION:      { unit: '%',      category: 'cnps' },
+  ABATTEMENT_ITS:               { unit: '%',     category: 'its' },
+  CREDIT_IMPOT_MARIE:           { unit: 'FCFA/mois', category: 'its' },
+  CREDIT_IMPOT_1ENFANT:         { unit: 'FCFA/mois', category: 'its' },
+  CREDIT_IMPOT_2ENFANTS:        { unit: 'FCFA/mois', category: 'its' },
+  CREDIT_IMPOT_3ENFANTS_PLUS:   { unit: 'FCFA/mois', category: 'its' },
+  CONGES_JOURS_PAR_MOIS:        { unit: 'j/mois', category: 'conges' },
+  CONTRIBUTION_FDFP:            { unit: '% masse sal.', category: 'fdfp' },
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  smig: 'SMIG & Salaires',
-  cnps: 'CNPS — Cotisations',
-  its: 'ITS / DGI — Impôt',
-  conges: 'Congés & Absences',
-  fdfp: 'FDFP — Formation',
-}
+const CATEGORY_KEYS = ['smig', 'cnps', 'its', 'conges', 'fdfp'] as const
 
 function StoreDeLoisTab() {
+  const { t } = useTranslation('platform')
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const queryClient = useQueryClient()
@@ -155,14 +152,14 @@ function StoreDeLoisTab() {
     .filter(([key]) => CONSTANT_META[key])
     .map(([key, value]) => ({
       key,
-      label: CONSTANT_META[key]!.label,
+      label: t(`settings.storeLois.constants.${key}`),
       unit:  CONSTANT_META[key]!.unit,
       category: CONSTANT_META[key]!.category,
       value: value as string | number,
       effective_date: '',
     }))
 
-  const categories = Object.keys(CATEGORY_LABELS).filter(cat =>
+  const categories = (CATEGORY_KEYS as readonly string[]).filter(cat =>
     constants.some(c => c.category === cat)
   )
 
@@ -172,13 +169,13 @@ function StoreDeLoisTab() {
     <div className="space-y-5">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="font-semibold">Store de Lois — CI 2024</h2>
+          <h2 className="font-semibold">{t('settings.storeLois.title')}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Constantes légales appliquées par le moteur de paie. Mis à jour lors des changements législatifs.
+            {t('settings.storeLois.subtitle')}
           </p>
         </div>
         <span className="rounded-full bg-green-100 text-green-700 text-xs font-medium px-3 py-1">
-          CI · Version 2024 · En vigueur
+          {t('settings.storeLois.badge')}
         </span>
       </div>
 
@@ -187,7 +184,7 @@ function StoreDeLoisTab() {
         return (
           <div key={cat} className="rounded-xl border border-border overflow-hidden">
             <div className="bg-muted/40 border-b border-border px-4 py-2.5">
-              <p className="text-sm font-semibold">{CATEGORY_LABELS[cat] ?? cat}</p>
+              <p className="text-sm font-semibold">{t(`settings.storeLois.categories.${cat}`)}</p>
             </div>
             <div className="divide-y divide-border">
               {items.map(c => (
@@ -225,7 +222,7 @@ function StoreDeLoisTab() {
                         onClick={() => { setEditingKey(c.key); setEditValue(String(c.value)) }}
                         className="text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-0.5 hover:bg-accent"
                       >
-                        Modifier
+                        {t('settings.storeLois.edit')}
                       </button>
                     </div>
                   )}
@@ -237,14 +234,14 @@ function StoreDeLoisTab() {
       })}
 
       <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">
-        <strong>Important :</strong> Toute modification est journalisée dans les logs d'audit.
-        Les changements de SMIG sont notifiés aux tenants concernés. Vérifiez les textes légaux avant de modifier.
+        <Trans i18nKey="settings.storeLois.warning" ns="platform" components={[<strong />]} />
       </div>
     </div>
   )
 }
 
 function MultiLegTab() {
+  const { t } = useTranslation('platform')
   const { data, isLoading } = useQuery<{ data: CountryConfig[] }>({
     queryKey: ['country-configs'],
     queryFn: () => api.get('/platform/country-configs').then(r => r.data),
@@ -277,11 +274,11 @@ function MultiLegTab() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-semibold">Multi-législatif — Couverture Afrique</h2>
+        <h2 className="font-semibold">{t('settings.multiLeg.title')}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Moteurs de paie par pays. Chaque pays a ses propres taux sociaux, barèmes fiscaux et constantes légales.
+          {t('settings.multiLeg.subtitle')}
           <span className="ml-2 inline-flex items-center gap-2 text-xs">
-            <span className="rounded bg-green-100 px-1.5 py-0.5 font-medium text-green-700">{activeCount} actifs</span>
+            <span className="rounded bg-green-100 px-1.5 py-0.5 font-medium text-green-700">{t('settings.multiLeg.activeCount', { count: activeCount })}</span>
             <span className="rounded bg-orange-50 px-1.5 py-0.5 font-medium text-orange-700">UEMOA {uemoaCount}</span>
             <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">CEMAC {cemacCount}</span>
             <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">ECOWAS {ecowasCount}</span>
@@ -304,7 +301,7 @@ function MultiLegTab() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c.is_active ? STATUS_COLOR['active'] : STATUS_COLOR['planned']}`}>
-                    {c.is_active ? 'Actif' : 'Planifié'}
+                    {c.is_active ? t('settings.multiLeg.statusActive') : t('settings.multiLeg.statusPlanned')}
                   </span>
                   {zone && (
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${ZONE_BADGE[zone] ?? 'bg-muted text-muted-foreground border-border'}`}>
@@ -315,11 +312,11 @@ function MultiLegTab() {
               </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Moteur de paie</span>
+                  <span className="text-muted-foreground">{t('settings.multiLeg.engine')}</span>
                   <code className="bg-muted px-1.5 rounded">{c.payroll_engine}</code>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">SMIG mensuel</span>
+                  <span className="text-muted-foreground">{t('settings.multiLeg.smig')}</span>
                   <span className="font-mono font-semibold">
                     {(c.config?.smig ?? 0).toLocaleString('fr-FR')} {c.currency}
                   </span>
@@ -327,7 +324,7 @@ function MultiLegTab() {
               </div>
               {!c.is_active && (
                 <div className="mt-3 rounded bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
-                  Disponible sur demande — contactez OpenLab Consulting
+                  {t('settings.multiLeg.onDemand')}
                 </div>
               )}
             </div>
@@ -336,31 +333,32 @@ function MultiLegTab() {
       </div>
 
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm">
-        <p className="font-semibold text-blue-800 mb-2">Couverture régionale Afrique</p>
+        <p className="font-semibold text-blue-800 mb-2">{t('settings.multiLeg.coverageTitle')}</p>
         <div className="space-y-1 text-blue-700 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-green-600 font-bold">✓</span>
-            <span><strong>UEMOA</strong> — Côte d'Ivoire (prod), Sénégal, Bénin, Togo, Burkina Faso, Mali, Niger · XOF</span>
+            <span><Trans i18nKey="settings.multiLeg.coverage.uemoa" ns="platform" components={[<strong />]} /></span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-emerald-600 font-bold">✓</span>
-            <span><strong>CEMAC</strong> — Cameroun, Tchad · XAF</span>
+            <span><Trans i18nKey="settings.multiLeg.coverage.cemac" ns="platform" components={[<strong />]} /></span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-blue-600 font-bold">✓</span>
-            <span><strong>CEDEAO hors UEMOA</strong> — Nigeria (NGN), Ghana (GHS)</span>
+            <span><Trans i18nKey="settings.multiLeg.coverage.ecowas" ns="platform" components={[<strong />]} /></span>
           </div>
         </div>
       </div>
 
       <div className="rounded-lg bg-muted/30 p-4 text-sm">
-        <p className="font-medium mb-1">Architecture technique</p>
+        <p className="font-medium mb-1">{t('settings.multiLeg.architectureTitle')}</p>
         <p className="text-xs text-muted-foreground">
-          Chaque moteur de paie est un module indépendant (
-          <code className="bg-muted px-1 rounded">payroll-engine-ci</code>,{' '}
-          <code className="bg-muted px-1 rounded">payroll-engine-sn</code>…).
-          Le middleware résout automatiquement le bon moteur selon le pays du tenant.
-          Les constantes légales sont versionées dans <code className="bg-muted px-1 rounded">platform.legal_constants</code>.
+          <Trans i18nKey="settings.multiLeg.architectureDesc" ns="platform"
+            components={[
+              <code className="bg-muted px-1 rounded" />,
+              <code className="bg-muted px-1 rounded" />,
+              <code className="bg-muted px-1 rounded" />,
+            ]} />
         </p>
       </div>
     </div>
@@ -368,6 +366,7 @@ function MultiLegTab() {
 }
 
 export default function PlatformSettings() {
+  const { t } = useTranslation('platform')
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<TabKey>('general')
   const [saved, setSaved] = useState(false)
@@ -407,15 +406,15 @@ export default function PlatformSettings() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Paramètres Plateforme</h1>
+          <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configuration globale NexusRH CI · v{settings.version ?? '1.0.0'} · {settings.environment ?? 'development'}
+            {t('settings.subtitle', { version: settings.version ?? '1.0.0', environment: settings.environment ?? 'development' })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {saved && (
             <span className="flex items-center gap-1 text-sm text-green-600">
-              <CheckCircle className="h-4 w-4" /> Enregistré
+              <CheckCircle className="h-4 w-4" /> {t('settings.saved')}
             </span>
           )}
           <button
@@ -424,7 +423,7 @@ export default function PlatformSettings() {
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Enregistrer
+            {t('settings.save')}
           </button>
         </div>
       </div>
@@ -432,10 +431,10 @@ export default function PlatformSettings() {
       {/* Statut systèmes */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: 'IA Claude',      ok: settings.aiConfigured,   icon: Bot,   hint: settings.aiConfigured ? 'API key configurée' : 'ANTHROPIC_API_KEY manquant' },
-          { label: 'Email SMTP',     ok: settings.smtpConfigured, icon: Mail,  hint: settings.smtpConfigured ? 'Transporter actif' : 'SMTP_USER manquant' },
-          { label: 'Mode maintenance', ok: !settings.maintenance_mode, icon: AlertCircle, hint: settings.maintenance_mode ? 'ACTIF — site inaccessible' : 'Désactivé' },
-          { label: 'Nouveaux tenants', ok: settings.allow_new_tenants, icon: Building2, hint: settings.allow_new_tenants ? 'Inscriptions ouvertes' : 'Fermé' },
+          { label: t('settings.systemStatus.aiClaude'),    ok: settings.aiConfigured,   icon: Bot,   hint: settings.aiConfigured ? t('settings.systemStatus.aiOk') : t('settings.systemStatus.aiKo') },
+          { label: t('settings.systemStatus.smtp'),         ok: settings.smtpConfigured, icon: Mail,  hint: settings.smtpConfigured ? t('settings.systemStatus.smtpOk') : t('settings.systemStatus.smtpKo') },
+          { label: t('settings.systemStatus.maintenance'),  ok: !settings.maintenance_mode, icon: AlertCircle, hint: settings.maintenance_mode ? t('settings.systemStatus.maintenanceOn') : t('settings.systemStatus.maintenanceOff') },
+          { label: t('settings.systemStatus.newTenants'),   ok: settings.allow_new_tenants, icon: Building2, hint: settings.allow_new_tenants ? t('settings.systemStatus.newTenantsOpen') : t('settings.systemStatus.newTenantsClosed') },
         ].map(({ label, ok, icon: Icon, hint }) => (
           <div key={label} className={`rounded-xl border p-3 ${ok ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
             <div className="flex items-center gap-2">
@@ -450,7 +449,7 @@ export default function PlatformSettings() {
       <div className="flex gap-6">
         {/* Sidebar tabs */}
         <div className="w-48 shrink-0 space-y-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
+          {TABS.map(({ key, labelKey, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -459,7 +458,7 @@ export default function PlatformSettings() {
               }`}
             >
               <Icon className="h-4 w-4" />
-              {label}
+              {t(`settings.tabs.${labelKey}`)}
             </button>
           ))}
         </div>
@@ -468,39 +467,39 @@ export default function PlatformSettings() {
         <div className="flex-1 rounded-xl border border-border bg-card p-6 space-y-5">
           {tab === 'general' && (
             <>
-              <h2 className="font-semibold">Paramètres généraux</h2>
-              <Field label="Nom de l'application" hint="Affiché dans les emails et l'interface">
+              <h2 className="font-semibold">{t('settings.general.title')}</h2>
+              <Field label={t('settings.general.appName')} hint={t('settings.general.appNameHint')}>
                 <input className={inputCls} value={settings.app_name ?? 'NexusRH CI'}
                   onChange={e => update('app_name', e.target.value)} />
               </Field>
-              <Field label="Période d'essai par défaut (jours)">
+              <Field label={t('settings.general.trialDays')}>
                 <input type="number" className={inputCls} value={settings.default_trial_days ?? 30}
                   onChange={e => update('default_trial_days', parseInt(e.target.value))} min={7} max={90} />
               </Field>
-              <Field label="Nombre max de tenants" hint="0 = illimité">
+              <Field label={t('settings.general.maxTenants')} hint={t('settings.general.maxTenantsHint')}>
                 <input type="number" className={inputCls} value={settings.max_tenants ?? 9999}
                   onChange={e => update('max_tenants', parseInt(e.target.value))} min={0} />
               </Field>
               <div className="space-y-3 pt-2">
                 <Toggle checked={settings.allow_new_tenants ?? true}
                   onChange={v => update('allow_new_tenants', v)}
-                  label="Autoriser la création de nouveaux tenants" />
+                  label={t('settings.general.allowNewTenants')} />
                 <Toggle checked={settings.maintenance_mode ?? false}
                   onChange={v => update('maintenance_mode', v)}
-                  label="Mode maintenance (bloque tous les accès)" />
+                  label={t('settings.general.maintenanceMode')} />
               </div>
               {(form.maintenance_mode) && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
                   <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-red-700">Attention : activer le mode maintenance rendra l'application inaccessible pour tous les utilisateurs.</p>
+                  <p className="text-xs text-red-700">{t('settings.general.maintenanceWarning')}</p>
                 </div>
               )}
 
               {/* ── Mise hors ligne (tenant / cabinet) : variable système ── */}
               <div className="rounded-lg border border-border p-4 space-y-4">
-                <p className="text-sm font-semibold">Mise hors ligne d'un tenant ou d'un cabinet</p>
-                <Field label="Message hors-ligne par défaut"
-                  hint="Variable système : pré-remplit le message affiché aux utilisateurs quand un tenant ou un cabinet est mis hors ligne. Modifiable au cas par cas au moment de l'action.">
+                <p className="text-sm font-semibold">{t('settings.general.offline.title')}</p>
+                <Field label={t('settings.general.offline.defaultMessage')}
+                  hint={t('settings.general.offline.defaultMessageHint')}>
                   <textarea className={inputCls} rows={3} maxLength={2000}
                     value={settings.offline_message_default ?? ''}
                     onChange={e => update('offline_message_default', e.target.value)} />
@@ -508,10 +507,9 @@ export default function PlatformSettings() {
                 <Toggle
                   checked={settings.offline_message_required !== false}
                   onChange={v => update('offline_message_required', v)}
-                  label="Message obligatoire lors d'une mise hors ligne" />
+                  label={t('settings.general.offline.required')} />
                 <p className="text-xs text-muted-foreground -mt-2">
-                  Activé : impossible de mettre un tenant/cabinet hors ligne sans message (fourni ou par défaut).
-                  Désactivé : le message est facultatif (un message générique est affiché à défaut).
+                  {t('settings.general.offline.requiredHint')}
                 </p>
               </div>
             </>
@@ -519,36 +517,35 @@ export default function PlatformSettings() {
 
           {tab === 'security' && (
             <>
-              <h2 className="font-semibold">Sécurité de la plateforme</h2>
+              <h2 className="font-semibold">{t('settings.security.title')}</h2>
 
               {/* ── Politiques paramétrables (OWASP A07) ── */}
               <div className="rounded-lg border border-border p-4 space-y-4">
-                <p className="text-sm font-semibold">Authentification à deux facteurs (MFA)</p>
+                <p className="text-sm font-semibold">{t('settings.security.mfaTitle')}</p>
                 <Toggle
                   checked={settings.mfa_required_super_admin ?? false}
                   onChange={v => update('mfa_required_super_admin', v)}
-                  label="Imposer le MFA aux super_admin" />
+                  label={t('settings.security.mfaSuperAdmin')} />
                 <p className="text-xs text-muted-foreground -mt-2">
-                  Désactivé : les super_admin accèdent à la plateforme sans MFA (peuvent créer des tenants).
-                  Activé : le MFA doit être configuré avant tout accès.
+                  {t('settings.security.mfaSuperAdminHint')}
                 </p>
                 <Toggle
                   checked={settings.mfa_required_tenant_users ?? false}
                   onChange={v => update('mfa_required_tenant_users', v)}
-                  label="Imposer le MFA à tous les employés des tenants" />
+                  label={t('settings.security.mfaTenantUsers')} />
                 <p className="text-xs text-muted-foreground -mt-2">
-                  Politique globale. Chaque tenant peut la <strong>durcir</strong> (jamais l'assouplir) depuis ses propres paramètres.
+                  <Trans i18nKey="settings.security.mfaTenantUsersHint" ns="platform" components={[<strong />]} />
                 </p>
               </div>
 
               <div className="rounded-lg border border-border p-4 space-y-4">
-                <p className="text-sm font-semibold">Cycle de vie des mots de passe</p>
-                <Field label="Durée de vie du mot de passe (jours)" hint="0 = pas d'expiration. Au-delà, l'utilisateur doit le changer à la connexion.">
+                <p className="text-sm font-semibold">{t('settings.security.passwordTitle')}</p>
+                <Field label={t('settings.security.passwordMaxAge')} hint={t('settings.security.passwordMaxAgeHint')}>
                   <input type="number" min={0} max={3650} className={inputCls}
                     value={settings.password_max_age_days ?? 30}
                     onChange={e => update('password_max_age_days', parseInt(e.target.value || '0', 10))} />
                 </Field>
-                <Field label="Historique anti-réutilisation" hint="Nombre de derniers mots de passe interdits à la réutilisation (0 = aucun).">
+                <Field label={t('settings.security.passwordHistory')} hint={t('settings.security.passwordHistoryHint')}>
                   <input type="number" min={0} max={50} className={inputCls}
                     value={settings.password_history_count ?? 5}
                     onChange={e => update('password_history_count', parseInt(e.target.value || '0', 10))} />
@@ -556,52 +553,53 @@ export default function PlatformSettings() {
                 <Toggle
                   checked={settings.breach_check_enabled ?? true}
                   onChange={v => update('breach_check_enabled', v)}
-                  label="Vérifier les mots de passe contre les fuites connues (HaveIBeenPwned)" />
+                  label={t('settings.security.breachCheck')} />
                 <p className="text-xs text-muted-foreground -mt-2">
-                  À chaque connexion (si accès internet), le mot de passe est comparé — en k-anonymat, sans jamais quitter le serveur —
-                  aux fuites connues. S'il est compromis, le changement est imposé. Sans internet : contrôle ignoré (non bloquant).
+                  {t('settings.security.breachCheckHint')}
                 </p>
               </div>
 
               <div className="rounded-lg border border-border p-4 space-y-4">
-                <p className="text-sm font-semibold">Verrouillage de compte (anti-force brute)</p>
+                <p className="text-sm font-semibold">{t('settings.security.lockoutTitle')}</p>
                 <Toggle
                   checked={settings.lockout_enabled ?? true}
                   onChange={v => update('lockout_enabled', v)}
-                  label="Verrouiller un compte après trop d'échecs de connexion" />
+                  label={t('settings.security.lockoutEnabled')} />
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="Seuil d'échecs" hint="0 = désactivé">
+                  <Field label={t('settings.security.lockoutMaxAttempts')} hint={t('settings.security.lockoutMaxAttemptsHint')}>
                     <input type="number" min={0} max={50} className={inputCls}
                       value={settings.lockout_max_attempts ?? 5}
                       onChange={e => update('lockout_max_attempts', parseInt(e.target.value || '0', 10))} />
                   </Field>
-                  <Field label="Fenêtre (min)" hint="comptage">
+                  <Field label={t('settings.security.lockoutWindow')} hint={t('settings.security.lockoutWindowHint')}>
                     <input type="number" min={1} max={1440} className={inputCls}
                       value={settings.lockout_window_minutes ?? 15}
                       onChange={e => update('lockout_window_minutes', parseInt(e.target.value || '1', 10))} />
                   </Field>
-                  <Field label="Durée verrou (min)" hint="blocage">
+                  <Field label={t('settings.security.lockoutDuration')} hint={t('settings.security.lockoutDurationHint')}>
                     <input type="number" min={1} max={1440} className={inputCls}
                       value={settings.lockout_duration_minutes ?? 15}
                       onChange={e => update('lockout_duration_minutes', parseInt(e.target.value || '1', 10))} />
                   </Field>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Après {settings.lockout_max_attempts ?? 5} échecs en {settings.lockout_window_minutes ?? 15} min,
-                  le compte est bloqué {settings.lockout_duration_minutes ?? 15} min (réponse 423). Le rate-limiting
-                  par IP reste actif en complément ; en cas de panne Redis, le verrouillage est ignoré (fail-open).
+                  {t('settings.security.lockoutSummary', {
+                    attempts: settings.lockout_max_attempts ?? 5,
+                    window: settings.lockout_window_minutes ?? 15,
+                    duration: settings.lockout_duration_minutes ?? 15,
+                  })}
                 </p>
               </div>
 
               <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                <p className="text-sm font-medium">Autres mesures (configurées via .env)</p>
+                <p className="text-sm font-medium">{t('settings.security.envTitle')}</p>
                 {[
-                  { label: 'JWT Secret', status: 'Configuré', ok: true },
-                  { label: 'JWT Expiration', status: '7 jours', ok: true },
-                  { label: 'MFA disponible', status: 'TOTP activé', ok: true },
-                  { label: 'Bcrypt rounds', status: '12 rounds', ok: true },
-                  { label: 'CORS', status: 'Configuré', ok: true },
-                  { label: 'Rate limiting', status: 'Actif', ok: true },
+                  { label: t('settings.security.env.jwtSecret'), status: t('settings.security.env.jwtSecretStatus'), ok: true },
+                  { label: t('settings.security.env.jwtExpiration'), status: t('settings.security.env.jwtExpirationStatus'), ok: true },
+                  { label: t('settings.security.env.mfaAvailable'), status: t('settings.security.env.mfaAvailableStatus'), ok: true },
+                  { label: t('settings.security.env.bcrypt'), status: t('settings.security.env.bcryptStatus'), ok: true },
+                  { label: t('settings.security.env.cors'), status: t('settings.security.env.corsStatus'), ok: true },
+                  { label: t('settings.security.env.rateLimit'), status: t('settings.security.env.rateLimitStatus'), ok: true },
                 ].map(({ label, status, ok }) => (
                   <div key={label} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{label}</span>
@@ -613,12 +611,12 @@ export default function PlatformSettings() {
                 ))}
               </div>
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-medium text-amber-800 mb-2">Recommandations CI :</p>
+                <p className="text-sm font-medium text-amber-800 mb-2">{t('settings.security.recommendationsTitle')}</p>
                 <ul className="text-xs text-amber-700 space-y-1 list-disc list-inside">
-                  <li>Utiliser HTTPS en production (certificat Let's Encrypt)</li>
-                  <li>Activer MFA pour tous les comptes super_admin</li>
-                  <li>Configurer un backup PostgreSQL quotidien</li>
-                  <li>Hébergement souverain CI pour clients secteur public</li>
+                  <li>{t('settings.security.recommendations.https')}</li>
+                  <li>{t('settings.security.recommendations.mfa')}</li>
+                  <li>{t('settings.security.recommendations.backup')}</li>
+                  <li>{t('settings.security.recommendations.sovereign')}</li>
                 </ul>
               </div>
             </>
@@ -626,40 +624,40 @@ export default function PlatformSettings() {
 
           {tab === 'notifications' && (
             <>
-              <h2 className="font-semibold">Notifications & Email</h2>
+              <h2 className="font-semibold">{t('settings.notifications.title')}</h2>
               <div className={`flex items-center gap-2 rounded-lg p-3 text-sm ${settings.smtpConfigured ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
                 <Mail className={`h-4 w-4 ${settings.smtpConfigured ? 'text-green-600' : 'text-amber-600'}`} />
                 <span className={settings.smtpConfigured ? 'text-green-700' : 'text-amber-700'}>
-                  {settings.smtpConfigured ? 'Email SMTP configuré et opérationnel' : 'SMTP non configuré — les emails ne seront pas envoyés'}
+                  {settings.smtpConfigured ? t('settings.notifications.smtpOk') : t('settings.notifications.smtpKo')}
                 </span>
               </div>
-              <Field label="Email de support" hint="Affiché dans les emails envoyés aux clients">
+              <Field label={t('settings.notifications.supportEmail')} hint={t('settings.notifications.supportEmailHint')}>
                 <input type="email" className={inputCls} value={settings.support_email ?? 'support@nexusrh-ci.com'}
                   onChange={e => update('support_email', e.target.value)} />
               </Field>
-              <Field label="Téléphone de support CI" hint="Format : +225 XX XX XX XX XX">
+              <Field label={t('settings.notifications.supportPhone')} hint={t('settings.notifications.supportPhoneHint')}>
                 <input className={inputCls} value={settings.support_phone ?? '+225 07 09 32 05 94'}
                   onChange={e => update('support_phone', e.target.value)} />
               </Field>
-              <Field label="WhatsApp support" hint="Affiché dans les emails de bienvenue tenant · Format +225 XXXXXXXXXX">
+              <Field label={t('settings.notifications.supportWhatsapp')} hint={t('settings.notifications.supportWhatsappHint')}>
                 <input className={inputCls} value={settings.support_whatsapp ?? '+225 07 09 32 05 94'}
                   onChange={e => update('support_whatsapp', e.target.value)}
                   placeholder="+225 07 09 32 05 94" />
               </Field>
-              <Field label="Signature email de bienvenue" hint="Texte affiché en bas de l'email envoyé à la création d'un tenant">
+              <Field label={t('settings.notifications.welcomeSignature')} hint={t('settings.notifications.welcomeSignatureHint')}>
                 <textarea rows={3} className={inputCls}
-                  value={settings.welcome_email_signature ?? 'L\'équipe NexusRH CI · OpenLab Consulting · Abidjan'}
+                  value={settings.welcome_email_signature ?? t('settings.notifications.defaultSignature')}
                   onChange={e => update('welcome_email_signature', e.target.value)} />
               </Field>
               <div className="rounded-lg bg-muted/30 p-4">
-                <p className="text-sm font-medium mb-2">Emails déclenchés automatiquement</p>
+                <p className="text-sm font-medium mb-2">{t('settings.notifications.autoEmailsTitle')}</p>
                 <div className="space-y-2">
                   {[
-                    'Bienvenue admin à la création du tenant',
-                    'Réinitialisation mot de passe admin',
-                    'Bulletin de paie disponible (employé)',
-                    'Demande d\'absence en attente (manager)',
-                    'Note de frais à valider',
+                    t('settings.notifications.autoEmails.welcome'),
+                    t('settings.notifications.autoEmails.resetPassword'),
+                    t('settings.notifications.autoEmails.payslip'),
+                    t('settings.notifications.autoEmails.absence'),
+                    t('settings.notifications.autoEmails.expense'),
                   ].map(e => (
                     <div key={e} className="flex items-center gap-2 text-sm">
                       <CheckCircle className="h-3.5 w-3.5 text-green-500" />
@@ -673,30 +671,30 @@ export default function PlatformSettings() {
 
           {tab === 'ai' && (
             <>
-              <h2 className="font-semibold">Intelligence Artificielle — Claude AI</h2>
+              <h2 className="font-semibold">{t('settings.ai.title')}</h2>
               <div className={`flex items-start gap-3 rounded-lg p-4 ${settings.aiConfigured ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
                 <Bot className={`h-5 w-5 mt-0.5 ${settings.aiConfigured ? 'text-green-600' : 'text-amber-600'}`} />
                 <div>
                   <p className={`text-sm font-semibold ${settings.aiConfigured ? 'text-green-800' : 'text-amber-800'}`}>
-                    {settings.aiConfigured ? 'Claude AI opérationnel' : 'Clé API manquante'}
+                    {settings.aiConfigured ? t('settings.ai.operationalTitle') : t('settings.ai.missingKeyTitle')}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {settings.aiConfigured
-                      ? 'L\'assistant IA est disponible pour tous les utilisateurs autorisés (admin, RH, managers)'
-                      : 'Ajoutez ANTHROPIC_API_KEY dans votre .env pour activer l\'assistant IA'}
+                      ? t('settings.ai.operationalDesc')
+                      : t('settings.ai.missingKeyDesc')}
                   </p>
                 </div>
               </div>
               <Toggle checked={settings.ai_enabled ?? true}
                 onChange={v => update('ai_enabled', v)}
-                label="Activer l'assistant IA dans l'interface" />
+                label={t('settings.ai.enableToggle')} />
               <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                <p className="text-sm font-medium">Fonctionnalités IA activées</p>
+                <p className="text-sm font-medium">{t('settings.ai.featuresTitle')}</p>
                 {[
-                  { label: 'Chat assistant RH CI (CNPS, CT, OHADA)', roles: 'Admin, RH, Managers' },
-                  { label: 'Simulateur ITS/IGR quotient familial', roles: 'Tous (POST /ai/simulate-its)' },
-                  { label: 'Génération documents RH (CDI, lettre...)', roles: 'Admin, RH' },
-                  { label: 'Score rétention employés (analyse IA)', roles: 'Admin, RH Manager' },
+                  { label: t('settings.ai.features.chat'), roles: t('settings.ai.features.chatRoles') },
+                  { label: t('settings.ai.features.simulator'), roles: t('settings.ai.features.simulatorRoles') },
+                  { label: t('settings.ai.features.docs'), roles: t('settings.ai.features.docsRoles') },
+                  { label: t('settings.ai.features.retention'), roles: t('settings.ai.features.retentionRoles') },
                 ].map(({ label, roles }) => (
                   <div key={label} className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-2">
@@ -708,10 +706,10 @@ export default function PlatformSettings() {
                 ))}
               </div>
               <div className="rounded-lg border border-border p-4">
-                <p className="text-sm font-medium mb-1">Modèle utilisé</p>
+                <p className="text-sm font-medium mb-1">{t('settings.ai.modelTitle')}</p>
                 <code className="text-xs bg-muted px-2 py-1 rounded">claude-sonnet-4-20250514</code>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Calibré contexte ivoirien : Code du Travail CI, CNPS 2024, barème ITS/DGI, OHADA, Mobile Money CI
+                  {t('settings.ai.modelNote')}
                 </p>
               </div>
             </>
@@ -725,28 +723,28 @@ export default function PlatformSettings() {
 
           {tab === 'legal' && (
             <>
-              <h2 className="font-semibold">Informations légales — OpenLab Consulting</h2>
-              <Field label="Raison sociale éditeur">
-                <input className={inputCls} value={settings.legal_name ?? 'OpenLab Consulting'}
+              <h2 className="font-semibold">{t('settings.legal.title')}</h2>
+              <Field label={t('settings.legal.legalName')}>
+                <input className={inputCls} value={settings.legal_name ?? t('settings.legal.defaultLegalName')}
                   onChange={e => update('legal_name', e.target.value)} />
               </Field>
-              <Field label="Adresse">
+              <Field label={t('settings.legal.address')}>
                 <textarea className={inputCls} rows={2}
-                  value={settings.legal_address ?? 'Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d\'Ivoire'}
+                  value={settings.legal_address ?? t('settings.legal.defaultAddress')}
                   onChange={e => update('legal_address', e.target.value)} />
               </Field>
               <div className="rounded-lg bg-muted/30 p-4 space-y-2">
-                <p className="text-sm font-medium">Conformité réglementaire CI</p>
+                <p className="text-sm font-medium">{t('settings.legal.complianceTitle')}</p>
                 {[
-                  'Données hébergées conformément à la loi CI 2013-450 sur la protection des données personnelles',
-                  'Respect du Code du Travail CI (loi n°2015-532 du 20 juillet 2015)',
-                  'Déclarations CNPS conformes à la réglementation 2024',
-                  'Génération DISA conforme loi 99-477 du 2 août 1999',
-                  'Contrats OHADA — Acte Uniforme révisé sur le droit commercial',
-                ].map(t => (
-                  <div key={t} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  t('settings.legal.compliance.dataLaw'),
+                  t('settings.legal.compliance.labourCode'),
+                  t('settings.legal.compliance.cnps'),
+                  t('settings.legal.compliance.disa'),
+                  t('settings.legal.compliance.ohada'),
+                ].map(item => (
+                  <div key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
                     <CheckCircle className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
-                    <span>{t}</span>
+                    <span>{item}</span>
                   </div>
                 ))}
               </div>
@@ -782,14 +780,15 @@ type SourcingSettingsDto = {
 }
 
 function SourcingIaConfigTab() {
+  const { t } = useTranslation('platform')
   const queryClient = useQueryClient()
   const [section, setSection] = useState<'models' | 'platforms' | 'prompts' | 'advanced'>('models')
 
-  const sections: Array<{ key: typeof section; label: string }> = [
-    { key: 'models',    label: 'Modèles IA' },
-    { key: 'platforms', label: 'Plateformes' },
-    { key: 'prompts',   label: 'Prompts système' },
-    { key: 'advanced',  label: 'Paramètres avancés' },
+  const sections: Array<{ key: typeof section; labelKey: string }> = [
+    { key: 'models',    labelKey: 'models' },
+    { key: 'platforms', labelKey: 'platforms' },
+    { key: 'prompts',   labelKey: 'prompts' },
+    { key: 'advanced',  labelKey: 'advanced' },
   ]
 
   return (
@@ -797,11 +796,10 @@ function SourcingIaConfigTab() {
       <div>
         <h2 className="font-semibold flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          Sourcing IA — Configuration paramétrable
+          {t('settings.sourcingIa.title')}
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Tout est paramétrable : modèles IA, plateformes par pays, prompts système, slider profils,
-          budget max, pondérations de richesse. Les changements sont propagés immédiatement (cache invalidé).
+          {t('settings.sourcingIa.subtitle')}
         </p>
       </div>
 
@@ -809,7 +807,7 @@ function SourcingIaConfigTab() {
         {sections.map(s => (
           <button key={s.key} onClick={() => setSection(s.key)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${section === s.key ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            {s.label}
+            {t(`settings.sourcingIa.sections.${s.labelKey}`)}
           </button>
         ))}
       </div>
@@ -823,6 +821,7 @@ function SourcingIaConfigTab() {
 }
 
 function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('platform')
   const [editing, setEditing] = useState<AiModel | null>(null)
   const [showNew, setShowNew] = useState(false)
 
@@ -849,11 +848,11 @@ function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">
-          {models.length} modèle(s) configuré(s). Tarifs en EUR par million de tokens.
+          {t('settings.sourcingIa.models.count', { count: models.length })}
         </p>
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90">
-          <Plus className="h-3.5 w-3.5" /> Ajouter un modèle
+          <Plus className="h-3.5 w-3.5" /> {t('settings.sourcingIa.models.addButton')}
         </button>
       </div>
 
@@ -861,12 +860,12 @@ function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
             <tr>
-              <th className="p-3">Fournisseur</th>
-              <th className="p-3">Modèle</th>
-              <th className="p-3 text-right">Coût input/1M</th>
-              <th className="p-3 text-right">Coût output/1M</th>
-              <th className="p-3 text-right">Max tokens</th>
-              <th className="p-3 text-center">Actif</th>
+              <th className="p-3">{t('settings.sourcingIa.models.table.provider')}</th>
+              <th className="p-3">{t('settings.sourcingIa.models.table.model')}</th>
+              <th className="p-3 text-right">{t('settings.sourcingIa.models.table.inputCost')}</th>
+              <th className="p-3 text-right">{t('settings.sourcingIa.models.table.outputCost')}</th>
+              <th className="p-3 text-right">{t('settings.sourcingIa.models.table.maxTokens')}</th>
+              <th className="p-3 text-center">{t('settings.sourcingIa.models.table.active')}</th>
               <th className="p-3"></th>
             </tr>
           </thead>
@@ -887,18 +886,18 @@ function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     : <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">OFF</span>}
                 </td>
                 <td className="p-3 text-right space-x-1">
-                  <button onClick={() => setEditing(m)} className="text-muted-foreground hover:text-primary" title="Modifier">
+                  <button onClick={() => setEditing(m)} className="text-muted-foreground hover:text-primary" title={t('settings.sourcingIa.models.edit')}>
                     <Edit3 className="inline h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => { if (confirm('Supprimer ce modèle ?')) remove.mutate(m.id) }}
-                    className="text-red-400 hover:text-red-600" title="Supprimer">
+                  <button onClick={() => { if (confirm(t('settings.sourcingIa.models.deleteConfirm'))) remove.mutate(m.id) }}
+                    className="text-red-400 hover:text-red-600" title={t('settings.sourcingIa.models.delete')}>
                     <Trash2 className="inline h-3.5 w-3.5" />
                   </button>
                 </td>
               </tr>
             ))}
             {models.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-muted-foreground text-sm">Aucun modèle. Le système utilise les valeurs par défaut (Claude Sonnet 4 + Mistral Large).</td></tr>
+              <tr><td colSpan={7} className="p-6 text-center text-muted-foreground text-sm">{t('settings.sourcingIa.models.empty')}</td></tr>
             )}
           </tbody>
         </table>
@@ -922,6 +921,7 @@ function ModelEditModal({ model, onClose, onSave, submitting }: {
   onSave: (m: Partial<AiModel> & { id?: string }) => void
   submitting: boolean
 }) {
+  const { t } = useTranslation('platform')
   const [form, setForm] = useState<Partial<AiModel>>(model ?? {
     provider: 'claude', model_id: '', display_name: '',
     max_tokens: 4000, input_cost_per_1m_eur: 0, output_cost_per_1m_eur: 0,
@@ -932,46 +932,46 @@ function ModelEditModal({ model, onClose, onSave, submitting }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="rounded-xl border border-border bg-card w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="border-b border-border px-5 py-3 font-semibold">
-          {model ? 'Modifier le modèle' : 'Nouveau modèle IA'}
+          {model ? t('settings.sourcingIa.models.modal.editTitle') : t('settings.sourcingIa.models.modal.newTitle')}
         </div>
         <div className="px-5 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Fournisseur</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.provider')}</label>
               <select value={form.provider} onChange={e => setForm(p => ({ ...p, provider: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="claude">Anthropic (Claude)</option>
-                <option value="mistral">Mistral AI</option>
-                <option value="openai">OpenAI</option>
+                <option value="claude">{t('settings.sourcingIa.models.modal.providerClaude')}</option>
+                <option value="mistral">{t('settings.sourcingIa.models.modal.providerMistral')}</option>
+                <option value="openai">{t('settings.sourcingIa.models.modal.providerOpenai')}</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Identifiant modèle</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.modelId')}</label>
               <input value={form.model_id ?? ''} onChange={e => setForm(p => ({ ...p, model_id: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
                 placeholder="claude-sonnet-4-20250514" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Nom affiché</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.displayName')}</label>
             <input value={form.display_name ?? ''} onChange={e => setForm(p => ({ ...p, display_name: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Max tokens</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.maxTokens')}</label>
               <input type="number" value={form.max_tokens ?? 0}
                 onChange={e => setForm(p => ({ ...p, max_tokens: parseInt(e.target.value) || 0 }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Coût input / 1M (EUR)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.inputCost')}</label>
               <input type="number" step="0.01" value={form.input_cost_per_1m_eur ?? 0}
                 onChange={e => setForm(p => ({ ...p, input_cost_per_1m_eur: parseFloat(e.target.value) || 0 }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Coût output / 1M (EUR)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.models.modal.outputCost')}</label>
               <input type="number" step="0.01" value={form.output_cost_per_1m_eur ?? 0}
                 onChange={e => setForm(p => ({ ...p, output_cost_per_1m_eur: parseFloat(e.target.value) || 0 }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
@@ -981,10 +981,10 @@ function ModelEditModal({ model, onClose, onSave, submitting }: {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.is_active ?? true}
                 onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
-              Actif
+              {t('settings.sourcingIa.models.modal.active')}
             </label>
             <div>
-              <label className="text-xs text-muted-foreground mr-2">Ordre</label>
+              <label className="text-xs text-muted-foreground mr-2">{t('settings.sourcingIa.models.modal.order')}</label>
               <input type="number" value={form.sort_order ?? 0}
                 onChange={e => setForm(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))}
                 className="w-20 rounded border border-input bg-background px-2 py-1 text-sm" />
@@ -992,11 +992,11 @@ function ModelEditModal({ model, onClose, onSave, submitting }: {
           </div>
         </div>
         <div className="border-t border-border px-5 py-3 flex gap-2 justify-end">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('settings.sourcingIa.models.modal.cancel')}</button>
           <button onClick={() => onSave({ ...form, id: model?.id })}
             disabled={!form.provider || !form.model_id || !form.display_name || submitting}
             className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+            {submitting ? t('settings.sourcingIa.models.modal.saving') : t('settings.sourcingIa.models.modal.save')}
           </button>
         </div>
       </div>
@@ -1005,6 +1005,7 @@ function ModelEditModal({ model, onClose, onSave, submitting }: {
 }
 
 function PlatformsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('platform')
   const [editing, setEditing] = useState<SourcingPlatform | null>(null)
   const [showNew, setShowNew] = useState(false)
 
@@ -1039,25 +1040,25 @@ function PlatformsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">
-          {platforms.length} plateforme(s). {panafrican.length} panafricaines + {platforms.length - panafrican.length} locales.
+          {t('settings.sourcingIa.platforms.count', { count: platforms.length, panafrican: panafrican.length, local: platforms.length - panafrican.length })}
         </p>
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90">
-          <Plus className="h-3.5 w-3.5" /> Nouvelle plateforme
+          <Plus className="h-3.5 w-3.5" /> {t('settings.sourcingIa.platforms.addButton')}
         </button>
       </div>
 
       {panafrican.length > 0 && (
-        <PlatformGroup title="Panafricaines / Globales" platforms={panafrican}
+        <PlatformGroup title={t('settings.sourcingIa.platforms.groupPanafrican')} platforms={panafrican}
           onEdit={setEditing} onRemove={id => remove.mutate(id)} />
       )}
       {Array.from(byCountry.entries()).sort().map(([cc, list]) => (
-        <PlatformGroup key={cc} title={`Pays : ${cc}`} platforms={list}
+        <PlatformGroup key={cc} title={t('settings.sourcingIa.platforms.groupCountry', { country: cc })} platforms={list}
           onEdit={setEditing} onRemove={id => remove.mutate(id)} />
       ))}
       {platforms.length === 0 && (
         <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Aucune plateforme configurée. Le système utilise les valeurs par défaut.
+          {t('settings.sourcingIa.platforms.empty')}
         </div>
       )}
 
@@ -1077,10 +1078,11 @@ function PlatformGroup({ title, platforms, onEdit, onRemove }: {
   onEdit: (p: SourcingPlatform) => void
   onRemove: (id: string) => void
 }) {
+  const { t } = useTranslation('platform')
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">
-        {title} ({platforms.length})
+        {t('settings.sourcingIa.platforms.groupCount', { title, count: platforms.length })}
       </div>
       <div className="divide-y divide-border">
         {platforms.map(p => (
@@ -1088,19 +1090,19 @@ function PlatformGroup({ title, platforms, onEdit, onRemove }: {
             <div className="flex-1">
               <div className="flex items-center gap-2 text-sm font-medium">
                 {p.name}
-                {!p.is_active && <span className="text-[10px] text-muted-foreground">(inactif)</span>}
+                {!p.is_active && <span className="text-[10px] text-muted-foreground">{t('settings.sourcingIa.platforms.inactive')}</span>}
               </div>
               <div className="text-xs text-muted-foreground">
                 <code>{p.code}</code>
                 {p.url && <> · {p.url}</>}
-                {p.est_pool && <> · ~{p.est_pool} profils</>}
+                {p.est_pool && <> · {t('settings.sourcingIa.platforms.profiles', { count: p.est_pool })}</>}
               </div>
             </div>
             <div className="flex gap-1">
               <button onClick={() => onEdit(p)} className="text-muted-foreground hover:text-primary p-1">
                 <Edit3 className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => { if (confirm('Supprimer cette plateforme ?')) onRemove(p.id) }}
+              <button onClick={() => { if (confirm(t('settings.sourcingIa.platforms.deleteConfirm'))) onRemove(p.id) }}
                 className="text-red-400 hover:text-red-600 p-1">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1118,6 +1120,7 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
   onSave: (p: Partial<SourcingPlatform> & { id?: string }) => void
   submitting: boolean
 }) {
+  const { t } = useTranslation('platform')
   const [form, setForm] = useState<Partial<SourcingPlatform>>(platform ?? {
     code: '', name: '', country_code: null, url: null, est_pool: null,
     is_active: true, is_panafrican: false, sort_order: 0,
@@ -1127,18 +1130,18 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="rounded-xl border border-border bg-card w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="border-b border-border px-5 py-3 font-semibold">
-          {platform ? 'Modifier la plateforme' : 'Nouvelle plateforme de sourcing'}
+          {platform ? t('settings.sourcingIa.platforms.modal.editTitle') : t('settings.sourcingIa.platforms.modal.newTitle')}
         </div>
         <div className="px-5 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Code (slug)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.platforms.modal.code')}</label>
               <input value={form.code ?? ''} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
                 placeholder="emploi_ci" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Nom</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.platforms.modal.name')}</label>
               <input value={form.name ?? ''} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Emploi.ci" />
@@ -1146,14 +1149,14 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Code pays (CI, SN, NG…)</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.platforms.modal.countryCode')}</label>
               <input value={form.country_code ?? ''}
                 onChange={e => setForm(p => ({ ...p, country_code: e.target.value || null }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
                 placeholder="CI" maxLength={5} />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">URL</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.platforms.modal.url')}</label>
               <input value={form.url ?? ''}
                 onChange={e => setForm(p => ({ ...p, url: e.target.value || null }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
@@ -1161,7 +1164,7 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
           </div>
           <div className="grid grid-cols-3 gap-3 items-center">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Pool estimé</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('settings.sourcingIa.platforms.modal.estPool')}</label>
               <input type="number" value={form.est_pool ?? ''}
                 onChange={e => setForm(p => ({ ...p, est_pool: e.target.value ? parseInt(e.target.value) : null }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
@@ -1169,21 +1172,21 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
             <label className="flex items-center gap-2 text-sm pt-5">
               <input type="checkbox" checked={form.is_active ?? true}
                 onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
-              Active
+              {t('settings.sourcingIa.platforms.modal.active')}
             </label>
             <label className="flex items-center gap-2 text-sm pt-5">
               <input type="checkbox" checked={form.is_panafrican ?? false}
                 onChange={e => setForm(p => ({ ...p, is_panafrican: e.target.checked }))} />
-              Panafricaine
+              {t('settings.sourcingIa.platforms.modal.panafrican')}
             </label>
           </div>
         </div>
         <div className="border-t border-border px-5 py-3 flex gap-2 justify-end">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('settings.sourcingIa.platforms.modal.cancel')}</button>
           <button onClick={() => onSave({ ...form, id: platform?.id })}
             disabled={!form.code || !form.name || submitting}
             className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+            {submitting ? t('settings.sourcingIa.platforms.modal.saving') : t('settings.sourcingIa.platforms.modal.save')}
           </button>
         </div>
       </div>
@@ -1192,6 +1195,7 @@ function PlatformEditModal({ platform, onClose, onSave, submitting }: {
 }
 
 function PromptsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('platform')
   const { data } = useQuery<{ data: SourcingSettingsDto }>({
     queryKey: ['sourcing-settings'],
     queryFn: () => api.get('/platform/sourcing/settings').then(r => r.data),
@@ -1214,33 +1218,32 @@ function PromptsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 text-xs text-blue-900">
-        <strong>Astuce :</strong> laisser vide pour utiliser le prompt par défaut codé en dur dans le service.
-        Le prompt fourni ici remplace intégralement le prompt par défaut pour le modèle concerné.
+        <Trans i18nKey="settings.sourcingIa.prompts.tip" ns="platform" components={[<strong />]} />
       </div>
 
       <div>
         <label className="text-xs font-semibold uppercase text-muted-foreground">
-          Prompt système Claude (Anthropic)
+          {t('settings.sourcingIa.prompts.claudeLabel')}
         </label>
         <textarea
           value={claude}
           onChange={e => { setClaude(e.target.value); setDirty(true) }}
           rows={10}
           className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono"
-          placeholder="Tu es un expert RH..."
+          placeholder={t('settings.sourcingIa.prompts.promptPlaceholder')}
         />
       </div>
 
       <div>
         <label className="text-xs font-semibold uppercase text-muted-foreground">
-          Prompt système Mistral
+          {t('settings.sourcingIa.prompts.mistralLabel')}
         </label>
         <textarea
           value={mistral}
           onChange={e => { setMistral(e.target.value); setDirty(true) }}
           rows={10}
           className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono"
-          placeholder="Tu es un expert RH..."
+          placeholder={t('settings.sourcingIa.prompts.promptPlaceholder')}
         />
       </div>
 
@@ -1249,7 +1252,7 @@ function PromptsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           disabled={!dirty || save.isPending}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
           {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Enregistrer les prompts
+          {t('settings.sourcingIa.prompts.save')}
         </button>
       </div>
     </div>
@@ -1257,6 +1260,7 @@ function PromptsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 }
 
 function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('platform')
   const { data } = useQuery<{ data: SourcingSettingsDto }>({
     queryKey: ['sourcing-settings'],
     queryFn: () => api.get('/platform/sourcing/settings').then(r => r.data),
@@ -1292,7 +1296,7 @@ function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const onSave = () => {
     let weights: Record<string, number>
     try { weights = JSON.parse(form.weights) }
-    catch { alert('JSON pondérations invalide'); return }
+    catch { alert(t('settings.sourcingIa.advanced.weightsInvalid')); return }
     save.mutate({
       max_profiles_min:         form.min,
       max_profiles_max:         form.max,
@@ -1305,22 +1309,22 @@ function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold text-sm mb-3">Slider profils (limite par requête)</h3>
+        <h3 className="font-semibold text-sm mb-3">{t('settings.sourcingIa.advanced.sliderTitle')}</h3>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-muted-foreground">Min</label>
+            <label className="text-xs text-muted-foreground">{t('settings.sourcingIa.advanced.min')}</label>
             <input type="number" value={form.min}
               onChange={e => { setForm(p => ({ ...p, min: parseInt(e.target.value) || 1 })); setDirty(true) }}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Max</label>
+            <label className="text-xs text-muted-foreground">{t('settings.sourcingIa.advanced.max')}</label>
             <input type="number" value={form.max}
               onChange={e => { setForm(p => ({ ...p, max: parseInt(e.target.value) || 20 })); setDirty(true) }}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Défaut</label>
+            <label className="text-xs text-muted-foreground">{t('settings.sourcingIa.advanced.default')}</label>
             <input type="number" value={form.def}
               onChange={e => { setForm(p => ({ ...p, def: parseInt(e.target.value) || 8 })); setDirty(true) }}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
@@ -1329,20 +1333,20 @@ function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold text-sm mb-3">Budget max par requête</h3>
+        <h3 className="font-semibold text-sm mb-3">{t('settings.sourcingIa.advanced.budgetTitle')}</h3>
         <div className="flex items-center gap-3">
           <input type="number" step="0.01" value={form.budget}
             onChange={e => { setForm(p => ({ ...p, budget: parseFloat(e.target.value) || 0 })); setDirty(true) }}
             className="w-32 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
-          <span className="text-sm text-muted-foreground">EUR · 0 = pas de limite</span>
+          <span className="text-sm text-muted-foreground">{t('settings.sourcingIa.advanced.budgetUnit')}</span>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Log warning si une requête dépasse ce budget (audit_log à venir). N'interrompt pas la requête.
+          {t('settings.sourcingIa.advanced.budgetHint')}
         </p>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="font-semibold text-sm mb-3">Pondérations score de richesse (JSON)</h3>
+        <h3 className="font-semibold text-sm mb-3">{t('settings.sourcingIa.advanced.weightsTitle')}</h3>
         <textarea value={form.weights}
           onChange={e => { setForm(p => ({ ...p, weights: e.target.value })); setDirty(true) }}
           rows={14}
@@ -1353,7 +1357,7 @@ function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <button onClick={onSave} disabled={!dirty || save.isPending}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
           {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Enregistrer les paramètres
+          {t('settings.sourcingIa.advanced.save')}
         </button>
       </div>
     </div>

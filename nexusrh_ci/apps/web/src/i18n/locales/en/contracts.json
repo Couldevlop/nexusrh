@@ -1,0 +1,129 @@
+{
+  "title": "OHADA Contracts",
+  "subtitle": "Employment contract management — Côte d'Ivoire Labour Code",
+  "newContract": "New contract",
+  "types": {
+    "cdi": "CDI",
+    "cdd": "CDD",
+    "saisonnier": "Seasonal",
+    "apprentissage": "Apprenticeship",
+    "stage": "Internship",
+    "mise_a_disposition": "Secondment"
+  },
+  "typesLong": {
+    "cdi": "CDI — Permanent contract",
+    "cdd": "CDD — Fixed-term contract",
+    "saisonnier": "Seasonal contract",
+    "apprentissage": "Apprenticeship contract (FDFP)",
+    "stage": "Formal internship",
+    "mise_a_disposition": "Secondment"
+  },
+  "statuses": {
+    "active": "Active",
+    "terminated": "Terminated",
+    "suspended": "Suspended",
+    "expired": "Expired"
+  },
+  "terminationReasons": {
+    "resignation": "Resignation",
+    "dismissal": "Dismissal",
+    "conventional": "Mutual termination",
+    "end_of_cdd": "End of fixed-term contract",
+    "retirement": "Retirement",
+    "other": "Other"
+  },
+  "badges": {
+    "ohadaClause": "OHADA clause",
+    "nonCompetition": "Non-compete"
+  },
+  "kpis": {
+    "activeContracts": "Active contracts",
+    "cdi": "CDI",
+    "cdd": "CDD",
+    "payroll": "Payroll"
+  },
+  "trialAlert": "<strong>{{count}} probation period(s)</strong> expire within the next 15 days",
+  "filters": {
+    "active": "Active",
+    "terminated": "Terminated",
+    "all": "All",
+    "allTypes": "All types"
+  },
+  "table": {
+    "employee": "Employee",
+    "department": "Department",
+    "type": "Type",
+    "status": "Status",
+    "grossSalary": "Gross salary",
+    "start": "Start",
+    "endOrTrial": "End / Probation",
+    "actions": "Actions",
+    "trialPrefix": "Probation:",
+    "view": "View"
+  },
+  "empty": {
+    "title": "No contract found",
+    "hint": "Change the filters or create a new contract"
+  },
+  "legal": {
+    "title": "Côte d'Ivoire Labour Code — Reminders",
+    "line1": "• CDD: max 2 years, 2 renewals, waiting period = 1/3 of the duration",
+    "line2": "• CDI probation: 15 days (employee) · 1 month (executive) — renewable once",
+    "line3": "• Apprenticeship contract: FDFP + Employment Authority visa required",
+    "line4": "• CDI notice (< 1 year): 1 month · (1–5 years): 2 months · (> 5 years): 3 months",
+    "line5": "• Monthly minimum wage: <strong>75,000 FCFA</strong> (2026 revaluation)"
+  },
+  "detail": {
+    "title": "Contract — {{name}}",
+    "fields": {
+      "jobTitle": "Position",
+      "level": "Level",
+      "baseSalary": "Base salary",
+      "weeklyHours": "Hours / week",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "trialEndDate": "Probation end",
+      "convention": "Collective agreement",
+      "telecommuting": "Remote work",
+      "cnpsAffiliation": "CNPS affiliation"
+    },
+    "telecommutingValue": "{{count}} d/wk",
+    "renewCdd": "Renew the CDD",
+    "newEndDate": "New end date",
+    "confirmRenewal": "Confirm renewal",
+    "terminate": "Terminate contract",
+    "terminationTitle": "Contract termination",
+    "reason": "Reason",
+    "effectiveDate": "Effective date",
+    "commentOptional": "Comment (optional)",
+    "confirmTermination": "Confirm termination",
+    "inProgress": "In progress…"
+  },
+  "new": {
+    "title": "New OHADA contract",
+    "employee": "Employee *",
+    "selectEmployee": "-- Select an employee --",
+    "contractType": "Contract type *",
+    "startDate": "Start date *",
+    "endDate": "End date",
+    "jobTitle": "Job title",
+    "jobTitlePlaceholder": "e.g. Experienced driver",
+    "level": "Level / Category",
+    "levelPlaceholder": "e.g. Executive, Supervisor",
+    "baseSalary": "Monthly gross salary (FCFA) *",
+    "baseSalaryPlaceholder": "e.g. 250000",
+    "weeklyHours": "Hours / week",
+    "convention": "Collective agreement",
+    "conventionPlaceholder": "e.g. CI Urban Transport, CI General Trade…",
+    "telecommutingDays": "Remote work days / week",
+    "clausesTitle": "OHADA clauses",
+    "clauses": {
+      "cnpsAffiliation": "Mandatory CNPS affiliation",
+      "ohadaClause": "OHADA clause (applicable law)",
+      "nonCompetition": "Non-compete clause"
+    },
+    "smigWarning": "The salary must be greater than or equal to the minimum wage (75,000 FCFA — 2026 revaluation)",
+    "submit": "Create contract",
+    "submitting": "Creating…"
+  }
+}

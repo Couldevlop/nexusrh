@@ -9,6 +9,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import {
   Scale, Sparkles, CheckCircle, XCircle, AlertCircle, Clock,
@@ -45,18 +46,13 @@ interface ProposalDetail extends Proposal {
   review_notes: string | null
 }
 
-const STATUS_CONFIG: Record<Status, { label: string; color: string; icon: typeof Clock }> = {
-  pending:    { label: 'En attente',  color: 'bg-amber-100 text-amber-800 border-amber-200',    icon: Clock },
-  approved:   { label: 'Approuvée',   color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle },
-  rejected:   { label: 'Rejetée',     color: 'bg-rose-100 text-rose-800 border-rose-200',       icon: XCircle },
-  superseded: { label: 'Remplacée',   color: 'bg-slate-100 text-slate-700 border-slate-200',    icon: AlertCircle },
-  all:        { label: 'Toutes',      color: 'bg-slate-100 text-slate-700 border-slate-200',    icon: Filter },
-}
-
-const RISK_CONFIG: Record<Risk, { label: string; color: string }> = {
-  high:   { label: 'Impact fort',  color: 'bg-rose-100 text-rose-800' },
-  medium: { label: 'Impact moyen', color: 'bg-amber-100 text-amber-800' },
-  low:    { label: 'Impact faible', color: 'bg-emerald-100 text-emerald-800' },
+// Libellés traduits via i18n (legalWatch.status.*) — ici uniquement style + icône.
+const STATUS_CONFIG: Record<Status, { color: string; icon: typeof Clock }> = {
+  pending:    { color: 'bg-amber-100 text-amber-800 border-amber-200',    icon: Clock },
+  approved:   { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle },
+  rejected:   { color: 'bg-rose-100 text-rose-800 border-rose-200',       icon: XCircle },
+  superseded: { color: 'bg-slate-100 text-slate-700 border-slate-200',    icon: AlertCircle },
+  all:        { color: 'bg-slate-100 text-slate-700 border-slate-200',    icon: Filter },
 }
 
 function confidenceColor(c: number): string {
@@ -66,6 +62,7 @@ function confidenceColor(c: number): string {
 }
 
 export default function PlatformLegalWatch() {
+  const { t } = useTranslation('platform')
   const qc = useQueryClient()
   const [status, setStatus] = useState<Status>('pending')
   const [selected, setSelected] = useState<string | null>(null)
@@ -109,17 +106,16 @@ export default function PlatformLegalWatch() {
               <Scale className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Veille réglementaire</h1>
+              <h1 className="text-xl font-bold text-slate-900">{t('legalWatch.title')}</h1>
               <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-                Détection automatique des mises à jour d'articles juridiques par IA.
-                Chaque proposition est revue manuellement avant remplacement de l'article publié.
+                {t('legalWatch.subtitle')}
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowAnalyzer(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
-            <Plus className="h-4 w-4" /> Nouvelle proposition
+            <Plus className="h-4 w-4" /> {t('legalWatch.newProposal')}
           </button>
         </div>
       </div>
@@ -139,7 +135,7 @@ export default function PlatformLegalWatch() {
               <div className="flex items-center justify-between mb-2">
                 <Icon className="h-5 w-5 text-slate-400" />
                 <span className={`text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded ${cfg.color}`}>
-                  {cfg.label}
+                  {t(`legalWatch.status.${s}`)}
                 </span>
               </div>
               <div className="text-2xl font-bold text-slate-900">{counts[s] ?? 0}</div>
@@ -152,7 +148,7 @@ export default function PlatformLegalWatch() {
       <div className="flex justify-end">
         <button onClick={() => setStatus('all')}
           className={`inline-flex items-center gap-1 text-xs ${status === 'all' ? 'text-indigo-700 font-semibold' : 'text-slate-500 hover:text-slate-700'}`}>
-          <Filter className="h-3.5 w-3.5" /> Voir toutes les propositions
+          <Filter className="h-3.5 w-3.5" /> {t('legalWatch.viewAll')}
         </button>
       </div>
 
@@ -166,11 +162,10 @@ export default function PlatformLegalWatch() {
           <div className="p-12 text-center">
             <Scale className="mx-auto h-12 w-12 text-slate-300 mb-3" />
             <p className="text-base font-semibold text-slate-700">
-              Aucune proposition « {STATUS_CONFIG[status].label.toLowerCase()} »
+              {t('legalWatch.emptyTitle', { status: t(`legalWatch.status.${status}`).toLowerCase() })}
             </p>
             <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
-              Cliquez sur « Nouvelle proposition » pour soumettre un texte à analyser par l'IA,
-              ou attendez le passage du worker de veille (cron quotidien).
+              {t('legalWatch.emptyHint')}
             </p>
           </div>
         ) : (
@@ -195,6 +190,7 @@ export default function PlatformLegalWatch() {
 
 // ─── Une ligne de la liste ──────────────────────────────────────────────────
 function ProposalRow({ proposal, onOpen }: { proposal: Proposal; onOpen: () => void }) {
+  const { t, i18n } = useTranslation('platform')
   const cfg = STATUS_CONFIG[proposal.status]
   const StatusIcon = cfg.icon
   const conf = proposal.ai_confidence ?? 0
@@ -215,24 +211,24 @@ function ProposalRow({ proposal, onOpen }: { proposal: Proposal; onOpen: () => v
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-900 truncate group-hover:text-indigo-700">
-            {proposal.current_title ?? '(Nouvel article)'}
+            {proposal.current_title ?? t('legalWatch.row.newArticle')}
           </h3>
           {proposal.article_numero && (
             <span className="text-xs text-slate-400 font-mono">{proposal.article_numero}</span>
           )}
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${confidenceColor(conf)}`}>
-            <Sparkles className="inline h-3 w-3 mr-0.5" />{conf}% IA
+            <Sparkles className="inline h-3 w-3 mr-0.5" />{t('legalWatch.row.aiConfidence', { confidence: conf })}
           </span>
         </div>
         <p className="text-sm text-slate-600 line-clamp-2 mt-1">
-          {proposal.diff_summary ?? 'Pas de résumé disponible'}
+          {proposal.diff_summary ?? t('legalWatch.row.noSummary')}
         </p>
         <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1">
             <FileText className="h-3 w-3" /> {proposal.source}
           </span>
           <span>·</span>
-          <span>{new Date(proposal.proposed_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          <span>{new Date(proposal.proposed_at).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
           <span>·</span>
           <span className="uppercase tracking-wide">{proposal.country_code}</span>
           {proposal.source_url && (
@@ -241,7 +237,7 @@ function ProposalRow({ proposal, onOpen }: { proposal: Proposal; onOpen: () => v
               <a href={proposal.source_url} target="_blank" rel="noopener noreferrer"
                 onClick={e => e.stopPropagation()}
                 className="inline-flex items-center gap-0.5 text-indigo-600 hover:underline">
-                <ExternalLink className="h-3 w-3" /> source
+                <ExternalLink className="h-3 w-3" /> {t('legalWatch.row.source')}
               </a>
             </>
           )}
@@ -256,6 +252,7 @@ function ProposalRow({ proposal, onOpen }: { proposal: Proposal; onOpen: () => v
 function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
   onClose: () => void; onAnalyzed: () => void
 }) {
+  const { t } = useTranslation('platform')
   const [form, setForm] = useState({
     article_id:    '',
     country_code:  'CIV',
@@ -283,7 +280,7 @@ function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
     onSuccess: () => { onAnalyzed() },
     onError: (e) => {
       const resp = (e as { response?: { data?: { error?: string; issues?: { field: string; message: string }[] } } }).response?.data
-      setError(resp?.error ?? 'Erreur lors de l\'analyse IA')
+      setError(resp?.error ?? t('legalWatch.analyzer.error'))
       setIssues(resp?.issues ?? [])
     },
   })
@@ -298,13 +295,13 @@ function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
         <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-4 rounded-t-2xl">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wider opacity-80">Veille réglementaire</p>
-              <h2 className="text-lg font-bold mt-0.5">Soumettre un texte à l'analyse IA</h2>
+              <p className="text-xs uppercase tracking-wider opacity-80">{t('legalWatch.analyzer.eyebrow')}</p>
+              <h2 className="text-lg font-bold mt-0.5">{t('legalWatch.analyzer.title')}</h2>
               <p className="text-xs opacity-90 mt-1">
-                Claude compare le texte avec l'article actuel (si fourni) et propose un diff structuré.
+                {t('legalWatch.analyzer.subtitle')}
               </p>
             </div>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-white/20" aria-label="Fermer">
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-white/20" aria-label={t('common.close')}>
               <XCircle className="h-5 w-5 text-white" />
             </button>
           </div>
@@ -313,52 +310,52 @@ function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
         <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-700">Article ID</label>
+              <label className="text-xs font-semibold text-slate-700">{t('legalWatch.analyzer.articleId')}</label>
               <input value={form.article_id} onChange={e => setForm(p => ({ ...p, article_id: e.target.value }))}
-                placeholder="ex: ct_ci_art_36"
+                placeholder={t('legalWatch.analyzer.articleIdPlaceholder')}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono" />
-              <p className="text-[10px] text-slate-500 mt-0.5">Vide = nouvel article</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{t('legalWatch.analyzer.articleIdHint')}</p>
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-700">Pays (ISO-3)</label>
+              <label className="text-xs font-semibold text-slate-700">{t('legalWatch.analyzer.country')}</label>
               <input value={form.country_code} onChange={e => setForm(p => ({ ...p, country_code: e.target.value.toUpperCase().slice(0, 3) }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono uppercase"
                 maxLength={3} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-700">Source</label>
+              <label className="text-xs font-semibold text-slate-700">{t('legalWatch.analyzer.source')}</label>
               <select value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                <option value="code_travail">Code du Travail</option>
-                <option value="convention_collective">Convention collective</option>
-                <option value="jo">Journal Officiel</option>
-                <option value="dgi">DGI</option>
-                <option value="cnps">CNPS</option>
+                <option value="code_travail">{t('legalWatch.analyzer.sourceOptions.code_travail')}</option>
+                <option value="convention_collective">{t('legalWatch.analyzer.sourceOptions.convention_collective')}</option>
+                <option value="jo">{t('legalWatch.analyzer.sourceOptions.jo')}</option>
+                <option value="dgi">{t('legalWatch.analyzer.sourceOptions.dgi')}</option>
+                <option value="cnps">{t('legalWatch.analyzer.sourceOptions.cnps')}</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700">URL source (optionnel)</label>
+            <label className="text-xs font-semibold text-slate-700">{t('legalWatch.analyzer.sourceUrl')}</label>
             <input value={form.source_url} onChange={e => setForm(p => ({ ...p, source_url: e.target.value }))}
-              placeholder="https://www.dgi.gouv.ci/..."
+              placeholder={t('legalWatch.analyzer.sourceUrlPlaceholder')}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
 
           <div>
             <label className="text-xs font-semibold text-slate-700">
-              Texte proposé * <span className="text-slate-400 font-normal">({form.proposed_text.length} / 30 000)</span>
+              {t('legalWatch.analyzer.proposedText')} <span className="text-slate-400 font-normal">{t('legalWatch.analyzer.proposedTextCount', { count: form.proposed_text.length })}</span>
             </label>
             <textarea value={form.proposed_text} onChange={e => setForm(p => ({ ...p, proposed_text: e.target.value }))}
               rows={10} maxLength={30_000}
-              placeholder="Collez ici le texte légal complet à analyser (article, décret, circulaire…)"
+              placeholder={t('legalWatch.analyzer.proposedTextPlaceholder')}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed resize-none" />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700">Contexte (optionnel)</label>
+            <label className="text-xs font-semibold text-slate-700">{t('legalWatch.analyzer.context')}</label>
             <input value={form.context} onChange={e => setForm(p => ({ ...p, context: e.target.value }))}
-              placeholder="ex: Article 36 CNPS — modification taux retraite 2026"
+              placeholder={t('legalWatch.analyzer.contextPlaceholder')}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
 
@@ -375,12 +372,12 @@ function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
         </div>
 
         <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2 bg-slate-50 rounded-b-2xl">
-          <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">Annuler</button>
+          <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">{t('legalWatch.analyzer.cancel')}</button>
           <button onClick={() => { setError(null); setIssues([]); analyze.mutate(form) }}
             disabled={!canSubmit || analyze.isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all">
             {analyze.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            {analyze.isPending ? 'Analyse Claude en cours…' : 'Analyser avec Claude'}
+            {analyze.isPending ? t('legalWatch.analyzer.analyzing') : t('legalWatch.analyzer.analyze')}
           </button>
         </div>
       </div>
@@ -392,6 +389,7 @@ function ProposalAnalyzerModal({ onClose, onAnalyzed }: {
 function ProposalReviewModal({ id, onClose, onReviewed }: {
   id: string; onClose: () => void; onReviewed: () => void
 }) {
+  const { t } = useTranslation('platform')
   const { data, isLoading } = useQuery<{ data: ProposalDetail }>({
     queryKey: ['legal-watch-proposal', id],
     queryFn: () => api.get(`/platform/legal-watch/proposals/${id}`).then(r => r.data),
@@ -402,12 +400,12 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
   const approve = useMutation({
     mutationFn: () => api.post(`/platform/legal-watch/proposals/${id}/approve`, { notes: notes || undefined }),
     onSuccess: onReviewed,
-    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Erreur'),
+    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error')),
   })
   const reject = useMutation({
     mutationFn: () => api.post(`/platform/legal-watch/proposals/${id}/reject`, { notes: notes || undefined }),
     onSuccess: onReviewed,
-    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Erreur'),
+    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error')),
   })
 
   const p = data?.data
@@ -428,23 +426,23 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_CONFIG[p.status].color}`}>
-                      {STATUS_CONFIG[p.status].label}
+                      {t(`legalWatch.status.${p.status}`)}
                     </span>
                     {p.ai_confidence !== null && (
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${confidenceColor(p.ai_confidence)}`}>
-                        <Sparkles className="inline h-3 w-3 mr-0.5" />Confiance {p.ai_confidence}%
+                        <Sparkles className="inline h-3 w-3 mr-0.5" />{t('legalWatch.review.confidence', { confidence: p.ai_confidence })}
                       </span>
                     )}
                     <span className="text-[11px] text-slate-500 font-mono">{p.source} · {p.country_code}</span>
                   </div>
                   <h2 className="text-base font-bold text-slate-900 mt-1">
-                    {p.current_title ?? '(Nouvel article)'}
+                    {p.current_title ?? t('legalWatch.review.newArticle')}
                   </h2>
                   {p.article_numero && (
                     <p className="text-xs text-slate-500 font-mono">{p.article_numero}</p>
                   )}
                 </div>
-                <button onClick={onClose} className="rounded-full p-1 hover:bg-slate-200" aria-label="Fermer">
+                <button onClick={onClose} className="rounded-full p-1 hover:bg-slate-200" aria-label={t('common.close')}>
                   <XCircle className="h-5 w-5 text-slate-500" />
                 </button>
               </div>
@@ -456,7 +454,7 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
               {p.diff_summary && (
                 <div className="rounded-lg bg-indigo-50/50 border border-indigo-200 p-3">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-1 flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5" /> Résumé IA
+                    <Sparkles className="h-3.5 w-3.5" /> {t('legalWatch.review.aiSummary')}
                   </p>
                   <p className="text-sm text-slate-800">{p.diff_summary}</p>
                 </div>
@@ -465,7 +463,7 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
               {p.ai_reasoning && (
                 <details className="rounded-lg bg-slate-50 border border-slate-200 p-3">
                   <summary className="text-[11px] font-bold uppercase tracking-wider text-slate-600 cursor-pointer">
-                    Raisonnement détaillé IA
+                    {t('legalWatch.review.aiReasoning')}
                   </summary>
                   <p className="text-sm text-slate-700 mt-2 leading-relaxed whitespace-pre-wrap">{p.ai_reasoning}</p>
                 </details>
@@ -473,12 +471,12 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
 
               {/* Toggle vue */}
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Comparaison</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{t('legalWatch.review.comparison')}</p>
                 <div className="inline-flex gap-1 rounded-lg border border-border p-1 bg-slate-50">
                   {(['side', 'unified'] as const).map(v => (
                     <button key={v} onClick={() => setView(v)}
                       className={`rounded-md px-3 py-1 text-xs font-medium ${view === v ? 'bg-white shadow-sm' : 'text-slate-500'}`}>
-                      {v === 'side' ? 'Côte à côte' : 'Unifié'}
+                      {v === 'side' ? t('legalWatch.review.viewSide') : t('legalWatch.review.viewUnified')}
                     </button>
                   ))}
                 </div>
@@ -489,15 +487,15 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-rose-700 mb-1 flex items-center gap-1.5">
-                      <Eye className="h-3 w-3" /> Texte actuel
+                      <Eye className="h-3 w-3" /> {t('legalWatch.review.currentText')}
                     </p>
                     <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-3 text-sm font-mono whitespace-pre-wrap text-slate-800 max-h-[50vh] overflow-y-auto leading-relaxed">
-                      {p.current_text ?? <span className="italic text-slate-400">— (nouvel article, aucun texte actuel)</span>}
+                      {p.current_text ?? <span className="italic text-slate-400">{t('legalWatch.review.currentTextEmpty')}</span>}
                     </div>
                   </div>
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 flex items-center gap-1.5">
-                      <Sparkles className="h-3 w-3" /> Texte proposé
+                      <Sparkles className="h-3 w-3" /> {t('legalWatch.review.proposedText')}
                     </p>
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm font-mono whitespace-pre-wrap text-slate-800 max-h-[50vh] overflow-y-auto leading-relaxed">
                       {p.proposed_text}
@@ -512,11 +510,11 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
               {!isReadOnly && (
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Notes de revue (optionnel)
+                    {t('legalWatch.review.notes')}
                   </label>
                   <textarea value={notes} onChange={e => setNotes(e.target.value)}
                     rows={2} maxLength={2000}
-                    placeholder="ex: Confirmé via JO n°123 du 12/05/2026"
+                    placeholder={t('legalWatch.review.notesPlaceholder')}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
                 </div>
               )}
@@ -524,7 +522,7 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
               {isReadOnly && p.review_notes && (
                 <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Notes de revue (par {p.reviewed_by ?? 'super_admin'})
+                    {t('legalWatch.review.notesByLabel', { author: p.reviewed_by ?? t('legalWatch.review.defaultReviewer') })}
                   </p>
                   {p.review_notes}
                 </div>
@@ -534,7 +532,7 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
             {/* Footer actions */}
             <div className="border-t border-border bg-slate-50 px-5 py-3 flex items-center justify-between rounded-b-2xl">
               <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">
-                {isReadOnly ? 'Fermer' : 'Annuler'}
+                {isReadOnly ? t('legalWatch.review.close') : t('legalWatch.review.cancel')}
               </button>
               {!isReadOnly && (
                 <div className="flex items-center gap-2">
@@ -542,13 +540,13 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
                     disabled={reject.isPending || approve.isPending}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">
                     {reject.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                    Rejeter
+                    {t('legalWatch.review.reject')}
                   </button>
                   <button onClick={() => approve.mutate()}
                     disabled={approve.isPending || reject.isPending}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all">
                     {approve.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Approuver et publier
+                    {t('legalWatch.review.approve')}
                   </button>
                 </div>
               )}

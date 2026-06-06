@@ -1,38 +1,41 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 
 const NAV = [
-  { to: '/mon-espace',              label: 'Accueil',     icon: Home,        end: true },
-  { to: '/mon-espace/integration',  label: 'Intégration', icon: Rocket },
-  { to: '/mon-espace/absences',     label: 'Absences',    icon: Calendar },
-  { to: '/mon-espace/bulletins',    label: 'Bulletins',   icon: FileText },
-  { to: '/mon-espace/frais',        label: 'Frais',       icon: Receipt },
-  { to: '/mon-espace/formation',    label: 'Formation',   icon: BookOpen },
-  { to: '/mon-espace/carriere',     label: 'Carrière',    icon: TrendingUp },
-  { to: '/mon-espace/offres',       label: 'Offres',      icon: Briefcase },
-  { to: '/mon-espace/profil',       label: 'Profil',      icon: User },
+  { to: '/mon-espace',              labelKey: 'nav.home',        icon: Home,        end: true },
+  { to: '/mon-espace/integration',  labelKey: 'nav.integration', icon: Rocket },
+  { to: '/mon-espace/absences',     labelKey: 'nav.absences',    icon: Calendar },
+  { to: '/mon-espace/bulletins',    labelKey: 'nav.payslips',    icon: FileText },
+  { to: '/mon-espace/frais',        labelKey: 'nav.expenses',    icon: Receipt },
+  { to: '/mon-espace/formation',    labelKey: 'nav.training',    icon: BookOpen },
+  { to: '/mon-espace/carriere',     labelKey: 'nav.career',      icon: TrendingUp },
+  { to: '/mon-espace/offres',       labelKey: 'nav.offers',      icon: Briefcase },
+  { to: '/mon-espace/profil',       labelKey: 'nav.profile',     icon: User },
 ]
 
-const ROUTE_LABELS: Record<string, string> = {
-  '/mon-espace': 'Mon espace',
-  '/mon-espace/integration': 'Mon intégration',
-  '/mon-espace/absences': 'Mes absences',
-  '/mon-espace/bulletins': 'Mes bulletins',
-  '/mon-espace/frais': 'Mes notes de frais',
-  '/mon-espace/formation': 'Ma formation',
-  '/mon-espace/carriere': 'Ma carrière',
-  '/mon-espace/offres': 'Offres internes',
-  '/mon-espace/profil': 'Mon profil',
+const ROUTE_TITLE_KEYS: Record<string, string> = {
+  '/mon-espace': 'nav.titles.home',
+  '/mon-espace/integration': 'nav.titles.integration',
+  '/mon-espace/absences': 'nav.titles.absences',
+  '/mon-espace/bulletins': 'nav.titles.payslips',
+  '/mon-espace/frais': 'nav.titles.expenses',
+  '/mon-espace/formation': 'nav.titles.training',
+  '/mon-espace/carriere': 'nav.titles.career',
+  '/mon-espace/offres': 'nav.titles.offers',
+  '/mon-espace/profil': 'nav.titles.profile',
 }
 
 export default function EmployeeLayout() {
+  const { t } = useTranslation('monEspace')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user, tenantConfig, logout } = useAuthStore()
   const location = useLocation()
-  const pageTitle = ROUTE_LABELS[location.pathname] ?? 'Mon espace'
+  const pageTitle = t(ROUTE_TITLE_KEYS[location.pathname] ?? 'nav.titles.default')
   const initials = tenantConfig?.name
     ? tenantConfig.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
     : 'RH'
@@ -70,7 +73,7 @@ export default function EmployeeLayout() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">{tenantConfig?.name ?? 'NexusRH CI'}</p>
-              <p className="text-xs text-muted-foreground">Espace personnel</p>
+              <p className="text-xs text-muted-foreground">{t('nav.personalSpace')}</p>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden rounded-md p-1 text-muted-foreground hover:bg-accent">
               <X className="h-4 w-4" />
@@ -79,7 +82,7 @@ export default function EmployeeLayout() {
 
           {/* Nav */}
           <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-            {NAV.map(({ to, label, icon: Icon, end }) => (
+            {NAV.map(({ to, labelKey, icon: Icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -93,10 +96,15 @@ export default function EmployeeLayout() {
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {label}
+                {t(labelKey)}
               </NavLink>
             ))}
           </nav>
+
+          {/* Langue */}
+          <div className="px-3 pb-1 flex items-center justify-center">
+            <LanguageSwitcher />
+          </div>
 
           {/* User footer */}
           <div className="border-t border-border p-3">
@@ -123,7 +131,7 @@ export default function EmployeeLayout() {
       {/* Bottom tab bar — mobile uniquement */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-card/95 backdrop-blur-sm">
         <div className="flex">
-          {NAV.slice(0, 5).map(({ to, label, icon: Icon, end }) => (
+          {NAV.slice(0, 5).map(({ to, labelKey, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -136,7 +144,7 @@ export default function EmployeeLayout() {
               <div className="rounded-lg p-1">
                 <Icon className="h-5 w-5" />
               </div>
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
             </NavLink>
           ))}
         </div>

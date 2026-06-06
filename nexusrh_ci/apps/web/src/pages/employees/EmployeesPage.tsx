@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
@@ -47,6 +48,9 @@ function CreateEmployeeModal({ onClose, onCreated }: {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useTranslation('employees')
+  const { t: tContracts } = useTranslation('contracts')
+  const { t: tCommon } = useTranslation('common')
 
   const { data: deptData } = useQuery<{ data: Department[] }>({
     queryKey: ['departments'],
@@ -65,7 +69,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     setError(null)
     const salary = parseInt(form.baseSalary, 10)
     if (!Number.isFinite(salary) || salary < 75000) {
-      setError('Le salaire brut doit être ≥ 75 000 FCFA (SMIG).')
+      setError(t('form.errors.salaryBelowSmig'))
       return
     }
     setSaving(true)
@@ -99,7 +103,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     } catch (err) {
       const ax = err as { response?: { data?: { error?: string; details?: Array<{ path: string; message: string }> } } }
       const details = ax.response?.data?.details?.map(d => `${d.path}: ${d.message}`).join(' · ')
-      setError(details || ax.response?.data?.error || 'Erreur lors de la création')
+      setError(details || ax.response?.data?.error || t('form.errors.createGeneric'))
       setSaving(false)
     }
   }
@@ -110,7 +114,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         className="w-full max-w-3xl my-8 rounded-xl bg-background border border-border shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <span className="font-semibold text-sm flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" /> Nouvel employé
+            <Plus className="h-4 w-4 text-primary" /> {t('form.title')}
           </span>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
@@ -120,64 +124,64 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
           {/* Identité */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold mb-1">Identité</legend>
+            <legend className="text-sm font-semibold mb-1">{t('form.sections.identity')}</legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className={labelCls}>Prénom *</label>
+              <div><label className={labelCls}>{t('form.fields.firstName')}</label>
                 <input className={inputCls} value={form.firstName} onChange={set('firstName')} required maxLength={100} /></div>
-              <div><label className={labelCls}>Nom *</label>
+              <div><label className={labelCls}>{t('form.fields.lastName')}</label>
                 <input className={inputCls} value={form.lastName} onChange={set('lastName')} required maxLength={100} /></div>
-              <div><label className={labelCls}>Sexe</label>
+              <div><label className={labelCls}>{t('form.fields.gender')}</label>
                 <select className={inputCls} value={form.gender} onChange={set('gender')}>
-                  <option value="">—</option><option value="M">Masculin</option>
-                  <option value="F">Féminin</option><option value="X">Autre</option>
+                  <option value="">—</option><option value="M">{t('form.gender.male')}</option>
+                  <option value="F">{t('form.gender.female')}</option><option value="X">{t('form.gender.other')}</option>
                 </select></div>
-              <div><label className={labelCls}>Email</label>
+              <div><label className={labelCls}>{t('form.fields.email')}</label>
                 <input type="email" className={inputCls} value={form.email} onChange={set('email')} maxLength={255} /></div>
-              <div><label className={labelCls}>Téléphone</label>
-                <input className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+225 07 XX XX XX XX" maxLength={30} /></div>
-              <div><label className={labelCls}>Date de naissance</label>
+              <div><label className={labelCls}>{t('form.fields.phone')}</label>
+                <input className={inputCls} value={form.phone} onChange={set('phone')} placeholder={t('form.placeholders.phone')} maxLength={30} /></div>
+              <div><label className={labelCls}>{t('form.fields.birthDate')}</label>
                 <input type="date" className={inputCls} value={form.birthDate} onChange={set('birthDate')} /></div>
-              <div><label className={labelCls}>NNI (chiffré)</label>
+              <div><label className={labelCls}>{t('form.fields.nni')}</label>
                 <input className={inputCls} value={form.nni} onChange={set('nni')} maxLength={50} /></div>
-              <div><label className={labelCls}>N° CNPS</label>
+              <div><label className={labelCls}>{t('form.fields.cnpsNumber')}</label>
                 <input className={inputCls} value={form.cnpsNumber} onChange={set('cnpsNumber')} maxLength={30} /></div>
-              <div><label className={labelCls}>Ville</label>
+              <div><label className={labelCls}>{t('form.fields.city')}</label>
                 <input className={inputCls} value={form.city} onChange={set('city')} maxLength={100} /></div>
             </div>
           </fieldset>
 
           {/* Poste & contrat */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold mb-1">Poste & contrat</legend>
+            <legend className="text-sm font-semibold mb-1">{t('form.sections.jobAndContract')}</legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className={labelCls}>Intitulé du poste</label>
+              <div><label className={labelCls}>{t('form.fields.jobTitle')}</label>
                 <input className={inputCls} value={form.jobTitle} onChange={set('jobTitle')} maxLength={200} /></div>
-              <div><label className={labelCls}>Département</label>
+              <div><label className={labelCls}>{t('form.fields.department')}</label>
                 <select className={inputCls} value={form.departmentId} onChange={set('departmentId')}>
                   <option value="">—</option>
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select></div>
-              <div><label className={labelCls}>Séniorité</label>
+              <div><label className={labelCls}>{t('form.fields.seniority')}</label>
                 <select className={inputCls} value={form.jobLevel} onChange={set('jobLevel')}>
-                  <option value="">—</option><option value="junior">Junior</option>
-                  <option value="confirme">Confirmé</option><option value="senior">Senior</option>
-                  <option value="cadre">Cadre</option><option value="direction">Direction</option>
+                  <option value="">—</option><option value="junior">{t('form.seniorityOptions.junior')}</option>
+                  <option value="confirme">{t('form.seniorityOptions.confirme')}</option><option value="senior">{t('form.seniorityOptions.senior')}</option>
+                  <option value="cadre">{t('form.seniorityOptions.cadre')}</option><option value="direction">{t('form.seniorityOptions.direction')}</option>
                 </select></div>
-              <div><label className={labelCls}>Catégorie professionnelle</label>
+              <div><label className={labelCls}>{t('form.fields.professionalCategory')}</label>
                 <input className={inputCls} list="categories-ci" value={form.professionalCategory}
-                  onChange={set('professionalCategory')} maxLength={50} placeholder="ex. 3ème catégorie" />
+                  onChange={set('professionalCategory')} maxLength={50} placeholder={t('form.placeholders.professionalCategory')} />
                 <datalist id="categories-ci">
                   {CATEGORIES_CI.map(c => <option key={c} value={c} />)}
                 </datalist></div>
-              <div><label className={labelCls}>Type de contrat</label>
+              <div><label className={labelCls}>{t('form.fields.contractType')}</label>
                 <select className={inputCls} value={form.contractType} onChange={set('contractType')}>
                   <option value="cdi">CDI</option><option value="cdd">CDD</option>
-                  <option value="saisonnier">Saisonnier</option><option value="apprentissage">Apprentissage</option>
-                  <option value="stage">Stage</option><option value="mise_a_disposition">Mise à disposition</option>
+                  <option value="saisonnier">{tContracts('types.saisonnier')}</option><option value="apprentissage">{tContracts('types.apprentissage')}</option>
+                  <option value="stage">{tContracts('types.stage')}</option><option value="mise_a_disposition">{tContracts('types.mise_a_disposition')}</option>
                 </select></div>
-              <div><label className={labelCls}>Date d'embauche</label>
+              <div><label className={labelCls}>{t('form.fields.hireDate')}</label>
                 <input type="date" className={inputCls} value={form.hireDate} onChange={set('hireDate')} /></div>
-              <div><label className={labelCls}>Heures hebdomadaires *</label>
+              <div><label className={labelCls}>{t('form.fields.weeklyHours')}</label>
                 <input type="number" min={1} max={60} step={0.5} className={inputCls}
                   value={form.weeklyHours} onChange={set('weeklyHours')} required /></div>
             </div>
@@ -185,39 +189,39 @@ function CreateEmployeeModal({ onClose, onCreated }: {
 
           {/* Rémunération & paiement */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold mb-1">Rémunération & paiement</legend>
+            <legend className="text-sm font-semibold mb-1">{t('form.sections.compensationAndPayment')}</legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className={labelCls}>Salaire brut mensuel (FCFA) *</label>
+              <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
                 <input type="number" min={75000} step={1} className={inputCls}
-                  value={form.baseSalary} onChange={set('baseSalary')} required placeholder="≥ 75 000" /></div>
-              <div><label className={labelCls}>Opérateur Mobile Money</label>
+                  value={form.baseSalary} onChange={set('baseSalary')} required placeholder={t('form.placeholders.baseSalary')} /></div>
+              <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
                 <select className={inputCls} value={form.mobileMoneyProvider} onChange={set('mobileMoneyProvider')}>
-                  <option value="">—</option><option value="wave">Wave</option>
-                  <option value="mtn">MTN MoMo</option><option value="orange">Orange Money</option>
-                  <option value="cofina">COFINA</option>
+                  <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
+                  <option value="mtn">{t('form.providers.mtn')}</option><option value="orange">{t('form.providers.orange')}</option>
+                  <option value="cofina">{t('form.providers.cofina')}</option>
                 </select></div>
-              <div><label className={labelCls}>N° Mobile Money</label>
+              <div><label className={labelCls}>{t('form.fields.mobileMoneyPhone')}</label>
                 <input className={inputCls} value={form.mobileMoneyPhone} onChange={set('mobileMoneyPhone')}
-                  placeholder="+2250XXXXXXXXX" maxLength={30} /></div>
-              <div className="sm:col-span-2"><label className={labelCls}>RIB / IBAN (chiffré AES-256)</label>
+                  placeholder={t('form.placeholders.mobileMoneyPhone')} maxLength={30} /></div>
+              <div className="sm:col-span-2"><label className={labelCls}>{t('form.fields.iban')}</label>
                 <input className={inputCls} value={form.iban} onChange={set('iban')}
-                  placeholder="CIxx xxxx xxxx xxxx xxxx xxxx xxxx" maxLength={50} /></div>
-              <div><label className={labelCls}>Banque</label>
+                  placeholder={t('form.placeholders.iban')} maxLength={50} /></div>
+              <div><label className={labelCls}>{t('form.fields.bankName')}</label>
                 <input className={inputCls} value={form.bankName} onChange={set('bankName')} maxLength={100} /></div>
             </div>
           </fieldset>
 
           {/* Situation familiale (crédit d'impôt ITS) */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold mb-1">Situation familiale <span className="font-normal text-xs text-muted-foreground">(impacte le crédit d'impôt ITS)</span></legend>
+            <legend className="text-sm font-semibold mb-1">{t('form.sections.familySituation')} <span className="font-normal text-xs text-muted-foreground">{t('form.sections.familySituationHint')}</span></legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div><label className={labelCls}>Statut marital</label>
+              <div><label className={labelCls}>{t('form.fields.maritalStatus')}</label>
                 <select className={inputCls} value={form.maritalStatus} onChange={set('maritalStatus')}>
-                  <option value="">—</option><option value="single">Célibataire</option>
-                  <option value="married">Marié(e)</option><option value="divorced">Divorcé(e)</option>
-                  <option value="widowed">Veuf/Veuve</option><option value="cohabiting">Concubinage</option>
+                  <option value="">—</option><option value="single">{t('form.maritalOptions.single')}</option>
+                  <option value="married">{t('form.maritalOptions.married')}</option><option value="divorced">{t('form.maritalOptions.divorced')}</option>
+                  <option value="widowed">{t('form.maritalOptions.widowed')}</option><option value="cohabiting">{t('form.maritalOptions.cohabiting')}</option>
                 </select></div>
-              <div><label className={labelCls}>Enfants à charge</label>
+              <div><label className={labelCls}>{t('form.fields.childrenCount')}</label>
                 <input type="number" min={0} max={30} className={inputCls}
                   value={form.childrenCount} onChange={set('childrenCount')} /></div>
             </div>
@@ -226,8 +230,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
           <div className="flex items-start gap-2 rounded-lg bg-indigo-50 border border-indigo-100 p-3">
             <Rocket className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
             <p className="text-xs text-indigo-800">
-              Un <strong>parcours d'intégration</strong> sera créé automatiquement selon la séniorité
-              et le poste (modèles configurés dans Intégration → Modèles).
+              <Trans t={t} i18nKey="form.onboardingHint" components={{ strong: <strong /> }} />
             </p>
           </div>
 
@@ -236,11 +239,11 @@ function CreateEmployeeModal({ onClose, onCreated }: {
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">
-            Annuler
+            {tCommon('actions.cancel')}
           </button>
           <button type="submit" disabled={saving || !form.firstName.trim() || !form.lastName.trim()}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Créer l'employé
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} {saving ? t('form.submitting') : t('form.submit')}
           </button>
         </div>
       </form>
@@ -252,6 +255,8 @@ function DeleteModal({
   employee, onClose, onDeleted,
 }: { employee: Employee; onClose: () => void; onDeleted: () => void }) {
   const navigate = useNavigate()
+  const { t } = useTranslation('employees')
+  const { t: tCommon } = useTranslation('common')
   const [check, setCheck] = useState<CheckDeleteResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -271,7 +276,7 @@ function DeleteModal({
       await api.delete(`/employees/${employee.id}`)
       onDeleted()
     } catch {
-      setError('Erreur lors de la suppression. Réessayez.')
+      setError(t('delete.error'))
       setDeleting(false)
     }
   }
@@ -283,7 +288,7 @@ function DeleteModal({
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-4 w-4" />
-            <span className="font-semibold text-sm">Archiver l'employé</span>
+            <span className="font-semibold text-sm">{t('delete.title')}</span>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
@@ -293,14 +298,15 @@ function DeleteModal({
         {/* Body */}
         <div className="p-5 space-y-4">
           <p className="text-sm">
-            Vous allez archiver <strong>{employee.first_name} {employee.last_name}</strong>.
-            L'employé ne sera plus actif mais ses données seront conservées.
+            <Trans t={t} i18nKey="delete.intro"
+              values={{ name: `${employee.first_name} ${employee.last_name}` }}
+              components={{ strong: <strong /> }} />
           </p>
 
           {loading && (
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              Vérification des actions en attente...
+              {t('delete.checkingPending')}
             </div>
           )}
 
@@ -308,7 +314,7 @@ function DeleteModal({
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
               <p className="font-medium text-amber-800 text-sm flex items-center gap-1.5">
                 <AlertTriangle className="h-4 w-4" />
-                Actions en attente sur cet employé
+                {t('delete.pendingTitle')}
               </p>
               <ul className="space-y-2">
                 {check.pendingActions.map(a => (
@@ -318,13 +324,13 @@ function DeleteModal({
                       onClick={() => { onClose(); navigate(a.path) }}
                       className="flex items-center gap-1 text-xs font-medium text-primary hover:underline shrink-0"
                     >
-                      Voir <ExternalLink className="h-3 w-3" />
+                      {tCommon('actions.view')} <ExternalLink className="h-3 w-3" />
                     </button>
                   </li>
                 ))}
               </ul>
               <p className="text-xs text-amber-600 border-t border-amber-200 pt-2">
-                Clôturez ces actions avant d'archiver, ou forcez la suppression ci-dessous.
+                {t('delete.pendingHint')}
               </p>
             </div>
           )}
@@ -337,7 +343,7 @@ function DeleteModal({
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">
-            Annuler
+            {tCommon('actions.cancel')}
           </button>
           {!loading && check && !check.canDelete && (
             <button
@@ -345,7 +351,7 @@ function DeleteModal({
               disabled={deleting}
               className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
             >
-              {deleting ? 'Archivage...' : 'Forcer l\'archivage'}
+              {deleting ? t('delete.forcing') : t('delete.forceArchive')}
             </button>
           )}
           {!loading && check?.canDelete && (
@@ -354,7 +360,7 @@ function DeleteModal({
               disabled={deleting}
               className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
             >
-              {deleting ? 'Archivage...' : 'Confirmer l\'archivage'}
+              {deleting ? t('delete.archiving') : t('delete.confirmArchive')}
             </button>
           )}
         </div>
@@ -369,6 +375,7 @@ export default function EmployeesPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [createdMsg, setCreatedMsg] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  const { t } = useTranslation('employees')
   const role = useAuthStore((s) => s.user?.role ?? '')
   const canCreate = ['admin', 'hr_manager', 'hr_officer'].includes(role)
 
@@ -384,13 +391,13 @@ export default function EmployeesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Employés</h1>
-          <p className="text-sm text-muted-foreground mt-1">{data?.total ?? 0} employé(s) actif(s)</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('subtitle', { count: data?.total ?? 0 })}</p>
         </div>
         {canCreate && (
           <button onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Nouvel employé
+            <Plus className="h-4 w-4" /> {t('newEmployee')}
           </button>
         )}
       </div>
@@ -399,8 +406,9 @@ export default function EmployeesPage() {
         <div className="flex items-start gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
           <Rocket className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
           <p className="text-sm text-emerald-800">
-            <strong>{createdMsg}</strong> créé(e). Son parcours d'intégration démarre automatiquement
-            (visible dans l'onglet Intégration).
+            <Trans t={t} i18nKey="created.message"
+              values={{ name: createdMsg }}
+              components={{ strong: <strong /> }} />
           </p>
           <button onClick={() => setCreatedMsg(null)} className="ml-auto text-emerald-700 hover:text-emerald-900">
             <X className="h-4 w-4" />
@@ -414,7 +422,7 @@ export default function EmployeesPage() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher un employé..."
+          placeholder={t('searchPlaceholder')}
           className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
         />
       </div>
@@ -430,12 +438,12 @@ export default function EmployeesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                  <th className="p-4">Employé</th>
-                  <th className="p-4">Poste & Département</th>
-                  <th className="p-4 text-right">Salaire brut</th>
-                  <th className="p-4">Mobile Money</th>
-                  <th className="p-4">Contrat</th>
-                  <th className="p-4">Date d'embauche</th>
+                  <th className="p-4">{t('table.employee')}</th>
+                  <th className="p-4">{t('table.jobAndDepartment')}</th>
+                  <th className="p-4 text-right">{t('table.grossSalary')}</th>
+                  <th className="p-4">{t('table.mobileMoney')}</th>
+                  <th className="p-4">{t('table.contract')}</th>
+                  <th className="p-4">{t('table.hireDate')}</th>
                   <th className="p-4 w-12" />
                 </tr>
               </thead>
@@ -479,7 +487,7 @@ export default function EmployeesPage() {
                     <td className="p-4">
                       <button
                         onClick={() => setDeleteTarget(emp)}
-                        title="Archiver l'employé"
+                        title={t('delete.title')}
                         className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -491,7 +499,7 @@ export default function EmployeesPage() {
                   <tr>
                     <td colSpan={7} className="p-12 text-center text-muted-foreground">
                       <Users className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                      <p>Aucun employé trouvé</p>
+                      <p>{t('noEmployeesFound')}</p>
                     </td>
                   </tr>
                 )}

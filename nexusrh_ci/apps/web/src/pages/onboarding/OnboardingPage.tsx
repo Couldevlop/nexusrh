@@ -9,6 +9,8 @@
  */
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Rocket, Plus, Loader2, ChevronLeft, Sparkles, Trash2, CalendarDays,
   FileText, PlayCircle, Link2, AlertTriangle, CheckCircle2, Users, LayoutGrid,
@@ -44,25 +46,18 @@ interface TemplateStepForm {
   dueOffsetDays: number; resources: Resource[]
 }
 
-const PHASES: Record<string, string> = {
-  before_start:  'Avant l\'arrivée',
-  day_one:       'Jour J',
-  first_week:    'Première semaine',
-  first_month:   'Premier mois',
-  probation_end: 'Fin de période d\'essai',
-}
-const OWNERS: Record<string, string> = {
-  hr: 'RH', manager: 'Manager', employee: 'Collaborateur', it: 'IT', buddy: 'Parrain',
-}
-const SENIORITIES: Record<string, string> = {
-  any: 'Toutes', junior: 'Junior', confirme: 'Confirmé', senior: 'Senior',
-  cadre: 'Cadre', direction: 'Direction',
-}
-const KANBAN_COLS: Array<{ key: Step['status']; label: string; tone: string }> = [
-  { key: 'todo',        label: 'À faire',  tone: 'border-slate-300' },
-  { key: 'in_progress', label: 'En cours', tone: 'border-blue-300' },
-  { key: 'done',        label: 'Terminé',  tone: 'border-emerald-300' },
+// Clés techniques (= valeurs API) ; les libellés sont traduits via t().
+const PHASE_KEYS = ['before_start', 'day_one', 'first_week', 'first_month', 'probation_end'] as const
+const OWNER_KEYS = ['hr', 'manager', 'employee', 'it', 'buddy'] as const
+const SENIORITY_KEYS = ['any', 'junior', 'confirme', 'senior', 'cadre', 'direction'] as const
+const KANBAN_COLS: Array<{ key: Step['status']; tone: string }> = [
+  { key: 'todo',        tone: 'border-slate-300' },
+  { key: 'in_progress', tone: 'border-blue-300' },
+  { key: 'done',        tone: 'border-emerald-300' },
 ]
+const phaseLabel = (t: TFunction, k: string) => PHASE_KEYS.includes(k as typeof PHASE_KEYS[number]) ? t(`phases.${k}`) : k
+const ownerLabel = (t: TFunction, k: string) => OWNER_KEYS.includes(k as typeof OWNER_KEYS[number]) ? t(`owners.${k}`) : k
+const seniorityLabel = (t: TFunction, k: string) => SENIORITY_KEYS.includes(k as typeof SENIORITY_KEYS[number]) ? t(`seniorities.${k}`) : k
 
 function ResourceIcon({ type }: { type: Resource['type'] }) {
   if (type === 'video') return <PlayCircle className="h-3.5 w-3.5" />
@@ -85,6 +80,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
+  const { t } = useTranslation('onboarding')
   const role = useAuthStore((s) => s.user?.role ?? '')
   const canManageTemplates = ['admin', 'hr_manager'].includes(role)
   const canEditSteps = ['admin', 'hr_manager', 'hr_officer', 'manager'].includes(role)
@@ -96,20 +92,20 @@ export default function OnboardingPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Rocket className="h-6 w-6 text-primary" /> Parcours d'intégration
+            <Rocket className="h-6 w-6 text-primary" /> {t('title')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Onboarding structuré : pré-boarding, jour J, premières semaines, fin d'essai — avec parrainage et ressources.
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex rounded-lg border border-border overflow-hidden">
           <button onClick={() => { setTab('journeys'); setOpenJourneyId(null) }}
             className={`px-4 py-2 text-sm font-medium ${tab === 'journeys' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-accent'}`}>
-            <Users className="inline h-4 w-4 mr-1.5" />Parcours
+            <Users className="inline h-4 w-4 mr-1.5" />{t('tabs.journeys')}
           </button>
           <button onClick={() => setTab('templates')}
             className={`px-4 py-2 text-sm font-medium ${tab === 'templates' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-accent'}`}>
-            <LayoutGrid className="inline h-4 w-4 mr-1.5" />Modèles
+            <LayoutGrid className="inline h-4 w-4 mr-1.5" />{t('tabs.templates')}
           </button>
         </div>
       </div>
@@ -126,6 +122,7 @@ export default function OnboardingPage() {
 
 // ─── Liste des parcours ──────────────────────────────────────────────────────
 function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t } = useTranslation('onboarding')
   const { data, isLoading } = useQuery<{ data: JourneyRow[] }>({
     queryKey: ['onboarding-journeys'],
     queryFn: () => api.get('/onboarding/journeys').then((r) => r.data),
@@ -134,16 +131,16 @@ function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
   const inProgress = journeys.filter((j) => j.status === 'in_progress')
   const lateTotal = journeys.reduce((acc, j) => acc + parseInt(j.late_steps || '0', 10), 0)
 
-  if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+  if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('loading')}</div>
 
   return (
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Parcours en cours', value: inProgress.length, icon: Rocket, tone: 'text-primary' },
-          { label: 'Parcours terminés', value: journeys.filter((j) => j.status === 'completed').length, icon: CheckCircle2, tone: 'text-emerald-600' },
-          { label: 'Étapes en retard', value: lateTotal, icon: AlertTriangle, tone: lateTotal > 0 ? 'text-red-600' : 'text-muted-foreground' },
+          { label: t('list.kpi.inProgress'), value: inProgress.length, icon: Rocket, tone: 'text-primary' },
+          { label: t('list.kpi.completed'), value: journeys.filter((j) => j.status === 'completed').length, icon: CheckCircle2, tone: 'text-emerald-600' },
+          { label: t('list.kpi.late'), value: lateTotal, icon: AlertTriangle, tone: lateTotal > 0 ? 'text-red-600' : 'text-muted-foreground' },
         ].map(({ label, value, icon: Icon, tone }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
             <Icon className={`h-8 w-8 ${tone}`} />
@@ -159,12 +156,12 @@ function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-4 py-3">Collaborateur</th>
-              <th className="px-4 py-3">Poste</th>
-              <th className="px-4 py-3">Embauche</th>
-              <th className="px-4 py-3 w-56">Progression</th>
-              <th className="px-4 py-3">Retards</th>
-              <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">{t('list.table.collaborator')}</th>
+              <th className="px-4 py-3">{t('list.table.job')}</th>
+              <th className="px-4 py-3">{t('list.table.hireDate')}</th>
+              <th className="px-4 py-3 w-56">{t('list.table.progress')}</th>
+              <th className="px-4 py-3">{t('list.table.late')}</th>
+              <th className="px-4 py-3">{t('list.table.status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -174,20 +171,20 @@ function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
                 <tr key={j.id} onClick={() => onOpen(j.id)}
                   className="border-t border-border hover:bg-muted/30 cursor-pointer">
                   <td className="px-4 py-3 font-medium">{j.first_name} {j.last_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{j.job_title ?? '—'} {j.department_name ? `· ${j.department_name}` : ''}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{j.hire_date ? formatDate(j.hire_date) : '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{j.job_title ?? t('list.noJob')} {j.department_name ? `· ${j.department_name}` : ''}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{j.hire_date ? formatDate(j.hire_date) : t('list.noHireDate')}</td>
                   <td className="px-4 py-3"><ProgressBar done={parseInt(j.done_steps, 10)} total={parseInt(j.total_steps, 10)} /></td>
                   <td className="px-4 py-3">
                     {late > 0
                       ? <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"><AlertTriangle className="h-3 w-3" />{late}</span>
-                      : <span className="text-xs text-muted-foreground">—</span>}
+                      : <span className="text-xs text-muted-foreground">{t('list.noLate')}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       j.status === 'completed' ? 'bg-emerald-100 text-emerald-700'
                         : j.status === 'cancelled' ? 'bg-slate-100 text-slate-600'
                         : 'bg-blue-100 text-blue-700'}`}>
-                      {j.status === 'completed' ? 'Terminé' : j.status === 'cancelled' ? 'Annulé' : 'En cours'}
+                      {j.status === 'completed' ? t('journeyStatus.completed') : j.status === 'cancelled' ? t('journeyStatus.cancelled') : t('journeyStatus.in_progress')}
                     </span>
                   </td>
                 </tr>
@@ -195,7 +192,7 @@ function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
             })}
             {journeys.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                Aucun parcours. Les parcours se créent automatiquement à la création d'un employé (selon les modèles actifs).
+                {t('list.empty')}
               </td></tr>
             )}
           </tbody>
@@ -209,6 +206,7 @@ function JourneysList({ onOpen }: { onOpen: (id: string) => void }) {
 function JourneyBoard({ journeyId, onBack, canEdit, role }: {
   journeyId: string; onBack: () => void; canEdit: boolean; role: string
 }) {
+  const { t } = useTranslation('onboarding')
   const qc = useQueryClient()
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [showAddStep, setShowAddStep] = useState(false)
@@ -244,31 +242,31 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
   const j = data?.data
   const today = new Date().toISOString().slice(0, 10)
 
-  if (isLoading || !j) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+  if (isLoading || !j) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('loading')}</div>
   const done = j.steps.filter((s) => s.status === 'done').length
 
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="h-4 w-4" /> Tous les parcours
+        <ChevronLeft className="h-4 w-4" /> {t('board.back')}
       </button>
 
       <div className="rounded-xl border border-border bg-card p-5 flex flex-wrap items-center gap-6">
         <div className="flex-1 min-w-52">
           <h2 className="text-lg font-bold">{j.first_name} {j.last_name}</h2>
           <p className="text-sm text-muted-foreground">
-            {j.job_title ?? '—'} {j.department_name ? `· ${j.department_name}` : ''}
-            {j.hire_date ? ` · embauché(e) le ${formatDate(j.hire_date)}` : ''}
+            {j.job_title ?? t('board.noJob')} {j.department_name ? `· ${j.department_name}` : ''}
+            {j.hire_date ? t('board.hiredOn', { date: formatDate(j.hire_date) }) : ''}
           </p>
           {(j.manager_first_name || j.manager_last_name) && (
-            <p className="text-xs text-muted-foreground mt-0.5">Manager : {j.manager_first_name} {j.manager_last_name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('board.manager', { firstName: j.manager_first_name ?? '', lastName: j.manager_last_name ?? '' })}</p>
           )}
         </div>
         <div className="w-64"><ProgressBar done={done} total={j.steps.length} /></div>
         {canAddStep && (
           <button onClick={() => setShowAddStep((v) => !v)}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Étape
+            <Plus className="h-4 w-4" /> {t('board.addStep')}
           </button>
         )}
       </div>
@@ -277,22 +275,22 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
         <form onSubmit={(e) => { e.preventDefault(); if (newStep.title.trim()) addStep.mutate() }}
           className="rounded-xl border border-border bg-card p-4 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
           <div className="sm:col-span-2">
-            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Titre de l'étape</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('board.stepForm.title')}</label>
             <input value={newStep.title} onChange={(e) => setNewStep({ ...newStep, title: e.target.value })}
               required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Phase</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('board.stepForm.phase')}</label>
             <select value={newStep.phase} onChange={(e) => setNewStep({ ...newStep, phase: e.target.value })}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              {Object.entries(PHASES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {PHASE_KEYS.map((k) => <option key={k} value={k}>{t(`phases.${k}`)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Responsable</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('board.stepForm.owner')}</label>
             <select value={newStep.ownerRole} onChange={(e) => setNewStep({ ...newStep, ownerRole: e.target.value })}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              {Object.entries(OWNERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {OWNER_KEYS.map((k) => <option key={k} value={k}>{t(`owners.${k}`)}</option>)}
             </select>
           </div>
           <div className="flex gap-2">
@@ -300,7 +298,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
               className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             <button type="submit" disabled={addStep.isPending}
               className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {addStep.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Ajouter'}
+              {addStep.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : t('board.stepForm.add')}
             </button>
           </div>
         </form>
@@ -321,7 +319,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                 }
               }}>
               <p className="text-xs font-bold uppercase text-muted-foreground mb-3 px-1">
-                {col.label} <span className="font-normal">({steps.length})</span>
+                {t(`kanban.${col.key}`)} <span className="font-normal">{t('kanban.columnCount', { count: steps.length })}</span>
               </p>
               <div className="space-y-2">
                 {steps.map((s) => {
@@ -334,7 +332,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium leading-snug">{s.title}</p>
                         {canEdit && ['admin', 'hr_manager'].includes(role) && (
-                          <button onClick={() => deleteStep.mutate(s.id)} title="Supprimer"
+                          <button onClick={() => deleteStep.mutate(s.id)} title={t('board.stepCard.delete')}
                             className="text-muted-foreground hover:text-red-600 shrink-0">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -342,11 +340,11 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                       </div>
                       {s.description && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{s.description}</p>}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">{PHASES[s.phase] ?? s.phase}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">{OWNERS[s.owner_role] ?? s.owner_role}</span>
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">{phaseLabel(t, s.phase)}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">{ownerLabel(t, s.owner_role)}</span>
                         {s.due_date && (
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${late ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                            <CalendarDays className="h-3 w-3" />{formatDate(s.due_date)}{late ? ' · en retard' : ''}
+                            <CalendarDays className="h-3 w-3" />{formatDate(s.due_date)}{late ? t('board.stepCard.late') : ''}
                           </span>
                         )}
                       </div>
@@ -365,7 +363,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                     </div>
                   )
                 })}
-                {steps.length === 0 && <p className="px-1 text-xs text-muted-foreground/60 italic">Glissez une étape ici</p>}
+                {steps.length === 0 && <p className="px-1 text-xs text-muted-foreground/60 italic">{t('kanban.dropHint')}</p>}
               </div>
             </div>
           )
@@ -379,6 +377,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
 const EMPTY_STEP: TemplateStepForm = { title: '', description: '', phase: 'first_week', ownerRole: 'hr', dueOffsetDays: 0, resources: [] }
 
 function TemplatesTab({ canManage }: { canManage: boolean }) {
+  const { t } = useTranslation('onboarding')
   const qc = useQueryClient()
   const [editing, setEditing] = useState<null | { id?: string }>(null)
   const [form, setForm] = useState({ name: '', description: '', seniority: 'any', jobKeywords: '', isDefault: false })
@@ -404,7 +403,7 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
     },
     onSuccess: () => { resetForm(); void qc.invalidateQueries({ queryKey: ['onboarding-templates'] }) },
     onError: (err: unknown) =>
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Erreur d\'enregistrement'),
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('templates.editor.errorDefault')),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/onboarding/templates/${id}`),
@@ -426,7 +425,7 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
       setError(null)
     },
     onError: (err: unknown) =>
-      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Génération IA indisponible'),
+      setError((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('templates.ai.errorDefault')),
   })
 
   const openForEdit = async (id: string) => {
@@ -441,9 +440,9 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
   }
 
   const templates = data?.data ?? []
-  const groupedPhases = useMemo(() => Object.keys(PHASES), [])
+  const groupedPhases = useMemo(() => [...PHASE_KEYS], [])
 
-  if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
+  if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('loading')}</div>
 
   return (
     <div className="space-y-4">
@@ -451,11 +450,11 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
         <div className="flex flex-wrap gap-3">
           <button onClick={() => { resetForm(); setEditing({}) }}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Nouveau modèle
+            <Plus className="h-4 w-4" /> {t('templates.newTemplate')}
           </button>
           <button onClick={() => { setShowAi((v) => !v); setError(null) }}
             className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100">
-            <Sparkles className="h-4 w-4" /> Générer avec l'IA
+            <Sparkles className="h-4 w-4" /> {t('templates.generateAi')}
           </button>
         </div>
       )}
@@ -464,29 +463,28 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
         <form onSubmit={(e) => { e.preventDefault(); if (aiForm.jobTitle.trim().length >= 2) generate.mutate() }}
           className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 space-y-3">
           <p className="text-sm font-semibold text-violet-900 flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> Génération IA d'un parcours d'intégration
+            <Sparkles className="h-4 w-4" /> {t('templates.ai.heading')}
           </p>
           <p className="text-xs text-violet-800">
-            L'IA conçoit un parcours complet (pré-boarding → fin d'essai, responsables, échéances, ressources)
-            selon les meilleures pratiques RH. Le résultat est un brouillon : relisez et ajustez avant d'enregistrer.
+            {t('templates.ai.intro')}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input placeholder="Intitulé du poste *" value={aiForm.jobTitle}
+            <input placeholder={t('templates.ai.jobTitle')} value={aiForm.jobTitle}
               onChange={(e) => setAiForm({ ...aiForm, jobTitle: e.target.value })} required minLength={2}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             <select value={aiForm.seniority} onChange={(e) => setAiForm({ ...aiForm, seniority: e.target.value })}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              <option value="">Séniorité (optionnel)</option>
-              {Object.entries(SENIORITIES).filter(([k]) => k !== 'any').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <option value="">{t('templates.ai.seniorityPlaceholder')}</option>
+              {SENIORITY_KEYS.filter((k) => k !== 'any').map((k) => <option key={k} value={k}>{t(`seniorities.${k}`)}</option>)}
             </select>
-            <input placeholder="Département (optionnel)" value={aiForm.department}
+            <input placeholder={t('templates.ai.departmentPlaceholder')} value={aiForm.department}
               onChange={(e) => setAiForm({ ...aiForm, department: e.target.value })}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm" />
           </div>
           {error && <p className="text-xs font-medium text-red-700">{error}</p>}
           <button type="submit" disabled={generate.isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50">
-            {generate.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Génération en cours…</> : <><Sparkles className="h-4 w-4" /> Générer le parcours</>}
+            {generate.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('templates.ai.generating')}</> : <><Sparkles className="h-4 w-4" /> {t('templates.ai.generate')}</>}
           </button>
         </form>
       )}
@@ -494,35 +492,35 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); save.mutate() }}
           className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <p className="font-semibold">{editing.id ? 'Modifier le modèle' : 'Nouveau modèle de parcours'}</p>
+          <p className="font-semibold">{editing.id ? t('templates.editor.editTitle') : t('templates.editor.newTitle')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Nom *</label>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('templates.editor.name')}</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Séniorité ciblée</label>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('templates.editor.seniority')}</label>
               <select value={form.seniority} onChange={(e) => setForm({ ...form, seniority: e.target.value })}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
-                {Object.entries(SENIORITIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {SENIORITY_KEYS.map((k) => <option key={k} value={k}>{t(`seniorities.${k}`)}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Mots-clés du poste (séparés par des virgules)</label>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('templates.editor.jobKeywords')}</label>
               <input value={form.jobKeywords} onChange={(e) => setForm({ ...form, jobKeywords: e.target.value })}
-                placeholder="conducteur, chauffeur, contrôleur…"
+                placeholder={t('templates.editor.jobKeywordsPlaceholder')}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
             <div className="flex items-end pb-1">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
                   className="h-4 w-4 rounded border-input accent-primary" />
-                Modèle par défaut (utilisé si aucun autre ne correspond)
+                {t('templates.editor.isDefault')}
               </label>
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">Description</label>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1.5">{t('templates.editor.description')}</label>
               <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
             </div>
@@ -531,10 +529,10 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
           {/* Éditeur d'étapes */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Étapes ({steps.length})</p>
+              <p className="text-sm font-semibold">{t('templates.editor.stepsCount', { count: steps.length })}</p>
               <button type="button" onClick={() => setSteps([...steps, { ...EMPTY_STEP }])}
                 className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-                <Plus className="h-3.5 w-3.5" /> Ajouter une étape
+                <Plus className="h-3.5 w-3.5" /> {t('templates.editor.addStep')}
               </button>
             </div>
             {groupedPhases.map((phase) => {
@@ -542,27 +540,27 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
               if (phaseSteps.length === 0) return null
               return (
                 <div key={phase} className="rounded-lg border border-border p-3 space-y-2">
-                  <p className="text-xs font-bold uppercase text-muted-foreground">{PHASES[phase]}</p>
+                  <p className="text-xs font-bold uppercase text-muted-foreground">{phaseLabel(t, phase)}</p>
                   {phaseSteps.map(([s, i]) => (
                     <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                      <input value={s.title} placeholder="Titre"
+                      <input value={s.title} placeholder={t('templates.editor.stepTitlePlaceholder')}
                         onChange={(e) => setSteps(steps.map((x, xi) => xi === i ? { ...x, title: e.target.value } : x))}
                         className="sm:col-span-5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm" />
                       <select value={s.phase}
                         onChange={(e) => setSteps(steps.map((x, xi) => xi === i ? { ...x, phase: e.target.value } : x))}
                         className="sm:col-span-3 rounded-lg border border-input bg-background px-2 py-1.5 text-xs">
-                        {Object.entries(PHASES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        {PHASE_KEYS.map((k) => <option key={k} value={k}>{t(`phases.${k}`)}</option>)}
                       </select>
                       <select value={s.ownerRole}
                         onChange={(e) => setSteps(steps.map((x, xi) => xi === i ? { ...x, ownerRole: e.target.value } : x))}
                         className="sm:col-span-2 rounded-lg border border-input bg-background px-2 py-1.5 text-xs">
-                        {Object.entries(OWNERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        {OWNER_KEYS.map((k) => <option key={k} value={k}>{t(`owners.${k}`)}</option>)}
                       </select>
                       <div className="sm:col-span-2 flex items-center gap-1">
-                        <input type="number" value={s.dueOffsetDays} title="Échéance (jours après embauche, négatif = avant)"
+                        <input type="number" value={s.dueOffsetDays} title={t('templates.editor.dueOffsetTitle')}
                           onChange={(e) => setSteps(steps.map((x, xi) => xi === i ? { ...x, dueOffsetDays: parseInt(e.target.value || '0', 10) } : x))}
                           className="w-16 rounded-lg border border-input bg-background px-2 py-1.5 text-xs" />
-                        <span className="text-[10px] text-muted-foreground">j</span>
+                        <span className="text-[10px] text-muted-foreground">{t('templates.editor.dueOffsetUnit')}</span>
                         <button type="button" onClick={() => setSteps(steps.filter((_, xi) => xi !== i))}
                           className="ml-auto text-muted-foreground hover:text-red-600">
                           <Trash2 className="h-3.5 w-3.5" />
@@ -573,17 +571,17 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
                 </div>
               )
             })}
-            {steps.length === 0 && <p className="text-xs text-muted-foreground italic">Aucune étape — ajoutez-en ou générez le parcours avec l'IA.</p>}
+            {steps.length === 0 && <p className="text-xs text-muted-foreground italic">{t('templates.editor.noSteps')}</p>}
           </div>
 
           {error && <p className="text-xs font-medium text-red-700">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" disabled={save.isPending || !form.name.trim()}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-              {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer le modèle
+              {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {t('templates.editor.save')}
             </button>
             <button type="button" onClick={resetForm}
-              className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">Annuler</button>
+              className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('templates.editor.cancel')}</button>
           </div>
         </form>
       )}
@@ -592,33 +590,33 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-4 py-3">Modèle</th>
-              <th className="px-4 py-3">Séniorité</th>
-              <th className="px-4 py-3">Mots-clés poste</th>
-              <th className="px-4 py-3">Étapes</th>
-              <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">{t('templates.table.template')}</th>
+              <th className="px-4 py-3">{t('templates.table.seniority')}</th>
+              <th className="px-4 py-3">{t('templates.table.jobKeywords')}</th>
+              <th className="px-4 py-3">{t('templates.table.steps')}</th>
+              <th className="px-4 py-3">{t('templates.table.status')}</th>
               {canManage && <th className="px-4 py-3"></th>}
             </tr>
           </thead>
           <tbody>
-            {templates.map((t) => (
-              <tr key={t.id} className="border-t border-border hover:bg-muted/30">
+            {templates.map((tpl) => (
+              <tr key={tpl.id} className="border-t border-border hover:bg-muted/30">
                 <td className="px-4 py-3">
-                  <p className="font-medium">{t.name} {t.is_default && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">Par défaut</span>}</p>
-                  {t.description && <p className="text-xs text-muted-foreground line-clamp-1">{t.description}</p>}
+                  <p className="font-medium">{tpl.name} {tpl.is_default && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">{t('templates.table.default')}</span>}</p>
+                  {tpl.description && <p className="text-xs text-muted-foreground line-clamp-1">{tpl.description}</p>}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{SENIORITIES[t.seniority] ?? t.seniority}</td>
-                <td className="px-4 py-3 text-muted-foreground text-xs">{t.job_keywords ?? '—'}</td>
-                <td className="px-4 py-3">{t.steps_count}</td>
+                <td className="px-4 py-3 text-muted-foreground">{seniorityLabel(t, tpl.seniority)}</td>
+                <td className="px-4 py-3 text-muted-foreground text-xs">{tpl.job_keywords ?? t('templates.table.noKeywords')}</td>
+                <td className="px-4 py-3">{tpl.steps_count}</td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${t.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {t.is_active ? 'Actif' : 'Inactif'}
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tpl.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {tpl.is_active ? t('templates.table.active') : t('templates.table.inactive')}
                   </span>
                 </td>
                 {canManage && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => void openForEdit(t.id)} className="text-primary hover:underline text-sm mr-3">Modifier</button>
-                    <button onClick={() => remove.mutate(t.id)} className="text-muted-foreground hover:text-red-600" title="Supprimer">
+                    <button onClick={() => void openForEdit(tpl.id)} className="text-primary hover:underline text-sm mr-3">{t('templates.table.edit')}</button>
+                    <button onClick={() => remove.mutate(tpl.id)} className="text-muted-foreground hover:text-red-600" title={t('templates.table.delete')}>
                       <Trash2 className="h-4 w-4 inline" />
                     </button>
                   </td>
@@ -626,7 +624,7 @@ function TemplatesTab({ canManage }: { canManage: boolean }) {
               </tr>
             ))}
             {templates.length === 0 && (
-              <tr><td colSpan={canManage ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">Aucun modèle. Créez-en un ou générez-le avec l'IA.</td></tr>
+              <tr><td colSpan={canManage ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">{t('templates.table.empty')}</td></tr>
             )}
           </tbody>
         </table>

@@ -1,17 +1,20 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { LayoutDashboard, Building2, Users, Settings, LogOut, Briefcase } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
+import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 
 export default function AgencyLayout() {
+  const { t } = useTranslation('agency')
   const { user, agencyConfig, logout } = useAuthStore()
   const isOwner = user?.role === 'agency_owner'
 
   const NAV = [
-    { to: '/agency/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-    { to: '/agency/clients',   label: 'Mes clients',      icon: Building2 },
-    ...(isOwner ? [{ to: '/agency/members', label: 'Membres', icon: Users }] : []),
-    { to: '/agency/settings',  label: 'Paramètres',       icon: Settings },
+    { to: '/agency/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { to: '/agency/clients',   label: t('nav.clients'),   icon: Building2 },
+    ...(isOwner ? [{ to: '/agency/members', label: t('nav.members'), icon: Users }] : []),
+    { to: '/agency/settings',  label: t('nav.settings'),  icon: Settings },
   ]
 
   return (
@@ -25,8 +28,8 @@ export default function AgencyLayout() {
                 : <Briefcase className="h-4 w-4" />}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold">{agencyConfig?.name ?? 'Cabinet'}</p>
-              <p className="text-xs text-slate-400">Cabinet de recrutement</p>
+              <p className="truncate text-sm font-bold">{agencyConfig?.name ?? t('nav.title')}</p>
+              <p className="text-xs text-slate-400">{t('nav.subtitle')}</p>
             </div>
           </div>
         </div>
@@ -50,6 +53,10 @@ export default function AgencyLayout() {
           })}
         </nav>
 
+        <div className="px-3 pb-2 flex items-center justify-center">
+          <LanguageSwitcher />
+        </div>
+
         <div className="border-t border-slate-700 p-3">
           <div className="flex items-center gap-3 rounded-md px-3 py-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500 text-xs font-bold">
@@ -57,9 +64,9 @@ export default function AgencyLayout() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-sm text-white">{user?.firstName}</p>
-              <p className="text-xs text-slate-400">{isOwner ? 'Propriétaire' : 'Recruteur'}</p>
+              <p className="text-xs text-slate-400">{isOwner ? t('nav.roleOwner') : t('nav.roleMember')}</p>
             </div>
-            <button onClick={logout} className="text-slate-400 hover:text-red-400" title="Déconnexion">
+            <button onClick={logout} className="text-slate-400 hover:text-red-400" title={t('nav.logout')}>
               <LogOut className="h-4 w-4" />
             </button>
           </div>

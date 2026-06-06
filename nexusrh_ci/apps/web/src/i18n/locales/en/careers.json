@@ -1,0 +1,132 @@
+{
+  "evaluationStatus": {
+    "draft": "Draft",
+    "in_progress": "In progress",
+    "completed": "Finalized"
+  },
+  "evaluationType": {
+    "annual": "Annual",
+    "trial_end": "End of probation",
+    "mid_year": "Mid-year",
+    "exit": "Exit"
+  },
+  "my": {
+    "heroTitle": "My journey · {{name}}",
+    "heroSubtitle": "Your reviews, skills, and internal career opportunities.",
+    "kpis": {
+      "evaluations": "Reviews",
+      "lastPrefix": "Latest: {{value}}",
+      "globalScore": "Overall score",
+      "skills": "Skills",
+      "skillsMastered": "{{count}} mastered",
+      "toDevelop": "To develop",
+      "skillsGap": "Skills gap"
+    },
+    "lastEvaluation": "Latest review",
+    "byEvaluator": "by {{name}}",
+    "scoreBlocks": {
+      "global": "Overall",
+      "performance": "Performance",
+      "skills": "Skills"
+    },
+    "managerComments": "Manager comments",
+    "noEvaluation": "No review recorded yet.",
+    "internalMobility": "Internal mobility",
+    "internalOffers": {
+      "title": "View internal openings",
+      "subtitle": "Internal positions open for your profile",
+      "cta": "Discover"
+    },
+    "trainingCatalog": {
+      "title": "Training catalog",
+      "subtitle": "Develop your skills",
+      "cta": "Explore"
+    },
+    "mySkills": "My skills",
+    "skillsToDevelop": "{{count}} to develop",
+    "noSkills": "No skills assessed. Ask your manager for a mapping of your skills.",
+    "defaultCategory": "General",
+    "skillLevel": "Level {{level}}/5",
+    "skillTarget": "Target: {{target}}",
+    "evaluationsHistory": "History of my reviews"
+  },
+  "kpiCards": {
+    "directTeam": "Direct team",
+    "members": "Members",
+    "evaluationsLed": "Reviews conducted",
+    "toFinalize": "To finalize",
+    "draftsOrInProgress": "Drafts / in progress",
+    "averageScore": "Average score",
+    "teamPerformance": "Team performance",
+    "totalEvaluations": "Total reviews",
+    "tenantGlobal": "Tenant-wide",
+    "completionRate": "Completion rate",
+    "finalizedCount": "{{count}} finalized",
+    "drafts": "Drafts",
+    "toProcess": "To process"
+  },
+  "hr": {
+    "heroTitleManager": "My team — Talent & Performance",
+    "heroTitleAdmin": "Careers & Skills",
+    "heroSubtitleManager": "Drive the performance and growth of your direct team. All reviews and skills are filtered to your management scope.",
+    "heroSubtitleAdmin": "Overview of reviews, scores and the 9-box matrix for the whole tenant. Identify talent and plan mobility.",
+    "newEvaluation": "New review"
+  },
+  "team": {
+    "membersTitle": "Team members",
+    "membersCount": "{{count}} member(s)",
+    "evaluationCount_one": "{{count}} review",
+    "evaluationCount_other": "{{count}} reviews",
+    "noEvaluation": "No review"
+  },
+  "tabs": {
+    "evaluations": "Reviews",
+    "nineBox": "9-box matrix"
+  },
+  "table": {
+    "employee": "Employee",
+    "type": "Type",
+    "evaluator": "Evaluator",
+    "globalScore": "Overall score",
+    "performance": "Performance",
+    "skills": "Skills",
+    "status": "Status",
+    "actions": "Actions",
+    "start": "Start",
+    "finalize": "Finalize",
+    "noEvaluations": "No review for {{year}}"
+  },
+  "nineBox": {
+    "intro": "Positioning of the {{count}} employee(s) reviewed in {{year}} (Performance × Potential)",
+    "empty": "No finalized review for {{year}}",
+    "axes": {
+      "performance": "Performance",
+      "potential": "Potential"
+    },
+    "levels": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "boxes": {
+      "star": "⭐ Stars",
+      "high_perf": "🚀 High performers",
+      "expert": "🎯 Experts",
+      "high_pot": "💡 High potential",
+      "core": "✅ Key contributors",
+      "solid": "📊 Solid",
+      "enigma": "❓ Enigmas",
+      "inconsistent": "⚠️ Inconsistent",
+      "risk": "🔴 At risk"
+    }
+  },
+  "newEvalModal": {
+    "title": "Create a review",
+    "employee": "Employee *",
+    "selectEmployee": "— Select —",
+    "type": "Type",
+    "year": "Year",
+    "submit": "Create",
+    "submitting": "Creating..."
+  }
+}
