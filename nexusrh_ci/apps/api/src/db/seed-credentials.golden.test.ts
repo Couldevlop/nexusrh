@@ -109,16 +109,23 @@ describe('seed.ts — câblage de la préservation', () => {
   const seedSrc = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), 'seed.ts'), 'utf8')
 
-  it('capture les credentials AVANT le DROP des schémas', () => {
+  it('capture les credentials AVANT de lancer le seed (donc avant le DROP des schémas)', () => {
+    // main() : capture → try { runSeed() } — le DROP vit dans runSeed()
     const captureIdx = seedSrc.indexOf('captureExistingCredentials(pool')
-    const dropIdx = seedSrc.indexOf('DROP SCHEMA IF EXISTS')
+    const runIdx = seedSrc.indexOf('await runSeed()')
     expect(captureIdx).toBeGreaterThan(-1)
-    expect(dropIdx).toBeGreaterThan(-1)
-    expect(captureIdx).toBeLessThan(dropIdx)
+    expect(runIdx).toBeGreaterThan(-1)
+    expect(captureIdx).toBeLessThan(runIdx)
+    expect(seedSrc).toContain('DROP SCHEMA IF EXISTS')
   })
 
-  it('restaure les credentials après recréation des tenants', () => {
-    expect(seedSrc).toContain('restorePreservedCredentials(pool, preservedCredentials)')
+  it('restaure les credentials MÊME si le seed échoue (bloc finally)', () => {
+    // Un seed qui plante après le DROP ne doit jamais laisser les utilisateurs
+    // sans leur mot de passe : la restauration vit dans le finally de main().
+    const finallyIdx = seedSrc.indexOf('} finally {')
+    const restoreIdx = seedSrc.indexOf('restorePreservedCredentials(pool, preservedCredentials)')
+    expect(finallyIdx).toBeGreaterThan(-1)
+    expect(restoreIdx).toBeGreaterThan(finallyIdx)
   })
 
   it('super_admin : ON CONFLICT DO NOTHING (mot de passe changé non écrasé)', () => {

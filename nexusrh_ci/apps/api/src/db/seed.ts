@@ -15,6 +15,22 @@ import {
 } from './provisioning.js'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
 import { captureExistingCredentials, restorePreservedCredentials } from './seed-credentials.js'
+import {
+  monthOffsetStr,
+  lastClosedMonths,
+  dateOffsetStr,
+  seedAbsencesBulk,
+  recomputeAbsenceBalances,
+  seedExpensesBulk,
+  seedEnrollmentsBulk,
+  seedSkillsEvaluationsBulk,
+  seedHrEventsBulk,
+  seedNotificationsBulk,
+  seedMobileMoneyCampaign,
+  seedCnpsDeclarationsFromPayslips,
+  seedDisaFromPayslips,
+  seedApplicationsForJob,
+} from './seed-demo-data.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
@@ -163,7 +179,11 @@ const ONB_STEPS_CADRE: SeedOnbStep[] = [
   { title: 'Bilan de période d\'essai cadre', description: 'Entretien de confirmation (3 mois, renouvelable).', phase: 'probation_end', owner: 'hr', offset: 85 },
 ]
 
-async function seedOnboarding(schema: string, employeeIds: string[]): Promise<void> {
+async function seedOnboarding(
+  schema: string,
+  employeeIds: string[],
+  includeTransportTemplate = true,
+): Promise<void> {
   const insertTemplate = async (
     name: string, description: string, seniority: string, keywords: string | null,
     isDefault: boolean, steps: SeedOnbStep[],
@@ -187,10 +207,12 @@ async function seedOnboarding(schema: string, employeeIds: string[]): Promise<vo
     'Parcours d\'intégration standard',
     'Parcours générique : pré-boarding, jour J, première semaine, premier mois, fin de période d\'essai.',
     'any', null, true, ONB_STEPS_STANDARD)
-  await insertTemplate(
-    'Intégration Conducteur & Agents terrain',
-    'Parcours métier transport : permis, doublon avec un titulaire, évaluation de conduite.',
-    'any', 'conducteur, chauffeur, receveur, contrôleur, régulateur', false, ONB_STEPS_CONDUCTEUR)
+  if (includeTransportTemplate) {
+    await insertTemplate(
+      'Intégration Conducteur & Agents terrain',
+      'Parcours métier transport : permis, doublon avec un titulaire, évaluation de conduite.',
+      'any', 'conducteur, chauffeur, receveur, contrôleur, régulateur', false, ONB_STEPS_CONDUCTEUR)
+  }
   await insertTemplate(
     'Intégration Cadre & Management',
     'Parcours cadre : immersion direction, feuille de route 30/60/90, bilan d\'essai renforcé.',
@@ -216,9 +238,10 @@ async function seedOnboarding(schema: string, employeeIds: string[]): Promise<vo
       await pool.query(`
         INSERT INTO "${schema}".onboarding_steps
           (journey_id, title, description, phase, owner_role, status, due_date, sort_order, resources, completed_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $6 = 'done' THEN now() ELSE NULL END)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $10 THEN now() ELSE NULL END)
       `, [j.rows[0]!.id, s.title, s.description, s.phase, s.owner, status,
-          dayOffset(s.offset - startedDaysAgo), i, JSON.stringify(s.resources ?? [])])
+          dayOffset(s.offset - startedDaysAgo), i, JSON.stringify(s.resources ?? []),
+          status === 'done'])
     }
     // Statut du parcours recalculé si tout est terminé
     if (doneRatio >= 1) {
@@ -236,13 +259,10 @@ async function seedOnboarding(schema: string, employeeIds: string[]): Promise<vo
 }
 
 // ── Main seed ─────────────────────────────────────────────────────────────────
-async function main() {
+const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting']
+
+async function runSeed(): Promise<void> {
   console.log('NexusRH CI — Initialisation du seed...')
-
-  const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting']
-
-  // Les mots de passe changés par les utilisateurs survivent au re-seed.
-  const preservedCredentials = await captureExistingCredentials(pool, TENANT_SCHEMAS)
 
   // Nettoyage idempotent : drop des schémas tenant pour repartir propre
   for (const schema of TENANT_SCHEMAS) {
@@ -406,6 +426,7 @@ async function main() {
     VALUES
       ('admin@sotra.ci',    $1, 'Directeur', 'RH SOTRA',   'admin',      true, now()),
       ('rh@sotra.ci',       $1, 'Responsable', 'Paie',      'hr_manager', true, now()),
+      ('chef.perso@sotra.ci', $1, 'Chef',    'Personnel',   'hr_officer', true, now()),
       ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
       ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now()),
       ('raf.abidjan@sotra.ci', $1, 'RAF', 'Abidjan', 'raf_site', true, now()),
@@ -537,6 +558,40 @@ async function main() {
     )
   }
 
+  // ── Manager d'équipe : le compte manager@sotra.ci devient un employé réel ──
+  // (chef de dépôt Exploitation) et TOUTE l'Exploitation devient son équipe :
+  // le dashboard manager (équipe, demandes à valider) n'est jamais vide.
+  // Le scoping API passe par employees.manager_id + users.email (cf. absences.routes).
+  const managerPhone = ciPhone('wave')
+  const managerEmpRes = await pool.query<{ id: string }>(`
+    INSERT INTO "${sotraSchema}".employees
+      (first_name, last_name, email, gender, nni, cnps_number,
+       mobile_money_provider, mobile_money_phone,
+       department_id, job_title, contract_type,
+       hire_date, base_salary, city, marital_status, children_count, is_active)
+    VALUES ('Chef','Dépôt','manager@sotra.ci','M',$1,$2,'wave',$3,$4,
+            'Chef de dépôt','cdi',$5,380000,'Abidjan','married',2,true)
+    ON CONFLICT (email) DO NOTHING
+    RETURNING id
+  `, [nni(), cnpsNum(), managerPhone, sotraDeptIds['EXP'] ?? null, pastDate(60)])
+  const managerEmpId = managerEmpRes.rows[0]?.id
+  if (managerEmpId) {
+    sotraEmployees.push({
+      id: managerEmpId, baseSalary: 380_000, maritalStatus: 'married',
+      childrenCount: 2, provider: 'wave', phone: managerPhone,
+    })
+    await pool.query(
+      `UPDATE "${sotraSchema}".users SET employee_id = $1 WHERE email = 'manager@sotra.ci'`,
+      [managerEmpId],
+    )
+    await pool.query(
+      `UPDATE "${sotraSchema}".employees SET manager_id = $1
+        WHERE department_id = $2 AND id <> $1`,
+      [managerEmpId, sotraDeptIds['EXP'] ?? null],
+    )
+    console.log('[6a] manager@sotra.ci lié à un employé — équipe Exploitation rattachée')
+  }
+
   // Répartir les employés sur les filiales (alternance) pour que la paie par
   // filiale produise des bulletins réels lors du workflow centralisé.
   if (sotraEntityIds.length > 0) {
@@ -552,7 +607,10 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────────
   // PARCOURS D'INTÉGRATION (ONBOARDING) — modèles + parcours de démo
   // ─────────────────────────────────────────────────────────────────────────────
+  // Non bloquant : un échec du seed de démo onboarding ne doit jamais empêcher
+  // la création des tenants suivants ni la restauration des credentials.
   await seedOnboarding(sotraSchema, sotraEmployees.map((e) => e.id))
+    .catch((e: unknown) => console.warn('[!] Onboarding SOTRA (non bloquant):', (e as Error).message))
   console.log('[6b] Onboarding : 3 modèles + 3 parcours de démo (SOTRA)')
 
   // Types d'absence (récupérer les IDs)
@@ -581,8 +639,10 @@ async function main() {
     }
   }
 
-  // Bulletins de paie — 6 mois (janv à juin 2025)
-  const sotraPeriods = ['2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06']
+  // Bulletins de paie — les 6 derniers mois révolus (dates RELATIVES : la démo
+  // reste actuelle quel que soit le jour du déploiement — reporting de l'année
+  // courante, dashboard « 6 derniers mois », CNPS du trimestre en cours…)
+  const sotraPeriods = lastClosedMonths(6)
   for (const month of sotraPeriods) {
     const [yr, mo] = month.split('-').map(Number)
     const workingDays = getWorkingDays(yr!, mo!)
@@ -675,7 +735,8 @@ async function main() {
         `DELETE FROM "${sotraSchema}".pay_periods WHERE parent_period_id IS NOT NULL`,
       ).catch(() => undefined)
       await pool.query(
-        `DELETE FROM "${sotraSchema}".pay_periods WHERE month = '2025-07' AND legal_entity_id IS NULL`,
+        `DELETE FROM "${sotraSchema}".pay_periods WHERE month = $1 AND legal_entity_id IS NULL`,
+        [monthOffsetStr(0)],
       ).catch(() => undefined)
 
       // Totaux par filiale d'un mois (sommés depuis les bulletins réels déjà générés).
@@ -711,7 +772,7 @@ async function main() {
       }
 
       // 1) Mois CLÔTURÉS : on décline chaque période parente existante vers ses filiales.
-      const closedMonths = sotraPeriods // 2025-01 … 2025-06
+      const closedMonths = sotraPeriods // les 6 derniers mois révolus
       for (let mi = 0; mi < closedMonths.length; mi++) {
         const month = closedMonths[mi]!
         const daysAgo = (closedMonths.length - mi) * 25
@@ -765,8 +826,8 @@ async function main() {
       }
 
       // 2) Mois EN COURS (démo « live ») : décliné, 1re filiale soumise, le reste en attente.
-      const liveMonth = '2025-07'
-      const refTotals = await totalsByMonth('2025-06')
+      const liveMonth = monthOffsetStr(0)
+      const refTotals = await totalsByMonth(sotraPeriods[sotraPeriods.length - 1]!)
       const liveParentRes = await pool.query<{ id: string }>(
         `INSERT INTO "${sotraSchema}".pay_periods
            (month, status, parent_period_id, legal_entity_id, sent_to_sites_at)
@@ -840,61 +901,67 @@ async function main() {
   }
   console.log(`[7b/10] ${sotraEmployees.length} contrats OHADA SOTRA créés`)
 
-  // Absences pour l'employé Kouassi (employe@sotra.ci)
+  // Absences pour l'employé Kouassi (employe@sotra.ci) — dates relatives
   if (sotraEmployees[0] && absTypeMap['CP']) {
     const empId = sotraEmployees[0].id
     await pool.query(`
       INSERT INTO "${sotraSchema}".absences
         (employee_id, absence_type_id, start_date, end_date, days, half_day, reason, status, approved_by, approved_at)
       VALUES
-        ($1,$2,'2025-01-13','2025-01-17',5,false,'Congés annuels','approved',null,now()),
-        ($1,$2,'2025-03-03','2025-03-07',5,false,'Congés de détente','approved',null,now()),
-        ($1,$2,'2025-06-09','2025-06-11',2,false,'Événement familial','pending',null,null)
+        ($1,$2,$3,$4,5,false,'Congés annuels','approved',null,now()),
+        ($1,$2,$5,$6,5,false,'Congés de détente','approved',null,now()),
+        ($1,$2,$7,$8,2,false,'Événement familial','pending',null,null)
       ON CONFLICT DO NOTHING
-    `, [empId, absTypeMap['CP']])
+    `, [empId, absTypeMap['CP'],
+        dateOffsetStr(-140), dateOffsetStr(-136),
+        dateOffsetStr(-75), dateOffsetStr(-71),
+        dateOffsetStr(4), dateOffsetStr(5)])
   }
 
-  // ─── Expense reports pour Kouassi ────────────────────────────────────────────
+  // ─── Expense reports pour Kouassi (mois relatifs) ────────────────────────────
   if (sotraEmployees[0]) {
     const kouassiId = sotraEmployees[0].id
+    const erMonth1 = monthOffsetStr(3)
+    const erMonth2 = monthOffsetStr(2)
+    const erMonth3 = monthOffsetStr(1)
     const erRes1 = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".expense_reports
         (employee_id, title, month, status, submitted_at, total_amount, currency)
-      VALUES ($1,'Mission terrain Bouaké','2025-03','approved',now()-interval'15 days',34500,'XOF')
+      VALUES ($1,'Mission terrain Bouaké',$2,'approved',now()-interval'15 days',34500,'XOF')
       ON CONFLICT DO NOTHING RETURNING id
-    `, [kouassiId])
-    const erRes2 = await pool.query<{ id: string }>(`
+    `, [kouassiId, erMonth1])
+    await pool.query(`
       INSERT INTO "${sotraSchema}".expense_reports
         (employee_id, title, month, status, submitted_at, total_amount, currency)
-      VALUES ($1,'Déplacement Yopougon','2025-04','submitted',now()-interval'3 days',12000,'XOF')
-      ON CONFLICT DO NOTHING RETURNING id
-    `, [kouassiId])
+      VALUES ($1,'Déplacement Yopougon',$2,'submitted',now()-interval'3 days',12000,'XOF')
+      ON CONFLICT DO NOTHING
+    `, [kouassiId, erMonth2])
     const erRes3 = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".expense_reports
         (employee_id, title, month, status, total_amount, currency)
-      VALUES ($1,'Frais repas formation','2025-05','draft',11500,'XOF')
+      VALUES ($1,'Frais repas formation',$2,'draft',11500,'XOF')
       ON CONFLICT DO NOTHING RETURNING id
-    `, [kouassiId])
+    `, [kouassiId, erMonth3])
     if (erRes1.rows[0]) {
       await pool.query(`
         INSERT INTO "${sotraSchema}".expense_lines
           (report_id, description, category, date, amount, currency)
         VALUES
-          ($1,'Taxi Abidjan-Bouaké','transport','2025-03-10',15000,'XOF'),
-          ($1,'Repas déjeuner','meals','2025-03-10',8500,'XOF'),
-          ($1,'Hébergement 1 nuit','accommodation','2025-03-10',11000,'XOF')
+          ($1,'Taxi Abidjan-Bouaké','transport',$2,15000,'XOF'),
+          ($1,'Repas déjeuner','meals',$2,8500,'XOF'),
+          ($1,'Hébergement 1 nuit','accommodation',$2,11000,'XOF')
         ON CONFLICT DO NOTHING
-      `, [erRes1.rows[0].id])
+      `, [erRes1.rows[0].id, `${erMonth1}-10`])
     }
     if (erRes3.rows[0]) {
       await pool.query(`
         INSERT INTO "${sotraSchema}".expense_lines
           (report_id, description, category, date, amount, currency)
         VALUES
-          ($1,'Repas midi formation','meals','2025-05-15',8500,'XOF'),
-          ($1,'Taxi retour','transport','2025-05-15',3000,'XOF')
+          ($1,'Repas midi formation','meals',$2,8500,'XOF'),
+          ($1,'Taxi retour','transport',$2,3000,'XOF')
         ON CONFLICT DO NOTHING
-      `, [erRes3.rows[0].id])
+      `, [erRes3.rows[0].id, `${erMonth3}-15`])
     }
   }
 
@@ -1189,36 +1256,29 @@ async function main() {
     }
   }
 
-  // Employee skills pour les 10 premiers employés
-  for (let ei = 0; ei < Math.min(sotraEmployees.length, 10); ei++) {
-    const emp = sotraEmployees[ei]!
-    for (let si = 0; si < Math.min(skillIds.length, 5); si++) {
-      await pool.query(`
-        INSERT INTO "${sotraSchema}".employee_skills (employee_id, skill_id, level)
-        VALUES ($1,$2,$3)
-        ON CONFLICT (employee_id, skill_id) DO UPDATE SET level = EXCLUDED.level
-      `, [emp.id, skillIds[si]!, randInt(2, 5)])
-    }
+  // ─── Enrichissement « zéro écran vide » SOTRA ────────────────────────────────
+  // Toutes les visualisations (graphes, tableaux, kanbans, KPI) remplies pour
+  // TOUS les rôles : absences/frais pour la masse des employés (manager et RH
+  // ont toujours des demandes à valider), 9-box complet, sessions remplies,
+  // campagne Mobile Money, déclarations CNPS, DISA, notifications, événements RH.
+  const sotraIds = sotraEmployees.map((e) => e.id)
+  const nbAbs = await seedAbsencesBulk(pool, sotraSchema, sotraIds, absTypeMap)
+  await recomputeAbsenceBalances(pool, sotraSchema)
+  const nbExp = await seedExpensesBulk(pool, sotraSchema, sotraIds)
+  const nbEnr = await seedEnrollmentsBulk(pool, sotraSchema, sotraIds, sessionIds)
+  await seedSkillsEvaluationsBulk(pool, sotraSchema, sotraIds, skillIds,
+    'admin@sotra.ci', sotraEmployees[0] ? [sotraEmployees[0].id] : [])
+  await seedHrEventsBulk(pool, sotraSchema)
+  await seedNotificationsBulk(pool, sotraSchema)
+  const lastClosed = sotraPeriods[sotraPeriods.length - 1]!
+  const nbMm = await seedMobileMoneyCampaign(pool, sotraSchema, lastClosed)
+  const nbCnps = await seedCnpsDeclarationsFromPayslips(pool, sotraSchema, sotraPeriods)
+  for (const yr of new Set(sotraPeriods.map((m) => Number(m.slice(0, 4))))) {
+    await seedDisaFromPayslips(pool, sotraSchema, yr)
   }
-
-  // Évaluations annuelles pour les 5 premiers employés
-  for (let ei = 0; ei < Math.min(sotraEmployees.length, 5); ei++) {
-    const emp = sotraEmployees[ei]!
-    const perfScore = (randInt(30, 50) / 10).toFixed(1)
-    const skillScore = (randInt(25, 50) / 10).toFixed(1)
-    await pool.query(`
-      INSERT INTO "${sotraSchema}".evaluations
-        (employee_id, year, type, status, global_score, skills_score,
-         strengths, improvements, manager_comments)
-      VALUES ($1, 2024, 'annual', 'completed', $2, $3,
-        '["Ponctualité", "Fiabilité", "Esprit d''équipe"]',
-        '["Développer les compétences informatiques"]',
-        'Excellent collaborateur. À accompagner pour progression.')
-      ON CONFLICT DO NOTHING
-    `, [emp.id, perfScore, skillScore])
-  }
-
-  console.log('[7b/10] Recrutement, formations, compétences, évaluations, frais seedés')
+  console.log(`[7b/10] SOTRA enrichi : ${nbAbs} absences, ${nbExp} notes de frais, ` +
+    `${nbEnr} inscriptions, évaluations 9-box pour ${sotraIds.length} employés, ` +
+    `${nbMm} paiements Mobile Money (${lastClosed}), ${nbCnps} déclarations CNPS, DISA, notifications`)
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 2 — Cabinet Expertise CI
@@ -1350,8 +1410,8 @@ async function main() {
     }
   }
 
-  // Bulletins Cabinet — 3 mois
-  const cabinetPeriods = ['2025-04', '2025-05', '2025-06']
+  // Bulletins Cabinet — les 3 derniers mois révolus (dates relatives)
+  const cabinetPeriods = lastClosedMonths(3)
   for (const month of cabinetPeriods) {
     const [yr, mo] = month.split('-').map(Number)
     const workingDays = getWorkingDays(yr!, mo!)
@@ -1449,16 +1509,92 @@ async function main() {
     if (res.rows[0]) cabTrainingIds.push(res.rows[0].id)
   }
   // Sessions planifiées pour Cabinet
+  const cabSessionIds: string[] = []
   for (let i = 0; i < Math.min(cabTrainingIds.length, 3); i++) {
     const futureDay = (d: number) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0] }
-    await pool.query(`
+    const sres = await pool.query<{ id: string }>(`
       INSERT INTO "${cabinetSchema}".training_sessions
         (training_id, start_date, end_date, location, trainer, max_places, status)
       VALUES ($1,$2,$3,'Plateau — Salle Conférence','Expert FDFP',15,'planned')
-      ON CONFLICT DO NOTHING
+      ON CONFLICT DO NOTHING RETURNING id
     `, [cabTrainingIds[i]!, futureDay(20 + i * 14), futureDay(21 + i * 14)])
+    if (sres.rows[0]) cabSessionIds.push(sres.rows[0].id)
   }
   console.log(`[9c/10] ${cabTrainings.length} formations + sessions Cabinet CI créées`)
+
+  // ─── Recrutement Cabinet Expertise : 2 offres + pipeline kanban rempli ───────
+  const cabJobsData = [
+    {
+      title: 'Auditeur Senior', location: 'Abidjan (Plateau)',
+      salaryMin: 450_000, salaryMax: 700_000,
+      description: 'Missions d\'audit légal et contractuel pour des clients OHADA. Encadrement de juniors.',
+      requirements: 'Bac+5 CCA / DSCG, 5 ans d\'expérience en cabinet, maîtrise des normes OHADA.',
+    },
+    {
+      title: 'Juriste OHADA', location: 'Abidjan (Plateau)',
+      salaryMin: 400_000, salaryMax: 600_000,
+      description: 'Conseil juridique aux entreprises : droit des sociétés, contrats, contentieux OHADA.',
+      requirements: 'Master 2 droit des affaires, 3 ans d\'expérience, connaissance du droit ivoirien.',
+    },
+  ]
+  for (const job of cabJobsData) {
+    const jres = await pool.query<{ id: string }>(`
+      INSERT INTO "${cabinetSchema}".recruitment_jobs
+        (title, location, contract_type, salary_min, salary_max,
+         description, requirements, status, visibility, published_at, public_slug)
+      VALUES ($1,$2,'cdi',$3,$4,$5,$6,'open','external',now(),$7)
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [job.title, job.location, job.salaryMin, job.salaryMax,
+        job.description, job.requirements,
+        job.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80)])
+    if (jres.rows[0]) await seedApplicationsForJob(pool, cabinetSchema, jres.rows[0].id, 7)
+  }
+
+  // ─── Compétences Cabinet (référentiel services/audit) ────────────────────────
+  const cabSkillsData = [
+    { name: 'Audit financier', category: 'technique' },
+    { name: 'Normes OHADA', category: 'technique' },
+    { name: 'Fiscalité ivoirienne (DGI)', category: 'technique' },
+    { name: 'Excel / Power BI', category: 'transversal' },
+    { name: 'Rédaction juridique', category: 'technique' },
+    { name: 'Relation client', category: 'comportemental' },
+    { name: 'Gestion de projet', category: 'transversal' },
+    { name: 'Communication professionnelle', category: 'comportemental' },
+    { name: 'Management d\'équipe', category: 'managérial' },
+    { name: 'Anglais professionnel', category: 'transversal' },
+  ]
+  const cabSkillIds: string[] = []
+  for (const sk of cabSkillsData) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${cabinetSchema}".career_skills (name, category)
+      VALUES ($1,$2)
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [sk.name, sk.category])
+    if (res.rows[0]) cabSkillIds.push(res.rows[0].id)
+  }
+
+  // ─── Onboarding Cabinet : modèles + parcours (Amenan en cours) ───────────────
+  await seedOnboarding(cabinetSchema, cabinetEmployees.map((e) => e.id), false)
+    .catch((e: unknown) => console.warn('[!] Onboarding Cabinet (non bloquant):', (e as Error).message))
+
+  // ─── Enrichissement « zéro écran vide » Cabinet Expertise ────────────────────
+  const cabIds = cabinetEmployees.map((e) => e.id)
+  await seedAbsencesBulk(pool, cabinetSchema, cabIds, cabAbsTypeMap)
+  await recomputeAbsenceBalances(pool, cabinetSchema)
+  await seedExpensesBulk(pool, cabinetSchema, cabIds)
+  await seedEnrollmentsBulk(pool, cabinetSchema, cabIds, cabSessionIds)
+  await seedSkillsEvaluationsBulk(pool, cabinetSchema, cabIds, cabSkillIds,
+    'admin@cabinet-expertise.ci', cabinetEmployees[0] ? [cabinetEmployees[0].id] : [])
+  await seedHrEventsBulk(pool, cabinetSchema)
+  await seedNotificationsBulk(pool, cabinetSchema)
+  const cabLastClosed = cabinetPeriods[cabinetPeriods.length - 1]!
+  await seedMobileMoneyCampaign(pool, cabinetSchema, cabLastClosed)
+  await seedCnpsDeclarationsFromPayslips(pool, cabinetSchema, cabinetPeriods)
+  for (const yr of new Set(cabinetPeriods.map((m) => Number(m.slice(0, 4))))) {
+    await seedDisaFromPayslips(pool, cabinetSchema, yr)
+  }
+  console.log('[9d/10] Cabinet Expertise enrichi : recrutement, onboarding, absences, frais, ' +
+    'inscriptions, 9-box, Mobile Money, CNPS, DISA, notifications')
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TENANT 3 — OpenLab Consulting (tenant créé via portail)
@@ -1516,6 +1652,216 @@ async function main() {
     console.log('  [OpenLab] Offre + 5 profils sourcés multi-pays')
   }
 
+  // ─── OpenLab : dotation complète (l'admin coulwao@gmail.com ne voit AUCUN ─────
+  // écran vide : effectifs, paie, absences, frais, formations, carrière,
+  // recrutement, onboarding, CNPS, Mobile Money, notifications).
+  await pool.query(`
+    INSERT INTO "${openlabSchema}".workflow_configs (module, levels_count)
+    VALUES ('absences', 1), ('expenses', 1)
+    ON CONFLICT DO NOTHING
+  `)
+
+  const OPENLAB_DEPTS = [
+    { name: 'Conseil & Transformation', size: 6, baseSalaryRange: [250_000, 900_000] as [number, number] },
+    { name: 'Technologie & Data',       size: 4, baseSalaryRange: [300_000, 1_200_000] as [number, number] },
+    { name: 'Administration',           size: 2, baseSalaryRange: [150_000, 300_000] as [number, number] },
+  ]
+  const openlabDeptIds: string[] = []
+  for (const dept of OPENLAB_DEPTS) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${openlabSchema}".departments (name)
+      VALUES ($1) ON CONFLICT DO NOTHING RETURNING id
+    `, [dept.name])
+    if (res.rows[0]) openlabDeptIds.push(res.rows[0].id)
+  }
+
+  const openlabEmployees: Array<{ id: string; baseSalary: number; maritalStatus: string; childrenCount: number }> = []
+  let olEmpIdx = 0
+  for (let di = 0; di < OPENLAB_DEPTS.length; di++) {
+    const dept = OPENLAB_DEPTS[di]!
+    for (let i = 0; i < dept.size; i++) {
+      const isFemale = Math.random() > 0.5
+      const firstName = randItem(isFemale ? PRENOMS_F : PRENOMS_H)
+      const lastName = randItem(NOMS)
+      const provider = randItem(MOBILE_PROVIDERS)
+      const maritalStatus = randItem(MARITAL_STATUSES)
+      const childrenCount = maritalStatus === 'single' ? 0 : randInt(0, 3)
+      const baseSalary = roundFCFA(randInt(dept.baseSalaryRange[0], dept.baseSalaryRange[1]))
+      const res = await pool.query<{ id: string }>(`
+        INSERT INTO "${openlabSchema}".employees
+          (first_name, last_name, email, gender, nni, cnps_number,
+           mobile_money_provider, mobile_money_phone,
+           department_id, job_title, contract_type, hire_date, base_salary,
+           city, marital_status, children_count, is_active)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'cdi',$11,$12,'Abidjan',$13,$14,true)
+        ON CONFLICT (email) DO NOTHING RETURNING id
+      `, [
+        firstName, lastName,
+        `${firstName.toLowerCase().replace(/[^a-z]/g, '')}.${lastName.toLowerCase().replace(/[^a-z]/g, '')}${olEmpIdx}@openlabconsulting.com`,
+        isFemale ? 'F' : 'M', nni(), cnpsNum(), provider, ciPhone(provider),
+        openlabDeptIds[di] ?? null,
+        di === 0 ? 'Consultant' : di === 1 ? 'Ingénieur' : 'Assistant administratif',
+        pastDate(randInt(4, 36)), baseSalary, maritalStatus, childrenCount,
+      ])
+      if (res.rows[0]) {
+        openlabEmployees.push({ id: res.rows[0].id, baseSalary, maritalStatus, childrenCount })
+      }
+      olEmpIdx++
+    }
+  }
+
+  // Contrats OHADA OpenLab
+  for (let ci = 0; ci < openlabEmployees.length; ci++) {
+    const emp = openlabEmployees[ci]!
+    const startDate = new Date()
+    startDate.setMonth(startDate.getMonth() - randInt(4, 36))
+    const trialEnd = new Date(startDate)
+    trialEnd.setDate(trialEnd.getDate() + (ci < 3 ? 30 : 15))
+    await pool.query(`
+      INSERT INTO "${openlabSchema}".contracts
+        (employee_id, type, start_date, trial_end_date, base_salary,
+         working_hours, convention, job_title, job_level,
+         cnps_affiliation, ohada_clause, non_competition_clause, telecommuting_days, status)
+      VALUES ($1,'cdi',$2,$3,$4,40,'Services (conseil)',$5,$6,true,true,true,2,'active')
+      ON CONFLICT DO NOTHING
+    `, [
+      emp.id, startDate.toISOString().split('T')[0], trialEnd.toISOString().split('T')[0],
+      emp.baseSalary, ci < 3 ? 'Manager' : 'Consultant', ci < 3 ? 'Cadre supérieur' : 'Cadre',
+    ])
+  }
+
+  // Soldes d'absence OpenLab
+  const olAbsTypeRes = await pool.query<{ id: string; code: string }>(
+    `SELECT id, code FROM "${openlabSchema}".absence_types`)
+  const olAbsTypeMap: Record<string, string> = {}
+  for (const t of olAbsTypeRes.rows) { olAbsTypeMap[t.code] = t.id }
+  for (const emp of openlabEmployees) {
+    for (const [code, typeId] of Object.entries(olAbsTypeMap)) {
+      const isCP = code === 'CP'
+      await pool.query(`
+        INSERT INTO "${openlabSchema}".absence_balances
+          (employee_id, absence_type_id, year, acquired, taken, pending, remaining)
+        VALUES ($1,$2,$3,$4,0,0,$4)
+        ON CONFLICT DO NOTHING
+      `, [emp.id, typeId, new Date().getFullYear(), isCP ? 26 : 5])
+    }
+  }
+
+  // Bulletins OpenLab — 3 derniers mois révolus
+  const openlabPeriods = lastClosedMonths(3)
+  for (const month of openlabPeriods) {
+    const [yr, mo] = month.split('-').map(Number)
+    const workingDays = getWorkingDays(yr!, mo!)
+    const periodRes = await pool.query<{ id: string }>(`
+      INSERT INTO "${openlabSchema}".pay_periods (month, status, closed_at, closed_by)
+      VALUES ($1, 'closed', now(), 'seed')
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
+      RETURNING id
+    `, [month])
+    const periodId = periodRes.rows[0]?.id ?? ''
+    let tg = 0, tn = 0, tc = 0, ti = 0
+    for (const emp of openlabEmployees) {
+      const result = calculatePayrollCI({
+        baseSalary: emp.baseSalary, workedDays: workingDays, workingDaysMonth: workingDays,
+        atRate: openlabAtRate, maritalStatus: emp.maritalStatus,
+        childrenCount: emp.childrenCount, variableElements: {},
+      })
+      tg += result.grossSalary; tn += result.netPayable
+      tc += result.totalCnpsSal + result.totalCnpsPat; ti += result.its
+      await pool.query(`
+        INSERT INTO "${openlabSchema}".pay_slips
+          (employee_id, period_id, month, base_salary, gross_salary,
+           cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
+           total_cnps_sal, total_cnps_pat, its, total_deductions,
+           net_payable, employer_cost, lines, status, generated_at,
+           payment_method, payment_status, currency)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+                'generated',now(),'wave','paid','XOF')
+        ON CONFLICT DO NOTHING
+      `, [
+        emp.id, periodId, month, emp.baseSalary, result.grossSalary,
+        result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
+        result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
+        result.netPayable, result.employerCost, JSON.stringify(result.lines),
+      ])
+    }
+    await pool.query(`
+      UPDATE "${openlabSchema}".pay_periods
+      SET total_gross = $1, total_net = $2, total_cnps = $3, total_its = $4
+      WHERE id = $5
+    `, [tg, tn, tc, ti, periodId])
+  }
+
+  // Formations + sessions OpenLab
+  const olTrainings = [
+    { title: 'Méthodologie de conseil', description: 'Cadrage, diagnostic, recommandations, restitution client.', duration: 12, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'Data & IA pour consultants', description: 'Fondamentaux data, prompts IA, automatisation des livrables.', duration: 8, format: 'e-learning', is_fdfp_eligible: false },
+    { title: 'Gestion de projet Agile', description: 'Scrum, Kanban, pilotage de projets de transformation.', duration: 8, format: 'presentiel', is_fdfp_eligible: true },
+    { title: 'RGPD & ARTCI — Protection des données', description: 'Conformité données personnelles en Côte d\'Ivoire.', duration: 4, format: 'e-learning', is_fdfp_eligible: false },
+  ]
+  const olTrainingIds: string[] = []
+  for (const tr of olTrainings) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${openlabSchema}".trainings
+        (title, description, duration, format, is_fdfp_eligible, is_active)
+      VALUES ($1,$2,$3,$4,$5,true)
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [tr.title, tr.description, tr.duration, tr.format, tr.is_fdfp_eligible])
+    if (res.rows[0]) olTrainingIds.push(res.rows[0].id)
+  }
+  const olSessionIds: string[] = []
+  for (let i = 0; i < Math.min(olTrainingIds.length, 2); i++) {
+    const sres = await pool.query<{ id: string }>(`
+      INSERT INTO "${openlabSchema}".training_sessions
+        (training_id, start_date, end_date, location, trainer, max_places, status)
+      VALUES ($1,$2,$3,'Cocody — Salle Innovation','Consultant senior OpenLab',12,'planned')
+      ON CONFLICT DO NOTHING RETURNING id
+    `, [olTrainingIds[i]!, dateOffsetStr(18 + i * 12), dateOffsetStr(19 + i * 12)])
+    if (sres.rows[0]) olSessionIds.push(sres.rows[0].id)
+  }
+
+  // Compétences OpenLab
+  const olSkillsData = [
+    { name: 'Conseil en transformation', category: 'technique' },
+    { name: 'Architecture SI', category: 'technique' },
+    { name: 'Data & analytics', category: 'technique' },
+    { name: 'Gestion de projet', category: 'transversal' },
+    { name: 'Relation client', category: 'comportemental' },
+    { name: 'Communication professionnelle', category: 'comportemental' },
+    { name: 'Management d\'équipe', category: 'managérial' },
+    { name: 'Anglais professionnel', category: 'transversal' },
+  ]
+  const olSkillIds: string[] = []
+  for (const sk of olSkillsData) {
+    const res = await pool.query<{ id: string }>(`
+      INSERT INTO "${openlabSchema}".career_skills (name, category)
+      VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING id
+    `, [sk.name, sk.category])
+    if (res.rows[0]) olSkillIds.push(res.rows[0].id)
+  }
+
+  // Pipeline kanban sur l'offre existante + onboarding + enrichissement complet
+  if (openlabJobId) await seedApplicationsForJob(pool, openlabSchema, openlabJobId, 7)
+  await seedOnboarding(openlabSchema, openlabEmployees.map((e) => e.id), false)
+    .catch((e: unknown) => console.warn('[!] Onboarding OpenLab (non bloquant):', (e as Error).message))
+
+  const olIds = openlabEmployees.map((e) => e.id)
+  await seedAbsencesBulk(pool, openlabSchema, olIds, olAbsTypeMap)
+  await recomputeAbsenceBalances(pool, openlabSchema)
+  await seedExpensesBulk(pool, openlabSchema, olIds)
+  await seedEnrollmentsBulk(pool, openlabSchema, olIds, olSessionIds)
+  await seedSkillsEvaluationsBulk(pool, openlabSchema, olIds, olSkillIds, 'coulwao@gmail.com')
+  await seedHrEventsBulk(pool, openlabSchema)
+  await seedNotificationsBulk(pool, openlabSchema)
+  const olLastClosed = openlabPeriods[openlabPeriods.length - 1]!
+  await seedMobileMoneyCampaign(pool, openlabSchema, olLastClosed)
+  await seedCnpsDeclarationsFromPayslips(pool, openlabSchema, openlabPeriods)
+  for (const yr of new Set(openlabPeriods.map((m) => Number(m.slice(0, 4))))) {
+    await seedDisaFromPayslips(pool, openlabSchema, yr)
+  }
+  console.log(`  [OpenLab] ${openlabEmployees.length} employés, ${openlabPeriods.length} mois de paie, ` +
+    'recrutement, onboarding, absences, frais, formations, 9-box, CNPS, Mobile Money, notifications')
+
   console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1556,12 +1902,6 @@ async function main() {
   console.log('[10b] Cabinet Talents CI créé + rattaché à SOTRA et Cabinet Expertise')
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // RESTAURATION DES CREDENTIALS — les mots de passe changés par les
-  // utilisateurs avant ce re-seed reprennent le dessus sur les valeurs de démo.
-  // ─────────────────────────────────────────────────────────────────────────────
-  await restorePreservedCredentials(pool, preservedCredentials)
-
-  // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\n=== Seed terminé avec succès ===\n')
@@ -1572,7 +1912,8 @@ async function main() {
   console.log('  [SOTRA - Transports Abidjanais]')
   console.log('  admin@sotra.ci        /  Admin1234!  (admin)')
   console.log('  rh@sotra.ci           /  Admin1234!  (hr_manager)')
-  console.log('  manager@sotra.ci      /  Admin1234!  (manager)')
+  console.log('  chef.perso@sotra.ci   /  Admin1234!  (hr_officer)')
+  console.log('  manager@sotra.ci      /  Admin1234!  (manager — équipe Exploitation)')
   console.log('  employe@sotra.ci      /  Admin1234!  (employee)')
   console.log()
   console.log('  [Cabinet Expertise CI]')
@@ -1591,8 +1932,20 @@ async function main() {
   console.log(`  Cabinet CI  : ${cabinetEmployees.length} employés, ${cabinetPeriods.length} mois de bulletins`)
   console.log('  API: http://localhost:4001')
   console.log('  Swagger: http://localhost:4001/docs')
+}
 
-  await pool.end()
+async function main(): Promise<void> {
+  // Les mots de passe changés par les utilisateurs survivent au re-seed.
+  const preservedCredentials = await captureExistingCredentials(pool, TENANT_SCHEMAS)
+  try {
+    await runSeed()
+  } finally {
+    // CRITIQUE : même si le seed échoue en cours de route (schémas déjà DROP),
+    // on restaure tout ce qui peut l'être — un seed partiel ne doit JAMAIS
+    // laisser les utilisateurs déployés sans leur mot de passe.
+    await restorePreservedCredentials(pool, preservedCredentials)
+    await pool.end()
+  }
 }
 
 main().catch((err) => {
