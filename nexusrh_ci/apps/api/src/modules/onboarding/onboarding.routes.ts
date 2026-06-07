@@ -18,9 +18,8 @@
  *   employee                  : son propre parcours uniquement (A01)
  */
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   ONBOARDING_PHASES,
@@ -33,8 +32,6 @@ import {
   refreshJourneyStatus,
 } from '../../services/onboarding.service.js'
 import { generateOnboardingPlan } from '../../services/onboarding-ai.service.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

@@ -17,13 +17,10 @@
  *    site porte parent_period_id + legal_entity_id + raf_user_id + pack.
  */
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 /**
  * OWASP A09 — Trace structurée pour chaque transition d'état du workflow

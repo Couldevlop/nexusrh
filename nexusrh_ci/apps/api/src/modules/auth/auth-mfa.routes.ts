@@ -12,7 +12,6 @@
  *   A10 — messages génériques côté client (anti-énumération emails)
  */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { authenticator } from 'otplib'
@@ -22,11 +21,27 @@ import { config } from '../../config.js'
 import { ensurePlatformSchema, ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
 import { sendPasswordResetLinkEmail } from '../../services/email.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { consumeTotpStep } from '../../services/redis.js'
+import { pool } from '../../db/pool.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TOTP_PERIOD    = 30 // secondes (défaut otplib)
+
+/**
+ * Vérifie un code TOTP AVEC anti-rejeu (OWASP A07). Un code reste valide ~90 s
+ * (window:1) ; sans garde, il est rejouable. On calcule le timestep matché et on
+ * le « consomme » dans Redis : un step déjà utilisé est refusé.
+ * Retourne true seulement si le code est valide ET pas encore consommé.
+ */
+async function verifyTotpFresh(
+  code: string, secret: string, schema: string, userId: string,
+): Promise<boolean> {
+  const delta = authenticator.checkDelta(code, secret)
+  if (delta === null || delta === undefined) return false
+  const matchedStep = Math.floor(Date.now() / 1000 / TOTP_PERIOD) + delta
+  return consumeTotpStep(schema, userId, matchedStep, TOTP_PERIOD * 4)
+}
 
 // MFA TOTP : authenticator.window=1 permet ±30s de dérive d'horloge mobile
 authenticator.options = { window: 1, step: 30, digits: 6 }
@@ -205,7 +220,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(409).send({ error: 'MFA déjà activé' })
       }
 
-      const valid = authenticator.check(parsed.data.code, scope.mfaSecret)
+      const valid = await verifyTotpFresh(parsed.data.code, scope.mfaSecret, user.schemaName, user.sub)
       if (!valid) {
         auditMfa(user.schemaName, user.sub, 'mfa.verify_failed', { reason: 'invalid_code' }, request.ip ?? null)
         return reply.status(401).send({ error: 'Code TOTP invalide' })
@@ -281,7 +296,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       let validMfa = false
       let usedBackupCode: string | null = null
       if (/^[0-9]{6}$/.test(code)) {
-        validMfa = authenticator.check(code, scope.mfaSecret)
+        validMfa = await verifyTotpFresh(code, scope.mfaSecret, payload.schemaName, payload.sub)
       } else {
         // Backup code : essayer chaque code non utilisé
         const codesTable = payload.schemaName === 'platform'

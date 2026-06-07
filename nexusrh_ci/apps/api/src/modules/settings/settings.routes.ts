@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import bcrypt from 'bcryptjs'
 import { provisionTenantSchema } from '../../db/provisioning.js'
 import { sendEmployeeWelcomeEmail } from '../../services/email.js'
@@ -122,8 +122,6 @@ function generateTempPassword(): string {
   }
   return chars.join('')
 }
-
-const pool = new Pool({ connectionString: config.database.url })
 
 // Applique les migrations lazy (legal_entities, variable_elements.month, etc.)
 async function ensureMigrated(schemaName: string) {

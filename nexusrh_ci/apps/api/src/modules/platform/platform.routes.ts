@@ -1,5 +1,4 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { config } from '../../config.js'
@@ -15,6 +14,7 @@ import { createTenantWithSchema, TenantSlugConflictError } from '../../services/
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import { z } from 'zod'
+import { pool } from '../../db/pool.js'
 
 // ─── Schémas Zod (OWASP A03 Injection + A05 Misconfiguration) ───────────────
 // Validation systématique des bodies. Le error handler global mappe ZodError
@@ -42,8 +42,6 @@ const createTenantBodySchema = z.object({
   payrollMode: z.enum(['single_country', 'multi_country']).optional(),
   defaultCountryCode: z.string().length(3).optional(),
 })
-
-const pool = new Pool({ connectionString: config.database.url })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

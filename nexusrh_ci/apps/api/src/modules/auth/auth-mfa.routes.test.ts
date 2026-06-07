@@ -12,6 +12,7 @@ vi.mock('../../services/redis.js', () => ({
   blacklistToken:      vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
+  consumeTotpStep:     vi.fn().mockResolvedValue(true), // anti-rejeu TOTP : step neuf
 }))
 
 vi.mock('../../utils/schema-migrations.js', () => ({

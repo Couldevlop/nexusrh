@@ -1,16 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { eq, and, isNull, like, or } from 'drizzle-orm'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { getTenantDbForRequest } from '../../plugins/tenant.js'
-import { createTenantSchema } from '../../db/schema/tenant.js'
+import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { config } from '../../config.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -124,13 +118,15 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         sql += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx})`
         params.push(`%${search.toLowerCase()}%`); idx++
       }
-      // Si manager : filtre équipe directe
+      // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
+      // employé associé, il ne voit personne au lieu de tout le tenant).
       if (request.user.role === 'manager') {
         const empRes = await pool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
         const mgr = empRes.rows[0]
-        if (mgr) { sql += ` AND e.manager_id = $${idx++}`; params.push(mgr.id) }
+        if (!mgr) return reply.send({ data: [], total: 0 })
+        sql += ` AND e.manager_id = $${idx++}`; params.push(mgr.id)
       }
 
       sql += ` ORDER BY e.last_name, e.first_name`
@@ -161,14 +157,38 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
-      // employee ne peut voir que son propre profil
-      if (request.user.role === 'employee' && res.rows[0].email !== request.user.email) {
+      const emp = res.rows[0]
+
+      // OWASP A01 — contrôle d'accès fin par rôle :
+      // - employee : uniquement son propre dossier
+      // - manager : uniquement un membre de son équipe directe (manager_id)
+      if (request.user.role === 'employee' && emp.email !== request.user.email) {
         return reply.status(403).send({ error: 'Accès interdit' })
       }
+      if (request.user.role === 'manager') {
+        const mgrRes = await pool.query(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+        )
+        const mgrId = mgrRes.rows[0]?.id
+        const isSelf = emp.email === request.user.email
+        if (!mgrId || (emp.manager_id !== mgrId && !isSelf)) {
+          return reply.status(403).send({ error: 'Accès interdit' })
+        }
+      }
 
-      const emp = res.rows[0]
-      if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
-      if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+      // OWASP A01/A02 — ne déchiffrer NNI/IBAN que pour les rôles RH (et le
+      // salarié lui-même pour son propre dossier). manager/readonly ne voient
+      // jamais ces données en clair.
+      const canSeeSensitive =
+        ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) ||
+        emp.email === request.user.email
+      if (canSeeSensitive) {
+        if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
+        if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+      } else {
+        delete emp.nni
+        delete emp.iban
+      }
       return reply.send({ data: emp })
     },
   })

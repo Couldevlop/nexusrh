@@ -1,9 +1,6 @@
-import { Pool } from 'pg'
-import { config } from '../config.js'
 import { assertValidSchemaName } from '../utils/schema-name.js'
 import { onboardingTableStatements } from './onboarding-tables.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from './pool.js'
 
 /**
  * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
@@ -304,8 +301,15 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // OWASP A03 — schemaName interpolé dans CREATE SCHEMA/TABLE (50+ DDL) : valider
   // avant toute exécution, même si le slug est déjà contrôlé en amont.
   assertValidSchemaName(schemaName)
-  const q = (sql: string) => pool.query(sql)
+  // Atomicité : le DDL PostgreSQL est transactionnel. On exécute tout le
+  // provisionnement (CREATE SCHEMA + ~50 CREATE TABLE) sur UNE connexion dédiée
+  // dans une transaction → en cas d'échec à mi-parcours, rollback complet
+  // (jamais de tenant à moitié créé). Voir ARCH-2.
+  const client = await pool.connect()
+  const q = (sql: string) => client.query(sql)
   const s = `"${schemaName}"`
+  try {
+    await client.query('BEGIN')
 
   await q(`CREATE SCHEMA IF NOT EXISTS ${s}`)
 
@@ -1025,6 +1029,14 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now()
   )`)
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 /**

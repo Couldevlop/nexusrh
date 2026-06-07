@@ -1,12 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
-
-const rawPool = new Pool({ connectionString: config.database.url })
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -76,7 +73,10 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         const emp = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
-        if (emp.rows[0]) { sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id) }
+        // OWASP A01 — fail-closed : un manager sans dossier employé associé ne
+        // doit voir AUCUNE absence (jamais toutes celles du tenant).
+        if (!emp.rows[0]) return reply.send({ data: [] })
+        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
       }
       sql += ` ORDER BY a.created_at DESC`
       const res = await rawPool.query(sql, params)
@@ -165,7 +165,13 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
 
-      let employeeId = body.employeeId ?? request.user.employeeId ?? null
+      // OWASP A01 (IDOR) — un employee ne peut créer une absence QUE pour
+      // lui-même : on ignore body.employeeId et on force son propre dossier.
+      // Seuls les rôles RH (admin/hr_manager/hr_officer) peuvent saisir pour autrui.
+      const isHrRole = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
+      let employeeId = isHrRole
+        ? (body.employeeId ?? request.user.employeeId ?? null)
+        : (request.user.employeeId ?? null)
       if (!employeeId) {
         const r = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]

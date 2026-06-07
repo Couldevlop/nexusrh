@@ -1,8 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
-import { config } from '../../config.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from '../../db/pool.js'
 
 // OWASP A03 — validation des paramètres query (year, month). Année comprise
 // entre 2000 et l'année courante + 1 (limite la fenêtre d'agrégation possible).
