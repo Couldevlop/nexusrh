@@ -311,10 +311,15 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
           return (
             <div key={col.key}
               className={`rounded-xl border-2 border-dashed ${col.tone} bg-muted/20 p-3 min-h-64`}
-              onDragOver={(e) => canEdit && e.preventDefault()}
-              onDrop={() => {
-                if (canEdit && draggedId) {
-                  moveStep.mutate({ stepId: draggedId, status: col.key })
+              onDragOver={(e) => {
+                if (canEdit) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                // Repli dataTransfer si l'état React a été perdu pendant le drag.
+                const droppedId = draggedId ?? e.dataTransfer.getData('text/plain')
+                if (canEdit && droppedId) {
+                  moveStep.mutate({ stepId: droppedId, status: col.key })
                   setDraggedId(null)
                 }
               }}>
@@ -327,7 +332,14 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                   return (
                     <div key={s.id}
                       draggable={canEdit}
-                      onDragStart={() => setDraggedId(s.id)}
+                      onDragStart={(e) => {
+                        // Firefox exige setData ; setState différé pour ne pas muter le
+                        // nœud traîné pendant dragstart (Chromium annule le drag sinon).
+                        e.dataTransfer.setData('text/plain', s.id)
+                        e.dataTransfer.effectAllowed = 'move'
+                        window.setTimeout(() => setDraggedId(s.id), 0)
+                      }}
+                      onDragEnd={() => setDraggedId(null)}
                       className={`rounded-lg border bg-card p-3 shadow-sm ${canEdit ? 'cursor-grab active:cursor-grabbing' : ''} ${late ? 'border-red-300' : 'border-border'}`}>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium leading-snug">{s.title}</p>
