@@ -1,9 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
 import { assertAgencyCanActOnTenant, assertTenantIsCI } from '../../services/agency.service.js'
@@ -14,8 +14,6 @@ import {
   resolveOfflineMessage,
   invalidateOfflineStatusCache,
 } from '../../services/offline-status.service.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

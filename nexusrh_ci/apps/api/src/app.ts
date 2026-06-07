@@ -1,7 +1,7 @@
 import Fastify from 'fastify'
-import { Pool } from 'pg'
 import { config } from './config.js'
 import { maintenanceCache } from './cache.js'
+import { pool as maintenancePool } from './db/pool.js'
 import {
   getTenantOfflineStatus,
   getAgencyOfflineStatus,
@@ -9,7 +9,6 @@ import {
 } from './services/offline-status.service.js'
 
 // Cache TTL 30s pour le flag maintenance (évite une requête DB par request)
-const maintenancePool = new Pool({ connectionString: config.database.url })
 
 async function isMaintenanceModeActive(): Promise<boolean> {
   if (Date.now() < maintenanceCache.expiresAt) return maintenanceCache.value
@@ -75,7 +74,11 @@ export async function buildApp() {
 
   // ── Plugins globaux ──────────────────────────────────────────────────────────
   await fastify.register(corsPlugin)
-  await fastify.register(swaggerPlugin)
+  // OWASP A05 — Swagger /docs n'est servi qu'en dev (ou via ENABLE_DOCS=true) :
+  // ne pas divulguer toute la surface d'API en production.
+  if (config.enableDocs) {
+    await fastify.register(swaggerPlugin)
+  }
   await fastify.register(authPlugin)
 
   // Migrations lazy du schéma platform au démarrage (idempotent, non bloquant) :

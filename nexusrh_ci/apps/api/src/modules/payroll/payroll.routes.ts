@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool as rawPool } from '../../db/pool.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -13,8 +12,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const closePeriodBodySchema = z.object({
   legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
 }).strict()
-
-const rawPool = new Pool({ connectionString: config.database.url })
 
 // ── Helper : calcul des jours ouvrables d'un mois (lundi–samedi, hors dimanche) ──
 // Parse 'YYYY-MM' avec validation stricte → évite NaN dans les calculs paie.

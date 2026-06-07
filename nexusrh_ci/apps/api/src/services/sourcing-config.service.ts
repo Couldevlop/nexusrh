@@ -9,10 +9,7 @@
  * Conformité OWASP A02 : aucune clé/credential ici, uniquement de la config
  * métier paramétrable par le super_admin.
  */
-import { Pool } from 'pg'
-import { config } from '../config.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from '../db/pool.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

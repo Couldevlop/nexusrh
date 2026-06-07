@@ -12,12 +12,10 @@
  *   A10 — toute erreur de lecture/déchiffrement → repli silencieux sur l'env
  *         (jamais d'exception qui casserait une fonctionnalité IA).
  */
-import { Pool } from 'pg'
 import { config } from '../config.js'
+import { pool } from '../db/pool.js'
 import { decryptIfPresent } from '../utils/crypto.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 export type AiProvider = 'claude' | 'mistral'
 

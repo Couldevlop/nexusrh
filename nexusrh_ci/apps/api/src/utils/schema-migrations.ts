@@ -1,9 +1,7 @@
-import { Pool } from 'pg'
-import { config } from '../config.js'
 import { assertValidSchemaName } from './schema-name.js'
 import { onboardingTableStatements } from '../db/onboarding-tables.js'
+import { pool } from '../db/pool.js'
 
-const pool = new Pool({ connectionString: config.database.url })
 const migratedSchemas = new Set<string>()
 
 /**

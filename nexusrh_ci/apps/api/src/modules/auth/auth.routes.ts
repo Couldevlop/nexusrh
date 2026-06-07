@@ -1,8 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
@@ -36,8 +35,6 @@ function authCookieOptions(): {
     maxAge:   60 * 60 * 24 * 7,
   }
 }
-
-const pool = new Pool({ connectionString: config.database.url })
 
 // OWASP A05 — sanity-check du nom de schema (defense in depth, le schema vient
 // d'une jointure platform.tenants donc déjà sûr, mais regex empêche toute

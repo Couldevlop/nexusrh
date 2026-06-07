@@ -1,14 +1,11 @@
 import type { FastifyInstance } from 'fastify'
-import { Pool } from 'pg'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import {
   searchReferentiel, getHierarchyTree,
   getArticleById, getArticlesByPayrollCode,
   seedReferentiel, reindexFromDb, getReferentielStats,
 } from './referentiels.service.js'
 import { ensureIndex } from '../../services/elasticsearch.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   await ensureIndex().catch(err => app.log.warn('[ES] index non dispo:', err.message))

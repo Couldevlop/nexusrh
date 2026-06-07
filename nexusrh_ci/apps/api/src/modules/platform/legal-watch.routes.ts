@@ -15,14 +15,11 @@
  *   A09 — audit log obligatoire sur approve/reject
  */
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
 import { createHash, randomUUID } from 'crypto'
-import { config } from '../../config.js'
 import { analyzeLegalDiff } from '../../services/legal-diff.service.js'
 import { LEGAL_SOURCES_CATALOG } from '../../data/legal-sources-catalog.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from '../../db/pool.js'
 
 // OWASP A03 — patterns stricts
 const UUID_RE         = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

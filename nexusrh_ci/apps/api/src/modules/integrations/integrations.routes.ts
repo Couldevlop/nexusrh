@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
 import {
@@ -10,7 +9,6 @@ import {
 } from '../../services/integrations.service.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
 
-const pool = new Pool({ connectionString: config.database.url })
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function auditLog(schema: string, userId: string, action: string, entityId: string | null, changes: Record<string, unknown>, ip: string | null): void {

@@ -19,6 +19,8 @@ const envSchema = z.object({
 
   ENCRYPTION_KEY:        z.string().length(64, 'ENCRYPTION_KEY doit être 64 caractères hex (32 bytes)').optional(),
   JWT_SECRET:            z.string().min(32),
+  // Swagger /docs : exposé uniquement hors production, sauf override explicite.
+  ENABLE_DOCS:           z.string().transform(v => v === 'true').default('false'),
   JWT_EXPIRES_IN:        z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   MFA_ISSUER:            z.string().default('NexusRH CI'),
@@ -87,6 +89,33 @@ if (!parsed.success) {
 
 const env = parsed.data
 
+// ── Durcissement secrets (OWASP A02/A05) ──────────────────────────────────────
+// Valeurs d'exemple/faibles connues, à bannir en production. Le boot échoue
+// plutôt que de démarrer avec un secret prévisible (JWT forgeable) ou une clé
+// de chiffrement triviale (NNI/IBAN réversibles).
+const EXAMPLE_JWT_SECRET = 'nexusrh-ci-super-secret-key-minimum-32-chars!!'
+function isWeakEncryptionKey(key: string | undefined): boolean {
+  if (!key) return true
+  if (!/^[0-9a-fA-F]{64}$/.test(key)) return true   // pas 64 hex
+  if (/^0+$/.test(key)) return true                  // tout à zéro (exemple)
+  if (new Set(key.toLowerCase()).size <= 2) return true // entropie quasi nulle
+  return false
+}
+if (env.NODE_ENV === 'production') {
+  const fatal: string[] = []
+  if (env.JWT_SECRET === EXAMPLE_JWT_SECRET) {
+    fatal.push('JWT_SECRET : la valeur d\'exemple est interdite en production (générer ≥ 256 bits aléatoires).')
+  }
+  if (isWeakEncryptionKey(env.ENCRYPTION_KEY)) {
+    fatal.push('ENCRYPTION_KEY : obligatoire en production, 64 caractères hex aléatoires (pas la valeur d\'exemple tout-à-zéro).')
+  }
+  if (fatal.length > 0) {
+    console.error('Configuration de production refusée (secrets non sûrs) :')
+    for (const m of fatal) console.error('  - ' + m)
+    process.exit(1)
+  }
+}
+
 export const config = {
   env:      env.NODE_ENV,
   appName:  env.APP_NAME,
@@ -97,6 +126,8 @@ export const config = {
   locale:   env.LOCALE,
   currency: env.CURRENCY,
   timezone: env.TIMEZONE,
+  // Swagger /docs : activé hors prod, ou via ENABLE_DOCS=true en prod (protégé).
+  enableDocs: env.ENABLE_DOCS || env.NODE_ENV !== 'production',
 
   database: {
     url:     env.DATABASE_URL,

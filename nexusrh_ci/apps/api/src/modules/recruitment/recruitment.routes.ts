@@ -1,7 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import {
   analyzeCV, isModelAvailable,
@@ -12,8 +10,7 @@ import {
 import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from '../../db/pool.js'
 
 /**
  * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction

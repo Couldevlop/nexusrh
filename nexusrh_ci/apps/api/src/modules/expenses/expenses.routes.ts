@@ -1,11 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
+import { pool } from '../../db/pool.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -84,7 +81,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const emp = await pool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
-        if (emp.rows[0]) { sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id) }
+        // OWASP A01 — fail-closed : manager sans dossier employé → aucune note.
+        if (!emp.rows[0]) return reply.send({ data: [] })
+        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
       }
       if (status)      { sql += ` AND er.status = $${idx++}`; params.push(status) }
       if (employee_id) { sql += ` AND er.employee_id = $${idx++}`; params.push(employee_id) }

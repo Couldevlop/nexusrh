@@ -22,6 +22,31 @@ export async function blacklistTokenSafe(jti: string, ttlSeconds: number): Promi
   try { await blacklistToken(jti, ttlSeconds) } catch { /* Redis indisponible */ }
 }
 
+// ── Anti-rejeu TOTP (OWASP A07) ───────────────────────────────────────────────
+// Un code TOTP ne doit être accepté qu'UNE fois : on mémorise le dernier
+// « timestep » consommé par utilisateur et on refuse tout step <= au dernier.
+// TTL court (le temps que la fenêtre TOTP expire). Fail-open si Redis indisponible
+// (cohérent avec le lockout) : la fenêtre de rejeu reste de ~90 s au pire.
+const TOTP_STEP_PREFIX = 'mfa:totpstep:'
+
+/**
+ * Tente d'« épuiser » un timestep TOTP. Retourne true si le step est nouveau
+ * (donc acceptable), false s'il a déjà été consommé (rejeu).
+ */
+export async function consumeTotpStep(
+  schema: string, userId: string, step: number, ttlSeconds = 180,
+): Promise<boolean> {
+  const key = `${TOTP_STEP_PREFIX}${schema}:${userId}`
+  try {
+    const last = await redis.get(key)
+    if (last !== null && Number(last) >= step) return false // rejeu
+    await redis.set(key, String(step), 'EX', ttlSeconds)
+    return true
+  } catch {
+    return true // Redis indisponible → fail-open
+  }
+}
+
 // OWASP A07 — store Redis pour le verrouillage de compte (brute-force).
 // Implémente l'interface LockoutStore de account-lockout.service (logique pure).
 import type { LockoutStore } from './account-lockout.service.js'

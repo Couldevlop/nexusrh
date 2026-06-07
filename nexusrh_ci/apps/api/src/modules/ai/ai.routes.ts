@@ -1,10 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
 import { config } from '../../config.js'
+import { pool as rawPool } from '../../db/pool.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
-
-const rawPool = new Pool({ connectionString: config.database.url })
 
 // OWASP A04 — bornes anti-token-burn sur les prompts Claude.
 // Plafonds calibrés pour conversations RH normales (>= 99e percentile) tout

@@ -37,7 +37,14 @@ import { describe, it, expect, beforeAll, vi } from 'vitest'
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  // provisionTenantSchema utilise désormais une transaction via pool.connect() :
+  // le client transactionnel route ses query() vers le même queryMock pour que
+  // les assertions sur le DDL exécuté restent valables (BEGIN/COMMIT inclus).
+  Pool: vi.fn(() => ({
+    query: queryMock,
+    end: vi.fn(),
+    connect: vi.fn().mockResolvedValue({ query: queryMock, release: vi.fn() }),
+  })),
 }))
 
 vi.mock('../config.js', () => ({

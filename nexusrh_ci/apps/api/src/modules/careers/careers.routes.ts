@@ -1,9 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
-import { config } from '../../config.js'
-
-const pool = new Pool({ connectionString: config.database.url })
+import { pool } from '../../db/pool.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

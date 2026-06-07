@@ -1,11 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { Pool } from 'pg'
 import { z } from 'zod'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { config } from '../../config.js'
+import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-
-const rawPool = new Pool({ connectionString: config.database.url })
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE      = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
