@@ -3,9 +3,8 @@
  * Tenant 1 : SOTRA (80 employés, transport Abidjan)
  * Tenant 2 : Cabinet Expertise CI (25 employés, cabinet conseil)
  */
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
-import { config } from '../config.js'
+import { pool } from './pool.js'
 import {
   createPlatformSchema,
   createDroitCiSchema,
@@ -14,6 +13,7 @@ import {
   seedAbsenceTypesCI,
 } from './provisioning.js'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
+import { seedWoyaa } from '../scripts/scenario-woyaa.js'
 import { captureExistingCredentials, restorePreservedCredentials } from './seed-credentials.js'
 import {
   monthOffsetStr,
@@ -31,8 +31,6 @@ import {
   seedDisaFromPayslips,
   seedApplicationsForJob,
 } from './seed-demo-data.js'
-
-const pool = new Pool({ connectionString: config.database.url })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function randInt(min: number, max: number): number {
@@ -259,7 +257,7 @@ async function seedOnboarding(
 }
 
 // ── Main seed ─────────────────────────────────────────────────────────────────
-const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting']
+const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting', 'tenant_woyaa']
 
 async function runSeed(): Promise<void> {
   console.log('NexusRH CI — Initialisation du seed...')
@@ -1902,6 +1900,15 @@ async function runSeed(): Promise<void> {
   console.log('[10b] Cabinet Talents CI créé + rattaché à SOTRA et Cabinet Expertise')
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // TENANT 4 — WOYAA SARL (scénario : conseil stratégique, maternité + AT)
+  // Le schéma tenant_woyaa est déjà droppé par la boucle TENANT_SCHEMAS ci-dessus
+  // (drop:false). Non bloquant : un échec n'interrompt pas le reste du seed.
+  // ─────────────────────────────────────────────────────────────────────────────
+  await seedWoyaa({ drop: false }).catch((e: unknown) =>
+    console.warn('[10c] Scénario WOYAA (non bloquant):', (e as Error).message))
+  console.log('[10c] Tenant WOYAA SARL créé (scénario paie CI complet)')
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // RÉSUMÉ
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\n=== Seed terminé avec succès ===\n')
@@ -1927,6 +1934,10 @@ async function runSeed(): Promise<void> {
   console.log('  owner@cabinet-talents.ci     /  Admin1234!  (agency_owner)')
   console.log('  recruteur@cabinet-talents.ci /  Admin1234!  (agency_member)')
   console.log('  → gère SOTRA + Cabinet Expertise CI')
+  console.log()
+  console.log('  [WOYAA SARL — conseil stratégique]')
+  console.log('  admin@woyaa.ci        /  Woyaa1234!  (admin)')
+  console.log('  sec.self@woyaa.ci     /  Woyaa1234!  (employee — secrétaire, maternité)')
   console.log()
   console.log(`  SOTRA       : ${sotraEmployees.length} employés, ${sotraPeriods.length} mois de bulletins`)
   console.log(`  Cabinet CI  : ${cabinetEmployees.length} employés, ${cabinetPeriods.length} mois de bulletins`)
