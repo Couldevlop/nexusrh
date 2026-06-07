@@ -109,6 +109,15 @@ spec:
                 secretKeyRef:
                   name: nexusrh-app-secrets
                   key: jwt-secret
+            # Clé de chiffrement AES-256 NNI/IBAN (OWASP A02). optional:true →
+            # le pod démarre même si la clé n'est pas encore provisionnée
+            # (le chiffrement échouera à l'usage ; voir config.ts qui avertit).
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: encryption-key
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

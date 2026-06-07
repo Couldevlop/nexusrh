@@ -90,12 +90,13 @@ if (!parsed.success) {
 const env = parsed.data
 
 // ── Durcissement secrets (OWASP A02/A05) ──────────────────────────────────────
-// Valeurs d'exemple/faibles connues, à bannir en production. Le boot échoue
-// plutôt que de démarrer avec un secret prévisible (JWT forgeable) ou une clé
-// de chiffrement triviale (NNI/IBAN réversibles).
+// Une valeur d'exemple/faible PRÉSENTE est refusée au boot (secret prévisible →
+// JWT forgeable, ou clé de chiffrement triviale → NNI/IBAN réversibles).
+// Une ENCRYPTION_KEY ABSENTE n'est pas fatale (comportement historique : le
+// chiffrement NNI/IBAN échouera à l'usage) mais émet un avertissement marqué.
 const EXAMPLE_JWT_SECRET = 'nexusrh-ci-super-secret-key-minimum-32-chars!!'
-function isWeakEncryptionKey(key: string | undefined): boolean {
-  if (!key) return true
+/** true si une clé PRÉSENTE est faible (n'évalue pas l'absence — voir ci-dessous). */
+function isWeakEncryptionKey(key: string): boolean {
   if (!/^[0-9a-fA-F]{64}$/.test(key)) return true   // pas 64 hex
   if (/^0+$/.test(key)) return true                  // tout à zéro (exemple)
   if (new Set(key.toLowerCase()).size <= 2) return true // entropie quasi nulle
@@ -106,8 +107,11 @@ if (env.NODE_ENV === 'production') {
   if (env.JWT_SECRET === EXAMPLE_JWT_SECRET) {
     fatal.push('JWT_SECRET : la valeur d\'exemple est interdite en production (générer ≥ 256 bits aléatoires).')
   }
-  if (isWeakEncryptionKey(env.ENCRYPTION_KEY)) {
-    fatal.push('ENCRYPTION_KEY : obligatoire en production, 64 caractères hex aléatoires (pas la valeur d\'exemple tout-à-zéro).')
+  if (env.ENCRYPTION_KEY && isWeakEncryptionKey(env.ENCRYPTION_KEY)) {
+    fatal.push('ENCRYPTION_KEY présente mais faible : 64 caractères hex aléatoires requis (pas la valeur d\'exemple tout-à-zéro).')
+  }
+  if (!env.ENCRYPTION_KEY) {
+    console.warn('[config] ⚠ ENCRYPTION_KEY absente en production — le chiffrement NNI/IBAN sera indisponible (les créations d\'employés avec NNI/IBAN échoueront). Définir une clé 64-hex est fortement recommandé.')
   }
   if (fatal.length > 0) {
     console.error('Configuration de production refusée (secrets non sûrs) :')
