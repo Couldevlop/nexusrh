@@ -113,8 +113,16 @@ function weeklyHours(category: string): number {
   return category === 'Agent de maîtrise' ? 35 : 40
 }
 
-async function main(): Promise<void> {
-  console.log('=== Scénario WOYAA — initialisation ===\n')
+/**
+ * Crée/rafraîchit le tenant WOYAA (appelé par le seed prod ET en standalone).
+ * @param opts.drop   true = drop le schéma tenant_woyaa avant (standalone). Quand
+ *   le seed gère déjà le DROP via TENANT_SCHEMAS, passer false.
+ * @param opts.report true = imprime les bulletins + RNS (run local uniquement).
+ */
+export async function seedWoyaa(opts: { drop?: boolean; report?: boolean } = {}): Promise<void> {
+  const doDrop = opts.drop ?? true
+  const doReport = opts.report ?? false
+  if (doReport) console.log('=== Scénario WOYAA — initialisation ===\n')
   await createPlatformSchema()
 
   // 1) Tenant WOYAA (SARL, conseil stratégique, Abidjan)
@@ -130,8 +138,9 @@ async function main(): Promise<void> {
     [SLUG, SCHEMA, AT_RATE.toString()],
   )
 
-  // 2) Schéma tenant propre (idempotent)
-  await pool.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
+  // 2) Schéma tenant propre (idempotent). Quand le seed gère déjà le DROP via
+  // TENANT_SCHEMAS, on ne re-drop pas (doDrop=false).
+  if (doDrop) await pool.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
   await provisionTenantSchema(SCHEMA)
   await seedPayrollRulesCI(SCHEMA, AT_RATE)
   await seedAbsenceTypesCI(SCHEMA)
@@ -141,7 +150,7 @@ async function main(): Promise<void> {
      VALUES ('ACCIDENT_TRAVAIL', 'Accident du travail', true, '#DC2626', 'calendar_days')
      ON CONFLICT (code) DO NOTHING`,
   )
-  console.log(`[1] Tenant ${SLUG} provisionné (schéma ${SCHEMA}, AT ${AT_RATE * 100}%)`)
+  if (doReport) console.log(`[1] Tenant ${SLUG} provisionné (schéma ${SCHEMA}, AT ${AT_RATE * 100}%)`)
 
   // 3) Départements
   const deptDefs = ['Direction Générale', 'Ressources Humaines', 'Commercial', 'Informatique']
@@ -207,9 +216,11 @@ async function main(): Promise<void> {
        ON CONFLICT (email) DO UPDATE SET employee_id = EXCLUDED.employee_id`,
       [`${e.key}.self@woyaa.ci`, adminHash, e.firstName, e.lastName, e.id])
   }
-  console.log('[2] 7 employés + contrats créés (brut calculé par gross-up) :')
-  for (const e of employees) {
-    console.log(`    ${e.jobTitle.padEnd(34)} net cible ${fmt(e.netTarget).padStart(16)}  → brut ${fmt(e.brut!)}`)
+  if (doReport) {
+    console.log('[2] 7 employés + contrats créés (brut calculé par gross-up) :')
+    for (const e of employees) {
+      console.log(`    ${e.jobTitle.padEnd(34)} net cible ${fmt(e.netTarget).padStart(16)}  → brut ${fmt(e.brut!)}`)
+    }
   }
 
   // 5) Types d'absence
@@ -329,7 +340,7 @@ async function main(): Promise<void> {
       `UPDATE "${SCHEMA}".pay_periods SET total_gross=$1,total_net=$2,total_cnps=$3,total_its=$4 WHERE id=$5`,
       [tg, tn, tc, ti, periodId])
   }
-  console.log(`[3] Bulletins générés (${monthsRange.length} mois × effectif présent)`)
+  if (doReport) console.log(`[3] Bulletins générés (${monthsRange.length} mois × effectif présent)`)
 
   // 7) Enregistre les absences (maternité, CP, accident du travail)
   const sec = employees.find((e) => e.key === 'sec')!
@@ -382,6 +393,8 @@ async function main(): Promise<void> {
     console.log(`  Congés payés : acquis ${cp.acquired} j | pris ${cp.taken} j | restant ${cp.remaining} j`)
   }
 
+  if (!doReport) return // appelé par le seed : pas d'impression des bulletins/RNS
+
   console.log('\n\n═══════════════ BULLETINS DEMANDÉS ═══════════════')
   printSlip('Secrétaire de direction — MARS 2026 (maternité + ICP)', sec, '2026-03')
   printSlip('Informaticien — JUIN 2026 (accident du travail)', it, '2026-06')
@@ -411,6 +424,10 @@ async function main(): Promise<void> {
   console.log('\nScénario WOYAA terminé.')
 }
 
-main()
-  .then(() => pool.end())
-  .catch(async (err) => { console.error('Erreur scénario WOYAA:', err); await pool.end(); process.exit(1) })
+// Exécution standalone (pnpm exec tsx src/scripts/scenario-woyaa.ts) : drop +
+// rapport complet. En import (depuis seed.ts), rien ne s'exécute ici.
+if (process.argv[1]?.includes('scenario-woyaa')) {
+  seedWoyaa({ drop: true, report: true })
+    .then(() => pool.end())
+    .catch(async (err) => { console.error('Erreur scénario WOYAA:', err); await pool.end(); process.exit(1) })
+}
