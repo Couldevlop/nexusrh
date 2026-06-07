@@ -17,3 +17,6 @@ nexusrh_ci/
 # Environnement et secrets
 .env*
 **/values.secret.yaml
+
+# Comptes de démo (local uniquement — jamais sur GitHub)
+COMPTES-DEMO.md
