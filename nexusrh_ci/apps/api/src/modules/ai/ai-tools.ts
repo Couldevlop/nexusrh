@@ -134,7 +134,9 @@ export async function executeAiTool(
                   CASE WHEN u.id IS NULL THEN NULL
                        ELSE u.first_name || ' ' || u.last_name END AS closed_by_name
              FROM "${s}".pay_periods p
-             LEFT JOIN "${s}".users u ON u.id = p.closed_by
+             -- closed_by est varchar(100) (uuid de user OU libellé hérité) :
+             -- cast côté users, jamais uuid = varchar (erreur d'opérateur PG).
+             LEFT JOIN "${s}".users u ON u.id::text = p.closed_by
             WHERE p.parent_period_id IS NULL
               AND ($1::text IS NULL OR p.month = $1)
             ORDER BY p.month DESC

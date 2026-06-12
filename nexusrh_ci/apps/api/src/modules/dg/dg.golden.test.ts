@@ -130,6 +130,16 @@ describe('GOLDEN vue DG — dashboard 360°', () => {
     expect(dgRoutes).toMatch(/validated: x\.status === 'closed'/)
   })
 
+  it('PIÈGE pay_periods.closed_by est varchar : jointure castée u.id::text (jamais uuid = varchar)', () => {
+    // uuid = varchar → erreur d'opérateur PG → tout le bloc paie retombait sur []
+    // (panneau « Statut de la paie » + KPI masse salariale vides). Idem outil IA.
+    const aiTools = read('modules', 'ai', 'ai-tools.ts')
+    expect(dgRoutes).toContain('u.id::text = p.closed_by')
+    expect(dgRoutes).not.toMatch(/u\.id = p\.closed_by/)
+    expect(aiTools).toContain('u.id::text = p.closed_by')
+    expect(aiTools).not.toMatch(/u\.id = p\.closed_by/)
+  })
+
   it('fail-soft : un module non provisionné ne casse jamais le dashboard', () => {
     expect(dgRoutes).toMatch(/const safe = async/)
     expect(dgRoutes).toMatch(/try \{ return await fn\(\) \} catch \{ return fallback \}/)
@@ -154,5 +164,52 @@ describe('GOLDEN vue DG — intégration rôle dg', () => {
     expect(seed).toContain(`'dg@sotra.ci'`)
     expect(seed).toMatch(/'Directeur', 'Général', 'dg'/)
     expect(seed).toContain(`'{"dg_view": true}'::jsonb`)
+  })
+
+  it('PIÈGE base vierge : enabled_modules créée par createPlatformSchema (le seed tourne AVANT le boot API)', () => {
+    // Sans cette colonne dans le DDL du seed, l'activation dg_view échouait en
+    // silence sur un déploiement neuf (la migration boot arrive trop tard).
+    const provisioning = read('db', 'provisioning.ts')
+    expect(provisioning).toContain(
+      `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
+    )
+    // Et l'activation de la démo n'est PLUS avalée par un catch silencieux.
+    expect(seed).not.toMatch(/dg_view[\s\S]{0,200}\.catch\(/)
+  })
+})
+
+describe('GOLDEN vue DG — seed démo : AUCUN graphe/tableau/KPI vide sur SOTRA', () => {
+  const demoData = read('db', 'seed-demo-data.ts')
+
+  it('périodes de paie validées par la DRH (rh@sotra.ci) — le DG voit QUI a validé', () => {
+    expect(seed).toContain(`WHERE email = 'rh@sotra.ci'`)
+    expect(seed).toMatch(/closed_by\)\s*\n\s*VALUES \(\$1, 'closed', now\(\), \$2\)/)
+    // Plus AUCUNE période seedée avec le libellé opaque 'seed' comme valideur.
+    expect(seed).not.toContain(`VALUES ($1, 'closed', now(), 'seed')`)
+  })
+
+  it('scores rétention IA seedés (tableau « employés à surveiller » + outil IA non vides)', () => {
+    expect(demoData).toContain('export async function seedRetentionScoresBulk')
+    expect(demoData).toMatch(/retention_score = \$2, burnout_risk = \$3, ai_score_factors = \$4/)
+    expect(seed).toContain('seedRetentionScoresBulk(pool, sotraSchema, sotraIds)')
+  })
+
+  it('frais approuvés du MOIS COURANT seedés (KPI frais non nul)', () => {
+    expect(demoData).toContain('export async function seedCurrentMonthExpensesBulk')
+    expect(demoData).toMatch(/monthOffsetStr\(0\)/)
+    expect(seed).toContain('seedCurrentMonthExpensesBulk(pool, sotraSchema, sotraIds)')
+  })
+
+  it('absences couvrant AUJOURD\'HUI + historique par type (KPI absents + camembert)', () => {
+    expect(demoData).toMatch(/couvrant AUJOURD'HUI/)
+    expect(seed).toContain('seedAbsencesBulk(pool, sotraSchema, sotraIds, absTypeMap)')
+  })
+
+  it('l\'enrichissement DG est DANS le seed de démo uniquement — un client sans données de démo part de zéro', () => {
+    // Les générateurs vivent dans seed-demo-data.ts (démo), pas dans le
+    // provisionnement tenant (provisioning.ts) ni dans les routes.
+    const provisioning = read('db', 'provisioning.ts')
+    expect(provisioning).not.toContain('seedRetentionScoresBulk')
+    expect(provisioning).not.toContain('seedCurrentMonthExpensesBulk')
   })
 })

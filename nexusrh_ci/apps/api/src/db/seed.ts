@@ -30,6 +30,8 @@ import {
   seedCnpsDeclarationsFromPayslips,
   seedDisaFromPayslips,
   seedApplicationsForJob,
+  seedRetentionScoresBulk,
+  seedCurrentMonthExpensesBulk,
 } from './seed-demo-data.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -408,12 +410,14 @@ async function runSeed(): Promise<void> {
 
   // Vue DG 360° : module opt-in (désactivé par défaut partout) — activé sur le
   // tenant de démo SOTRA pour les présentations (compte dg@sotra.ci ci-dessous).
+  // La colonne enabled_modules est garantie par createPlatformSchema (appelé en
+  // tête de seed) : un échec ici doit être BRUYANT — sinon la démo DG est vide.
   await pool.query(
     `UPDATE platform.tenants
         SET enabled_modules = COALESCE(enabled_modules, '{}'::jsonb) || '{"dg_view": true}'::jsonb
       WHERE slug = $1`,
     [sotraSlug],
-  ).catch(() => { /* colonne enabled_modules absente (base pré-migration) : non bloquant */ })
+  )
 
   const sotraTenantId = sotraTenantRes.rows[0]?.id ?? ''
   console.log('[3/10] Tenant SOTRA créé')
@@ -651,6 +655,13 @@ async function runSeed(): Promise<void> {
   // reste actuelle quel que soit le jour du déploiement — reporting de l'année
   // courante, dashboard « 6 derniers mois », CNPS du trimestre en cours…)
   const sotraPeriods = lastClosedMonths(6)
+  // Valideur des périodes = la DRH (rh@sotra.ci) : la vue DG 360° et l'outil IA
+  // « statut paie » affichent QUI a validé la paie (closed_by est varchar →
+  // uuid stocké en texte ; repli 'seed' si le user n'existe pas).
+  const sotraDrhRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${sotraSchema}".users WHERE email = 'rh@sotra.ci' LIMIT 1`,
+  )
+  const sotraCloserId = sotraDrhRes.rows[0]?.id ?? 'seed'
   for (const month of sotraPeriods) {
     const [yr, mo] = month.split('-').map(Number)
     const workingDays = getWorkingDays(yr!, mo!)
@@ -658,10 +669,10 @@ async function runSeed(): Promise<void> {
     // Créer la période
     const periodRes = await pool.query<{ id: string }>(`
       INSERT INTO "${sotraSchema}".pay_periods (month, status, closed_at, closed_by)
-      VALUES ($1, 'closed', now(), 'seed')
-      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
+      VALUES ($1, 'closed', now(), $2)
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed', closed_by = $2
       RETURNING id
-    `, [month])
+    `, [month, sotraCloserId])
     const periodId = periodRes.rows[0]?.id ?? ''
 
     // Récupérer taux AT
@@ -1273,6 +1284,11 @@ async function runSeed(): Promise<void> {
   const nbAbs = await seedAbsencesBulk(pool, sotraSchema, sotraIds, absTypeMap)
   await recomputeAbsenceBalances(pool, sotraSchema)
   const nbExp = await seedExpensesBulk(pool, sotraSchema, sotraIds)
+  // Vue DG 360° : scoring rétention (« employés à surveiller ») + frais
+  // approuvés du mois courant (KPI frais) — démo uniquement, un client qui
+  // démarre « de zéro » (sans seed démo) garde des écrans vides propres.
+  const nbRisk = await seedRetentionScoresBulk(pool, sotraSchema, sotraIds)
+  const nbExpNow = await seedCurrentMonthExpensesBulk(pool, sotraSchema, sotraIds)
   const nbEnr = await seedEnrollmentsBulk(pool, sotraSchema, sotraIds, sessionIds)
   await seedSkillsEvaluationsBulk(pool, sotraSchema, sotraIds, skillIds,
     'admin@sotra.ci', sotraEmployees[0] ? [sotraEmployees[0].id] : [])
@@ -1284,7 +1300,8 @@ async function runSeed(): Promise<void> {
   for (const yr of new Set(sotraPeriods.map((m) => Number(m.slice(0, 4))))) {
     await seedDisaFromPayslips(pool, sotraSchema, yr)
   }
-  console.log(`[7b/10] SOTRA enrichi : ${nbAbs} absences, ${nbExp} notes de frais, ` +
+  console.log(`[7b/10] SOTRA enrichi : ${nbAbs} absences, ${nbExp} notes de frais ` +
+    `(+${nbExpNow} du mois courant), ${nbRisk} scores rétention IA, ` +
     `${nbEnr} inscriptions, évaluations 9-box pour ${sotraIds.length} employés, ` +
     `${nbMm} paiements Mobile Money (${lastClosed}), ${nbCnps} déclarations CNPS, DISA, notifications`)
 
@@ -1418,7 +1435,13 @@ async function runSeed(): Promise<void> {
     }
   }
 
-  // Bulletins Cabinet — les 3 derniers mois révolus (dates relatives)
+  // Bulletins Cabinet — les 3 derniers mois révolus (dates relatives).
+  // closed_by = admin du tenant (varchar → uuid texte) : la vue DG / l'outil IA
+  // « statut paie » affichent le valideur si le module est activé en démo.
+  const cabinetCloserRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${cabinetSchema}".users WHERE role IN ('hr_manager','admin') ORDER BY role DESC LIMIT 1`,
+  )
+  const cabinetCloserId = cabinetCloserRes.rows[0]?.id ?? 'seed'
   const cabinetPeriods = lastClosedMonths(3)
   for (const month of cabinetPeriods) {
     const [yr, mo] = month.split('-').map(Number)
@@ -1426,10 +1449,10 @@ async function runSeed(): Promise<void> {
 
     const periodRes = await pool.query<{ id: string }>(`
       INSERT INTO "${cabinetSchema}".pay_periods (month, status, closed_at, closed_by)
-      VALUES ($1, 'closed', now(), 'seed')
-      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
+      VALUES ($1, 'closed', now(), $2)
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed', closed_by = $2
       RETURNING id
-    `, [month])
+    `, [month, cabinetCloserId])
     const periodId = periodRes.rows[0]?.id ?? ''
 
     for (const emp of cabinetEmployees) {
@@ -1755,17 +1778,21 @@ async function runSeed(): Promise<void> {
     }
   }
 
-  // Bulletins OpenLab — 3 derniers mois révolus
+  // Bulletins OpenLab — 3 derniers mois révolus. closed_by = admin (cf. SOTRA).
+  const openlabCloserRes = await pool.query<{ id: string }>(
+    `SELECT id FROM "${openlabSchema}".users WHERE role IN ('hr_manager','admin') ORDER BY role DESC LIMIT 1`,
+  )
+  const openlabCloserId = openlabCloserRes.rows[0]?.id ?? 'seed'
   const openlabPeriods = lastClosedMonths(3)
   for (const month of openlabPeriods) {
     const [yr, mo] = month.split('-').map(Number)
     const workingDays = getWorkingDays(yr!, mo!)
     const periodRes = await pool.query<{ id: string }>(`
       INSERT INTO "${openlabSchema}".pay_periods (month, status, closed_at, closed_by)
-      VALUES ($1, 'closed', now(), 'seed')
-      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed'
+      VALUES ($1, 'closed', now(), $2)
+      ON CONFLICT (month, legal_entity_id) DO UPDATE SET status = 'closed', closed_by = $2
       RETURNING id
-    `, [month])
+    `, [month, openlabCloserId])
     const periodId = periodRes.rows[0]?.id ?? ''
     let tg = 0, tn = 0, tc = 0, ti = 0
     for (const emp of openlabEmployees) {
