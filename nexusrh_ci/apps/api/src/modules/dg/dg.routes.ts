@@ -114,7 +114,10 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
                     CASE WHEN u.id IS NULL THEN NULL
                          ELSE u.first_name || ' ' || u.last_name END AS closed_by_name
                FROM "${s}".pay_periods p
-               LEFT JOIN "${s}".users u ON u.id = p.closed_by
+               -- closed_by est varchar(100) dans le DDL tenant (peut contenir un
+               -- uuid de user OU un libellé hérité) : cast côté users, jamais
+               -- uuid = varchar (erreur d'opérateur PG → panneau vide).
+               LEFT JOIN "${s}".users u ON u.id::text = p.closed_by
               WHERE p.parent_period_id IS NULL
               ORDER BY p.month DESC LIMIT 3`)
           return r.rows.map(x => ({

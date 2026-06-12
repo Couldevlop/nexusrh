@@ -124,6 +124,43 @@ effectifs 12 mois est calculée sur les embauches des employés actifs
   complet vert.
 - Golden tests ajoutés : 4 fichiers, 72 assertions au total.
 
+## Étape 4 — Dashboard DG : 100 % des visualisations alimentées (démo SOTRA)
+
+**Besoin** : tous les graphes, camemberts, tableaux et indicateurs du dashboard
+DG doivent s'afficher pour dg@sotra.ci ; ET un client déployé SANS données de
+démo doit partir de zéro avec des écrans vides propres.
+
+**Bugs corrigés**
+1. `pay_periods.closed_by` est **varchar(100)** dans le DDL tenant (pas uuid) :
+   la jointure `u.id = p.closed_by` levait une erreur d'opérateur PG → panneau
+   « Statut de la paie » ET KPI masse salariale vides. Corrigé par
+   `u.id::text = p.closed_by` (dg.routes + outil IA get_payroll_status).
+2. Aucun score de rétention seedé → tableau « Employés à surveiller » vide.
+   Nouveau générateur `seedRetentionScoresBulk` (~20 employés SOTRA, mix
+   high/medium/low + facteurs).
+3. Aucune note de frais approuvée sur le mois courant → KPI frais à 0.
+   Nouveau générateur `seedCurrentMonthExpensesBulk` (110 000 FCFA).
+4. `closed_by = 'seed'` → pas de nom de valideur. Les périodes de démo sont
+   maintenant validées par la DRH (rh@sotra.ci → « Responsable Paie »).
+5. **Piège base vierge** : le seed tourne AVANT le premier boot API → la colonne
+   `enabled_modules` n'existait pas encore et l'activation `dg_view` échouait
+   en silence. La colonne est désormais créée par `createPlatformSchema` (DDL
+   du seed) et l'activation n'est plus avalée par un catch silencieux.
+
+**Validation LIVE (re-seed sur base vierge + SQL)** : 6 périodes validées par
+« Responsable Paie », séries paie 6 points, 4 absents aujourd'hui, camembert
+3 types d'absences, 11 absences + 7 frais en attente, 20 employés à risque,
+5 offres / 5 étapes de pipeline, 3 sessions futures / 36 inscriptions,
+8 départements, dg_view actif sur SOTRA UNIQUEMENT (opt-in respecté).
+
+**Zéro donnée (client neuf)** : chaque graphe/panneau du dashboard a un état
+vide explicite (golden `charts.noData` ≥ 5 + `payrollStatus.empty` +
+`atRisk.empty`) ; les générateurs DG vivent dans seed-demo-data.ts (démo
+uniquement), jamais dans le provisionnement d'un tenant client.
+
+**Auto-évaluation** : ✅ conforme — goldens portés à 87 assertions, suite
+complète 3422/3422, tsc API/Web 0 erreur.
+
 ## Sécurité (OWASP 2025)
 
 - **A01** : enforcement modules côté API (pas seulement le masquage UI) ; vue DG

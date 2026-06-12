@@ -102,6 +102,14 @@ describe('GOLDEN contrat UI↔API — pages DG', () => {
     expect(dgActivity).toMatch(/groups/)
     expect(dgActivity).toMatch(/category/)
   })
+
+  it('déploiement « zéro donnée » : chaque graphe/panneau a un état vide propre', () => {
+    // Un client peut être déployé SANS données de démo : aucun graphe ne doit
+    // rester blanc/cassé — chaque visualisation a un fallback explicite.
+    expect(dgDashboard.match(/charts\.noData/g)?.length).toBeGreaterThanOrEqual(5)
+    expect(dgDashboard).toContain('payrollStatus.empty')
+    expect(dgDashboard).toContain('atRisk.empty')
+  })
 })
 
 describe('GOLDEN contrat UI↔API — i18n FR/EN', () => {

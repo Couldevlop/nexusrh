@@ -217,6 +217,87 @@ export async function seedExpensesBulk(
   return inserted
 }
 
+// ── Scoring rétention IA (vue DG « employés à surveiller » + fiche employé) ──
+/**
+ * Renseigne retention_score / burnout_risk / ai_score_factors pour ~1 employé
+ * sur 4 (comme le ferait le job IA nocturne) : le tableau « Employés à
+ * surveiller » de la vue DG 360° et l'outil IA get_employees_at_risk sont
+ * remplis dès le seed, avec un mix high/medium/low réaliste.
+ */
+export async function seedRetentionScoresBulk(
+  pool: Pool,
+  schema: string,
+  employeeIds: string[],
+): Promise<number> {
+  const PROFILES = [
+    { score: 0.87, risk: 'high',   factors: ['Salaire au minimum de la grille depuis 18 mois', 'Aucune formation depuis 14 mois', '2 arrêts maladie ce trimestre'] },
+    { score: 0.74, risk: 'high',   factors: ['Ancienneté < 18 mois', 'Score d\'engagement 2/5 au dernier entretien'] },
+    { score: 0.55, risk: 'medium', factors: ['Aucune évolution de poste depuis 3 ans'] },
+    { score: 0.42, risk: 'medium', factors: ['Absences en hausse sur le trimestre'] },
+    { score: 0.18, risk: 'low',    factors: ['Promotion récente', 'Formation FDFP suivie cette année'] },
+    { score: 0.10, risk: 'low',    factors: ['Engagement 5/5 au dernier entretien'] },
+  ] as const
+
+  let updated = 0
+  for (let i = 0; i < employeeIds.length; i++) {
+    if (i % 4 !== 1) continue
+    const p = PROFILES[(updated + i) % PROFILES.length]!
+    try {
+      await pool.query(
+        `UPDATE "${schema}".employees
+            SET retention_score = $2, burnout_risk = $3, ai_score_factors = $4
+          WHERE id = $1`,
+        [employeeIds[i]!, p.score, p.risk, JSON.stringify(p.factors)],
+      )
+      updated++
+    } catch { /* colonnes scoring absentes : non bloquant */ }
+  }
+  return updated
+}
+
+// ── Notes de frais du MOIS COURANT (KPI DG « frais approuvés ce mois ») ──────
+/**
+ * Quelques notes approuvées/payées datées du mois courant : le KPI DG
+ * « frais approuvés ce mois » et les agrégats mensuels frais sont non nuls.
+ */
+export async function seedCurrentMonthExpensesBulk(
+  pool: Pool,
+  schema: string,
+  employeeIds: string[],
+): Promise<number> {
+  const month = monthOffsetStr(0)
+  const items = [
+    { title: 'Mission inspection lignes', status: 'approved', amount: 46_500 },
+    { title: 'Réunion partenaires Plateau', status: 'approved', amount: 28_000 },
+    { title: 'Carburant tournée dépôts', status: 'paid', amount: 35_500 },
+  ] as const
+
+  let inserted = 0
+  for (let k = 0; k < items.length && k < employeeIds.length; k++) {
+    const it = items[k]!
+    try {
+      const r = await pool.query<{ id: string }>(
+        `INSERT INTO "${schema}".expense_reports
+           (employee_id, title, month, status, submitted_at, approved_at, total_amount, currency)
+         VALUES ($1,$2,$3,$4, now() - interval '${4 + k} days', now() - interval '${1 + k} days', $5, 'XOF')
+         ON CONFLICT DO NOTHING RETURNING id`,
+        [employeeIds[(k * 5 + 2) % employeeIds.length]!, it.title, month, it.status, it.amount],
+      )
+      if (r.rows[0]) {
+        inserted++
+        await pool.query(
+          `INSERT INTO "${schema}".expense_lines
+             (report_id, description, category, date, amount, currency)
+           VALUES ($1,$2,'transport',$3,$4,'XOF')
+           ON CONFLICT DO NOTHING`,
+          [r.rows[0].id, it.title, `${month}-${String(randInt(2, 10)).padStart(2, '0')}`, it.amount],
+        )
+      }
+    } catch { /* non bloquant */ }
+  }
+  return inserted
+}
+
 // ── Inscriptions formation ────────────────────────────────────────────────────
 /**
  * Remplit les sessions planifiées (8-12 inscrits chacune, places restantes > 0)

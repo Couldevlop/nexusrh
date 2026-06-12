@@ -171,6 +171,12 @@ export async function createPlatformSchema(): Promise<void> {
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payroll_mode varchar(30) NOT NULL DEFAULT 'single_country'`)
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS default_country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
 
+  // ── Modules activables par tenant (surcharges jsonb — '{}' = défauts) ────────
+  // Indispensable ICI (et pas seulement dans ensurePlatformSchema au boot API) :
+  // le seed tourne AVANT le premier boot sur une base vierge — sans cette
+  // colonne, l'activation dg_view de la démo échouerait en silence.
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`)
+
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
   await pool.query(`
