@@ -7,6 +7,7 @@ import { pool } from '../../db/pool.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
 import { assertAgencyCanActOnTenant, assertTenantIsCI } from '../../services/agency.service.js'
+import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
 import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
 import { sendWelcomeAgencyEmail } from '../../services/email.js'
 import {
@@ -98,6 +99,7 @@ function tenantConfigFromGuard(t: {
   tenantId: string; name: string; slug: string; primaryColor: string | null
   secondaryColor: string | null; logoUrl: string | null; city: string | null
   hasSubsidiaries: boolean; payrollMode: string; defaultCountryCode: string
+  enabledModules?: unknown
 }) {
   return {
     id: t.tenantId, name: t.name, slug: t.slug,
@@ -105,6 +107,7 @@ function tenantConfigFromGuard(t: {
     logoUrl: t.logoUrl, city: t.city,
     hasSubsidiaries: t.hasSubsidiaries, payrollMode: t.payrollMode,
     defaultCountryCode: t.defaultCountryCode,
+    enabledModules: resolveEnabledModules(t.enabledModules),
   }
 }
 

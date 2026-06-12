@@ -1,0 +1,118 @@
+{
+  "overview": {
+    "title": "Vue 360°",
+    "subtitle": "Pilotage instantané de l'entreprise",
+    "loading": "Chargement de la vue 360°…",
+    "loadError": "Impossible de charger la vue 360°. Réessayez plus tard.",
+    "kpi": {
+      "activeEmployees": "Effectifs actifs",
+      "activeEmployeesSub": "{{count}} départements",
+      "payrollMass": "Masse salariale",
+      "payrollMassSub": "Net versé : {{net}}",
+      "evolutionSub": "vs mois précédent",
+      "absentToday": "Absents aujourd'hui",
+      "absenteeismRate": "Taux d'absentéisme : {{rate}} %",
+      "pendingApprovals": "Validations en attente",
+      "pendingDetail": "{{absences}} absences · {{expenses}} frais",
+      "openJobs": "Postes ouverts",
+      "applications": "{{count}} candidatures",
+      "trainings": "Formations à venir",
+      "enrollments": "{{count}} inscriptions actives",
+      "expensesApproved": "Frais approuvés (mois)",
+      "expensesApprovedSub": "Notes de frais validées ce mois"
+    },
+    "charts": {
+      "headcount": "Évolution des effectifs",
+      "headcountSub": "12 derniers mois",
+      "payroll": "Paie sur 12 mois",
+      "payrollSub": "Brut / net (barres) · CNPS / ITS (lignes) — milliers FCFA",
+      "absencesByType": "Absences par type",
+      "absencesByTypeSub": "Répartition du nombre d'absences",
+      "byDepartment": "Effectifs par département",
+      "byDepartmentSub": "Répartition actuelle",
+      "pipeline": "Pipeline de recrutement",
+      "pipelineSub": "Candidatures par étape",
+      "noData": "Aucune donnée disponible",
+      "tooltipThousandsFcfa": "{{value}} k FCFA",
+      "daysCount": "{{count}} jours"
+    },
+    "series": {
+      "gross": "Brut",
+      "net": "Net",
+      "cnps": "CNPS",
+      "its": "ITS",
+      "employees": "Effectifs",
+      "applications": "Candidatures",
+      "absences": "Absences"
+    },
+    "payrollStatus": {
+      "title": "Statut de la paie",
+      "subtitle": "3 dernières périodes",
+      "validated": "Validée",
+      "validatedBy": "par {{name}} le {{date}}",
+      "inProgress": "En cours",
+      "gross": "Brut",
+      "net": "Net",
+      "empty": "Aucune période de paie"
+    },
+    "atRisk": {
+      "title": "Employés à surveiller",
+      "subtitle": "Risque de départ et burnout (analyse IA)",
+      "employee": "Employé",
+      "jobTitle": "Poste",
+      "burnout": "Risque burnout",
+      "retention": "Score risque départ",
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "na": "N/A",
+      "empty": "Aucun employé à risque détecté"
+    }
+  },
+  "activity": {
+    "title": "Activité des responsables",
+    "subtitle": "Journal consolidé des actions, groupé par catégorie",
+    "loading": "Chargement du journal d'activité…",
+    "loadError": "Impossible de charger le journal d'activité.",
+    "filters": {
+      "actor": "Responsable",
+      "allActors": "Tous les responsables",
+      "day": "Jour",
+      "week": "Semaine",
+      "month": "Mois",
+      "custom": "Personnalisé",
+      "from": "Du",
+      "to": "Au"
+    },
+    "totalActions": "{{count}} action(s) sur la période",
+    "period": "Période : {{from}} → {{to}}",
+    "empty": "Aucune activité sur la période sélectionnée",
+    "table": {
+      "date": "Date / heure",
+      "actor": "Acteur",
+      "action": "Action",
+      "details": "Détails"
+    },
+    "noDetails": "—",
+    "categories": {
+      "payroll": "Paie",
+      "payslip": "Bulletins de paie",
+      "absence": "Absences",
+      "expense": "Notes de frais",
+      "employee": "Employés",
+      "reporting": "Reporting",
+      "ai": "Assistant IA",
+      "auth": "Connexions",
+      "settings": "Paramètres",
+      "dg": "Vue DG",
+      "recruitment": "Recrutement",
+      "onboarding": "Intégration",
+      "training": "Formations",
+      "contract": "Contrats",
+      "cnps": "CNPS",
+      "user": "Utilisateurs",
+      "mobile_money": "Mobile Money",
+      "career": "Carrières"
+    }
+  }
+}

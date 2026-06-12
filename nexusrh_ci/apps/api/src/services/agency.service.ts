@@ -24,6 +24,7 @@ export interface AgencyTenantContext {
   hasSubsidiaries: boolean
   payrollMode: string
   defaultCountryCode: string
+  enabledModules: unknown
 }
 
 export type AgencyGuardReason =
@@ -68,13 +69,14 @@ export async function assertAgencyCanActOnTenant(
     default_country_code: string | null
     has_subsidiaries: boolean | null
     payroll_mode: string | null
+    enabled_modules: unknown
     link_id: string | null
   }>(
     `SELECT a.status AS agency_status,
             t.id AS tenant_id, t.schema_name, t.name, t.slug,
             t.primary_color, t.secondary_color, t.logo_url, t.city,
             t.status AS tenant_status, t.default_country_code,
-            t.has_subsidiaries, t.payroll_mode,
+            t.has_subsidiaries, t.payroll_mode, t.enabled_modules,
             lnk.id AS link_id
        FROM platform.agency_users au
        JOIN platform.agencies a ON a.id = au.agency_id
@@ -110,6 +112,7 @@ export async function assertAgencyCanActOnTenant(
       hasSubsidiaries: row.has_subsidiaries ?? false,
       payrollMode: row.payroll_mode ?? 'single_country',
       defaultCountryCode: row.default_country_code ?? 'CIV',
+      enabledModules: row.enabled_modules ?? {},
     },
   }
 }

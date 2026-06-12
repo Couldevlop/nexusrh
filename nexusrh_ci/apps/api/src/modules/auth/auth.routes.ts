@@ -17,6 +17,7 @@ import { DEFAULT_OFFLINE_MESSAGE } from '../../services/offline-status.service.j
 import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
+import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -88,6 +89,7 @@ interface TenantCandidate {
     payroll_mode: string
     default_country_code: string
     mfa_required: boolean
+    enabled_modules: unknown
   }
   user: {
     id: string; email: string; password_hash: string; role: string
@@ -107,10 +109,11 @@ async function findTenantAndUser(
     primary_color: string; secondary_color: string; logo_url: string | null
     city: string | null
     has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
-    mfa_required: boolean
+    mfa_required: boolean; enabled_modules: unknown
   }>(`SELECT id, schema_name, name, slug, primary_color, secondary_color, logo_url, city,
              has_subsidiaries, payroll_mode, default_country_code,
-             COALESCE(mfa_required, false) AS mfa_required
+             COALESCE(mfa_required, false) AS mfa_required,
+             COALESCE(enabled_modules, '{}'::jsonb) AS enabled_modules
       FROM platform.tenants WHERE status IN ('active', 'trial')`)
 
   const candidates: TenantCandidate[] = []
@@ -577,7 +580,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         )
         const redirectTo = pwdResetRequired
           ? '/change-password'
-          : (user.role === 'employee' ? '/mon-espace' : '/dashboard')
+          : (user.role === 'employee' ? '/mon-espace'
+            : user.role === 'dg' ? '/dg'
+            : '/dashboard')
 
         auditLogAuth(
           tenant.schema_name, user.id, 'auth.login.success',
@@ -616,6 +621,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             hasSubsidiaries:    tenant.has_subsidiaries,
             payrollMode:        tenant.payroll_mode,
             defaultCountryCode: tenant.default_country_code,
+            enabledModules:     resolveEnabledModules(tenant.enabled_modules),
           },
           redirectTo,
         })
@@ -730,9 +736,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           primary_color: string; secondary_color: string
           logo_url: string | null; city: string | null
           has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
+          enabled_modules: unknown
         }>(
           `SELECT id, name, slug, primary_color, secondary_color, logo_url, city,
-                  has_subsidiaries, payroll_mode, default_country_code
+                  has_subsidiaries, payroll_mode, default_country_code,
+                  COALESCE(enabled_modules, '{}'::jsonb) AS enabled_modules
            FROM platform.tenants WHERE id = $1 LIMIT 1`,
           [user.tenantId],
         )
@@ -749,6 +757,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             hasSubsidiaries:    t.has_subsidiaries,
             payrollMode:        t.payroll_mode,
             defaultCountryCode: t.default_country_code,
+            enabledModules:     resolveEnabledModules(t.enabled_modules),
           }
         }
       }

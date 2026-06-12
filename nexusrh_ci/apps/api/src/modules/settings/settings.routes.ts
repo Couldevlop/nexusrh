@@ -439,7 +439,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A01 (escalade de privilège) — un admin de tenant ne peut attribuer
       // QUE des rôles tenant. 'super_admin' (plateforme) est interdit : sinon un
       // admin pourrait se hisser au niveau plateforme via un simple PATCH.
-      const TENANT_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site']
+      const TENANT_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg']
       if (role !== undefined && !TENANT_ROLES.includes(role)) {
         return reply.status(400).send({ error: 'Rôle invalide (rôles tenant uniquement)' })
       }

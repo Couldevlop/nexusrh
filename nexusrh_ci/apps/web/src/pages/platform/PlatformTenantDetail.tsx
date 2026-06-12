@@ -2,7 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
-import { ArrowLeft, Power, RefreshCw, AlertTriangle, Wrench } from 'lucide-react'
+import { MODULE_DEFAULTS, type ModuleKey } from '@/lib/modules'
+import { ModuleTogglesGrid } from '@/components/shared/ModuleTogglesGrid'
+import { ArrowLeft, Power, RefreshCw, AlertTriangle, Wrench, Save } from 'lucide-react'
 import { useState } from 'react'
 
 interface Tenant {
@@ -37,10 +39,36 @@ export default function PlatformTenantDetail() {
   const [showOfflineDialog, setShowOfflineDialog] = useState(false)
   const [offlineMessage, setOfflineMessage] = useState('')
 
+  // Modules activés : brouillon local (null = aucun changement non sauvegardé).
+  const [moduleDraft, setModuleDraft] = useState<Record<ModuleKey, boolean> | null>(null)
+  const [modulesSaved, setModulesSaved] = useState(false)
+
   const { data, isLoading } = useQuery<{ data: Tenant }>({
     queryKey: ['tenant', id],
     queryFn: () => api.get(`/platform/tenants/${id}`).then(r => r.data),
   })
+
+  const { data: modulesData, isLoading: modulesLoading } = useQuery<{ data: { modules: Record<ModuleKey, boolean> } }>({
+    queryKey: ['tenant-modules', id],
+    queryFn: () => api.get(`/platform/tenants/${id}/modules`).then(r => r.data),
+    enabled: !!id,
+  })
+
+  const serverModules = modulesData?.data?.modules
+  const moduleValues: Record<ModuleKey, boolean> | null =
+    moduleDraft ?? (serverModules ? { ...MODULE_DEFAULTS, ...serverModules } : null)
+
+  const modulesMut = useMutation({
+    mutationFn: (modules: Record<ModuleKey, boolean>) =>
+      api.put(`/platform/tenants/${id}/modules`, { modules }),
+    onSuccess: () => {
+      setModuleDraft(null)
+      setModulesSaved(true)
+      void queryClient.invalidateQueries({ queryKey: ['tenant-modules', id] })
+    },
+  })
+  const modulesErrMsg = (modulesMut.error as { response?: { data?: { error?: string } } } | null)
+    ?.response?.data?.error ?? null
 
   // Variable système : message hors-ligne par défaut + caractère obligatoire.
   const { data: settingsData } = useQuery<{ data: OfflinePolicySettings }>({
@@ -169,6 +197,43 @@ export default function PlatformTenantDetail() {
             </p>
           </div>
         </label>
+      </div>
+
+      {/* Modules activés (feature flags par tenant) */}
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h2 className="font-semibold mb-1">{t('modules.title')}</h2>
+        <p className="text-xs text-muted-foreground mb-4">{t('modules.subtitle')}</p>
+        {moduleValues ? (
+          <>
+            <ModuleTogglesGrid
+              values={moduleValues}
+              disabled={modulesMut.isPending}
+              onToggle={(key, enabled) => {
+                setModulesSaved(false)
+                setModuleDraft({ ...moduleValues, [key]: enabled })
+              }}
+            />
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => modulesMut.mutate(moduleValues)}
+                disabled={modulesMut.isPending || moduleDraft === null}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                <Save className="h-4 w-4" />
+                {modulesMut.isPending ? t('modules.saving') : t('modules.save')}
+              </button>
+              {modulesSaved && moduleDraft === null && (
+                <span className="text-sm font-medium text-green-700">{t('modules.saved')}</span>
+              )}
+              {modulesMut.isError && (
+                <span className="text-sm font-medium text-destructive">{modulesErrMsg ?? t('modules.saveError')}</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {modulesLoading ? t('common.loading') : t('modules.loadError')}
+          </p>
+        )}
       </div>
 
       {/* Actions */}

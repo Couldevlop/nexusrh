@@ -285,6 +285,86 @@
       "inactive": "Inactive"
     }
   },
+  "modules": {
+    "title": "Modules",
+    "subtitle": "Enable or disable the modules visible to this tenant. Everything is on by default, except the CEO 360° View (opt-in).",
+    "dgViewBadge": "Opt-in",
+    "save": "Save modules",
+    "saving": "Saving…",
+    "saved": "Modules updated ✓",
+    "saveError": "Error while saving modules",
+    "loadError": "Unable to load this tenant's modules.",
+    "items": {
+      "contracts": {
+        "label": "Contracts",
+        "desc": "OHADA contracts (permanent, fixed-term, apprenticeship), amendments and related documents."
+      },
+      "payroll": {
+        "label": "Payroll",
+        "desc": "CI payroll engine, payslips, periods and closings."
+      },
+      "absences": {
+        "label": "Absences & leave",
+        "desc": "Requests, approvals, balances and absence planning."
+      },
+      "expenses": {
+        "label": "Expense reports",
+        "desc": "Entry, approval and reimbursement of expense reports."
+      },
+      "recruitment": {
+        "label": "Recruitment",
+        "desc": "Job offers, applications and kanban pipeline."
+      },
+      "onboarding": {
+        "label": "Onboarding",
+        "desc": "Integration journeys for new hires."
+      },
+      "training": {
+        "label": "Training",
+        "desc": "Catalog, sessions, enrollments and FDFP reimbursements."
+      },
+      "careers": {
+        "label": "Careers & skills",
+        "desc": "Skills repository, evaluations and 9-box matrix."
+      },
+      "cnps": {
+        "label": "CNPS & declarations",
+        "desc": "Monthly e-CNPS declarations and annual DISA."
+      },
+      "mobile_money": {
+        "label": "Mobile Money",
+        "desc": "Salary transfer campaigns via Wave, MTN MoMo and Orange Money."
+      },
+      "reporting": {
+        "label": "Reporting",
+        "desc": "KPIs, analytical dashboards and exports."
+      },
+      "integrations": {
+        "label": "Connectivity & integrations",
+        "desc": "Outgoing webhooks, incoming API keys and REST connectors."
+      },
+      "ai": {
+        "label": "AI Assistant",
+        "desc": "Claude HR assistant, document generation and retention scoring."
+      },
+      "dg_view": {
+        "label": "CEO 360° View",
+        "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."
+      }
+    },
+    "bulk": {
+      "title": "Modules of the agency's tenants",
+      "subtitle": "Apply the same module configuration to the client companies attached to the agency.",
+      "tenantsLabel": "Targeted companies",
+      "selectAll": "Select all",
+      "unselectAll": "Unselect all",
+      "apply": "Apply to selected tenants",
+      "applied": "{{count}} tenant(s) updated ✓",
+      "error": "Error while applying modules",
+      "empty": "No company attached — nothing to configure.",
+      "noneSelected": "Select at least one company."
+    }
+  },
   "settings": {
     "title": "Platform Settings",
     "subtitle": "Global NexusRH CI configuration · v{{version}} · {{environment}}",

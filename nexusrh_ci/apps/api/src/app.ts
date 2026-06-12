@@ -7,6 +7,7 @@ import {
   getAgencyOfflineStatus,
   DEFAULT_OFFLINE_MESSAGE,
 } from './services/offline-status.service.js'
+import { moduleKeyForUrl, getModulesForSchema } from './services/tenant-modules.service.js'
 
 // Cache TTL 30s pour le flag maintenance (évite une requête DB par request)
 
@@ -55,6 +56,7 @@ import agencyRoutes       from './modules/agency/agency.routes.js'
 import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
 import integrationsRoutes from './modules/integrations/integrations.routes.js'
 import onboardingRoutes from './modules/onboarding/onboarding.routes.js'
+import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -212,6 +214,36 @@ export async function buildApp() {
     }
   })
 
+  // ── Modules activables par tenant (OWASP A01 — enforcement côté API) ────────
+  // Le super_admin peut désactiver des modules pour un tenant (ou en masse pour
+  // les tenants d'un cabinet). Le frontend masque la navigation, mais la vérité
+  // est ici : toute route d'un module désactivé renvoie 403 { moduleDisabled }.
+  // Exemptions : non-authentifié (pages publiques /careers — la route gère son
+  // 401), contexte plateforme (super_admin) et webhooks signés (pas de JWT).
+  fastify.addHook('preHandler', async (request, reply) => {
+    const url = (request.url.split('?')[0] ?? '')
+    const moduleKey = moduleKeyForUrl(url)
+    if (!moduleKey) return
+    if (url.startsWith('/mobile-money/webhooks/')) return
+    try { await request.jwtVerify() } catch { return }
+    const u = request.user as { schemaName?: string; role?: string }
+    if (!u.schemaName || u.schemaName === 'platform' || u.role === 'super_admin') return
+    try {
+      const modules = await getModulesForSchema(maintenancePool, u.schemaName)
+      if (modules[moduleKey] === false) {
+        return reply.status(403).send({
+          error: 'Module désactivé pour votre organisation. Contactez votre administrateur.',
+          moduleDisabled: true,
+          module: moduleKey,
+          statusCode: 403,
+        })
+      }
+    } catch {
+      // Vérification impossible (DB) : fail-open — un toggle commercial ne doit
+      // pas rendre la plateforme indisponible.
+    }
+  })
+
   // ── Middleware maintenance : bloque tous les accès tenant sauf super_admin ───
   fastify.addHook('onRequest', async (request, reply) => {
     const url = request.url
@@ -332,6 +364,9 @@ export async function buildApp() {
   await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
   await fastify.register(integrationsRoutes, { prefix: '/integrations' })
   await fastify.register(onboardingRoutes,   { prefix: '/onboarding' })
+  // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
+  // super_admin ne l'a pas activé pour le tenant.
+  await fastify.register(dgRoutes,           { prefix: '/dg' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {

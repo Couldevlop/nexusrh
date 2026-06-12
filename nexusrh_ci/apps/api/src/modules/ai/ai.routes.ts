@@ -3,6 +3,10 @@ import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { buildToolsForRole, executeAiTool } from './ai-tools.js'
+// Type-only (zéro coût runtime — le client reste importé dynamiquement) :
+// renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
+import type AnthropicTypes from '@anthropic-ai/sdk'
 
 // OWASP A04 — bornes anti-token-burn sur les prompts Claude.
 // Plafonds calibrés pour conversations RH normales (>= 99e percentile) tout
@@ -85,9 +89,10 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // POST /ai/chat — chat SSE avec l'assistant IA CI
+  // POST /ai/chat — chat SSE avec l'assistant IA CI (hybride interne/externe :
+  // outils de lecture des données du tenant + expertise RH générale)
   fastify.post('/chat', {
-    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'dg')],
     schema: { tags: ['ai'], summary: 'Chat IA RH CI (SSE streaming)' },
     config: AI_CHAT_RATE_LIMIT,
     handler: async (request, reply) => {
@@ -169,7 +174,22 @@ CONTEXTE CI IMPORTANT :
 - ITS : abattement 15% sur brut, tranches 0%→1,5%→5%→10%→15%
 - Congés : 2,5 jours ouvrables/mois travaillé
 - Mobile Money : Wave, MTN MoMo, Orange Money pour paiement salaires
-- DISA : déclaration annuelle obligatoire (loi 99-477)`
+- DISA : déclaration annuelle obligatoire (loi 99-477)
+
+DEUX TYPES DE QUESTIONS — tu sais répondre aux deux :
+1. QUESTIONS INTERNES (données de l'entreprise) : « la DRH a-t-elle validé la
+   paie ? », « combien d'absents aujourd'hui ? », « quel employé est à
+   surveiller de près ? », « combien de demandes en attente ? »…
+   → UTILISE LES OUTILS fournis (lecture seule, déjà filtrés selon le rôle de
+   l'utilisateur). Ne devine JAMAIS une donnée interne : si l'outil ne la
+   retourne pas, dis-le. Cite les chiffres exacts retournés par les outils.
+2. QUESTIONS EXTERNES (expertise générale) : « comment booster mes équipes en
+   tant que DG/DRH ? », droit du travail, management, bonnes pratiques RH…
+   → Réponds avec ton expertise (Code du Travail CI, management, leadership),
+   sans outil. Adapte tes conseils au contexte ivoirien et aux données internes
+   si tu en disposes déjà dans la conversation.
+Si aucun outil n'est disponible pour une donnée interne demandée, indique que
+cette information n'est pas accessible avec le rôle de l'utilisateur.`
 
       // Réponse SSE streaming
       reply.raw.writeHead(200, {
@@ -183,35 +203,85 @@ CONTEXTE CI IMPORTANT :
         const Anthropic = (await import('@anthropic-ai/sdk')).default
         const client = new Anthropic({ apiKey: creds.claude.apiKey })
 
-        const stream = await client.messages.stream({
-          model:      creds.claude.model,
-          max_tokens: config.ai.maxTokens,
-          system:     systemPrompt,
-          messages,
-        })
+        // IA hybride : outils de lecture des données internes du tenant,
+        // filtrés selon le rôle (matrice TOOL_ACCESS — OWASP A01). Les
+        // questions externes (conseil, droit du travail) n'utilisent pas
+        // d'outil et restent du pur raisonnement.
+        const tools = buildToolsForRole(request.user.role) as AnthropicTypes.Tool[]
+        const convo: AnthropicTypes.MessageParam[] = messages.map(m => ({
+          role: m.role, content: m.content,
+        }))
+        const toolsUsed: string[] = []
+        const usageTotal = { input_tokens: 0, output_tokens: 0 }
+        // Garde-fou anti-boucle : 5 allers-retours d'outils max par message.
+        const MAX_TOOL_ROUNDS = 5
+        let rounds = 0
+        let finalMsg: AnthropicTypes.Message
 
-        for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            reply.raw.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
+        for (;;) {
+          const stream = await client.messages.stream({
+            model:      creds.claude.model,
+            max_tokens: config.ai.maxTokens,
+            system:     systemPrompt,
+            messages:   convo,
+            ...(tools.length > 0 ? { tools } : {}),
+          })
+
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              reply.raw.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
+            }
           }
+
+          finalMsg = await stream.finalMessage()
+          usageTotal.input_tokens  += finalMsg.usage.input_tokens
+          usageTotal.output_tokens += finalMsg.usage.output_tokens
+
+          if (finalMsg.stop_reason !== 'tool_use' || rounds >= MAX_TOOL_ROUNDS) break
+          rounds++
+
+          // Exécuter chaque outil demandé (lecture seule, scope tenant + rôle)
+          // puis renvoyer les résultats au modèle pour la suite de la réponse.
+          const toolResults: AnthropicTypes.ToolResultBlockParam[] = []
+          for (const block of finalMsg.content) {
+            if (block.type !== 'tool_use') continue
+            toolsUsed.push(block.name)
+            const result = await executeAiTool(
+              rawPool,
+              { schemaName: schema, role: request.user.role },
+              block.name,
+              block.input,
+            )
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            })
+          }
+          if (toolResults.length === 0) break
+          convo.push({ role: 'assistant', content: finalMsg.content })
+          convo.push({ role: 'user', content: toolResults })
         }
 
-        const finalMsg = await stream.finalMessage()
         reply.raw.write(`data: ${JSON.stringify({
           done: true,
-          usage: finalMsg.usage,
+          usage: usageTotal,
           stopReason: finalMsg.stop_reason,
+          toolsUsed,
         })}\n\n`)
 
-        // OWASP A09 — traçabilité coûts (tokens) par tenant + user
+        // OWASP A09 — traçabilité coûts (tokens) par tenant + user, et des
+        // outils internes appelés (qui a interrogé quoi via l'IA).
         auditLogAi(
           schema, request.user.sub, 'ai.chat',
           {
-            inputTokens:  finalMsg.usage.input_tokens,
-            outputTokens: finalMsg.usage.output_tokens,
+            inputTokens:  usageTotal.input_tokens,
+            outputTokens: usageTotal.output_tokens,
             messageCount: messages.length,
             totalChars,
             stopReason:   finalMsg.stop_reason,
+            toolsUsed,
+            toolRounds:   rounds,
           },
           request.ip ?? null,
         )
