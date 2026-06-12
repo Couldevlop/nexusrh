@@ -6,10 +6,12 @@ import {
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
+  Eye, Activity,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
+import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 
 interface NavItem {
   to: string
@@ -24,35 +26,45 @@ interface NavItem {
    *  à filiales, la « Paie multi-filiales » couvre toute la paie ; l'onglet
    *  « Paie » mono-filiale ferait doublon/confusion. */
   hideIfSubsidiaries?: boolean
+  /** Module activable : l'entrée est MASQUÉE si le module est désactivé pour
+   *  le tenant (piloté par le super_admin — voir lib/modules.ts). */
+  moduleKey?: ModuleKey
 }
 
 const HR_NAV: NavItem[] = [
   { to: '/dashboard',     labelKey: 'dashboard', icon: LayoutDashboard, end: true },
   { to: '/employees',     labelKey: 'employees',  icon: Users,      end: true },
-  { to: '/contracts',     labelKey: 'contracts',  icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/payroll',       labelKey: 'payroll',    icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true },
+  { to: '/contracts',     labelKey: 'contracts',  icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'contracts' },
+  { to: '/payroll',       labelKey: 'payroll',    icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true, moduleKey: 'payroll' },
   // Workflow multi-filiales — visible UNIQUEMENT pour les tenants à filiales :
   //  - RH centrale (admin/hr_manager) : pilotage complet (initier draft, décliner,
   //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
   //  - RAF site : son unique point d'accès (soumission de SA filiale, filtré
   //    server-side sur raf_user_id = user.sub) → /raf/periods
   { to: '/payroll/multi-filiales', labelKey: 'payrollMulti', icon: Layers, end: true,
-    roles: ['admin','hr_manager'], requiresSubsidiaries: true },
+    roles: ['admin','hr_manager'], requiresSubsidiaries: true, moduleKey: 'payroll' },
   { to: '/raf/periods',   labelKey: 'payrollRaf', icon: ClipboardList, end: true,
-    roles: ['raf_site'], requiresSubsidiaries: true },
-  { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'] },
-  { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true },
-  { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'] },
-  { to: '/recruitment',   labelKey: 'recruitment', icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-  { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'] },
-  { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'] },
+    roles: ['raf_site'], requiresSubsidiaries: true, moduleKey: 'payroll' },
+  { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'payroll' },
+  { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true, moduleKey: 'absences' },
+  { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'expenses' },
+  { to: '/recruitment',   labelKey: 'recruitment', icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'recruitment' },
+  { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'onboarding' },
+  { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'training' },
+  { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'careers' },
+  { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'cnps' },
+  { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'cnps' },
+  { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'], moduleKey: 'mobile_money' },
   { to: '/referentiels',  labelKey: 'referentiels', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
-  { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+  { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'reporting' },
   { to: '/settings',      labelKey: 'settings',   icon: Settings,   end: true, roles: ['admin'] },
+]
+
+// Navigation dédiée au Directeur Général : vue 360° + journal d'activité des
+// responsables. Aucune action de gestion RH — lecture consolidée uniquement.
+const DG_NAV: NavItem[] = [
+  { to: '/dg',          labelKey: 'dgOverview', icon: Eye,      end: true, moduleKey: 'dg_view' },
+  { to: '/dg/activity', labelKey: 'dgActivity', icon: Activity, end: true, moduleKey: 'dg_view' },
 ]
 
 interface SidebarProps {
@@ -69,10 +81,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     : 'RH'
 
   const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
-  const navItems = HR_NAV.filter(item => {
+  const baseNav = user?.role === 'dg' ? DG_NAV : HR_NAV
+  const navItems = baseNav.filter(item => {
     if (item.roles && !item.roles.includes(user?.role ?? '')) return false
     if (item.requiresSubsidiaries && !hasSubsidiaries) return false
     if (item.hideIfSubsidiaries && hasSubsidiaries) return false
+    if (item.moduleKey && !isModuleEnabled(tenantConfig, item.moduleKey)) return false
     return true
   })
 

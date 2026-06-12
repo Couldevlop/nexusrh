@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation, Trans } from 'react-i18next'
-import { ArrowLeft, Loader2, Building2, Plus, Trash2, Ban, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Building2, Plus, Trash2, Ban, CheckCircle, Save } from 'lucide-react'
 import { api } from '@/lib/api'
+import { MODULE_DEFAULTS, type ModuleKey } from '@/lib/modules'
+import { ModuleTogglesGrid } from '@/components/shared/ModuleTogglesGrid'
 
 interface AgencyDetail {
   id: string; name: string; slug: string; status: string; city: string | null
@@ -26,6 +28,12 @@ export default function PlatformAgencyDetail() {
   const [showOfflineDialog, setShowOfflineDialog] = useState(false)
   const [offlineMessage, setOfflineMessage] = useState('')
   const [includeClients, setIncludeClients] = useState(false)
+
+  // Application en masse des modules aux tenants du cabinet.
+  // null = tous sélectionnés par défaut (liste résolue après chargement).
+  const [selectedTenantIds, setSelectedTenantIds] = useState<string[] | null>(null)
+  const [bulkModules, setBulkModules] = useState<Record<ModuleKey, boolean>>({ ...MODULE_DEFAULTS })
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<{ data: AgencyDetail }>({
     queryKey: ['platform-agency', id],
@@ -69,6 +77,18 @@ export default function PlatformAgencyDetail() {
     onError: (err: unknown) =>
       setMsg((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('agencyDetail.messages.error')),
   })
+  const bulkApply = useMutation({
+    mutationFn: (body: { tenantIds: string[]; modules: Record<ModuleKey, boolean> }) =>
+      api.post('/platform/tenants/modules-bulk', body).then((r) => r.data),
+    onSuccess: (res: { updated?: number; data?: { updated?: number } }) => {
+      const n = res?.updated ?? res?.data?.updated ?? 0
+      setBulkMsg(t('modules.bulk.applied', { count: n }))
+      // Les pages de détail tenant doivent refléter la nouvelle configuration.
+      void qc.invalidateQueries({ queryKey: ['tenant-modules'] })
+    },
+    onError: (err: unknown) =>
+      setBulkMsg((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('modules.bulk.error')),
+  })
   const reactivate = useMutation({
     mutationFn: (body: { includeClients: boolean }) =>
       api.post(`/agency/agencies/${id}/reactivate`, body).then((r) => r.data),
@@ -81,6 +101,8 @@ export default function PlatformAgencyDetail() {
 
   if (isLoading || !data) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}</div>
   const a = data.data
+  // Tenants ciblés par l'application en masse (tous cochés par défaut).
+  const selectedIds = selectedTenantIds ?? a.tenants.map((tn) => tn.id)
   const attachableTenants = (allTenants?.data ?? []).filter(
     (tn) => ['CIV', 'CI'].includes((tn.default_country_code ?? '').toUpperCase())
       && !a.tenants.some((at) => at.id === tn.id))
@@ -189,6 +211,76 @@ export default function PlatformAgencyDetail() {
           ))}
           {a.tenants.length === 0 && <p className="text-sm text-muted-foreground">{t('agencyDetail.clients.empty')}</p>}
         </div>
+      </div>
+
+      {/* Modules des tenants du cabinet (application en masse) */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h2 className="mb-1 text-lg font-semibold">{t('modules.bulk.title')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('modules.bulk.subtitle')}</p>
+        {a.tenants.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('modules.bulk.empty')}</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('modules.bulk.tenantsLabel')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkMsg(null)
+                    setSelectedTenantIds(selectedIds.length === a.tenants.length ? [] : a.tenants.map((tn) => tn.id))
+                  }}
+                  className="text-xs font-medium text-primary hover:underline">
+                  {selectedIds.length === a.tenants.length ? t('modules.bulk.unselectAll') : t('modules.bulk.selectAll')}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {a.tenants.map((tn) => (
+                  <label key={tn.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(tn.id)}
+                      onChange={() => {
+                        setBulkMsg(null)
+                        setSelectedTenantIds(
+                          selectedIds.includes(tn.id)
+                            ? selectedIds.filter((x) => x !== tn.id)
+                            : [...selectedIds, tn.id],
+                        )
+                      }}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    <span className="flex-1 font-medium">{tn.name}</span>
+                    <span className="text-xs text-muted-foreground">{tn.city ?? t('agencyDetail.clients.cityFallback')}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <ModuleTogglesGrid
+              values={bulkModules}
+              disabled={bulkApply.isPending}
+              onToggle={(key, enabled) => {
+                setBulkMsg(null)
+                setBulkModules((prev) => ({ ...prev, [key]: enabled }))
+              }}
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => bulkApply.mutate({ tenantIds: selectedIds, modules: bulkModules })}
+                disabled={bulkApply.isPending || selectedIds.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {bulkApply.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {t('modules.bulk.apply')}
+              </button>
+              {selectedIds.length === 0 && (
+                <span className="text-xs text-muted-foreground">{t('modules.bulk.noneSelected')}</span>
+              )}
+              {bulkMsg && <span className="text-sm font-medium">{bulkMsg}</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Membres */}

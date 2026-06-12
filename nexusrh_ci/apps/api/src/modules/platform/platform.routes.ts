@@ -13,6 +13,12 @@ import {
 import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
+import {
+  MODULE_KEYS,
+  MODULE_DEFAULTS,
+  resolveEnabledModules,
+  invalidateModulesCache,
+} from '../../services/tenant-modules.service.js'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 
@@ -44,6 +50,26 @@ const createTenantBodySchema = z.object({
 })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// OWASP A03 — carte { module: boolean } dont les clés sont STRICTEMENT bornées
+// à la liste canonique (aucune clé arbitraire ne peut entrer dans le jsonb).
+const modulesMapSchema = z.record(z.string(), z.boolean())
+  .refine(m => Object.keys(m).length > 0, 'Au moins un module requis')
+  .refine(
+    m => Object.keys(m).every(k => (MODULE_KEYS as readonly string[]).includes(k)),
+    'Clé de module inconnue',
+  )
+
+const tenantModulesSchema = z.object({ modules: modulesMapSchema }).strict()
+
+const modulesBulkSchema = z.object({
+  tenantIds: z.array(z.string().regex(UUID_RE)).max(200).optional(),
+  agencyId:  z.string().regex(UUID_RE).optional(),
+  modules:   modulesMapSchema,
+}).strict().refine(
+  b => (b.tenantIds?.length ?? 0) > 0 || !!b.agencyId,
+  'tenantIds ou agencyId requis',
+)
 
 // OWASP A09 — audit log non bloquant pour les actions super_admin sensibles
 // (création tenant, modifications, suspensions, suppressions). Ces événements
@@ -248,6 +274,121 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       }, request.ip ?? null)
       const res = await pool.query(`SELECT * FROM platform.tenants WHERE id = $1`, [id])
       return reply.send({ data: res.rows[0] })
+    },
+  })
+
+  // ── GET /platform/tenants/:id/modules ─────────────────────────────────────
+  // Carte complète des modules du tenant (résolue : surcharges + défauts).
+  fastify.get('/tenants/:id/modules', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Modules activés d\'un tenant' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
+      const res = await pool.query<{ enabled_modules: unknown }>(
+        `SELECT enabled_modules FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+      ).catch(() => ({ rows: [] as Array<{ enabled_modules: unknown }> }))
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      return reply.send({
+        data: {
+          modules:  resolveEnabledModules(res.rows[0].enabled_modules),
+          defaults: MODULE_DEFAULTS,
+          keys:     MODULE_KEYS,
+        },
+      })
+    },
+  })
+
+  // ── PUT /platform/tenants/:id/modules ─────────────────────────────────────
+  // Active/désactive des modules pour UN tenant. Les clés non fournies ne sont
+  // pas modifiées (merge jsonb). Action sensible → audit log obligatoire.
+  fastify.put('/tenants/:id/modules', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Activer/désactiver les modules d\'un tenant' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
+      // OWASP A03 — clés strictement bornées à la liste canonique des modules.
+      const parsed = tenantModulesSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Modules invalides',
+          issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const res = await pool.query<{ id: string; enabled_modules: unknown }>(
+        `UPDATE platform.tenants
+            SET enabled_modules = COALESCE(enabled_modules, '{}'::jsonb) || $2::jsonb,
+                updated_at = now()
+          WHERE id = $1
+          RETURNING id, enabled_modules`,
+        [id, JSON.stringify(parsed.data.modules)],
+      )
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      invalidateModulesCache()
+      auditLogPlatform(request.user.sub, 'tenant.modules_updated', 'tenant', id,
+        { modules: parsed.data.modules }, request.ip ?? null)
+      return reply.send({
+        data: { modules: resolveEnabledModules(res.rows[0].enabled_modules) },
+        message: 'Modules mis à jour',
+      })
+    },
+  })
+
+  // ── POST /platform/tenants/modules-bulk ───────────────────────────────────
+  // Applique les mêmes activations/désactivations à PLUSIEURS tenants — cas
+  // d'usage : un ou plusieurs tenants clients d'un cabinet de recrutement
+  // (agencyId = tous les tenants rattachés, ou tenantIds = sélection).
+  fastify.post('/tenants/modules-bulk', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Modules en masse (tenants d\'un cabinet ou sélection)' },
+    handler: async (request, reply) => {
+      const parsed = modulesBulkSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Requête invalide',
+          issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const { agencyId, tenantIds = [], modules } = parsed.data
+
+      // Cible = sélection explicite ∪ tenants actifs rattachés au cabinet.
+      const targets = new Set<string>(tenantIds)
+      if (agencyId) {
+        const linked = await pool.query<{ tenant_id: string }>(
+          `SELECT tenant_id FROM platform.agency_tenants
+            WHERE agency_id = $1 AND detached_at IS NULL`,
+          [agencyId],
+        ).catch(() => ({ rows: [] as Array<{ tenant_id: string }> }))
+        for (const r of linked.rows) targets.add(r.tenant_id)
+      }
+      if (targets.size === 0) {
+        return reply.status(404).send({ error: 'Aucun tenant cible (cabinet sans tenant rattaché ?)' })
+      }
+
+      const results: Array<{ tenantId: string; ok: boolean }> = []
+      for (const tenantId of targets) {
+        const res = await pool.query(
+          `UPDATE platform.tenants
+              SET enabled_modules = COALESCE(enabled_modules, '{}'::jsonb) || $2::jsonb,
+                  updated_at = now()
+            WHERE id = $1 RETURNING id`,
+          [tenantId, JSON.stringify(modules)],
+        ).catch(() => ({ rows: [] as Array<{ id: string }> }))
+        results.push({ tenantId, ok: !!res.rows[0] })
+      }
+      invalidateModulesCache()
+      auditLogPlatform(request.user.sub, 'tenant.modules_bulk_updated', 'tenant', agencyId ?? null,
+        { agencyId: agencyId ?? null, tenantCount: results.length, modules }, request.ip ?? null)
+      return reply.send({
+        data: results,
+        updated: results.filter(r => r.ok).length,
+        message: `Modules appliqués à ${results.filter(r => r.ok).length} tenant(s)`,
+      })
     },
   })
 

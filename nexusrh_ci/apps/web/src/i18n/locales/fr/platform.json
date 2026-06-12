@@ -285,6 +285,86 @@
       "inactive": "Inactif"
     }
   },
+  "modules": {
+    "title": "Modules",
+    "subtitle": "Activez ou désactivez les modules visibles par ce tenant. Tout est actif par défaut, sauf la Vue DG 360° (opt-in).",
+    "dgViewBadge": "Opt-in",
+    "save": "Enregistrer les modules",
+    "saving": "Enregistrement…",
+    "saved": "Modules mis à jour ✓",
+    "saveError": "Erreur lors de l'enregistrement des modules",
+    "loadError": "Impossible de charger les modules de ce tenant.",
+    "items": {
+      "contracts": {
+        "label": "Contrats",
+        "desc": "Contrats OHADA (CDI, CDD, apprentissage), avenants et documents associés."
+      },
+      "payroll": {
+        "label": "Paie",
+        "desc": "Moteur de paie CI, bulletins, périodes et clôtures."
+      },
+      "absences": {
+        "label": "Absences & congés",
+        "desc": "Demandes, approbations, soldes et planning des absences."
+      },
+      "expenses": {
+        "label": "Notes de frais",
+        "desc": "Saisie, validation et remboursement des notes de frais."
+      },
+      "recruitment": {
+        "label": "Recrutement",
+        "desc": "Offres d'emploi, candidatures et pipeline kanban."
+      },
+      "onboarding": {
+        "label": "Onboarding",
+        "desc": "Parcours d'intégration des nouvelles recrues."
+      },
+      "training": {
+        "label": "Formation",
+        "desc": "Catalogue, sessions, inscriptions et remboursements FDFP."
+      },
+      "careers": {
+        "label": "Carrières & compétences",
+        "desc": "Référentiel de compétences, évaluations et matrice 9-box."
+      },
+      "cnps": {
+        "label": "CNPS & déclarations",
+        "desc": "Déclarations mensuelles e-CNPS et DISA annuelle."
+      },
+      "mobile_money": {
+        "label": "Mobile Money",
+        "desc": "Campagnes de virement salaires Wave, MTN MoMo et Orange Money."
+      },
+      "reporting": {
+        "label": "Reporting",
+        "desc": "KPIs, tableaux de bord analytiques et exports."
+      },
+      "integrations": {
+        "label": "Connectivité & intégrations",
+        "desc": "Webhooks sortants, clés API entrantes et connecteurs REST."
+      },
+      "ai": {
+        "label": "Assistant IA",
+        "desc": "Assistant RH Claude, génération de documents et scoring rétention."
+      },
+      "dg_view": {
+        "label": "Vue DG 360°",
+        "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."
+      }
+    },
+    "bulk": {
+      "title": "Modules des tenants du cabinet",
+      "subtitle": "Appliquez la même configuration de modules aux entreprises clientes rattachées au cabinet.",
+      "tenantsLabel": "Entreprises ciblées",
+      "selectAll": "Tout sélectionner",
+      "unselectAll": "Tout désélectionner",
+      "apply": "Appliquer aux tenants sélectionnés",
+      "applied": "{{count}} tenant(s) mis à jour ✓",
+      "error": "Erreur lors de l'application des modules",
+      "empty": "Aucune entreprise rattachée — rien à configurer.",
+      "noneSelected": "Sélectionnez au moins une entreprise."
+    }
+  },
   "settings": {
     "title": "Paramètres Plateforme",
     "subtitle": "Configuration globale NexusRH CI · v{{version}} · {{environment}}",

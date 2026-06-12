@@ -1,0 +1,118 @@
+{
+  "overview": {
+    "title": "360° Overview",
+    "subtitle": "Real-time company steering",
+    "loading": "Loading 360° overview…",
+    "loadError": "Unable to load the 360° overview. Please try again later.",
+    "kpi": {
+      "activeEmployees": "Active headcount",
+      "activeEmployeesSub": "{{count}} departments",
+      "payrollMass": "Payroll mass",
+      "payrollMassSub": "Net paid: {{net}}",
+      "evolutionSub": "vs previous month",
+      "absentToday": "Absent today",
+      "absenteeismRate": "Absenteeism rate: {{rate}} %",
+      "pendingApprovals": "Pending approvals",
+      "pendingDetail": "{{absences}} leave · {{expenses}} expenses",
+      "openJobs": "Open positions",
+      "applications": "{{count}} applications",
+      "trainings": "Upcoming trainings",
+      "enrollments": "{{count}} active enrollments",
+      "expensesApproved": "Approved expenses (month)",
+      "expensesApprovedSub": "Expense reports approved this month"
+    },
+    "charts": {
+      "headcount": "Headcount evolution",
+      "headcountSub": "Last 12 months",
+      "payroll": "Payroll over 12 months",
+      "payrollSub": "Gross / net (bars) · CNPS / ITS (lines) — thousands FCFA",
+      "absencesByType": "Leave by type",
+      "absencesByTypeSub": "Breakdown of leave count",
+      "byDepartment": "Headcount by department",
+      "byDepartmentSub": "Current distribution",
+      "pipeline": "Recruitment pipeline",
+      "pipelineSub": "Applications by stage",
+      "noData": "No data available",
+      "tooltipThousandsFcfa": "{{value}} k FCFA",
+      "daysCount": "{{count}} days"
+    },
+    "series": {
+      "gross": "Gross",
+      "net": "Net",
+      "cnps": "CNPS",
+      "its": "ITS",
+      "employees": "Headcount",
+      "applications": "Applications",
+      "absences": "Leave"
+    },
+    "payrollStatus": {
+      "title": "Payroll status",
+      "subtitle": "Last 3 periods",
+      "validated": "Validated",
+      "validatedBy": "by {{name}} on {{date}}",
+      "inProgress": "In progress",
+      "gross": "Gross",
+      "net": "Net",
+      "empty": "No payroll period"
+    },
+    "atRisk": {
+      "title": "Employees to watch",
+      "subtitle": "Attrition and burnout risk (AI analysis)",
+      "employee": "Employee",
+      "jobTitle": "Job title",
+      "burnout": "Burnout risk",
+      "retention": "Attrition risk score",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "na": "N/A",
+      "empty": "No at-risk employee detected"
+    }
+  },
+  "activity": {
+    "title": "Managers activity",
+    "subtitle": "Consolidated action log, grouped by category",
+    "loading": "Loading activity log…",
+    "loadError": "Unable to load the activity log.",
+    "filters": {
+      "actor": "Manager",
+      "allActors": "All managers",
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "custom": "Custom",
+      "from": "From",
+      "to": "To"
+    },
+    "totalActions": "{{count}} action(s) over the period",
+    "period": "Period: {{from}} → {{to}}",
+    "empty": "No activity over the selected period",
+    "table": {
+      "date": "Date / time",
+      "actor": "Actor",
+      "action": "Action",
+      "details": "Details"
+    },
+    "noDetails": "—",
+    "categories": {
+      "payroll": "Payroll",
+      "payslip": "Payslips",
+      "absence": "Leave",
+      "expense": "Expense reports",
+      "employee": "Employees",
+      "reporting": "Reporting",
+      "ai": "AI Assistant",
+      "auth": "Sign-ins",
+      "settings": "Settings",
+      "dg": "Executive view",
+      "recruitment": "Recruitment",
+      "onboarding": "Onboarding",
+      "training": "Training",
+      "contract": "Contracts",
+      "cnps": "CNPS",
+      "user": "Users",
+      "mobile_money": "Mobile Money",
+      "career": "Careers"
+    }
+  }
+}

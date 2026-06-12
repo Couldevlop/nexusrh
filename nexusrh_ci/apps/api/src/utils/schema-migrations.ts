@@ -344,6 +344,11 @@ export async function ensurePlatformSchema(): Promise<void> {
     // ── Surcharge MFA durcissante par tenant (ne peut qu'imposer le MFA) ──────
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS mfa_required boolean NOT NULL DEFAULT false`,
 
+    // ── Modules activables par tenant (super_admin) ───────────────────────────
+    // jsonb de surcharges { module: boolean } — '{}' = défauts (tout actif sauf
+    // la vue DG 360°, opt-in). Cf. services/tenant-modules.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
+
     // ── Cycle de vie du mot de passe côté super_admin ─────────────────────────
     `ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
     `CREATE TABLE IF NOT EXISTS platform.password_history (

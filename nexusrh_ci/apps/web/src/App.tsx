@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'react'
 import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
 import { useAuthStore } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard } from '@/guards/RoleGuard'
+import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
@@ -36,6 +37,10 @@ const AgencySettings   = lazy(() => import('@/pages/agency/AgencySettings'))
 
 // ── RH Dashboard ─────────────────────────────────────────────────────────────
 const DashboardPage    = lazy(() => import('@/pages/dashboard/DashboardPage'))
+
+// ── Vue DG (Directeur Général) ───────────────────────────────────────────────
+const DgDashboardPage  = lazy(() => import('@/pages/dg/DgDashboardPage'))
+const DgActivityPage   = lazy(() => import('@/pages/dg/DgActivityPage'))
 
 // ── Employees ─────────────────────────────────────────────────────────────────
 const EmployeesPage    = lazy(() => import('@/pages/employees/EmployeesPage'))
@@ -113,6 +118,7 @@ function RootRedirect() {
   // Cabinet en contexte cabinet → portail cabinet ; en session scopée (admin
   // délégué sur un tenant) → app RH normale.
   if (user.actorType === 'agency' && !activeTenant) return <Navigate to="/agency/dashboard" replace />
+  if (user.role === 'dg') return <Navigate to="/dg" replace />
   if (user.role === 'employee') return <Navigate to="/mon-espace" replace />
   return <Navigate to="/dashboard" replace />
 }
@@ -166,6 +172,22 @@ export default function App() {
           }>
             <Route path="dashboard" element={<DashboardPage />} />
 
+            {/* ── Vue DG 360° (rôle dg + module opt-in dg_view) ── */}
+            <Route path="dg" element={
+              <RoleGuard allowedRoles={['dg']}>
+                <ModuleGuard moduleKey="dg_view">
+                  <DgDashboardPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+            <Route path="dg/activity" element={
+              <RoleGuard allowedRoles={['dg']}>
+                <ModuleGuard moduleKey="dg_view">
+                  <DgActivityPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
             <Route path="employees" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
                 <EmployeesPage />
@@ -179,71 +201,95 @@ export default function App() {
 
             <Route path="payroll" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <RedirectIfSubsidiaries>
-                  <PayrollPage />
-                </RedirectIfSubsidiaries>
+                <ModuleGuard moduleKey="payroll">
+                  <RedirectIfSubsidiaries>
+                    <PayrollPage />
+                  </RedirectIfSubsidiaries>
+                </ModuleGuard>
               </RoleGuard>
             } />
             <Route path="payroll/multi-filiales" element={
               <RoleGuard allowedRoles={['admin','hr_manager']}>
-                <PayrollMultiSitesPage />
+                <ModuleGuard moduleKey="payroll">
+                  <PayrollMultiSitesPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
             <Route path="raf/periods" element={
               <RoleGuard allowedRoles={['raf_site','admin','hr_manager']}>
-                <RafPeriodsPage />
+                <ModuleGuard moduleKey="payroll">
+                  <RafPeriodsPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
             <Route path="payroll/payslips" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <PaySlipsPage />
+                <ModuleGuard moduleKey="payroll">
+                  <PaySlipsPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
             <Route path="payroll/simulateur-its" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer']}>
-                <ItsSimulatorPage />
+                <ModuleGuard moduleKey="payroll">
+                  <ItsSimulatorPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="absences" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
-                <AbsencesPage />
+                <ModuleGuard moduleKey="absences">
+                  <AbsencesPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="expenses-rh" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager']}>
-                <ExpensesPage />
+                <ModuleGuard moduleKey="expenses">
+                  <ExpensesPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="recruitment" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
-                <RecruitmentPage />
+                <ModuleGuard moduleKey="recruitment">
+                  <RecruitmentPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="onboarding" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
-                <OnboardingPage />
+                <ModuleGuard moduleKey="onboarding">
+                  <OnboardingPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="training" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <TrainingPage />
+                <ModuleGuard moduleKey="training">
+                  <TrainingPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="careers" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
-                <CareersPage />
+                <ModuleGuard moduleKey="careers">
+                  <CareersPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="reporting" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <ReportingPage />
+                <ModuleGuard moduleKey="reporting">
+                  <ReportingPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
@@ -255,24 +301,32 @@ export default function App() {
 
             <Route path="contracts" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <ContractsPage />
+                <ModuleGuard moduleKey="contracts">
+                  <ContractsPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="cnps" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
-                <CnpsPage />
+                <ModuleGuard moduleKey="cnps">
+                  <CnpsPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
             <Route path="cnps/audit" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer']}>
-                <CnpsAuditPage />
+                <ModuleGuard moduleKey="cnps">
+                  <CnpsAuditPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 
             <Route path="mobile-money" element={
               <RoleGuard allowedRoles={['admin','hr_manager']}>
-                <MobileMoneyPage />
+                <ModuleGuard moduleKey="mobile_money">
+                  <MobileMoneyPage />
+                </ModuleGuard>
               </RoleGuard>
             } />
 

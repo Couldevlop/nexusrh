@@ -12,6 +12,9 @@ export interface TenantConfig {
   hasSubsidiaries?: boolean
   payrollMode?: 'single_country' | 'multi_country'
   defaultCountryCode?: string
+  // Modules activés pour ce tenant (résolus côté API — pilotés par le
+  // super_admin). Absent = défauts (tout actif sauf la vue DG 360°).
+  enabledModules?: Record<string, boolean>
 }
 
 // Branding d'un cabinet de recrutement (persistant pendant tout le parcours
@@ -28,7 +31,7 @@ export interface AuthUser {
   sub: string
   tenantId: string | null
   schemaName: string
-  role: 'super_admin' | 'admin' | 'hr_manager' | 'hr_officer' | 'manager' | 'employee' | 'readonly' | 'raf_site' | 'agency_owner' | 'agency_member'
+  role: 'super_admin' | 'admin' | 'hr_manager' | 'hr_officer' | 'manager' | 'employee' | 'readonly' | 'raf_site' | 'dg' | 'agency_owner' | 'agency_member'
   email: string
   firstName: string
   lastName: string

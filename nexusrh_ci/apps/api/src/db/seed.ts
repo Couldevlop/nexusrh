@@ -406,6 +406,15 @@ async function runSeed(): Promise<void> {
     [sotraSlug],
   )
 
+  // Vue DG 360° : module opt-in (désactivé par défaut partout) — activé sur le
+  // tenant de démo SOTRA pour les présentations (compte dg@sotra.ci ci-dessous).
+  await pool.query(
+    `UPDATE platform.tenants
+        SET enabled_modules = COALESCE(enabled_modules, '{}'::jsonb) || '{"dg_view": true}'::jsonb
+      WHERE slug = $1`,
+    [sotraSlug],
+  ).catch(() => { /* colonne enabled_modules absente (base pré-migration) : non bloquant */ })
+
   const sotraTenantId = sotraTenantRes.rows[0]?.id ?? ''
   console.log('[3/10] Tenant SOTRA créé')
 
@@ -428,7 +437,8 @@ async function runSeed(): Promise<void> {
       ('manager@sotra.ci',  $2, 'Chef',      'Dépôt',       'manager',    true, now()),
       ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now()),
       ('raf.abidjan@sotra.ci', $1, 'RAF', 'Abidjan', 'raf_site', true, now()),
-      ('raf.bouake@sotra.ci',  $1, 'RAF', 'Bouaké',  'raf_site', true, now())
+      ('raf.bouake@sotra.ci',  $1, 'RAF', 'Bouaké',  'raf_site', true, now()),
+      ('dg@sotra.ci',          $1, 'Directeur', 'Général', 'dg', true, now())
     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [adminHash, managerHash, employeeHash])
 

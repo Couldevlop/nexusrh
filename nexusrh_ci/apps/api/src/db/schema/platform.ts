@@ -1,4 +1,4 @@
-import { pgSchema, uuid, varchar, boolean, integer, timestamp, text, customType } from 'drizzle-orm/pg-core'
+import { pgSchema, uuid, varchar, boolean, integer, timestamp, text, jsonb, customType } from 'drizzle-orm/pg-core'
 
 const bytea = customType<{ data: Buffer; default: false }>({
   dataType() {
@@ -31,6 +31,8 @@ export const tenants = platformSchema.table('tenants', {
   logoUrl:       text('logo_url'),
   faviconUrl:    text('favicon_url'),
   customDomain:  varchar('custom_domain', { length: 255 }),
+  // modules activables (surcharges { module: boolean } — '{}' = défauts)
+  enabledModules: jsonb('enabled_modules').notNull().default('{}'),
   // dates
   trialEndsAt:   timestamp('trial_ends_at', { withTimezone: true }),
   createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
