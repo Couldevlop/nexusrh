@@ -86,6 +86,7 @@ describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
     expect(moduleKeyForUrl('/discipline')).toBe('discipline')
     expect(moduleKeyForUrl('/offboarding')).toBe('offboarding')
     expect(moduleKeyForUrl('/climate/surveys')).toBe('climate')
+    expect(moduleKeyForUrl('/succession/plans')).toBe('succession')
     expect(moduleKeyForUrl('/dg/overview')).toBe('dg_view')
   })
 

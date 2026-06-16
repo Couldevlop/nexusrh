@@ -325,6 +325,30 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_climate_resp_survey_idx" ON "${schemaName}".climate_responses(survey_id)`,
 
+    // ── Plans de succession & viviers de talents ──────────────────────────────
+    // Postes clés à couvrir + candidats successeurs avec niveau de préparation.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".succession_plans (
+      id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      position_title      varchar(200) NOT NULL,
+      incumbent_employee_id uuid,
+      criticality         varchar(20) NOT NULL DEFAULT 'medium',
+      status              varchar(20) NOT NULL DEFAULT 'active',
+      notes               text,
+      created_by          uuid,
+      created_at          timestamptz NOT NULL DEFAULT now(),
+      updated_at          timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".succession_candidates (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_id     uuid NOT NULL,
+      employee_id uuid NOT NULL,
+      readiness   varchar(20) NOT NULL DEFAULT 'medium_term',
+      notes       text,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(plan_id, employee_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_succession_cand_plan_idx" ON "${schemaName}".succession_candidates(plan_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

@@ -60,6 +60,7 @@ import orgChartRoutes from './modules/org-chart/org-chart.routes.js'
 import disciplineRoutes from './modules/discipline/discipline.routes.js'
 import offboardingRoutes from './modules/offboarding/offboarding.routes.js'
 import climateRoutes from './modules/climate/climate.routes.js'
+import successionRoutes from './modules/succession/succession.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
@@ -376,6 +377,8 @@ export async function buildApp() {
   await fastify.register(offboardingRoutes,  { prefix: '/offboarding' })
   // Enquêtes climat social (engagement) — réponses confidentielles, résultats agrégés.
   await fastify.register(climateRoutes,      { prefix: '/climate' })
+  // Plans de succession & viviers de talents.
+  await fastify.register(successionRoutes,   { prefix: '/succession' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

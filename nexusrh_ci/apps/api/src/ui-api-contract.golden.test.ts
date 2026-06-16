@@ -51,6 +51,7 @@ const PREFIX: Record<string, string> = {
   'discipline/discipline.routes.ts': '/discipline',
   'offboarding/offboarding.routes.ts': '/offboarding',
   'climate/climate.routes.ts': '/climate',
+  'succession/succession.routes.ts': '/succession',
   'dg/dg.routes.ts': '/dg',
 }
 

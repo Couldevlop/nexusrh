@@ -99,6 +99,9 @@ const OffboardingPage = lazy(() => import('@/pages/offboarding/OffboardingPage')
 const ClimatePage = lazy(() => import('@/pages/climate/ClimatePage'))
 const MonClimat   = lazy(() => import('@/pages/mon-espace/MonClimat'))
 
+// ── Plans de succession ───────────────────────────────────────────────────────
+const SuccessionPage = lazy(() => import('@/pages/succession/SuccessionPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -377,6 +380,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <ModuleGuard moduleKey="climate">
                   <ClimatePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="succession" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ModuleGuard moduleKey="succession">
+                  <SuccessionPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

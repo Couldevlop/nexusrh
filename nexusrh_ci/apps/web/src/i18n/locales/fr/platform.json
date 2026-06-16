@@ -363,6 +363,10 @@
         "label": "Climat social",
         "desc": "Enquêtes d'engagement : campagnes, réponses confidentielles et résultats agrégés (anonymat préservé)."
       },
+      "succession": {
+        "label": "Plans de succession",
+        "desc": "Postes clés, viviers de talents et successeurs avec niveau de préparation et synthèse de couverture."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

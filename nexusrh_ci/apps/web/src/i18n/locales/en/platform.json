@@ -363,6 +363,10 @@
         "label": "Employee climate",
         "desc": "Engagement surveys: campaigns, confidential responses and aggregated results (anonymity preserved)."
       },
+      "succession": {
+        "label": "Succession plans",
+        "desc": "Key positions, talent pools and successors with readiness level and coverage summary."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

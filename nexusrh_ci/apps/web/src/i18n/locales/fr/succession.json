@@ -1,0 +1,52 @@
+{
+  "title": "Plans de succession",
+  "subtitle": "Postes clés, viviers de talents et préparation des successeurs.",
+  "new": "Nouveau plan",
+  "empty": "Aucun plan de succession.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les plans.",
+  "criticality": {
+    "low": "Faible",
+    "medium": "Moyenne",
+    "high": "Élevée",
+    "critical": "Critique"
+  },
+  "readiness": {
+    "ready_now": "Prêt maintenant",
+    "short_term": "Court terme",
+    "medium_term": "Moyen terme",
+    "long_term": "Long terme"
+  },
+  "coverage": {
+    "atRisk": "Relève à risque",
+    "covered": "Relève assurée",
+    "candidates": "{{count}} successeur(s)",
+    "readyNow": "{{count}} prêt(s)"
+  },
+  "form": {
+    "title": "Créer un plan de succession",
+    "position": "Poste clé",
+    "positionPlaceholder": "ex. Directeur Financier",
+    "incumbent": "Titulaire actuel (facultatif)",
+    "incumbentPlaceholder": "— Aucun —",
+    "criticality": "Criticité",
+    "submit": "Créer",
+    "submitting": "Création…",
+    "cancel": "Annuler"
+  },
+  "candidates": {
+    "title": "Vivier de successeurs",
+    "add": "Ajouter un successeur",
+    "employee": "Salarié",
+    "employeePlaceholder": "— Sélectionner —",
+    "readiness": "Préparation",
+    "empty": "Aucun successeur identifié."
+  },
+  "actions": {
+    "archive": "Archiver",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer ce plan et son vivier ?",
+    "removeCandidate": "Retirer"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}

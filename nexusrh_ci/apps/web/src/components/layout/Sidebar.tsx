@@ -6,7 +6,7 @@ import {
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
-  Eye, Activity, Network, Gavel, DoorOpen, MessageSquare,
+  Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
@@ -52,6 +52,7 @@ const HR_NAV: NavItem[] = [
   { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'onboarding' },
   { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'training' },
   { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'careers' },
+  { to: '/succession',    labelKey: 'succession', icon: GitBranch,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'succession' },
   { to: '/discipline',    labelKey: 'discipline', icon: Gavel,      end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'discipline' },
   { to: '/offboarding',   labelKey: 'offboarding', icon: DoorOpen,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'offboarding' },
   { to: '/climate',       labelKey: 'climate',    icon: MessageSquare, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'climate' },
