@@ -359,6 +359,10 @@
         "label": "Offboarding",
         "desc": "Departures: reasons, return checklist and final settlement calculation (CI labour code)."
       },
+      "climate": {
+        "label": "Employee climate",
+        "desc": "Engagement surveys: campaigns, confidential responses and aggregated results (anonymity preserved)."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

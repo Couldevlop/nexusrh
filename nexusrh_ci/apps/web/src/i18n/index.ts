@@ -37,6 +37,7 @@ import frDg from './locales/fr/dg.json'
 import frOrgChart from './locales/fr/orgChart.json'
 import frDiscipline from './locales/fr/discipline.json'
 import frOffboarding from './locales/fr/offboarding.json'
+import frClimate from './locales/fr/climate.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -66,6 +67,7 @@ import enDg from './locales/en/dg.json'
 import enOrgChart from './locales/en/orgChart.json'
 import enDiscipline from './locales/en/discipline.json'
 import enOffboarding from './locales/en/offboarding.json'
+import enClimate from './locales/en/climate.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -75,7 +77,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate',
 ] as const
 
 const resources = {
@@ -88,7 +90,7 @@ const resources = {
     settings: frSettings, platform: frPlatform, agency: frAgency,
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
-    offboarding: frOffboarding,
+    offboarding: frOffboarding, climate: frClimate,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -99,7 +101,7 @@ const resources = {
     settings: enSettings, platform: enPlatform, agency: enAgency,
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
-    offboarding: enOffboarding,
+    offboarding: enOffboarding, climate: enClimate,
   },
 } as const
 

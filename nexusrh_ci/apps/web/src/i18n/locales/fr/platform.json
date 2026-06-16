@@ -359,6 +359,10 @@
         "label": "Processus de sortie",
         "desc": "Départs : motifs, checklist de restitution et calcul du solde de tout compte (Code du travail CI)."
       },
+      "climate": {
+        "label": "Climat social",
+        "desc": "Enquêtes d'engagement : campagnes, réponses confidentielles et résultats agrégés (anonymat préservé)."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

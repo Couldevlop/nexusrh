@@ -1,0 +1,68 @@
+{
+  "title": "Employee climate",
+  "subtitle": "Engagement surveys — confidential responses, aggregated results.",
+  "anonymousNote": "Anonymity preserved: only aggregated statistics are shown, never an individual response.",
+  "new": "New survey",
+  "empty": "No survey.",
+  "loading": "Loading…",
+  "loadError": "Unable to load surveys.",
+  "columns": {
+    "title": "Survey",
+    "status": "Status",
+    "responses": "Responses",
+    "actions": "Actions"
+  },
+  "statuses": {
+    "draft": "Draft",
+    "open": "Open",
+    "closed": "Closed"
+  },
+  "questionTypes": {
+    "scale": "Scale (1–5)",
+    "boolean": "Yes / No",
+    "text": "Free text"
+  },
+  "form": {
+    "title": "Create a survey",
+    "name": "Survey title",
+    "description": "Description (optional)",
+    "anonymous": "Anonymous responses",
+    "questions": "Questions",
+    "questionLabel": "Question label",
+    "addQuestion": "Add a question",
+    "removeQuestion": "Remove",
+    "submit": "Create",
+    "submitting": "Creating…",
+    "cancel": "Cancel"
+  },
+  "actions": {
+    "open": "Open",
+    "close": "Close",
+    "results": "Results",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this survey and its responses?"
+  },
+  "results": {
+    "title": "Results",
+    "responseCount": "{{count}} response",
+    "responseCount_plural": "{{count}} responses",
+    "average": "Average",
+    "yesRate": "Yes rate",
+    "noData": "No response yet.",
+    "answersCount": "{{count}} free response(s)"
+  },
+  "self": {
+    "title": "Surveys to complete",
+    "subtitle": "Your opinion matters — your answers are confidential.",
+    "empty": "No survey to complete right now.",
+    "alreadyDone": "Already answered — thank you!",
+    "respond": "Respond",
+    "submit": "Send my answers",
+    "submitting": "Sending…",
+    "thanks": "Thank you for your participation!",
+    "yes": "Yes",
+    "no": "No",
+    "textPlaceholder": "Your answer…"
+  },
+  "saveError": "Error while saving"
+}

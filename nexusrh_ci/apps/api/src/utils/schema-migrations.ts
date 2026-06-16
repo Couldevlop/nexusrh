@@ -299,6 +299,32 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON "${schemaName}".offboarding_cases(employee_id, departure_date DESC)`,
 
+    // ── Enquêtes climat social (engagement) — réponses confidentielles ────────
+    // Résultats agrégés uniquement (jamais de réponse nominative exposée).
+    // employee_id sert au dédoublonnage + taux de participation, jamais restitué.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".climate_surveys (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title       varchar(200) NOT NULL,
+      description text,
+      status      varchar(20) NOT NULL DEFAULT 'draft',
+      anonymous   boolean NOT NULL DEFAULT true,
+      questions   jsonb NOT NULL DEFAULT '[]',
+      start_date  date,
+      end_date    date,
+      created_by  uuid,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".climate_responses (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      survey_id    uuid NOT NULL,
+      employee_id  uuid NOT NULL,
+      answers      jsonb NOT NULL DEFAULT '{}',
+      submitted_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(survey_id, employee_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_climate_resp_survey_idx" ON "${schemaName}".climate_responses(survey_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

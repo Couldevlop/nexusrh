@@ -792,6 +792,30 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON ${s}.offboarding_cases(employee_id, departure_date DESC)`)
 
+  // Enquêtes climat social (engagement) — réponses confidentielles, résultats agrégés
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.climate_surveys (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title       varchar(200) NOT NULL,
+    description text,
+    status      varchar(20) NOT NULL DEFAULT 'draft',
+    anonymous   boolean NOT NULL DEFAULT true,
+    questions   jsonb NOT NULL DEFAULT '[]',
+    start_date  date,
+    end_date    date,
+    created_by  uuid,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.climate_responses (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id    uuid NOT NULL,
+    employee_id  uuid NOT NULL,
+    answers      jsonb NOT NULL DEFAULT '{}',
+    submitted_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(survey_id, employee_id)
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_climate_resp_survey_idx" ON ${s}.climate_responses(survey_id)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket } from 'lucide-react'
+import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/mon-espace/formation',    labelKey: 'nav.training',    icon: BookOpen },
   { to: '/mon-espace/carriere',     labelKey: 'nav.career',      icon: TrendingUp },
   { to: '/mon-espace/offres',       labelKey: 'nav.offers',      icon: Briefcase },
+  { to: '/mon-espace/climat',       labelKey: 'nav.climate',     icon: MessageSquare },
   { to: '/mon-espace/profil',       labelKey: 'nav.profile',     icon: User },
 ]
 
@@ -27,6 +28,7 @@ const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/mon-espace/formation': 'nav.titles.training',
   '/mon-espace/carriere': 'nav.titles.career',
   '/mon-espace/offres': 'nav.titles.offers',
+  '/mon-espace/climat': 'nav.titles.climate',
   '/mon-espace/profil': 'nav.titles.profile',
 }
 

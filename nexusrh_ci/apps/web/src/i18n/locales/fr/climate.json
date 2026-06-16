@@ -1,0 +1,68 @@
+{
+  "title": "Climat social",
+  "subtitle": "Enquêtes d'engagement — réponses confidentielles, résultats agrégés.",
+  "anonymousNote": "Anonymat préservé : seules des statistiques agrégées sont affichées, jamais de réponse nominative.",
+  "new": "Nouvelle enquête",
+  "empty": "Aucune enquête.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les enquêtes.",
+  "columns": {
+    "title": "Enquête",
+    "status": "Statut",
+    "responses": "Réponses",
+    "actions": "Actions"
+  },
+  "statuses": {
+    "draft": "Brouillon",
+    "open": "Ouverte",
+    "closed": "Clôturée"
+  },
+  "questionTypes": {
+    "scale": "Échelle (1–5)",
+    "boolean": "Oui / Non",
+    "text": "Texte libre"
+  },
+  "form": {
+    "title": "Créer une enquête",
+    "name": "Titre de l'enquête",
+    "description": "Description (facultatif)",
+    "anonymous": "Réponses anonymes",
+    "questions": "Questions",
+    "questionLabel": "Libellé de la question",
+    "addQuestion": "Ajouter une question",
+    "removeQuestion": "Retirer",
+    "submit": "Créer",
+    "submitting": "Création…",
+    "cancel": "Annuler"
+  },
+  "actions": {
+    "open": "Ouvrir",
+    "close": "Clôturer",
+    "results": "Résultats",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer cette enquête et ses réponses ?"
+  },
+  "results": {
+    "title": "Résultats",
+    "responseCount": "{{count}} réponse",
+    "responseCount_plural": "{{count}} réponses",
+    "average": "Moyenne",
+    "yesRate": "Taux de oui",
+    "noData": "Aucune réponse pour le moment.",
+    "answersCount": "{{count}} réponse(s) libre(s)"
+  },
+  "self": {
+    "title": "Enquêtes à compléter",
+    "subtitle": "Votre avis compte — vos réponses sont confidentielles.",
+    "empty": "Aucune enquête à compléter pour le moment.",
+    "alreadyDone": "Déjà répondu — merci !",
+    "respond": "Répondre",
+    "submit": "Envoyer mes réponses",
+    "submitting": "Envoi…",
+    "thanks": "Merci pour votre participation !",
+    "yes": "Oui",
+    "no": "Non",
+    "textPlaceholder": "Votre réponse…"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}
