@@ -1,0 +1,23 @@
+{
+  "title": "Organigramme",
+  "subtitle": "Organigramme dynamique, mis à jour automatiquement selon les mouvements de personnel.",
+  "tabs": {
+    "departments": "Par service",
+    "reporting": "Hiérarchie managériale"
+  },
+  "export": {
+    "pdf": "Exporter en PDF",
+    "svg": "Exporter en image (SVG)",
+    "exporting": "Export en cours…"
+  },
+  "node": {
+    "manager": "Resp. : {{name}}",
+    "headcount": "{{count}} agent",
+    "headcount_plural": "{{count}} agents",
+    "noManager": "Responsable non défini",
+    "noTitle": "Poste non renseigné"
+  },
+  "empty": "Aucune donnée d'organigramme. Ajoutez des services et rattachez des employés pour voir l'organigramme.",
+  "loadError": "Impossible de charger l'organigramme.",
+  "loading": "Chargement de l'organigramme…"
+}

@@ -1,0 +1,53 @@
+{
+  "title": "Gestion disciplinaire",
+  "subtitle": "Sanctions et procédures disciplinaires — accès restreint, données confidentielles.",
+  "restricted": "Données sensibles (niveau 4) — accès et exports journalisés.",
+  "new": "Nouvelle sanction",
+  "empty": "Aucune sanction enregistrée.",
+  "loadError": "Impossible de charger les sanctions.",
+  "loading": "Chargement…",
+  "columns": {
+    "employee": "Salarié",
+    "type": "Type",
+    "date": "Date",
+    "status": "Statut",
+    "reason": "Motif",
+    "actions": "Actions"
+  },
+  "types": {
+    "observation": "Observation",
+    "avertissement": "Avertissement",
+    "blame": "Blâme",
+    "mise_a_pied": "Mise à pied",
+    "licenciement": "Licenciement"
+  },
+  "statuses": {
+    "draft": "Brouillon",
+    "issued": "Notifiée",
+    "contested": "Contestée",
+    "closed": "Clôturée",
+    "cancelled": "Annulée"
+  },
+  "form": {
+    "title": "Enregistrer une sanction",
+    "employee": "Salarié",
+    "employeePlaceholder": "— Sélectionner —",
+    "type": "Type de sanction",
+    "date": "Date",
+    "reason": "Motif",
+    "reasonPlaceholder": "Motif de la sanction",
+    "description": "Description (facultatif)",
+    "submit": "Enregistrer",
+    "submitting": "Enregistrement…",
+    "cancel": "Annuler"
+  },
+  "actions": {
+    "issue": "Notifier",
+    "close": "Clôturer",
+    "cancel": "Annuler la sanction",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer définitivement cette sanction ?"
+  },
+  "saved": "Sanction enregistrée",
+  "saveError": "Erreur lors de l'enregistrement"
+}

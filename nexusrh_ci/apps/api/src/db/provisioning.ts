@@ -759,6 +759,22 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     await q(stmt)
   }
 
+  // Gestion disciplinaire / sanctions (donnée niveau 4 — accès restreint)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.disciplinary_actions (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id  uuid NOT NULL,
+    type         varchar(30) NOT NULL,
+    reason       text NOT NULL,
+    description  text,
+    action_date  date NOT NULL,
+    status       varchar(20) NOT NULL DEFAULT 'draft',
+    document_url text,
+    issued_by    uuid,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON ${s}.disciplinary_actions(employee_id, action_date DESC)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

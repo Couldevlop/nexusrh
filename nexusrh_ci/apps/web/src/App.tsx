@@ -86,6 +86,12 @@ const MobileMoneyPage  = lazy(() => import('@/pages/mobile-money/MobileMoneyPage
 // ── Référentiel Droit CI ──────────────────────────────────────────────────────
 const ReferentielsPage = lazy(() => import('@/pages/referentiels/ReferentielsPage'))
 
+// ── Organigramme dynamique ────────────────────────────────────────────────────
+const OrgChartPage = lazy(() => import('@/pages/org-chart/OrgChartPage'))
+
+// ── Gestion disciplinaire ─────────────────────────────────────────────────────
+const DisciplinePage = lazy(() => import('@/pages/discipline/DisciplinePage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -333,6 +339,22 @@ export default function App() {
             <Route path="referentiels" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <ReferentielsPage />
+              </RoleGuard>
+            } />
+
+            <Route path="org-chart" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
+                <ModuleGuard moduleKey="org_chart">
+                  <OrgChartPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="discipline" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer']}>
+                <ModuleGuard moduleKey="discipline">
+                  <DisciplinePage />
+                </ModuleGuard>
               </RoleGuard>
             } />
           </Route>

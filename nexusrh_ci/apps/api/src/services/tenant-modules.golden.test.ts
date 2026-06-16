@@ -82,6 +82,8 @@ describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
     expect(moduleKeyForUrl('/reporting/overview')).toBe('reporting')
     expect(moduleKeyForUrl('/integrations/webhooks')).toBe('integrations')
     expect(moduleKeyForUrl('/ai/chat')).toBe('ai')
+    expect(moduleKeyForUrl('/org-chart/departments')).toBe('org_chart')
+    expect(moduleKeyForUrl('/discipline')).toBe('discipline')
     expect(moduleKeyForUrl('/dg/overview')).toBe('dg_view')
   })
 

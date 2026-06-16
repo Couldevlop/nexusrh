@@ -261,6 +261,25 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_wh_deliveries_idx" ON "${schemaName}".webhook_deliveries(webhook_id, created_at DESC)`,
 
+    // ── Gestion disciplinaire / sanctions (donnée niveau 4 — accès restreint) ──
+    // Historisée par dossier salarié ; jamais de suppression silencieuse (le
+    // cycle de vie passe par status, l'annulation est tracée). Accès limité aux
+    // profils RH habilités côté routes (OWASP A01) + journalisation (A09).
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".disciplinary_actions (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id  uuid NOT NULL,
+      type         varchar(30) NOT NULL,
+      reason       text NOT NULL,
+      description  text,
+      action_date  date NOT NULL,
+      status       varchar(20) NOT NULL DEFAULT 'draft',
+      document_url text,
+      issued_by    uuid,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      updated_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON "${schemaName}".disciplinary_actions(employee_id, action_date DESC)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

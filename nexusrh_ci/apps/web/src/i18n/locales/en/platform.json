@@ -347,6 +347,14 @@
         "label": "AI Assistant",
         "desc": "Claude HR assistant, document generation and retention scoring."
       },
+      "org_chart": {
+        "label": "Org chart",
+        "desc": "Dynamic org chart by division/department and managerial hierarchy, auto-updated, with PDF/SVG export."
+      },
+      "discipline": {
+        "label": "Disciplinary",
+        "desc": "Sanctions (notice, warning, reprimand, suspension, dismissal) — level 4 restricted data, historized and audited."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

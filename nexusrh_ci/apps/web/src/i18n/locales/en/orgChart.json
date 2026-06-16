@@ -1,0 +1,23 @@
+{
+  "title": "Org chart",
+  "subtitle": "Dynamic org chart, automatically updated as staff moves.",
+  "tabs": {
+    "departments": "By department",
+    "reporting": "Reporting line"
+  },
+  "export": {
+    "pdf": "Export as PDF",
+    "svg": "Export as image (SVG)",
+    "exporting": "Exporting…"
+  },
+  "node": {
+    "manager": "Head: {{name}}",
+    "headcount": "{{count}} person",
+    "headcount_plural": "{{count}} people",
+    "noManager": "No head assigned",
+    "noTitle": "No job title"
+  },
+  "empty": "No org chart data yet. Add departments and assign employees to see the org chart.",
+  "loadError": "Unable to load the org chart.",
+  "loading": "Loading org chart…"
+}
