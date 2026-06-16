@@ -95,6 +95,13 @@ const DisciplinePage = lazy(() => import('@/pages/discipline/DisciplinePage'))
 // ── Processus de sortie (offboarding) ─────────────────────────────────────────
 const OffboardingPage = lazy(() => import('@/pages/offboarding/OffboardingPage'))
 
+// ── Enquêtes climat social ────────────────────────────────────────────────────
+const ClimatePage = lazy(() => import('@/pages/climate/ClimatePage'))
+const MonClimat   = lazy(() => import('@/pages/mon-espace/MonClimat'))
+
+// ── Plans de succession ───────────────────────────────────────────────────────
+const SuccessionPage = lazy(() => import('@/pages/succession/SuccessionPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -368,6 +375,22 @@ export default function App() {
                 </ModuleGuard>
               </RoleGuard>
             } />
+
+            <Route path="climate" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ModuleGuard moduleKey="climate">
+                  <ClimatePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="succession" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ModuleGuard moduleKey="succession">
+                  <SuccessionPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
           </Route>
 
           {/* ── Espace employé (self-service) ──────────────────────── */}
@@ -384,6 +407,7 @@ export default function App() {
             <Route path="formation"    element={<MaFormation />} />
             <Route path="carriere"     element={<MaCarriere />} />
             <Route path="offres"       element={<MesOffresInternes />} />
+            <Route path="climat"       element={<MonClimat />} />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 

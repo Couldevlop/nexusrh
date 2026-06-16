@@ -61,6 +61,11 @@ const patchTenantSchema = z.object({
   // L'effet ne peut qu'imposer le MFA (jamais l'assouplir sous la politique
   // globale plateforme) : cf. effectiveTenantMfaRequired côté login.
   mfa_required:    z.boolean().optional(),
+  // Expéditeur email configurable par le tenant : adresse "From" des emails
+  // envoyés aux membres de la société (création d'accès, réinitialisation).
+  // '' / null → repli sur l'expéditeur plateforme.
+  sender_email:    z.string().email('Email expéditeur invalide').max(255).optional().nullable().or(z.literal('')),
+  sender_name:     z.string().max(150).optional().nullable(),
 }).strict()
 
 const createLegalEntitySchema = z.object({
@@ -123,6 +128,14 @@ function generateTempPassword(): string {
   return chars.join('')
 }
 
+// Construit l'adresse "From" d'un email destiné aux membres du tenant à partir
+// de l'expéditeur configuré (Paramètres → société). NULL → repli plateforme
+// (config.smtp.from) géré par le service email.
+function buildTenantFrom(senderName: string | null | undefined, senderEmail: string | null | undefined): string | undefined {
+  if (!senderEmail) return undefined
+  return senderName ? `${senderName} <${senderEmail}>` : senderEmail
+}
+
 // Applique les migrations lazy (legal_entities, variable_elements.month, etc.)
 async function ensureMigrated(schemaName: string) {
   try { await provisionTenantSchema(schemaName) } catch { /* ignore */ }
@@ -142,6 +155,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   dgi_number, rccm, at_rate, max_users, max_employees,
                   primary_color, secondary_color, logo_url, trial_ends_at,
                   COALESCE(mfa_required, false) AS mfa_required,
+                  sender_email, sender_name,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
         )
@@ -168,7 +182,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required']
+      const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','sender_email','sender_name']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1084,9 +1098,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (tenantId) {
           try {
             const tenantRes = await pool.query(
-              `SELECT name, primary_color FROM platform.tenants WHERE id = $1`, [tenantId]
+              `SELECT name, primary_color, sender_email, sender_name FROM platform.tenants WHERE id = $1`, [tenantId]
             )
-            const tenant = tenantRes.rows[0] as { name: string; primary_color: string } | undefined
+            const tenant = tenantRes.rows[0] as { name: string; primary_color: string; sender_email: string | null; sender_name: string | null } | undefined
+            const from = buildTenantFrom(tenant?.sender_name, tenant?.sender_email)
             await sendEmployeeWelcomeEmail({
               to: user.email,
               firstName: user.first_name,
@@ -1095,6 +1110,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               primaryColor: tenant?.primary_color ?? '#4F46E5',
               loginUrl: config.appUrl ?? 'http://localhost:3001',
               tempPassword,
+              from,
+              replyTo: from,
             })
             emailSent = true
           } catch (emailErr) {
@@ -1142,12 +1159,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         // Récupérer infos tenant pour l'email
         const tenantRes = await pool.query(
-          `SELECT name, primary_color FROM platform.tenants WHERE id = $1`, [tenantId]
+          `SELECT name, primary_color, sender_email, sender_name FROM platform.tenants WHERE id = $1`, [tenantId]
         )
-        const tenant = tenantRes.rows[0] as { name: string; primary_color: string } | undefined
+        const tenant = tenantRes.rows[0] as { name: string; primary_color: string; sender_email: string | null; sender_name: string | null } | undefined
         const tenantName = tenant?.name ?? 'Votre entreprise'
         const primaryColor = tenant?.primary_color ?? '#4F46E5'
         const loginUrl = config.appUrl ?? 'http://localhost:3001'
+        // Expéditeur configuré par le tenant (repli plateforme si absent).
+        const from = buildTenantFrom(tenant?.sender_name, tenant?.sender_email)
 
         // Employés actifs sans compte utilisateur
         const empRes = await pool.query(`
@@ -1204,6 +1223,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 primaryColor,
                 loginUrl,
                 tempPassword,
+                from,
+                replyTo: from,
               })
             )
           )

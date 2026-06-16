@@ -9,6 +9,7 @@
     "training": "Formation",
     "career": "Carrière",
     "offers": "Offres",
+    "climate": "Climat",
     "profile": "Profil",
     "titles": {
       "home": "Mon espace",
@@ -19,6 +20,7 @@
       "training": "Ma formation",
       "career": "Ma carrière",
       "offers": "Offres internes",
+      "climate": "Enquêtes climat",
       "profile": "Mon profil",
       "default": "Mon espace"
     }

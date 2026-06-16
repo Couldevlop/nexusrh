@@ -21,6 +21,7 @@ interface TenantSettings {
   primary_color: string; secondary_color: string; logo_url: string | null
   max_users: number; max_employees: number
   mfa_required?: boolean
+  sender_email?: string | null; sender_name?: string | null
 }
 interface TenantUser {
   id: string; email: string; first_name: string; last_name: string
@@ -304,6 +305,13 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               </div>
             </div>
           ))}
+        </div>
+
+        <h2 className="font-semibold pt-2">{t('general.emailSender')}</h2>
+        <p className="text-xs text-muted-foreground -mt-2">{t('general.emailSenderHint')}</p>
+        <div className="grid grid-cols-2 gap-4">
+          {field('sender_name', t('general.fields.senderName'))}
+          {field('sender_email', t('general.fields.senderEmail'), 'email')}
         </div>
 
         <h2 className="font-semibold pt-2">{t('general.security')}</h2>

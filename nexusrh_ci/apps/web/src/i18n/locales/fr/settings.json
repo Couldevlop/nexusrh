@@ -59,8 +59,12 @@
       "cnpsNumber": "N° CNPS employeur",
       "dgiNumber": "N° DGI",
       "rccm": "RCCM",
-      "atRate": "Taux AT CNPS (ex: 0.03)"
+      "atRate": "Taux AT CNPS (ex: 0.03)",
+      "senderName": "Nom expéditeur (ex: RH SOTRA)",
+      "senderEmail": "Email expéditeur (ex: rh@masociete.ci)"
     },
+    "emailSender": "Email expéditeur de la société",
+    "emailSenderHint": "Adresse utilisée comme expéditeur des emails envoyés à vos collaborateurs (création d'accès, réinitialisation). Laisser vide pour utiliser l'expéditeur par défaut de la plateforme.",
     "sector": "Secteur d'activité",
     "selectOption": "— Sélectionner —",
     "sectors": {

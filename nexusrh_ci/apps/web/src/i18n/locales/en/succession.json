@@ -1,0 +1,52 @@
+{
+  "title": "Succession plans",
+  "subtitle": "Key positions, talent pools and successor readiness.",
+  "new": "New plan",
+  "empty": "No succession plan.",
+  "loading": "Loading…",
+  "loadError": "Unable to load plans.",
+  "criticality": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "readiness": {
+    "ready_now": "Ready now",
+    "short_term": "Short term",
+    "medium_term": "Medium term",
+    "long_term": "Long term"
+  },
+  "coverage": {
+    "atRisk": "Succession at risk",
+    "covered": "Succession covered",
+    "candidates": "{{count}} successor(s)",
+    "readyNow": "{{count}} ready"
+  },
+  "form": {
+    "title": "Create a succession plan",
+    "position": "Key position",
+    "positionPlaceholder": "e.g. Chief Financial Officer",
+    "incumbent": "Current incumbent (optional)",
+    "incumbentPlaceholder": "— None —",
+    "criticality": "Criticality",
+    "submit": "Create",
+    "submitting": "Creating…",
+    "cancel": "Cancel"
+  },
+  "candidates": {
+    "title": "Successor pool",
+    "add": "Add successor",
+    "employee": "Employee",
+    "employeePlaceholder": "— Select —",
+    "readiness": "Readiness",
+    "empty": "No successor identified."
+  },
+  "actions": {
+    "archive": "Archive",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this plan and its pool?",
+    "removeCandidate": "Remove"
+  },
+  "saveError": "Error while saving"
+}

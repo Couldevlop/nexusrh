@@ -299,6 +299,56 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON "${schemaName}".offboarding_cases(employee_id, departure_date DESC)`,
 
+    // ── Enquêtes climat social (engagement) — réponses confidentielles ────────
+    // Résultats agrégés uniquement (jamais de réponse nominative exposée).
+    // employee_id sert au dédoublonnage + taux de participation, jamais restitué.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".climate_surveys (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title       varchar(200) NOT NULL,
+      description text,
+      status      varchar(20) NOT NULL DEFAULT 'draft',
+      anonymous   boolean NOT NULL DEFAULT true,
+      questions   jsonb NOT NULL DEFAULT '[]',
+      start_date  date,
+      end_date    date,
+      created_by  uuid,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".climate_responses (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      survey_id    uuid NOT NULL,
+      employee_id  uuid NOT NULL,
+      answers      jsonb NOT NULL DEFAULT '{}',
+      submitted_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(survey_id, employee_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_climate_resp_survey_idx" ON "${schemaName}".climate_responses(survey_id)`,
+
+    // ── Plans de succession & viviers de talents ──────────────────────────────
+    // Postes clés à couvrir + candidats successeurs avec niveau de préparation.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".succession_plans (
+      id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      position_title      varchar(200) NOT NULL,
+      incumbent_employee_id uuid,
+      criticality         varchar(20) NOT NULL DEFAULT 'medium',
+      status              varchar(20) NOT NULL DEFAULT 'active',
+      notes               text,
+      created_by          uuid,
+      created_at          timestamptz NOT NULL DEFAULT now(),
+      updated_at          timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".succession_candidates (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_id     uuid NOT NULL,
+      employee_id uuid NOT NULL,
+      readiness   varchar(20) NOT NULL DEFAULT 'medium_term',
+      notes       text,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(plan_id, employee_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_succession_cand_plan_idx" ON "${schemaName}".succession_candidates(plan_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]
@@ -386,6 +436,15 @@ export async function ensurePlatformSchema(): Promise<void> {
     // jsonb de surcharges { module: boolean } — '{}' = défauts (tout actif sauf
     // la vue DG 360°, opt-in). Cf. services/tenant-modules.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
+
+    // ── Expéditeur email configurable par tenant ─────────────────────────────
+    // Adresse "From" utilisée pour les emails envoyés aux MEMBRES du tenant
+    // (création d'accès, réinitialisation). NULL → repli sur l'expéditeur
+    // plateforme (config.smtp.from). L'email de bienvenue à la CRÉATION du tenant
+    // reste envoyé par l'expéditeur plateforme (le tenant n'a pas encore configuré
+    // le sien). Cf. modules/settings/settings.routes.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_email varchar(255)`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_name varchar(150)`,
 
     // ── Cycle de vie du mot de passe côté super_admin ─────────────────────────
     `ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
