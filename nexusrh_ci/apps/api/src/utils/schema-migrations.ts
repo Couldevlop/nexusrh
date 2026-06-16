@@ -446,6 +446,16 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_email varchar(255)`,
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_name varchar(150)`,
 
+    // ── Serveur SMTP propre au tenant (option C) ─────────────────────────────
+    // Si renseigné, les emails aux MEMBRES du tenant sont envoyés via CE serveur
+    // (From aligné au domaine du tenant → délivrabilité propre). Sinon, repli sur
+    // le SMTP plateforme. Mot de passe chiffré AES-256-GCM (jamais en clair).
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS smtp_host varchar(255)`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS smtp_port int`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS smtp_secure boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS smtp_user varchar(255)`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS smtp_pass_enc text`,
+
     // ── Cycle de vie du mot de passe côté super_admin ─────────────────────────
     `ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
     `CREATE TABLE IF NOT EXISTS platform.password_history (

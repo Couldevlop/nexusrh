@@ -484,3 +484,66 @@ describe('POST /settings/import/:type — nouveaux types (whitelist élargie)', 
     }
   })
 })
+
+describe('GET/PUT /settings/email — SMTP tenant (option C)', () => {
+  it('GET refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('GET renvoie la config SMTP sans le mot de passe (hasPassword masqué)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{
+      sender_email: 'rh@sotra.ci', sender_name: 'RH SOTRA',
+      smtp_host: 'smtp.sotra.ci', smtp_port: 587, smtp_secure: false,
+      smtp_user: 'rh@sotra.ci', smtp_pass_enc: 'iv:tag:cipher',
+    }] })
+    const res = await app.inject({
+      method: 'GET', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as { data: Record<string, unknown> }
+    expect(body.data.smtpHost).toBe('smtp.sotra.ci')
+    expect(body.data.hasPassword).toBe(true)
+    expect(body.data.smtpConfigured).toBe(true)
+    // le secret chiffré ne doit JAMAIS sortir
+    expect(JSON.stringify(body.data)).not.toContain('cipher')
+    expect(JSON.stringify(body.data)).not.toContain('smtp_pass_enc')
+  })
+
+  it('PUT refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_officer')}` },
+      payload: { smtpHost: 'smtp.x.ci' },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('PUT enregistre host/port/user/secure (sans mot de passe → pas de chiffrement requis)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE platform.tenants
+      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { smtpHost: 'smtp.sotra.ci', smtpPort: 587, smtpUser: 'rh@sotra.ci', smtpSecure: false },
+    })
+    expect(res.statusCode).toBe(200)
+    const upd = queryMock.mock.calls.find((c) => /UPDATE platform\.tenants SET/.test(String(c[0])))
+    expect(upd).toBeDefined()
+    expect(String(upd?.[0])).toContain('smtp_host')
+  })
+
+  it('PUT refuse un port hors bornes (400)', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { smtpPort: 99999 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})

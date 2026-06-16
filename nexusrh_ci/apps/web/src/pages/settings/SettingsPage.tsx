@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { api } from '@/lib/api'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore, type TenantConfig } from '@/stores/authStore'
 import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
@@ -248,9 +248,22 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     queryKey: ['settings-tenant'],
     queryFn: () => api.get('/settings/tenant').then(r => r.data),
   })
+  const updateTenantConfig = useAuthStore(st => st.updateTenantConfig)
   const update = useMutation({
     mutationFn: (d: Partial<TenantSettings>) => api.patch('/settings/tenant', d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings-tenant'] }); setForm({}) },
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['settings-tenant'] })
+      // Reflète immédiatement l'apparence/le nom dans l'UI (thème + sidebar)
+      // sans nécessiter une reconnexion (le bug : la couleur ne changeait pas).
+      const patch: Partial<TenantConfig> = {}
+      if (vars.primary_color !== undefined)   patch.primaryColor = vars.primary_color
+      if (vars.secondary_color !== undefined) patch.secondaryColor = vars.secondary_color
+      if (vars.logo_url !== undefined)        patch.logoUrl = vars.logo_url
+      if (vars.name !== undefined)            patch.name = vars.name
+      if (vars.city != null)                  patch.city = vars.city
+      if (Object.keys(patch).length) updateTenantConfig(patch)
+      setForm({})
+    },
   })
   const s = data?.data
   if (!s) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
@@ -341,6 +354,85 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         </div>
         {update.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
       </div>
+
+      <EmailSmtpCard />
+    </div>
+  )
+}
+
+// ── Carte: Serveur SMTP propre au tenant (option C) ─────────────────────────────
+interface EmailConfig {
+  smtpHost: string | null; smtpPort: number | null; smtpSecure: boolean
+  smtpUser: string | null; hasPassword: boolean; smtpConfigured: boolean
+  encryptionAvailable: boolean
+}
+
+function EmailSmtpCard() {
+  const { t } = useTranslation('settings')
+  const { data, refetch } = useQuery<{ data: EmailConfig }>({
+    queryKey: ['settings-email'],
+    queryFn: () => api.get('/settings/email').then(r => r.data),
+  })
+  const cfg = data?.data
+  const [form, setForm] = useState<Partial<{ smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPassword: string }>>({})
+  const save = useMutation({
+    mutationFn: (d: typeof form) => api.put('/settings/email', d),
+    onSuccess: () => { setForm({}); refetch() },
+  })
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+      <div>
+        <h2 className="font-semibold">{t('smtp.title')}</h2>
+        <p className="text-xs text-muted-foreground">{t('smtp.hint')}</p>
+      </div>
+      {cfg && !cfg.encryptionAvailable && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{t('smtp.noEncryption')}</p>
+      )}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">{t('smtp.host')}</label>
+          <input type="text" defaultValue={cfg?.smtpHost ?? ''} placeholder="smtp.masociete.ci"
+            onChange={e => setForm(p => ({ ...p, smtpHost: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">{t('smtp.port')}</label>
+          <input type="number" defaultValue={cfg?.smtpPort ?? 587}
+            onChange={e => setForm(p => ({ ...p, smtpPort: Number(e.target.value) }))}
+            className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">{t('smtp.user')}</label>
+          <input type="text" defaultValue={cfg?.smtpUser ?? ''} placeholder="rh@masociete.ci"
+            onChange={e => setForm(p => ({ ...p, smtpUser: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">{t('smtp.password')}</label>
+          <input type="password" placeholder={cfg?.hasPassword ? '•••••••• (inchangé)' : ''}
+            onChange={e => setForm(p => ({ ...p, smtpPassword: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none" />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" defaultChecked={!!cfg?.smtpSecure}
+          onChange={e => setForm(p => ({ ...p, smtpSecure: e.target.checked }))} className="h-4 w-4" />
+        {t('smtp.secure')}
+      </label>
+      <div className="flex items-center justify-between border-t border-border pt-2">
+        <p className="text-xs text-muted-foreground">
+          {cfg?.smtpConfigured ? t('smtp.configured') : t('smtp.notConfigured')}
+        </p>
+        <button onClick={() => save.mutate(form)}
+          disabled={Object.keys(form).length === 0 || save.isPending}
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          <Save className="h-4 w-4" />
+          {save.isPending ? t('general.saving') : t('general.save')}
+        </button>
+      </div>
+      {save.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
+      {save.isError && <p className="text-xs text-destructive">{t('smtp.saveError')}</p>}
     </div>
   )
 }

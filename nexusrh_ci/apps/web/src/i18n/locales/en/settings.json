@@ -65,6 +65,19 @@
     },
     "emailSender": "Company email sender",
     "emailSenderHint": "Address used as the sender of emails to your staff (access creation, reset). Leave empty to use the platform default sender.",
+    "smtp": {
+      "title": "Company SMTP server",
+      "hint": "Optional. If set, emails to your staff are sent through YOUR server (better deliverability, From on your domain). Otherwise the platform server is used.",
+      "host": "SMTP server (host)",
+      "port": "Port",
+      "user": "Username",
+      "password": "Password",
+      "secure": "Secure connection (SSL/TLS, port 465)",
+      "configured": "SMTP server configured ✓",
+      "notConfigured": "No SMTP server — sending via the platform",
+      "noEncryption": "Encryption is not configured on the platform: cannot store an SMTP password.",
+      "saveError": "Error while saving SMTP"
+    },
     "sector": "Business sector",
     "selectOption": "— Select —",
     "sectors": {

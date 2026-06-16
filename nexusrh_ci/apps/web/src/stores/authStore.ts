@@ -59,6 +59,9 @@ interface AuthState {
   activateTenant: (scopedToken: string, tenantConfig: TenantConfig) => void
   // Cabinet → quitte la session tenant, revient au contexte cabinet.
   deactivateTenant: () => void
+  // Met à jour la config tenant courante (ex. après changement d'apparence en
+  // paramètres) et ré-applique le thème immédiatement (sans re-login).
+  updateTenantConfig: (partial: Partial<TenantConfig>) => void
   logout: () => void
   isAuthenticated: () => boolean
 }
@@ -140,6 +143,14 @@ export const useAuthStore = create<AuthState>()(
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('nexusrh:csrf-refresh'))
         }
+      },
+
+      updateTenantConfig: (partial) => {
+        const cur = get().tenantConfig
+        if (!cur) return
+        const next = { ...cur, ...partial }
+        set({ tenantConfig: next })
+        applyTenantTheme(next)
       },
 
       logout: () => {
