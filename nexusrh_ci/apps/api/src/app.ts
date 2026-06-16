@@ -58,6 +58,7 @@ import integrationsRoutes from './modules/integrations/integrations.routes.js'
 import onboardingRoutes from './modules/onboarding/onboarding.routes.js'
 import orgChartRoutes from './modules/org-chart/org-chart.routes.js'
 import disciplineRoutes from './modules/discipline/discipline.routes.js'
+import offboardingRoutes from './modules/offboarding/offboarding.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
@@ -370,6 +371,8 @@ export async function buildApp() {
   await fastify.register(orgChartRoutes,     { prefix: '/org-chart' })
   // Gestion disciplinaire / sanctions — donnée niveau 4, accès RH restreint.
   await fastify.register(disciplineRoutes,   { prefix: '/discipline' })
+  // Processus de sortie (offboarding) + solde de tout compte.
+  await fastify.register(offboardingRoutes,  { prefix: '/offboarding' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

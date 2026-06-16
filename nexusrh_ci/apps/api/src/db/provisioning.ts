@@ -775,6 +775,23 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON ${s}.disciplinary_actions(employee_id, action_date DESC)`)
 
+  // Processus de sortie (offboarding) + solde de tout compte
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.offboarding_cases (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id    uuid NOT NULL,
+    departure_type varchar(30) NOT NULL,
+    departure_date date NOT NULL,
+    reason         text,
+    status         varchar(20) NOT NULL DEFAULT 'open',
+    checklist      jsonb NOT NULL DEFAULT '[]',
+    settlement     jsonb,
+    notice_served  boolean NOT NULL DEFAULT true,
+    created_by     uuid,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON ${s}.offboarding_cases(employee_id, departure_date DESC)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

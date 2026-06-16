@@ -22,6 +22,7 @@ export const MODULE_KEYS = [
   'ai',
   'org_chart',
   'discipline',
+  'offboarding',
   'dg_view',
 ] as const
 
@@ -44,6 +45,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   ai:           true,
   org_chart:    true,
   discipline:   true,
+  offboarding:  true,
   dg_view:      false,
 }
 

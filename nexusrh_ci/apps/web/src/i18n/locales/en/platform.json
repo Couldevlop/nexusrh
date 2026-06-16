@@ -355,6 +355,10 @@
         "label": "Disciplinary",
         "desc": "Sanctions (notice, warning, reprimand, suspension, dismissal) — level 4 restricted data, historized and audited."
       },
+      "offboarding": {
+        "label": "Offboarding",
+        "desc": "Departures: reasons, return checklist and final settlement calculation (CI labour code)."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

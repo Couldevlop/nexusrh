@@ -1,0 +1,63 @@
+{
+  "title": "Offboarding",
+  "subtitle": "Departures: reasons, return checklist and final settlement.",
+  "new": "New departure",
+  "empty": "No offboarding case.",
+  "loading": "Loading…",
+  "loadError": "Unable to load offboarding cases.",
+  "columns": {
+    "employee": "Employee",
+    "type": "Reason",
+    "date": "Departure date",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "types": {
+    "demission": "Resignation",
+    "retraite": "Retirement",
+    "licenciement": "Dismissal",
+    "fin_cdd": "End of fixed-term",
+    "rupture_conventionnelle": "Mutual termination",
+    "autre": "Other"
+  },
+  "statuses": {
+    "open": "Open",
+    "in_progress": "In progress",
+    "settled": "Settled",
+    "closed": "Closed",
+    "cancelled": "Cancelled"
+  },
+  "form": {
+    "title": "Open an offboarding case",
+    "employee": "Employee",
+    "employeePlaceholder": "— Select —",
+    "type": "Departure reason",
+    "date": "Departure date",
+    "reason": "Comment (optional)",
+    "noticeServed": "Notice served",
+    "submit": "Open case",
+    "submitting": "Saving…",
+    "cancel": "Cancel"
+  },
+  "checklist": {
+    "title": "Return checklist"
+  },
+  "settlement": {
+    "title": "Final settlement",
+    "compute": "Compute settlement",
+    "computing": "Computing…",
+    "congesDays": "Outstanding leave days",
+    "conges": "Leave compensation",
+    "preavis": "Notice compensation",
+    "licenciement": "Severance pay",
+    "total": "Total final settlement",
+    "estimateNote": "HR estimate (excluding tax, computed by the payroll engine)."
+  },
+  "actions": {
+    "progress": "Start",
+    "close": "Close",
+    "delete": "Delete",
+    "deleteConfirm": "Permanently delete this case?"
+  },
+  "saveError": "Error while saving"
+}

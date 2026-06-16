@@ -92,6 +92,9 @@ const OrgChartPage = lazy(() => import('@/pages/org-chart/OrgChartPage'))
 // ── Gestion disciplinaire ─────────────────────────────────────────────────────
 const DisciplinePage = lazy(() => import('@/pages/discipline/DisciplinePage'))
 
+// ── Processus de sortie (offboarding) ─────────────────────────────────────────
+const OffboardingPage = lazy(() => import('@/pages/offboarding/OffboardingPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -354,6 +357,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer']}>
                 <ModuleGuard moduleKey="discipline">
                   <DisciplinePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="offboarding" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ModuleGuard moduleKey="offboarding">
+                  <OffboardingPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

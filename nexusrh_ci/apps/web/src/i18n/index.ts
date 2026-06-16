@@ -36,6 +36,7 @@ import frPublicPages from './locales/fr/publicPages.json'
 import frDg from './locales/fr/dg.json'
 import frOrgChart from './locales/fr/orgChart.json'
 import frDiscipline from './locales/fr/discipline.json'
+import frOffboarding from './locales/fr/offboarding.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -64,6 +65,7 @@ import enPublicPages from './locales/en/publicPages.json'
 import enDg from './locales/en/dg.json'
 import enOrgChart from './locales/en/orgChart.json'
 import enDiscipline from './locales/en/discipline.json'
+import enOffboarding from './locales/en/offboarding.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -73,7 +75,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding',
 ] as const
 
 const resources = {
@@ -86,6 +88,7 @@ const resources = {
     settings: frSettings, platform: frPlatform, agency: frAgency,
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
+    offboarding: frOffboarding,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -96,6 +99,7 @@ const resources = {
     settings: enSettings, platform: enPlatform, agency: enAgency,
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
+    offboarding: enOffboarding,
   },
 } as const
 

@@ -280,6 +280,25 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON "${schemaName}".disciplinary_actions(employee_id, action_date DESC)`,
 
+    // ── Processus de sortie (offboarding) + solde de tout compte ──────────────
+    // Motif de départ, checklist de restitution, calcul du solde (Code du travail
+    // CI) historisé en jsonb. Additif, idempotent.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".offboarding_cases (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id    uuid NOT NULL,
+      departure_type varchar(30) NOT NULL,
+      departure_date date NOT NULL,
+      reason         text,
+      status         varchar(20) NOT NULL DEFAULT 'open',
+      checklist      jsonb NOT NULL DEFAULT '[]',
+      settlement     jsonb,
+      notice_served  boolean NOT NULL DEFAULT true,
+      created_by     uuid,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      updated_at     timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON "${schemaName}".offboarding_cases(employee_id, departure_date DESC)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

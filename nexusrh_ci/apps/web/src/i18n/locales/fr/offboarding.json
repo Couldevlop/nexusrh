@@ -1,0 +1,63 @@
+{
+  "title": "Processus de sortie",
+  "subtitle": "Départs : motifs, checklist de restitution et solde de tout compte.",
+  "new": "Nouveau départ",
+  "empty": "Aucun dossier de sortie.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les dossiers de sortie.",
+  "columns": {
+    "employee": "Salarié",
+    "type": "Motif",
+    "date": "Date de départ",
+    "status": "Statut",
+    "actions": "Actions"
+  },
+  "types": {
+    "demission": "Démission",
+    "retraite": "Retraite",
+    "licenciement": "Licenciement",
+    "fin_cdd": "Fin de CDD",
+    "rupture_conventionnelle": "Rupture conventionnelle",
+    "autre": "Autre"
+  },
+  "statuses": {
+    "open": "Ouvert",
+    "in_progress": "En cours",
+    "settled": "Solde calculé",
+    "closed": "Clôturé",
+    "cancelled": "Annulé"
+  },
+  "form": {
+    "title": "Ouvrir un dossier de sortie",
+    "employee": "Salarié",
+    "employeePlaceholder": "— Sélectionner —",
+    "type": "Motif de départ",
+    "date": "Date de départ",
+    "reason": "Commentaire (facultatif)",
+    "noticeServed": "Préavis effectué",
+    "submit": "Ouvrir le dossier",
+    "submitting": "Enregistrement…",
+    "cancel": "Annuler"
+  },
+  "checklist": {
+    "title": "Checklist de restitution"
+  },
+  "settlement": {
+    "title": "Solde de tout compte",
+    "compute": "Calculer le solde",
+    "computing": "Calcul…",
+    "congesDays": "Jours de congés non pris",
+    "conges": "Indemnité compensatrice de congés",
+    "preavis": "Indemnité compensatrice de préavis",
+    "licenciement": "Indemnité de licenciement",
+    "total": "Total solde de tout compte",
+    "estimateNote": "Estimatif RH (hors fiscalité, calculée par le moteur de paie)."
+  },
+  "actions": {
+    "progress": "Démarrer",
+    "close": "Clôturer",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer définitivement ce dossier ?"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}
