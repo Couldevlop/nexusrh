@@ -65,6 +65,19 @@
     },
     "emailSender": "Email expéditeur de la société",
     "emailSenderHint": "Adresse utilisée comme expéditeur des emails envoyés à vos collaborateurs (création d'accès, réinitialisation). Laisser vide pour utiliser l'expéditeur par défaut de la plateforme.",
+    "smtp": {
+      "title": "Serveur d'envoi SMTP de la société",
+      "hint": "Optionnel. Si renseigné, les emails à vos collaborateurs sont envoyés via VOTRE serveur (meilleure délivrabilité, From à votre domaine). Sinon, le serveur de la plateforme est utilisé.",
+      "host": "Serveur SMTP (host)",
+      "port": "Port",
+      "user": "Utilisateur",
+      "password": "Mot de passe",
+      "secure": "Connexion sécurisée (SSL/TLS, port 465)",
+      "configured": "Serveur SMTP configuré ✓",
+      "notConfigured": "Aucun serveur SMTP — envoi via la plateforme",
+      "noEncryption": "Le chiffrement n'est pas configuré sur la plateforme : impossible d'enregistrer un mot de passe SMTP.",
+      "saveError": "Erreur lors de l'enregistrement du SMTP"
+    },
     "sector": "Secteur d'activité",
     "selectOption": "— Sélectionner —",
     "sectors": {

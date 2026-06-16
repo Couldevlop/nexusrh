@@ -21,6 +21,34 @@ function getTransporter(): Transporter {
   return _transporter
 }
 
+// Configuration SMTP propre à un tenant (option C). Le mot de passe est déjà
+// déchiffré par l'appelant (settings.routes) avant d'arriver ici.
+export interface TenantSmtp {
+  host: string
+  port: number
+  secure: boolean
+  user?: string | null
+  pass?: string | null
+}
+
+/**
+ * Transporteur à utiliser pour un envoi : celui du TENANT si une config SMTP est
+ * fournie (envoi via le serveur de la société), sinon le transporteur plateforme.
+ * Non mis en cache : createTransport est synchrone et ne se connecte qu'à
+ * l'envoi — éviter le cache élimine tout risque de credentials périmés.
+ */
+function transporterFor(smtp?: TenantSmtp | null): Transporter {
+  if (!smtp?.host) return getTransporter()
+  return nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.user ? { user: smtp.user, pass: smtp.pass ?? '' } : undefined,
+    requireTLS: smtp.port === 587 && !smtp.secure,
+    tls: { rejectUnauthorized: false },
+  })
+}
+
 // En-tête de marque : affiche le LOGO uploadé (URL absolue servie par
 // /public/brand/:id) s'il est fourni, sinon les initiales colorées (fallback).
 // L'URL doit être absolue et publiquement accessible pour s'afficher dans les
@@ -196,8 +224,10 @@ export async function sendEmployeeWelcomeEmail(params: {
   to: string; firstName: string; lastName: string
   tenantName: string; primaryColor: string; loginUrl: string; tempPassword: string
   logoUrl?: string | null; from?: string | null; replyTo?: string | null
+  /** SMTP propre au tenant (option C) — si absent, envoi via le SMTP plateforme. */
+  smtp?: TenantSmtp | null
 }): Promise<void> {
-  const { to, firstName, lastName, tenantName, primaryColor, loginUrl, tempPassword, logoUrl, from, replyTo } = params
+  const { to, firstName, lastName, tenantName, primaryColor, loginUrl, tempPassword, logoUrl, from, replyTo, smtp } = params
   const html = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
@@ -232,8 +262,10 @@ export async function sendEmployeeWelcomeEmail(params: {
 </table>
 </body></html>`
 
-  await getTransporter().sendMail({
-    from: from || config.smtp.from,
+  await transporterFor(smtp).sendMail({
+    // From : adresse choisie par le tenant si fournie, sinon le compte SMTP
+    // tenant authentifié (alignement domaine → délivrabilité), sinon plateforme.
+    from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
     to,
     subject: `Votre accès NexusRH CI — ${tenantName}`,

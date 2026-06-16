@@ -5,7 +5,7 @@ import { config } from '../../config.js'
 import { pool } from '../../db/pool.js'
 import bcrypt from 'bcryptjs'
 import { provisionTenantSchema } from '../../db/provisioning.js'
-import { sendEmployeeWelcomeEmail } from '../../services/email.js'
+import { sendEmployeeWelcomeEmail, type TenantSmtp } from '../../services/email.js'
 import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
@@ -134,6 +134,41 @@ function generateTempPassword(): string {
 function buildTenantFrom(senderName: string | null | undefined, senderEmail: string | null | undefined): string | undefined {
   if (!senderEmail) return undefined
   return senderName ? `${senderName} <${senderEmail}>` : senderEmail
+}
+
+// Charge la config email d'envoi d'un tenant (expéditeur + SMTP propre option C).
+// Le mot de passe SMTP est déchiffré ici ; `smtp` est null si aucun serveur
+// tenant n'est configuré (→ repli plateforme dans le service email).
+async function loadTenantMail(tenantId: string): Promise<{
+  name: string; primaryColor: string; from: string | undefined; smtp: TenantSmtp | null
+}> {
+  const r = await pool.query<{
+    name: string; primary_color: string | null
+    sender_email: string | null; sender_name: string | null
+    smtp_host: string | null; smtp_port: number | null; smtp_secure: boolean | null
+    smtp_user: string | null; smtp_pass_enc: string | null
+  }>(
+    `SELECT name, primary_color, sender_email, sender_name,
+            smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc
+     FROM platform.tenants WHERE id = $1 LIMIT 1`,
+    [tenantId],
+  )
+  const row = r.rows[0]
+  const smtp: TenantSmtp | null = row?.smtp_host
+    ? {
+        host: row.smtp_host,
+        port: row.smtp_port ?? 587,
+        secure: row.smtp_secure ?? false,
+        user: row.smtp_user,
+        pass: decryptIfPresent(row.smtp_pass_enc),
+      }
+    : null
+  return {
+    name: row?.name ?? 'Votre entreprise',
+    primaryColor: row?.primary_color ?? '#4F46E5',
+    from: buildTenantFrom(row?.sender_name, row?.sender_email),
+    smtp,
+  }
 }
 
 // Applique les migrations lazy (legal_entities, variable_elements.month, etc.)
@@ -346,6 +381,108 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             changed: fields.filter(f => f.val !== KEEP).map(f => f.col),
             claudeKeySet:  b.claudeApiKey != null && b.claudeApiKey !== '',
             mistralKeySet: b.mistralApiKey != null && b.mistralApiKey !== '',
+          },
+          request.ip ?? null,
+        )
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── GET /settings/email — config expéditeur + SMTP tenant (mdp jamais renvoyé) ──
+  fastify.get('/email', {
+    preHandler: [fastify.authorize('admin')],
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      try {
+        const r = await pool.query<{
+          sender_email: string | null; sender_name: string | null
+          smtp_host: string | null; smtp_port: number | null; smtp_secure: boolean | null
+          smtp_user: string | null; smtp_pass_enc: string | null
+        }>(
+          `SELECT sender_email, sender_name, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc
+             FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+        )
+        const t = r.rows[0]
+        if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+        return reply.send({
+          data: {
+            senderEmail: t.sender_email ?? null,
+            senderName: t.sender_name ?? null,
+            smtpHost: t.smtp_host ?? null,
+            smtpPort: t.smtp_port ?? null,
+            smtpSecure: t.smtp_secure ?? false,
+            smtpUser: t.smtp_user ?? null,
+            hasPassword: !!t.smtp_pass_enc,
+            smtpConfigured: !!t.smtp_host,
+            encryptionAvailable: isEncryptionAvailable(),
+          },
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PUT /settings/email — enregistre le SMTP tenant (mot de passe chiffré) ──
+  // OWASP A02 : mot de passe SMTP chiffré AES-256-GCM. Sentinelle KEEP : champ
+  // absent = inchangé ; '' / null = effacé. A09 : audité (sans le mot de passe).
+  fastify.put('/email', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const emailSchema = z.object({
+        smtpHost:     z.string().max(255).nullable().optional(),
+        smtpPort:     z.number().int().min(1).max(65535).nullable().optional(),
+        smtpSecure:   z.boolean().optional(),
+        smtpUser:     z.string().max(255).nullable().optional(),
+        smtpPassword: z.string().max(300).nullable().optional(),
+      }).strict()
+      const parsed = emailSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const b = parsed.data
+      if (b.smtpPassword != null && b.smtpPassword !== '' && !isEncryptionAvailable()) {
+        return reply.status(400).send({
+          error: 'Chiffrement non configuré côté plateforme (ENCRYPTION_KEY). Impossible de stocker le mot de passe SMTP.',
+        })
+      }
+
+      const KEEP = Symbol('keep')
+      type Val = string | number | boolean | null | typeof KEEP
+      const norm = (v: string | null | undefined): Val => v === undefined ? KEEP : (v === '' ? null : v)
+      const fields: Array<{ col: string; val: Val }> = [
+        { col: 'smtp_host',     val: norm(b.smtpHost) },
+        { col: 'smtp_port',     val: b.smtpPort === undefined ? KEEP : (b.smtpPort ?? null) },
+        { col: 'smtp_secure',   val: b.smtpSecure === undefined ? KEEP : b.smtpSecure },
+        { col: 'smtp_user',     val: norm(b.smtpUser) },
+        { col: 'smtp_pass_enc', val: b.smtpPassword === undefined ? KEEP : (b.smtpPassword === '' || b.smtpPassword === null ? null : encrypt(b.smtpPassword)) },
+      ]
+      const sets: string[] = []
+      const vals: unknown[] = []
+      for (const f of fields) {
+        if (f.val === KEEP) continue
+        sets.push(`${f.col} = $${vals.length + 1}`)
+        vals.push(f.val)
+      }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
+      sets.push('updated_at = now()')
+      vals.push(tenantId)
+      try {
+        await pool.query(`UPDATE platform.tenants SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals)
+        auditLogSettings(
+          request.user.schemaName, request.user.sub, 'settings.email_smtp_updated', tenantId,
+          {
+            changed: fields.filter(f => f.val !== KEEP).map(f => f.col),
+            passwordSet: b.smtpPassword != null && b.smtpPassword !== '',
           },
           request.ip ?? null,
         )
@@ -1097,21 +1234,18 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         let emailSent = false
         if (tenantId) {
           try {
-            const tenantRes = await pool.query(
-              `SELECT name, primary_color, sender_email, sender_name FROM platform.tenants WHERE id = $1`, [tenantId]
-            )
-            const tenant = tenantRes.rows[0] as { name: string; primary_color: string; sender_email: string | null; sender_name: string | null } | undefined
-            const from = buildTenantFrom(tenant?.sender_name, tenant?.sender_email)
+            const mail = await loadTenantMail(tenantId)
             await sendEmployeeWelcomeEmail({
               to: user.email,
               firstName: user.first_name,
               lastName: user.last_name,
-              tenantName: tenant?.name ?? 'Votre entreprise',
-              primaryColor: tenant?.primary_color ?? '#4F46E5',
+              tenantName: mail.name,
+              primaryColor: mail.primaryColor,
               loginUrl: config.appUrl ?? 'http://localhost:3001',
               tempPassword,
-              from,
-              replyTo: from,
+              from: mail.from,
+              replyTo: mail.from,
+              smtp: mail.smtp,
             })
             emailSent = true
           } catch (emailErr) {
@@ -1158,15 +1292,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         // Récupérer infos tenant pour l'email
-        const tenantRes = await pool.query(
-          `SELECT name, primary_color, sender_email, sender_name FROM platform.tenants WHERE id = $1`, [tenantId]
-        )
-        const tenant = tenantRes.rows[0] as { name: string; primary_color: string; sender_email: string | null; sender_name: string | null } | undefined
-        const tenantName = tenant?.name ?? 'Votre entreprise'
-        const primaryColor = tenant?.primary_color ?? '#4F46E5'
+        const mail = await loadTenantMail(tenantId)
+        const tenantName = mail.name
+        const primaryColor = mail.primaryColor
         const loginUrl = config.appUrl ?? 'http://localhost:3001'
-        // Expéditeur configuré par le tenant (repli plateforme si absent).
-        const from = buildTenantFrom(tenant?.sender_name, tenant?.sender_email)
+        // Expéditeur + SMTP propre au tenant (repli plateforme si absent).
+        const from = mail.from
+        const tenantSmtp = mail.smtp
 
         // Employés actifs sans compte utilisateur
         const empRes = await pool.query(`
@@ -1225,6 +1357,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 tempPassword,
                 from,
                 replyTo: from,
+                smtp: tenantSmtp,
               })
             )
           )
