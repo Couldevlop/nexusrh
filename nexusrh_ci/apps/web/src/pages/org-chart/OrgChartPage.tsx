@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Network, FileDown, Image as ImageIcon, Users, ChevronDown, ChevronRight } from 'lucide-react'
+import { Network, FileDown, Image as ImageIcon, Users, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -43,78 +43,88 @@ async function downloadExport(type: Tab, format: 'pdf' | 'svg'): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-// ─── Carte d'un nœud ─────────────────────────────────────────────────────────
-function NodeCard({ title, subtitle, meta }: { title: string; subtitle?: string; meta?: string }) {
+type Tt = (k: string, o?: Record<string, unknown>) => string
+
+function initials(name: string): string {
+  const parts = name.split(' ').filter(Boolean)
+  return (parts.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')) || '?'
+}
+
+// ─── Carte d'un nœud (style organigramme professionnel) ──────────────────────
+function OrgCard(props: {
+  title: string; subtitle?: string; meta?: string
+  avatar?: string; icon?: React.ReactNode
+  hasChildren: boolean; collapsed: boolean; childCount: number; onToggle: () => void
+}) {
   return (
-    <div className="rounded-lg border border-l-4 border-border border-l-primary bg-card px-3 py-2 shadow-sm">
-      <p className="text-sm font-semibold text-foreground">{title}</p>
-      {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-      {meta && <p className="mt-0.5 text-[11px] font-medium text-primary">{meta}</p>}
+    <div className="org-node">
+      <div className="relative inline-flex w-52 flex-col rounded-xl border border-border bg-card px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md">
+        <div className="flex items-center gap-2.5">
+          {props.avatar !== undefined ? (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{props.avatar}</div>
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">{props.icon}</div>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{props.title}</p>
+            {props.subtitle && <p className="truncate text-xs text-muted-foreground">{props.subtitle}</p>}
+          </div>
+        </div>
+        {props.meta && (
+          <span className="mt-1.5 inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{props.meta}</span>
+        )}
+        {props.hasChildren && (
+          <button
+            type="button"
+            onClick={props.onToggle}
+            aria-label="toggle"
+            className="absolute -bottom-2.5 left-1/2 z-10 flex h-5 min-w-5 -translate-x-1/2 items-center justify-center gap-0.5 rounded-full border border-border bg-card px-1 text-[10px] font-bold text-muted-foreground shadow-sm hover:text-foreground"
+          >
+            {props.collapsed ? <>{props.childCount}<ChevronRight className="h-3 w-3" /></> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
-// ─── Arbre récursif (indentation + connecteurs) ──────────────────────────────
-function TreeNode({ children, render }: { children: React.ReactNode; render: React.ReactNode }) {
-  const [open, setOpen] = useState(true)
-  const hasChildren = Array.isArray(children) ? children.length > 0 : !!children
+function DeptOrgNode({ node, collapsed, toggle, t }: { node: DeptNode; collapsed: Set<string>; toggle: (id: string) => void; t: Tt }) {
+  const isCollapsed = collapsed.has(node.id)
+  const hasChildren = node.children.length > 0
   return (
-    <li className="relative">
-      <div className="flex items-start gap-1.5">
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="mt-2 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label="toggle"
-          >
-            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-        ) : (
-          <span className="mt-2 inline-block h-4 w-4 shrink-0" />
-        )}
-        <div className="flex-1">{render}</div>
-      </div>
-      {hasChildren && open && (
-        <ul className="ml-5 mt-1.5 space-y-1.5 border-l border-dashed border-border pl-4">{children}</ul>
+    <li>
+      <OrgCard
+        title={node.code ? `${node.name} (${node.code})` : node.name}
+        subtitle={node.managerName ? t('node.manager', { name: node.managerName }) : t('node.noManager')}
+        meta={t('node.headcount', { count: node.totalHeadcount })}
+        icon={<Building2 className="h-4 w-4" />}
+        hasChildren={hasChildren} collapsed={isCollapsed} childCount={node.children.length}
+        onToggle={() => toggle(node.id)}
+      />
+      {hasChildren && !isCollapsed && (
+        <ul>{node.children.map((c) => <DeptOrgNode key={c.id} node={c} collapsed={collapsed} toggle={toggle} t={t} />)}</ul>
       )}
     </li>
   )
 }
 
-function DeptTree({ node, t }: { node: DeptNode; t: (k: string, o?: Record<string, unknown>) => string }) {
+function EmpOrgNode({ node, collapsed, toggle, t }: { node: EmpNode; collapsed: Set<string>; toggle: (id: string) => void; t: Tt }) {
+  const isCollapsed = collapsed.has(node.id)
+  const hasChildren = node.children.length > 0
   return (
-    <TreeNode
-      render={
-        <NodeCard
-          title={node.code ? `${node.name} (${node.code})` : node.name}
-          subtitle={node.managerName ? t('node.manager', { name: node.managerName }) : t('node.noManager')}
-          meta={t('node.headcount', { count: node.totalHeadcount })}
-        />
-      }
-    >
-      {node.children.map((c) => (
-        <DeptTree key={c.id} node={c} t={t} />
-      ))}
-    </TreeNode>
-  )
-}
-
-function EmpTree({ node, t }: { node: EmpNode; t: (k: string, o?: Record<string, unknown>) => string }) {
-  return (
-    <TreeNode
-      render={
-        <NodeCard
-          title={node.name}
-          subtitle={node.title ?? t('node.noTitle')}
-          meta={node.departmentName ?? undefined}
-        />
-      }
-    >
-      {node.children.map((c) => (
-        <EmpTree key={c.id} node={c} t={t} />
-      ))}
-    </TreeNode>
+    <li>
+      <OrgCard
+        title={node.name}
+        subtitle={node.title ?? t('node.noTitle')}
+        meta={node.departmentName ?? undefined}
+        avatar={initials(node.name)}
+        hasChildren={hasChildren} collapsed={isCollapsed} childCount={node.children.length}
+        onToggle={() => toggle(node.id)}
+      />
+      {hasChildren && !isCollapsed && (
+        <ul>{node.children.map((c) => <EmpOrgNode key={c.id} node={c} collapsed={collapsed} toggle={toggle} t={t} />)}</ul>
+      )}
+    </li>
   )
 }
 
@@ -140,6 +150,14 @@ export default function OrgChartPage() {
 
   const active = tab === 'departments' ? deptQ : repQ
   const isEmpty = !active.isLoading && !active.isError && (active.data?.length ?? 0) === 0
+
+  // Repli/dérepli des branches (par id de nœud) — ergonomie des grands arbres.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => setCollapsed((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
 
   async function handleExport(format: 'pdf' | 'svg') {
     try {
@@ -213,11 +231,15 @@ export default function OrgChartPage() {
           </div>
         )}
         {!active.isLoading && !active.isError && !isEmpty && (
-          <ul className="space-y-1.5">
-            {tab === 'departments'
-              ? (deptQ.data ?? []).map((n) => <DeptTree key={n.id} node={n} t={t} />)
-              : (repQ.data ?? []).map((n) => <EmpTree key={n.id} node={n} t={t} />)}
-          </ul>
+          <div className="overflow-x-auto pb-4">
+            <div className="orgchart">
+              <ul>
+                {tab === 'departments'
+                  ? (deptQ.data ?? []).map((n) => <DeptOrgNode key={n.id} node={n} collapsed={collapsed} toggle={toggle} t={t} />)
+                  : (repQ.data ?? []).map((n) => <EmpOrgNode key={n.id} node={n} collapsed={collapsed} toggle={toggle} t={t} />)}
+              </ul>
+            </div>
+          </div>
         )}
       </div>
     </div>
