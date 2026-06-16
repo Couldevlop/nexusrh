@@ -1,0 +1,59 @@
+{
+  "title": "Jobs & competencies framework",
+  "subtitle": "Job profiles and required competencies (Bloom taxonomy).",
+  "loading": "Loading…",
+  "loadError": "Unable to load data.",
+  "tabs": {
+    "catalog": "Competencies",
+    "profiles": "Job profiles",
+    "compare": "Compare"
+  },
+  "bloom": {
+    "label": "Mastery level (Bloom)",
+    "1": "1 — Remember",
+    "2": "2 — Understand",
+    "3": "3 — Apply",
+    "4": "4 — Analyze",
+    "5": "5 — Evaluate",
+    "6": "6 — Create"
+  },
+  "catalog": {
+    "title": "Competency framework",
+    "new": "New competency",
+    "empty": "No competency yet. Add some to attach them to job profiles.",
+    "fields": { "label": "Label", "category": "Category", "description": "Description" },
+    "add": "Add",
+    "deleteConfirm": "Delete this competency?"
+  },
+  "profiles": {
+    "title": "Job profiles",
+    "new": "New job profile",
+    "empty": "No job profile.",
+    "fields": {
+      "title": "Job title",
+      "mission": "Main mission",
+      "activities": "Activities & responsibilities",
+      "category": "Category / grade",
+      "level": "Hierarchical level"
+    },
+    "competencies": "Required competencies",
+    "addCompetency": "Add a required competency",
+    "required": "Required level",
+    "noCompetencies": "No required competency defined.",
+    "count": "{{count}} competency(ies)",
+    "deleteConfirm": "Delete this job profile?"
+  },
+  "compare": {
+    "title": "Compare two job profiles",
+    "profileA": "Job A",
+    "profileB": "Job B",
+    "select": "— Select —",
+    "run": "Compare",
+    "competency": "Competency",
+    "diffHint": "Gap = required level B − A",
+    "notRequired": "—",
+    "empty": "Select two job profiles to compare their requirements."
+  },
+  "form": { "save": "Save", "saving": "Saving…", "cancel": "Cancel" },
+  "saveError": "Error while saving"
+}

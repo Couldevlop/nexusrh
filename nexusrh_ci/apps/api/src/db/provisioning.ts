@@ -839,6 +839,38 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_succession_cand_plan_idx" ON ${s}.succession_candidates(plan_id)`)
 
+  // Référentiel des postes & des compétences (taxonomie de Bloom)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.job_profiles (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title         varchar(200) NOT NULL,
+    mission       text,
+    activities    text,
+    category      varchar(100),
+    level         varchar(50),
+    department_id uuid,
+    created_by    uuid,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.competency_framework (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    label       varchar(200) NOT NULL,
+    category    varchar(100),
+    description text,
+    bloom_level int NOT NULL DEFAULT 1,
+    created_by  uuid,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.job_profile_competencies (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_profile_id uuid NOT NULL,
+    competency_id  uuid NOT NULL,
+    required_level int NOT NULL DEFAULT 1,
+    UNIQUE(job_profile_id, competency_id)
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_jpc_profile_idx" ON ${s}.job_profile_competencies(job_profile_id)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

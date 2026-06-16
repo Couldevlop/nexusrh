@@ -102,6 +102,9 @@ const MonClimat   = lazy(() => import('@/pages/mon-espace/MonClimat'))
 // ── Plans de succession ───────────────────────────────────────────────────────
 const SuccessionPage = lazy(() => import('@/pages/succession/SuccessionPage'))
 
+// ── Référentiel postes & compétences (Bloom) ──────────────────────────────────
+const CompetenciesPage = lazy(() => import('@/pages/competencies/CompetenciesPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -388,6 +391,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <ModuleGuard moduleKey="succession">
                   <SuccessionPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="competencies" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
+                <ModuleGuard moduleKey="competencies">
+                  <CompetenciesPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

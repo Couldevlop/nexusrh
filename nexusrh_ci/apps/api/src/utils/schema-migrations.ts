@@ -349,6 +349,40 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_succession_cand_plan_idx" ON "${schemaName}".succession_candidates(plan_id)`,
 
+    // ── Référentiel des postes & des compétences (taxonomie de Bloom) ─────────
+    // Fiches de poste + référentiel de compétences (niveau de maîtrise Bloom 1–6)
+    // + compétences requises par poste. Base de l'outil comparatif.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".job_profiles (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title         varchar(200) NOT NULL,
+      mission       text,
+      activities    text,
+      category      varchar(100),
+      level         varchar(50),
+      department_id uuid,
+      created_by    uuid,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".competency_framework (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      label       varchar(200) NOT NULL,
+      category    varchar(100),
+      description text,
+      bloom_level int NOT NULL DEFAULT 1,
+      created_by  uuid,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".job_profile_competencies (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_profile_id uuid NOT NULL,
+      competency_id  uuid NOT NULL,
+      required_level int NOT NULL DEFAULT 1,
+      UNIQUE(job_profile_id, competency_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_jpc_profile_idx" ON "${schemaName}".job_profile_competencies(job_profile_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

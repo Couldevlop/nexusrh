@@ -33,6 +33,7 @@ export const MODULE_KEYS = [
   'offboarding',
   'climate',
   'succession',
+  'competencies',
   'dg_view',
 ] as const
 
@@ -59,6 +60,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   offboarding:  true,
   climate:      true,
   succession:   true,
+  competencies: true,
   dg_view:      false,
 }
 
@@ -84,6 +86,7 @@ const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [
   ['/offboarding',      'offboarding'],
   ['/climate',          'climate'],
   ['/succession',       'succession'],
+  ['/competencies',     'competencies'],
   ['/dg',               'dg_view'],
 ]
 
