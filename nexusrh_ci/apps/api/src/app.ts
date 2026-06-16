@@ -56,6 +56,7 @@ import agencyRoutes       from './modules/agency/agency.routes.js'
 import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
 import integrationsRoutes from './modules/integrations/integrations.routes.js'
 import onboardingRoutes from './modules/onboarding/onboarding.routes.js'
+import orgChartRoutes from './modules/org-chart/org-chart.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
@@ -364,6 +365,8 @@ export async function buildApp() {
   await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
   await fastify.register(integrationsRoutes, { prefix: '/integrations' })
   await fastify.register(onboardingRoutes,   { prefix: '/onboarding' })
+  // Organigramme dynamique — lecture seule dérivée de departments/employees.
+  await fastify.register(orgChartRoutes,     { prefix: '/org-chart' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

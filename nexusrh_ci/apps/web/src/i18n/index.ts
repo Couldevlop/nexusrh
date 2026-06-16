@@ -34,6 +34,7 @@ import frReferentiels from './locales/fr/referentiels.json'
 import frRaf from './locales/fr/raf.json'
 import frPublicPages from './locales/fr/publicPages.json'
 import frDg from './locales/fr/dg.json'
+import frOrgChart from './locales/fr/orgChart.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -60,6 +61,7 @@ import enReferentiels from './locales/en/referentiels.json'
 import enRaf from './locales/en/raf.json'
 import enPublicPages from './locales/en/publicPages.json'
 import enDg from './locales/en/dg.json'
+import enOrgChart from './locales/en/orgChart.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -69,7 +71,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart',
 ] as const
 
 const resources = {
@@ -81,7 +83,7 @@ const resources = {
     recruitment: frRecruitment, onboarding: frOnboarding, reporting: frReporting,
     settings: frSettings, platform: frPlatform, agency: frAgency,
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
-    publicPages: frPublicPages, dg: frDg,
+    publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -91,7 +93,7 @@ const resources = {
     recruitment: enRecruitment, onboarding: enOnboarding, reporting: enReporting,
     settings: enSettings, platform: enPlatform, agency: enAgency,
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
-    publicPages: enPublicPages, dg: enDg,
+    publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart,
   },
 } as const
 

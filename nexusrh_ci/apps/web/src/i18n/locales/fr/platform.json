@@ -347,6 +347,10 @@
         "label": "Assistant IA",
         "desc": "Assistant RH Claude, génération de documents et scoring rétention."
       },
+      "org_chart": {
+        "label": "Organigramme",
+        "desc": "Organigramme dynamique par direction/service et hiérarchie managériale, mis à jour automatiquement, avec export PDF/SVG."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."
