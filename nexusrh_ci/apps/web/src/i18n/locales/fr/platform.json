@@ -351,6 +351,10 @@
         "label": "Organigramme",
         "desc": "Organigramme dynamique par direction/service et hiérarchie managériale, mis à jour automatiquement, avec export PDF/SVG."
       },
+      "discipline": {
+        "label": "Gestion disciplinaire",
+        "desc": "Sanctions (observation, avertissement, blâme, mise à pied, licenciement) — donnée niveau 4 à accès restreint, historisée et journalisée."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

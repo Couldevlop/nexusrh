@@ -29,6 +29,7 @@ export const MODULE_KEYS = [
   'integrations',
   'ai',
   'org_chart',
+  'discipline',
   'dg_view',
 ] as const
 
@@ -51,6 +52,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   integrations: true,
   ai:           true,
   org_chart:    true,
+  discipline:   true,
   dg_view:      false,
 }
 
@@ -72,6 +74,7 @@ const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [
   ['/integrations',     'integrations'],
   ['/ai',               'ai'],
   ['/org-chart',        'org_chart'],
+  ['/discipline',       'discipline'],
   ['/dg',               'dg_view'],
 ]
 

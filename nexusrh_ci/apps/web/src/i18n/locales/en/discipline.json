@@ -1,0 +1,53 @@
+{
+  "title": "Disciplinary management",
+  "subtitle": "Sanctions and disciplinary procedures — restricted access, confidential data.",
+  "restricted": "Sensitive data (level 4) — access and exports are audited.",
+  "new": "New sanction",
+  "empty": "No sanction recorded.",
+  "loadError": "Unable to load sanctions.",
+  "loading": "Loading…",
+  "columns": {
+    "employee": "Employee",
+    "type": "Type",
+    "date": "Date",
+    "status": "Status",
+    "reason": "Reason",
+    "actions": "Actions"
+  },
+  "types": {
+    "observation": "Notice",
+    "avertissement": "Warning",
+    "blame": "Reprimand",
+    "mise_a_pied": "Suspension",
+    "licenciement": "Dismissal"
+  },
+  "statuses": {
+    "draft": "Draft",
+    "issued": "Issued",
+    "contested": "Contested",
+    "closed": "Closed",
+    "cancelled": "Cancelled"
+  },
+  "form": {
+    "title": "Record a sanction",
+    "employee": "Employee",
+    "employeePlaceholder": "— Select —",
+    "type": "Sanction type",
+    "date": "Date",
+    "reason": "Reason",
+    "reasonPlaceholder": "Reason for the sanction",
+    "description": "Description (optional)",
+    "submit": "Save",
+    "submitting": "Saving…",
+    "cancel": "Cancel"
+  },
+  "actions": {
+    "issue": "Issue",
+    "close": "Close",
+    "cancel": "Cancel sanction",
+    "delete": "Delete",
+    "deleteConfirm": "Permanently delete this sanction?"
+  },
+  "saved": "Sanction saved",
+  "saveError": "Error while saving"
+}

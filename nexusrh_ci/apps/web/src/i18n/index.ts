@@ -35,6 +35,7 @@ import frRaf from './locales/fr/raf.json'
 import frPublicPages from './locales/fr/publicPages.json'
 import frDg from './locales/fr/dg.json'
 import frOrgChart from './locales/fr/orgChart.json'
+import frDiscipline from './locales/fr/discipline.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -62,6 +63,7 @@ import enRaf from './locales/en/raf.json'
 import enPublicPages from './locales/en/publicPages.json'
 import enDg from './locales/en/dg.json'
 import enOrgChart from './locales/en/orgChart.json'
+import enDiscipline from './locales/en/discipline.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -71,7 +73,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline',
 ] as const
 
 const resources = {
@@ -83,7 +85,7 @@ const resources = {
     recruitment: frRecruitment, onboarding: frOnboarding, reporting: frReporting,
     settings: frSettings, platform: frPlatform, agency: frAgency,
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
-    publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart,
+    publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -93,7 +95,7 @@ const resources = {
     recruitment: enRecruitment, onboarding: enOnboarding, reporting: enReporting,
     settings: enSettings, platform: enPlatform, agency: enAgency,
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
-    publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart,
+    publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
   },
 } as const
 

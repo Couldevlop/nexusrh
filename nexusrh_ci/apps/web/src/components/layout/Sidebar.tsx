@@ -6,7 +6,7 @@ import {
   Smartphone, LogOut, ChevronRight, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
-  Eye, Activity, Network,
+  Eye, Activity, Network, Gavel,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
@@ -52,6 +52,7 @@ const HR_NAV: NavItem[] = [
   { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'onboarding' },
   { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'training' },
   { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'careers' },
+  { to: '/discipline',    labelKey: 'discipline', icon: Gavel,      end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'discipline' },
   { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'cnps' },
   { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'cnps' },
   { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'], moduleKey: 'mobile_money' },
