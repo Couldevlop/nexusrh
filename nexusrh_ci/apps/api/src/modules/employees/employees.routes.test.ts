@@ -229,7 +229,8 @@ describe('DELETE /employees/:id — audit log + UUID validation (OWASP A09)', ()
   it('archive correctement + trace audit_log employee.archived avec snapshot', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ first_name: 'Marie', last_name: 'Konaté', email: 'm@x.ci', job_title: 'Comptable' }] }) // snapshot
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE soft delete
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE soft delete employé
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE users (désactivation du compte lié)
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
 
     const token = tokenFor(app, 'hr_manager')
@@ -244,6 +245,11 @@ describe('DELETE /employees/:id — audit log + UUID validation (OWASP A09)', ()
     const changes = JSON.parse(auditCall?.[1]?.[3] as string)
     expect(changes.firstName).toBe('Marie')
     expect(changes.lastName).toBe('Konaté')
+    // Le compte de connexion lié doit être désactivé (login coupé pour le collaborateur supprimé)
+    const userDeactivate = queryMock.mock.calls.find(
+      (c) => /UPDATE .*\.users SET is_active = false[\s\S]*WHERE employee_id/.test(String(c[0])),
+    )
+    expect(userDeactivate).toBeDefined()
   })
 
   it('refuse DELETE par un hr_officer (admin/hr_manager uniquement, 403)', async () => {

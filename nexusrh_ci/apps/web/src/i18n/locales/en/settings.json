@@ -59,8 +59,12 @@
       "cnpsNumber": "Employer CNPS no.",
       "dgiNumber": "DGI no.",
       "rccm": "RCCM",
-      "atRate": "CNPS AT rate (e.g. 0.03)"
+      "atRate": "CNPS AT rate (e.g. 0.03)",
+      "senderName": "Sender name (e.g. HR SOTRA)",
+      "senderEmail": "Sender email (e.g. hr@mycompany.ci)"
     },
+    "emailSender": "Company email sender",
+    "emailSenderHint": "Address used as the sender of emails to your staff (access creation, reset). Leave empty to use the platform default sender.",
     "sector": "Business sector",
     "selectOption": "— Select —",
     "sectors": {

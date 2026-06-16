@@ -400,6 +400,13 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         await pool.query(
           `UPDATE "${schema}".employees SET deleted_at = now(), is_active = false WHERE id = $1`, [id]
         )
+        // Le collaborateur peut avoir un COMPTE DE CONNEXION lié (users.employee_id).
+        // Sans cette désactivation, un employé "supprimé" pouvait encore se
+        // connecter et restait dans la liste des utilisateurs (OWASP A01).
+        // On désactive le login (is_active=false) sans hard-delete (audit/RGPD).
+        await pool.query(
+          `UPDATE "${schema}".users SET is_active = false, updated_at = now() WHERE employee_id = $1`, [id]
+        )
         auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
           firstName: snapshot.rows[0].first_name,
           lastName:  snapshot.rows[0].last_name,

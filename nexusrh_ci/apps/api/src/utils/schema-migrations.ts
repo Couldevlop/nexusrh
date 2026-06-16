@@ -437,6 +437,15 @@ export async function ensurePlatformSchema(): Promise<void> {
     // la vue DG 360°, opt-in). Cf. services/tenant-modules.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
 
+    // ── Expéditeur email configurable par tenant ─────────────────────────────
+    // Adresse "From" utilisée pour les emails envoyés aux MEMBRES du tenant
+    // (création d'accès, réinitialisation). NULL → repli sur l'expéditeur
+    // plateforme (config.smtp.from). L'email de bienvenue à la CRÉATION du tenant
+    // reste envoyé par l'expéditeur plateforme (le tenant n'a pas encore configuré
+    // le sien). Cf. modules/settings/settings.routes.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_email varchar(255)`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS sender_name varchar(150)`,
+
     // ── Cycle de vie du mot de passe côté super_admin ─────────────────────────
     `ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now()`,
     `CREATE TABLE IF NOT EXISTS platform.password_history (
