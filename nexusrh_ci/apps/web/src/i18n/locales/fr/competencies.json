@@ -1,0 +1,59 @@
+{
+  "title": "Référentiel postes & compétences",
+  "subtitle": "Fiches de poste et compétences requises (taxonomie de Bloom).",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les données.",
+  "tabs": {
+    "catalog": "Compétences",
+    "profiles": "Fiches de poste",
+    "compare": "Comparer"
+  },
+  "bloom": {
+    "label": "Niveau de maîtrise (Bloom)",
+    "1": "1 — Mémoriser",
+    "2": "2 — Comprendre",
+    "3": "3 — Appliquer",
+    "4": "4 — Analyser",
+    "5": "5 — Évaluer",
+    "6": "6 — Créer"
+  },
+  "catalog": {
+    "title": "Référentiel des compétences",
+    "new": "Nouvelle compétence",
+    "empty": "Aucune compétence. Ajoutez-en pour les associer aux postes.",
+    "fields": { "label": "Intitulé", "category": "Catégorie", "description": "Description" },
+    "add": "Ajouter",
+    "deleteConfirm": "Supprimer cette compétence ?"
+  },
+  "profiles": {
+    "title": "Fiches de poste",
+    "new": "Nouveau poste",
+    "empty": "Aucune fiche de poste.",
+    "fields": {
+      "title": "Intitulé du poste",
+      "mission": "Mission principale",
+      "activities": "Activités & responsabilités",
+      "category": "Catégorie / classification",
+      "level": "Niveau hiérarchique"
+    },
+    "competencies": "Compétences requises",
+    "addCompetency": "Ajouter une compétence requise",
+    "required": "Niveau requis",
+    "noCompetencies": "Aucune compétence requise définie.",
+    "count": "{{count}} compétence(s)",
+    "deleteConfirm": "Supprimer cette fiche de poste ?"
+  },
+  "compare": {
+    "title": "Comparer deux postes",
+    "profileA": "Poste A",
+    "profileB": "Poste B",
+    "select": "— Sélectionner —",
+    "run": "Comparer",
+    "competency": "Compétence",
+    "diffHint": "Écart = niveau requis B − A",
+    "notRequired": "—",
+    "empty": "Sélectionnez deux postes pour comparer leurs exigences."
+  },
+  "form": { "save": "Enregistrer", "saving": "Enregistrement…", "cancel": "Annuler" },
+  "saveError": "Erreur lors de l'enregistrement"
+}

@@ -367,6 +367,10 @@
         "label": "Succession plans",
         "desc": "Key positions, talent pools and successors with readiness level and coverage summary."
       },
+      "competencies": {
+        "label": "Jobs & competencies framework",
+        "desc": "Job profiles, competency framework (Bloom taxonomy) and job comparison tool."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

@@ -93,3 +93,49 @@ html { scroll-behavior: smooth; }
 .card-gradient {
   @apply bg-gradient-to-br from-primary/5 to-transparent border border-primary/20;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Organigramme — arbre descendant professionnel (connecteurs CSS purs).
+   Technique éprouvée : <ul>/<li> + pseudo-éléments ::before/::after pour les
+   traits de liaison. Couleur des traits = bordure du thème (hsl(var(--border))).
+   ────────────────────────────────────────────────────────────────────────── */
+.orgchart { display: inline-block; min-width: 100%; text-align: center; }
+.orgchart ul { display: flex; justify-content: center; padding-top: 22px; position: relative; margin: 0; list-style: none; }
+.orgchart li { position: relative; padding: 22px 14px 0; text-align: center; list-style: none; }
+
+/* Connecteurs horizontaux au-dessus de chaque nœud */
+.orgchart li::before,
+.orgchart li::after {
+  content: ''; position: absolute; top: 0; right: 50%;
+  width: 50%; height: 22px;
+  border-top: 2px solid hsl(var(--border));
+}
+.orgchart li::after { right: auto; left: 50%; border-left: 2px solid hsl(var(--border)); }
+
+/* Nœud unique : pas de connecteurs latéraux, juste le trait vertical */
+.orgchart li:only-child::before,
+.orgchart li:only-child::after { display: none; }
+.orgchart li:only-child { padding-top: 22px; }
+
+/* Premiers/derniers enfants : on supprime la moitié de barre en trop et on
+   arrondit les coins pour un rendu propre */
+.orgchart li:first-child::before,
+.orgchart li:last-child::after { border: 0 none; }
+.orgchart li:last-child::before { border-right: 2px solid hsl(var(--border)); border-radius: 0 6px 0 0; }
+.orgchart li:first-child::after { border-radius: 6px 0 0 0; }
+
+/* Trait vertical descendant depuis le parent vers la rangée d'enfants */
+.orgchart ul ul::before {
+  content: ''; position: absolute; top: 0; left: 50%;
+  width: 0; height: 22px;
+  border-left: 2px solid hsl(var(--border));
+}
+
+/* Rangée racine (plus haut niveau) : aucun connecteur au-dessus (pas de parent) */
+.orgchart > ul { padding-top: 0; }
+.orgchart > ul > li { padding-top: 0; }
+.orgchart > ul > li::before,
+.orgchart > ul > li::after { display: none; }
+
+/* Carte d'un nœud */
+.orgchart .org-node { display: inline-block; vertical-align: top; }
