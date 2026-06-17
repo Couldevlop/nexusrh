@@ -92,6 +92,7 @@ describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
     expect(moduleKeyForUrl('/mobility/requests')).toBe('mobility')
     expect(moduleKeyForUrl('/classification/levels')).toBe('classification')
     expect(moduleKeyForUrl('/signature/requests')).toBe('signature')
+    expect(moduleKeyForUrl('/security/sso-config')).toBe('security')
     expect(moduleKeyForUrl('/dg/overview')).toBe('dg_view')
   })
 

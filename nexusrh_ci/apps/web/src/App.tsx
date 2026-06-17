@@ -117,6 +117,9 @@ const ClassificationPage = lazy(() => import('@/pages/classification/Classificat
 // ── Signature électronique ───────────────────────────────────────────────────
 const SignaturePage = lazy(() => import('@/pages/signature/SignaturePage'))
 
+// ── Sécurité & conformité (SSO/AD + SIEM) ────────────────────────────────────
+const SecurityPage = lazy(() => import('@/pages/security/SecurityPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -443,6 +446,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
                 <ModuleGuard moduleKey="signature">
                   <SignaturePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="security" element={
+              <RoleGuard allowedRoles={['admin']}>
+                <ModuleGuard moduleKey="security">
+                  <SecurityPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

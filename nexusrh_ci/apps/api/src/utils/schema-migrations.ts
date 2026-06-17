@@ -473,6 +473,31 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `CREATE INDEX IF NOT EXISTS "${schemaName}_sig_signatory_req_idx" ON "${schemaName}".signature_signatories(request_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_sig_signatory_emp_idx" ON "${schemaName}".signature_signatories(employee_id)`,
 
+    // ── Sécurité & conformité : SSO/AD + SIEM (config singleton par tenant) ───
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".sso_config (
+      id                int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      enabled           boolean NOT NULL DEFAULT false,
+      provider          varchar(20) NOT NULL DEFAULT 'oidc',
+      issuer            text,
+      client_id         text,
+      client_secret_enc text,
+      domains           text[] NOT NULL DEFAULT '{}',
+      default_role      varchar(20) NOT NULL DEFAULT 'employee',
+      jit_provisioning  boolean NOT NULL DEFAULT false,
+      group_mappings    jsonb NOT NULL DEFAULT '[]',
+      updated_at        timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".siem_config (
+      id          int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      enabled     boolean NOT NULL DEFAULT false,
+      transport   varchar(20) NOT NULL DEFAULT 'webhook',
+      endpoint    text,
+      format      varchar(10) NOT NULL DEFAULT 'json',
+      secret_enc  text,
+      categories  text[] NOT NULL DEFAULT '{auth,rbac,data_access,export,admin,config}',
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 
