@@ -1,0 +1,32 @@
+{
+  "title": "SAGE interface",
+  "subtitle": "Export your upstream payroll data to SAGE (in addition to the native NexusRH payroll engine).",
+  "loading": "Loading…",
+  "saved": "Configuration saved.",
+  "saveError": "Save error.",
+  "config": {
+    "title": "Export settings",
+    "enabled": "Enable the SAGE interface for this tenant",
+    "separator": "Column separator",
+    "separators": { "semicolon": "Semicolon ( ; )", "comma": "Comma ( , )", "tab": "Tab", "pipe": "Pipe ( | )" },
+    "includeHeader": "Include header row",
+    "matriculeSource": "Employee ID source",
+    "matriculeSources": { "employee_number": "Internal staff number", "id": "Technical identifier" },
+    "note": "Amounts are exported as whole FCFA. The file is UTF-8 (BOM) encoded for correct opening in SAGE / Excel."
+  },
+  "exports": {
+    "title": "Generate an export",
+    "period": "Period (YYYY-MM)",
+    "periodRequired": "Enter a period for this export.",
+    "employees": "Employees",
+    "employeesDesc": "Employee records (staff number, civil status, contract, base salary, CNPS…).",
+    "variableElements": "Variable elements",
+    "variableElementsDesc": "Bonuses, overtime and deductions for the period.",
+    "payroll": "Payroll results",
+    "payrollDesc": "Gross, contributions, income tax and net pay for the period.",
+    "download": "Download CSV",
+    "downloading": "Generating…"
+  },
+  "save": "Save",
+  "saving": "Saving…"
+}

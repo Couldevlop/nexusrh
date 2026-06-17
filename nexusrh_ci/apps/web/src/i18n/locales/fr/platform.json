@@ -391,6 +391,10 @@
         "label": "Sécurité & conformité",
         "desc": "Authentification fédérée SSO / Active Directory (OIDC, SAML, LDAP) et export des événements de sécurité vers un SIEM (webhook signé HMAC, format JSON/CEF)."
       },
+      "sage": {
+        "label": "Interface SAGE",
+        "desc": "Export des données amont-paie vers SAGE (employés, éléments variables, résultats de paie) au format délimité paramétrable, en complément du moteur de paie natif."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

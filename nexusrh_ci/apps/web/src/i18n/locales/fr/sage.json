@@ -1,0 +1,32 @@
+{
+  "title": "Interface SAGE",
+  "subtitle": "Exportez vos données amont-paie vers SAGE (en complément du moteur de paie natif NexusRH).",
+  "loading": "Chargement…",
+  "saved": "Configuration enregistrée.",
+  "saveError": "Erreur lors de l'enregistrement.",
+  "config": {
+    "title": "Paramètres d'export",
+    "enabled": "Activer l'interface SAGE pour ce tenant",
+    "separator": "Séparateur de colonnes",
+    "separators": { "semicolon": "Point-virgule ( ; )", "comma": "Virgule ( , )", "tab": "Tabulation", "pipe": "Barre verticale ( | )" },
+    "includeHeader": "Inclure la ligne d'en-tête",
+    "matriculeSource": "Source du matricule",
+    "matriculeSources": { "employee_number": "Matricule interne (numéro employé)", "id": "Identifiant technique" },
+    "note": "Les montants sont exportés en FCFA entiers. Le fichier est encodé UTF-8 (BOM) pour une ouverture correcte dans SAGE / Excel."
+  },
+  "exports": {
+    "title": "Générer un export",
+    "period": "Période (AAAA-MM)",
+    "periodRequired": "Renseignez une période pour cet export.",
+    "employees": "Employés",
+    "employeesDesc": "Fiches salariés (matricule, état civil, contrat, salaire de base, CNPS…).",
+    "variableElements": "Éléments variables",
+    "variableElementsDesc": "Primes, heures supplémentaires et retenues de la période.",
+    "payroll": "Résultats de paie",
+    "payrollDesc": "Brut, cotisations, ITS et net à payer de la période.",
+    "download": "Télécharger le CSV",
+    "downloading": "Génération…"
+  },
+  "save": "Enregistrer",
+  "saving": "Enregistrement…"
+}

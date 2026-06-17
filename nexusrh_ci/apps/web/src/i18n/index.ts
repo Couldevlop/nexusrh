@@ -45,6 +45,7 @@ import frMobility from './locales/fr/mobility.json'
 import frClassification from './locales/fr/classification.json'
 import frSignature from './locales/fr/signature.json'
 import frSecurity from './locales/fr/security.json'
+import frSage from './locales/fr/sage.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -82,6 +83,7 @@ import enMobility from './locales/en/mobility.json'
 import enClassification from './locales/en/classification.json'
 import enSignature from './locales/en/signature.json'
 import enSecurity from './locales/en/security.json'
+import enSage from './locales/en/sage.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -91,7 +93,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification', 'signature', 'security',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification', 'signature', 'security', 'sage',
 ] as const
 
 const resources = {
@@ -106,7 +108,7 @@ const resources = {
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
     offboarding: frOffboarding, climate: frClimate, succession: frSuccession,
     competencies: frCompetencies, calibration: frCalibration, mobility: frMobility,
-    classification: frClassification, signature: frSignature, security: frSecurity,
+    classification: frClassification, signature: frSignature, security: frSecurity, sage: frSage,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -119,7 +121,7 @@ const resources = {
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
     offboarding: enOffboarding, climate: enClimate, succession: enSuccession,
     competencies: enCompetencies, calibration: enCalibration, mobility: enMobility,
-    classification: enClassification, signature: enSignature, security: enSecurity,
+    classification: enClassification, signature: enSignature, security: enSecurity, sage: enSage,
   },
 } as const
 

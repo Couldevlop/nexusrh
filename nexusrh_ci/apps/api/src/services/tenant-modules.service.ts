@@ -39,6 +39,7 @@ export const MODULE_KEYS = [
   'classification',
   'signature',
   'security',
+  'sage',
   'dg_view',
 ] as const
 
@@ -71,6 +72,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   classification: true,
   signature:    true,
   security:     true,
+  sage:         true,
   dg_view:      false,
 }
 
@@ -102,6 +104,7 @@ const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [
   ['/classification',   'classification'],
   ['/signature',        'signature'],
   ['/security',         'security'],
+  ['/sage',             'sage'],
   ['/dg',               'dg_view'],
 ]
 
