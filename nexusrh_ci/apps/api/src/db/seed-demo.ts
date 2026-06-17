@@ -5,6 +5,7 @@
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
+import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
 
 const EMPLOYEES = [
   { firstName: 'Kouassi',  lastName: 'Coulibaly', gender: 'M', job: 'Directeur',       dept: 'Direction',    salary: 450_000 },
@@ -151,6 +152,10 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
       [t.title, t.duration, t.format]
     ).catch(() => {})
   }
+
+  // ── Données d'exemple des modules talents & cycle de vie ──
+  // (disciplinaire, sortie, climat, succession, compétences/Bloom, calibrage)
+  await seedTalentLifecycleBulk(pool, schemaName, employeeIds).catch(() => {})
 }
 
 function randInt(min: number, max: number): number {
