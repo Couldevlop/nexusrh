@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Network, FileDown, Image as ImageIcon, Users, Building2, ChevronRight, ChevronDown, Home } from 'lucide-react'
+import {
+  Network, FileDown, Image as ImageIcon, Users, Building2,
+  Plus, Minus, ZoomIn, ZoomOut, Maximize2, UnfoldVertical, FoldVertical,
+} from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +31,10 @@ function initials(name: string): string {
   return (parts.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')) || '?'
 }
 
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 1.4
+const ZOOM_STEP = 0.1
+
 // ─── Téléchargement d'un export (PDF/SVG) ────────────────────────────────────
 async function downloadExport(type: Tab, format: 'pdf' | 'svg'): Promise<void> {
   const res = format === 'pdf'
@@ -40,67 +47,111 @@ async function downloadExport(type: Tab, format: 'pdf' | 'svg'): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-// ─── Indexation d'un arbre (recherche + chemin d'ancêtres) ───────────────────
-function buildMaps<T extends AnyNode>(roots: T[]): { byId: Map<string, T>; parent: Map<string, string | null> } {
-  const byId = new Map<string, T>()
-  const parent = new Map<string, string | null>()
-  const walk = (n: T, p: string | null) => {
-    byId.set(n.id, n); parent.set(n.id, p)
-    for (const c of n.children) walk(c as T, n.id)
-  }
-  for (const r of roots) walk(r, null)
-  return { byId, parent }
-}
-function pathTo<T extends AnyNode>(byId: Map<string, T>, parent: Map<string, string | null>, id: string | null): T[] {
-  const out: T[] = []
-  let cur = id
-  while (cur) {
-    const n = byId.get(cur)
-    if (!n) break
-    out.unshift(n)
-    cur = parent.get(cur) ?? null
-  }
+// Tous les identifiants de nœuds ayant des subordonnés (pour « tout réduire »).
+function collectParentIds(roots: AnyNode[]): string[] {
+  const out: string[] = []
+  const walk = (n: AnyNode) => { if (n.children.length > 0) { out.push(n.id); n.children.forEach(walk) } }
+  roots.forEach(walk)
   return out
 }
 
-// ─── Carte cliquable d'un membre / responsable ───────────────────────────────
-function TeamCard({ node, t, head, onOpen }: { node: ViewNode; t: (k: string, o?: Record<string, unknown>) => string; head?: boolean; onOpen?: () => void }) {
-  const clickable = node.childrenCount > 0 && !!onOpen
+// ─── Carte d'un nœud (service ou collaborateur) ──────────────────────────────
+function NodeBox({ v, head, isCollapsed, onToggle }: {
+  v: ViewNode; head: boolean; isCollapsed: boolean; onToggle: () => void
+}) {
+  const hasChildren = v.childrenCount > 0
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      disabled={!clickable}
+    <div
       className={cn(
-        'group flex w-full items-center gap-3 rounded-xl border bg-card p-3 text-left transition-all',
-        head ? 'border-primary/40 shadow-sm ring-1 ring-primary/20' : 'border-border',
-        clickable ? 'cursor-pointer hover:border-primary/50 hover:shadow-md' : 'cursor-default',
+        'relative flex w-56 flex-col items-center rounded-xl border bg-card px-3 py-3 text-center shadow-sm transition-all',
+        head ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border',
       )}
     >
-      {node.avatar !== null ? (
-        <div className={cn('flex shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-primary', head ? 'h-12 w-12 text-sm' : 'h-10 w-10 text-xs')}>{node.avatar}</div>
+      {v.avatar !== null ? (
+        <div className={cn('mb-1.5 flex items-center justify-center rounded-full bg-primary/10 font-bold text-primary',
+          head ? 'h-12 w-12 text-sm' : 'h-10 w-10 text-xs')}>{v.avatar}</div>
       ) : (
-        <div className={cn('flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary', head ? 'h-12 w-12' : 'h-10 w-10')}><Building2 className="h-5 w-5" /></div>
+        <div className={cn('mb-1.5 flex items-center justify-center rounded-lg bg-primary/10 text-primary',
+          head ? 'h-12 w-12' : 'h-10 w-10')}><Building2 className="h-5 w-5" /></div>
       )}
-      <div className="min-w-0 flex-1">
-        <p className={cn('truncate font-semibold text-foreground', head ? 'text-base' : 'text-sm')}>{node.title}</p>
-        <p className="truncate text-xs text-muted-foreground">{node.subtitle}</p>
-        {node.meta && <p className="mt-0.5 text-[11px] font-medium text-primary">{node.meta}</p>}
-      </div>
-      {clickable && (
-        <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-          {node.childrenCount}<ChevronRight className="h-3.5 w-3.5" />
+      <p className={cn('w-full truncate font-semibold text-foreground', head ? 'text-sm' : 'text-[13px]')}>{v.title}</p>
+      <p className="w-full truncate text-xs text-muted-foreground">{v.subtitle}</p>
+      {v.meta && <p className="mt-0.5 w-full truncate text-[11px] font-medium text-primary">{v.meta}</p>}
+
+      {hasChildren && (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!isCollapsed}
+          className="absolute -bottom-3 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:text-primary"
+        >
+          {isCollapsed
+            ? <span className="flex items-center text-[10px] font-bold leading-none"><Plus className="h-3 w-3" /></span>
+            : <Minus className="h-3 w-3" />}
+        </button>
+      )}
+      {hasChildren && isCollapsed && (
+        <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+          {v.childrenCount}
         </span>
       )}
-    </button>
+    </div>
+  )
+}
+
+// ─── Nœud récursif de l'organigramme pyramidal ───────────────────────────────
+function OrgNode({ node, toView, collapsed, onToggle, head = false }: {
+  node: AnyNode
+  toView: (n: AnyNode) => ViewNode
+  collapsed: Set<string>
+  onToggle: (id: string) => void
+  head?: boolean
+}) {
+  const v = toView(node)
+  const hasChildren = node.children.length > 0
+  const isCollapsed = collapsed.has(node.id)
+  const showChildren = hasChildren && !isCollapsed
+
+  return (
+    <div className="relative flex flex-col items-center">
+      <NodeBox v={v} head={head} isCollapsed={isCollapsed} onToggle={() => onToggle(node.id)} />
+
+      {showChildren && (
+        <>
+          {/* Tronc : ligne verticale descendant du nœud vers la barre de ses subordonnés */}
+          <div className="h-7 w-px bg-border" />
+          {/* Rangée des subordonnés */}
+          <div className="flex items-start justify-center">
+            {node.children.map((child, i) => {
+              const single = node.children.length === 1
+              return (
+                <div key={child.id} className="relative flex flex-col items-center px-4 pt-7">
+                  {/* Branche horizontale (demi-segment pour les extrémités) */}
+                  {!single && (
+                    <span className={cn('absolute top-0 h-px bg-border',
+                      i === 0 ? 'left-1/2 right-0'
+                        : i === node.children.length - 1 ? 'left-0 right-1/2'
+                          : 'left-0 right-0')} />
+                  )}
+                  {/* Ramification verticale vers l'enfant */}
+                  <span className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-border" />
+                  <OrgNode node={child} toView={toView} collapsed={collapsed} onToggle={onToggle} />
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
 export default function OrgChartPage() {
   const { t } = useTranslation('orgChart')
   const [tab, setTab] = useState<Tab>('departments')
-  const [focusId, setFocusId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [zoom, setZoom] = useState(1)
 
   const deptQ = useQuery({
     queryKey: ['org-chart', 'departments'],
@@ -115,14 +166,8 @@ export default function OrgChartPage() {
   const roots = (active.data ?? []) as AnyNode[]
   const isEmpty = !active.isLoading && !active.isError && roots.length === 0
 
-  const { byId, parent } = useMemo(() => buildMaps(roots), [roots])
-  const focusNode = focusId ? byId.get(focusId) ?? null : null
-  const breadcrumb = useMemo(() => pathTo(byId, parent, focusId), [byId, parent, focusId])
-  // Équipe affichée : enfants du nœud focalisé, sinon les racines.
-  const teamNodes = (focusNode ? focusNode.children : roots)
-
   // Normalisation dept/employé → ViewNode.
-  const toView = (n: AnyNode): ViewNode => {
+  const toView = useCallback((n: AnyNode): ViewNode => {
     if (tab === 'departments') {
       const d = n as unknown as DeptNode
       return {
@@ -137,9 +182,21 @@ export default function OrgChartPage() {
       id: e.id, title: e.name, subtitle: e.title ?? t('node.noTitle'),
       meta: e.departmentName, avatar: initials(e.name), isDept: false, childrenCount: e.children.length,
     }
-  }
+  }, [tab, t])
 
-  function switchTab(v: Tab) { setTab(v); setFocusId(null) }
+  const allParentIds = useMemo(() => collectParentIds(roots), [roots])
+
+  const toggle = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+  const expandAll = () => setCollapsed(new Set())
+  const collapseAll = () => setCollapsed(new Set(allParentIds))
+
+  function switchTab(v: Tab) { setTab(v); setCollapsed(new Set()); setZoom(1) }
   async function handleExport(format: 'pdf' | 'svg') {
     try { setExporting(true); await downloadExport(tab, format) } finally { setExporting(false) }
   }
@@ -151,6 +208,8 @@ export default function OrgChartPage() {
       {label}
     </button>
   )
+
+  const allCollapsed = allParentIds.length > 0 && allParentIds.every((id) => collapsed.has(id))
 
   return (
     <div className="p-6 space-y-6">
@@ -175,14 +234,35 @@ export default function OrgChartPage() {
         </div>
       </div>
 
-      {/* Onglets */}
-      <div className="flex w-fit gap-1.5 rounded-xl border border-border bg-muted/40 p-1">
-        <TabButton value="departments" label={t('tabs.departments')} />
-        <TabButton value="reporting" label={t('tabs.reporting')} />
+      {/* Onglets + contrôles */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex w-fit gap-1.5 rounded-xl border border-border bg-muted/40 p-1">
+          <TabButton value="departments" label={t('tabs.departments')} />
+          <TabButton value="reporting" label={t('tabs.reporting')} />
+        </div>
+        {!isEmpty && (
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={allCollapsed ? expandAll : collapseAll}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent">
+              {allCollapsed ? <UnfoldVertical className="h-3.5 w-3.5" /> : <FoldVertical className="h-3.5 w-3.5" />}
+              {allCollapsed ? t('controls.expandAll') : t('controls.collapseAll')}
+            </button>
+            <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5">
+              <button type="button" onClick={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))}
+                disabled={zoom <= ZOOM_MIN} title={t('controls.zoomOut')}
+                className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-40"><ZoomOut className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setZoom(1)} title={t('controls.zoomReset')}
+                className="flex h-7 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold tabular-nums hover:bg-accent">{Math.round(zoom * 100)}%</button>
+              <button type="button" onClick={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))}
+                disabled={zoom >= ZOOM_MAX} title={t('controls.zoomIn')}
+                className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-40"><ZoomIn className="h-4 w-4" /></button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Contenu */}
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-card">
         {active.isLoading && <p className="py-10 text-center text-sm text-muted-foreground">{t('loading')}</p>}
         {active.isError && <p className="py-10 text-center text-sm text-destructive">{t('loadError')}</p>}
         {isEmpty && (
@@ -193,51 +273,19 @@ export default function OrgChartPage() {
         )}
 
         {!active.isLoading && !active.isError && !isEmpty && (
-          <div className="space-y-4">
-            {/* Fil d'Ariane */}
-            <nav className="flex flex-wrap items-center gap-1 text-sm">
-              <button type="button" onClick={() => setFocusId(null)}
-                className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent', !focusId && 'font-semibold text-primary')}>
-                <Home className="h-3.5 w-3.5" /> {t('team.root')}
-              </button>
-              {breadcrumb.map((n) => {
-                const v = toView(n)
-                const isLast = n.id === focusId
-                return (
-                  <span key={n.id} className="flex items-center gap-1">
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                    <button type="button" onClick={() => setFocusId(n.id)}
-                      className={cn('rounded-md px-2 py-1 hover:bg-accent', isLast && 'font-semibold text-primary')}>
-                      {v.title}
-                    </button>
-                  </span>
-                )
-              })}
-            </nav>
-
-            {/* Responsable focalisé (tête d'équipe) */}
-            {focusNode && (
-              <div className="max-w-md">
-                <TeamCard node={toView(focusNode)} t={t} head />
-              </div>
-            )}
-
-            {/* Équipe directe */}
-            <div>
-              {focusNode && (
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <ChevronDown className="h-3.5 w-3.5" /> {t('team.members', { count: teamNodes.length })}
-                </p>
-              )}
-              {teamNodes.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{t('team.empty')}</p>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {teamNodes.map((n) => (
-                    <TeamCard key={n.id} node={toView(n)} t={t} onOpen={() => setFocusId(n.id)} />
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 px-4 pt-3 text-xs text-muted-foreground">
+              <Maximize2 className="h-3.5 w-3.5" /> {t('controls.hint')}
+            </p>
+            {/* Zone défilable : l'arbre peut être large/profond */}
+            <div className="overflow-auto p-6">
+              <div className="inline-block min-w-full origin-top" style={{ transform: `scale(${zoom})` }}>
+                <div className="flex min-w-full items-start justify-center gap-10">
+                  {roots.map((r) => (
+                    <OrgNode key={r.id} node={r} toView={toView} collapsed={collapsed} onToggle={toggle} head />
                   ))}
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}

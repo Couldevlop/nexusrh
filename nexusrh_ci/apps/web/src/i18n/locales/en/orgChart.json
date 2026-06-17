@@ -24,5 +24,13 @@
     "root": "Organization",
     "members": "Direct team ({{count}})",
     "empty": "No direct report."
+  },
+  "controls": {
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomReset": "Actual size",
+    "hint": "Click a node to expand or collapse its reports."
   }
 }
