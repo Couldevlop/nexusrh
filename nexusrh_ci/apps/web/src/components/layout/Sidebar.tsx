@@ -56,6 +56,7 @@ const HR_NAV: NavItem[] = [
   { to: '/competencies',  labelKey: 'competencies', icon: GraduationCap, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'competencies' },
   { to: '/calibration',   labelKey: 'calibration', icon: Grid3x3,     end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'calibration' },
   { to: '/mobility',      labelKey: 'mobility',   icon: Route,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'mobility' },
+  { to: '/classification', labelKey: 'classification', icon: Layers, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly','dg'], moduleKey: 'classification' },
   { to: '/discipline',    labelKey: 'discipline', icon: Gavel,      end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'discipline' },
   { to: '/offboarding',   labelKey: 'offboarding', icon: DoorOpen,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'offboarding' },
   { to: '/climate',       labelKey: 'climate',    icon: MessageSquare, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'climate' },

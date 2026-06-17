@@ -1,0 +1,58 @@
+{
+  "title": "Classification des données",
+  "subtitle": "Classement des données RH à 4 niveaux : règles d'accès, d'export et de traçabilité par niveau.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les données.",
+  "tabs": { "levels": "Niveaux", "categories": "Catégories de données" },
+  "levelNames": {
+    "1": "Public",
+    "2": "Interne",
+    "3": "Confidentiel",
+    "4": "Restreint"
+  },
+  "levelLabels": {
+    "public": "Public",
+    "internal": "Interne",
+    "confidential": "Confidentiel",
+    "restricted": "Restreint"
+  },
+  "levels": {
+    "intro": "Définissez, pour chaque niveau, les rôles autorisés à consulter les données, la possibilité d'export et les exigences de chiffrement et de traçabilité. Seul l'administrateur du tenant peut modifier ces règles.",
+    "level": "Niveau",
+    "allowedRoles": "Rôles autorisés",
+    "exportAllowed": "Export autorisé",
+    "encryptionRequired": "Chiffrement requis",
+    "auditRequired": "Traçabilité (journal d'accès)",
+    "yes": "Oui",
+    "no": "Non",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "cancel": "Annuler",
+    "readOnlyHint": "Lecture seule — seul l'administrateur peut modifier les règles."
+  },
+  "categories": {
+    "intro": "Cartographie des catégories de données RH et de leur niveau de classification.",
+    "new": "Nouvelle catégorie",
+    "empty": "Aucune catégorie de données classée.",
+    "key": "Clé",
+    "label": "Libellé",
+    "level": "Niveau",
+    "examples": "Exemples",
+    "create": "Ajouter",
+    "creating": "Ajout…",
+    "deleteConfirm": "Supprimer cette catégorie de classification ?",
+    "keyHint": "minuscules, chiffres et underscore uniquement"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "hr_manager": "Responsable RH",
+    "hr_officer": "Gestionnaire RH",
+    "manager": "Manager",
+    "employee": "Salarié",
+    "readonly": "Lecture seule",
+    "dg": "Direction générale",
+    "raf_site": "RAF site"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}

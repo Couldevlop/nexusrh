@@ -1,0 +1,58 @@
+{
+  "title": "Data classification",
+  "subtitle": "4-level HR data classification: per-level access, export and audit rules.",
+  "loading": "Loading…",
+  "loadError": "Unable to load data.",
+  "tabs": { "levels": "Levels", "categories": "Data categories" },
+  "levelNames": {
+    "1": "Public",
+    "2": "Internal",
+    "3": "Confidential",
+    "4": "Restricted"
+  },
+  "levelLabels": {
+    "public": "Public",
+    "internal": "Internal",
+    "confidential": "Confidential",
+    "restricted": "Restricted"
+  },
+  "levels": {
+    "intro": "For each level, define which roles may access the data, whether export is allowed, and the encryption and audit requirements. Only the tenant administrator can change these rules.",
+    "level": "Level",
+    "allowedRoles": "Allowed roles",
+    "exportAllowed": "Export allowed",
+    "encryptionRequired": "Encryption required",
+    "auditRequired": "Audit (access log)",
+    "yes": "Yes",
+    "no": "No",
+    "edit": "Edit",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "readOnlyHint": "Read-only — only the administrator can edit the rules."
+  },
+  "categories": {
+    "intro": "Mapping of HR data categories to their classification level.",
+    "new": "New category",
+    "empty": "No classified data category.",
+    "key": "Key",
+    "label": "Label",
+    "level": "Level",
+    "examples": "Examples",
+    "create": "Add",
+    "creating": "Adding…",
+    "deleteConfirm": "Delete this classification category?",
+    "keyHint": "lowercase, digits and underscore only"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "hr_manager": "HR Manager",
+    "hr_officer": "HR Officer",
+    "manager": "Manager",
+    "employee": "Employee",
+    "readonly": "Read-only",
+    "dg": "Executive management",
+    "raf_site": "Site RAF"
+  },
+  "saveError": "Save error"
+}

@@ -111,6 +111,9 @@ const CalibrationPage = lazy(() => import('@/pages/calibration/CalibrationPage')
 // ── Mobilités ─────────────────────────────────────────────────────────────────
 const MobilityPage = lazy(() => import('@/pages/mobility/MobilityPage'))
 
+// ── Classification des données ───────────────────────────────────────────────
+const ClassificationPage = lazy(() => import('@/pages/classification/ClassificationPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -421,6 +424,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
                 <ModuleGuard moduleKey="mobility">
                   <MobilityPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="classification" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly','dg']}>
+                <ModuleGuard moduleKey="classification">
+                  <ClassificationPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

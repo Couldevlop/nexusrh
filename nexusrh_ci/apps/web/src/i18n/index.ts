@@ -42,6 +42,7 @@ import frSuccession from './locales/fr/succession.json'
 import frCompetencies from './locales/fr/competencies.json'
 import frCalibration from './locales/fr/calibration.json'
 import frMobility from './locales/fr/mobility.json'
+import frClassification from './locales/fr/classification.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -76,6 +77,7 @@ import enSuccession from './locales/en/succession.json'
 import enCompetencies from './locales/en/competencies.json'
 import enCalibration from './locales/en/calibration.json'
 import enMobility from './locales/en/mobility.json'
+import enClassification from './locales/en/classification.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -85,7 +87,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification',
 ] as const
 
 const resources = {
@@ -100,6 +102,7 @@ const resources = {
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
     offboarding: frOffboarding, climate: frClimate, succession: frSuccession,
     competencies: frCompetencies, calibration: frCalibration, mobility: frMobility,
+    classification: frClassification,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -112,6 +115,7 @@ const resources = {
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
     offboarding: enOffboarding, climate: enClimate, succession: enSuccession,
     competencies: enCompetencies, calibration: enCalibration, mobility: enMobility,
+    classification: enClassification,
   },
 } as const
 

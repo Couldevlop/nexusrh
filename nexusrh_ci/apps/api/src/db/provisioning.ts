@@ -1,5 +1,6 @@
 import { assertValidSchemaName } from '../utils/schema-name.js'
 import { onboardingTableStatements } from './onboarding-tables.js'
+import { classificationTableStatements } from './classification-defaults.js'
 import { pool } from './pool.js'
 
 /**
@@ -925,6 +926,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at            timestamptz NOT NULL DEFAULT now()
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_mobility_emp_idx" ON ${s}.mobility_requests(employee_id)`)
+
+  // Classification des données à 4 niveaux (réf. + règles d'accès par défaut)
+  for (const stmt of classificationTableStatements(schemaName)) {
+    await q(stmt)
+  }
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1,5 +1,6 @@
 import { assertValidSchemaName } from './schema-name.js'
 import { onboardingTableStatements } from '../db/onboarding-tables.js'
+import { classificationTableStatements } from '../db/classification-defaults.js'
 import { pool } from '../db/pool.js'
 
 const migratedSchemas = new Set<string>()
@@ -437,6 +438,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       updated_at            timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_mobility_emp_idx" ON "${schemaName}".mobility_requests(employee_id)`,
+
+    // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
+    ...classificationTableStatements(schemaName),
 
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
