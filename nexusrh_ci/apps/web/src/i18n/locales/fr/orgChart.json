@@ -24,5 +24,13 @@
     "root": "Organisation",
     "members": "Équipe directe ({{count}})",
     "empty": "Aucun rattachement direct."
+  },
+  "controls": {
+    "expandAll": "Tout déployer",
+    "collapseAll": "Tout réduire",
+    "zoomIn": "Agrandir",
+    "zoomOut": "Réduire",
+    "zoomReset": "Taille réelle",
+    "hint": "Cliquez sur un nœud pour déployer ou réduire ses subordonnés."
   }
 }
