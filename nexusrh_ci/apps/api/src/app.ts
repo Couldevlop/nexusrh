@@ -62,6 +62,7 @@ import offboardingRoutes from './modules/offboarding/offboarding.routes.js'
 import climateRoutes from './modules/climate/climate.routes.js'
 import successionRoutes from './modules/succession/succession.routes.js'
 import competenciesRoutes from './modules/competencies/competencies.routes.js'
+import calibrationRoutes from './modules/calibration/calibration.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
@@ -382,6 +383,8 @@ export async function buildApp() {
   await fastify.register(successionRoutes,   { prefix: '/succession' })
   // Référentiel postes & compétences (taxonomie de Bloom).
   await fastify.register(competenciesRoutes, { prefix: '/competencies' })
+  // Calibrage (sessions 9-box performance × potentiel).
+  await fastify.register(calibrationRoutes,  { prefix: '/calibration' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

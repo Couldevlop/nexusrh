@@ -383,6 +383,35 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_jpc_profile_idx" ON "${schemaName}".job_profile_competencies(job_profile_id)`,
 
+    // ── Calibrage (sessions 9-box : performance × potentiel, avant/après) ─────
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".calibration_sessions (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title        varchar(200) NOT NULL,
+      session_date date,
+      scope        varchar(150),
+      status       varchar(20) NOT NULL DEFAULT 'draft',
+      notes        text,
+      created_by   uuid,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      updated_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".calibration_entries (
+      id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      session_id         uuid NOT NULL,
+      employee_id        uuid NOT NULL,
+      performance_before int,
+      potential_before   int,
+      performance_after  int,
+      potential_after    int,
+      qualities          text,
+      gaps               text,
+      corrective_actions text,
+      created_at         timestamptz NOT NULL DEFAULT now(),
+      updated_at         timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(session_id, employee_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_calib_entries_session_idx" ON "${schemaName}".calibration_entries(session_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

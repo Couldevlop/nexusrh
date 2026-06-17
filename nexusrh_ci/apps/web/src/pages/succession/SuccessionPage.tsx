@@ -96,7 +96,7 @@ export default function SuccessionPage() {
   })
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><GitBranch className="h-5 w-5" /></div>
@@ -112,7 +112,7 @@ export default function SuccessionPage() {
       </div>
 
       {showForm && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="max-w-2xl rounded-xl border border-border bg-card p-4 space-y-3">
           <h2 className="text-sm font-semibold">{t('form.title')}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <input type="text" value={form.positionTitle} placeholder={t('form.positionPlaceholder')}

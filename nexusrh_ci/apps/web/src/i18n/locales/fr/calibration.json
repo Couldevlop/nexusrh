@@ -1,0 +1,43 @@
+{
+  "title": "Calibrage (9-box)",
+  "subtitle": "Sessions de calibrage : performance × potentiel, avant/après et recommandations.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les sessions.",
+  "new": "Nouvelle session",
+  "empty": "Aucune session de calibrage.",
+  "statuses": { "draft": "Brouillon", "in_progress": "En cours", "closed": "Clôturée" },
+  "scale": { "1": "Faible", "2": "Moyen", "3": "Élevé" },
+  "box": {
+    "star": "Étoile", "high_perf": "Haute performance", "expert": "Expert",
+    "high_pot": "Haut potentiel", "core": "Pilier", "solid": "Solide",
+    "enigma": "Énigme", "inconsistent": "Irrégulier", "risk": "À risque"
+  },
+  "form": {
+    "title": "Créer une session",
+    "name": "Intitulé",
+    "date": "Date",
+    "scope": "Périmètre / population",
+    "submit": "Créer",
+    "submitting": "Création…"
+  },
+  "session": {
+    "entries": "Collaborateurs calibrés",
+    "addEmployee": "Ajouter un collaborateur",
+    "employee": "Collaborateur",
+    "select": "— Sélectionner —",
+    "performance": "Performance",
+    "potential": "Potentiel",
+    "before": "Avant",
+    "after": "Après",
+    "qualities": "Qualités",
+    "gaps": "Insuffisances",
+    "corrective": "Mesures correctives",
+    "noEntries": "Aucun collaborateur dans cette session.",
+    "count": "{{count}} collaborateur(s)",
+    "save": "Enregistrer",
+    "close": "Clôturer",
+    "deleteConfirm": "Supprimer cette session ?",
+    "grid": "Matrice 9-box (après calibrage)"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}

@@ -33,6 +33,7 @@ import {
   seedRetentionScoresBulk,
   seedCurrentMonthExpensesBulk,
 } from './seed-demo-data.js'
+import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function randInt(min: number, max: number): number {
@@ -1293,6 +1294,7 @@ async function runSeed(): Promise<void> {
   await seedSkillsEvaluationsBulk(pool, sotraSchema, sotraIds, skillIds,
     'admin@sotra.ci', sotraEmployees[0] ? [sotraEmployees[0].id] : [])
   await seedHrEventsBulk(pool, sotraSchema)
+  await seedTalentLifecycleBulk(pool, sotraSchema, sotraIds)
   await seedNotificationsBulk(pool, sotraSchema)
   const lastClosed = sotraPeriods[sotraPeriods.length - 1]!
   const nbMm = await seedMobileMoneyCampaign(pool, sotraSchema, lastClosed)
@@ -1617,6 +1619,7 @@ async function runSeed(): Promise<void> {
   await seedSkillsEvaluationsBulk(pool, cabinetSchema, cabIds, cabSkillIds,
     'admin@cabinet-expertise.ci', cabinetEmployees[0] ? [cabinetEmployees[0].id] : [])
   await seedHrEventsBulk(pool, cabinetSchema)
+  await seedTalentLifecycleBulk(pool, cabinetSchema, cabIds)
   await seedNotificationsBulk(pool, cabinetSchema)
   const cabLastClosed = cabinetPeriods[cabinetPeriods.length - 1]!
   await seedMobileMoneyCampaign(pool, cabinetSchema, cabLastClosed)
@@ -1887,6 +1890,7 @@ async function runSeed(): Promise<void> {
   await seedEnrollmentsBulk(pool, openlabSchema, olIds, olSessionIds)
   await seedSkillsEvaluationsBulk(pool, openlabSchema, olIds, olSkillIds, 'coulwao@gmail.com')
   await seedHrEventsBulk(pool, openlabSchema)
+  await seedTalentLifecycleBulk(pool, openlabSchema, olIds)
   await seedNotificationsBulk(pool, openlabSchema)
   const olLastClosed = openlabPeriods[openlabPeriods.length - 1]!
   await seedMobileMoneyCampaign(pool, openlabSchema, olLastClosed)

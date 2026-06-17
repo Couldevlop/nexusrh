@@ -26,6 +26,7 @@ export const MODULE_KEYS = [
   'climate',
   'succession',
   'competencies',
+  'calibration',
   'dg_view',
 ] as const
 
@@ -52,6 +53,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   climate:      true,
   succession:   true,
   competencies: true,
+  calibration:  true,
   dg_view:      false,
 }
 

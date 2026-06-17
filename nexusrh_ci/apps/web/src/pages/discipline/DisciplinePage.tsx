@@ -83,7 +83,7 @@ export default function DisciplinePage() {
   const canSubmit = form.employeeId && form.actionDate && form.reason.trim().length > 0
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6">
       {/* En-tête */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -111,7 +111,7 @@ export default function DisciplinePage() {
 
       {/* Formulaire */}
       {showForm && (
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold">{t('form.title')}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-sm">

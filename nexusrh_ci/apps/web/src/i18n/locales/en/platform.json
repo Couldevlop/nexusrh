@@ -371,6 +371,10 @@
         "label": "Jobs & competencies framework",
         "desc": "Job profiles, competency framework (Bloom taxonomy) and job comparison tool."
       },
+      "calibration": {
+        "label": "Calibration (9-box)",
+        "desc": "Calibration sessions: 9-box profiles (performance × potential) before/after and recommendations tracking."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."
