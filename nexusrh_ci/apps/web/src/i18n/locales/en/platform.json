@@ -375,6 +375,14 @@
         "label": "Calibration (9-box)",
         "desc": "Calibration sessions: 9-box profiles (performance × potential) before/after and recommendations tracking."
       },
+      "mobility": {
+        "label": "Mobility",
+        "desc": "Competency-based mobility paths, employee vs target job comparison (gaps) and validation workflow."
+      },
+      "classification": {
+        "label": "Data classification",
+        "desc": "4-level HR data classification (Public, Internal, Confidential, Restricted): per-level access/export/audit rules and category mapping."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

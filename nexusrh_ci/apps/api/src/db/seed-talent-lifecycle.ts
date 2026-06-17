@@ -155,6 +155,33 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
     }
   }
 
+  // 6bis. Mobilités : compétences évaluées + 1 passerelle vers un poste cible
+  if (!(await hasRows('employee_competencies'))) {
+    const comps = await pool.query<{ id: string }>(`SELECT id FROM "${schema}".competency_framework ORDER BY label LIMIT 5`)
+    const compIds = comps.rows.map((r) => r.id)
+    if (compIds.length > 0) {
+      // Évalue 3 salariés sur les compétences du référentiel (niveaux variés).
+      for (let e = 0; e < Math.min(3, ids.length); e++) {
+        for (const cid of compIds) {
+          await pool.query(
+            `INSERT INTO "${schema}".employee_competencies (employee_id, competency_id, level)
+             VALUES ($1,$2,$3) ON CONFLICT (employee_id, competency_id) DO NOTHING`,
+            [ids[e], cid, randInt(2, 5)],
+          )
+        }
+      }
+    }
+    const jp = await pool.query<{ id: string }>(`SELECT id FROM "${schema}".job_profiles ORDER BY title LIMIT 1`)
+    const jpId = jp.rows[0]?.id
+    if (jpId && ids[0] && !(await hasRows('mobility_requests'))) {
+      await pool.query(
+        `INSERT INTO "${schema}".mobility_requests (employee_id, target_job_profile_id, status, reason)
+         VALUES ($1,$2,'in_review',$3)`,
+        [ids[0], jpId, "Souhait d'évolution vers un poste d'encadrement"],
+      )
+    }
+  }
+
   // 6. Session de calibrage 9-box
   if (!(await hasRows('calibration_sessions'))) {
     const sess = await pool.query<{ id: string }>(
