@@ -19,5 +19,10 @@
   },
   "empty": "No org chart data yet. Add departments and assign employees to see the org chart.",
   "loadError": "Unable to load the org chart.",
-  "loading": "Loading org chart…"
+  "loading": "Loading org chart…",
+  "team": {
+    "root": "Organization",
+    "members": "Direct team ({{count}})",
+    "empty": "No direct report."
+  }
 }

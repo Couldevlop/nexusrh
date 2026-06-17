@@ -19,5 +19,10 @@
   },
   "empty": "Aucune donnée d'organigramme. Ajoutez des services et rattachez des employés pour voir l'organigramme.",
   "loadError": "Impossible de charger l'organigramme.",
-  "loading": "Chargement de l'organigramme…"
+  "loading": "Chargement de l'organigramme…",
+  "team": {
+    "root": "Organisation",
+    "members": "Équipe directe ({{count}})",
+    "empty": "Aucun rattachement direct."
+  }
 }
