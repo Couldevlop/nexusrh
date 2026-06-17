@@ -247,12 +247,14 @@ def build():
     for title, txt in [
         ("2.1  Recrutement, Onboarding et Offboarding",
          "Standard : ATS avec scoring IA, vivier, pipeline, page publique, pre-onboarding/checklists. "
-         "Specifique (lot) : workflow de validation des besoins (Manager > DRH/Finance > DG), bibliotheque "
-         "video et videos journalieres, bilan de fin d'integration, module offboarding + solde de tout compte."),
+         "Livre : module offboarding complet (motifs de depart, checklist de restitution, solde de tout "
+         "compte conforme au Code du travail CI). Specifique (lot) : workflow de validation des besoins "
+         "(Manager > DRH/Finance > DG), bibliotheque video et videos journalieres, bilan de fin d'integration."),
         ("2.2  Administration et dossier salarie",
          "Standard : dossier complet (etat civil, CNPS/NNI, contrats OHADA), historique des mouvements. "
-         "Specifique : generateur multi-modeles de documents + signature electronique, gestion disciplinaire "
-         "(niveau 4), suivi des visites medicales/aptitudes, coffre documentaire."),
+         "Livre : signature electronique integree (circuit de signataires sequentiel/parallele + piste "
+         "d'audit), gestion disciplinaire (sanctions niveau 4, acces restreint). Specifique : generateur "
+         "multi-modeles de documents, suivi des visites medicales/aptitudes, coffre documentaire."),
         ("2.3  Temps, absences et conges (point fort)",
          "Standard : self-service web/mobile, typologie parametrable, calcul des soldes Code du travail CI "
          "(jours ouvrables, feries 2024), workflow N+1 puis RH, planning d'equipe."),
@@ -261,19 +263,22 @@ def build():
          "Option A - Paie native NexusRH : le moteur integre calcule la paie (CNPS double plafond, ITS/DGI, "
          "bulletins, declarations CNPS + DISA) ; SAGE devient facultatif. Option B - Interface SAGE "
          "(amont-paie) : SAGE garde le calcul, le SIRH collecte/controle/valide les variables et archive les "
-         "bulletins. Specifique (lot 1, uniquement si Option B) : connecteur SAGE bidirectionnel "
-         "(API/fichiers/SFTP) + coffre-fort des bulletins. Presenter les deux scenarios avec leurs impacts "
-         "cout/delai/risque."),
+         "bulletins. Livre (si Option B) : module SAGE - export amont SIRH->SAGE des employes, elements "
+         "variables et resultats de paie au format delimite parametrable (separateur, en-tete, matricule), "
+         "UTF-8 BOM, neutralisation des injections CSV. Specifique restant : sens retour SAGE->SIRH "
+         "(bulletins) + coffre-fort. Presenter les deux scenarios avec leurs impacts cout/delai/risque."),
         ("2.5  Talents, carrieres et competences",
-         "Standard : matrice 9-box. Specifique : referentiel postes/competences (taxonomie de Bloom), "
-         "campagnes d'evaluation + objectifs + validation N+2 + signature, calibrage, mobilites, successions/pools."),
+         "Standard : matrice 9-box. Livre : referentiel postes/competences sur la taxonomie de Bloom (1-6) + "
+         "comparateur de postes, calibrage (sessions 9-box avant/apres + recommandations), mobilites "
+         "(passerelles + gap analysis + decision DRH), successions (postes cles, viviers, readiness). "
+         "Specifique restant : campagnes d'evaluation + objectifs + validation N+2."),
         ("2.6  Formation",
          "Standard : catalogue, sessions, inscriptions, eligibilite FDFP. Specifique : plan de formation + "
          "workflow RH-DG + budget, evaluation a chaud/a froid, gestion des presences, interface e-learning (SSO)."),
         ("2.7  Organigrammes, reporting et portail",
          "Standard : reporting/dashboards (effectifs, turnover, absenteisme, masse salariale en FCFA), portail "
-         "self-service mobile/PWA. Specifique : organigramme dynamique + export PDF/image, export generique "
-         "Excel/CSV, enquetes climat social."),
+         "self-service mobile/PWA. Livre : organigramme dynamique pyramidal (couleurs par niveau) + export "
+         "PDF/SVG, enquetes climat social (resultats anonymises). Specifique restant : export generique Excel/CSV."),
     ]:
         h3(doc, title)
         body(doc, txt)
@@ -312,22 +317,23 @@ def build():
            ["A06 Vulnerable Components", "Audit dependances, mises a jour, SBOM a fournir", "A documenter"],
            ["A07 Auth Failures", "MFA TOTP + anti-rejeu, politique mdp, lockout, verif HIBP", "En place"],
            ["A08 Integrity Failures", "Piste d'audit non alterable, signature des livrables CI/CD", "En place / a etendre"],
-           ["A09 Logging & Monitoring", "audit_log (qui/quoi/quand, avant/apres, IP) ; export SIEM a ajouter", "A completer (SIEM)"],
+           ["A09 Logging & Monitoring", "audit_log (qui/quoi/quand, avant/apres, IP) + export SIEM livre (webhook HMAC, JSON/CEF)", "En place"],
            ["A10 SSRF", "Garde SSRF sur connecteurs sortants (module integrations)", "En place"]],
           widths_cm=[4.2, 8.3, 4.0])
 
     h2(doc, "3.3  Habilitations - 6 profils RBAC et classification a 4 niveaux")
     body(doc, "Decrire le modele de droits : RBAC (roles) + perimetre (entite/agence) + relation manageriale "
-              "(N+1/N+2) + regles exceptionnelles (interim, delegation). Aligner sur les 6 profils du DAO et "
-              "engager le developpement du role Administrateur Systeme (acces technique, masquage des salaires) "
-              "et de la classification native a 4 niveaux (Public / Interne / Confidentiel / Restreint) avec "
-              "cloisonnement au sein du dossier salarie (identite vs remuneration vs sanctions vs sante) et "
-              "controle des exports par niveau.")
+              "(N+1/N+2) + regles exceptionnelles (interim, delegation). La classification native a 4 niveaux "
+              "(Public / Interne / Confidentiel / Restreint) est LIVREE : regles d'acces, d'export, de "
+              "chiffrement et d'audit configurables par niveau, 16 categories de donnees RH pre-classees "
+              "(identite, remuneration, sanctions, sante...), endpoint de verification audite. Reste a finaliser "
+              "le role Administrateur Systeme (acces technique avec masquage des salaires) pour completer les "
+              "6 profils du DAO.")
 
     h2(doc, "3.4  Authentification, chiffrement, journalisation, PRA/PCA")
-    bullet(doc, "SSO SAML/OIDC + Active Directory/Azure AD (a integrer), MFA, politique mdp, verrouillage, comptes inactifs ;", "Authentification : ")
-    bullet(doc, "TLS en transit ; AES-256-GCM au repos ; gestion et rotation des cles (KMS) a formaliser ; sauvegardes chiffrees ;", "Chiffrement : ")
-    bullet(doc, "contenu minimal des logs, protection et duree de conservation ; export syslog/API vers le SIEM de la banque (a developper) ;", "Journalisation et SIEM : ")
+    bullet(doc, "SSO SAML/OIDC + Active Directory/LDAP configurables par tenant (livre : domaines geres, mapping groupes->role, JIT, test de decouverte OIDC ; login federe a brancher), MFA, politique mdp, verrouillage, comptes inactifs ;", "Authentification : ")
+    bullet(doc, "TLS en transit ; AES-256-GCM au repos (NNI/IBAN, secrets SSO/SIEM) ; gestion et rotation des cles (KMS) a formaliser ; sauvegardes chiffrees ;", "Chiffrement : ")
+    bullet(doc, "contenu minimal des logs, protection et duree de conservation ; export SIEM livre (webhook signe HMAC-SHA256, format JSON ou CEF/ArcSight, filtrage par categorie) ;", "Journalisation et SIEM : ")
     bullet(doc, "RPO/RTO cibles, sauvegardes, tests de restauration, redondance, bascule (document a produire) ; dispo 99,5%, temps de reponse < 3 s.", "PRA/PCA : ")
 
     # ---- Ch.4 ----
@@ -336,13 +342,18 @@ def build():
     h3(doc, "4.1  Interface SAGE (cible — uniquement si Option B retenue)")
     body(doc, "Rappel : l'interface SAGE n'est requise que si VERSUS BANK choisit de conserver SAGE comme "
               "moteur de paie (Option B, cf. ch. 2.4). En Option A (paie native NexusRH), ce chapitre est sans "
-              "objet. Si Option B : decrire l'architecture du connecteur : flux SIRH->SAGE (donnees "
-              "contractuelles, individuelles, variables de paie), flux SAGE->SIRH (bulletins PDF, journaux, "
-              "statut de traitement). Preciser le mode d'echange (API REST, fichiers CSV/Excel, SFTP, connecteur "
-              "natif), la frequence (batch/temps reel), la gestion des rejets et la reprise, ainsi que la "
-              "separation des taches (SoD).")
+              "objet. Si Option B : le flux SIRH->SAGE est LIVRE - export des employes, elements variables "
+              "(par periode) et resultats de paie au format delimite parametrable (separateur ; / , / tab / |, "
+              "ligne d'en-tete, source du matricule), encodage UTF-8 BOM pour ouverture directe dans SAGE/Excel, "
+              "neutralisation des injections de formules CSV, montants FCFA entiers, chaque export audite. "
+              "Reste a parametrer selon l'instance SAGE de la banque : le flux retour SAGE->SIRH (bulletins PDF, "
+              "journaux, statut), le mode d'echange (fichiers/SFTP ou API), la frequence, la gestion des rejets "
+              "et la separation des taches (SoD).")
     h3(doc, "4.2  Annuaire / IAM")
-    body(doc, "Integration AD/Azure AD : SSO, provisioning, synchronisation des attributs, cycle de vie des comptes.")
+    body(doc, "Integration AD/Azure AD/LDAP : la configuration SSO par tenant est livree (OIDC/SAML/LDAP, "
+              "domaines e-mail geres, mapping des groupes IdP vers les roles NexusRH, provisionnement a la "
+              "volee JIT, test de decouverte OpenID Connect). Reste a brancher le flux de login federe sur le "
+              "pipeline d'authentification et la synchronisation/cycle de vie des comptes.")
     h3(doc, "4.3  Autres integrations")
     body(doc, "E-learning (inscriptions, completions, attestations) ; comptabilite/finance (masse salariale, "
               "couts RH, provisions) ; systeme bancaire (referentiel agences, controle interne). API documentees "
