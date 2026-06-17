@@ -1,4 +1,12 @@
 {
+  "groups": {
+    "collaborators": "People",
+    "payroll": "Payroll & filings",
+    "timeExpenses": "Time & expenses",
+    "talent": "Recruitment & talent",
+    "analytics": "Analytics",
+    "adminSecurity": "Administration & security"
+  },
   "dashboard": "Dashboard",
   "employees": "Employees",
   "contracts": "OHADA Contracts",
