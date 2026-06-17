@@ -37,6 +37,8 @@ export const MODULE_KEYS = [
   'calibration',
   'mobility',
   'classification',
+  'signature',
+  'security',
   'dg_view',
 ] as const
 
@@ -67,6 +69,8 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   calibration:  true,
   mobility:     true,
   classification: true,
+  signature:    true,
+  security:     true,
   dg_view:      false,
 }
 
@@ -96,6 +100,8 @@ const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [
   ['/calibration',      'calibration'],
   ['/mobility',         'mobility'],
   ['/classification',   'classification'],
+  ['/signature',        'signature'],
+  ['/security',         'security'],
   ['/dg',               'dg_view'],
 ]
 
