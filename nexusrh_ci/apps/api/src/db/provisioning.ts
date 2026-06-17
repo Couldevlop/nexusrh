@@ -871,6 +871,35 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_jpc_profile_idx" ON ${s}.job_profile_competencies(job_profile_id)`)
 
+  // Calibrage (sessions 9-box : performance × potentiel, avant/après)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.calibration_sessions (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title        varchar(200) NOT NULL,
+    session_date date,
+    scope        varchar(150),
+    status       varchar(20) NOT NULL DEFAULT 'draft',
+    notes        text,
+    created_by   uuid,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.calibration_entries (
+    id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id         uuid NOT NULL,
+    employee_id        uuid NOT NULL,
+    performance_before int,
+    potential_before   int,
+    performance_after  int,
+    potential_after    int,
+    qualities          text,
+    gaps               text,
+    corrective_actions text,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    updated_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(session_id, employee_id)
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_calib_entries_session_idx" ON ${s}.calibration_entries(session_id)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

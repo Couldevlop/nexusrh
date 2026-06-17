@@ -105,6 +105,9 @@ const SuccessionPage = lazy(() => import('@/pages/succession/SuccessionPage'))
 // ── Référentiel postes & compétences (Bloom) ──────────────────────────────────
 const CompetenciesPage = lazy(() => import('@/pages/competencies/CompetenciesPage'))
 
+// ── Calibrage (9-box) ─────────────────────────────────────────────────────────
+const CalibrationPage = lazy(() => import('@/pages/calibration/CalibrationPage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -399,6 +402,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']}>
                 <ModuleGuard moduleKey="competencies">
                   <CompetenciesPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="calibration" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
+                <ModuleGuard moduleKey="calibration">
+                  <CalibrationPage />
                 </ModuleGuard>
               </RoleGuard>
             } />

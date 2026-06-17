@@ -1,0 +1,43 @@
+{
+  "title": "Calibration (9-box)",
+  "subtitle": "Calibration sessions: performance × potential, before/after and recommendations.",
+  "loading": "Loading…",
+  "loadError": "Unable to load sessions.",
+  "new": "New session",
+  "empty": "No calibration session.",
+  "statuses": { "draft": "Draft", "in_progress": "In progress", "closed": "Closed" },
+  "scale": { "1": "Low", "2": "Medium", "3": "High" },
+  "box": {
+    "star": "Star", "high_perf": "High performer", "expert": "Expert",
+    "high_pot": "High potential", "core": "Core", "solid": "Solid",
+    "enigma": "Enigma", "inconsistent": "Inconsistent", "risk": "At risk"
+  },
+  "form": {
+    "title": "Create a session",
+    "name": "Title",
+    "date": "Date",
+    "scope": "Scope / population",
+    "submit": "Create",
+    "submitting": "Creating…"
+  },
+  "session": {
+    "entries": "Calibrated employees",
+    "addEmployee": "Add an employee",
+    "employee": "Employee",
+    "select": "— Select —",
+    "performance": "Performance",
+    "potential": "Potential",
+    "before": "Before",
+    "after": "After",
+    "qualities": "Qualities",
+    "gaps": "Gaps",
+    "corrective": "Corrective actions",
+    "noEntries": "No employee in this session.",
+    "count": "{{count}} employee(s)",
+    "save": "Save",
+    "close": "Close",
+    "deleteConfirm": "Delete this session?",
+    "grid": "9-box matrix (after calibration)"
+  },
+  "saveError": "Error while saving"
+}

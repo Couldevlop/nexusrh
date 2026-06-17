@@ -40,6 +40,7 @@ import frOffboarding from './locales/fr/offboarding.json'
 import frClimate from './locales/fr/climate.json'
 import frSuccession from './locales/fr/succession.json'
 import frCompetencies from './locales/fr/competencies.json'
+import frCalibration from './locales/fr/calibration.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -72,6 +73,7 @@ import enOffboarding from './locales/en/offboarding.json'
 import enClimate from './locales/en/climate.json'
 import enSuccession from './locales/en/succession.json'
 import enCompetencies from './locales/en/competencies.json'
+import enCalibration from './locales/en/calibration.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -81,7 +83,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration',
 ] as const
 
 const resources = {
@@ -95,7 +97,7 @@ const resources = {
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
     offboarding: frOffboarding, climate: frClimate, succession: frSuccession,
-    competencies: frCompetencies,
+    competencies: frCompetencies, calibration: frCalibration,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -107,7 +109,7 @@ const resources = {
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
     offboarding: enOffboarding, climate: enClimate, succession: enSuccession,
-    competencies: enCompetencies,
+    competencies: enCompetencies, calibration: enCalibration,
   },
 } as const
 
