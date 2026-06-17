@@ -498,6 +498,16 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       updated_at  timestamptz NOT NULL DEFAULT now()
     )`,
 
+    // ── Interface SAGE (config d'export amont-paie, singleton par tenant) ─────
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".sage_config (
+      id               int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      enabled          boolean NOT NULL DEFAULT false,
+      separator        varchar(20) NOT NULL DEFAULT 'semicolon',
+      include_header   boolean NOT NULL DEFAULT true,
+      matricule_source varchar(20) NOT NULL DEFAULT 'employee_number',
+      updated_at       timestamptz NOT NULL DEFAULT now()
+    )`,
+
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 

@@ -31,6 +31,7 @@ export const MODULE_KEYS = [
   'classification',
   'signature',
   'security',
+  'sage',
   'dg_view',
 ] as const
 
@@ -62,6 +63,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   classification: true,
   signature:    true,
   security:     true,
+  sage:         true,
   dg_view:      false,
 }
 

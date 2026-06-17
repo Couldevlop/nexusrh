@@ -391,6 +391,10 @@
         "label": "Security & compliance",
         "desc": "Federated SSO / Active Directory authentication (OIDC, SAML, LDAP) and security event export to a SIEM (HMAC-signed webhook, JSON/CEF format)."
       },
+      "sage": {
+        "label": "SAGE interface",
+        "desc": "Export upstream payroll data to SAGE (employees, variable elements, payroll results) in a configurable delimited format, in addition to the native payroll engine."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

@@ -120,6 +120,9 @@ const SignaturePage = lazy(() => import('@/pages/signature/SignaturePage'))
 // ── Sécurité & conformité (SSO/AD + SIEM) ────────────────────────────────────
 const SecurityPage = lazy(() => import('@/pages/security/SecurityPage'))
 
+// ── Interface SAGE (export amont-paie) ────────────────────────────────────────
+const SagePage = lazy(() => import('@/pages/sage/SagePage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -454,6 +457,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin']}>
                 <ModuleGuard moduleKey="security">
                   <SecurityPage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="sage" element={
+              <RoleGuard allowedRoles={['admin','hr_manager']}>
+                <ModuleGuard moduleKey="sage">
+                  <SagePage />
                 </ModuleGuard>
               </RoleGuard>
             } />
