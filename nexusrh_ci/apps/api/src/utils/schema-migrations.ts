@@ -412,6 +412,32 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_calib_entries_session_idx" ON "${schemaName}".calibration_entries(session_id)`,
 
+    // ── Mobilités : compétences évaluées par salarié + passerelles vers un poste ──
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".employee_competencies (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id   uuid NOT NULL,
+      competency_id uuid NOT NULL,
+      level         int NOT NULL DEFAULT 1,
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(employee_id, competency_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_emp_comp_emp_idx" ON "${schemaName}".employee_competencies(employee_id)`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".mobility_requests (
+      id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id           uuid NOT NULL,
+      target_job_profile_id uuid NOT NULL,
+      status                varchar(20) NOT NULL DEFAULT 'proposed',
+      reason                text,
+      notes                 text,
+      corrective_actions    text,
+      requested_by          uuid,
+      decided_by            uuid,
+      decided_at            timestamptz,
+      created_at            timestamptz NOT NULL DEFAULT now(),
+      updated_at            timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_mobility_emp_idx" ON "${schemaName}".mobility_requests(employee_id)`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]

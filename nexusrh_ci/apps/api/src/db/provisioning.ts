@@ -900,6 +900,32 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_calib_entries_session_idx" ON ${s}.calibration_entries(session_id)`)
 
+  // Mobilités : compétences évaluées par salarié + passerelles vers un poste cible
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.employee_competencies (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id   uuid NOT NULL,
+    competency_id uuid NOT NULL,
+    level         int NOT NULL DEFAULT 1,
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(employee_id, competency_id)
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_emp_comp_emp_idx" ON ${s}.employee_competencies(employee_id)`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.mobility_requests (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id           uuid NOT NULL,
+    target_job_profile_id uuid NOT NULL,
+    status                varchar(20) NOT NULL DEFAULT 'proposed',
+    reason                text,
+    notes                 text,
+    corrective_actions    text,
+    requested_by          uuid,
+    decided_by            uuid,
+    decided_at            timestamptz,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    updated_at            timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_mobility_emp_idx" ON ${s}.mobility_requests(employee_id)`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,

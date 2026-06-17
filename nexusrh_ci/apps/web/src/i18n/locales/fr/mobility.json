@@ -1,0 +1,49 @@
+{
+  "title": "Mobilités",
+  "subtitle": "Passerelles de mobilité selon les compétences et écarts vs poste cible.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les données.",
+  "tabs": { "requests": "Passerelles", "assessments": "Évaluations" },
+  "statuses": {
+    "proposed": "Proposée", "in_review": "En revue", "approved": "Approuvée",
+    "rejected": "Rejetée", "cancelled": "Annulée"
+  },
+  "requests": {
+    "new": "Nouvelle passerelle",
+    "empty": "Aucune passerelle de mobilité.",
+    "employee": "Salarié",
+    "target": "Poste cible",
+    "reason": "Motivation",
+    "select": "— Sélectionner —",
+    "create": "Proposer",
+    "creating": "Création…",
+    "deleteConfirm": "Supprimer cette passerelle ?",
+    "toReview": "Mettre en revue",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "correctiveActions": "Actions correctives (formations, accompagnement…)",
+    "decidedBy": "Décidé"
+  },
+  "gap": {
+    "title": "Écart de compétences vs poste cible",
+    "coverage": "Couverture : {{pct}}%",
+    "ready": "Profil prêt pour la mobilité",
+    "notReady": "Écarts à combler avant la mobilité",
+    "competency": "Compétence",
+    "required": "Requis",
+    "current": "Acquis",
+    "gapCol": "Écart",
+    "none": "—",
+    "noData": "Aucune compétence requise sur ce poste (référentiel à compléter)."
+  },
+  "assess": {
+    "title": "Évaluer les compétences d'un salarié",
+    "selectEmployee": "Salarié à évaluer",
+    "select": "— Sélectionner —",
+    "level": "Niveau",
+    "empty": "Sélectionnez un salarié pour évaluer ses compétences.",
+    "noCatalog": "Aucune compétence au référentiel. Créez-en d'abord dans « Postes & compétences »."
+  },
+  "bloom": { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "na": "—" },
+  "saveError": "Erreur lors de l'enregistrement"
+}

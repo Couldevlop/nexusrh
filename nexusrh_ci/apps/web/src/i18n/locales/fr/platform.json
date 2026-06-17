@@ -375,6 +375,10 @@
         "label": "Calibrage (9-box)",
         "desc": "Sessions de calibrage : profils 9 cadrans (performance × potentiel) avant/après et suivi des recommandations."
       },
+      "mobility": {
+        "label": "Mobilités",
+        "desc": "Passerelles de mobilité selon les compétences, comparaison salarié vs poste cible (écarts) et workflow de validation."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

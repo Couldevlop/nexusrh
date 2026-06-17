@@ -1,0 +1,49 @@
+{
+  "title": "Mobility",
+  "subtitle": "Competency-based mobility paths and gaps vs target job.",
+  "loading": "Loading…",
+  "loadError": "Unable to load data.",
+  "tabs": { "requests": "Mobility paths", "assessments": "Assessments" },
+  "statuses": {
+    "proposed": "Proposed", "in_review": "In review", "approved": "Approved",
+    "rejected": "Rejected", "cancelled": "Cancelled"
+  },
+  "requests": {
+    "new": "New mobility path",
+    "empty": "No mobility path.",
+    "employee": "Employee",
+    "target": "Target job",
+    "reason": "Motivation",
+    "select": "— Select —",
+    "create": "Propose",
+    "creating": "Creating…",
+    "deleteConfirm": "Delete this mobility path?",
+    "toReview": "Send to review",
+    "approve": "Approve",
+    "reject": "Reject",
+    "correctiveActions": "Corrective actions (training, coaching…)",
+    "decidedBy": "Decided"
+  },
+  "gap": {
+    "title": "Competency gap vs target job",
+    "coverage": "Coverage: {{pct}}%",
+    "ready": "Profile ready for mobility",
+    "notReady": "Gaps to close before mobility",
+    "competency": "Competency",
+    "required": "Required",
+    "current": "Current",
+    "gapCol": "Gap",
+    "none": "—",
+    "noData": "No required competency on this job (framework to complete)."
+  },
+  "assess": {
+    "title": "Assess an employee's competencies",
+    "selectEmployee": "Employee to assess",
+    "select": "— Select —",
+    "level": "Level",
+    "empty": "Select an employee to assess their competencies.",
+    "noCatalog": "No competency in the framework. Create some first in “Jobs & competencies”."
+  },
+  "bloom": { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "na": "—" },
+  "saveError": "Error while saving"
+}

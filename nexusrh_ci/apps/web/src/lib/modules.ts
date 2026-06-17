@@ -27,6 +27,7 @@ export const MODULE_KEYS = [
   'succession',
   'competencies',
   'calibration',
+  'mobility',
   'dg_view',
 ] as const
 
@@ -54,6 +55,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   succession:   true,
   competencies: true,
   calibration:  true,
+  mobility:     true,
   dg_view:      false,
 }
 

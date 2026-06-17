@@ -41,6 +41,7 @@ import frClimate from './locales/fr/climate.json'
 import frSuccession from './locales/fr/succession.json'
 import frCompetencies from './locales/fr/competencies.json'
 import frCalibration from './locales/fr/calibration.json'
+import frMobility from './locales/fr/mobility.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enCommon from './locales/en/common.json'
@@ -74,6 +75,7 @@ import enClimate from './locales/en/climate.json'
 import enSuccession from './locales/en/succession.json'
 import enCompetencies from './locales/en/competencies.json'
 import enCalibration from './locales/en/calibration.json'
+import enMobility from './locales/en/mobility.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -83,7 +85,7 @@ const NAMESPACES = [
   'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility',
 ] as const
 
 const resources = {
@@ -97,7 +99,7 @@ const resources = {
     monEspace: frMonEspace, referentiels: frReferentiels, raf: frRaf,
     publicPages: frPublicPages, dg: frDg, orgChart: frOrgChart, discipline: frDiscipline,
     offboarding: frOffboarding, climate: frClimate, succession: frSuccession,
-    competencies: frCompetencies, calibration: frCalibration,
+    competencies: frCompetencies, calibration: frCalibration, mobility: frMobility,
   },
   en: {
     common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -109,7 +111,7 @@ const resources = {
     monEspace: enMonEspace, referentiels: enReferentiels, raf: enRaf,
     publicPages: enPublicPages, dg: enDg, orgChart: enOrgChart, discipline: enDiscipline,
     offboarding: enOffboarding, climate: enClimate, succession: enSuccession,
-    competencies: enCompetencies, calibration: enCalibration,
+    competencies: enCompetencies, calibration: enCalibration, mobility: enMobility,
   },
 } as const
 
