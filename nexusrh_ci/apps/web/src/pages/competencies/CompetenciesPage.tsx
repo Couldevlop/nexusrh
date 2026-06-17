@@ -85,7 +85,7 @@ export default function CompetenciesPage() {
   )
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><GraduationCap className="h-5 w-5" /></div>
         <div>
@@ -103,7 +103,7 @@ export default function CompetenciesPage() {
       {/* ── Onglet Compétences ── */}
       {tab === 'catalog' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-card p-4">
+          <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">{t('catalog.new')}</h2>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
               <input type="text" placeholder={t('catalog.fields.label')} value={cForm.label}
@@ -146,7 +146,7 @@ export default function CompetenciesPage() {
       {/* ── Onglet Fiches de poste ── */}
       {tab === 'profiles' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-card p-4">
+          <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">{t('profiles.new')}</h2>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input type="text" placeholder={t('profiles.fields.title')} value={pForm.title}

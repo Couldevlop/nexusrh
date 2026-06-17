@@ -90,7 +90,7 @@ export default function CalibrationPage() {
   )
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Grid3x3 className="h-5 w-5" /></div>
@@ -106,7 +106,7 @@ export default function CalibrationPage() {
       </div>
 
       {showForm && (
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input type="text" placeholder={t('form.name')} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               className="rounded-md border border-border bg-background px-2 py-1.5 text-sm" />

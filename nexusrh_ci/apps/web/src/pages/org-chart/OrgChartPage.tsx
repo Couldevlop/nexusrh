@@ -182,7 +182,7 @@ export default function OrgChartPage() {
   )
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-6">
       {/* En-tête */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
