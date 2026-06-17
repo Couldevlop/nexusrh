@@ -1,0 +1,66 @@
+{
+  "title": "Signature électronique",
+  "subtitle": "Faites signer électroniquement vos documents RH avec piste d'audit.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les demandes.",
+  "tabs": { "requests": "Demandes", "mine": "À signer" },
+  "statuses": {
+    "draft": "Brouillon",
+    "pending": "En cours",
+    "signed": "Signé",
+    "declined": "Refusé",
+    "cancelled": "Annulé",
+    "expired": "Expiré"
+  },
+  "documentTypes": {
+    "contract": "Contrat",
+    "amendment": "Avenant",
+    "certificate": "Attestation",
+    "disciplinary": "Document disciplinaire",
+    "offer": "Offre / promesse",
+    "policy": "Politique interne",
+    "other": "Autre"
+  },
+  "requests": {
+    "new": "Nouvelle demande",
+    "empty": "Aucune demande de signature.",
+    "title": "Intitulé du document",
+    "type": "Type de document",
+    "message": "Message aux signataires (facultatif)",
+    "sequential": "Signature séquentielle (chacun son tour)",
+    "expiresAt": "Échéance (facultatif)",
+    "signatories": "Signataires",
+    "addSignatory": "Ajouter un signataire",
+    "signatoryName": "Nom",
+    "signatoryEmail": "E-mail (facultatif)",
+    "create": "Créer le brouillon",
+    "creating": "Création…",
+    "send": "Envoyer pour signature",
+    "cancel": "Annuler la demande",
+    "cancelConfirm": "Annuler cette demande de signature ?",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer ce brouillon ?",
+    "progress": "{{signed}}/{{total}} signé(s)"
+  },
+  "detail": {
+    "signatories": "Signataires",
+    "signed": "Signé le {{date}}",
+    "declined": "Refusé",
+    "pending": "En attente",
+    "order": "Ordre",
+    "ip": "IP"
+  },
+  "mine": {
+    "empty": "Aucun document en attente de votre signature.",
+    "sign": "Signer",
+    "decline": "Refuser",
+    "signTitle": "Signer le document",
+    "signHint": "Saisissez votre nom complet pour signer électroniquement. Cette action est horodatée et tracée.",
+    "signaturePlaceholder": "Votre nom complet",
+    "confirmSign": "Signer",
+    "declineTitle": "Refuser de signer",
+    "declineReason": "Motif du refus (facultatif)",
+    "confirmDecline": "Confirmer le refus"
+  },
+  "saveError": "Erreur lors de l'enregistrement"
+}

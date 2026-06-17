@@ -1,0 +1,66 @@
+{
+  "title": "E-signature",
+  "subtitle": "Get your HR documents signed electronically with an audit trail.",
+  "loading": "Loading…",
+  "loadError": "Unable to load requests.",
+  "tabs": { "requests": "Requests", "mine": "To sign" },
+  "statuses": {
+    "draft": "Draft",
+    "pending": "In progress",
+    "signed": "Signed",
+    "declined": "Declined",
+    "cancelled": "Cancelled",
+    "expired": "Expired"
+  },
+  "documentTypes": {
+    "contract": "Contract",
+    "amendment": "Amendment",
+    "certificate": "Certificate",
+    "disciplinary": "Disciplinary document",
+    "offer": "Offer / promise",
+    "policy": "Internal policy",
+    "other": "Other"
+  },
+  "requests": {
+    "new": "New request",
+    "empty": "No signature request.",
+    "title": "Document title",
+    "type": "Document type",
+    "message": "Message to signers (optional)",
+    "sequential": "Sequential signing (one at a time)",
+    "expiresAt": "Due date (optional)",
+    "signatories": "Signers",
+    "addSignatory": "Add signer",
+    "signatoryName": "Name",
+    "signatoryEmail": "Email (optional)",
+    "create": "Create draft",
+    "creating": "Creating…",
+    "send": "Send for signature",
+    "cancel": "Cancel request",
+    "cancelConfirm": "Cancel this signature request?",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this draft?",
+    "progress": "{{signed}}/{{total}} signed"
+  },
+  "detail": {
+    "signatories": "Signers",
+    "signed": "Signed on {{date}}",
+    "declined": "Declined",
+    "pending": "Pending",
+    "order": "Order",
+    "ip": "IP"
+  },
+  "mine": {
+    "empty": "No document awaiting your signature.",
+    "sign": "Sign",
+    "decline": "Decline",
+    "signTitle": "Sign the document",
+    "signHint": "Type your full name to sign electronically. This action is timestamped and tracked.",
+    "signaturePlaceholder": "Your full name",
+    "confirmSign": "Sign",
+    "declineTitle": "Decline to sign",
+    "declineReason": "Decline reason (optional)",
+    "confirmDecline": "Confirm decline"
+  },
+  "saveError": "Save error"
+}

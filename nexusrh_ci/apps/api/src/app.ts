@@ -65,6 +65,7 @@ import competenciesRoutes from './modules/competencies/competencies.routes.js'
 import calibrationRoutes from './modules/calibration/calibration.routes.js'
 import mobilityRoutes from './modules/mobility/mobility.routes.js'
 import classificationRoutes from './modules/classification/classification.routes.js'
+import signatureRoutes from './modules/signature/signature.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 
 export async function buildApp() {
@@ -391,6 +392,8 @@ export async function buildApp() {
   await fastify.register(mobilityRoutes,     { prefix: '/mobility' })
   // Classification des données à 4 niveaux (politique d'accès / export).
   await fastify.register(classificationRoutes, { prefix: '/classification' })
+  // Signature électronique de documents RH (workflow signataires + audit).
+  await fastify.register(signatureRoutes, { prefix: '/signature' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

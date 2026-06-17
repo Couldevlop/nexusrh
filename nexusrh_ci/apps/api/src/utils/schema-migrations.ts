@@ -439,6 +439,40 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_mobility_emp_idx" ON "${schemaName}".mobility_requests(employee_id)`,
 
+    // ── Signature électronique (demandes + signataires + piste d'audit) ───────
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".signature_requests (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title         varchar(200) NOT NULL,
+      document_type varchar(40) NOT NULL DEFAULT 'other',
+      document_id   uuid,
+      document_url  text,
+      message       text,
+      status        varchar(20) NOT NULL DEFAULT 'draft',
+      sequential    boolean NOT NULL DEFAULT false,
+      created_by    uuid,
+      expires_at    timestamptz,
+      completed_at  timestamptz,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".signature_signatories (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      request_id     uuid NOT NULL,
+      employee_id    uuid,
+      name           varchar(150) NOT NULL,
+      email          varchar(180),
+      order_index    int NOT NULL DEFAULT 0,
+      status         varchar(20) NOT NULL DEFAULT 'pending',
+      signed_at      timestamptz,
+      signature_text varchar(200),
+      decline_reason text,
+      ip_address     varchar(64),
+      created_at     timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_sig_req_status_idx" ON "${schemaName}".signature_requests(status, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_sig_signatory_req_idx" ON "${schemaName}".signature_signatories(request_id)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_sig_signatory_emp_idx" ON "${schemaName}".signature_signatories(employee_id)`,
+
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 

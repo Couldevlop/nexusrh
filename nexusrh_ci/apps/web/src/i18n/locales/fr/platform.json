@@ -383,6 +383,10 @@
         "label": "Classification des données",
         "desc": "Classification des données RH à 4 niveaux (Public, Interne, Confidentiel, Restreint) : règles d'accès/export/traçabilité par niveau et cartographie des catégories."
       },
+      "signature": {
+        "label": "Signature électronique",
+        "desc": "Signature électronique des documents RH (contrats, avenants, attestations) : circuit de signataires séquentiel ou parallèle, signature self-service et piste d'audit (qui, quand, IP)."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

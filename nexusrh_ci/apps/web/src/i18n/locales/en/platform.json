@@ -383,6 +383,10 @@
         "label": "Data classification",
         "desc": "4-level HR data classification (Public, Internal, Confidential, Restricted): per-level access/export/audit rules and category mapping."
       },
+      "signature": {
+        "label": "E-signature",
+        "desc": "Electronic signature of HR documents (contracts, amendments, certificates): sequential or parallel signer flow, self-service signing and audit trail (who, when, IP)."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."
