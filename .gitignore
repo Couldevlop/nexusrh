@@ -20,3 +20,6 @@ nexusrh_ci/
 
 # Comptes de démo (local uniquement — jamais sur GitHub)
 COMPTES-DEMO.md
+.credentials-local.md
+**/.credentials-local.md
+**/*.credentials-local.md

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
@@ -17,47 +17,91 @@ const PROVIDER_LABEL: Record<string, string> = {
   wave: 'Wave', mtn_momo: 'MTN MoMo', orange_money: 'Orange Money',
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4001'
-
-function getPdfUrl(id: string) {
-  return `${API_BASE}/payroll/my-payslips/${id}/pdf`
+// Récupère le PDF du bulletin via axios (header Authorization auto) en blob.
+// On évite l'iframe directe sur l'API : la réponse porte X-Frame-Options: DENY
+// + CSP frame-ancestors 'none' (durcissement sécurité) → le navigateur
+// bloquerait tout affichage en iframe. Une URL blob: est servie par le front
+// lui-même (same-origin) et n'est donc pas soumise à ces en-têtes. Bonus : le
+// token JWT ne transite plus dans l'URL.
+async function fetchPdfBlobUrl(id: string): Promise<string> {
+  const res = await api.get(`/payroll/my-payslips/${id}/pdf`, { responseType: 'blob' })
+  return URL.createObjectURL(res.data as Blob)
 }
 
-function PdfViewer({ slipId, onClose }: { slipId: string; onClose: () => void }) {
+async function downloadPdf(id: string, month: string): Promise<void> {
+  const url = await fetchPdfBlobUrl(id)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `bulletin_${month}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
+function PdfViewer({ slipId, month, onClose }: { slipId: string; month: string; onClose: () => void }) {
   const { t } = useTranslation('monEspace')
-  const [loading, setLoading] = useState(true)
-  const token = localStorage.getItem('token') ?? ''
-  const src = `${getPdfUrl(slipId)}?token=${encodeURIComponent(token)}`
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    let createdUrl: string | null = null
+    setError(false)
+    setBlobUrl(null)
+    fetchPdfBlobUrl(slipId)
+      .then((url) => {
+        if (!active) { URL.revokeObjectURL(url); return }
+        createdUrl = url
+        setBlobUrl(url)
+      })
+      .catch(() => { if (active) setError(true) })
+    return () => { active = false; if (createdUrl) URL.revokeObjectURL(createdUrl) }
+  }, [slipId])
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
       <div className="flex items-center justify-between bg-background px-4 py-3 border-b border-border shadow">
         <p className="font-semibold text-sm">{t('payslips.previewTitle')}</p>
         <div className="flex items-center gap-2">
-          <a
-            href={src}
-            download={`bulletin_${slipId}.pdf`}
+          <button
+            onClick={() => downloadPdf(slipId, month)}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
           >
             <Download className="h-3.5 w-3.5" /> {t('payslips.downloadPdf')}
-          </a>
+          </button>
           <button onClick={onClose} className="rounded-lg border border-border bg-background p-1.5 hover:bg-accent">
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
       <div className="flex-1 relative">
-        {loading && (
+        {!blobUrl && !error && (
           <div className="absolute inset-0 flex items-center justify-center bg-muted">
             <div className="h-7 w-7 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
         )}
-        <iframe
-          src={src}
-          title={t('payslips.payslipPdf')}
-          className="w-full h-full"
-          onLoad={() => setLoading(false)}
-        />
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted text-center px-6">
+            <FileText className="h-10 w-10 opacity-30" />
+            <p className="text-sm text-muted-foreground">
+              {t('payslips.previewError', { defaultValue: "Impossible d'afficher le bulletin. Réessayez ou téléchargez-le." })}
+            </p>
+            <button
+              onClick={() => downloadPdf(slipId, month)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <Download className="h-3.5 w-3.5" /> {t('payslips.downloadPdf')}
+            </button>
+          </div>
+        )}
+        {blobUrl && (
+          <iframe
+            src={blobUrl}
+            title={t('payslips.payslipPdf')}
+            className="w-full h-full"
+          />
+        )}
       </div>
     </div>
   )
@@ -65,7 +109,7 @@ function PdfViewer({ slipId, onClose }: { slipId: string; onClose: () => void })
 
 export default function MesBulletins() {
   const { t } = useTranslation('monEspace')
-  const [viewingId, setViewingId] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<{ id: string; month: string } | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [explainId, setExplainId] = useState<string | null>(null)
 
@@ -75,11 +119,10 @@ export default function MesBulletins() {
   })
 
   const slips = data?.data ?? []
-  const token = localStorage.getItem('token') ?? ''
 
   return (
     <>
-      {viewingId && <PdfViewer slipId={viewingId} onClose={() => setViewingId(null)} />}
+      {viewing && <PdfViewer slipId={viewing.id} month={viewing.month} onClose={() => setViewing(null)} />}
       {explainId && <PaySlipTransparentModal slipId={explainId} onClose={() => setExplainId(null)} />}
 
       <div className="p-6 space-y-6">
@@ -105,7 +148,6 @@ export default function MesBulletins() {
           <div className="space-y-2">
             {slips.map(slip => {
               const expanded = expandedId === slip.id
-              const pdfSrc = `${getPdfUrl(slip.id)}?token=${encodeURIComponent(token)}`
               return (
                 <div key={slip.id} className="rounded-xl border border-border bg-card overflow-hidden hover:shadow-sm transition-shadow">
                   {/* Ligne principale */}
@@ -160,20 +202,19 @@ export default function MesBulletins() {
                         <Calculator className="h-3.5 w-3.5" /> {t('payslips.understand')}
                       </button>
                       <button
-                        onClick={() => setViewingId(slip.id)}
+                        onClick={() => setViewing({ id: slip.id, month: slip.month })}
                         title={t('payslips.viewTooltip')}
                         className="flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5" /> {t('payslips.view')}
                       </button>
-                      <a
-                        href={pdfSrc}
-                        download={`bulletin_${slip.month}.pdf`}
+                      <button
+                        onClick={() => downloadPdf(slip.id, slip.month)}
                         title={t('payslips.pdfTooltip')}
                         className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
                       >
                         <Download className="h-3.5 w-3.5" /> {t('payslips.pdf')}
-                      </a>
+                      </button>
                       <button
                         onClick={() => setExpandedId(expanded ? null : slip.id)}
                         className="rounded-lg border border-border bg-background p-1.5 hover:bg-accent transition-colors"
