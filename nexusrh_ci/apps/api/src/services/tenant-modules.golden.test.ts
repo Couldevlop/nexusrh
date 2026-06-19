@@ -39,6 +39,8 @@ const migrations     = read('utils', 'schema-migrations.ts')
 const platformRoutes = read('modules', 'platform', 'platform.routes.ts')
 const authRoutes     = read('modules', 'auth', 'auth.routes.ts')
 const agencyRoutes   = read('modules', 'agency', 'agency.routes.ts')
+const provisioning   = read('services', 'tenant-provisioning.service.ts')
+const modulesService = read('services', 'tenant-modules.service.ts')
 
 describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
   it('tous les modules sont actifs par défaut SAUF la vue DG 360° (opt-in)', () => {
@@ -166,13 +168,39 @@ describe('GOLDEN modules tenant — routes platform (super_admin uniquement)', (
   })
 
   it('clés strictement bornées à MODULE_KEYS (OWASP A03)', () => {
-    expect(platformRoutes).toContain('MODULE_KEYS as readonly string[]).includes(k)')
+    // La borne OWASP A03 vit désormais dans modulesMapSchema (tenant-modules.service.ts),
+    // réutilisé par platform.routes.ts (PUT/bulk) ET par la création de tenant (M1).
+    expect(modulesService).toContain('MODULE_KEYS as readonly string[]).includes(k)')
+    expect(platformRoutes).toContain('modulesMapSchema')
   })
 
   it('actions auditées (OWASP A09) + cache invalidé (propagation immédiate)', () => {
     expect(platformRoutes).toContain(`'tenant.modules_updated'`)
     expect(platformRoutes).toContain(`'tenant.modules_bulk_updated'`)
     expect(platformRoutes.match(/invalidateModulesCache\(\)/g)?.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('GOLDEN modules tenant — sélection à la création du tenant', () => {
+  it('forme de validation { module: boolean } unique et bornée (réutilisée partout)', () => {
+    // La carte modulesMapSchema (clés bornées à MODULE_KEYS) est exportée par le
+    // service et réutilisée tant par PUT /modules que par la création (POST).
+    expect(platformRoutes).toContain('modulesMapSchema')
+    expect(platformRoutes).toContain('modules: modulesMapSchema.optional()')
+  })
+
+  it('le service de provisionnement écrit enabled_modules dans l\'INSERT (jsonb)', () => {
+    // Colonne présente dans la liste de l'INSERT + valeur sérialisée passée.
+    expect(provisioning).toContain('enabled_modules')
+    expect(provisioning).toMatch(/COALESCE\(\$\d+::jsonb, '\{\}'::jsonb\)/)
+    expect(provisioning).toContain('JSON.stringify(input.modules)')
+  })
+
+  it('modules absent → NULL → fallback MODULE_DEFAULTS (zéro régression)', () => {
+    // Aucune surcharge fournie ⇒ enabledModulesJson = null ⇒ COALESCE('{}')
+    // ⇒ resolveEnabledModules('{}') === MODULE_DEFAULTS (déjà verrouillé plus haut).
+    expect(provisioning).toMatch(/enabledModulesJson\s*=/)
+    expect(resolveEnabledModules('{}')).toEqual(MODULE_DEFAULTS)
   })
 })
 

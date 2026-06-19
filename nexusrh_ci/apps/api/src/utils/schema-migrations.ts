@@ -49,6 +49,15 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS evaluator_id uuid`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_employee boolean DEFAULT false`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_manager boolean DEFAULT false`,
+    // Carrières (module careers) : colonnes ajoutées tardivement — sans ces ALTER,
+    // un ancien tenant renvoyait des 500 sur l'entretien (commentaires, niveau cible).
+    `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS comments text`,
+    `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS manager_comments text`,
+    `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS employee_comments text`,
+    `ALTER TABLE "${schemaName}".employee_skills ADD COLUMN IF NOT EXISTS target_level int`,
+    // Notes de frais : justificatif (upload) par ligne — colonne déjà créée au
+    // provisionnement, ajoutée ici pour les tenants antérieurs (idempotent).
+    `ALTER TABLE "${schemaName}".expense_lines ADD COLUMN IF NOT EXISTS receipt_url text`,
     `CREATE TABLE IF NOT EXISTS "${schemaName}".workflow_configs (
       id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       module       varchar(30) NOT NULL UNIQUE,

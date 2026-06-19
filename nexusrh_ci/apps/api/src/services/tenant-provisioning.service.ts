@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { config } from '../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../db/provisioning.js'
-import { sendWelcomeTenantEmail } from './email.js'
+import { sendWelcomeTenantEmail, type TenantSmtp } from './email.js'
 import { seedDemoTenant } from '../db/seed-demo.js'
 
 /**
@@ -56,6 +56,12 @@ export interface CreateTenantInput {
   hasSubsidiaries?: boolean
   payrollMode?: 'single_country' | 'multi_country'
   defaultCountryCode?: string
+  /**
+   * Modules à activer/désactiver dès la création (carte { moduleKey: boolean }
+   * aux clés bornées à MODULE_KEYS, validée en amont par le handler). Absent →
+   * enabled_modules NULL → fallback MODULE_DEFAULTS à la lecture (inchangé).
+   */
+  modules?: Record<string, boolean>
 }
 
 export interface CreateTenantOptions {
@@ -65,6 +71,12 @@ export interface CreateTenantOptions {
    * créés PAR un cabinet.
    */
   sender?: { email: string; name?: string | null } | null
+  /**
+   * SMTP propre au créateur (cabinet) pour router l'email de bienvenue via SON
+   * serveur (From aligné au domaine → délivrabilité). Absent → repli sur le SMTP
+   * plateforme. À la création super_admin, ne rien passer (repli légitime).
+   */
+  smtp?: TenantSmtp | null
   /** Logo (URL absolue) à afficher dans l'email de bienvenue. */
   logoUrl?: string | null
   /** URL de login (défaut : {appUrl}/login). */
@@ -113,14 +125,22 @@ export async function createTenantWithSchema(
   const defaultCountryCode = (input.defaultCountryCode ?? 'CIV').toUpperCase().slice(0, 3)
 
   // 1. Créer le tenant dans platform
+  // Modules sélectionnés à la création (surcharges jsonb). Absent → NULL →
+  // COALESCE en base ('{}') → fallback MODULE_DEFAULTS à la lecture (inchangé).
+  const enabledModulesJson =
+    input.modules && Object.keys(input.modules).length > 0
+      ? JSON.stringify(input.modules)
+      : null
+
   const tenantRes = await pool.query<{ id: string }>(
     `INSERT INTO platform.tenants
        (name, slug, schema_name, plan_type, status, sector, city,
         cnps_number, dgi_number, rccm, at_rate,
         max_users, max_employees, primary_color, secondary_color, logo_url,
         trial_ends_at,
-        has_subsidiaries, payroll_mode, default_country_code)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        has_subsidiaries, payroll_mode, default_country_code, enabled_modules)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+             COALESCE($21::jsonb, '{}'::jsonb))
      RETURNING id`,
     [
       input.name, slug, schemaName, planType,
@@ -132,7 +152,7 @@ export async function createTenantWithSchema(
       input.primaryColor ?? '#E85D04', input.secondaryColor ?? '#F48C06',
       input.logoUrl ?? null,
       planType === 'trial' ? new Date(Date.now() + 30 * 24 * 3600 * 1000) : null,
-      hasSubsidiaries, payrollMode, defaultCountryCode,
+      hasSubsidiaries, payrollMode, defaultCountryCode, enabledModulesJson,
     ],
   )
   const tenantId = tenantRes.rows[0]?.id
@@ -180,6 +200,8 @@ export async function createTenantWithSchema(
     logoUrl:      opts.logoUrl ?? input.logoUrl ?? null,
     from,
     replyTo:      opts.sender?.email ?? null,
+    // SMTP du cabinet créateur si fourni (sinon repli plateforme dans email.ts).
+    smtp:         opts.smtp ?? null,
   }).catch(err => opts.logger?.warn({ err }, 'Email bienvenue non envoyé'))
 
   return { id: tenantId, slug, schemaName, name: input.name, planType, adminEmail: input.adminEmail, tempPassword }

@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api, formatDate } from '@/lib/api'
-import { Plus, Calendar, Loader2 } from 'lucide-react'
+import { Plus, Calendar, Loader2, X } from 'lucide-react'
 
 const schema = z.object({
   absenceTypeId: z.string().min(1, 'absences.validation.typeRequired'),
@@ -29,20 +29,27 @@ interface Balance {
 }
 
 const STATUS_COLOR: Record<string, string> = {
+  pending:   'bg-yellow-100 text-yellow-700',
   submitted: 'bg-yellow-100 text-yellow-700',
   approved:  'bg-green-100 text-green-700',
   rejected:  'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-600',
 }
 const STATUS_KEY: Record<string, string> = {
+  pending:   'common.status.pending',
   submitted: 'common.status.pending',
   approved:  'common.status.approved',
   rejected:  'common.status.rejected',
+  cancelled: 'common.status.cancelled',
 }
+// Statuts pour lesquels l'employé peut annuler sa propre demande (en attente)
+const CANCELLABLE = new Set(['pending', 'submitted'])
 
 export default function MesAbsences() {
   const { t } = useTranslation('monEspace')
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const { data: typesData } = useQuery<{ data: AbsenceType[] }>({
     queryKey: ['absence-types'],
@@ -68,6 +75,25 @@ export default function MesAbsences() {
     },
   })
 
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => api.patch(`/absences/${id}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-absences'] })
+      queryClient.invalidateQueries({ queryKey: ['my-balances'] })
+      setFeedback({ type: 'success', message: t('absences.cancelSuccess') })
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      setFeedback({ type: 'error', message: err?.response?.data?.error ?? t('absences.cancelError') })
+    },
+  })
+
+  const handleCancel = (id: string) => {
+    if (window.confirm(t('absences.cancelConfirm'))) {
+      setFeedback(null)
+      cancelMut.mutate(id)
+    }
+  }
+
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { halfDay: false },
@@ -91,6 +117,22 @@ export default function MesAbsences() {
           {t('absences.newRequest')}
         </button>
       </div>
+
+      {/* Bandeau de feedback inline (annulation) */}
+      {feedback && (
+        <div
+          role="status"
+          className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
+            feedback.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}>
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="ml-3 opacity-70 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Soldes */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -191,9 +233,23 @@ export default function MesAbsences() {
                     {abs.reason && <p className="text-xs text-muted-foreground italic">{abs.reason}</p>}
                   </div>
                 </div>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[abs.status] ?? 'bg-muted'}`}>
-                  {STATUS_KEY[abs.status] ? t(STATUS_KEY[abs.status] as string) : abs.status}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[abs.status] ?? 'bg-muted'}`}>
+                    {STATUS_KEY[abs.status] ? t(STATUS_KEY[abs.status] as string) : abs.status}
+                  </span>
+                  {CANCELLABLE.has(abs.status) && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancel(abs.id)}
+                      disabled={cancelMut.isPending}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50">
+                      {cancelMut.isPending && cancelMut.variables === abs.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <X className="h-3 w-3" />}
+                      {t('absences.cancel')}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {absences.length === 0 && (

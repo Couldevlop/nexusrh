@@ -81,6 +81,10 @@
     "halfDayShort": "½ journée",
     "daysCount": "{{count}} jour(s)",
     "empty": "Aucune absence",
+    "cancel": "Annuler",
+    "cancelConfirm": "Voulez-vous vraiment annuler cette demande d'absence ?",
+    "cancelSuccess": "Votre demande d'absence a été annulée.",
+    "cancelError": "Impossible d'annuler cette demande. Réessayez plus tard.",
     "validation": {
       "typeRequired": "Type requis",
       "startRequired": "Date début requise",
@@ -157,7 +161,10 @@
     "unitDays": "j",
     "noEnrollments": "Aucune inscription pour le moment.",
     "viewCatalog": "Voir le catalogue",
-    "catalogInfo": "Les inscriptions aux formations sont gérées par votre service RH. Vous serez ajouté(e) aux sessions qui vous concernent — retrouvez-les dans « Mes inscriptions ».",
+    "enroll": "S'inscrire",
+    "enrollSuccess": "Inscription enregistrée — retrouvez-la dans « Mes inscriptions ».",
+    "enrollError": "Inscription impossible. Réessayez plus tard.",
+    "catalogInfo": "Inscrivez-vous directement aux sessions ouvertes ci-dessous. Vos inscriptions apparaissent dans « Mes inscriptions ».",
     "sessionsPlanned": "{{count}} session(s) planifiée(s)",
     "noSessions": "Aucune session planifiée pour le moment.",
     "full": "Complet",
@@ -265,6 +272,41 @@
       "married": "Marié(e)",
       "divorced": "Divorcé(e)",
       "widowed": "Veuf/Veuve"
+    }
+  },
+  "security": {
+    "title": "Sécurité",
+    "password": {
+      "title": "Changer mon mot de passe",
+      "current": "Mot de passe actuel",
+      "new": "Nouveau mot de passe (8 caractères min.)",
+      "confirm": "Confirmer le nouveau mot de passe",
+      "submit": "Mettre à jour le mot de passe",
+      "success": "Mot de passe modifié avec succès.",
+      "error": "Impossible de modifier le mot de passe.",
+      "tooShort": "Le nouveau mot de passe doit contenir au moins 8 caractères.",
+      "mismatch": "Les deux mots de passe ne correspondent pas."
+    },
+    "mfa": {
+      "title": "Authentification à deux facteurs (MFA)",
+      "description": "Renforcez la sécurité de votre compte avec une application d'authentification (Google Authenticator, Authy…).",
+      "statusOn": "Activée",
+      "statusOff": "Désactivée",
+      "enable": "Activer la MFA",
+      "disable": "Désactiver la MFA",
+      "confirmDisable": "Confirmer la désactivation",
+      "passwordToDisable": "Mot de passe (pour confirmer)",
+      "scanHint": "Scannez ce QR code avec votre application d'authentification, ou saisissez la clé manuellement.",
+      "manualKey": "Clé de configuration manuelle :",
+      "backupCodesTitle": "Codes de secours (affichés une seule fois)",
+      "backupCodesHint": "Conservez ces codes en lieu sûr. Ils permettent de vous connecter si vous perdez votre téléphone.",
+      "codeLabel": "Code de vérification (6 chiffres)",
+      "verify": "Vérifier et activer",
+      "enabled": "MFA activée avec succès.",
+      "disabled": "MFA désactivée.",
+      "setupError": "Impossible d'initialiser la MFA.",
+      "verifyError": "Code de vérification invalide.",
+      "disableError": "Impossible de désactiver la MFA."
     }
   },
   "integration": {

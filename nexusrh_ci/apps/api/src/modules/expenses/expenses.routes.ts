@@ -12,11 +12,22 @@ const EXPENSE_CATEGORIES = ['transport', 'repas', 'hebergement', 'fournitures', 
 // Anti-overflow + anti-fraude (un attaquant ne peut pas injecter 99 999 999 999).
 const EXPENSE_LINE_MAX = 10_000_000
 
+// Justificatif : soit une URL http(s), soit un data URL (image/PDF en base64
+// produit par l'endpoint d'upload), soit un chemin interne "local://".
+// Borné à ~7 Mo (un data URL base64 = ~1,37x la taille binaire ; 5 Mo binaire
+// → ~6,8 Mo de chaîne) pour rester cohérent avec EXPENSE_RECEIPT_MAX_BYTES.
+const RECEIPT_URL_MAX = 7_500_000
+const receiptUrlSchema = z.string().trim().max(RECEIPT_URL_MAX).refine(
+  (v) => /^https?:\/\//i.test(v) || /^data:(image\/(png|jpe?g|webp|gif)|application\/pdf);base64,/i.test(v) || /^local:\/\//i.test(v),
+  { message: 'Justificatif invalide (URL http(s), data URL image/PDF ou chemin interne attendu)' },
+)
+
 const expenseLineSchema = z.object({
   description: z.string().min(1).max(500).trim(),
   category:    z.enum(EXPENSE_CATEGORIES).optional(),
   date:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
   amount:      z.number().int().nonnegative().max(EXPENSE_LINE_MAX),
+  receiptUrl:  receiptUrlSchema.optional(),
 }).strict()
 
 const createExpenseSchema = z.object({
@@ -207,9 +218,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const report = res.rows[0]
         for (const line of lines) {
           await pool.query(`
-            INSERT INTO "${schema}".expense_lines (report_id, description, category, date, amount)
-            VALUES ($1,$2,$3,$4,$5)
-          `, [report.id, line.description, line.category ?? 'autre', line.date, line.amount])
+            INSERT INTO "${schema}".expense_lines (report_id, description, category, date, amount, receipt_url)
+            VALUES ($1,$2,$3,$4,$5,$6)
+          `, [report.id, line.description, line.category ?? 'autre', line.date, line.amount, line.receiptUrl ?? null])
         }
         auditLogExpense(schema, request.user.sub, 'expense.created', report.id, {
           employeeId, title: body.title, totalAmount, lineCount: lines.length,
@@ -374,10 +385,42 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       try {
+        // OWASP A01 (IDOR) — un employé ne peut ajouter une ligne qu'à SON propre
+        // rapport, et uniquement tant qu'il est en brouillon. Sans ce contrôle, un
+        // employé pourrait greffer une ligne sur le rapport d'un autre (UUID deviné).
+        // Même pattern d'ownership que PATCH /:id/submit (résolution employeeId
+        // via token sinon lookup par email).
+        const reportRes = await pool.query<{ employee_id: string; status: string }>(
+          `SELECT employee_id, status FROM "${schema}".expense_reports WHERE id = $1 LIMIT 1`,
+          [id],
+        )
+        const report = reportRes.rows[0]
+        if (!report) return reply.status(404).send({ error: 'Note introuvable' })
+
+        if (request.user.role === 'employee') {
+          let employeeId = request.user.employeeId
+          if (!employeeId) {
+            const emp = await pool.query<{ id: string }>(
+              `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`,
+              [request.user.email],
+            )
+            if (!emp.rows[0]) return reply.status(403).send({ error: 'Accès interdit' })
+            employeeId = emp.rows[0].id
+          }
+          if (report.employee_id !== employeeId) {
+            return reply.status(403).send({ error: 'Accès interdit' })
+          }
+        }
+        // Seul un rapport en brouillon accepte de nouvelles lignes (cohérent avec
+        // le workflow : une fois soumis/approuvé/payé, le contenu est figé).
+        if (report.status !== 'draft') {
+          return reply.status(400).send({ error: 'Note non modifiable' })
+        }
+
         const lineRes = await pool.query(`
-          INSERT INTO "${schema}".expense_lines (report_id, description, category, date, amount)
-          VALUES ($1,$2,$3,$4,$5) RETURNING *
-        `, [id, body.description, body.category ?? 'autre', body.date, body.amount])
+          INSERT INTO "${schema}".expense_lines (report_id, description, category, date, amount, receipt_url)
+          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+        `, [id, body.description, body.category ?? 'autre', body.date, body.amount, body.receiptUrl ?? null])
         await pool.query(`
           UPDATE "${schema}".expense_reports
           SET total_amount = (SELECT COALESCE(SUM(amount),0) FROM "${schema}".expense_lines WHERE report_id = $1),
@@ -388,6 +431,66 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── UPLOAD JUSTIFICATIF (multipart) ────────────────────────────────────────
+  // Reçoit un fichier (image ou PDF), le valide (MIME allowlist + taille max) et
+  // renvoie un data URL base64 que le client stocke dans la ligne (champ
+  // receiptUrl). Suit le pattern d'upload de la recrutement (request.file() +
+  // toBuffer + allowlist MIME) ; comme la colonne expense_lines.receipt_url est
+  // de type text et qu'aucune colonne blob n'existe (provisioning non modifié),
+  // le binaire est encodé en data URL — auto-portable, affichable inline côté UI.
+  // OWASP A03 (content type spoofing) : allowlist stricte sur le MIME.
+  // OWASP A01 : tout utilisateur authentifié peut uploader SON justificatif ; la
+  // donnée n'est rattachée à un rapport que via une ligne dont l'ownership est
+  // déjà contrôlé (POST /:id/lines / POST /).
+  const RECEIPT_ALLOWED_MIMES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'application/pdf',
+  ])
+  // 5 Mo binaire — au-delà, le data URL dépasserait RECEIPT_URL_MAX.
+  const RECEIPT_MAX_BYTES = 5 * 1024 * 1024
+  fastify.post('/receipts/upload', {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      try {
+        const file = await request.file()
+        if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
+
+        const mimetype = (file.mimetype || '').toLowerCase()
+        if (!RECEIPT_ALLOWED_MIMES.has(mimetype)) {
+          return reply.status(400).send({
+            error: 'Format non autorisé. Accepté : PNG, JPG, WEBP, GIF, PDF.',
+          })
+        }
+
+        const buf = await file.toBuffer()
+        if (buf.byteLength === 0) {
+          return reply.status(400).send({ error: 'Fichier vide' })
+        }
+        if (buf.byteLength > RECEIPT_MAX_BYTES) {
+          return reply.status(400).send({
+            error: `Fichier trop volumineux (max ${RECEIPT_MAX_BYTES / (1024 * 1024)} Mo).`,
+          })
+        }
+
+        const receiptUrl = `data:${mimetype};base64,${buf.toString('base64')}`
+        return reply.send({
+          data: {
+            receiptUrl,
+            mimeType: mimetype,
+            filename: file.filename || 'justificatif',
+            sizeBytes: buf.byteLength,
+          },
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur upload justificatif' })
       }
     },
   })

@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AxiosError } from 'axios'
 import { api, formatDate } from '@/lib/api'
-import { BookOpen, Clock, MapPin, CheckCircle, Info } from 'lucide-react'
+import { BookOpen, Clock, MapPin, CheckCircle, Info, Loader2 } from 'lucide-react'
 
 interface Training {
   id: string; title: string; description: string | null
@@ -27,9 +28,29 @@ interface Enrollment {
 
 export default function MaFormation() {
   const { t } = useTranslation('monEspace')
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<'catalog' | 'enrolled'>('enrolled')
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const formatLabel = (f: string) => t(`training.formats.${f}`, { defaultValue: f })
   const unitLabel = (u: string) => (u === 'hours' ? t('training.unitHours') : t('training.unitDays'))
+
+  // Auto-inscription self-service : on n'envoie QUE le session_id ; l'API dérive
+  // l'employee_id du token (OWASP A01 — jamais de confiance dans un id du body).
+  const enrollMut = useMutation({
+    mutationFn: (sessionId: string) =>
+      api.post('/training/enroll', { session_id: sessionId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['training-my-enrollments'] })
+      queryClient.invalidateQueries({ queryKey: ['training-sessions-emp'] })
+      setFeedback({ type: 'success', text: t('training.enrollSuccess') })
+    },
+    onError: (err: unknown) => {
+      const apiErr = err instanceof AxiosError
+        ? (err.response?.data as { error?: string } | undefined)?.error
+        : undefined
+      setFeedback({ type: 'error', text: apiErr ?? t('training.enrollError') })
+    },
+  })
 
   const { data: catalogData } = useQuery<{ data: Training[] }>({
     queryKey: ['training-catalog-emp'],
@@ -62,6 +83,22 @@ export default function MaFormation() {
           {t('training.subtitle', { upcoming: upcoming.length, past: past.length })}
         </p>
       </div>
+
+      {feedback && (
+        <div
+          role="status"
+          className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${
+            feedback.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}
+        >
+          <span>{feedback.text}</span>
+          <button onClick={() => setFeedback(null)} className="text-xs opacity-70 hover:opacity-100">
+            {t('common.cancel')}
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
         {(['enrolled', 'catalog'] as const).map(tabKey => (
@@ -185,11 +222,22 @@ export default function MaFormation() {
                         </div>
                         <span className="text-muted-foreground">{t('training.placesCount', { enrolled: s.enrolled_count, max: s.max_places })}</span>
                       </div>
-                      {isEnrolled && (
+                      {isEnrolled ? (
                         <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
                           <CheckCircle className="h-3.5 w-3.5" /> {t('training.enrolled')}
                         </span>
-                      )}
+                      ) : !isFull ? (
+                        <button
+                          onClick={() => { setFeedback(null); enrollMut.mutate(s.id) }}
+                          disabled={enrollMut.isPending}
+                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                        >
+                          {enrollMut.isPending && enrollMut.variables === s.id && (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          )}
+                          {t('training.enroll')}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 )

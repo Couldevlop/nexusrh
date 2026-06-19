@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -97,6 +98,13 @@ function auditLogCareer(
 }
 
 const careersRoutes: FastifyPluginAsync = async (fastify) => {
+  // Migration lazy (idempotente) : garantit les colonnes ajoutées tardivement
+  // (evaluations.manager_comments/employee_comments, employee_skills.target_level…)
+  // pour ne pas renvoyer de 500 sur un tenant provisionné avant ces colonnes.
+  fastify.addHook('preHandler', async (request) => {
+    const schema = request.user?.schemaName
+    if (schema) await ensureTenantSchema(schema)
+  })
 
   // GET /careers/skills
   fastify.get('/skills', {

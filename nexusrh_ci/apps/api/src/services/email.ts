@@ -82,8 +82,16 @@ export async function sendWelcomeTenantEmail(params: {
   logoUrl?: string | null
   from?: string | null
   replyTo?: string | null
+  /**
+   * SMTP propre à l'expéditeur (option C / cabinet créateur) — si fourni, l'email
+   * part via CE serveur (From aligné au domaine → meilleure délivrabilité). Absent
+   * → repli sur le SMTP plateforme (comportement historique inchangé). À la
+   * création d'un tenant, le NOUVEAU tenant n'a pas encore configuré son SMTP : le
+   * repli plateforme reste donc légitime tant qu'aucun smtp n'est passé ici.
+   */
+  smtp?: TenantSmtp | null
 }): Promise<void> {
-  const { to, firstName, lastName, tenantName, tenantCity, primaryColor, loginUrl, tempPassword, plan, logoUrl, from, replyTo } = params
+  const { to, firstName, lastName, tenantName, tenantCity, primaryColor, loginUrl, tempPassword, plan, logoUrl, from, replyTo, smtp } = params
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -210,8 +218,11 @@ export async function sendWelcomeTenantEmail(params: {
 </body>
 </html>`
 
-  await getTransporter().sendMail({
-    from: from || config.smtp.from,
+  await transporterFor(smtp).sendMail({
+    // From : adresse explicite (cabinet) si fournie, sinon le compte SMTP
+    // authentifié quand un smtp dédié est passé (alignement domaine →
+    // délivrabilité), sinon l'expéditeur plateforme (repli historique).
+    from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
     to,
     subject: `🎉 Votre espace NexusRH CI est prêt — ${tenantName}`,

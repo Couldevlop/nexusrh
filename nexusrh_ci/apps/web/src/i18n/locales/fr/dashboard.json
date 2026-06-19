@@ -127,5 +127,41 @@
     "colHeadcount": "Nb employés",
     "colDept": "Département",
     "colDeptHeadcount": "Effectifs"
+  },
+  "manager": {
+    "subtitle": "Espace manager · pilotage de votre équipe",
+    "kpi": {
+      "team": "Mon équipe",
+      "teamSub": "{{count}} collaborateur(s) direct(s)",
+      "absencesToValidate": "Absences à valider",
+      "absencesToValidateSub": "en attente d'approbation",
+      "absencesToValidateNone": "Aucune demande",
+      "expensesToValidate": "Notes de frais à valider",
+      "expensesToValidateSub": "en attente d'approbation",
+      "expensesToValidateNone": "Aucune note en attente",
+      "absencesToday": "Absences aujourd'hui",
+      "absencesTodaySub": "{{count}} absent(s) aujourd'hui",
+      "absencesTodayNone": "Équipe au complet"
+    },
+    "pending": {
+      "title": "Demandes à valider",
+      "subtitle": "Approbations en attente de votre décision",
+      "openAbsences": "Voir les absences",
+      "openExpenses": "Voir les notes de frais",
+      "absence": "Absence",
+      "expense": "Note de frais",
+      "empty": "Aucune demande en attente. Tout est à jour."
+    },
+    "team": {
+      "title": "Mon équipe",
+      "subtitle": "{{count}} collaborateur(s) direct(s)",
+      "role": "Poste",
+      "department": "Département",
+      "status": "Statut",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "empty": "Aucun collaborateur rattaché.",
+      "viewAll": "Voir tous les employés"
+    }
   }
 }

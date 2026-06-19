@@ -145,6 +145,12 @@
       "lastNameRequired": "Last name required",
       "createError": "Error during creation"
     },
+    "modules": {
+      "title": "6. Modules to enable",
+      "intro": "Select which modules this tenant will have. All are enabled by default (except the DG 360° View). You can adjust them anytime from the tenant detail.",
+      "activeLabel": "Enabled modules:",
+      "activeCount": "{{count}} active"
+    },
     "submit": "Create tenant",
     "submitting": "Creating..."
   },

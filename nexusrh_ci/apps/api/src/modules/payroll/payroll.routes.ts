@@ -1,8 +1,9 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
+import { renderPayslipPdf, type PayslipPdfLine } from './payslip-pdf.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
@@ -158,20 +159,58 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         id: string; base_salary: string; marital_status: string; children_count: number
         first_name: string; last_name: string; cnps_number: string; nni: string
         mobile_money_provider: string; mobile_money_phone: string; hire_date: string | null
+        legal_entity_id: string | null
       }>(
         `SELECT id, base_salary, marital_status, children_count,
                 first_name, last_name, cnps_number, nni,
-                mobile_money_provider, mobile_money_phone, hire_date
+                mobile_money_provider, mobile_money_phone, hire_date, legal_entity_id
          FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
         [employeeId]
       )
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
 
-      const tenantRes = await rawPool.query<{ at_rate: string }>(
-        `SELECT at_rate FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
+      const tenantRes = await rawPool.query<{
+        id: string; at_rate: string; has_subsidiaries: boolean; default_country_code: string | null
+      }>(
+        `SELECT id, at_rate, has_subsidiaries, default_country_code
+         FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
-      const atRate = parseFloat(tenantRes.rows[0]?.at_rate ?? '0.020')
+      const tenantRow = tenantRes.rows[0]
+
+      // Résolution du pack législatif de l'employé (multi-pays / multi-filiales).
+      // Aligne l'aperçu /calculate sur la clôture /close : même pack, même devise.
+      let legalEntityInfo: {
+        id: string; atRate: number | null; legislationPackCode: string | null; countryCode: string | null
+      } | null = null
+      if (emp.legal_entity_id) {
+        const leRes = await rawPool.query<{
+          id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null
+        }>(
+          `SELECT id, at_rate, legislation_pack_code, country_code
+           FROM "${schema}".legal_entities WHERE id = $1 LIMIT 1`,
+          [emp.legal_entity_id],
+        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null }> }))
+        const le = leRes.rows[0]
+        if (le) legalEntityInfo = {
+          id: le.id,
+          atRate: le.at_rate ? parseFloat(le.at_rate) : null,
+          legislationPackCode: le.legislation_pack_code,
+          countryCode: le.country_code,
+        }
+      }
+
+      const resolved = resolvePayrollContext({
+        tenant: {
+          id: tenantRow?.id ?? '',
+          hasSubsidiaries: tenantRow?.has_subsidiaries ?? false,
+          atRate: parseFloat(tenantRow?.at_rate ?? '0.020'),
+          defaultCountryCode: tenantRow?.default_country_code ?? null,
+        },
+        employee: { id: emp.id, legalEntityId: emp.legal_entity_id },
+        legalEntity: legalEntityInfo,
+      })
+      const atRate = resolved.atRate
 
       const periodRes = await rawPool.query<{ id: string }>(
         `SELECT id FROM "${schema}".pay_periods WHERE month = $1 LIMIT 1`, [month]
@@ -207,6 +246,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         childrenCount:    emp.children_count ?? 0,
         variableElements: varEls,
         absence:          absenceCtx?.info,
+        legislationPack:  resolved.legislationPack,
       })
 
       return reply.send({
@@ -225,7 +265,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           maintienTaux: absenceCtx.info.type === 'maladie_sans_at' ? absenceCtx.info.maintienTaux : undefined,
         } : null,
         result,
-        currency: 'XOF',
+        currency: result.currency,
       })
     },
   })
@@ -921,6 +961,93 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         [employeeId]
       )
       return reply.send({ data: res.rows, currency: 'XOF' })
+    },
+  })
+
+  // GET /payroll/my-payslips/:id/pdf — bulletin PDF self-service employé
+  // Auth : header Authorization OU ?token= (l'iframe/lien de téléchargement ne
+  // peut pas porter de header → on recopie le token de la query avant authenticate).
+  // OWASP A01 : scope STRICT sur l'employé du token (un salarié ne télécharge
+  // que ses propres bulletins) — pas d'IDOR.
+  fastify.get('/my-payslips/:id/pdf', {
+    preHandler: [
+      async (request: FastifyRequest) => {
+        const q = request.query as { token?: string }
+        if (q?.token && !request.headers.authorization) {
+          request.headers.authorization = `Bearer ${q.token}`
+        }
+      },
+      fastify.authenticate,
+    ],
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    schema: { tags: ['payroll'], summary: 'Mon bulletin de paie en PDF (self-service)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      }
+      const schema = request.user.schemaName
+
+      let employeeId = request.user.employeeId ?? null
+      if (!employeeId) {
+        const me = await rawPool.query(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+        )
+        employeeId = (me.rows[0] as { id?: string } | undefined)?.id ?? null
+      }
+      if (!employeeId) return reply.status(404).send({ error: 'Bulletin introuvable' })
+
+      const slipRes = await rawPool.query<{
+        month: string; base_salary: string; gross_salary: string; net_payable: string
+        total_cnps_sal: string; its: string; employer_cost: string; total_deductions: string
+        lines: unknown; currency: string | null
+        payment_method: string | null; payment_reference: string | null; generated_at: string | null
+        first_name: string; last_name: string; job_title: string | null
+        cnps_number: string | null; nni: string | null
+      }>(
+        `SELECT ps.month, ps.base_salary, ps.gross_salary, ps.net_payable,
+                ps.total_cnps_sal, ps.its, ps.employer_cost, ps.total_deductions,
+                ps.lines, ps.currency, ps.payment_method, ps.payment_reference, ps.generated_at,
+                e.first_name, e.last_name, e.job_title, e.cnps_number, e.nni
+           FROM "${schema}".pay_slips ps
+           JOIN "${schema}".employees e ON e.id = ps.employee_id
+          WHERE ps.id = $1 AND ps.employee_id = $2 LIMIT 1`,
+        [id, employeeId],
+      )
+      const slip = slipRes.rows[0]
+      if (!slip) return reply.status(404).send({ error: 'Bulletin introuvable' })
+
+      const tenantRes = await rawPool.query<{ name: string }>(
+        `SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      ).catch(() => ({ rows: [] as Array<{ name: string }> }))
+      const tenantName = tenantRes.rows[0]?.name ?? 'Employeur'
+
+      const rawLines = Array.isArray(slip.lines) ? (slip.lines as PayslipPdfLine[]) : []
+
+      const pdf = await renderPayslipPdf({
+        tenantName,
+        employee: {
+          firstName: slip.first_name, lastName: slip.last_name, jobTitle: slip.job_title,
+          cnpsNumber: slip.cnps_number, nni: slip.nni,
+        },
+        month: slip.month,
+        lines: rawLines,
+        grossSalary: Number(slip.gross_salary),
+        totalCnpsSal: Number(slip.total_cnps_sal),
+        its: Number(slip.its),
+        totalDeductions: Number(slip.total_deductions),
+        netPayable: Number(slip.net_payable),
+        employerCost: Number(slip.employer_cost),
+        currency: slip.currency ?? 'XOF',
+        paymentMethod: slip.payment_method,
+        paymentReference: slip.payment_reference,
+        generatedAt: slip.generated_at,
+      })
+
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `inline; filename="bulletin_${slip.month}.pdf"`)
+        .send(Buffer.from(pdf))
     },
   })
 

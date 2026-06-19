@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import { api } from '@/lib/api'
 import { Loader2, ArrowLeft, Database } from 'lucide-react'
+import { MODULE_DEFAULTS, MODULE_KEYS, type ModuleKey } from '@/lib/modules'
+import { ModuleTogglesGrid } from '@/components/shared/ModuleTogglesGrid'
 
 const schema = z.object({
   name:           z.string().min(2, 'nameRequired'),
@@ -47,7 +49,11 @@ export default function PlatformTenantNew() {
   const { t } = useTranslation('platform')
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ tempPassword: string; adminEmail: string; seeded?: boolean } | null>(null)
+  const [result, setResult] = useState<{ tempPassword: string; adminEmail: string; seeded?: boolean; modulesCount?: number } | null>(null)
+  // Modules à activer dès la création — pré-cochés selon MODULE_DEFAULTS
+  // (dg_view décoché par défaut, comme partout ailleurs dans le produit).
+  const [modules, setModules] = useState<Record<ModuleKey, boolean>>({ ...MODULE_DEFAULTS })
+  const enabledModulesCount = MODULE_KEYS.filter((k) => modules[k]).length
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -73,9 +79,16 @@ export default function PlatformTenantNew() {
       const payload = {
         ...data,
         payrollMode: data.hasSubsidiaries ? 'multi_country' : 'single_country',
+        // Carte { moduleKey: boolean } — même forme que PUT /tenants/:id/modules.
+        modules,
       }
       const res = await api.post('/platform/tenants', payload)
-      setResult({ tempPassword: res.data.tempPassword, adminEmail: res.data.adminEmail, seeded: data.seedDemoData })
+      setResult({
+        tempPassword: res.data.tempPassword,
+        adminEmail: res.data.adminEmail,
+        seeded: data.seedDemoData,
+        modulesCount: enabledModulesCount,
+      })
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
       setError(e.response?.data?.error ?? t('tenantNew.errors.createError'))
@@ -99,6 +112,12 @@ export default function PlatformTenantNew() {
             <p className="mt-1"><strong>{t('tenantNew.tempPassword')}</strong>{' '}
               <code className="rounded bg-muted px-1 font-mono">{result.tempPassword}</code>
             </p>
+            {typeof result.modulesCount === 'number' && (
+              <p className="mt-1">
+                <strong>{t('tenantNew.modules.activeLabel')}</strong>{' '}
+                {t('tenantNew.modules.activeCount', { count: result.modulesCount })}
+              </p>
+            )}
           </div>
           <div className="flex gap-2 justify-center">
             <button onClick={() => navigate('/platform/tenants')}
@@ -281,6 +300,24 @@ export default function PlatformTenantNew() {
               </p>
             </div>
           )}
+        </section>
+
+        {/* Modules à activer — pré-cochés selon les défauts produit */}
+        <section className="rounded-xl border border-border bg-card p-6">
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold">{t('tenantNew.modules.title')}</h2>
+            <span className="text-xs text-muted-foreground">
+              {t('tenantNew.modules.activeCount', { count: enabledModulesCount })}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            {t('tenantNew.modules.intro')}
+          </p>
+          <ModuleTogglesGrid
+            values={modules}
+            onToggle={(key, enabled) => setModules((prev) => ({ ...prev, [key]: enabled }))}
+            disabled={isSubmitting}
+          />
         </section>
 
         {error && (

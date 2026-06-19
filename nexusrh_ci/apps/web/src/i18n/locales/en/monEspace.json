@@ -81,6 +81,10 @@
     "halfDayShort": "½ day",
     "daysCount": "{{count}} day(s)",
     "empty": "No absence",
+    "cancel": "Cancel",
+    "cancelConfirm": "Are you sure you want to cancel this leave request?",
+    "cancelSuccess": "Your leave request has been cancelled.",
+    "cancelError": "Unable to cancel this request. Please try again later.",
     "validation": {
       "typeRequired": "Type required",
       "startRequired": "Start date required",
@@ -157,7 +161,10 @@
     "unitDays": "d",
     "noEnrollments": "No enrolment yet.",
     "viewCatalog": "View catalogue",
-    "catalogInfo": "Training enrolments are managed by your HR department. You will be added to the sessions that concern you — find them under \"My enrolments\".",
+    "enroll": "Enrol",
+    "enrollSuccess": "Enrolment recorded — find it under \"My enrolments\".",
+    "enrollError": "Unable to enrol. Please try again later.",
+    "catalogInfo": "Enrol directly in the open sessions below. Your enrolments appear under \"My enrolments\".",
     "sessionsPlanned": "{{count}} planned session(s)",
     "noSessions": "No planned session yet.",
     "full": "Full",
@@ -265,6 +272,41 @@
       "married": "Married",
       "divorced": "Divorced",
       "widowed": "Widowed"
+    }
+  },
+  "security": {
+    "title": "Security",
+    "password": {
+      "title": "Change my password",
+      "current": "Current password",
+      "new": "New password (min. 8 characters)",
+      "confirm": "Confirm new password",
+      "submit": "Update password",
+      "success": "Password changed successfully.",
+      "error": "Unable to change the password.",
+      "tooShort": "The new password must be at least 8 characters long.",
+      "mismatch": "The two passwords do not match."
+    },
+    "mfa": {
+      "title": "Two-factor authentication (MFA)",
+      "description": "Strengthen your account security with an authenticator app (Google Authenticator, Authy…).",
+      "statusOn": "Enabled",
+      "statusOff": "Disabled",
+      "enable": "Enable MFA",
+      "disable": "Disable MFA",
+      "confirmDisable": "Confirm disabling",
+      "passwordToDisable": "Password (to confirm)",
+      "scanHint": "Scan this QR code with your authenticator app, or enter the key manually.",
+      "manualKey": "Manual setup key:",
+      "backupCodesTitle": "Backup codes (shown only once)",
+      "backupCodesHint": "Keep these codes in a safe place. They let you sign in if you lose your phone.",
+      "codeLabel": "Verification code (6 digits)",
+      "verify": "Verify and enable",
+      "enabled": "MFA enabled successfully.",
+      "disabled": "MFA disabled.",
+      "setupError": "Unable to initialise MFA.",
+      "verifyError": "Invalid verification code.",
+      "disableError": "Unable to disable MFA."
     }
   },
   "integration": {

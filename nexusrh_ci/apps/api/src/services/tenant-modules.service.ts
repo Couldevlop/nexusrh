@@ -13,6 +13,7 @@
  * vérité est côté API — OWASP A01).
  */
 import type { Pool } from 'pg'
+import { z } from 'zod'
 
 export const MODULE_KEYS = [
   'contracts',
@@ -75,6 +76,21 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   sage:         true,
   dg_view:      false,
 }
+
+/**
+ * OWASP A03 — carte { module: boolean } dont les clés sont STRICTEMENT bornées à
+ * la liste canonique MODULE_KEYS (aucune clé arbitraire ne peut entrer dans le
+ * jsonb). Forme unique réutilisée par PUT /tenants/:id/modules, le bulk cabinet
+ * ET la sélection de modules à la création du tenant (POST /tenants).
+ */
+export const modulesMapSchema = z.record(z.string(), z.boolean())
+  .refine(m => Object.keys(m).length > 0, 'Au moins un module requis')
+  .refine(
+    m => Object.keys(m).every(k => (MODULE_KEYS as readonly string[]).includes(k)),
+    'Clé de module inconnue',
+  )
+
+export type ModulesMap = z.infer<typeof modulesMapSchema>
 
 /** Préfixe d'URL API → clé de module. Premier préfixe correspondant gagne. */
 const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [

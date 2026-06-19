@@ -145,6 +145,12 @@
       "lastNameRequired": "Nom requis",
       "createError": "Erreur lors de la création"
     },
+    "modules": {
+      "title": "6. Modules à activer",
+      "intro": "Sélectionnez les modules dont disposera ce tenant. Tous sont activés par défaut (sauf la Vue DG 360°). Vous pourrez les ajuster à tout moment depuis le détail du tenant.",
+      "activeLabel": "Modules activés :",
+      "activeCount": "{{count}} actifs"
+    },
     "submit": "Créer le tenant",
     "submitting": "Création en cours..."
   },
