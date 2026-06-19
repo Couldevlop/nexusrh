@@ -35,15 +35,23 @@ const TARGETS: Target[] = [
     email: 'superadmin@nexusrh-ci.com', password: 'SuperAdmin1234!',
     label: 'Super Admin' },
 
-  // SOTRA
+  // SOTRA (tenant de démo principal)
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
     email: 'admin@sotra.ci', password: 'Admin1234!', label: 'SOTRA admin' },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
     email: 'rh@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_manager' },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
+    email: 'chef.perso@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_officer' },
+  { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
     email: 'manager@sotra.ci', password: 'Admin1234!', label: 'SOTRA manager' },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
     email: 'employe@sotra.ci', password: 'Admin1234!', label: 'SOTRA employee' },
+  { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
+    email: 'dg@sotra.ci', password: 'Admin1234!', label: 'SOTRA DG (vue 360)' },
+  { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
+    email: 'raf.abidjan@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Abidjan' },
+  { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
+    email: 'raf.bouake@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Bouaké' },
 
   // Cabinet Expertise CI
   { scope: 'tenant', schema: 'tenant_cabinet_expertise_ci', table: 'users',
@@ -57,6 +65,18 @@ const TARGETS: Target[] = [
   { scope: 'tenant', schema: 'tenant_openlab_consulting', table: 'users',
     email: 'coulwao@gmail.com', password: 'Openlab1234!',
     label: 'OpenLab admin' },
+
+  // Woyaa (scénario maternité)
+  { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
+    email: 'admin@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa admin' },
+  { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
+    email: 'sec.self@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa employee' },
+
+  // Cabinet de recrutement (agence — table platform.agency_users)
+  { scope: 'platform', schema: 'platform', table: 'agency_users',
+    email: 'owner@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence owner' },
+  { scope: 'platform', schema: 'platform', table: 'agency_users',
+    email: 'recruteur@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence membre' },
 ]
 
 async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }> {
@@ -70,6 +90,7 @@ async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }
       `UPDATE "${target.schema}".${target.table}
           SET password_hash = $1,
               is_active = true,
+              password_changed_at = now(),
               updated_at = now()
         WHERE email = $2
         RETURNING id`,
@@ -77,8 +98,9 @@ async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }
     )
     if (res.rowCount === 0) {
       // L'utilisateur n'existe pas — on l'insère seulement pour le super_admin
-      // (les autres comptes sont créés via le seed complet).
-      if (target.scope === 'platform') {
+      // (les autres comptes, y compris les utilisateurs d'agence, sont créés
+      // via le seed complet).
+      if (target.table === 'platform_users') {
         await pool.query(
           `INSERT INTO "${target.schema}".${target.table}
              (email, password_hash, first_name, last_name, role, is_active)
@@ -107,7 +129,8 @@ function maskedDbUrl(url: string): string {
 async function main(): Promise<void> {
   console.log('=== Reset admin passwords (OWASP A02 — bcrypt 12 rounds) ===')
   console.log(`DB URL : ${maskedDbUrl(config.database.url)}`)
-  console.log(`Targets : ${TARGETS.length} comptes (1 super_admin + 7 tenant)\n`)
+  const platformCount = TARGETS.filter(t => t.scope === 'platform').length
+  console.log(`Targets : ${TARGETS.length} comptes (${platformCount} platform/agence + ${TARGETS.length - platformCount} tenant)\n`)
 
   const dryRun        = process.argv.includes('--dry-run')
   const healthCheck   = process.argv.includes('--health-check')
