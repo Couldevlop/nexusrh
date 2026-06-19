@@ -76,7 +76,7 @@ export interface PayrollResult {
   totalDeductions: number
   netPayable:      number
   employerCost:    number
-  currency:        'XOF'
+  currency:        LegislationPack['currency']
   smigCompliant:   boolean
   workingDays:     number
   // Absences
@@ -325,7 +325,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     totalDeductions: totalRetenues,
     netPayable,
     employerCost,
-    currency: 'XOF',
+    currency: pack.currency,
     smigCompliant: netPayable >= pack.smigMensuel,
     workingDays: workedDays,
     indemniteAbsence: indemniteAbsence > 0 ? indemniteAbsence : undefined,

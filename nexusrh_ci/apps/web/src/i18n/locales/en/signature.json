@@ -33,6 +33,8 @@
     "addSignatory": "Add signer",
     "signatoryName": "Name",
     "signatoryEmail": "Email (optional)",
+    "signatoryEmployee": "Employee",
+    "signatoryExternal": "External signer…",
     "create": "Create draft",
     "creating": "Creating…",
     "send": "Send for signature",

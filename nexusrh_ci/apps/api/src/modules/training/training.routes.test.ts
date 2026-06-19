@@ -123,9 +123,49 @@ describe('POST /training/sessions — Zod (OWASP A03)', () => {
   })
 })
 
-describe('POST /training/enroll — RH/manager uniquement (OWASP A01 + A03 + A04)', () => {
-  it('refuse l\'auto-inscription par un employee (403)', async () => {
+describe('POST /training/enroll — RH/manager + self-service employé (OWASP A01 + A03 + A04)', () => {
+  it('employee : auto-inscription self-service réussie (201) + employee_id du token', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })                         // duplicate check empty
+      .mockResolvedValueOnce({ rows: [{ max_places: 20, enrolled: 5 }] }) // session check
+      .mockResolvedValueOnce({ rows: [{ id: 'enr-self' }] })       // INSERT enrollment
+      .mockResolvedValueOnce({ rows: [] })                         // audit_log
+
     const token = tokenFor(app, 'employee', { employeeId: UUID_B })
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A }, // employee_id NON fourni : dérivé du token
+    })
+    expect(res.statusCode).toBe(201)
+    // OWASP A01 : l'INSERT doit cibler l'employeeId du token (UUID_B)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('training_enrollments'))
+    expect(insertCall?.[1]).toEqual([UUID_A, UUID_B])
+  })
+
+  it('employee : un employee_id forgé dans le body est REFUSÉ (400, schema strict)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: UUID_B })
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A, employee_id: '33333333-3333-3333-3333-333333333333' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('employee sans dossier employé lié → 404', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup employee par email : aucun
+    const token = tokenFor(app, 'employee') // pas d'employeeId dans le token
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('refuse l\'inscription par un readonly (403)', async () => {
+    const token = tokenFor(app, 'readonly')
     const res = await app.inject({
       method: 'POST', url: '/training/enroll',
       headers: { authorization: `Bearer ${token}` },

@@ -343,6 +343,73 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ data: res.rows[0] })
     },
   })
+
+  // PATCH /absences/:id/cancel — l'employé annule SA propre demande en attente
+  fastify.patch('/:id/cancel', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['absences'], summary: 'Annuler ma demande d\'absence en attente (self-service)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const schema = request.user.schemaName
+
+      // Résolution de l'employeeId du demandeur (token, sinon lookup par email)
+      let employeeId: string | null = request.user.employeeId ?? null
+      if (!employeeId) {
+        const r = await rawPool.query(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+        )
+        employeeId = r.rows[0]?.id ?? null
+      }
+      if (!employeeId) {
+        return reply.status(422).send({ error: 'Aucun dossier employé associé à ce compte. Contactez votre RH.' })
+      }
+
+      const cur = await rawPool.query<{ employee_id: string; days: number; absence_type_id: string; start_date: string; status: string }>(
+        `SELECT employee_id, days, absence_type_id, start_date, status
+         FROM "${schema}".absences WHERE id = $1`, [id]
+      )
+      const absence = cur.rows[0]
+      if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
+
+      // OWASP A01 (IDOR) — un employé ne peut annuler QUE sa propre demande.
+      // On répond 404 (et non 403) pour ne pas divulguer l'existence d'une
+      // absence appartenant à un autre employé.
+      if (absence.employee_id !== employeeId) {
+        return reply.status(404).send({ error: 'Absence introuvable' })
+      }
+
+      // Annulation autorisée uniquement tant que la demande est en attente
+      // (statut 'pending' à la création, ou 'submitted' en cours de workflow).
+      if (absence.status !== 'pending' && absence.status !== 'submitted') {
+        return reply.status(409).send({
+          error: 'Seule une demande en attente peut être annulée',
+        })
+      }
+
+      const res = await rawPool.query(
+        `UPDATE "${schema}".absences
+         SET status = 'cancelled', updated_at = now()
+         WHERE id = $1 RETURNING *`,
+        [id]
+      )
+
+      // Restaurer le solde "pending" décrémenté à la création
+      const year = new Date(absence.start_date).getFullYear()
+      await rawPool.query(
+        `UPDATE "${schema}".absence_balances
+         SET pending = pending - $1, remaining = remaining + $1, updated_at = now()
+         WHERE employee_id = $2 AND absence_type_id = $3 AND year = $4`,
+        [absence.days, absence.employee_id, absence.absence_type_id, year]
+      ).catch(() => undefined)
+
+      // OWASP A09 : trace de l'annulation par l'employé
+      auditLogAbsence(schema, request.user.sub, 'absence.cancelled', id, {
+        employeeId: absence.employee_id, days: absence.days,
+      }, request.ip ?? null)
+
+      return reply.send({ data: res.rows[0] })
+    },
+  })
 }
 
 export default absencesRoutes

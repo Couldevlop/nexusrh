@@ -59,6 +59,14 @@ export interface LegislationPack {
    * En CI : variable selon secteur (2-5%) — le tenant porte sa valeur.
    */
   tauxAtDefaultPatronal: number
+  /**
+   * Bornes anti-fraude du taux AT employeur (validation de config par pays).
+   * Hors [min, max] = config invalide → repli sur le taux par défaut.
+   * Optionnel : si absent, le résolveur applique des bornes larges génériques
+   * (les taux AT légitimes varient selon les pays : CI 2-5%, SEN/NGA ~1%, NER ~1,75%).
+   */
+  tauxAtMin?: number
+  tauxAtMax?: number
 
   /** Abattement appliqué au brut avant calcul impôt (0.15 = 15%) */
   abattementImpotSalaire: number
@@ -167,6 +175,8 @@ export const CIV_2024: LegislationPack = {
   tauxCotisationPfPatronal: 0.050,
   tauxCotisationMaternitePatronal: 0.0075,
   tauxAtDefaultPatronal: 0.02,
+  tauxAtMin: 0.02,                            // CI : 2 % (commerce/services)
+  tauxAtMax: 0.05,                            // CI : 5 % (extraction/mines)
   abattementImpotSalaire: 0.15,
   tranchesImpotSalaire: [
     { min: 0,          max: 75_000,    taux: 0.000 },

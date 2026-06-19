@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import ManagerDashboard from './ManagerDashboard'
 import {
   Users, CreditCard, FileText, AlertCircle, TrendingUp,
   ArrowUpRight, ArrowDownRight, Download, Printer,
@@ -62,9 +63,16 @@ export default function DashboardPage() {
   const tenantConfig = useAuthStore(s => s.tenantConfig)
   const printRef = useRef<HTMLDivElement>(null)
 
+  // Le manager dispose d'un tableau de bord dédié (équipe + validations) qui
+  // n'appelle aucun endpoint réservé RH/paie (évite les 403 sur /payroll/*).
+  const isManager = user?.role === 'manager'
+
   const { data: periodsData } = useQuery<{ data: PayPeriod[] }>({
     queryKey: ['payroll-periods'],
-    queryFn: () => api.get('/payroll/periods').then(r => r.data),
+    // Le manager n'a pas accès à /payroll/periods (403) : on neutralise l'appel
+    // pour cette query et on protège le reste avec un .catch() de robustesse.
+    enabled: !isManager,
+    queryFn: () => api.get('/payroll/periods').then(r => r.data).catch(() => ({ data: [] })),
   })
 
   const { data: empsData } = useQuery<{ data: Employee[] }>({
@@ -155,6 +163,9 @@ export default function DashboardPage() {
   const handlePrint = () => window.print()
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  // Tableau de bord dédié au manager (équipe + demandes à valider).
+  if (isManager) return <ManagerDashboard />
 
   return (
     <>
@@ -469,7 +480,7 @@ export default function DashboardPage() {
 
 // ── Composants ───────────────────────────────────────────────────────────────
 
-const COLOR_MAP: Record<string, { bg: string; text: string; icon: string }> = {
+export const COLOR_MAP: Record<string, { bg: string; text: string; icon: string }> = {
   blue:    { bg: 'bg-blue-50',    text: 'text-blue-700',    icon: 'text-blue-500' },
   orange:  { bg: 'bg-orange-50',  text: 'text-orange-700',  icon: 'text-orange-500' },
   emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', icon: 'text-emerald-500' },
@@ -480,7 +491,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; icon: string }> = {
   green:   { bg: 'bg-green-50',   text: 'text-green-700',   icon: 'text-green-500' },
 }
 
-function KpiCard({ label, value, icon: Icon, color, trend, sub }: {
+export function KpiCard({ label, value, icon: Icon, color, trend, sub }: {
   label: string; value: string; icon: React.ElementType
   color: string; trend?: number; sub?: string
 }) {

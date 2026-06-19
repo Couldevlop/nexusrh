@@ -59,6 +59,7 @@ let app: FastifyInstance
 beforeAll(async () => {
   app = Fastify()
   await app.register(authPlugin)
+  await app.register(import('@fastify/multipart'), { limits: { fileSize: 6 * 1024 * 1024 } })
   await app.register(expensesRoutes, { prefix: '/expenses' })
   await app.ready()
 })
@@ -497,6 +498,7 @@ describe('PATCH /expenses/:id/pay — remboursement', () => {
 describe('POST /expenses/:id/lines — ajout de ligne', () => {
   it('ajoute une ligne et recalcule le total (201)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: UUID_A, status: 'draft' }] }) // SELECT ownership
       .mockResolvedValueOnce({ rows: [{ id: 'l-1', amount: 5000 }] }) // INSERT line
       .mockResolvedValueOnce({ rows: [] })                            // UPDATE total
     const token = tokenFor(app, 'employee', { employeeId: UUID_A })
@@ -517,5 +519,125 @@ describe('POST /expenses/:id/lines — ajout de ligne', () => {
       payload: { description: 'X', date: '2026-01-15', amount: 5000 },
     })
     expect(res.statusCode).toBe(500)
+  })
+
+  // OWASP A01 (IDOR) — un employé ne peut pas greffer une ligne sur le rapport d'un autre
+  it('refuse un employé qui cible le rapport d’un autre (403)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'someone-else', status: 'draft' }] }) // SELECT ownership
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: `/expenses/${UUID_A}/lines`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Repas', date: '2026-01-15', amount: 5000 },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('refuse un rapport introuvable (404)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT ownership → vide
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: `/expenses/${UUID_A}/lines`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Repas', date: '2026-01-15', amount: 5000 },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('refuse l’ajout sur un rapport non brouillon (400)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: UUID_A, status: 'submitted' }] }) // SELECT ownership
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: `/expenses/${UUID_A}/lines`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { description: 'Repas', date: '2026-01-15', amount: 5000 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('accepte une ligne avec un justificatif (data URL) (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: UUID_A, status: 'draft' }] }) // SELECT ownership
+      .mockResolvedValueOnce({ rows: [{ id: 'l-2', amount: 5000 }] })              // INSERT line
+      .mockResolvedValueOnce({ rows: [] })                                         // UPDATE total
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: `/expenses/${UUID_A}/lines`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        description: 'Repas', date: '2026-01-15', amount: 5000,
+        receiptUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('expense_lines'))
+    expect(insertCall?.[1]?.[5]).toBe('data:image/png;base64,iVBORw0KGgo=')
+  })
+
+  it('refuse un justificatif au format non autorisé (400)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: `/expenses/${UUID_A}/lines`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        description: 'Repas', date: '2026-01-15', amount: 5000,
+        receiptUrl: 'javascript:alert(1)',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
+// ── POST /expenses/receipts/upload ──────────────────────────────────────────────
+function multipartBody(boundary: string, file?: { name: string; filename: string; type: string; content: string | Buffer }) {
+  const parts: Buffer[] = []
+  if (file) {
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\nContent-Type: ${file.type}\r\n\r\n`,
+      'utf-8',
+    ))
+    parts.push(typeof file.content === 'string' ? Buffer.from(file.content, 'utf-8') : file.content)
+    parts.push(Buffer.from('\r\n', 'utf-8'))
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf-8'))
+  return Buffer.concat(parts)
+}
+
+describe('POST /expenses/receipts/upload — justificatif (multipart)', () => {
+  it('accepte un PNG et renvoie un data URL (200)', async () => {
+    const boundary = '----rec1'
+    const payload = multipartBody(boundary, { name: 'file', filename: 'recu.png', type: 'image/png', content: Buffer.from([0x89, 0x50, 0x4e, 0x47]) })
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses/receipts/upload',
+      headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data.receiptUrl).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('refuse un format non autorisé (400)', async () => {
+    const boundary = '----rec2'
+    const payload = multipartBody(boundary, { name: 'file', filename: 'x.exe', type: 'application/x-msdownload', content: 'MZ' })
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses/receipts/upload',
+      headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse une requête sans fichier (400)', async () => {
+    const boundary = '----rec3'
+    const payload = multipartBody(boundary)
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses/receipts/upload',
+      headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload,
+    })
+    expect(res.statusCode).toBe(400)
   })
 })

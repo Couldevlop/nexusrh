@@ -33,6 +33,8 @@
     "addSignatory": "Ajouter un signataire",
     "signatoryName": "Nom",
     "signatoryEmail": "E-mail (facultatif)",
+    "signatoryEmployee": "Salarié",
+    "signatoryExternal": "Signataire externe…",
     "create": "Créer le brouillon",
     "creating": "Création…",
     "send": "Envoyer pour signature",

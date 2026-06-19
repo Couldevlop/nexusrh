@@ -348,6 +348,87 @@ describe('PATCH /absences/:id/reject — succès et auto-approbation interdite',
   })
 })
 
+// ── PATCH /absences/:id/cancel — annulation self-service par l'employé ───────────
+describe('PATCH /absences/:id/cancel — annulation par l\'employé', () => {
+  it('employee annule sa propre demande en attente (200) + restaure le solde + audit', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1', days: 3, absence_type_id: 'at-1', start_date: '2026-03-01', status: 'pending' }] }) // SELECT absence
+      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', status: 'cancelled' }] }) // UPDATE absence
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const token = tokenFor(app, 'employee', { sub: 'u-emp', employeeId: 'emp-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data.status).toBe('cancelled')
+    const balanceCall = queryMock.mock.calls.find((c) => String(c[0]).includes('absence_balances'))
+    expect(balanceCall?.[1]?.[0]).toBe(3) // jours restaurés
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]?.[1]).toBe('absence.cancelled')
+  })
+
+  it('employee sans employeeId : résolution via email puis annulation (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-resolved' }] }) // SELECT id from email
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-resolved', days: 1, absence_type_id: 'at-1', start_date: '2026-03-01', status: 'submitted' }] }) // SELECT absence
+      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', status: 'cancelled' }] }) // UPDATE absence
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const token = tokenFor(app, 'employee', { email: 'kouassi@sotra.ci' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('OWASP A01 (IDOR) : annulation de l\'absence d\'un autre employé → 404', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-autre', days: 3, absence_type_id: 'at-1', start_date: '2026-03-01', status: 'pending' }] }) // SELECT absence d'un autre
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(404)
+    // pas d'UPDATE déclenché
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('UPDATE'))).toBe(false)
+  })
+
+  it('absence déjà approuvée : annulation refusée → 409', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1', days: 3, absence_type_id: 'at-1', start_date: '2026-03-01', status: 'approved' }] }) // SELECT absence
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('absence introuvable → 404', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT absence vide
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/unknown/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('employee sans dossier employé : 422', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT id from email → vide
+    const token = tokenFor(app, 'employee', { email: 'ghost@sotra.ci' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/cancel',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(422)
+  })
+})
+
 // ── PATCH /absences/:id/approve — manager sur sa propre absence (auto-interdite) ─
 describe('PATCH /absences/:id/approve — auto-approbation interdite', () => {
   it('manager ne peut pas approuver sa propre absence → 403', async () => {

@@ -28,7 +28,8 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled: 'bg-slate-200 text-slate-600', expired: 'bg-slate-200 text-slate-600',
 }
 
-interface DraftSignatory { name: string; email: string }
+interface EmployeeRow { id: string; first_name: string; last_name: string; email: string | null }
+interface DraftSignatory { employeeId: string; name: string; email: string }
 
 export default function SignaturePage() {
   const { t } = useTranslation('signature')
@@ -40,6 +41,7 @@ export default function SignaturePage() {
 
   const listQ = useQuery({ queryKey: ['signature', 'requests'], queryFn: async () => (await api.get('/signature/requests')).data.data as RequestRow[] })
   const mineQ = useQuery({ queryKey: ['signature', 'mine'], queryFn: async () => (await api.get('/signature/my-requests')).data.data as MineRow[] })
+  const empQ = useQuery({ queryKey: ['employees', 'min'], enabled: canWrite, queryFn: async () => (await api.get('/employees?limit=500')).data.data as EmployeeRow[] })
 
   const [open, setOpen] = useState<string | null>(null)
   const detailQ = useQuery({
@@ -56,17 +58,31 @@ export default function SignaturePage() {
   // ── Création ──
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' })
-  const [signs, setSigns] = useState<DraftSignatory[]>([{ name: '', email: '' }])
+  const [signs, setSigns] = useState<DraftSignatory[]>([{ employeeId: '', name: '', email: '' }])
   const createReq = useMutation({
     mutationFn: async () => {
       await api.post('/signature/requests', {
         title: form.title, documentType: form.documentType, message: form.message || undefined,
         sequential: form.sequential, expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
-        signatories: signs.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), email: s.email.trim() || undefined })),
+        signatories: signs.filter((s) => s.name.trim()).map((s) => ({
+          name: s.name.trim(),
+          email: s.email.trim() || undefined,
+          employeeId: s.employeeId || undefined,
+        })),
       })
     },
-    onSuccess: () => { setShowForm(false); setForm({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' }); setSigns([{ name: '', email: '' }]); refresh() },
+    onSuccess: () => { setShowForm(false); setForm({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' }); setSigns([{ employeeId: '', name: '', email: '' }]); refresh() },
   })
+  // Sélection d'un employé : renseigne employeeId + pré-remplit nom/email (signataire externe = laisser vide)
+  const pickEmployee = (idx: number, employeeId: string) => {
+    setSigns((arr) => arr.map((x, j) => {
+      if (j !== idx) return x
+      if (!employeeId) return { ...x, employeeId: '' }
+      const emp = empQ.data?.find((e) => e.id === employeeId)
+      if (!emp) return { ...x, employeeId }
+      return { employeeId, name: `${emp.first_name} ${emp.last_name}`.trim(), email: emp.email ?? '' }
+    }))
+  }
   const validSigns = signs.filter((s) => s.name.trim()).length
 
   const sendReq = useMutation({ mutationFn: async (id: string) => { await api.post(`/signature/requests/${id}/send`) }, onSuccess: refresh })
@@ -141,7 +157,14 @@ export default function SignaturePage() {
               <div className="space-y-1.5 pt-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('requests.signatories')}</p>
                 {signs.map((s, i) => (
-                  <div key={i} className="flex gap-2">
+                  <div key={i} className="flex flex-col gap-2 rounded-md border border-dashed border-border p-2 sm:flex-row sm:items-center sm:border-0 sm:p-0">
+                    <select value={s.employeeId} onChange={(e) => pickEmployee(i, e.target.value)}
+                      className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                      <option value="">{t('requests.signatoryExternal')}</option>
+                      {(empQ.data ?? []).map((e) => (
+                        <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
+                      ))}
+                    </select>
                     <input type="text" placeholder={t('requests.signatoryName')} value={s.name}
                       onChange={(e) => setSigns((arr) => arr.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
                       className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm" />
@@ -153,7 +176,7 @@ export default function SignaturePage() {
                     )}
                   </div>
                 ))}
-                <button type="button" onClick={() => setSigns((arr) => [...arr, { name: '', email: '' }])}
+                <button type="button" onClick={() => setSigns((arr) => [...arr, { employeeId: '', name: '', email: '' }])}
                   className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent">
                   <Plus className="h-3.5 w-3.5" /> {t('requests.addSignatory')}
                 </button>

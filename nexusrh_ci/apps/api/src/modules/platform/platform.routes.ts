@@ -16,6 +16,7 @@ import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../se
 import {
   MODULE_KEYS,
   MODULE_DEFAULTS,
+  modulesMapSchema,
   resolveEnabledModules,
   invalidateModulesCache,
 } from '../../services/tenant-modules.service.js'
@@ -47,19 +48,17 @@ const createTenantBodySchema = z.object({
   hasSubsidiaries: z.boolean().optional(),
   payrollMode: z.enum(['single_country', 'multi_country']).optional(),
   defaultCountryCode: z.string().length(3).optional(),
+  // Modules à activer dès la création — même forme/validation que la route
+  // PUT /tenants/:id/modules (clés bornées à MODULE_KEYS, OWASP A03). Absent →
+  // comportement inchangé (NULL en base → fallback MODULE_DEFAULTS à la lecture).
+  modules: modulesMapSchema.optional(),
 })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// OWASP A03 — carte { module: boolean } dont les clés sont STRICTEMENT bornées
-// à la liste canonique (aucune clé arbitraire ne peut entrer dans le jsonb).
-const modulesMapSchema = z.record(z.string(), z.boolean())
-  .refine(m => Object.keys(m).length > 0, 'Au moins un module requis')
-  .refine(
-    m => Object.keys(m).every(k => (MODULE_KEYS as readonly string[]).includes(k)),
-    'Clé de module inconnue',
-  )
-
+// OWASP A03 — carte { module: boolean } aux clés strictement bornées à la liste
+// canonique : forme unique importée de tenant-modules.service (réutilisée par la
+// création de tenant, le PUT modules et le bulk cabinet).
 const tenantModulesSchema = z.object({ modules: modulesMapSchema }).strict()
 
 const modulesBulkSchema = z.object({

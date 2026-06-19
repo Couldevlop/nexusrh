@@ -58,6 +58,18 @@ describe('GOLDEN signature — endpoints consommés', () => {
     expect(routes).toContain(`fastify.post('/requests/:id/decline'`)
     expect(routes).toContain(`fastify.get('/my-requests'`)
   })
+  it("employeeId par signataire : sélecteur web + Zod + INSERT employee_id (matching my-requests/sign)", () => {
+    // Web : la page charge la liste des salariés et envoie employeeId par signataire
+    expect(page).toContain(`api.get('/employees`)
+    expect(page).toMatch(/employeeId:\s*s\.employeeId/)
+    // API : le schéma Zod accepte employeeId et l'INSERT le persiste
+    expect(routes).toMatch(/employeeId:\s*z\.string\(\)\.regex\(UUID_RE\)/)
+    expect(routes).toContain('INSERT INTO "${schema}".signature_signatories (request_id, employee_id, name, email, order_index, status)')
+    expect(routes).toMatch(/s\.employeeId\s*\?\?\s*null/)
+    // API : my-requests et sign matchent bien par employee_id
+    expect(routes).toContain('WHERE s.employee_id = $1')
+    expect(routes).toContain('sigs.rows.find((s) => s.employee_id === empId)')
+  })
   it('gestion réservée RH (A01) ; signature/refus audités (A09)', () => {
     expect(routes).toContain('WRITE_ROLES')
     expect(routes).toContain('MANAGE_ROLES')

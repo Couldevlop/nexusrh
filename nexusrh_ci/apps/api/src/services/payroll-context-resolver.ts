@@ -96,17 +96,26 @@ function packFromCountry(country: string | null | undefined): string | null {
 }
 
 /**
- * Bornes anti-fraude sur le taux AT CNPS (CI : 2%-5% selon secteur).
- * Hors plage = config invalide → on retombe sur la valeur tenant.
+ * Bornes anti-fraude GÉNÉRIQUES sur le taux AT (employeur), utilisées quand le
+ * pack législatif du pays ne précise pas ses propres bornes. Les taux AT légitimes
+ * varient fortement selon les pays (CI 2-5%, SEN/NGA ~1%, NER ~1,75%) : on retient
+ * un intervalle large [0,5% ; 10%] pour ne pas rejeter un taux étranger valide,
+ * tout en bloquant les valeurs aberrantes. Le pack CIV-2024 surcharge avec [2% ; 5%].
  */
-const AT_RATE_MIN = 0.02
-const AT_RATE_MAX = 0.05
+const AT_RATE_MIN_GENERIC = 0.005
+const AT_RATE_MAX_GENERIC = 0.10
 
-function safeAtRate(value: number | null | undefined, fallback: number): { rate: number; usedFallback: boolean } {
+function safeAtRate(
+  value: number | null | undefined,
+  fallback: number,
+  bounds?: { min?: number; max?: number },
+): { rate: number; usedFallback: boolean } {
+  const min = bounds?.min ?? AT_RATE_MIN_GENERIC
+  const max = bounds?.max ?? AT_RATE_MAX_GENERIC
   if (value === null || value === undefined || Number.isNaN(value)) {
     return { rate: fallback, usedFallback: true }
   }
-  if (value < AT_RATE_MIN || value > AT_RATE_MAX) {
+  if (value < min || value > max) {
     return { rate: fallback, usedFallback: true }
   }
   return { rate: value, usedFallback: false }
@@ -127,7 +136,7 @@ export function resolvePayrollContext(args: {
   if (!tenant.hasSubsidiaries) {
     const packCode = tenant.defaultPackCode ?? packFromCountry(tenant.defaultCountryCode) ?? DEFAULT_LEGISLATION_PACK.code
     const { pack, code } = packFromCode(packCode)
-    const at = safeAtRate(tenant.atRate, DEFAULT_LEGISLATION_PACK.tauxAtDefaultPatronal ?? AT_RATE_MIN)
+    const at = safeAtRate(tenant.atRate, pack.tauxAtDefaultPatronal ?? AT_RATE_MIN_GENERIC, { min: pack.tauxAtMin, max: pack.tauxAtMax })
     if (at.usedFallback) warnings.push(`at_rate tenant invalide ou absent — fallback ${at.rate}`)
     return {
       atRate:              at.rate,
@@ -146,7 +155,7 @@ export function resolvePayrollContext(args: {
                   ?? packFromCountry(legalEntity.countryCode)
                   ?? tenantFallbackPack
     const { pack, code } = packFromCode(packCode)
-    const at = safeAtRate(legalEntity.atRate, tenant.atRate)
+    const at = safeAtRate(legalEntity.atRate, tenant.atRate, { min: pack.tauxAtMin, max: pack.tauxAtMax })
     if (at.usedFallback) warnings.push(`legal_entity.at_rate invalide ou absent — fallback tenant ${at.rate}`)
     return {
       atRate:              at.rate,

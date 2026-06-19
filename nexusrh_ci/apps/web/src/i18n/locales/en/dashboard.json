@@ -127,5 +127,41 @@
     "colHeadcount": "Headcount",
     "colDept": "Department",
     "colDeptHeadcount": "Headcount"
+  },
+  "manager": {
+    "subtitle": "Manager workspace · steer your team",
+    "kpi": {
+      "team": "My team",
+      "teamSub": "{{count}} direct report(s)",
+      "absencesToValidate": "Absences to approve",
+      "absencesToValidateSub": "awaiting approval",
+      "absencesToValidateNone": "No requests",
+      "expensesToValidate": "Expenses to approve",
+      "expensesToValidateSub": "awaiting approval",
+      "expensesToValidateNone": "No pending reports",
+      "absencesToday": "Absences today",
+      "absencesTodaySub": "{{count}} absent today",
+      "absencesTodayNone": "Full team present"
+    },
+    "pending": {
+      "title": "Requests to approve",
+      "subtitle": "Approvals awaiting your decision",
+      "openAbsences": "View absences",
+      "openExpenses": "View expenses",
+      "absence": "Absence",
+      "expense": "Expense report",
+      "empty": "No pending requests. All caught up."
+    },
+    "team": {
+      "title": "My team",
+      "subtitle": "{{count}} direct report(s)",
+      "role": "Role",
+      "department": "Department",
+      "status": "Status",
+      "active": "Active",
+      "inactive": "Inactive",
+      "empty": "No team members assigned.",
+      "viewAll": "View all employees"
+    }
   }
 }

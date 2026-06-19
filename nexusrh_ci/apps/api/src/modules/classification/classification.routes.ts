@@ -92,7 +92,9 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
         [b.allowedRoles, b.exportAllowed, b.encryptionRequired, b.auditRequired, level],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Niveau introuvable' })
-      audit(schema, request.user.sub, 'classification.level_updated', String(level), b as Record<string, unknown>, request.ip ?? null)
+      // entity_id est de type uuid : on ne peut pas y mettre le numéro de niveau.
+      // Le niveau concerné est journalisé dans le payload `changes` (A09).
+      audit(schema, request.user.sub, 'classification.level_updated', null, { level, ...b }, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
     },
   })
@@ -195,7 +197,9 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
       const canAccess = roleCanAccess(rule, role)
       const canExport = roleCanExport(rule, role)
       if (canAccess && accessRequiresAudit(rule)) {
-        audit(schema, request.user.sub, 'classification.sensitive_access', resolvedCategory, { level: lvl, category: resolvedCategory }, request.ip ?? null)
+        // entity_id est de type uuid : la clé de catégorie (texte) ne peut pas y être
+        // stockée. On journalise niveau + catégorie dans le payload `changes` (A09).
+        audit(schema, request.user.sub, 'classification.sensitive_access', null, { level: lvl, category: resolvedCategory }, request.ip ?? null)
       }
       return reply.send({ data: { level: lvl, category: resolvedCategory, canAccess, canExport } })
     },
