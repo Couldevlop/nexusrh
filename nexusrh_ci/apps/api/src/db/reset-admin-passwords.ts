@@ -13,6 +13,12 @@
  * Conformité OWASP A02 (Cryptographic Failures) : bcrypt 12 rounds, lecture
  * des passwords depuis variable d'environnement RESET_PWD_OVERRIDE possible
  * (sinon valeurs par défaut documentées).
+ *
+ * SÉCURITÉ PRODUCTION : en NODE_ENV=production, le script ne réinitialise QUE
+ * les comptes de DÉMONSTRATION (tenants fictifs). Les comptes RÉELS créés
+ * (super_admin, éditeur OpenLab, clients) ne sont JAMAIS touchés — sauf opt-in
+ * explicite RESET_REAL_ACCOUNTS=true. En local/dev, tous les comptes sont remis
+ * à l'état documenté.
  */
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
@@ -27,56 +33,63 @@ interface Target {
   email:   string
   password: string
   label:   string
+  /**
+   * true  = compte de DÉMONSTRATION (tenants fictifs du seed : SOTRA, Cabinet
+   *         Expertise CI, Woyaa, Cabinet Talents). Réinitialisable partout.
+   * false = compte RÉEL / de plateforme (super_admin, éditeur OpenLab). En
+   *         PRODUCTION il n'est JAMAIS touché par défaut (cf. RESET_REAL_ACCOUNTS).
+   */
+  demo:    boolean
 }
 
 const TARGETS: Target[] = [
-  // Super admin (schema platform)
+  // Super admin (schema platform) — compte RÉEL, protégé en production.
   { scope: 'platform', schema: 'platform', table: 'platform_users',
     email: 'superadmin@nexusrh-ci.com', password: 'SuperAdmin1234!',
-    label: 'Super Admin' },
+    label: 'Super Admin', demo: false },
 
   // SOTRA (tenant de démo principal)
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'admin@sotra.ci', password: 'Admin1234!', label: 'SOTRA admin' },
+    email: 'admin@sotra.ci', password: 'Admin1234!', label: 'SOTRA admin', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'rh@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_manager' },
+    email: 'rh@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_manager', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'chef.perso@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_officer' },
+    email: 'chef.perso@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_officer', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'manager@sotra.ci', password: 'Admin1234!', label: 'SOTRA manager' },
+    email: 'manager@sotra.ci', password: 'Admin1234!', label: 'SOTRA manager', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'employe@sotra.ci', password: 'Admin1234!', label: 'SOTRA employee' },
+    email: 'employe@sotra.ci', password: 'Admin1234!', label: 'SOTRA employee', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'dg@sotra.ci', password: 'Admin1234!', label: 'SOTRA DG (vue 360)' },
+    email: 'dg@sotra.ci', password: 'Admin1234!', label: 'SOTRA DG (vue 360)', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'raf.abidjan@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Abidjan' },
+    email: 'raf.abidjan@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Abidjan', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'raf.bouake@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Bouaké' },
+    email: 'raf.bouake@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Bouaké', demo: true },
 
-  // Cabinet Expertise CI
+  // Cabinet Expertise CI (démo)
   { scope: 'tenant', schema: 'tenant_cabinet_expertise_ci', table: 'users',
     email: 'admin@cabinet-expertise.ci', password: 'Admin1234!',
-    label: 'Cabinet admin' },
+    label: 'Cabinet admin', demo: true },
   { scope: 'tenant', schema: 'tenant_cabinet_expertise_ci', table: 'users',
     email: 'employe2@cabinet-expertise.ci', password: 'Admin1234!',
-    label: 'Cabinet employee' },
+    label: 'Cabinet employee', demo: true },
 
-  // OpenLab Consulting
+  // OpenLab Consulting — compte RÉEL (éditeur), protégé en production.
   { scope: 'tenant', schema: 'tenant_openlab_consulting', table: 'users',
     email: 'coulwao@gmail.com', password: 'Openlab1234!',
-    label: 'OpenLab admin' },
+    label: 'OpenLab admin', demo: false },
 
-  // Woyaa (scénario maternité)
+  // Woyaa (démo — scénario maternité)
   { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
-    email: 'admin@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa admin' },
+    email: 'admin@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa admin', demo: true },
   { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
-    email: 'sec.self@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa employee' },
+    email: 'sec.self@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa employee', demo: true },
 
-  // Cabinet de recrutement (agence — table platform.agency_users)
+  // Cabinet de recrutement (agence démo — table platform.agency_users)
   { scope: 'platform', schema: 'platform', table: 'agency_users',
-    email: 'owner@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence owner' },
+    email: 'owner@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence owner', demo: true },
   { scope: 'platform', schema: 'platform', table: 'agency_users',
-    email: 'recruteur@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence membre' },
+    email: 'recruteur@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence membre', demo: true },
 ]
 
 async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }> {
@@ -140,6 +153,16 @@ async function main(): Promise<void> {
   // positionnée à "true" pour autoriser le reset en environnement prod.
   const isProd        = (process.env['NODE_ENV'] ?? '').toLowerCase() === 'production'
   const forceProd     = (process.env['FORCE_RESET_PROD'] ?? '').toLowerCase() === 'true'
+  // En PRODUCTION : on ne réinitialise QUE les comptes de démonstration (tenants
+  // fictifs SOTRA/Cabinet/Woyaa/Talents). Les comptes RÉELS créés (super_admin,
+  // éditeur OpenLab, et plus largement tout compte client) ne sont jamais touchés
+  // — sauf opt-in explicite RESET_REAL_ACCOUNTS=true (récupération d'accès ciblée).
+  const includeReal   = (process.env['RESET_REAL_ACCOUNTS'] ?? '').toLowerCase() === 'true'
+  const protectReal   = isProd && !includeReal
+  if (protectReal) {
+    console.log('🛡  Mode PRODUCTION — seuls les comptes de DÉMO seront touchés ; '
+      + 'comptes réels protégés (RESET_REAL_ACCOUNTS=true pour forcer).\n')
+  }
 
   if (healthCheck) {
     console.log('Mode HEALTH-CHECK — teste juste la connexion DB.\n')
@@ -177,9 +200,15 @@ async function main(): Promise<void> {
   let okCount = 0
   let koCount = 0
   let skippedCount = 0  // tenant_* schémas absents (cas premier déploiement)
+  let protectedCount = 0  // comptes réels protégés en production
 
   for (const target of TARGETS) {
     const prefix = `[${target.scope}/${target.schema}] ${target.email.padEnd(35)}`
+    if (protectReal && !target.demo) {
+      console.log(`🛡  ${prefix} compte réel — protégé en production (non touché)`)
+      protectedCount++
+      continue
+    }
     if (dryRun) {
       console.log(`${prefix} DRY-RUN (password "${target.password}")`)
       continue
@@ -198,7 +227,7 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\n${okCount} succès · ${skippedCount} ignoré(s) (tenant absent) · ${koCount} échec(s)\n`)
+  console.log(`\n${okCount} succès · ${protectedCount} protégé(s) (réel/prod) · ${skippedCount} ignoré(s) (tenant absent) · ${koCount} échec(s)\n`)
   console.log('Comptes documentés :')
   for (const t of TARGETS) {
     console.log(`  ${t.email.padEnd(35)} ${t.password.padEnd(20)} (${t.label})`)
