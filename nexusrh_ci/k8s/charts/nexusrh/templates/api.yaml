@@ -123,6 +123,14 @@ spec:
                 secretKeyRef:
                   name: nexusrh-app-secrets
                   key: anthropic-api-key
+            # Clé Mistral plateforme (repli IA). optional:true → le pod démarre
+            # même si la clé n'est pas (encore) présente dans le secret.
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: mistral-api-key
+                  optional: true
             - name: SMTP_USER
               valueFrom:
                 secretKeyRef:

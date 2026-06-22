@@ -67,6 +67,28 @@ function auditLogAi(
   ).catch(() => { /* tenant sans audit_log : non bloquant */ })
 }
 
+// Tracking de conso IA SUR LA CLÉ PLATEFORME uniquement (key_source='platform').
+// Upsert agrégé (tenant × provider × modèle × mois) dans platform.ai_usage —
+// permet au super_admin de connaître le coût refacturable par tenant. Non
+// bloquant : un échec d'écriture n'interrompt jamais la réponse du chat.
+function recordPlatformAiUsage(
+  schema: string, tenantId: string | null, provider: string, model: string,
+  inputTokens: number, outputTokens: number,
+): void {
+  rawPool.query(
+    `INSERT INTO platform.ai_usage
+       (tenant_id, schema_name, provider, model, period_month, input_tokens, output_tokens, calls)
+     VALUES ($1, $2, $3, $4, date_trunc('month', now())::date, $5, $6, 1)
+     ON CONFLICT (schema_name, provider, model, period_month) DO UPDATE SET
+       input_tokens  = platform.ai_usage.input_tokens  + EXCLUDED.input_tokens,
+       output_tokens = platform.ai_usage.output_tokens + EXCLUDED.output_tokens,
+       calls         = platform.ai_usage.calls + 1,
+       tenant_id     = COALESCE(platform.ai_usage.tenant_id, EXCLUDED.tenant_id),
+       updated_at    = now()`,
+    [tenantId, schema, provider, model, Math.max(0, inputTokens | 0), Math.max(0, outputTokens | 0)],
+  ).catch(() => { /* table absente / erreur : non bloquant */ })
+}
+
 // OWASP A05 — sanity-check du nom de schema extrait du JWT.
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 
@@ -138,13 +160,21 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Source de la clé effective (tenant vs plateforme) + modèle réellement
+      // utilisé : ne tracker la conso (platform.ai_usage) QUE si la clé est celle
+      // du super_admin (source='platform').
+      const keySource = creds[provider].source
+      const usedModel = creds[provider].model
+
       let tenantInfo = sanitizeForPrompt(context?.tenantName, 100) || 'Entreprise CI'
+      let tenantId: string | null = null
       try {
-        const t = await rawPool.query<{ name: string; sector: string; city: string; at_rate: string }>(
-          `SELECT name, sector, city, at_rate FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+        const t = await rawPool.query<{ id: string; name: string; sector: string; city: string; at_rate: string }>(
+          `SELECT id, name, sector, city, at_rate FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
           [schema],
         )
         if (t.rows[0]) {
+          tenantId     = t.rows[0].id
           const name   = sanitizeForPrompt(t.rows[0].name, 100)
           const city   = sanitizeForPrompt(t.rows[0].city, 50)
           const sector = sanitizeForPrompt(t.rows[0].sector ?? 'services', 50)
@@ -225,10 +255,14 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             onText:        (text) => reply.raw.write(`data: ${JSON.stringify({ text })}\n\n`),
           })
           reply.raw.write(`data: ${JSON.stringify({ done: true, usage: r.usage, stopReason: r.stopReason, toolsUsed: r.toolsUsed })}\n\n`)
+          if (keySource === 'platform') {
+            recordPlatformAiUsage(schema, tenantId, 'mistral', usedModel, r.usage.input_tokens, r.usage.output_tokens)
+          }
           auditLogAi(
             schema, request.user.sub, 'ai.chat',
             {
               provider:     'mistral',
+              keySource,
               inputTokens:  r.usage.input_tokens,
               outputTokens: r.usage.output_tokens,
               messageCount: messages.length,
@@ -310,11 +344,16 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           toolsUsed,
         })}\n\n`)
 
+        if (keySource === 'platform') {
+          recordPlatformAiUsage(schema, tenantId, 'claude', usedModel, usageTotal.input_tokens, usageTotal.output_tokens)
+        }
+
         // OWASP A09 — traçabilité coûts (tokens) par tenant + user, et des
         // outils internes appelés (qui a interrogé quoi via l'IA).
         auditLogAi(
           schema, request.user.sub, 'ai.chat',
           {
+            keySource,
             inputTokens:  usageTotal.input_tokens,
             outputTokens: usageTotal.output_tokens,
             messageCount: messages.length,

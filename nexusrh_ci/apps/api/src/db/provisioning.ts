@@ -299,6 +299,34 @@ export async function createPlatformSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `)
+
+  // ── IA : autorisation d'usage de la clé plateforme par tenant (migration lazy) ─
+  // true par défaut = comportement actuel (le tenant sans sa propre clé bénéficie
+  // du repli sur la clé générale du super_admin). false = ce tenant n'a accès à
+  // l'IA QUE s'il configure sa propre clé. Priorité : clé tenant > clé plateforme.
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS ai_platform_key_enabled boolean NOT NULL DEFAULT true`)
+
+  // ── IA : consommation de tokens par tenant SUR LA CLÉ PLATEFORME ──────────────
+  // Agrégat (tenant × provider × mois). Alimenté UNIQUEMENT quand un appel chat a
+  // utilisé la clé générale du super_admin (key_source='platform') — jamais quand
+  // le tenant utilise sa propre clé (il la paie déjà directement). Permet au
+  // super_admin de connaître le coût refacturable par tenant.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.ai_usage (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id     uuid REFERENCES platform.tenants(id) ON DELETE CASCADE,
+      schema_name   varchar(63) NOT NULL,
+      provider      varchar(30) NOT NULL,
+      model         varchar(100) NOT NULL,
+      period_month  date NOT NULL,
+      input_tokens  bigint NOT NULL DEFAULT 0,
+      output_tokens bigint NOT NULL DEFAULT 0,
+      calls         int    NOT NULL DEFAULT 0,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (schema_name, provider, model, period_month)
+    )
+  `)
 }
 
 /**

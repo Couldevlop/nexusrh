@@ -5,6 +5,7 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
+import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -404,37 +405,27 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         if (!snapshot.rows[0]) {
           return reply.status(404).send({ error: 'Employé introuvable ou déjà archivé' })
         }
-        await pool.query(
-          `UPDATE "${schema}".employees SET deleted_at = now(), is_active = false WHERE id = $1`, [id]
-        )
-        // Le collaborateur peut avoir un COMPTE DE CONNEXION lié (users.employee_id).
-        // Sans cette désactivation, un employé "supprimé" pouvait encore se
-        // connecter et restait dans la liste des utilisateurs (OWASP A01).
-        // On désactive le login (is_active=false) sans hard-delete (audit/RGPD).
-        await pool.query(
-          `UPDATE "${schema}".users SET is_active = false, updated_at = now() WHERE employee_id = $1`, [id]
-        )
-        // Cohérence employé ↔ contrat : un employé archivé/parti ne doit JAMAIS
-        // laisser un contrat « actif » orphelin. On rompt tous ses contrats
-        // actifs (statut → terminated, end_date posée) : ils basculent en archive
-        // au lieu de rester actifs sur un dossier qui n'existe plus.
-        const termContracts = await pool.query<{ id: string }>(
-          `UPDATE "${schema}".contracts
-              SET status = 'terminated',
-                  end_date = COALESCE(end_date, CURRENT_DATE),
-                  updated_at = now()
-            WHERE employee_id = $1 AND status = 'active'
-            RETURNING id`,
-          [id],
-        ).catch(() => ({ rows: [] as Array<{ id: string }> }))
+        // Archivage cohérent : désactive le compte lié + rompt les contrats actifs
+        // + annule les sanctions disciplinaires en cours + annule les demandes de
+        // signature en attente. Aucun processus ne reste orphelin sur un dossier
+        // archivé (cf. employee-archive.service). Cascade partagée avec la clôture
+        // d'un dossier de sortie (offboarding).
+        const cascade = await archiveEmployeeCascade(pool, schema, id)
         auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
           firstName: snapshot.rows[0].first_name,
           lastName:  snapshot.rows[0].last_name,
           email:     snapshot.rows[0].email,
           jobTitle:  snapshot.rows[0].job_title,
-          terminatedContracts: termContracts.rows.length,
+          terminatedContracts: cascade.terminatedContracts,
+          cancelledDiscipline: cascade.cancelledDiscipline,
+          cancelledSignatures: cascade.cancelledSignatures,
         }, request.ip ?? null)
-        return reply.send({ message: 'Employé archivé', terminatedContracts: termContracts.rows.length })
+        return reply.send({
+          message: 'Employé archivé',
+          terminatedContracts: cascade.terminatedContracts,
+          cancelledDiscipline: cascade.cancelledDiscipline,
+          cancelledSignatures: cascade.cancelledSignatures,
+        })
       } catch (err) {
         fastify.log.error({ err, employeeId: id }, 'employee archive failed')
         return reply.status(500).send({ error: 'Erreur serveur' })

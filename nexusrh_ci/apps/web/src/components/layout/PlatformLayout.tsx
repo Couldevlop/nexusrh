@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Building2, LogOut, Settings, Scale, Briefcase } from 'lucide-react'
+import { LayoutDashboard, Building2, LogOut, Settings, Scale, Briefcase, Sparkles } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/platform/tenants',      labelKey: 'nav.tenants',    icon: Building2 },
   { to: '/platform/agencies',     labelKey: 'nav.agencies',   icon: Briefcase },
   { to: '/platform/legal-watch',  labelKey: 'nav.legalWatch', icon: Scale, badgeKey: 'pending' },
+  { to: '/platform/ai-usage',     labelKey: 'nav.aiUsage',    icon: Sparkles },
   { to: '/platform/settings',     labelKey: 'nav.settings',   icon: Settings },
 ] as const
 

@@ -49,6 +49,7 @@ const KNOWN_CATEGORIES = [
   'payroll', 'payslip', 'absence', 'expense', 'employee', 'reporting', 'ai',
   'auth', 'settings', 'dg', 'recruitment', 'onboarding', 'training',
   'contract', 'cnps', 'user', 'mobile_money', 'career',
+  'signature', 'disciplinary_action', 'offboarding_case',
 ] as const
 
 function formatDateTime(date: string): string {

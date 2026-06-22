@@ -90,10 +90,19 @@ api:
     AI_MODEL: claude-sonnet-4-20250514
     AI_MAX_TOKENS: "4096"
     AI_TEMPERATURE: "0.3"
+    # Fournisseur IA plateforme par défaut (repli quand le tenant n'a pas sa
+    # propre clé). 'mistral' car la clé Anthropic n'est pas toujours
+    # provisionnée ; le chat bascule sur Mistral dès qu'une clé mistral-api-key
+    # est présente dans le secret nexusrh-app-secrets. Mettre 'claude' pour
+    # repasser sur Anthropic une fois une vraie clé fournie.
+    AI_DEFAULT_PROVIDER: mistral
+    MISTRAL_MODEL: mistral-small-latest
+    MISTRAL_API_URL: https://api.mistral.ai/v1
   # Secrets injectés (valeurs à fournir via --set ou values.secret.yaml)
   secrets:
     jwtSecret: ""
     anthropicApiKey: ""
+    mistralApiKey: ""
     smtpUser: ""
     smtpPass: ""
     smtpFrom: ""
