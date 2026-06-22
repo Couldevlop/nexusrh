@@ -49,6 +49,10 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS evaluator_id uuid`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_employee boolean DEFAULT false`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_manager boolean DEFAULT false`,
+    // hr_events : certains événements sont AU NIVEAU ENTREPRISE (demande de
+    // remboursement FDFP, etc.) et n'ont pas d'employé rattaché. Sans ce DROP
+    // NOT NULL, l'INSERT FDFP plantait en 500 (not_null_violation). Idempotent.
+    `ALTER TABLE "${schemaName}".hr_events ALTER COLUMN employee_id DROP NOT NULL`,
     // Carrières (module careers) : colonnes ajoutées tardivement — sans ces ALTER,
     // un ancien tenant renvoyait des 500 sur l'entretien (commentaires, niveau cible).
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS comments text`,

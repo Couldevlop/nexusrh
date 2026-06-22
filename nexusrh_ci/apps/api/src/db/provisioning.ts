@@ -762,7 +762,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.hr_events (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    employee_id uuid NOT NULL,
+    -- nullable : certains événements sont au niveau ENTREPRISE (ex. demande de
+    -- remboursement FDFP) et ne sont rattachés à aucun employé.
+    employee_id uuid,
     type        varchar(50) NOT NULL,
     title       varchar(200) NOT NULL,
     description text,

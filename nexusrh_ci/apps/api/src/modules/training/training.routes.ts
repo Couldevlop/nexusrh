@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 const rawPool = pool
 
@@ -53,7 +54,10 @@ const FDFP_TOTAL_MAX = 50_000_000
 const FDFP_EMPLOYEES_MAX = 1000
 const fdfpRequestSchema = z.object({
   training_title:   z.string().min(1).max(200).trim(),
-  training_id:      z.string().uuid().optional(),
+  // Le formulaire peut envoyer une chaîne vide quand aucune formation du
+  // catalogue n'est liée : on la traite comme « absente » (sinon .optional()
+  // ne s'applique pas à '' et la validation échouait en 400 à chaque envoi).
+  training_id:      z.preprocess((v) => (v === '' ? undefined : v), z.string().uuid().optional()),
   session_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format date YYYY-MM-DD requis'),
   employees_count:  z.number().int().min(1).max(FDFP_EMPLOYEES_MAX),
   total_cost:       z.number().int().min(0).max(FDFP_TOTAL_MAX),
@@ -173,6 +177,12 @@ async function runEnroll(
 }
 
 const trainingRoutes: FastifyPluginAsync = async (fastify) => {
+  // Migrations lazy idempotentes du schéma tenant (ex. hr_events.employee_id
+  // nullable pour les demandes FDFP niveau entreprise). Mis en cache par schéma.
+  fastify.addHook('preHandler', async (request) => {
+    const schema = request.user?.schemaName
+    if (schema) await ensureTenantSchema(schema)
+  })
 
   // GET /training/catalog
   fastify.get('/catalog', {
