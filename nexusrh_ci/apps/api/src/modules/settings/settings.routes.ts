@@ -9,6 +9,8 @@ import { sendEmployeeWelcomeEmail, type TenantSmtp } from '../../services/email.
 import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
+import { buildLegislationConfig } from '../../services/legislation-config.service.js'
+import { isSupportedCountry } from '../../services/legislation-packs.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -244,6 +246,72 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           request.ip ?? null,
         )
         return reply.send({ data: res.rows[0] })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── GET /settings/legislation — paramétrage légal (pays) du tenant ──────────
+  // Retourne le pack législatif appliqué (SMIG, barème impôt, cotisations
+  // sociales, conventions/congés) + la liste des pays sélectionnables. Choisir
+  // un pays installe automatiquement toute la configuration paie/RH du pays.
+  fastify.get('/legislation', {
+    preHandler: [fastify.authorize('admin')],
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      try {
+        const res = await pool.query<{ default_country_code: string | null }>(
+          `SELECT default_country_code FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        return reply.send({ data: buildLegislationConfig(res.rows[0].default_country_code) })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PUT /settings/legislation — applique le pays/pack législatif au tenant ──
+  // 100 % automatisé : un seul choix (pays) installe SMIG + barème impôt +
+  // cotisations + conventions. OWASP A03 (Zod) / A09 (audité — change de devise,
+  // de barème fiscal et de cotisations : impact paie majeur).
+  fastify.put('/legislation', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const legSchema = z.object({
+        countryCode: z.string().regex(/^[A-Z]{3}$/, 'Code pays ISO-3 requis'),
+      }).strict()
+      const parsed = legSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const countryCode = parsed.data.countryCode.toUpperCase()
+      // A03 — le pays doit disposer d'un pack législatif connu (sinon paie cassée).
+      if (!isSupportedCountry(countryCode)) {
+        return reply.status(400).send({ error: 'Pays non pris en charge (aucun pack législatif disponible).' })
+      }
+      try {
+        const before = await pool.query<{ default_country_code: string | null }>(
+          `SELECT default_country_code FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+        )
+        if (!before.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        await pool.query(
+          `UPDATE platform.tenants SET default_country_code = $1, updated_at = now() WHERE id = $2`,
+          [countryCode, tenantId],
+        )
+        auditLogSettings(
+          request.user.schemaName, request.user.sub, 'settings.legislation_updated', tenantId,
+          { before: before.rows[0].default_country_code, after: countryCode },
+          request.ip ?? null,
+        )
+        return reply.send({ data: buildLegislationConfig(countryCode) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

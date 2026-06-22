@@ -92,6 +92,10 @@
     "submit": "Create employee",
     "submitting": "Creating..."
   },
+  "edit": {
+    "title": "Edit employee",
+    "cnpsPlaceholder": "To be filled once assigned"
+  },
   "delete": {
     "title": "Archive employee",
     "intro": "You are about to archive <strong>{{name}}</strong>. The employee will no longer be active but their data will be kept.",

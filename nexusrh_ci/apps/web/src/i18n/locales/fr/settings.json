@@ -4,6 +4,7 @@
   "error": "Erreur",
   "tabs": {
     "general": "Général",
+    "legislation": "Légal / Pays",
     "users": "Utilisateurs",
     "departments": "Départements",
     "absenceTypes": "Types absences",
@@ -28,6 +29,49 @@
     "deduction": "Retenue",
     "employee_contrib": "Cotis. salariale",
     "employer_contrib": "Cotis. patronale"
+  },
+  "legislation": {
+    "intro": "Choisissez le pays du tenant : la convention collective, le SMIG, le barème d'imposition et les cotisations sociales correspondants s'installent automatiquement comme paramétrage de paie.",
+    "countryLabel": "Pays / législation applicable",
+    "apply": "Appliquer ce pays",
+    "applying": "Application...",
+    "saved": "Paramétrage légal appliqué.",
+    "saveError": "Erreur lors de l'application.",
+    "toValidate": "à valider",
+    "stubWarning": "Ce pack législatif n'a pas encore été validé par un expert paie local : il sert d'aperçu de paramétrage, mais le calcul de paie reste bloqué tant qu'il n'est pas activé. La Côte d'Ivoire est opérationnelle par défaut.",
+    "activeInfo": "Pack {{name}} actif : paramétrage opérationnel pour la paie et les congés.",
+    "weeks": "{{n}} semaines",
+    "days": "{{n}} jours",
+    "daysPerMonth": "{{n}} j ouvrables / mois",
+    "daysPerWeek": "{{n}} j / semaine",
+    "bracketFrom": "À partir de",
+    "bracketTo": "Jusqu'à",
+    "bracketRate": "Taux",
+    "sections": {
+      "base": "Base légale",
+      "social": "Cotisations sociales",
+      "tax": "Barème d'imposition",
+      "leave": "Congés & conventions"
+    },
+    "fields": {
+      "country": "Pays",
+      "currency": "Devise",
+      "smig": "SMIG mensuel",
+      "caisse": "Caisse sociale",
+      "tax": "Impôt sur salaires",
+      "abattement": "Abattement impôt",
+      "retraiteSal": "Retraite (salarié)",
+      "retraitePat": "Retraite (employeur)",
+      "pfPat": "Prestations familiales (employeur)",
+      "maternitePat": "Maternité (employeur)",
+      "atDefault": "Accident du travail (défaut)",
+      "plafondRetraite": "Plafond retraite",
+      "plafondAtPf": "Plafond AT/PF",
+      "maternity": "Congé maternité",
+      "paternity": "Congé paternité",
+      "annualLeave": "Congés payés",
+      "workingDays": "Jours ouvrables"
+    }
   },
   "ai": {
     "encryptionUnavailable": "Le chiffrement des clés n'est pas configuré côté plateforme (ENCRYPTION_KEY). La saisie d'une clé est désactivée. Contactez l'administrateur de la plateforme.",

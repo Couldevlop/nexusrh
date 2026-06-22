@@ -38,7 +38,9 @@ export function envCreds(): AiCreds {
   return {
     claude:  { apiKey: config.ai.apiKey ?? null,      model: config.ai.model },
     mistral: { apiKey: config.mistral.apiKey ?? null, model: config.mistral.model },
-    preferredProvider: 'claude',
+    // Fournisseur par défaut plateforme — paramétrable via AI_DEFAULT_PROVIDER
+    // (au lieu d'être figé sur Claude). Un tenant peut le surcharger.
+    preferredProvider: config.ai.defaultProvider === 'mistral' ? 'mistral' : 'claude',
   }
 }
 

@@ -227,11 +227,13 @@ describe('DELETE /employees/:id — audit log + UUID validation (OWASP A09)', ()
   })
 
   it('archive correctement + trace audit_log employee.archived avec snapshot', async () => {
+    // Défaut absorbant : cascade contrats + audit_log (best-effort) renvoient {rows:[]}.
+    queryMock.mockResolvedValue({ rows: [] })
     queryMock
       .mockResolvedValueOnce({ rows: [{ first_name: 'Marie', last_name: 'Konaté', email: 'm@x.ci', job_title: 'Comptable' }] }) // snapshot
       .mockResolvedValueOnce({ rows: [] }) // UPDATE soft delete employé
       .mockResolvedValueOnce({ rows: [] }) // UPDATE users (désactivation du compte lié)
-      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE contracts (cascade rupture des contrats actifs)
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({

@@ -4,6 +4,7 @@
   "error": "Error",
   "tabs": {
     "general": "General",
+    "legislation": "Legal / Country",
     "users": "Users",
     "departments": "Departments",
     "absenceTypes": "Absence types",
@@ -28,6 +29,49 @@
     "deduction": "Deduction",
     "employee_contrib": "Employee contribution",
     "employer_contrib": "Employer contribution"
+  },
+  "legislation": {
+    "intro": "Pick the tenant's country: the matching collective agreement, minimum wage, tax brackets and social contributions are installed automatically as the payroll configuration.",
+    "countryLabel": "Country / applicable legislation",
+    "apply": "Apply this country",
+    "applying": "Applying...",
+    "saved": "Legal configuration applied.",
+    "saveError": "Failed to apply.",
+    "toValidate": "to validate",
+    "stubWarning": "This legislation pack has not yet been validated by a local payroll expert: it serves as a configuration preview, but payroll calculation stays blocked until it is activated. Côte d'Ivoire is operational by default.",
+    "activeInfo": "{{name}} pack active: configuration operational for payroll and leave.",
+    "weeks": "{{n}} weeks",
+    "days": "{{n}} days",
+    "daysPerMonth": "{{n}} working days / month",
+    "daysPerWeek": "{{n}} days / week",
+    "bracketFrom": "From",
+    "bracketTo": "Up to",
+    "bracketRate": "Rate",
+    "sections": {
+      "base": "Legal basis",
+      "social": "Social contributions",
+      "tax": "Tax brackets",
+      "leave": "Leave & agreements"
+    },
+    "fields": {
+      "country": "Country",
+      "currency": "Currency",
+      "smig": "Monthly minimum wage",
+      "caisse": "Social fund",
+      "tax": "Payroll tax",
+      "abattement": "Tax allowance",
+      "retraiteSal": "Pension (employee)",
+      "retraitePat": "Pension (employer)",
+      "pfPat": "Family benefits (employer)",
+      "maternitePat": "Maternity (employer)",
+      "atDefault": "Work accident (default)",
+      "plafondRetraite": "Pension ceiling",
+      "plafondAtPf": "AT/FB ceiling",
+      "maternity": "Maternity leave",
+      "paternity": "Paternity leave",
+      "annualLeave": "Paid leave",
+      "workingDays": "Working days"
+    }
   },
   "ai": {
     "encryptionUnavailable": "Key encryption is not configured on the platform (ENCRYPTION_KEY). Key entry is disabled. Contact the platform administrator.",

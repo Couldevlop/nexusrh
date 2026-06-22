@@ -50,13 +50,18 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         if (employee_id) { conditions.push(`c.employee_id = $${values.length + 1}`); values.push(employee_id) }
         if (type)        { conditions.push(`c.type = $${values.length + 1}`);        values.push(type) }
 
+        // NB : on NE filtre PAS sur e.deleted_at — un contrat dont l'employé a été
+        // archivé doit rester visible (en statut « terminated », via la cascade de
+        // rupture à l'archivage) pour consultation dans l'archive, au lieu de
+        // disparaître silencieusement. `employee_archived` permet à l'UI de le baliser.
         const res = await pool.query(`
           SELECT c.*,
             e.first_name, e.last_name, e.employee_number AS registration_number,
             e.job_title AS current_job_title,
+            (e.deleted_at IS NOT NULL) AS employee_archived,
             d.name AS department_name
           FROM "${schema}".contracts c
-          JOIN "${schema}".employees e ON e.id = c.employee_id AND e.deleted_at IS NULL
+          JOIN "${schema}".employees e ON e.id = c.employee_id
           LEFT JOIN "${schema}".departments d ON d.id = e.department_id
           WHERE ${conditions.join(' AND ')}
           ORDER BY c.created_at DESC
@@ -80,9 +85,10 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           SELECT c.*,
             e.first_name, e.last_name, e.employee_number AS registration_number, e.nni,
             e.cnps_number AS employee_cnps, e.mobile_money_provider, e.mobile_money_phone AS mobile_money_number,
+            (e.deleted_at IS NOT NULL) AS employee_archived,
             d.name AS department_name
           FROM "${schema}".contracts c
-          JOIN "${schema}".employees e ON e.id = c.employee_id AND e.deleted_at IS NULL
+          JOIN "${schema}".employees e ON e.id = c.employee_id
           LEFT JOIN "${schema}".departments d ON d.id = e.department_id
           WHERE c.id = $1
         `, [id])

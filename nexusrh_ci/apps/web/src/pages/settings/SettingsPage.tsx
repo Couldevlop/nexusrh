@@ -8,7 +8,7 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
@@ -62,6 +62,7 @@ const RULE_TYPE_COLORS: Record<string, string> = {
 const RULE_TYPE_KEYS = ['earning', 'deduction', 'employee_contrib', 'employer_contrib'] as const
 const TABS = [
   { id: 'general',        labelKey: 'tabs.general',       icon: Settings },
+  { id: 'legislation',    labelKey: 'tabs.legislation',   icon: Globe },
   { id: 'users',          labelKey: 'tabs.users',         icon: Users },
   { id: 'departments',    labelKey: 'tabs.departments',   icon: Building2 },
   { id: 'absence-types',  labelKey: 'tabs.absenceTypes',  icon: FileText },
@@ -108,6 +109,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === 'general'        && <GeneralTab qc={qc} />}
+      {tab === 'legislation'    && <LegislationTab qc={qc} />}
       {tab === 'users'          && <UsersTab qc={qc} />}
       {tab === 'departments'    && <DepartmentsTab qc={qc} />}
       {tab === 'absence-types'  && <AbsenceTypesTab qc={qc} />}
@@ -118,6 +120,162 @@ export default function SettingsPage() {
       {tab === 'mfa'           && <MfaSettingsPage />}
       {tab === 'ai'            && <AiTab qc={qc} />}
       {tab === 'connectivity'  && <ConnectivityTab />}
+    </div>
+  )
+}
+
+// ── Tab: Légal / Pays (pack législatif appliqué au tenant) ─────────────────────
+interface ItsBracket { min: number; max: number; taux: number }
+interface LeaveRules {
+  maternityWeeks: number; paternityDays: number
+  annualLeaveDaysPerMonth: number; workingDaysPerWeek: number
+}
+interface LegislationPackView {
+  code: string; name: string; countryCode: string; year: number; currency: string
+  status: 'active' | 'stub'; smigMensuel: number
+  plafondCnpsRetraite: number; plafondCnpsAtPf: number
+  tauxCotisationRetraiteSalarie: number; tauxCotisationRetraitePatronal: number
+  tauxCotisationPfPatronal: number; tauxCotisationMaternitePatronal: number
+  tauxAtDefaultPatronal: number; abattementImpotSalaire: number
+  tranchesImpotSalaire: ItsBracket[]
+  creditImpotMarieSansEnfant: number; creditImpotParEnfant: number[]
+  labelImpotSalaire: string; labelCaisseSociale: string
+  leaveRules?: LeaveRules
+}
+interface LegislationConfig {
+  countryCode: string; countryLabel: string; supported: boolean; usable: boolean
+  pack: LegislationPackView
+  available: Array<{ countryCode: string; packCode: string; name: string; status: 'active' | 'stub'; currency: string; smigMensuel: number }>
+}
+
+function LegislationTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
+  const { data, isLoading } = useQuery<{ data: LegislationConfig }>({
+    queryKey: ['settings-legislation'],
+    queryFn: () => api.get('/settings/legislation').then(r => r.data),
+  })
+  const cfg = data?.data
+  const [country, setCountry] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const save = useMutation({
+    mutationFn: (countryCode: string) => api.put('/settings/legislation', { countryCode }),
+    onSuccess: () => {
+      setSaved(true); setCountry(null)
+      qc.invalidateQueries({ queryKey: ['settings-legislation'] })
+      setTimeout(() => setSaved(false), 2500)
+    },
+  })
+
+  if (isLoading || !cfg) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
+
+  const selected = country ?? cfg.countryCode
+  const pack = cfg.pack
+  const pct = (n: number) => `${(n * 100).toFixed(2).replace(/\.00$/, '')} %`
+  const fcfa = (n: number) => n.toLocaleString('fr-FR')
+  const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring'
+  const card = 'rounded-xl border border-border bg-card p-4 space-y-2'
+  const row = (label: string, value: string) => (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium font-mono">{value}</span>
+    </div>
+  )
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <p className="text-sm text-muted-foreground">{t('legislation.intro')}</p>
+
+      {/* Sélecteur de pays */}
+      <div className="rounded-xl border border-border p-4 space-y-3">
+        <label className="text-xs font-medium text-muted-foreground">{t('legislation.countryLabel')}</label>
+        <select className={inputCls} value={selected} onChange={e => setCountry(e.target.value)}>
+          {cfg.available.map(c => (
+            <option key={c.countryCode} value={c.countryCode}>
+              {c.name} — {c.packCode}{c.status === 'stub' ? ` (${t('legislation.toValidate')})` : ''}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center justify-end gap-2">
+          {saved && <span className="text-xs text-green-600">{t('legislation.saved')}</span>}
+          <button onClick={() => save.mutate(selected)}
+            disabled={selected === cfg.countryCode || save.isPending}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            <Save className="h-4 w-4" />{save.isPending ? t('legislation.applying') : t('legislation.apply')}
+          </button>
+        </div>
+        {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('legislation.saveError')}</p>}
+      </div>
+
+      {/* Avertissement pack non validé */}
+      {!pack.status || pack.status === 'stub' ? (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-800">{t('legislation.stubWarning')}</p>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 p-3">
+          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-green-800">{t('legislation.activeInfo', { name: cfg.countryLabel })}</p>
+        </div>
+      )}
+
+      {/* Aperçu du paramétrage appliqué */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className={card}>
+          <h3 className="font-semibold text-sm">{t('legislation.sections.base')}</h3>
+          {row(t('legislation.fields.country'), `${cfg.countryLabel} (${pack.year})`)}
+          {row(t('legislation.fields.currency'), pack.currency)}
+          {row(t('legislation.fields.smig'), `${fcfa(pack.smigMensuel)} ${pack.currency}`)}
+          {row(t('legislation.fields.caisse'), pack.labelCaisseSociale)}
+          {row(t('legislation.fields.tax'), pack.labelImpotSalaire)}
+          {row(t('legislation.fields.abattement'), pct(pack.abattementImpotSalaire))}
+        </div>
+
+        <div className={card}>
+          <h3 className="font-semibold text-sm">{t('legislation.sections.social')}</h3>
+          {row(t('legislation.fields.retraiteSal'), pct(pack.tauxCotisationRetraiteSalarie))}
+          {row(t('legislation.fields.retraitePat'), pct(pack.tauxCotisationRetraitePatronal))}
+          {row(t('legislation.fields.pfPat'), pct(pack.tauxCotisationPfPatronal))}
+          {row(t('legislation.fields.maternitePat'), pct(pack.tauxCotisationMaternitePatronal))}
+          {row(t('legislation.fields.atDefault'), pct(pack.tauxAtDefaultPatronal))}
+          {pack.plafondCnpsRetraite > 0 && row(t('legislation.fields.plafondRetraite'), `${fcfa(pack.plafondCnpsRetraite)} ${pack.currency}`)}
+          {pack.plafondCnpsAtPf > 0 && row(t('legislation.fields.plafondAtPf'), `${fcfa(pack.plafondCnpsAtPf)} ${pack.currency}`)}
+        </div>
+      </div>
+
+      {/* Barème d'imposition */}
+      <div className={card}>
+        <h3 className="font-semibold text-sm">{t('legislation.sections.tax')} — {pack.labelImpotSalaire}</h3>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground border-b border-border">
+              <th className="py-1.5">{t('legislation.bracketFrom')}</th>
+              <th className="py-1.5">{t('legislation.bracketTo')}</th>
+              <th className="py-1.5 text-right">{t('legislation.bracketRate')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pack.tranchesImpotSalaire.map((b, i) => (
+              <tr key={i} className="border-b border-border/50 last:border-0">
+                <td className="py-1.5 font-mono">{fcfa(b.min)}</td>
+                <td className="py-1.5 font-mono">{Number.isFinite(b.max) ? fcfa(b.max) : '∞'}</td>
+                <td className="py-1.5 text-right font-mono">{pct(b.taux)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Congés & conventions */}
+      {pack.leaveRules && (
+        <div className={card}>
+          <h3 className="font-semibold text-sm">{t('legislation.sections.leave')}</h3>
+          {row(t('legislation.fields.maternity'), t('legislation.weeks', { n: pack.leaveRules.maternityWeeks }))}
+          {row(t('legislation.fields.paternity'), t('legislation.days', { n: pack.leaveRules.paternityDays }))}
+          {row(t('legislation.fields.annualLeave'), t('legislation.daysPerMonth', { n: pack.leaveRules.annualLeaveDaysPerMonth }))}
+          {row(t('legislation.fields.workingDays'), t('legislation.daysPerWeek', { n: pack.leaveRules.workingDaysPerWeek }))}
+        </div>
+      )}
     </div>
   )
 }
