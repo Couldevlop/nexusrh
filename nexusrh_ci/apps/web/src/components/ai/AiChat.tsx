@@ -5,6 +5,14 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { Bot, X, Send, Loader2, ChevronDown, AlertCircle, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import MarkdownMessage from './MarkdownMessage'
+
+// Nom d'affichage du fournisseur IA réellement utilisé (le chat peut tourner
+// sur Mistral OU Claude selon la configuration tenant/plateforme).
+const PROVIDER_LABELS: Record<string, string> = {
+  mistral: 'Mistral AI',
+  claude:  'Claude (Anthropic)',
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -24,13 +32,14 @@ export default function AiChat() {
   const [streaming, setStreaming] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const { data: statusData } = useQuery<{ available: boolean; message: string }>({
+  const { data: statusData } = useQuery<{ available: boolean; provider?: 'mistral' | 'claude' | null; message: string }>({
     queryKey: ['ai-status'],
     queryFn: () => api.get('/ai/status').then(r => r.data),
     staleTime: 60_000,
   })
 
   const aiAvailable = statusData?.available ?? false
+  const providerLabel = statusData?.provider ? (PROVIDER_LABELS[statusData.provider] ?? 'IA') : 'IA'
   const suggestionRole = SUGGESTION_ROLES.includes((user?.role ?? '') as typeof SUGGESTION_ROLES[number])
     ? (user?.role as typeof SUGGESTION_ROLES[number])
     : 'hr_manager'
@@ -140,7 +149,9 @@ export default function AiChat() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">{t('aiChat.headerTitle')}</p>
               <p className="text-xs text-white/70 truncate">
-                {aiAvailable ? t('aiChat.poweredBy', { tenant: tenantConfig?.name ?? '' }) : t('aiChat.limitedMode')}
+                {aiAvailable
+                  ? t('aiChat.poweredBy', { provider: providerLabel, tenant: tenantConfig?.name ?? '' })
+                  : t('aiChat.limitedMode')}
               </p>
             </div>
             <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white">
@@ -189,9 +200,13 @@ export default function AiChat() {
                     : 'bg-muted rounded-bl-sm',
                 )}>
                   {msg.content
-                    ? msg.content.split('\n').map((line, j) => (
-                        <p key={j} className={j > 0 ? 'mt-1' : ''}>{line || '\u00a0'}</p>
-                      ))
+                    ? (msg.role === 'assistant'
+                        // R\u00e9ponse IA : rendu markdown (titres, listes, tableaux, gras\u2026)
+                        ? <MarkdownMessage content={msg.content} />
+                        // Message utilisateur : texte brut, sauts de ligne pr\u00e9serv\u00e9s
+                        : msg.content.split('\n').map((line, j) => (
+                            <p key={j} className={j > 0 ? 'mt-1' : ''}>{line || '\u00a0'}</p>
+                          )))
                     : msg.streaming && (
                         <span className="flex items-center gap-1">
                           <Loader2 className="h-3 w-3 animate-spin" />

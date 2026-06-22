@@ -82,7 +82,7 @@
   "aiChat": {
     "fabTitle": "CI HR AI Assistant",
     "headerTitle": "CI HR Assistant",
-    "poweredBy": "Powered by Claude AI · {{tenant}}",
+    "poweredBy": "Powered by {{provider}} · {{tenant}}",
     "limitedMode": "Limited mode",
     "unavailableDefault": "AI unavailable. Set ANTHROPIC_API_KEY to enable the assistant.",
     "emptyPrompt": "Ask a question about CI labor law, CNPS, ITS or payroll",

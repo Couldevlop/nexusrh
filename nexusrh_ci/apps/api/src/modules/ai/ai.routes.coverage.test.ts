@@ -78,8 +78,8 @@ function tokenFor(app: FastifyInstance, role: string, schemaName = TENANT) {
 }
 
 const NO_CREDS = {
-  claude:  { apiKey: null, model: 'claude-sonnet-4' },
-  mistral: { apiKey: null, model: 'mistral-large' },
+  claude:  { apiKey: null, model: 'claude-sonnet-4', source: null },
+  mistral: { apiKey: null, model: 'mistral-large', source: null },
   preferredProvider: 'claude' as const,
 }
 

@@ -4,6 +4,7 @@
     "tenants": "Tenants",
     "agencies": "Agencies",
     "legalWatch": "Legal watch",
+    "aiUsage": "AI usage",
     "settings": "Settings",
     "portal": "Platform portal",
     "superAdmin": "Super Admin",
@@ -179,6 +180,12 @@
       "hintOn": "The tenant uses per-country legislative packs and the centralized payroll workflow draft → site RAF → central.",
       "hintOff": "Single-country Côte d'Ivoire tenant: standard CI 2024 payroll engine, no \"Subsidiaries & legislations\" tab."
     },
+    "aiPlatformKey": {
+      "title": "Platform AI key",
+      "toggleLabel": "Allow platform AI key",
+      "hintOn": "The tenant may use the platform's AI key by default. If it configures its own key, that key takes precedence.",
+      "hintOff": "The tenant only gets AI if it configures its own key. No fallback to the platform AI key."
+    },
     "actions": {
       "title": "Actions",
       "offlineTitle": "Tenant offline",
@@ -216,6 +223,28 @@
       "title": "Theme",
       "primaryColor": "Primary color",
       "secondaryColor": "Secondary color"
+    }
+  },
+  "aiUsage": {
+    "title": "AI usage",
+    "subtitle": "Tokens consumed per tenant on the platform AI key only.",
+    "monthFilter": "Month",
+    "empty": "No AI usage on the platform key for this period.",
+    "kpi": {
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "calls": "Calls",
+      "estCost": "Estimated cost"
+    },
+    "table": {
+      "tenant": "Tenant",
+      "provider": "Provider",
+      "model": "Model",
+      "period": "Period",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "calls": "Calls",
+      "estCost": "Estimated cost"
     }
   },
   "agencies": {

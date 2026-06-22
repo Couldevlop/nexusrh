@@ -99,8 +99,8 @@ const SRC_JOB = { title: 'PM', currency: 'XOF' as string | null }
 
 function tenantCreds(claudeKey: string | null, mistralKey: string | null): AiCreds {
   return {
-    claude:  { apiKey: claudeKey,  model: 'claude-tenant' },
-    mistral: { apiKey: mistralKey, model: 'mistral-tenant' },
+    claude:  { apiKey: claudeKey,  model: 'claude-tenant', source: claudeKey ? 'tenant' : null },
+    mistral: { apiKey: mistralKey, model: 'mistral-tenant', source: mistralKey ? 'tenant' : null },
     preferredProvider: 'claude',
   }
 }
