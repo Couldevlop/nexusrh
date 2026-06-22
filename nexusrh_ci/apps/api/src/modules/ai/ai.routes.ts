@@ -100,11 +100,21 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['ai'], summary: 'Statut IA' },
     handler: async (request, reply) => {
       // Disponibilité tenant-aware : clé du tenant si configurée, sinon clé
-      // plateforme (env). OWASP A03 — ne pas exposer le nom exact du modèle.
+      // plateforme (env). OWASP A03 — on expose le FOURNISSEUR (Claude/Mistral)
+      // pour l'affichage « Propulsé par … », mais jamais le nom exact du modèle.
       const creds = await resolveAiCreds(request.user.schemaName)
-      const available = !!(creds.claude.apiKey || creds.mistral.apiKey)
+      // Même logique de sélection que POST /chat : le provider que le chat
+      // utilisera réellement (préférence + repli sur l'autre si clé manquante).
+      const provider: 'mistral' | 'claude' | null =
+        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
+        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
+        : creds.mistral.apiKey ? 'mistral'
+        : creds.claude.apiKey ? 'claude'
+        : null
+      const available = provider !== null
       return reply.send({
         available,
+        provider,
         message: available
           ? 'Assistant IA disponible'
           : 'Clé API IA non configurée (plateforme ou tenant). Contactez votre administrateur.',
