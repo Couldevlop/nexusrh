@@ -31,6 +31,7 @@ import authPlugin    from './plugins/auth.js'
 import corsPlugin    from './plugins/cors.js'
 import swaggerPlugin from './plugins/swagger.js'
 import { ensurePlatformSchema } from './utils/schema-migrations.js'
+import { describeDbError } from './utils/db-error.js'
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
@@ -426,29 +427,14 @@ export async function buildApp() {
       })
     }
 
-    // Erreurs PostgreSQL fréquentes — mapping vers codes HTTP appropriés
-    const pgCode = (error as unknown as { code?: string }).code
-    if (pgCode === '23505') {
-      // unique_violation
-      return reply.status(409).send({ error: 'Conflit — ressource déjà existante', statusCode: 409 })
-    }
-    if (pgCode === '23503') {
-      // foreign_key_violation
-      return reply.status(422).send({ error: 'Référence invalide (FK)', statusCode: 422 })
-    }
-    if (pgCode === '23502') {
-      // not_null_violation
-      return reply.status(400).send({ error: 'Champ requis manquant', statusCode: 400 })
-    }
-    if (pgCode === '22P02') {
-      // invalid_text_representation (ex: cast UUID invalide)
-      return reply.status(400).send({ error: 'Format de donnée invalide', statusCode: 400 })
-    }
-    if (pgCode === '42P01' || pgCode === '42703') {
-      // undefined_table / undefined_column — bug serveur, masquer en prod
-      return reply.status(500).send({
-        error: config.env === 'production' ? 'Erreur interne du serveur' : `Schema DB: ${error.message}`,
-        statusCode: 500,
+    // Filet de sécurité GLOBAL : toute erreur technique reconnue (PostgreSQL,
+    // chiffrement indisponible) est traduite en message MÉTIER personnalisé en
+    // français — jamais de « Internal Server Error » brut ni de fuite de SQL.
+    // Le détail complet est déjà loggé ci-dessus (OWASP A05/A09).
+    const mapped = describeDbError(error)
+    if (mapped) {
+      return reply.status(mapped.statusCode).send({
+        error: mapped.error, code: mapped.code, statusCode: mapped.statusCode,
       })
     }
 
@@ -458,12 +444,14 @@ export async function buildApp() {
     if (statusCode === 403) {
       return reply.status(403).send({ error: 'Accès interdit', statusCode: 403 })
     }
+    // Erreurs applicatives volontaires (messages déjà rédigés côté handler).
     if (statusCode >= 400 && statusCode < 500) {
       return reply.status(statusCode).send({ error: error.message, statusCode })
     }
 
+    // Dernier recours : message neutre et personnalisé, jamais le détail brut.
     return reply.status(500).send({
-      error: config.env === 'production' ? 'Erreur interne du serveur' : error.message,
+      error: 'Une erreur inattendue est survenue. Nos équipes ont été notifiées.',
       statusCode: 500,
     })
   })

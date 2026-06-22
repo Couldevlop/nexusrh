@@ -33,6 +33,7 @@ vi.mock('../../utils/crypto.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import employeesRoutes from './employees.routes.js'
+import { encryptIfPresent } from '../../utils/crypto.js'
 
 const TENANT_SCHEMA = 'tenant_sotra'
 
@@ -127,6 +128,51 @@ describe('POST /employees — Zod validation (OWASP A03)', () => {
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('employee.created')
   })
+
+  // ── Erreurs PERSONNALISÉES : aucune 500 brute ne doit remonter ──────────────
+  it('email déjà existant (PG 23505) → 409 message personnalisé, pas de 500', async () => {
+    queryMock.mockRejectedValueOnce(
+      Object.assign(new Error('duplicate key'), { code: '23505', constraint: 'employees_email_key' }),
+    )
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/employees',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validEmployee,
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('Un employé avec cet email existe déjà.')
+  })
+
+  it('chiffrement NNI/IBAN non configuré → 503 message clair, pas de 500 opaque', async () => {
+    // Le formulaire envoie un NNI : encryptIfPresent lève l'erreur typée.
+    vi.mocked(encryptIfPresent).mockImplementationOnce(() => {
+      throw Object.assign(new Error("Le chiffrement des données sensibles (NNI, IBAN) n'est pas configuré sur le serveur. Contactez votre administrateur."), { code: 'ENCRYPTION_UNAVAILABLE', statusCode: 503 })
+    })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/employees',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validEmployee, nni: 'CI-1234567890' },
+    })
+    expect(res.statusCode).toBe(503)
+    expect(JSON.parse(res.body).error).toContain('chiffrement')
+    expect(JSON.parse(res.body).code).toBe('ENCRYPTION_UNAVAILABLE')
+  })
+
+  it('erreur DB inattendue → 500 message personnalisé (jamais le détail brut)', async () => {
+    queryMock.mockRejectedValueOnce(new Error('connection terminated unexpectedly'))
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/employees',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validEmployee,
+    })
+    expect(res.statusCode).toBe(500)
+    const body = JSON.parse(res.body)
+    expect(body.error).toContain("Impossible d'enregistrer l'employé")
+    expect(body.error).not.toContain('connection terminated') // aucune fuite
+  })
 })
 
 describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
@@ -190,6 +236,21 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
     const changes = JSON.parse(auditCall?.[1]?.[3] as string)
     expect(changes.modifiedFields).toContain('base_salary')
     expect(changes.bySelf).toBe(false)
+  })
+
+  it('modification vers un email déjà pris (23505) → 409 personnalisé, pas de 500', async () => {
+    queryMock.mockRejectedValueOnce(
+      Object.assign(new Error('duplicate key'), { code: '23505', constraint: 'employees_email_key' }),
+    )
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/employees/11111111-1111-1111-1111-111111111111',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { email: 'doublon@sotra.ci' },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('Un employé avec cet email existe déjà.')
   })
 
   it('refuse baseSalary < SMIG (422)', async () => {
