@@ -112,7 +112,10 @@
       "cnps": "CNPS",
       "user": "Utilisateurs",
       "mobile_money": "Mobile Money",
-      "career": "Carrières"
+      "career": "Carrières",
+      "signature": "Signatures électroniques",
+      "disciplinary_action": "Actions disciplinaires",
+      "offboarding_case": "Sorties / départs"
     }
   }
 }

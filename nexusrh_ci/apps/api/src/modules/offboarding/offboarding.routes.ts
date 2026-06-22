@@ -13,6 +13,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import {
   DEPARTURE_TYPES,
   OFFBOARDING_STATUSES,
@@ -156,8 +157,8 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
 
-      const cur = await rawPool.query<{ status: OffboardingStatus }>(
-        `SELECT status FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
+      const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string }>(
+        `SELECT status, employee_id FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       if (b.status && !canTransition(cur.rows[0].status, b.status)) {
@@ -180,6 +181,19 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE "${schema}".offboarding_cases SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params,
       )
       audit(schema, request.user.sub, 'offboarding.updated', id, b as Record<string, unknown>, request.ip ?? null)
+
+      // Cohérence sortie ↔ employé : la clôture du dossier de sortie est l'acte
+      // qui matérialise le départ. On archive alors l'employé et on rompt/annule
+      // ses processus liés (contrats, sanctions, signatures) via la cascade
+      // partagée — best-effort : un échec n'annule pas la clôture du dossier.
+      if (b.status === 'closed') {
+        const arch = await archiveEmployeeCascade(rawPool, schema, cur.rows[0].employee_id)
+          .catch(() => null)
+        if (arch) {
+          audit(schema, request.user.sub, 'offboarding.employee_archived', id,
+            { employeeId: cur.rows[0].employee_id, ...arch }, request.ip ?? null)
+        }
+      }
       return reply.send({ data: res.rows[0] })
     },
   })
