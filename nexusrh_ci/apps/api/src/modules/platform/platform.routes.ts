@@ -209,15 +209,18 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
                        'logo_url','max_users','max_employees','trial_ends_at','city','sector',
                        'has_subsidiaries','payroll_mode','default_country_code',
                        // OWASP A07 — surcharge MFA durcissante par tenant (super_admin)
-                       'mfa_required']
+                       'mfa_required',
+                       // IA — autoriser/refuser l'usage de la clé plateforme pour ce tenant
+                       'ai_platform_key_enabled']
+      const BOOL_FIELDS = ['mfa_required', 'ai_platform_key_enabled']
       const sets: string[] = []
       const vals: unknown[] = []
       const modifiedFields: string[] = []
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         if (allowed.includes(k)) {
-          // mfa_required est un booléen strict (durcissement de politique)
-          const val = k === 'mfa_required'
+          // Champs booléens stricts (durcissement MFA, autorisation clé IA)
+          const val = BOOL_FIELDS.includes(k)
             ? (v === true || v === 'true' || v === 1 || v === '1')
             : v
           sets.push(`${k} = $${idx++}`)
@@ -936,6 +939,83 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           suspendedCount: parseInt(row?.suspended_count ?? '0'),
           totalCount:     parseInt(row?.total_count ?? '0'),
         },
+      })
+    },
+  })
+
+  // ── GET /platform/ai-usage ────────────────────────────────────────────────
+  // Conso de tokens IA par tenant SUR LA CLÉ PLATEFORME (clé générale du
+  // super_admin). N'inclut JAMAIS les tenants qui utilisent leur propre clé
+  // (ils la paient directement). Coût estimé via le catalogue platform.ai_models
+  // (tarifs/1M tokens paramétrables) quand le modèle y figure.
+  fastify.get('/ai-usage', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Conso tokens IA par tenant (clé plateforme)' },
+    handler: async (request, reply) => {
+      const { month } = request.query as Record<string, string>
+      // Filtre mois optionnel (YYYY-MM) ; défaut = tous les mois cumulés.
+      const monthOk = typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)
+      const params: unknown[] = []
+      let whereMonth = ''
+      if (monthOk) {
+        params.push(`${month}-01`)
+        whereMonth = `WHERE u.period_month = $1::date`
+      }
+      const res = await pool.query(`
+        SELECT
+          u.schema_name,
+          u.tenant_id,
+          t.name  AS tenant_name,
+          t.slug  AS tenant_slug,
+          u.provider,
+          u.model,
+          to_char(u.period_month, 'YYYY-MM') AS period,
+          u.input_tokens,
+          u.output_tokens,
+          u.calls,
+          m.input_cost_per_1m_eur,
+          m.output_cost_per_1m_eur,
+          ROUND(
+            (u.input_tokens::numeric  / 1000000) * COALESCE(m.input_cost_per_1m_eur, 0)
+          + (u.output_tokens::numeric / 1000000) * COALESCE(m.output_cost_per_1m_eur, 0)
+          , 4) AS est_cost_eur
+        FROM platform.ai_usage u
+        LEFT JOIN platform.tenants  t ON t.id = u.tenant_id
+        LEFT JOIN platform.ai_models m ON m.provider = u.provider AND m.model_id = u.model
+        ${whereMonth}
+        ORDER BY u.period_month DESC, (u.input_tokens + u.output_tokens) DESC
+        LIMIT 1000
+      `, params).catch(() => ({ rows: [] as Record<string, unknown>[] }))
+
+      // Agrégat global (totaux) pour l'en-tête de la vue.
+      const totals = res.rows.reduce(
+        (acc, r) => {
+          acc.inputTokens  += Number(r.input_tokens ?? 0)
+          acc.outputTokens += Number(r.output_tokens ?? 0)
+          acc.calls        += Number(r.calls ?? 0)
+          acc.estCostEur   += Number(r.est_cost_eur ?? 0)
+          return acc
+        },
+        { inputTokens: 0, outputTokens: 0, calls: 0, estCostEur: 0 },
+      )
+      totals.estCostEur = Math.round(totals.estCostEur * 10000) / 10000
+
+      return reply.send({
+        data: res.rows.map(r => ({
+          schemaName:   r.schema_name,
+          tenantId:     r.tenant_id,
+          tenantName:   r.tenant_name ?? r.schema_name,
+          tenantSlug:   r.tenant_slug ?? null,
+          provider:     r.provider,
+          model:        r.model,
+          period:       r.period,
+          inputTokens:  Number(r.input_tokens ?? 0),
+          outputTokens: Number(r.output_tokens ?? 0),
+          calls:        Number(r.calls ?? 0),
+          estCostEur:   Number(r.est_cost_eur ?? 0),
+        })),
+        totals,
+        month: monthOk ? month : null,
       })
     },
   })

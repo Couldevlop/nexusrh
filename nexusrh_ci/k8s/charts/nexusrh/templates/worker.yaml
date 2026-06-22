@@ -94,6 +94,12 @@ spec:
                 secretKeyRef:
                   name: nexusrh-app-secrets
                   key: anthropic-api-key
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: mistral-api-key
+                  optional: true
             - name: SMTP_USER
               valueFrom:
                 secretKeyRef:

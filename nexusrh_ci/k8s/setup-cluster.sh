@@ -26,8 +26,14 @@ MEILI_KEY="26044cf067f14264a90ac4ec763ed43f260f52f7bcaf3a97"
 #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ENCRYPTION_KEY="9075f443fdc9a8a79beb8a0b420f4455a838e93607ef1c0bb9844302435a93d4"
 
-# ── Seule valeur manquante : clé Anthropic ────────────────────────────────────
-read -rp "Anthropic API Key (sk-ant-api03-...) : " ANTHROPIC_API_KEY
+# ── Clés IA ───────────────────────────────────────────────────────────────────
+# Anthropic (Claude) : laisser vide si non utilisé.
+read -rp "Anthropic API Key (sk-ant-api03-..., Entrée pour ignorer) : " ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+# Mistral : fournisseur IA par défaut plateforme (AI_DEFAULT_PROVIDER=mistral).
+# C'est la clé qui fait fonctionner le chat IA si le tenant n'a pas la sienne.
+read -rp "Mistral API Key (Entrée pour ignorer) : " MISTRAL_API_KEY
+MISTRAL_API_KEY="${MISTRAL_API_KEY:-}"
 
 echo ""
 echo "── Création du namespace $NAMESPACE ──"
@@ -39,6 +45,7 @@ kubectl create secret generic nexusrh-app-secrets \
   --from-literal=jwt-secret="$JWT_SECRET" \
   --from-literal=encryption-key="$ENCRYPTION_KEY" \
   --from-literal=anthropic-api-key="$ANTHROPIC_API_KEY" \
+  --from-literal=mistral-api-key="$MISTRAL_API_KEY" \
   --from-literal=smtp-user="$SMTP_USER" \
   --from-literal=smtp-pass="$SMTP_PASS" \
   --from-literal=smtp-from="$SMTP_FROM" \

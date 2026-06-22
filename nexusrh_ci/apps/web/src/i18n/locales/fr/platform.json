@@ -4,6 +4,7 @@
     "tenants": "Tenants",
     "agencies": "Cabinets",
     "legalWatch": "Veille juridique",
+    "aiUsage": "Consommation IA",
     "settings": "Paramètres",
     "portal": "Portail plateforme",
     "superAdmin": "Super Admin",
@@ -179,6 +180,12 @@
       "hintOn": "Le tenant utilise des packs législatifs par pays et le workflow paie centralisé draft → RAF site → central.",
       "hintOff": "Tenant mono-pays Côte d'Ivoire : moteur paie CI 2024 standard, pas d'onglet « Filiales & législations »."
     },
+    "aiPlatformKey": {
+      "title": "Clé IA plateforme",
+      "toggleLabel": "Autoriser la clé IA plateforme",
+      "hintOn": "Le tenant peut utiliser la clé IA de la plateforme par défaut. S'il configure sa propre clé, celle-ci est prioritaire.",
+      "hintOff": "Le tenant n'a accès à l'IA que s'il configure sa propre clé. Aucun repli sur la clé IA de la plateforme."
+    },
     "actions": {
       "title": "Actions",
       "offlineTitle": "Tenant hors ligne",
@@ -216,6 +223,28 @@
       "title": "Thème",
       "primaryColor": "Couleur primaire",
       "secondaryColor": "Couleur secondaire"
+    }
+  },
+  "aiUsage": {
+    "title": "Consommation IA",
+    "subtitle": "Tokens consommés par tenant sur la clé IA de la plateforme uniquement.",
+    "monthFilter": "Mois",
+    "empty": "Aucune consommation IA sur la clé plateforme pour cette période.",
+    "kpi": {
+      "inputTokens": "Tokens en entrée",
+      "outputTokens": "Tokens en sortie",
+      "calls": "Appels",
+      "estCost": "Coût estimé"
+    },
+    "table": {
+      "tenant": "Tenant",
+      "provider": "Fournisseur",
+      "model": "Modèle",
+      "period": "Période",
+      "inputTokens": "Tokens entrée",
+      "outputTokens": "Tokens sortie",
+      "calls": "Appels",
+      "estCost": "Coût estimé"
     }
   },
   "agencies": {

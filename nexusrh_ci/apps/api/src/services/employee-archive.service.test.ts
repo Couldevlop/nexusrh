@@ -15,7 +15,7 @@ const EMP = '11111111-1111-1111-1111-111111111111'
 // Mock pool minimal : on contrôle chaque réponse query() dans l'ordre d'appel.
 function makePool(responses: Array<unknown | Error>) {
   let i = 0
-  const query = vi.fn((sql: string) => {
+  const query = vi.fn((_sql: string, _params?: unknown[]) => {
     const r = responses[i++]
     if (r instanceof Error) return Promise.reject(r)
     return Promise.resolve(r ?? { rows: [] })

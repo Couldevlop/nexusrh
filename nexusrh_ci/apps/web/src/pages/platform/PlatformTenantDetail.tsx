@@ -18,6 +18,7 @@ interface Tenant {
   payroll_mode?: 'single_country' | 'multi_country'
   default_country_code?: string
   offline_message?: string | null
+  ai_platform_key_enabled?: boolean
 }
 
 interface OfflinePolicySettings {
@@ -194,6 +195,29 @@ export default function PlatformTenantDetail() {
               {tenant.has_subsidiaries
                 ? t('tenantDetail.subsidiaries.hintOn')
                 : t('tenantDetail.subsidiaries.hintOff')}
+            </p>
+          </div>
+        </label>
+      </div>
+
+      {/* Clé IA plateforme (gouvernance super_admin) */}
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h2 className="font-semibold mb-3">{t('tenantDetail.aiPlatformKey.title')}</h2>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={tenant.ai_platform_key_enabled ?? true}
+            onChange={(e) => api.patch(`/platform/tenants/${id}`, {
+              ai_platform_key_enabled: e.target.checked,
+            }).then(() => queryClient.invalidateQueries({ queryKey: ['tenant', id] }))}
+            className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium">{t('tenantDetail.aiPlatformKey.toggleLabel')}</div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {(tenant.ai_platform_key_enabled ?? true)
+                ? t('tenantDetail.aiPlatformKey.hintOn')
+                : t('tenantDetail.aiPlatformKey.hintOff')}
             </p>
           </div>
         </label>
