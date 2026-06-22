@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
-import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket } from 'lucide-react'
+import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 interface Employee {
@@ -369,9 +369,224 @@ function DeleteModal({
   )
 }
 
+// ── Modal d'édition d'un employé (rôles RH) ────────────────────────────────────
+// Comble le manque historique : la page ne permettait QUE créer/archiver, jamais
+// de modifier un dossier existant (d'où « on n'arrive pas à modifier un employé »).
+// Permet notamment d'AJOUTER un numéro CNPS a posteriori (cas du salarié à son
+// premier emploi, embauché sans numéro).
+interface EmployeeDetail {
+  id: string; first_name: string; last_name: string; email: string | null
+  phone: string | null; gender: string | null; nni: string | null; cnps_number: string | null
+  city: string | null; department_id: string | null; job_title: string | null
+  job_level: string | null; professional_category: string | null
+  contract_type: string | null; hire_date: string | null; weekly_hours: string | null
+  base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
+  iban: string | null; bank_name: string | null
+  marital_status: string | null; children_count: number | null
+}
+
+function EditEmployeeModal({ employeeId, onClose, onSaved }: {
+  employeeId: string; onClose: () => void; onSaved: () => void
+}) {
+  const { t } = useTranslation('employees')
+  const { t: tContracts } = useTranslation('contracts')
+  const { t: tCommon } = useTranslation('common')
+  const [form, setForm] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const { data: detail, isLoading } = useQuery<{ data: EmployeeDetail }>({
+    queryKey: ['employee-detail', employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}`).then(r => r.data),
+  })
+  const { data: deptData } = useQuery<{ data: Department[] }>({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
+  })
+  const departments = deptData?.data ?? []
+  const emp = detail?.data
+
+  // Valeur effective d'un champ : saisie en cours sinon valeur d'origine.
+  const val = (k: string, orig: string | number | null | undefined) =>
+    form[k] ?? (orig == null ? '' : String(orig))
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(p => ({ ...p, [k]: e.target.value }))
+
+  const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none'
+  const labelCls = 'block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5'
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!emp) return
+    setError(null)
+    // On n'envoie QUE les champs réellement modifiés (PATCH partiel).
+    const orig: Record<string, string> = {
+      firstName: emp.first_name ?? '', lastName: emp.last_name ?? '', email: emp.email ?? '',
+      phone: emp.phone ?? '', gender: emp.gender ?? '', nni: emp.nni ?? '', cnpsNumber: emp.cnps_number ?? '',
+      city: emp.city ?? '', departmentId: emp.department_id ?? '', jobTitle: emp.job_title ?? '',
+      jobLevel: emp.job_level ?? '', professionalCategory: emp.professional_category ?? '',
+      contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
+      weeklyHours: emp.weekly_hours ?? '', baseSalary: emp.base_salary ?? '',
+      mobileMoneyProvider: emp.mobile_money_provider ?? '', mobileMoneyPhone: emp.mobile_money_phone ?? '',
+      iban: emp.iban ?? '', bankName: emp.bank_name ?? '',
+      maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
+    }
+    const numericKeys = new Set(['baseSalary', 'weeklyHours', 'childrenCount'])
+    const payload: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(form)) {
+      const trimmed = typeof v === 'string' ? v.trim() : v
+      if (trimmed === orig[k]) continue
+      if (trimmed === '') continue // champ vidé : on ne pousse pas (évite d'écraser involontairement)
+      payload[k] = numericKeys.has(k) ? Number(trimmed) : trimmed
+    }
+    if (Object.keys(payload).length === 0) { onClose(); return }
+    if (payload.baseSalary != null && Number(payload.baseSalary) < 75000) {
+      setError(t('form.errors.salaryBelowSmig')); return
+    }
+    setSaving(true)
+    try {
+      await api.patch(`/employees/${employeeId}`, payload)
+      onSaved()
+    } catch (err) {
+      const ax = err as { response?: { data?: { error?: string; details?: Array<{ path: string; message: string }> } } }
+      const details = ax.response?.data?.details?.map(d => `${d.path}: ${d.message}`).join(' · ')
+      setError(details || ax.response?.data?.error || t('form.errors.createGeneric'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <form onSubmit={submit} className="w-full max-w-3xl my-8 rounded-xl bg-background border border-border shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <span className="font-semibold text-sm flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-primary" /> {t('edit.title')}
+          </span>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {isLoading || !emp ? (
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
+            {/* Identité */}
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.sections.identity')}</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className={labelCls}>{t('form.fields.firstName')}</label>
+                  <input className={inputCls} value={val('firstName', emp.first_name)} onChange={set('firstName')} maxLength={100} /></div>
+                <div><label className={labelCls}>{t('form.fields.lastName')}</label>
+                  <input className={inputCls} value={val('lastName', emp.last_name)} onChange={set('lastName')} maxLength={100} /></div>
+                <div><label className={labelCls}>{t('form.fields.email')}</label>
+                  <input type="email" className={inputCls} value={val('email', emp.email)} onChange={set('email')} maxLength={255} /></div>
+                <div><label className={labelCls}>{t('form.fields.phone')}</label>
+                  <input className={inputCls} value={val('phone', emp.phone)} onChange={set('phone')} maxLength={30} /></div>
+                <div><label className={labelCls}>{t('form.fields.nni')}</label>
+                  <input className={inputCls} value={val('nni', emp.nni)} onChange={set('nni')} maxLength={50} /></div>
+                <div><label className={labelCls}>{t('form.fields.cnpsNumber')}</label>
+                  <input className={inputCls} value={val('cnpsNumber', emp.cnps_number)} onChange={set('cnpsNumber')} maxLength={30}
+                    placeholder={t('edit.cnpsPlaceholder')} /></div>
+                <div><label className={labelCls}>{t('form.fields.city')}</label>
+                  <input className={inputCls} value={val('city', emp.city)} onChange={set('city')} maxLength={100} /></div>
+              </div>
+            </fieldset>
+
+            {/* Poste & contrat */}
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.sections.jobAndContract')}</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className={labelCls}>{t('form.fields.jobTitle')}</label>
+                  <input className={inputCls} value={val('jobTitle', emp.job_title)} onChange={set('jobTitle')} maxLength={200} /></div>
+                <div><label className={labelCls}>{t('form.fields.department')}</label>
+                  <select className={inputCls} value={val('departmentId', emp.department_id)} onChange={set('departmentId')}>
+                    <option value="">—</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.seniority')}</label>
+                  <select className={inputCls} value={val('jobLevel', emp.job_level)} onChange={set('jobLevel')}>
+                    <option value="">—</option><option value="junior">{t('form.seniorityOptions.junior')}</option>
+                    <option value="confirme">{t('form.seniorityOptions.confirme')}</option><option value="senior">{t('form.seniorityOptions.senior')}</option>
+                    <option value="cadre">{t('form.seniorityOptions.cadre')}</option><option value="direction">{t('form.seniorityOptions.direction')}</option>
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.professionalCategory')}</label>
+                  <input className={inputCls} list="categories-ci-edit" value={val('professionalCategory', emp.professional_category)}
+                    onChange={set('professionalCategory')} maxLength={50} />
+                  <datalist id="categories-ci-edit">{CATEGORIES_CI.map(c => <option key={c} value={c} />)}</datalist></div>
+                <div><label className={labelCls}>{t('form.fields.contractType')}</label>
+                  <select className={inputCls} value={val('contractType', emp.contract_type)} onChange={set('contractType')}>
+                    <option value="cdi">CDI</option><option value="cdd">CDD</option>
+                    <option value="saisonnier">{tContracts('types.saisonnier')}</option><option value="apprentissage">{tContracts('types.apprentissage')}</option>
+                    <option value="stage">{tContracts('types.stage')}</option><option value="mise_a_disposition">{tContracts('types.mise_a_disposition')}</option>
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.hireDate')}</label>
+                  <input type="date" className={inputCls} value={val('hireDate', (emp.hire_date ?? '').slice(0, 10))} onChange={set('hireDate')} /></div>
+                <div><label className={labelCls}>{t('form.fields.weeklyHours')}</label>
+                  <input type="number" min={1} max={60} step={0.5} className={inputCls} value={val('weeklyHours', emp.weekly_hours)} onChange={set('weeklyHours')} /></div>
+              </div>
+            </fieldset>
+
+            {/* Rémunération & paiement */}
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.sections.compensationAndPayment')}</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
+                  <input type="number" min={75000} step={1} className={inputCls} value={val('baseSalary', emp.base_salary)} onChange={set('baseSalary')} /></div>
+                <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
+                  <select className={inputCls} value={val('mobileMoneyProvider', emp.mobile_money_provider)} onChange={set('mobileMoneyProvider')}>
+                    <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
+                    <option value="mtn">{t('form.providers.mtn')}</option><option value="orange">{t('form.providers.orange')}</option>
+                    <option value="cofina">{t('form.providers.cofina')}</option>
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.mobileMoneyPhone')}</label>
+                  <input className={inputCls} value={val('mobileMoneyPhone', emp.mobile_money_phone)} onChange={set('mobileMoneyPhone')} maxLength={30} /></div>
+                <div className="sm:col-span-2"><label className={labelCls}>{t('form.fields.iban')}</label>
+                  <input className={inputCls} value={val('iban', emp.iban)} onChange={set('iban')} maxLength={50} /></div>
+                <div><label className={labelCls}>{t('form.fields.bankName')}</label>
+                  <input className={inputCls} value={val('bankName', emp.bank_name)} onChange={set('bankName')} maxLength={100} /></div>
+              </div>
+            </fieldset>
+
+            {/* Situation familiale */}
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.sections.familySituation')}</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className={labelCls}>{t('form.fields.maritalStatus')}</label>
+                  <select className={inputCls} value={val('maritalStatus', emp.marital_status)} onChange={set('maritalStatus')}>
+                    <option value="">—</option><option value="single">{t('form.maritalOptions.single')}</option>
+                    <option value="married">{t('form.maritalOptions.married')}</option><option value="divorced">{t('form.maritalOptions.divorced')}</option>
+                    <option value="widowed">{t('form.maritalOptions.widowed')}</option><option value="cohabiting">{t('form.maritalOptions.cohabiting')}</option>
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.childrenCount')}</label>
+                  <input type="number" min={0} max={30} className={inputCls} value={val('childrenCount', emp.children_count)} onChange={set('childrenCount')} /></div>
+              </div>
+            </fieldset>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">
+            {tCommon('actions.cancel')}
+          </button>
+          <button type="submit" disabled={saving || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} {saving ? t('form.submitting') : tCommon('actions.save')}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export default function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const [editTarget, setEditTarget] = useState<Employee | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [createdMsg, setCreatedMsg] = useState<string | null>(null)
   const queryClient = useQueryClient()
@@ -485,13 +700,24 @@ export default function EmployeesPage() {
                       {emp.hire_date ? formatDate(emp.hire_date) : '—'}
                     </td>
                     <td className="p-4">
-                      <button
-                        onClick={() => setDeleteTarget(emp)}
-                        title={t('delete.title')}
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        {canCreate && (
+                          <button
+                            onClick={() => setEditTarget(emp)}
+                            title={t('edit.title')}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setDeleteTarget(emp)}
+                          title={t('delete.title')}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -516,6 +742,18 @@ export default function EmployeesPage() {
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
             setDeleteTarget(null)
+            void queryClient.invalidateQueries({ queryKey: ['employees'] })
+          }}
+        />
+      )}
+
+      {/* Édition */}
+      {editTarget && (
+        <EditEmployeeModal
+          employeeId={editTarget.id}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null)
             void queryClient.invalidateQueries({ queryKey: ['employees'] })
           }}
         />

@@ -4,6 +4,7 @@ import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
+import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
 // renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
 import type AnthropicTypes from '@anthropic-ai/sdk'
@@ -121,10 +122,19 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // Credentials IA effectifs : clé/modèle du tenant si configurés, sinon repli
       // plateforme (env). Si aucune clé Claude (tenant ni plateforme) → 503.
       const creds = await resolveAiCreds(schema)
-      if (!creds.claude.apiKey) {
+      // Sélection du fournisseur : préférence tenant/plateforme, avec repli sur
+      // l'autre si sa clé manque. Le chat tourne donc sur Mistral OU Claude —
+      // un tenant basculé sur Mistral a tout en Mistral, chat compris.
+      const provider: 'mistral' | 'claude' | null =
+        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
+        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
+        : creds.mistral.apiKey ? 'mistral'
+        : creds.claude.apiKey ? 'claude'
+        : null
+      if (!provider) {
         return reply.status(503).send({
           error: 'IA non disponible',
-          message: 'Clé API Anthropic non configurée (ni tenant ni plateforme).',
+          message: 'Aucune clé API IA configurée (ni tenant ni plateforme).',
         })
       }
 
@@ -200,8 +210,38 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       })
 
       try {
+        if (provider === 'mistral') {
+          const r = await streamMistralChat({
+            apiKey:        creds.mistral.apiKey!,
+            apiUrl:        config.mistral.apiUrl,
+            model:         creds.mistral.model,
+            systemPrompt,
+            messages,
+            tools:         buildToolsForRole(request.user.role),
+            toolCtx:       { schemaName: schema, role: request.user.role },
+            pool:          rawPool,
+            maxTokens:     config.ai.maxTokens,
+            maxToolRounds: 5,
+            onText:        (text) => reply.raw.write(`data: ${JSON.stringify({ text })}\n\n`),
+          })
+          reply.raw.write(`data: ${JSON.stringify({ done: true, usage: r.usage, stopReason: r.stopReason, toolsUsed: r.toolsUsed })}\n\n`)
+          auditLogAi(
+            schema, request.user.sub, 'ai.chat',
+            {
+              provider:     'mistral',
+              inputTokens:  r.usage.input_tokens,
+              outputTokens: r.usage.output_tokens,
+              messageCount: messages.length,
+              totalChars,
+              stopReason:   r.stopReason,
+              toolsUsed:    r.toolsUsed,
+              toolRounds:   r.rounds,
+            },
+            request.ip ?? null,
+          )
+        } else {
         const Anthropic = (await import('@anthropic-ai/sdk')).default
-        const client = new Anthropic({ apiKey: creds.claude.apiKey })
+        const client = new Anthropic({ apiKey: creds.claude.apiKey! })
 
         // IA hybride : outils de lecture des données internes du tenant,
         // filtrés selon le rôle (matrice TOOL_ACCESS — OWASP A01). Les
@@ -285,6 +325,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           },
           request.ip ?? null,
         )
+        }
       } catch (err) {
         // OWASP A10 — masquer les détails d'erreur Anthropic au client.
         // Les codes 401/429/500 internes ne doivent pas fuiter.

@@ -648,6 +648,51 @@ export function getLegislationPack(code: string | null | undefined): Legislation
   return LEGISLATION_PACKS[code] ?? DEFAULT_LEGISLATION_PACK
 }
 
+// Mapping pays ISO-3 → pack législatif applicable. Sert au paramétrage tenant :
+// l'admin choisit un PAYS, le pack correspondant s'installe automatiquement.
+const COUNTRY_TO_PACK_CODE: Record<string, string> = {
+  CIV: 'CIV-2024', BEN: 'BEN-2024', TGO: 'TGO-2024', BFA: 'BFA-2024',
+  SEN: 'SEN-2024', MLI: 'MLI-2024', NER: 'NER-2024', TCD: 'TCD-2024', NGA: 'NGA-2024',
+}
+
+/** Pack législatif d'un pays ISO-3 (null si le pays n'est pas pris en charge). */
+export function getPackByCountry(countryCode: string | null | undefined): LegislationPack | null {
+  if (!countryCode) return null
+  const code = COUNTRY_TO_PACK_CODE[countryCode.toUpperCase()]
+  return code ? (LEGISLATION_PACKS[code] ?? null) : null
+}
+
+/** Le pays ISO-3 est-il pris en charge (un pack existe) ? */
+export function isSupportedCountry(countryCode: string | null | undefined): boolean {
+  return !!countryCode && countryCode.toUpperCase() in COUNTRY_TO_PACK_CODE
+}
+
+/** Libellés FR des pays pris en charge (pour l'UI de paramétrage). */
+export const COUNTRY_LABELS: Record<string, string> = {
+  CIV: 'Côte d\'Ivoire', BEN: 'Bénin', TGO: 'Togo', BFA: 'Burkina Faso',
+  SEN: 'Sénégal', MLI: 'Mali', NER: 'Niger', TCD: 'Tchad', NGA: 'Nigeria',
+}
+
+/**
+ * Liste des pays sélectionnables au paramétrage tenant (résumé pour le sélecteur).
+ * Triée : pack actif d'abord, puis ordre alphabétique du libellé.
+ */
+export function listCountries(): Array<{
+  countryCode: string; packCode: string; name: string
+  status: 'active' | 'stub'; currency: LegislationPack['currency']; smigMensuel: number
+}> {
+  return Object.entries(COUNTRY_TO_PACK_CODE)
+    .map(([countryCode, packCode]) => {
+      const p = LEGISLATION_PACKS[packCode]!
+      return {
+        countryCode, packCode, name: COUNTRY_LABELS[countryCode] ?? p.name,
+        status: p.status, currency: p.currency, smigMensuel: p.smigMensuel,
+      }
+    })
+    .sort((a, b) =>
+      a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1)
+}
+
 export function listLegislationPacks(): Array<Omit<LegislationPack, 'tranchesImpotSalaire' | 'creditImpotParEnfant'>> {
   return Object.values(LEGISLATION_PACKS).map(p => ({
     code: p.code,

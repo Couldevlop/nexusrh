@@ -12,6 +12,7 @@ import {
   TCD_2024, NGA_2024,
   LEGISLATION_PACKS, DEFAULT_LEGISLATION_PACK,
   getLegislationPack, listLegislationPacks,
+  getPackByCountry, isSupportedCountry, listCountries,
 } from './legislation-packs.js'
 import { calculatePayrollCI, type PayrollContext } from './payroll-engine-ci.js'
 
@@ -127,6 +128,56 @@ describe('LegislationPack — inventaire complet', () => {
     expect(civ.status).toBe('active')
     expect(civ.smigMensuel).toBe(75_000)
     expect('tranchesImpotSalaire' in civ).toBe(false)
+  })
+})
+
+describe('LegislationPack — résolution par PAYS (paramétrage tenant)', () => {
+  it('getPackByCountry(CIV) renvoie le pack CI actif', () => {
+    expect(getPackByCountry('CIV')).toBe(CIV_2024)
+  })
+
+  it('getPackByCountry est insensible à la casse', () => {
+    expect(getPackByCountry('civ')).toBe(CIV_2024)
+    expect(getPackByCountry('Sen')).toBe(SEN_2024)
+  })
+
+  it('getPackByCountry mappe chaque pays UEMOA/CEMAC/Nigeria', () => {
+    expect(getPackByCountry('BEN')).toBe(BEN_2024)
+    expect(getPackByCountry('TGO')).toBe(TGO_2024)
+    expect(getPackByCountry('BFA')).toBe(BFA_2024)
+    expect(getPackByCountry('MLI')).toBe(MLI_2024)
+    expect(getPackByCountry('NER')).toBe(NER_2024)
+    expect(getPackByCountry('TCD')).toBe(TCD_2024)
+    expect(getPackByCountry('NGA')).toBe(NGA_2024)
+  })
+
+  it('getPackByCountry(pays inconnu/null) renvoie null (pas de repli silencieux)', () => {
+    expect(getPackByCountry('XXX')).toBeNull()
+    expect(getPackByCountry(null)).toBeNull()
+    expect(getPackByCountry(undefined)).toBeNull()
+    expect(getPackByCountry('')).toBeNull()
+  })
+
+  it('isSupportedCountry distingue pays pris en charge et inconnus', () => {
+    expect(isSupportedCountry('CIV')).toBe(true)
+    expect(isSupportedCountry('sen')).toBe(true)
+    expect(isSupportedCountry('XXX')).toBe(false)
+    expect(isSupportedCountry(null)).toBe(false)
+  })
+
+  it('listCountries expose 9 pays, pack actif (CI) en tête', () => {
+    const list = listCountries()
+    expect(list).toHaveLength(9)
+    expect(list[0]!.countryCode).toBe('CIV')
+    expect(list[0]!.status).toBe('active')
+    // un seul actif
+    expect(list.filter(c => c.status === 'active')).toHaveLength(1)
+    // chaque entrée porte SMIG + devise + packCode
+    for (const c of list) {
+      expect(c.smigMensuel).toBeGreaterThan(0)
+      expect(c.currency.length).toBeGreaterThan(0)
+      expect(c.packCode).toMatch(/^[A-Z]{3}-\d{4}$/)
+    }
   })
 })
 

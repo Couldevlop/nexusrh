@@ -14,6 +14,14 @@ const closePeriodBodySchema = z.object({
   legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
 }).strict()
 
+// OWASP A03 — schéma body /calculate. Sans validation, un employeeId non-UUID
+// faisait planter la requête SQL (« invalid input syntax for type uuid ») en
+// 500 opaque. On valide en amont → 400 clair.
+const calcBodySchema = z.object({
+  employeeId: z.string().regex(UUID_RE, 'UUID employé requis'),
+  month:      z.string().regex(/^\d{4}-\d{2}$/, 'Format mois invalide (YYYY-MM)'),
+}).strict()
+
 // ── Helper : calcul des jours ouvrables d'un mois (lundi–samedi, hors dimanche) ──
 // Parse 'YYYY-MM' avec validation stricte → évite NaN dans les calculs paie.
 // OWASP A04 (Insecure Design) : refuser dès l'entrée plutôt que produire des
@@ -152,9 +160,18 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
     schema: { tags: ['payroll'], summary: 'Calculer un bulletin de paie CI (CNPS + ITS + absences)' },
     handler: async (request, reply) => {
-      const { employeeId, month } = request.body as { employeeId: string; month: string }
+      // OWASP A03 — validation stricte (employeeId UUID, month YYYY-MM).
+      const parsedBody = calcBodySchema.safeParse(request.body)
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsedBody.error.flatten() })
+      }
+      const { employeeId, month } = parsedBody.data
       const schema = request.user.schemaName
 
+      // Toute la simulation est encadrée : une donnée employé/tenant incohérente
+      // (filiale orpheline, pack indisponible, colonne legacy) doit produire un
+      // message exploitable plutôt qu'un 500 opaque côté client.
+      try {
       const empRes = await rawPool.query<{
         id: string; base_salary: string; marital_status: string; children_count: number
         first_name: string; last_name: string; cnps_number: string; nni: string
@@ -169,6 +186,15 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       )
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
+
+      // Garde anti-NaN : un dossier sans salaire de base exploitable ne peut pas
+      // être simulé (produirait des montants NaN dans tout le bulletin).
+      const baseSalary = parseInt(emp.base_salary, 10)
+      if (!Number.isFinite(baseSalary) || baseSalary <= 0) {
+        return reply.status(422).send({
+          error: 'Salaire de base manquant ou invalide pour cet employé. Renseignez la rémunération avant de simuler la paie.',
+        })
+      }
 
       const tenantRes = await rawPool.query<{
         id: string; at_rate: string; has_subsidiaries: boolean; default_country_code: string | null
@@ -238,7 +264,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const absenceCtx = await resolveAbsenceForPayroll(schema, employeeId, month, emp.hire_date)
 
       const result = calculatePayrollCI({
-        baseSalary:       parseInt(emp.base_salary),
+        baseSalary,
         workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
         workingDaysMonth,
         atRate,
@@ -267,6 +293,17 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         result,
         currency: result.currency,
       })
+      } catch (err) {
+        // Le moteur refuse explicitement les packs législatifs non validés
+        // (status='stub') et autres incohérences métier : on remonte le message
+        // en 422 (action corrective côté RH), le reste en 500 générique.
+        const msg = err instanceof Error ? err.message : ''
+        if (/stub|pack législatif|legislation/i.test(msg)) {
+          return reply.status(422).send({ error: msg })
+        }
+        request.log.error({ err, schema, employeeId, month }, 'payroll calculate failed')
+        return reply.status(500).send({ error: 'Échec de la simulation de paie. Vérifiez le dossier de l\'employé et le paramétrage paie.' })
+      }
     },
   })
 

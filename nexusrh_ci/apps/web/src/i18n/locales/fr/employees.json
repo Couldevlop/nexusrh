@@ -92,6 +92,10 @@
     "submit": "Créer l'employé",
     "submitting": "Création..."
   },
+  "edit": {
+    "title": "Modifier l'employé",
+    "cnpsPlaceholder": "À renseigner dès attribution"
+  },
   "delete": {
     "title": "Archiver l'employé",
     "intro": "Vous allez archiver <strong>{{name}}</strong>. L'employé ne sera plus actif mais ses données seront conservées.",

@@ -33,6 +33,9 @@ const envSchema = z.object({
   AI_MODEL:          z.string().default('claude-sonnet-4-20250514'),
   AI_MAX_TOKENS:     z.coerce.number().default(4096),
   AI_TEMPERATURE:    z.coerce.number().default(0.3),
+  // Fournisseur IA par défaut au niveau plateforme (repli quand un tenant n'a
+  // pas de réglage propre). 'claude' (Anthropic) ou 'mistral'. Paramétrable.
+  AI_DEFAULT_PROVIDER: z.enum(['claude', 'mistral']).default('claude'),
 
   // Mistral (option alternative pour scoring CV — au choix dans l'UI)
   MISTRAL_API_KEY:   z.string().optional(),
@@ -155,10 +158,11 @@ export const config = {
   },
 
   ai: {
-    apiKey:      env.ANTHROPIC_API_KEY,
-    model:       env.AI_MODEL,
-    maxTokens:   env.AI_MAX_TOKENS,
-    temperature: env.AI_TEMPERATURE,
+    apiKey:          env.ANTHROPIC_API_KEY,
+    model:           env.AI_MODEL,
+    maxTokens:       env.AI_MAX_TOKENS,
+    temperature:     env.AI_TEMPERATURE,
+    defaultProvider: env.AI_DEFAULT_PROVIDER,
   },
 
   mistral: {

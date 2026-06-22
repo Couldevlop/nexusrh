@@ -315,9 +315,16 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         const dbKey = k.replace(/([A-Z])/g, '_$1').toLowerCase()
-        sets.push(`${dbKey} = $${idx++}`)
-        // RGPD — NNI et IBAN chiffrés AES-256 avant écriture
-        vals.push(dbKey === 'nni' || dbKey === 'iban' ? encryptIfPresent(v as string) : v)
+        if (dbKey === 'address') {
+          // `address` est une colonne jsonb : une chaîne brute déclenchait
+          // « invalid input syntax for type json » (500). On encode en JSON.
+          sets.push(`${dbKey} = $${idx++}::jsonb`)
+          vals.push(JSON.stringify(v ?? null))
+        } else {
+          sets.push(`${dbKey} = $${idx++}`)
+          // RGPD — NNI et IBAN chiffrés AES-256 avant écriture
+          vals.push(dbKey === 'nni' || dbKey === 'iban' ? encryptIfPresent(v as string) : v)
+        }
         modifiedKeys.push(dbKey)
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
@@ -407,13 +414,27 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         await pool.query(
           `UPDATE "${schema}".users SET is_active = false, updated_at = now() WHERE employee_id = $1`, [id]
         )
+        // Cohérence employé ↔ contrat : un employé archivé/parti ne doit JAMAIS
+        // laisser un contrat « actif » orphelin. On rompt tous ses contrats
+        // actifs (statut → terminated, end_date posée) : ils basculent en archive
+        // au lieu de rester actifs sur un dossier qui n'existe plus.
+        const termContracts = await pool.query<{ id: string }>(
+          `UPDATE "${schema}".contracts
+              SET status = 'terminated',
+                  end_date = COALESCE(end_date, CURRENT_DATE),
+                  updated_at = now()
+            WHERE employee_id = $1 AND status = 'active'
+            RETURNING id`,
+          [id],
+        ).catch(() => ({ rows: [] as Array<{ id: string }> }))
         auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
           firstName: snapshot.rows[0].first_name,
           lastName:  snapshot.rows[0].last_name,
           email:     snapshot.rows[0].email,
           jobTitle:  snapshot.rows[0].job_title,
+          terminatedContracts: termContracts.rows.length,
         }, request.ip ?? null)
-        return reply.send({ message: 'Employé archivé' })
+        return reply.send({ message: 'Employé archivé', terminatedContracts: termContracts.rows.length })
       } catch (err) {
         fastify.log.error({ err, employeeId: id }, 'employee archive failed')
         return reply.status(500).send({ error: 'Erreur serveur' })
