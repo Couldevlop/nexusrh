@@ -82,7 +82,7 @@
   "aiChat": {
     "fabTitle": "Assistant IA RH CI",
     "headerTitle": "Assistant RH CI",
-    "poweredBy": "Propulsé par Claude AI · {{tenant}}",
+    "poweredBy": "Propulsé par {{provider}} · {{tenant}}",
     "limitedMode": "Mode limité",
     "unavailableDefault": "IA non disponible. Configurez ANTHROPIC_API_KEY pour activer l'assistant.",
     "emptyPrompt": "Posez une question sur le droit social CI, la CNPS, l'ITS ou la paie",
