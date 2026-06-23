@@ -4,6 +4,7 @@ import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
+import { joursFeriesCI } from '../../utils/ci-holidays.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -215,14 +216,20 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      // Calcul jours ouvrables CI
+      // Calcul jours ouvrables CI : dimanche exclu (samedi inclus, semaine 6 j)
+      // + jours fériés CI exclus (ABS-008). Couvre les années traversées.
       const start = new Date(body.startDate)
       const end   = new Date(body.endDate)
+      const feries = new Set<string>([
+        ...joursFeriesCI(start.getFullYear()),
+        ...joursFeriesCI(end.getFullYear()),
+      ])
+      const ymdLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       let days = 0
       const cur = new Date(start)
       while (cur <= end) {
         const dow = cur.getDay()
-        if (dow !== 0) days++ // dimanche = 0 exclu, samedi inclus (Code Travail CI)
+        if (dow !== 0 && !feries.has(ymdLocal(cur))) days++ // ni dimanche ni férié
         cur.setDate(cur.getDate() + 1)
       }
       if (body.halfDay) days = 0.5
