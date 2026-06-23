@@ -60,10 +60,12 @@ describe('revokeRefreshToken', () => {
 })
 
 describe('verifyAccountActive', () => {
-  it('platform : compte actif → rôle', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ role: 'super_admin', is_active: true }] })
-    expect(await verifyAccountActive(pool, 'platform', 'u-1')).toEqual({ role: 'super_admin' })
+  it('platform : compte actif → rôle + password_changed_at', async () => {
+    const pca = new Date('2026-01-01')
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'super_admin', is_active: true, password_changed_at: pca }] })
+    expect(await verifyAccountActive(pool, 'platform', 'u-1')).toEqual({ role: 'super_admin', passwordChangedAt: pca })
     expect(String(queryMock.mock.calls[0][0])).toContain('platform.platform_users')
+    expect(String(queryMock.mock.calls[0][0])).toContain('password_changed_at')
   })
   it('compte désactivé → null', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: false }] })
@@ -74,8 +76,8 @@ describe('verifyAccountActive', () => {
     expect(await verifyAccountActive(pool, 'tenant_sotra', 'u-1')).toBeNull()
   })
   it('tenant : requête le schéma de l\'utilisateur', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: true }] })
-    expect(await verifyAccountActive(pool, 'tenant_sotra', 'u-1')).toEqual({ role: 'admin' })
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: true, password_changed_at: null }] })
+    expect(await verifyAccountActive(pool, 'tenant_sotra', 'u-1')).toEqual({ role: 'admin', passwordChangedAt: null })
     expect(String(queryMock.mock.calls[0][0])).toContain('"tenant_sotra".users')
   })
   it('nom de schéma invalide → null sans requête (anti-injection)', async () => {

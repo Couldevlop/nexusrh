@@ -89,22 +89,24 @@ export async function revokeRefreshToken(pool: Pool, token: string | null | unde
  * (un compte désactivé ne peut pas rafraîchir). Renvoie le rôle courant (qui
  * peut avoir changé depuis l'émission) ou null si inactif/inexistant.
  */
-export async function verifyAccountActive(pool: Pool, schemaName: string, userId: string): Promise<{ role: string } | null> {
+export async function verifyAccountActive(
+  pool: Pool, schemaName: string, userId: string,
+): Promise<{ role: string; passwordChangedAt: Date | string | null } | null> {
   try {
     if (schemaName === 'platform') {
-      const r = await pool.query<{ role: string; is_active: boolean }>(
-        `SELECT role, is_active FROM platform.platform_users WHERE id = $1 LIMIT 1`, [userId],
+      const r = await pool.query<{ role: string; is_active: boolean; password_changed_at: Date | string | null }>(
+        `SELECT role, is_active, password_changed_at FROM platform.platform_users WHERE id = $1 LIMIT 1`, [userId],
       )
       const u = r.rows[0]
-      return u && u.is_active ? { role: u.role } : null
+      return u && u.is_active ? { role: u.role, passwordChangedAt: u.password_changed_at } : null
     }
     // Tenant : nom de schéma déjà validé en amont (JWT/claims), mais defense in depth.
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(schemaName)) return null
-    const r = await pool.query<{ role: string; is_active: boolean }>(
-      `SELECT role, is_active FROM "${schemaName}".users WHERE id = $1 LIMIT 1`, [userId],
+    const r = await pool.query<{ role: string; is_active: boolean; password_changed_at: Date | string | null }>(
+      `SELECT role, is_active, password_changed_at FROM "${schemaName}".users WHERE id = $1 LIMIT 1`, [userId],
     )
     const u = r.rows[0]
-    return u && u.is_active ? { role: u.role } : null
+    return u && u.is_active ? { role: u.role, passwordChangedAt: u.password_changed_at } : null
   } catch {
     return null
   }

@@ -28,42 +28,42 @@ BEGIN;
 
 UPDATE "platform".platform_users
    SET password_hash = '$2a$12$ObgKORnMiNSY/7GCQ60Zguuc4VaMkObNCwuL9UWhx2crU.OWLx6tG',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'superadmin@nexusrh-ci.com';
 
 UPDATE "tenant_sotra".users
    SET password_hash = '$2a$12$3SjM4wffJJ2.7brsum9gmOVkr1Ib3HpxtYHGZkYGdK5JKjvL9Aj2y',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'admin@sotra.ci';
 
 UPDATE "tenant_sotra".users
    SET password_hash = '$2a$12$RMHksYFFjhVb1fQ0MyuB8upWHT77OdVndn3Ka0gtJJB.DrrgadohS',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'rh@sotra.ci';
 
 UPDATE "tenant_sotra".users
    SET password_hash = '$2a$12$rLk9L0rA57h9IDczP1xdTuf1e/1ZEOBXwtoLweFHVZKBoeFP3AKJm',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'manager@sotra.ci';
 
 UPDATE "tenant_sotra".users
    SET password_hash = '$2a$12$gKZexlysN.K/7h7QHnvWE.N7qCUUyJwAH.xHLZEi10akIhKNQHDcC',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'employe@sotra.ci';
 
 UPDATE "tenant_cabinet_expertise_ci".users
    SET password_hash = '$2a$12$8ARklISaldpoCcMmwdFCVOmrWVbGhkwC78WnduRQkjG7Bw8ZcDHBy',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'admin@cabinet-expertise.ci';
 
 UPDATE "tenant_cabinet_expertise_ci".users
    SET password_hash = '$2a$12$0hjRf7pkutPM3Fghv3szJ.dj8cgqI3WTER5ywXZENAFVci4cBSuzi',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'employe2@cabinet-expertise.ci';
 
 UPDATE "tenant_openlab_consulting".users
    SET password_hash = '$2a$12$xsdey78KfSj6Y.zIQxh7g.QFDIlbmdcdiASkMiBXfuYEWBFMbrtO.',
-       is_active = true, updated_at = now()
+       is_active = true, password_changed_at = now(), updated_at = now()
  WHERE email = 'coulwao@gmail.com';
 
 COMMIT;
