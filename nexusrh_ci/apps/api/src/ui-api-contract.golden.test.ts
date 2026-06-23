@@ -90,8 +90,17 @@ function backendRoutes(): Route[] {
       routes.push({ method, seg: segs(prefix + path) })
     }
   }
+  // Routes publiques servies sous un AUTRE préfixe que celui de leur fichier
+  // (publicBrandRoutes vit dans brand.routes.ts mais est monté sous /public/brand).
+  for (const r of EXTRA_PUBLIC_ROUTES) routes.push({ method: r.method, seg: segs(r.path) })
   return routes
 }
+
+// Endpoints publics (sans auth) non couverts par la carte PREFIX par fichier.
+const EXTRA_PUBLIC_ROUTES: { method: string; path: string }[] = [
+  { method: 'GET', path: '/public/brand/:id' },
+  { method: 'GET', path: '/public/brand/by-slug/:slug' },
+]
 
 // Résout un chemin d'appel frontend en segments, ou null si non résoluble.
 function resolveFrontPath(raw: string): string[] | null {

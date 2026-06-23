@@ -26,6 +26,7 @@ const PlatformTenantNew   = lazy(() => import('@/pages/platform/PlatformTenantNe
 const PlatformTenantDetail  = lazy(() => import('@/pages/platform/PlatformTenantDetail'))
 const PlatformSettings      = lazy(() => import('@/pages/platform/PlatformSettings'))
 const PlatformAiUsage       = lazy(() => import('@/pages/platform/PlatformAiUsage'))
+const PlatformLogs          = lazy(() => import('@/pages/platform/PlatformLogs'))
 const PlatformLegalWatch    = lazy(() => import('@/pages/platform/PlatformLegalWatch'))
 const PlatformAgencies      = lazy(() => import('@/pages/platform/PlatformAgencies'))
 const PlatformAgencyDetail  = lazy(() => import('@/pages/platform/PlatformAgencyDetail'))
@@ -188,6 +189,7 @@ export default function App() {
             <Route path="tenants/new"  element={<PlatformTenantNew />} />
             <Route path="tenants/:id"  element={<PlatformTenantDetail />} />
             <Route path="ai-usage"     element={<PlatformAiUsage />} />
+            <Route path="logs"         element={<PlatformLogs />} />
             <Route path="settings"     element={<PlatformSettings />} />
             <Route path="legal-watch"  element={<PlatformLegalWatch />} />
             <Route path="agencies"     element={<PlatformAgencies />} />

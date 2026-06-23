@@ -8,6 +8,8 @@ interface DashStats {
   trialCount: number
   suspendedCount: number
   totalCount: number
+  // PLT-019 — trials expirant sous 7 jours
+  expiringTrials?: { id: string; name: string; slug: string; trialEndsAt: string }[]
 }
 
 interface Tenant {
@@ -72,6 +74,25 @@ export default function PlatformDashboard() {
           </div>
         ))}
       </div>
+
+      {/* PLT-019 — Alertes : trials expirant sous 7 jours */}
+      {(stats?.expiringTrials?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-red-200 bg-red-50/50 p-6">
+          <h2 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" /> Trials expirant sous 7 jours
+          </h2>
+          <ul className="space-y-2">
+            {stats!.expiringTrials!.map(tr => (
+              <li key={tr.id} className="flex items-center justify-between rounded-lg border border-red-200 bg-white px-4 py-2 text-sm">
+                <a href={`/platform/tenants/${tr.id}`} className="font-medium hover:underline">{tr.name}</a>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                  Expire le {new Date(tr.trialEndsAt).toLocaleDateString('fr-CI')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Liste tenants */}
       <div className="rounded-xl border border-border bg-card p-6">

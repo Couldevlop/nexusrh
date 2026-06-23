@@ -201,7 +201,7 @@ function hexToHsl(hex: string): string {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
 }
 
-function applyTenantTheme(config: TenantConfig) {
+export function applyTenantTheme(config: TenantConfig) {
   const root = document.documentElement
   if (config.primaryColor) {
     root.style.setProperty('--primary', hexToHsl(config.primaryColor))

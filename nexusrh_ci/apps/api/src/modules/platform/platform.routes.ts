@@ -894,19 +894,31 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     schema: { tags: ['platform'], summary: 'Logs d\'activité plateforme' },
     handler: async (request, reply) => {
-      const { limit = '50', tenant_id } = request.query as Record<string, string>
-      let sql = `SELECT al.*, t.name AS tenant_name
-                 FROM platform.audit_log al
-                 LEFT JOIN platform.tenants t ON t.id = al.tenant_id
-                 WHERE 1=1`
+      const { limit = '50', page = '1', tenant_id } = request.query as Record<string, string>
+      const lim = Math.min(Math.max(parseInt(limit) || 50, 1), 200)
+      const pg = Math.max(parseInt(page) || 1, 1)
+      const offset = (pg - 1) * lim
+      // Les actions « tenant » stockent l'id du tenant dans entity_id → jointure
+      // sur entity_id pour récupérer le nom du tenant (PLT-018).
+      const where: string[] = []
       const params: unknown[] = []
       let idx = 1
-      if (tenant_id) { sql += ` AND al.tenant_id = $${idx++}`; params.push(tenant_id) }
-      sql += ` ORDER BY al.created_at DESC LIMIT $${idx}`
-      params.push(parseInt(limit))
-
-      const res = await pool.query(sql, params).catch(() => ({ rows: [] }))
-      return reply.send({ data: res.rows })
+      if (tenant_id) { where.push(`al.entity_id = $${idx++}`); params.push(tenant_id) }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+      // Pagination en une seule requête : on lit lim+1 lignes → la présence de
+      // la (lim+1)e indique qu'il reste une page suivante (hasMore).
+      const res = await pool.query(
+        `SELECT al.*, al.entity AS entity_type, t.name AS tenant_name
+           FROM platform.audit_log al
+           LEFT JOIN platform.tenants t ON t.id = al.entity_id
+           ${whereSql}
+           ORDER BY al.created_at DESC
+           LIMIT $${idx++} OFFSET $${idx}`,
+        [...params, lim + 1, offset],
+      ).catch(() => ({ rows: [] }))
+      const hasMore = res.rows.length > lim
+      const data = hasMore ? res.rows.slice(0, lim) : res.rows
+      return reply.send({ data, meta: { page: pg, limit: lim, hasMore } })
     },
   })
 
@@ -1085,12 +1097,23 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         FROM platform.tenants
       `)
       const row = stats.rows[0]
+      // PLT-019 — trials expirant sous 7 jours (alerte dashboard super_admin).
+      const expiring = await pool.query<{ id: string; name: string; slug: string; trial_ends_at: string }>(`
+        SELECT id, name, slug, trial_ends_at
+          FROM platform.tenants
+         WHERE status = 'trial' AND trial_ends_at IS NOT NULL
+           AND trial_ends_at >= now() AND trial_ends_at < now() + interval '7 days'
+         ORDER BY trial_ends_at ASC
+      `).catch(() => ({ rows: [] as { id: string; name: string; slug: string; trial_ends_at: string }[] }))
       return reply.send({
         data: {
           activeCount:    parseInt(row?.active_count ?? '0'),
           trialCount:     parseInt(row?.trial_count ?? '0'),
           suspendedCount: parseInt(row?.suspended_count ?? '0'),
           totalCount:     parseInt(row?.total_count ?? '0'),
+          expiringTrials: expiring.rows.map(r => ({
+            id: r.id, name: r.name, slug: r.slug, trialEndsAt: r.trial_ends_at,
+          })),
         },
       })
     },

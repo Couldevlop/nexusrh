@@ -502,7 +502,8 @@ describe('GET /platform/logs', () => {
     const res = await app.inject({ method: 'GET', url: `/platform/logs?tenant_id=${TID}&limit=5`, headers: hSuper() })
     expect(res.statusCode).toBe(200)
     const call = queryMock.mock.calls[0]!
-    expect(String(call[0])).toContain('al.tenant_id =')
+    // Les actions « tenant » stockent l'id du tenant dans entity_id (PLT-018).
+    expect(String(call[0])).toContain('al.entity_id =')
   })
   it('requête échoue → 200 avec data vide', async () => {
     queryMock.mockRejectedValueOnce(new Error('no audit_log'))
