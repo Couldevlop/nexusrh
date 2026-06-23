@@ -583,8 +583,13 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
   )
 }
 
+const PAGE_SIZE = 20
+
 export default function EmployeesPage() {
   const [search, setSearch] = useState('')
+  // EMP-006 — pagination ; EMP-008 — filtre par département.
+  const [page, setPage] = useState(1)
+  const [departmentId, setDepartmentId] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
   const [editTarget, setEditTarget] = useState<Employee | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -594,12 +599,23 @@ export default function EmployeesPage() {
   const role = useAuthStore((s) => s.user?.role ?? '')
   const canCreate = ['admin', 'hr_manager', 'hr_officer'].includes(role)
 
-  const { data, isLoading } = useQuery<{ data: Employee[]; total: number }>({
-    queryKey: ['employees', search],
-    queryFn: () => api.get(`/employees?search=${encodeURIComponent(search)}`).then(r => r.data),
+  const { data, isLoading } = useQuery<{ data: Employee[]; total: number; page?: number; limit?: number }>({
+    queryKey: ['employees', search, departmentId, page],
+    queryFn: () => api.get(
+      `/employees?search=${encodeURIComponent(search)}${departmentId ? `&departmentId=${departmentId}` : ''}&page=${page}&limit=${PAGE_SIZE}`,
+    ).then(r => r.data),
   })
 
+  // Départements pour le filtre (EMP-008).
+  const { data: deptData } = useQuery<{ data: Department[] }>({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
+  })
+  const departments = deptData?.data ?? []
+
   const employees = data?.data ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div className="p-6 space-y-6">
@@ -631,15 +647,24 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={t('searchPlaceholder')}
-          className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
-        />
+      {/* Recherche + filtre département (EMP-007 / EMP-008) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
+            placeholder={t('searchPlaceholder')}
+            className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
+          />
+        </div>
+        <select
+          value={departmentId}
+          onChange={e => { setDepartmentId(e.target.value); setPage(1) }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
+          <option value="">{t('filters.allDepartments', 'Tous les départements')}</option>
+          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
       </div>
 
       {/* Table */}
@@ -734,6 +759,30 @@ export default function EmployeesPage() {
           </div>
         )}
       </div>
+
+      {/* EMP-006 — pagination */}
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40 hover:bg-muted">
+              {t('pagination.prev', 'Précédent')}
+            </button>
+            <span className="px-1 text-muted-foreground">{page} / {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40 hover:bg-muted">
+              {t('pagination.next', 'Suivant')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Delete modal */}
       {deleteTarget && (

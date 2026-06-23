@@ -125,21 +125,22 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','readonly')],
     schema: { tags: ['employees'], summary: 'Liste des employés' },
     handler: async (request, reply) => {
-      const { search, departmentId, isActive = 'true' } = request.query as Record<string, string>
-      // pool module-level
+      // EMP-006 — pagination : page/limit + total réel (COUNT) pour 80+ employés.
+      const { search, departmentId, isActive = 'true', page: pageRaw, limit: limitRaw } = request.query as Record<string, string>
+      const page = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1)
+      const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '20', 10) || 20))
+      const offset = (page - 1) * limit
       const schema = request.user.schemaName
 
-      let sql = `SELECT e.*, d.name AS department_name
-                 FROM "${schema}".employees e
-                 LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-                 WHERE e.deleted_at IS NULL`
+      // Clause WHERE commune (filtres) — réutilisée par le COUNT et la page.
+      let where = ` WHERE e.deleted_at IS NULL`
       const params: unknown[] = []
       let idx = 1
 
-      if (isActive === 'true') { sql += ` AND e.is_active = true` }
-      if (departmentId) { sql += ` AND e.department_id = $${idx++}`; params.push(departmentId) }
+      if (isActive === 'true') { where += ` AND e.is_active = true` }
+      if (departmentId) { where += ` AND e.department_id = $${idx++}`; params.push(departmentId) }
       if (search) {
-        sql += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx})`
+        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx})`
         params.push(`%${search.toLowerCase()}%`); idx++
       }
       // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
@@ -149,14 +150,23 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
         const mgr = empRes.rows[0]
-        if (!mgr) return reply.send({ data: [], total: 0 })
-        sql += ` AND e.manager_id = $${idx++}`; params.push(mgr.id)
+        if (!mgr) return reply.send({ data: [], total: 0, page, limit })
+        where += ` AND e.manager_id = $${idx++}`; params.push(mgr.id)
       }
 
-      sql += ` ORDER BY e.last_name, e.first_name`
-      const res = await pool.query(sql, params)
+      // total réel (mêmes filtres) — affiché « 80+ employés » même en page 1.
+      const countRes = await pool.query(`SELECT count(*)::int AS c FROM "${schema}".employees e ${where}`, params)
+      const total = countRes.rows[0]?.c ?? 0
 
-      return reply.send({ data: res.rows, total: res.rowCount })
+      const listSql = `SELECT e.*, d.name AS department_name
+                       FROM "${schema}".employees e
+                       LEFT JOIN "${schema}".departments d ON d.id = e.department_id
+                       ${where}
+                       ORDER BY e.last_name, e.first_name
+                       LIMIT $${idx++} OFFSET $${idx++}`
+      const res = await pool.query(listSql, [...params, limit, offset])
+
+      return reply.send({ data: res.rows, total, page, limit })
     },
   })
 
@@ -212,6 +222,17 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       } else {
         delete emp.nni
         delete emp.iban
+      }
+
+      // EMP-009 — ancienneté CALCULÉE depuis la date d'embauche.
+      if (emp.hire_date) {
+        const hire = new Date(emp.hire_date)
+        const now = new Date()
+        const months = Math.max(0,
+          (now.getFullYear() - hire.getFullYear()) * 12 + (now.getMonth() - hire.getMonth())
+          - (now.getDate() < hire.getDate() ? 1 : 0))
+        emp.seniority_months = months
+        emp.seniority_label = `${Math.floor(months / 12)} an(s) ${months % 12} mois`
       }
       return reply.send({ data: emp })
     },
@@ -345,6 +366,15 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(422).send({ error: 'Salaire inférieur au SMIG (75 000 FCFA)' })
       }
 
+      // EMP-010 — capter l'ancien salaire AVANT l'UPDATE pour historiser le
+      // changement (augmentation/baisse) dans hr_events après le succès.
+      let oldSalary: number | null = null
+      if (body.baseSalary != null) {
+        const prev = await pool.query<{ base_salary: string | null }>(
+          `SELECT base_salary FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [id])
+        oldSalary = prev.rows[0]?.base_salary != null ? Number(prev.rows[0].base_salary) : null
+      }
+
       // Zod a déjà filtré les champs autorisés. On convertit juste camelCase
       // → snake_case pour l'UPDATE SQL et on chiffre le NNI sensible.
       const sets: string[] = []
@@ -386,6 +416,18 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+
+      // EMP-010 — historise un changement de salaire dans hr_events (non bloquant).
+      if (body.baseSalary != null && Number(body.baseSalary) !== oldSalary) {
+        const newSalary = Number(body.baseSalary)
+        const evtType = oldSalary != null && newSalary > oldSalary ? 'augmentation' : 'salary_change'
+        await pool.query(
+          `INSERT INTO "${schema}".hr_events (employee_id, type, title, description, date, metadata, created_by)
+           VALUES ($1, $2, 'Modification de salaire', $3, CURRENT_DATE, $4::jsonb, $5)`,
+          [id, evtType, `Salaire mensuel : ${oldSalary ?? 0} → ${newSalary} FCFA`,
+           JSON.stringify({ oldSalary, newSalary, field: 'base_salary' }), request.user.sub],
+        ).catch((err) => request.log.error({ err, schema, id }, 'Échec écriture hr_events salaire'))
+      }
 
       // OWASP A09 : trace de la modification (clés modifiées sans les valeurs
       // sensibles comme NNI/téléphone — on garde l'info utile à l'audit).

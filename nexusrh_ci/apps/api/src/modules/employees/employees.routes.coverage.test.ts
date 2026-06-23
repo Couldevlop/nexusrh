@@ -83,10 +83,12 @@ beforeEach(() => { queryMock.mockReset().mockResolvedValue({ rows: [] }) })
 
 describe('GET /employees — liste, filtres et équipe manager', () => {
   it('renvoie la liste (admin, sans filtres) avec total', async () => {
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: EMP, first_name: 'Marie', last_name: 'Konaté', department_name: 'RH' }],
-      rowCount: 1,
-    })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ c: 1 }] }) // COUNT total (EMP-006 pagination)
+      .mockResolvedValueOnce({
+        rows: [{ id: EMP, first_name: 'Marie', last_name: 'Konaté', department_name: 'RH' }],
+        rowCount: 1,
+      })
     const res = await app.inject({
       method: 'GET', url: '/employees',
       headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
