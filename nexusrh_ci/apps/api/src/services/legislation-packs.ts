@@ -918,3 +918,20 @@ export function listLegislationPacks(): Array<Omit<LegislationPack, 'tranchesImp
     notes: p.notes,
   }))
 }
+
+/**
+ * Applique une SURCHARGE de base de données (sous-ensemble de champs + statut) à un
+ * pack défini en code. Architecture hybride : le code reste la référence versionnée ;
+ * le super_admin peut surcharger une valeur (ex. nouveau SMIG) ou activer un pack.
+ */
+export function applyPackOverride(
+  base: LegislationPack,
+  override: { overrides?: Record<string, unknown> | null; status_override?: string | null } | null | undefined,
+): LegislationPack {
+  if (!override) return base
+  const merged = { ...base, ...(override.overrides ?? {}) } as LegislationPack
+  if (override.status_override === 'active' || override.status_override === 'stub') {
+    merged.status = override.status_override
+  }
+  return merged
+}

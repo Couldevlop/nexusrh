@@ -11,7 +11,7 @@ import {
   invalidateOfflineStatusCache,
 } from '../../services/offline-status.service.js'
 import { createTenantWithSchema, TenantSlugConflictError, PLAN_DEFAULTS } from '../../services/tenant-provisioning.service.js'
-import { listLegislationPacks } from '../../services/legislation-packs.js'
+import { listLegislationPacks, LEGISLATION_PACKS, applyPackOverride, COUNTRY_LABELS } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import {
   MODULE_KEYS,
@@ -85,13 +85,158 @@ function auditLogPlatform(
 }
 
 const platformRoutes: FastifyPluginAsync = async (fastify) => {
-  // ── GET /platform/legislation-packs ───────────────────────────────────────
-  // Liste les packs législatifs disponibles (CIV-2024 active, autres stub).
+  // ── GET /platform/legislation-packs — packs (code) + surcharges DB ─────────
+  // Architecture hybride : code = référence, DB = surcharges validées super_admin.
   fastify.get('/legislation-packs', {
     preHandler: [fastify.authorize('super_admin')],
-    schema: { tags: ['platform'], summary: 'Liste des packs législatifs (multi-pays)' },
+    schema: { tags: ['platform'], summary: 'Liste des packs législatifs (code + surcharges DB)' },
     handler: async (_request, reply) => {
-      return reply.send({ data: listLegislationPacks() })
+      const ov = await pool.query<{ country_code: string; overrides: unknown; status_override: string | null; last_verified_at: string | null }>(
+        `SELECT country_code, overrides, status_override, last_verified_at FROM platform.legislation_pack_overrides`,
+      ).catch(() => ({ rows: [] as Array<{ country_code: string; overrides: unknown; status_override: string | null; last_verified_at: string | null }> }))
+      const ovByCountry = new Map(ov.rows.map(r => [r.country_code, r]))
+      const pendingCount = await pool.query<{ country_code: string; n: string }>(
+        `SELECT country_code, COUNT(*) n FROM platform.legislation_proposals WHERE status = 'pending' GROUP BY country_code`,
+      ).catch(() => ({ rows: [] as Array<{ country_code: string; n: string }> }))
+      const pendingByCountry = new Map(pendingCount.rows.map(r => [r.country_code, Number(r.n)]))
+      const data = Object.values(LEGISLATION_PACKS).map(p => {
+        const o = ovByCountry.get(p.countryCode)
+        const eff = applyPackOverride(p, o ? { overrides: o.overrides as Record<string, unknown>, status_override: o.status_override } : null)
+        return {
+          code: p.code, countryCode: p.countryCode, name: COUNTRY_LABELS[p.countryCode] ?? p.name,
+          currency: eff.currency, status: eff.status, codeStatus: p.status,
+          smigMensuel: eff.smigMensuel, labelCaisseSociale: eff.labelCaisseSociale, labelImpotSalaire: eff.labelImpotSalaire,
+          hasOverride: !!o, lastVerifiedAt: o?.last_verified_at ?? null,
+          pendingProposals: pendingByCountry.get(p.countryCode) ?? 0,
+        }
+      }).sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1))
+      return reply.send({ data })
+    },
+  })
+
+  // ── GET /platform/legislation-packs/:country — détail (code + surcharge) ───
+  fastify.get('/legislation-packs/:country', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { country } = request.params as { country: string }
+      const pack = Object.values(LEGISLATION_PACKS).find(p => p.countryCode === country.toUpperCase())
+      if (!pack) return reply.status(404).send({ error: 'Pays non pris en charge' })
+      const o = await pool.query<{ overrides: unknown; status_override: string | null; last_verified_at: string | null; verified_by: string | null; notes: string | null }>(
+        `SELECT overrides, status_override, last_verified_at, verified_by, notes FROM platform.legislation_pack_overrides WHERE country_code = $1 LIMIT 1`,
+        [country.toUpperCase()],
+      ).catch(() => ({ rows: [] as Array<{ overrides: unknown; status_override: string | null; last_verified_at: string | null; verified_by: string | null; notes: string | null }> }))
+      const row = o.rows[0]
+      const eff = applyPackOverride(pack, row ? { overrides: row.overrides as Record<string, unknown>, status_override: row.status_override } : null)
+      return reply.send({ data: { code: pack, effective: eff, override: row ?? null, name: COUNTRY_LABELS[pack.countryCode] ?? pack.name } })
+    },
+  })
+
+  // ── PATCH /platform/legislation-packs/:country — surcharge manuelle ────────
+  fastify.patch('/legislation-packs/:country', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { country } = request.params as { country: string }
+      const cc = country.toUpperCase()
+      if (!Object.values(LEGISLATION_PACKS).some(p => p.countryCode === cc)) {
+        return reply.status(404).send({ error: 'Pays non pris en charge' })
+      }
+      const schema = z.object({
+        overrides: z.record(z.string(), z.unknown()).optional(),
+        statusOverride: z.enum(['active', 'stub']).nullable().optional(),
+        notes: z.string().max(2000).nullable().optional(),
+      }).strict()
+      const parsed = schema.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      const b = parsed.data
+      await pool.query(
+        `INSERT INTO platform.legislation_pack_overrides (country_code, overrides, status_override, notes, last_verified_at, verified_by, updated_at)
+         VALUES ($1, COALESCE($2::jsonb,'{}'), $3, $4, now(), $5, now())
+         ON CONFLICT (country_code) DO UPDATE SET
+           overrides = COALESCE($2::jsonb, platform.legislation_pack_overrides.overrides),
+           status_override = $3, notes = COALESCE($4, platform.legislation_pack_overrides.notes),
+           last_verified_at = now(), verified_by = $5, updated_at = now()`,
+        [cc, b.overrides ? JSON.stringify(b.overrides) : null, b.statusOverride ?? null, b.notes ?? null, request.user.email],
+      )
+      auditLogPlatform(request.user.sub, 'legislation.override_updated', 'legislation_pack', cc, { ...b }, request.ip)
+      return reply.send({ data: { ok: true } })
+    },
+  })
+
+  // ── GET /platform/legislation-proposals — propositions de la tâche planifiée ─
+  fastify.get('/legislation-proposals', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { status = 'pending' } = request.query as { status?: string }
+      const r = await pool.query(
+        `SELECT id, country_code, summary, changes, source, status, created_at, reviewed_by, reviewed_at
+           FROM platform.legislation_proposals WHERE status = $1 ORDER BY created_at DESC LIMIT 200`,
+        [status],
+      ).catch(() => ({ rows: [] }))
+      return reply.send({ data: r.rows })
+    },
+  })
+
+  // ── POST /platform/legislation-proposals — créer une proposition ───────────
+  // Utilisé par la tâche planifiée (recherche de nouveautés légales) ET en manuel.
+  fastify.post('/legislation-proposals', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const schema = z.object({
+        countryCode: z.string().min(2).max(3),
+        summary: z.string().min(1).max(2000),
+        changes: z.record(z.string(), z.unknown()).optional(),
+        source: z.string().max(1000).nullable().optional(),
+      }).strict()
+      const parsed = schema.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      const b = parsed.data
+      const ins = await pool.query<{ id: string }>(
+        `INSERT INTO platform.legislation_proposals (country_code, summary, changes, source)
+         VALUES ($1, $2, COALESCE($3::jsonb,'{}'), $4) RETURNING id`,
+        [b.countryCode.toUpperCase(), b.summary, b.changes ? JSON.stringify(b.changes) : null, b.source ?? null],
+      )
+      return reply.status(201).send({ data: { id: ins.rows[0]!.id } })
+    },
+  })
+
+  // ── POST /platform/legislation-proposals/:id/approve — applique + valide ───
+  fastify.post('/legislation-proposals/:id/approve', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const p = await pool.query<{ country_code: string; changes: unknown; status: string }>(
+        `SELECT country_code, changes, status FROM platform.legislation_proposals WHERE id = $1 LIMIT 1`, [id],
+      )
+      const prop = p.rows[0]
+      if (!prop) return reply.status(404).send({ error: 'Proposition introuvable' })
+      if (prop.status !== 'pending') return reply.status(409).send({ error: `Proposition déjà ${prop.status}` })
+      // Applique les changements { champ: { from, to } } → surcharge { champ: to }
+      const ch = (prop.changes && typeof prop.changes === 'object' ? prop.changes as Record<string, { to?: unknown }> : {})
+      const overrideValues: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(ch)) if (v && typeof v === 'object' && 'to' in v) overrideValues[k] = v.to
+      await pool.query(
+        `INSERT INTO platform.legislation_pack_overrides (country_code, overrides, last_verified_at, verified_by, updated_at)
+         VALUES ($1, $2::jsonb, now(), $3, now())
+         ON CONFLICT (country_code) DO UPDATE SET
+           overrides = platform.legislation_pack_overrides.overrides || $2::jsonb,
+           last_verified_at = now(), verified_by = $3, updated_at = now()`,
+        [prop.country_code, JSON.stringify(overrideValues), request.user.email],
+      )
+      await pool.query(`UPDATE platform.legislation_proposals SET status = 'approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1`, [id, request.user.email])
+      auditLogPlatform(request.user.sub, 'legislation.proposal_approved', 'legislation_proposal', id, { country: prop.country_code, applied: overrideValues }, request.ip)
+      return reply.send({ data: { ok: true } })
+    },
+  })
+
+  // ── POST /platform/legislation-proposals/:id/reject ────────────────────────
+  fastify.post('/legislation-proposals/:id/reject', {
+    preHandler: [fastify.authorize('super_admin')],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const r = await pool.query(`UPDATE platform.legislation_proposals SET status = 'rejected', reviewed_by = $2, reviewed_at = now() WHERE id = $1 AND status = 'pending'`, [id, request.user.email])
+      if (r.rowCount === 0) return reply.status(404).send({ error: 'Proposition introuvable ou déjà traitée' })
+      auditLogPlatform(request.user.sub, 'legislation.proposal_rejected', 'legislation_proposal', id, {}, request.ip)
+      return reply.send({ data: { ok: true } })
     },
   })
 

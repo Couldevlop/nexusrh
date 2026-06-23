@@ -6,6 +6,7 @@ import { processPayrollJob } from './jobs/payroll.js'
 import { processCnpsDeclarationJob } from './jobs/cnps.js'
 import { processAiScoringJob } from './jobs/ai-scoring.js'
 import { processLegalWatchJob, type LegalWatchPayload } from './jobs/legal-watch.js'
+import { processLegislationWatchJob } from './jobs/legislation-watch.js'
 
 type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
@@ -92,6 +93,19 @@ async function scheduleLegalWatchCron(): Promise<void> {
   logger.info({ sources: sources.length, pattern }, 'legal-watch: cron programmé')
 }
 
+// Veille HEBDOMADAIRE des packs législatifs paie : crée des propositions de revue
+// (validation humaine super_admin). Par défaut dimanche ~00h07 (Africa/Abidjan).
+async function scheduleLegislationWatchCron(): Promise<void> {
+  const pattern = process.env['LEGISLATION_WATCH_CRON'] ?? '7 0 * * 0'
+  const q = new Queue('legislation-watch', { connection })
+  await q.upsertJobScheduler(
+    'weekly-legislation-watch',
+    { pattern, tz: 'Africa/Abidjan' },
+    { name: 'review', data: {}, opts: { attempts: 2, backoff: { type: 'exponential', delay: 60_000 } } },
+  )
+  logger.info({ pattern }, 'legislation-watch: cron hebdomadaire programmé')
+}
+
 async function start(): Promise<void> {
   logger.info('NexusRH CI Worker starting...')
 
@@ -100,11 +114,13 @@ async function start(): Promise<void> {
   workers.push(createWorker('cnps-declaration', processCnpsDeclarationJob as JobHandler))
   workers.push(createWorker('ai-scoring-ci', processAiScoringJob as JobHandler))
   workers.push(createWorker('legal-watch', processLegalWatchJob as JobHandler))
+  workers.push(createWorker('legislation-watch', processLegislationWatchJob as JobHandler))
 
   await scheduleLegalWatchCron()
+  await scheduleLegislationWatchCron()
 
   logger.info(
-    { queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci', 'legal-watch'] },
+    { queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci', 'legal-watch', 'legislation-watch'] },
     'Workers started',
   )
 }

@@ -300,6 +300,36 @@ export async function createPlatformSchema(): Promise<void> {
     )
   `)
 
+  // Gouvernance des packs législatifs (hybride code↔DB). Le code reste la
+  // référence versionnée ; ces tables portent les SURCHARGES validées par le
+  // super_admin et les PROPOSITIONS de la tâche planifiée (validation humaine).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.legislation_pack_overrides (
+      country_code     varchar(3) PRIMARY KEY,
+      overrides        jsonb NOT NULL DEFAULT '{}',
+      status_override  varchar(10),                 -- null=statut du code, sinon 'active'/'stub'
+      last_verified_at timestamptz,
+      verified_by      varchar(255),
+      notes            text,
+      updated_at       timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.legislation_proposals (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      country_code varchar(3) NOT NULL,
+      summary      text NOT NULL,                   -- résumé lisible du changement proposé
+      changes      jsonb NOT NULL DEFAULT '{}',     -- { champ: { from, to } }
+      source       text,                            -- URL/source de la proposition
+      status       varchar(12) NOT NULL DEFAULT 'pending',  -- pending|approved|rejected
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      reviewed_by  varchar(255),
+      reviewed_at  timestamptz
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_legis_proposals_status
+                    ON platform.legislation_proposals(status, created_at DESC)`)
+
   // ── IA : autorisation d'usage de la clé plateforme par tenant (migration lazy) ─
   // true par défaut = comportement actuel (le tenant sans sa propre clé bénéficie
   // du repli sur la clé générale du super_admin). false = ce tenant n'a accès à
