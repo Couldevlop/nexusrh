@@ -82,21 +82,16 @@ describe('LegislationPack — packs stub : refus de calcul', () => {
 })
 
 describe('LegislationPack — inventaire complet', () => {
-  it('exactement 9 packs déclarés', () => {
-    expect(Object.keys(LEGISLATION_PACKS)).toHaveLength(9)
+  it('exactement 15 packs déclarés (UEMOA + CEMAC + Nigeria)', () => {
+    expect(Object.keys(LEGISLATION_PACKS)).toHaveLength(15)
   })
 
-  it('les pays UEMOA + Tchad + Nigeria sont présents', () => {
+  it('les pays UEMOA + CEMAC + Nigeria sont présents', () => {
     const codes = Object.keys(LEGISLATION_PACKS)
-    expect(codes).toContain('CIV-2024')
-    expect(codes).toContain('BEN-2024')
-    expect(codes).toContain('TGO-2024')
-    expect(codes).toContain('BFA-2024')
-    expect(codes).toContain('SEN-2024')
-    expect(codes).toContain('MLI-2024')
-    expect(codes).toContain('NER-2024')
-    expect(codes).toContain('TCD-2024')
-    expect(codes).toContain('NGA-2024')
+    for (const c of [
+      'CIV-2024', 'BEN-2024', 'TGO-2024', 'BFA-2024', 'SEN-2024', 'MLI-2024', 'NER-2024',
+      'TCD-2024', 'NGA-2024', 'CMR-2024', 'GAB-2024', 'COG-2024', 'CAF-2024', 'GNQ-2024', 'GNB-2024',
+    ]) expect(codes).toContain(c)
   })
 
   it('CIV est le seul pack actif (les autres sont stub)', () => {
@@ -122,7 +117,7 @@ describe('LegislationPack — inventaire complet', () => {
 
   it('listLegislationPacks expose les métadonnées (sans tranches/credits)', () => {
     const list = listLegislationPacks()
-    expect(list).toHaveLength(9)
+    expect(list).toHaveLength(15)
     const civ = list.find(p => p.code === 'CIV-2024')!
     expect(civ).toBeDefined()
     expect(civ.status).toBe('active')
@@ -165,9 +160,9 @@ describe('LegislationPack — résolution par PAYS (paramétrage tenant)', () =>
     expect(isSupportedCountry(null)).toBe(false)
   })
 
-  it('listCountries expose 9 pays, pack actif (CI) en tête', () => {
+  it('listCountries expose 15 pays, pack actif (CI) en tête', () => {
     const list = listCountries()
-    expect(list).toHaveLength(9)
+    expect(list).toHaveLength(15)
     expect(list[0]!.countryCode).toBe('CIV')
     expect(list[0]!.status).toBe('active')
     // un seul actif
