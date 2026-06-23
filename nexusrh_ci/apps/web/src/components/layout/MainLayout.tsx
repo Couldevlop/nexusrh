@@ -6,6 +6,7 @@ import AiChat from '@/components/ai/AiChat'
 import { AlertTriangle, Menu } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
+import { isModuleEnabled } from '@/lib/modules'
 
 /** Route → clé du namespace `nav` (libellés traduits FR/EN). */
 const ROUTE_LABEL_KEYS: Record<string, string> = {
@@ -64,7 +65,8 @@ export default function MainLayout() {
           </main>
         </div>
 
-        <AiChat />
+        {/* PLT-023 — l'assistant IA flottant est masqué si le module est désactivé pour le tenant */}
+        {isModuleEnabled(tenantConfig, 'ai') && <AiChat />}
       </div>
     </div>
   )

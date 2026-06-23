@@ -1088,15 +1088,34 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('super_admin')],
     schema: { tags: ['platform'], summary: 'KPIs plateforme' },
     handler: async (_request, reply) => {
+      // PLT-022 — MRR estimé (FCFA) : tarifs INDICATIFS par plan (cf. CLAUDE.md).
+      // Seuls les tenants ACTIFS comptent ; trial/enterprise/public = 0 (devis).
+      // business = tarif par employé × effectif (proxy: max_employees).
+      const T_STARTER = 65000, T_BUSINESS_PER_EMP = 10000
       const stats = await pool.query(`
         SELECT
           count(*) FILTER (WHERE status = 'active') AS active_count,
           count(*) FILTER (WHERE status = 'trial')  AS trial_count,
           count(*) FILTER (WHERE status = 'suspended') AS suspended_count,
-          count(*) AS total_count
+          count(*) AS total_count,
+          COALESCE(SUM(CASE
+            WHEN status <> 'active' THEN 0
+            WHEN plan_type = 'starter'  THEN ${T_STARTER}
+            WHEN plan_type = 'business' THEN ${T_BUSINESS_PER_EMP} * COALESCE(max_employees, 0)
+            ELSE 0 END), 0) AS estimated_mrr
         FROM platform.tenants
       `)
       const row = stats.rows[0]
+      // PLT-021 — croissance : nb de tenants créés par mois sur 12 mois glissants.
+      const growth = await pool.query<{ period: string; count: string }>(`
+        SELECT to_char(m.month, 'YYYY-MM') AS period, count(t.id) AS count
+          FROM generate_series(
+                 date_trunc('month', now()) - interval '11 months',
+                 date_trunc('month', now()),
+                 interval '1 month') AS m(month)
+          LEFT JOIN platform.tenants t ON date_trunc('month', t.created_at) = m.month
+         GROUP BY m.month ORDER BY m.month ASC
+      `).catch(() => ({ rows: [] as { period: string; count: string }[] }))
       // PLT-019 — trials expirant sous 7 jours (alerte dashboard super_admin).
       const expiring = await pool.query<{ id: string; name: string; slug: string; trial_ends_at: string }>(`
         SELECT id, name, slug, trial_ends_at
@@ -1111,9 +1130,11 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           trialCount:     parseInt(row?.trial_count ?? '0'),
           suspendedCount: parseInt(row?.suspended_count ?? '0'),
           totalCount:     parseInt(row?.total_count ?? '0'),
+          estimatedMrr:   parseInt(row?.estimated_mrr ?? '0'),
           expiringTrials: expiring.rows.map(r => ({
             id: r.id, name: r.name, slug: r.slug, trialEndsAt: r.trial_ends_at,
           })),
+          growth: growth.rows.map(r => ({ period: r.period, count: parseInt(r.count, 10) })),
         },
       })
     },
