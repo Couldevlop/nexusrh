@@ -51,6 +51,14 @@ vi.mock('../../services/email.js', () => ({
 
 vi.mock('../../services/legislation-packs.js', () => ({
   listLegislationPacks: vi.fn().mockReturnValue([{ code: 'CIV-2024', status: 'active' }]),
+  LEGISLATION_PACKS: {
+    'CIV-2024': {
+      code: 'CIV-2024', countryCode: 'CIV', name: 'Côte d\'Ivoire', currency: 'XOF', status: 'active',
+      smigMensuel: 75000, labelCaisseSociale: 'CNPS', labelImpotSalaire: 'ITS',
+    },
+  },
+  COUNTRY_LABELS: { CIV: 'Côte d\'Ivoire' },
+  applyPackOverride: (base: unknown) => base,
 }))
 
 const { invalidateConfigMock } = vi.hoisted(() => ({ invalidateConfigMock: vi.fn() }))
