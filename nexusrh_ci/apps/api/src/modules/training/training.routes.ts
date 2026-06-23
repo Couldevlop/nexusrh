@@ -13,7 +13,7 @@ const createTrainingSchema = z.object({
   description:        z.string().max(5000).optional(),
   duration:           z.number().int().min(0).max(10_000).optional(),
   duration_unit:      z.enum(['hours', 'days', 'weeks', 'months']).optional(),
-  format:             z.enum(['presentiel', 'distanciel', 'hybride']).optional(),
+  format:             z.enum(['presentiel', 'distanciel', 'hybride', 'e-learning']).optional(),
   category:           z.string().max(100).optional(),
   is_fdfp_eligible:   z.boolean().optional(),
   fdfp_code:          z.string().max(50).optional(),

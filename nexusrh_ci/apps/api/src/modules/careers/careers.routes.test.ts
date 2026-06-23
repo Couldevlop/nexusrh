@@ -220,6 +220,21 @@ describe('POST /careers/evaluations — Zod + IDOR manager (OWASP A01 + A03)', (
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('career.evaluation_created')
   })
+
+  it('accepte year en chaîne et type « trial_end » de l\'UI (régression mismatch front↔back)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'eval-2' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'ev-2', employee_id: EMP_A }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/careers/evaluations',
+      headers: { authorization: `Bearer ${token}` },
+      // year envoyé en chaîne par le formulaire (coerce), type fin d'essai
+      payload: { employee_id: EMP_A, type: 'trial_end', global_score: 80, year: '2026' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
 })
 
 describe('PATCH /careers/evaluations/:id — IDOR + audit_log', () => {

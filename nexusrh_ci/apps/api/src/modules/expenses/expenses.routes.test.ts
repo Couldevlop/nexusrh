@@ -114,6 +114,21 @@ describe('POST /expenses — Zod (OWASP A03)', () => {
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('expense.created')
   })
+
+  it('accepte la catégorie « materiel » proposée par l\'UI (régression mismatch front↔back)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'r-2', total_amount: 5000 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Achat', lines: [{ description: 'Clavier', date: '2026-01-15', amount: 5000, category: 'materiel' }] },
+    })
+    expect(res.statusCode).toBe(201)
+  })
 })
 
 describe('PATCH /expenses/:id/approve — RBAC manager équipe + audit (OWASP A01 + A09)', () => {

@@ -58,7 +58,8 @@ const patchTenantSchema = z.object({
   cnps_number:     z.string().regex(CNPS_NUMBER_RE).optional().nullable(),
   dgi_number:      z.string().regex(DGI_NUMBER_RE).optional().nullable(),
   rccm:            z.string().regex(RCCM_RE).optional().nullable(),
-  at_rate:         z.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+  // coerce : le formulaire « Général » envoie le taux AT en chaîne ("0.03").
+  at_rate:         z.coerce.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
   // OWASP A07 — l'admin tenant peut DURCIR la politique MFA de son tenant.
   // L'effet ne peut qu'imposer le MFA (jamais l'assouplir sous la politique
   // globale plateforme) : cf. effectiveTenantMfaRequired côté login.
@@ -77,9 +78,12 @@ const createLegalEntitySchema = z.object({
   dgi_number:            z.string().regex(DGI_NUMBER_RE).optional().nullable(),
   address:               z.string().max(500).optional().nullable(),
   city:                  z.string().max(100).optional(),
-  legal_form:            z.enum(['SARL', 'SA', 'SAS', 'EURL', 'SCI', 'SCOP', 'GIE', 'EI', 'AUTRE']).optional(),
+  // Inclut les formes proposées par l'UI (SASU/SNC/Association/ONG/Établissement
+  // public) en plus des formes historiques — sinon ces choix renvoyaient un 400.
+  legal_form:            z.enum(['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'EURL', 'SCI', 'SCOP', 'GIE', 'EI', 'Association', 'ONG', 'Établissement public', 'AUTRE']).optional(),
   collective_agreement:  z.string().max(200).optional().nullable(),
-  at_rate:               z.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+  // coerce : le formulaire envoie le taux AT en chaîne.
+  at_rate:               z.coerce.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
   country_code:          z.string().regex(/^[A-Z]{2,3}$/).optional(),
   legislation_pack_code: z.string().max(50).optional().nullable(),
 }).strict()

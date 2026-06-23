@@ -27,8 +27,8 @@
   "ruleTypes": {
     "earning": "Earning",
     "deduction": "Deduction",
-    "employee_contrib": "Employee contribution",
-    "employer_contrib": "Employer contribution"
+    "employee_contribution": "Employee contribution",
+    "employer_contribution": "Employer contribution"
   },
   "legislation": {
     "intro": "Pick the tenant's country: the matching collective agreement, minimum wage, tax brackets and social contributions are installed automatically as the payroll configuration.",
