@@ -88,7 +88,8 @@
     "validation": {
       "typeRequired": "Type required",
       "startRequired": "Start date required",
-      "endRequired": "End date required"
+      "endRequired": "End date required",
+      "endBeforeStart": "End date must be on or after start date"
     }
   },
   "payslips": {

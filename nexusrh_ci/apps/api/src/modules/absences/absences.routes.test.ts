@@ -105,6 +105,21 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('ABS-003 — refuse une date de début postérieure à la fin (400, aucune création)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({
+      method: 'POST', url: '/absences',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        absenceTypeId: '11111111-1111-1111-1111-111111111111',
+        startDate: '2026-01-10', endDate: '2026-01-05', // début > fin
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    // aucun INSERT ne doit avoir été tenté
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('absences'))).toBe(false)
+  })
+
   it('accepte un body valide et persiste, logue audit_log absence.created', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', end_date: '2026-01-05' }] }) // INSERT
