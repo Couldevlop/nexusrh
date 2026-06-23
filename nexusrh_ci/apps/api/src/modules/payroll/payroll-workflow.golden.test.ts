@@ -202,12 +202,12 @@ describe('Workflow paie multi-pays end-to-end (Palier 3)', () => {
     expect(body.consolidated.sumIts).toBe(8_000)      // 5k + 3k
   })
 
-  it('Étape 7 — Pack stub (BEN-2024) refusé à la soumission (422 anti-fraude)', async () => {
+  it('Étape 7 — Pack actif (BEN-2024) passe la garde stub à la soumission', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: CHILD_SN, month: '2024-12', status: 'sent_to_sites',
         raf_user_id: RAF_SN, parent_period_id: PARENT_ID,
-        legal_entity_id: LE_SN, legislation_pack_code: 'BEN-2024',  // stub
+        legal_entity_id: LE_SN, legislation_pack_code: 'BEN-2024',  // désormais ACTIF
       }] })
       .mockResolvedValueOnce({ rows: [{ at_rate: '0.030', name: 'Filiale BEN' }] })
 
@@ -216,8 +216,9 @@ describe('Workflow paie multi-pays end-to-end (Palier 3)', () => {
       method: 'POST', url: `/payroll-workflow/periods/${CHILD_SN}/submit-by-raf`,
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(res.statusCode).toBe(422)
-    expect(JSON.parse(res.body).error).toContain('stub')
+    // BEN-2024 est maintenant un pack ACTIF (valeurs sourcées) : il n'est plus
+    // refusé pour cause de stub — la garde-fou ne s'applique qu'aux packs stub.
+    expect(JSON.parse(res.body).error ?? '').not.toContain('stub')
   })
 })
 

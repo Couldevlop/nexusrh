@@ -290,7 +290,7 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
     expect(JSON.parse(res.body).error).toContain('pas encore à jour')
   })
 
-  it('pack législatif en mode stub → 422', async () => {
+  it('pack actif (BEN-2024) n\'est plus refusé pour stub', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [periodRow({ legislation_pack_code: 'BEN-2024' })] })
       .mockResolvedValueOnce({ rows: [{ at_rate: '0.020', name: 'Filiale Bénin' }] })
@@ -298,9 +298,8 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
       method: 'POST', url: `/payroll-workflow/periods/${CHILD}/submit-by-raf`,
       headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
     })
-    // BEN-2024 est un pack stub → refus de calcul
-    expect(res.statusCode).toBe(422)
-    expect(JSON.parse(res.body).error).toContain('stub')
+    // BEN-2024 est désormais ACTIF (valeurs sourcées) : la garde stub ne le bloque plus.
+    expect(JSON.parse(res.body).error ?? '').not.toContain('stub')
   })
 
   it('génère les bulletins de la filiale (1 employé, at_rate null → défaut 2%)', async () => {

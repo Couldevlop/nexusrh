@@ -81,7 +81,7 @@ describe('GET /settings/legislation', () => {
     expect(data.available).toHaveLength(15)
   })
 
-  it('un tenant configuré sur le Sénégal voit le pack SEN (signalé non utilisable)', async () => {
+  it('un tenant configuré sur le Sénégal voit le pack SEN (utilisable)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ default_country_code: 'SEN' }] })
     const res = await app.inject({
       method: 'GET', url: '/settings/legislation',
@@ -90,7 +90,7 @@ describe('GET /settings/legislation', () => {
     expect(res.statusCode).toBe(200)
     const { data } = res.json()
     expect(data.countryCode).toBe('SEN')
-    expect(data.usable).toBe(false)       // stub → preview, calcul paie bloqué
+    expect(data.usable).toBe(true)        // actif → calcul paie autorisé
     expect(data.pack.currency).toBe('XOF')
   })
 

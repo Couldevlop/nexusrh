@@ -20,11 +20,11 @@ describe('buildLegislationConfig — paramétrage légal par pays', () => {
     expect(v.countryLabel).toBe('Côte d\'Ivoire')
   })
 
-  it('SEN : pack pris en charge mais NON utilisable (stub) — garde-fou paie', () => {
+  it('SEN : pack pris en charge et utilisable (actif)', () => {
     const v = buildLegislationConfig('SEN')
     expect(v.countryCode).toBe('SEN')
     expect(v.supported).toBe(true)
-    expect(v.usable).toBe(false)           // stub → preview seulement
+    expect(v.usable).toBe(true)            // actif → calcul autorisé
     expect(v.pack).toBe(SEN_2024)
   })
 

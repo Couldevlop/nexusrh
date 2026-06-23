@@ -230,7 +230,7 @@ export const BEN_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'monthly',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 52_000,                       // CLEISS — depuis 01/01/2023
   plafondCnpsRetraite: 0,                    // pas de plafond CNSS Bénin
   plafondCnpsAtPf: 0,
@@ -285,7 +285,7 @@ export const TGO_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'annual',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 52_500,                       // CLEISS Togo 2023
   plafondCnpsRetraite: 0,
   plafondCnpsAtPf: 0,
@@ -342,7 +342,7 @@ export const BFA_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'monthly',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 37_500,
   plafondCnpsRetraite: 600_000,
   plafondCnpsAtPf: 600_000,
@@ -386,7 +386,7 @@ export const SEN_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'monthly',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 64_710,
   plafondCnpsRetraite: 432_000,
   plafondCnpsAtPf: 63_000,
@@ -433,7 +433,7 @@ export const MLI_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'monthly',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 40_000,
   plafondCnpsRetraite: 0,
   plafondCnpsAtPf: 0,
@@ -473,7 +473,7 @@ export const NER_2024: LegislationPack = {
   year: 2024,
   currency: 'XOF',
   bracketScale: 'monthly',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 30_047,
   plafondCnpsRetraite: 0,
   plafondCnpsAtPf: 0,
@@ -517,7 +517,7 @@ export const TCD_2024: LegislationPack = {
   year: 2024,
   currency: 'XAF',
   bracketScale: 'annual',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 60_000,                       // wageindicator.org / Loi 09.004
   plafondCnpsRetraite: 500_000,              // cnps-tchad.com — plafond uniforme
   plafondCnpsAtPf: 500_000,
@@ -577,7 +577,7 @@ export const NGA_2024: LegislationPack = {
   year: 2024,
   currency: 'NGN',
   bracketScale: 'annual',
-  status: 'stub',
+  status: 'active',
   smigMensuel: 70_000,                       // 70 000 NGN/mois (eff. 1er mai 2024)
   plafondCnpsRetraite: 0,
   plafondCnpsAtPf: 0,
@@ -637,7 +637,7 @@ export const NGA_2024: LegislationPack = {
 // Cameroun — CNPS + IRPP 2024 (CEMAC, XAF)
 export const CMR_2024: LegislationPack = {
   code: 'CMR-2024', name: 'Cameroun — CNPS + IRPP 2024', countryCode: 'CMR', year: 2024,
-  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  currency: 'XAF', bracketScale: 'annual', status: 'active',
   smigMensuel: 60_000,
   plafondCnpsRetraite: 750_000, plafondCnpsAtPf: 750_000,
   tauxCotisationRetraiteSalarie: 0.042, tauxCotisationRetraitePatronal: 0.042,
@@ -667,7 +667,7 @@ export const CMR_2024: LegislationPack = {
 // Gabon — CNSS + CNAMGS + IRPP 2024 (CEMAC, XAF)
 export const GAB_2024: LegislationPack = {
   code: 'GAB-2024', name: 'Gabon — CNSS + CNAMGS + IRPP 2024', countryCode: 'GAB', year: 2024,
-  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  currency: 'XAF', bracketScale: 'annual', status: 'active',
   smigMensuel: 150_000,
   plafondCnpsRetraite: 1_500_000, plafondCnpsAtPf: 1_500_000,
   tauxCotisationRetraiteSalarie: 0.045, tauxCotisationRetraitePatronal: 0.05,
@@ -701,7 +701,7 @@ export const GAB_2024: LegislationPack = {
 // Congo (Brazzaville) — CNSS + IRPP 2024 (CEMAC, XAF)
 export const COG_2024: LegislationPack = {
   code: 'COG-2024', name: 'Congo (Brazzaville) — CNSS + IRPP 2024', countryCode: 'COG', year: 2024,
-  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  currency: 'XAF', bracketScale: 'annual', status: 'active',
   smigMensuel: 90_000,
   plafondCnpsRetraite: 1_200_000, plafondCnpsAtPf: 1_200_000,
   tauxCotisationRetraiteSalarie: 0.04, tauxCotisationRetraitePatronal: 0.08,
@@ -731,7 +731,7 @@ export const COG_2024: LegislationPack = {
 // Centrafrique — CNSS + IRPP 2024 (CEMAC, XAF) — ESTIMATION (données rares)
 export const CAF_2024: LegislationPack = {
   code: 'CAF-2024', name: 'Centrafrique — CNSS + IRPP 2024 (estimation)', countryCode: 'CAF', year: 2024,
-  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  currency: 'XAF', bracketScale: 'annual', status: 'active',
   smigMensuel: 35_000,
   plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
   tauxCotisationRetraiteSalarie: 0.03, tauxCotisationRetraitePatronal: 0.07,
@@ -760,7 +760,7 @@ export const CAF_2024: LegislationPack = {
 // Guinée équatoriale — INSESO + IRPF 2024 (CEMAC, XAF, doc espagnole)
 export const GNQ_2024: LegislationPack = {
   code: 'GNQ-2024', name: 'Guinée équatoriale — INSESO + IRPF 2024', countryCode: 'GNQ', year: 2024,
-  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  currency: 'XAF', bracketScale: 'annual', status: 'active',
   smigMensuel: 128_000,
   plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
   tauxCotisationRetraiteSalarie: 0.05, tauxCotisationRetraitePatronal: 0.225,
@@ -790,7 +790,7 @@ export const GNQ_2024: LegislationPack = {
 // Guinée-Bissau — INSS + Imposto Profissional 2024 (UEMOA lusophone, XOF)
 export const GNB_2024: LegislationPack = {
   code: 'GNB-2024', name: 'Guinée-Bissau — INSS + Imposto Profissional 2024', countryCode: 'GNB', year: 2024,
-  currency: 'XOF', bracketScale: 'monthly', status: 'stub',
+  currency: 'XOF', bracketScale: 'monthly', status: 'active',
   smigMensuel: 50_000,
   plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
   tauxCotisationRetraiteSalarie: 0.08, tauxCotisationRetraitePatronal: 0.14,
