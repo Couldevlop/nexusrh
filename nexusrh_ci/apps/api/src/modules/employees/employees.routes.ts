@@ -7,6 +7,8 @@ import { describeDbError } from '../../utils/db-error.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
+import { encodeField } from '../sage/sage.service.js'
+import { config } from '../../config.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -547,6 +549,85 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       return reply.send({ data: res.rows })
+    },
+  })
+
+  // EMP-014 — GET /employees/export.csv : export de la liste (BOM UTF-8, anti-injection
+  // CSV, salaires FCFA ENTIERS). NNI/IBAN exclus (RGPD : données chiffrées sensibles).
+  fastify.get('/export.csv', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    schema: { tags: ['employees'], summary: 'Export CSV de la liste des employés' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const res = await pool.query(
+        `SELECT e.employee_number, e.last_name, e.first_name, e.email, e.phone,
+                e.job_title, e.professional_category, d.name AS department,
+                e.contract_type, e.hire_date, e.cnps_number,
+                e.base_salary, e.currency, e.is_active
+         FROM "${schema}".employees e
+         LEFT JOIN "${schema}".departments d ON d.id = e.department_id
+         WHERE e.deleted_at IS NULL
+         ORDER BY e.last_name, e.first_name`,
+      )
+      const headers = ['Matricule', 'Nom', 'Prénom', 'Email', 'Téléphone', 'Poste', 'Catégorie',
+        'Département', 'Type contrat', 'Date embauche', 'N° CNPS', 'Salaire (FCFA)', 'Devise', 'Actif']
+      const enc = (v: unknown) => encodeField(v, ';')
+      const lines = [headers.map(enc).join(';')]
+      for (const r of res.rows) {
+        lines.push([
+          r.employee_number, r.last_name, r.first_name, r.email, r.phone,
+          r.job_title, r.professional_category, r.department, r.contract_type,
+          r.hire_date, r.cnps_number,
+          r.base_salary != null ? Math.round(Number(r.base_salary)) : '', // FCFA entier
+          r.currency ?? 'XOF', r.is_active ? 'Oui' : 'Non',
+        ].map(enc).join(';'))
+      }
+      auditLogEmployee(schema, request.user.sub, 'employees.exported', '', { count: res.rowCount }, request.ip ?? null)
+      reply.header('Content-Type', 'text/csv; charset=utf-8')
+      reply.header('Content-Disposition', 'attachment; filename="employes.csv"')
+      return reply.send('﻿' + lines.join('\r\n'))
+    },
+  })
+
+  // EMP-015 — POST /employees/:id/photo : upload de la photo de profil (multipart).
+  // Réutilise le store image générique (platform.brand_assets) servi par /public/brand/:id.
+  // RBAC : RH + l'employé sur SON propre dossier.
+  fastify.post('/:id/photo', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'employee')],
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    schema: { tags: ['employees'], summary: 'Uploader la photo de profil d\'un employé' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      if (request.user.role === 'employee' && request.user.employeeId !== id) {
+        return reply.status(403).send({ error: 'Vous ne pouvez modifier que votre propre profil' })
+      }
+      const schema = request.user.schemaName
+      const file = await request.file()
+      if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
+      const mime = (file.mimetype || '').toLowerCase()
+      // OWASP A03 — SVG exclu (XSS stocké) ; allowlist stricte.
+      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mime)) {
+        return reply.status(400).send({ error: 'Format non autorisé. Accepté : PNG, JPEG, WEBP, GIF.' })
+      }
+      const buf = await file.toBuffer()
+      if (buf.byteLength > 2 * 1024 * 1024) {
+        return reply.status(400).send({ error: 'Image trop volumineuse (max 2 MB).' })
+      }
+      try {
+        const ins = await pool.query<{ id: string }>(
+          `INSERT INTO platform.brand_assets (mime, bytes) VALUES ($1, $2) RETURNING id`, [mime, buf])
+        const url = `${config.apiUrl}/public/brand/${ins.rows[0]?.id}`
+        const upd = await pool.query(
+          `UPDATE "${schema}".employees SET profile_photo_url = $1, updated_at = now()
+           WHERE id = $2 AND deleted_at IS NULL RETURNING id`, [url, id])
+        if (!upd.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+        auditLogEmployee(schema, request.user.sub, 'employee.photo_updated', id, {}, request.ip ?? null)
+        return reply.status(201).send({ data: { profilePhotoUrl: url } })
+      } catch (err) {
+        request.log.error({ err, schema, id }, 'Échec upload photo employé')
+        return reply.status(500).send({ error: "Impossible d'enregistrer la photo. Réessayez." })
+      }
     },
   })
 }
