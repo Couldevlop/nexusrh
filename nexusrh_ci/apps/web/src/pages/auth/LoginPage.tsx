@@ -1,7 +1,7 @@
 import openlabLogo from "@/assets/OPENLAB.png";
 import nexusrhLogo from "@/assets/NexusRH.png";
 import nexusrhLogoDark from "@/assets/NexusRH-dark.png";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import { useTranslation, Trans } from "react-i18next";
 import { api } from "@/lib/api";
 import {
   useAuthStore,
+  applyTenantTheme,
   type AuthUser,
   type TenantConfig,
   type AgencyConfig,
@@ -139,6 +140,32 @@ export default function LoginPage() {
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
+  // PLT-020 — branding tenant résolu AVANT login (couleur + logo), depuis
+  // ?tenant=slug dans l'URL (ou sous-domaine si présent). Endpoint public.
+  const [brand, setBrand] = useState<{ name: string; logoUrl: string | null } | null>(null);
+  useEffect(() => {
+    let slug = "";
+    try {
+      slug = new URLSearchParams(window.location.search).get("tenant") ?? "";
+      if (!slug) {
+        const host = window.location.hostname;
+        const sub = host.split(".")[0];
+        if (host.includes(".") && sub && !["www", "api", "app", "localhost", "nexusrh", "127"].includes(sub)) {
+          slug = sub;
+        }
+      }
+    } catch { /* noop */ }
+    if (!slug || !/^[a-z0-9-]{1,50}$/.test(slug)) return;
+    api.get(`/public/brand/by-slug/${slug}`)
+      .then((r) => {
+        const b = r.data?.data;
+        if (!b) return;
+        applyTenantTheme({ primaryColor: b.primaryColor, secondaryColor: b.secondaryColor } as TenantConfig);
+        setBrand({ name: b.name, logoUrl: b.logoUrl });
+      })
+      .catch(() => { /* slug inconnu → thème par défaut, pas d'erreur visible */ });
+  }, []);
 
   // ── Formulaire login ──
 
@@ -379,6 +406,23 @@ export default function LoginPage() {
               {/* Variante sombre du logo (sans fond) — lisible sur surface claire */}
               <img src={nexusrhLogoDark} alt="NexusRH CI" className="h-9 w-auto object-contain" />
             </div>
+            {/* PLT-020 — branding du tenant ciblé, affiché AVANT login */}
+            {brand && (
+              <div className="mb-6 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                {brand.logoUrl ? (
+                  <img src={brand.logoUrl} alt={brand.name} className="h-9 w-9 rounded-lg object-contain" />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold text-white"
+                    style={{ backgroundColor: "hsl(var(--primary))" }}>
+                    {brand.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-gray-500">Espace de connexion</p>
+                  <p className="text-sm font-bold text-gray-900">{brand.name}</p>
+                </div>
+              </div>
+            )}
             {mfaChallenge ? (
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">

@@ -55,6 +55,31 @@ export const brandRoutes: FastifyPluginAsync = async (fastify) => {
  * doit être chargeable depuis un client email). Monté sous /public/brand.
  */
 export const publicBrandRoutes: FastifyPluginAsync = async (fastify) => {
+  // PLT-020 — branding PUBLIC par slug (couleur + logo + nom) pour thématiser la
+  // page de connexion AVANT authentification. Données non sensibles (couleur,
+  // logo, nom sont destinés à être affichés publiquement). Tenant suspendu exclu.
+  fastify.get('/by-slug/:slug', {
+    schema: { hide: true },
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const { slug } = request.params as { slug: string }
+      if (!/^[a-z0-9-]{1,50}$/.test(slug)) return reply.status(400).send({ error: 'slug invalide' })
+      const res = await pool.query<{
+        name: string; slug: string; primary_color: string; secondary_color: string; logo_url: string | null
+      }>(
+        `SELECT name, slug, primary_color, secondary_color, logo_url
+           FROM platform.tenants WHERE slug = $1 AND status != 'suspended' LIMIT 1`, [slug],
+      )
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      reply.header('Cache-Control', 'public, max-age=300')
+      return reply.send({ data: {
+        name: t.name, slug: t.slug,
+        primaryColor: t.primary_color, secondaryColor: t.secondary_color, logoUrl: t.logo_url,
+      } })
+    },
+  })
+
   fastify.get('/:id', {
     schema: { hide: true },
     handler: async (request, reply) => {
