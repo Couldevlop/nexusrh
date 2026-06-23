@@ -307,6 +307,30 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // POST /payroll/periods/:month — crée une période de paie au statut 'open'
+  // (PAY-019), AVANT la génération des bulletins (qui se fait via /close).
+  fastify.post('/periods/:month', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    schema: { tags: ['payroll'], summary: 'Créer une période de paie (statut open)' },
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+        return reply.status(400).send({ error: 'Mois invalide (format AAAA-MM attendu).' })
+      }
+      const schema = request.user.schemaName
+      const existing = await rawPool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM "${schema}".pay_periods WHERE month = $1 LIMIT 1`, [month],
+      )
+      if (existing.rows[0]) {
+        return reply.status(409).send({ error: `La période ${month} existe déjà (statut : ${existing.rows[0].status}).` })
+      }
+      const ins = await rawPool.query<{ id: string; month: string; status: string }>(
+        `INSERT INTO "${schema}".pay_periods (month) VALUES ($1) RETURNING id, month, status`, [month],
+      )
+      return reply.status(201).send({ data: ins.rows[0] })
+    },
+  })
+
   // POST /payroll/periods/:month/close — clôture mensuelle (avec absences)
   //
   // Multi-filiales (Palier 3) :
