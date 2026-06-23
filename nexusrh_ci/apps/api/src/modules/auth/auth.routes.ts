@@ -18,6 +18,7 @@ import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
+import { issueRefreshToken, consumeRefreshToken, revokeRefreshToken, verifyAccountActive } from '../../services/refresh-token.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -349,8 +350,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // browser n'a plus à manipuler le token en JS. Les clients API
             // peuvent toujours utiliser le `token` renvoyé en JSON dans Authorization.
             reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
+            // Refresh token rotatif (renouvellement silencieux du JWT — AUTH-008)
+            const refreshToken = await issueRefreshToken(pool, {
+              sub: platformUser.id, tenantId: null, schemaName: 'platform', role: 'super_admin',
+              email: platformUser.email, firstName: platformUser.first_name, lastName: platformUser.last_name, employeeId: null,
+            })
             return reply.send({
               token,
+              refreshToken,
               // Le frontend doit forcer l'activation MFA quand ce flag est vrai
               // (le token n'autorise rien d'autre côté serveur).
               mfaSetupRequired: mfaPending,
@@ -594,8 +601,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A02 — cookie httpOnly mode SPA (cf. helper authCookieOptions)
         reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
 
+        // Refresh token rotatif (renouvellement silencieux du JWT — AUTH-008)
+        const refreshToken = await issueRefreshToken(pool, {
+          sub: user.id, tenantId: tenant.id, schemaName: tenant.schema_name, role: user.role,
+          email: user.email, firstName: user.first_name, lastName: user.last_name, employeeId,
+        })
+
         return reply.send({
           token,
+          refreshToken,
           must_change_password: mustChangePassword,
           mfaSetupRequired: tenantMfaPending,
           passwordExpired: expired,
@@ -682,6 +696,44 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // POST /auth/refresh-token — renouvellement SILENCIEUX via refresh token
+  // rotatif, SANS JWT valide requis (couvre le cas du JWT expiré — AUTH-008).
+  fastify.post('/refresh-token', {
+    config: REFRESH_RATE_LIMIT,
+    schema: { tags: ['auth'], summary: 'Renouveler le JWT via refresh token (rotation)' },
+    handler: async (request, reply) => {
+      const parsed = z.object({ refreshToken: z.string().min(32).max(256) }).strict().safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'refreshToken requis' })
+      }
+      // Rotation : consomme (révoque) l'ancien token et récupère ses claims.
+      const claims = await consumeRefreshToken(pool, parsed.data.refreshToken)
+      if (!claims) {
+        return reply.status(401).send({ error: 'Refresh token invalide ou expiré' })
+      }
+      // Le compte doit toujours exister ET être actif (un compte désactivé ne
+      // peut pas rafraîchir) ; le rôle courant prime sur le rôle snapshot.
+      const account = await verifyAccountActive(pool, claims.schemaName, claims.sub)
+      if (!account) {
+        return reply.status(401).send({ error: 'Compte introuvable ou désactivé' })
+      }
+      const token = fastify.jwt.sign({
+        sub:        claims.sub,
+        tenantId:   claims.tenantId,
+        schemaName: claims.schemaName,
+        role:       account.role,
+        email:      claims.email,
+        firstName:  claims.firstName,
+        lastName:   claims.lastName,
+        employeeId: claims.employeeId,
+      })
+      // Émet un NOUVEAU refresh token (rotation) avec le rôle à jour.
+      const newRefresh = await issueRefreshToken(pool, { ...claims, role: account.role })
+      reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
+      return reply.send({ token, refreshToken: newRefresh })
+    },
+  })
+
   // POST /auth/logout
   fastify.post('/logout', {
     preHandler: [fastify.authenticate],
@@ -692,6 +744,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const exp = (user as unknown as { exp?: number }).exp
       const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
       await blacklistTokenSafe(jti, ttl)
+      // Révoque le refresh token associé (s'il est fourni) → plus de renouvellement.
+      const body = (request.body ?? {}) as { refreshToken?: string }
+      await revokeRefreshToken(pool, body.refreshToken)
       // OWASP A02 — révoque le cookie httpOnly (mode SPA browser)
       reply.clearCookie(AUTH_COOKIE_NAME, { path: '/' })
       auditLogAuth(

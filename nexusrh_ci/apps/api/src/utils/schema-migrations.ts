@@ -620,6 +620,22 @@ export async function ensurePlatformSchema(): Promise<void> {
     // propre clé. La clé du tenant reste TOUJOURS prioritaire sur la clé plateforme.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS ai_platform_key_enabled boolean NOT NULL DEFAULT true`,
 
+    // ── Refresh tokens rotatifs (renouvellement silencieux du JWT) ────────────
+    // Centralisé au schéma platform : le endpoint /auth/refresh-token valide le
+    // token sans connaître le tenant. token_hash = SHA-256 (jamais en clair).
+    `CREATE TABLE IF NOT EXISTS platform.refresh_tokens (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      token_hash  varchar(64) NOT NULL UNIQUE,
+      user_id     uuid NOT NULL,
+      schema_name varchar(63) NOT NULL,
+      claims      jsonb NOT NULL,
+      expires_at  timestamptz NOT NULL,
+      revoked_at  timestamptz,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_refresh_tokens_user_idx ON platform.refresh_tokens(user_id)`,
+    `CREATE INDEX IF NOT EXISTS platform_refresh_tokens_exp_idx ON platform.refresh_tokens(expires_at)`,
+
     // ── IA : consommation de tokens par tenant sur la CLÉ PLATEFORME ──────────
     // Agrégat (tenant × provider × modèle × mois). Alimenté uniquement quand un
     // appel chat utilise la clé générale du super_admin (key_source='platform').

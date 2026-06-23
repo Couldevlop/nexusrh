@@ -22,6 +22,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Tableau de bord RH (/dashboard) : réservé aux rôles tenant. Le super_admin
+// (espace plateforme) et l'employee (self-service) en sont exclus et renvoyés
+// vers LEUR espace — évite qu'un super_admin accède à la coquille RH par URL
+// directe (AUTH-007), sans créer de boucle de redirection.
+export function RhDashboardGuard({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user)
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role === 'super_admin') return <Navigate to="/platform/dashboard" replace />
+  if (user.role === 'employee') return <Navigate to="/mon-espace" replace />
+  return <>{children}</>
+}
+
 export function PlatformGuard({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
   if (!user) return <Navigate to="/login" replace />

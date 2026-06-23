@@ -47,7 +47,33 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Intercepteur réponse : gérer 401 → déconnexion, 503 → bannière maintenance
+// Refresh token rotatif : une SEULE requête de refresh en vol partagée par tous
+// les 401 concurrents (évite N appels /auth/refresh-token simultanés).
+let refreshPromise: Promise<string | null> | null = null
+
+async function trySilentRefresh(): Promise<string | null> {
+  const rt = useAuthStore.getState().refreshToken
+  if (!rt) return null
+  if (!refreshPromise) {
+    // axios brut (pas `api`) → n'enclenche pas l'intercepteur (anti-récursion).
+    refreshPromise = axios
+      .post<{ token?: string; refreshToken?: string | null }>(`${API_BASE}/auth/refresh-token`,
+        { refreshToken: rt }, { withCredentials: true })
+      .then((r) => {
+        const newToken = r.data?.token
+        if (!newToken) return null
+        // Met à jour token + refreshToken (rotation) dans le store persisté.
+        useAuthStore.setState({ token: newToken, refreshToken: r.data?.refreshToken ?? null })
+        return newToken
+      })
+      .catch(() => null)
+      .finally(() => { refreshPromise = null })
+  }
+  return refreshPromise
+}
+
+// Intercepteur réponse : 401 → refresh silencieux + rejeu (sinon déconnexion),
+// 503 → bannière maintenance.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -78,15 +104,22 @@ api.interceptors.response.use(
         return Promise.reject(error)
       }
 
-      // 401 sur une route protégée alors qu'on a un token en store : token expiré
-      // ou révoqué côté serveur (blacklist Redis). On déconnecte proprement.
-      //
-      // Note historique : un mécanisme de refresh-token séparé avait été
-      // esquissé (POST /auth/refresh avec body {refreshToken}). Mais le
-      // backend /auth/refresh exige juste un JWT valide en Authorization et
-      // ne consomme PAS de refreshToken distinct. Le login ne retourne pas
-      // de refreshToken séparé non plus. La branche était donc dead code et
-      // a été retirée pour éviter la confusion.
+      // 401 sur une route protégée : le JWT a probablement expiré. On tente UN
+      // refresh silencieux via le refresh token rotatif, puis on REJOUE la
+      // requête d'origine (l'utilisateur n'est pas déconnecté — AUTH-008).
+      const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined
+      if (original && !original._retry && useAuthStore.getState().refreshToken) {
+        original._retry = true
+        const newToken = await trySilentRefresh()
+        if (newToken) {
+          original.headers = original.headers ?? {}
+          original.headers['Authorization'] = `Bearer ${newToken}`
+          return api(original)
+        }
+      }
+
+      // Échec du refresh (pas de refresh token, ou refresh rejeté = révoqué) →
+      // déconnexion propre et retour au login.
       if (useAuthStore.getState().token) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
