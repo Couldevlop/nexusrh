@@ -57,7 +57,7 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
     const r = await pool.query(
       `INSERT INTO "${s}".employees
          (first_name, last_name, gender, job_title, department_id,
-          gross_salary, hire_date, is_active, marital_status, children_count,
+          base_salary, hire_date, is_active, marital_status, children_count,
           mobile_money_provider, mobile_money_phone, cnps_number, nni)
        VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [
@@ -74,14 +74,18 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
   }
 
   // ── 3 mois de bulletins ──
+  // Colonnes alignées sur le schéma provisionné (cf. seed.ts) : pay_periods a
+  // `month varchar(7)` (= "YYYY-MM"), pas de label/year ; pay_slips utilise
+  // `period_id`, `total_cnps_sal/pat`, `its` (et non pay_period_id/income_tax).
   for (let mo = 2; mo >= 0; mo--) {
-    const { year, month, label } = pastMonth(mo + 1)
+    const { label } = pastMonth(mo + 1)
     const period = await pool.query(
-      `INSERT INTO "${s}".pay_periods (label, year, month, status)
-       VALUES ($1,$2,$3,'closed') RETURNING id`,
-      [label, year, month]
+      `INSERT INTO "${s}".pay_periods (month, status, closed_at, closed_by)
+       VALUES ($1,'closed',now(),'seed-demo') RETURNING id`,
+      [label]
     )
     const periodId = period.rows[0].id
+    let totalGross = 0, totalNet = 0, totalCnps = 0, totalIts = 0
 
     for (let i = 0; i < employeeIds.length; i++) {
       const emp = EMPLOYEES[i]!
@@ -96,19 +100,27 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
       })
       await pool.query(
         `INSERT INTO "${s}".pay_slips
-           (employee_id, pay_period_id, gross_salary, net_payable,
-            total_employee_contributions, total_employer_contributions,
-            income_tax, employer_cost, status, lines)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'generated',$9)`,
+           (employee_id, period_id, month, base_salary, gross_salary,
+            cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
+            total_cnps_sal, total_cnps_pat, its, total_deductions,
+            net_payable, employer_cost, lines, status, generated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now())`,
         [
-          employeeIds[i], periodId,
-          result.grossSalary, result.netPayable,
-          result.totalCnpsSal, result.totalCnpsPat,
-          result.its, result.employerCost,
-          JSON.stringify(result.lines),
+          employeeIds[i], periodId, label, emp.salary, result.grossSalary,
+          result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
+          result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
+          result.netPayable, result.employerCost, JSON.stringify(result.lines),
         ]
       )
+      totalGross += result.grossSalary
+      totalNet   += result.netPayable
+      totalCnps  += result.totalCnpsSal + result.totalCnpsPat
+      totalIts   += result.its
     }
+    await pool.query(
+      `UPDATE "${s}".pay_periods SET total_gross=$1, total_net=$2, total_cnps=$3, total_its=$4 WHERE id=$5`,
+      [totalGross, totalNet, totalCnps, totalIts, periodId]
+    )
   }
 
   // ── Types absences ── (déjà créés, on récupère)
