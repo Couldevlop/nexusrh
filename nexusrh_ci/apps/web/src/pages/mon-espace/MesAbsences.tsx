@@ -13,6 +13,10 @@ const schema = z.object({
   endDate:       z.string().min(1, 'absences.validation.endRequired'),
   halfDay:       z.boolean().default(false),
   reason:        z.string().optional(),
+}).refine((d) => !d.startDate || !d.endDate || d.startDate <= d.endDate, {
+  // ABS-003 — la date de fin doit être >= début (validation client immédiate)
+  message: 'absences.validation.endBeforeStart',
+  path: ['endDate'],
 })
 type FormData = z.infer<typeof schema>
 

@@ -88,7 +88,8 @@
     "validation": {
       "typeRequired": "Type requis",
       "startRequired": "Date début requise",
-      "endRequired": "Date fin requise"
+      "endRequired": "Date fin requise",
+      "endBeforeStart": "La date de fin doit être postérieure ou égale au début"
     }
   },
   "payslips": {

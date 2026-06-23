@@ -13,7 +13,39 @@ const createAbsenceSchema = z.object({
   halfDay:       z.boolean().optional(),
   reason:        z.string().max(1000).optional(),
   employeeId:    z.string().uuid().optional(),
+}).refine((d) => d.startDate <= d.endDate, {
+  // ABS-003 — la date de fin doit être postérieure ou égale au début.
+  // Comparaison lexicographique sûre sur des chaînes YYYY-MM-DD.
+  message: 'La date de fin doit être postérieure ou égale à la date de début',
+  path: ['endDate'],
 })
+
+/**
+ * Notifie un utilisateur (table notifications). Non bloquant. `userId` peut être
+ * null (employé sans compte / manager non lié) → on ignore silencieusement.
+ */
+function notifyUser(
+  schema: string, userId: string | null | undefined, type: string,
+  title: string, message: string, data: Record<string, unknown> = {},
+): void {
+  if (!userId) return
+  rawPool.query(
+    `INSERT INTO "${schema}".notifications (user_id, type, title, message, data)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, type, title, message, JSON.stringify(data)],
+  ).catch(() => { /* table absente / user supprimé : non bloquant */ })
+}
+
+/** Résout le user_id du compte lié à un employé (null si aucun). */
+async function userIdOfEmployee(schema: string, employeeId: string | null | undefined): Promise<string | null> {
+  if (!employeeId) return null
+  try {
+    const r = await rawPool.query<{ user_id: string | null }>(
+      `SELECT user_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
+    )
+    return r?.rows?.[0]?.user_id ?? null
+  } catch { return null }
+}
 
 /**
  * OWASP A01 — un manager ne peut approuver/rejeter que les absences des
@@ -217,6 +249,23 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         startDate: body.startDate, endDate: body.endDate, days,
       }, request.ip ?? null)
 
+      // ABS-002 — notifier le manager de la nouvelle demande (non bloquant, crash-safe)
+      const newAbsenceId = res.rows[0].id as string
+      void (async () => {
+        try {
+          const r = await rawPool.query<{ manager_user_id: string | null; first_name: string; last_name: string }>(
+            `SELECT m.user_id AS manager_user_id, e.first_name, e.last_name
+               FROM "${schema}".employees e LEFT JOIN "${schema}".employees m ON m.id = e.manager_id
+              WHERE e.id = $1 LIMIT 1`, [employeeId],
+          )
+          const row = r?.rows?.[0]
+          if (row?.manager_user_id) notifyUser(schema, row.manager_user_id, 'absence_request',
+            'Nouvelle demande d\'absence',
+            `${row.first_name} ${row.last_name} a soumis une demande d'absence du ${body.startDate} au ${body.endDate} (${days} j) — à valider.`,
+            { absenceId: newAbsenceId, employeeId })
+        } catch { /* non bloquant */ }
+      })()
+
       return reply.status(201).send({ data: res.rows[0] })
     },
   })
@@ -287,6 +336,10 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         emitIntegrationEvent(rawPool, schema, 'absence.approved', {
           id, employeeId: absence.employee_id, days: absence.days,
         }, decryptIfPresent)
+        // ABS-004 — notifier l'employé de l'approbation (non bloquant)
+        void userIdOfEmployee(schema, absence.employee_id).then(uid => notifyUser(
+          schema, uid, 'absence_approved', 'Absence approuvée',
+          `Votre demande d'absence (${absence.days} j) a été approuvée.`, { absenceId: id }))
       }
 
       return reply.send({
@@ -339,6 +392,12 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       auditLogAbsence(schema, request.user.sub, 'absence.rejected', id, {
         employeeId: absence.employee_id, reason: reason ?? null,
       }, request.ip ?? null)
+
+      // ABS-005 — notifier l'employé du refus + motif (non bloquant)
+      void userIdOfEmployee(schema, absence.employee_id).then(uid => notifyUser(
+        schema, uid, 'absence_rejected', 'Absence refusée',
+        `Votre demande d'absence a été refusée.${reason ? ' Motif : ' + reason : ''}`,
+        { absenceId: id, reason: reason ?? null }))
 
       return reply.send({ data: res.rows[0] })
     },
