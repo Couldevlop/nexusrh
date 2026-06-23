@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
@@ -8,15 +9,21 @@ interface Tenant {
   id: string; name: string; slug: string; schema_name: string
   plan_type: string; status: string; city: string; sector: string
   max_users: number; max_employees: number; created_at: string
+  // PLT-007 — compteurs réels renvoyés par l'API
+  user_count?: number; employee_count?: number
 }
+
+const STATUS_FILTERS = ['', 'active', 'trial', 'suspended'] as const
 
 export default function PlatformTenants() {
   const { t: tt } = useTranslation('platform')
   const navigate = useNavigate()
+  // PLT-008 — filtre par statut (alimente la requête API ?status=)
+  const [status, setStatus] = useState<string>('')
 
   const { data, isLoading } = useQuery<{ data: Tenant[]; total: number }>({
-    queryKey: ['platform-tenants-list'],
-    queryFn: () => api.get('/platform/tenants?limit=50').then(r => r.data),
+    queryKey: ['platform-tenants-list', status],
+    queryFn: () => api.get(`/platform/tenants?limit=50${status ? `&status=${status}` : ''}`).then(r => r.data),
   })
 
   const tenants = data?.data ?? []
@@ -28,6 +35,9 @@ export default function PlatformTenants() {
   }
   const statusLabel: Record<string, string> = {
     active: tt('status.active'), trial: tt('status.trial'), suspended: tt('status.suspended'),
+  }
+  const filterLabel: Record<string, string> = {
+    '': 'Tous les statuts', active: tt('status.active'), trial: tt('status.trial'), suspended: tt('status.suspended'),
   }
 
   return (
@@ -46,6 +56,22 @@ export default function PlatformTenants() {
         </button>
       </div>
 
+      {/* PLT-008 — filtre par statut */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Statut :</span>
+        {STATUS_FILTERS.map(s => (
+          <button
+            key={s || 'all'}
+            onClick={() => setStatus(s)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              status === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+            }`}
+          >
+            {filterLabel[s]}
+          </button>
+        ))}
+      </div>
+
       <div className="rounded-xl border border-border bg-card">
         {isLoading ? (
           <div className="flex items-center justify-center p-12">
@@ -58,7 +84,8 @@ export default function PlatformTenants() {
                 <th className="p-4">{tt('tenants.table.company')}</th>
                 <th className="p-4">{tt('tenants.table.cityCategory')}</th>
                 <th className="p-4">{tt('tenants.table.plan')}</th>
-                <th className="p-4 text-right">{tt('tenants.table.maxEmployees')}</th>
+                <th className="p-4 text-right">Utilisateurs</th>
+                <th className="p-4 text-right">Employés</th>
                 <th className="p-4">{tt('tenants.table.status')}</th>
                 <th className="p-4"></th>
               </tr>
@@ -86,7 +113,13 @@ export default function PlatformTenants() {
                       {t.plan_type}
                     </span>
                   </td>
-                  <td className="p-4 text-right text-muted-foreground">{t.max_employees}</td>
+                  {/* PLT-007 — effectif RÉEL / quota du plan */}
+                  <td className="p-4 text-right text-muted-foreground">
+                    {t.user_count ?? 0} <span className="text-xs opacity-60">/ {t.max_users}</span>
+                  </td>
+                  <td className="p-4 text-right text-muted-foreground">
+                    {t.employee_count ?? 0} <span className="text-xs opacity-60">/ {t.max_employees}</span>
+                  </td>
                   <td className="p-4">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[t.status] ?? ''}`}>
                       {statusLabel[t.status] ?? t.status}
@@ -104,7 +137,7 @@ export default function PlatformTenants() {
               ))}
               {tenants.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="p-12 text-center text-muted-foreground">
                     <Building2 className="mx-auto mb-2 h-8 w-8 opacity-30" />
                     <p>{tt('tenants.empty')}</p>
                   </td>

@@ -119,8 +119,20 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         )
       })
       const total = await pool.query(`SELECT count(*) FROM platform.tenants`)
+      // PLT-007 — enrichit chaque tenant avec ses compteurs RÉELS (utilisateurs +
+      // employés actifs), comptés dans son schéma. N+1 borné (page paginée, peu
+      // de tenants) ; tolérant aux schémas incomplets/manquants (→ 0).
+      const tenants = rows.rows as Array<Record<string, unknown> & { schema_name?: string }>
+      await Promise.all(tenants.map(async (t) => {
+        const sc = t.schema_name
+        if (!sc || !/^[a-z][a-z0-9_]{0,62}$/.test(sc)) { t.user_count = 0; t.employee_count = 0; return }
+        const uc = await pool.query(`SELECT count(*)::int AS c FROM "${sc}".users`).catch(() => ({ rows: [{ c: 0 }] }))
+        const ec = await pool.query(`SELECT count(*)::int AS c FROM "${sc}".employees WHERE is_active = true`).catch(() => ({ rows: [{ c: 0 }] }))
+        t.user_count = uc.rows[0]?.c ?? 0
+        t.employee_count = ec.rows[0]?.c ?? 0
+      }))
       return reply.send({
-        data: rows.rows,
+        data: tenants,
         total: parseInt(total.rows[0]?.count ?? '0'),
         page: parseInt(page),
         limit: parseInt(limit),
@@ -456,6 +468,87 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         {}, request.ip ?? null,
       )
       return reply.send({ message: 'Tenant réactivé' })
+    },
+  })
+
+  // ── GET /platform/tenants/:id/stats (onglet Données) ──────────────────────
+  fastify.get('/tenants/:id/stats', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Statistiques d\'un tenant (employés, utilisateurs)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const res = await pool.query<{ schema_name: string; max_users: number; max_employees: number }>(
+        `SELECT schema_name, max_users, max_employees FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+      )
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const sc = t.schema_name
+      const q = async (sql: string) =>
+        (sc && /^[a-z][a-z0-9_]{0,62}$/.test(sc))
+          ? ((await pool.query(sql.replace('{s}', sc)).catch(() => ({ rows: [{ c: 0 }] }))).rows[0]?.c ?? 0)
+          : 0
+      return reply.send({ data: {
+        userCount:           await q(`SELECT count(*)::int AS c FROM "{s}".users`),
+        employeeCount:       await q(`SELECT count(*)::int AS c FROM "{s}".employees`),
+        activeEmployeeCount: await q(`SELECT count(*)::int AS c FROM "{s}".employees WHERE is_active = true`),
+        payslipCount:        await q(`SELECT count(*)::int AS c FROM "{s}".pay_slips`),
+        maxUsers: t.max_users, maxEmployees: t.max_employees,
+      } })
+    },
+  })
+
+  // ── GET /platform/tenants/:id/export (export RGPD — JSON) ──────────────────
+  fastify.get('/tenants/:id/export', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Export RGPD des données d\'un tenant (JSON)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const res = await pool.query(`SELECT * FROM platform.tenants WHERE id = $1 LIMIT 1`, [id])
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const sc = t.schema_name as string
+      let employees: unknown[] = [], users: unknown[] = []
+      if (sc && /^[a-z][a-z0-9_]{0,62}$/.test(sc)) {
+        employees = (await pool.query(`SELECT id, employee_number, first_name, last_name, email, job_title, hire_date FROM "${sc}".employees`).catch(() => ({ rows: [] }))).rows
+        users     = (await pool.query(`SELECT id, email, first_name, last_name, role, is_active, created_at FROM "${sc}".users`).catch(() => ({ rows: [] }))).rows
+      }
+      auditLogPlatform((request.user as { sub: string }).sub, 'tenant.export', 'tenant', id, { slug: t.slug }, request.ip ?? null)
+      reply.header('Content-Disposition', `attachment; filename="export-rgpd-${t.slug}.json"`)
+      return reply.send({
+        exportedAt: new Date().toISOString(),
+        tenant: { id: t.id, slug: t.slug, name: t.name, plan_type: t.plan_type, city: t.city, sector: t.sector, created_at: t.created_at },
+        counts: { users: users.length, employees: employees.length },
+        users, employees,
+      })
+    },
+  })
+
+  // ── DELETE /platform/tenants/:id (suppression définitive — onglet Données) ──
+  // Destructif : DROP du schéma + suppression de la ligne. Exige la confirmation
+  // du slug dans le body (confirmSlug) pour éviter toute suppression accidentelle.
+  fastify.delete('/tenants/:id', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Supprimer définitivement un tenant (DROP schéma)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      const body = (request.body ?? {}) as { confirmSlug?: string }
+      const res = await pool.query<{ schema_name: string; slug: string; name: string }>(
+        `SELECT schema_name, slug, name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+      )
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      if (body.confirmSlug !== t.slug) {
+        return reply.status(400).send({ error: `Confirmation requise : renvoyez confirmSlug="${t.slug}" pour supprimer définitivement ce tenant.` })
+      }
+      const sc = t.schema_name
+      if (sc && /^[a-z][a-z0-9_]{0,62}$/.test(sc)) {
+        await pool.query(`DROP SCHEMA IF EXISTS "${sc}" CASCADE`)
+      }
+      await pool.query(`DELETE FROM platform.tenants WHERE id = $1`, [id])
+      invalidateOfflineStatusCache()
+      auditLogPlatform((request.user as { sub: string }).sub, 'tenant.delete', 'tenant', id, { slug: t.slug, name: t.name }, request.ip ?? null)
+      return reply.send({ message: `Tenant "${t.name}" supprimé définitivement.` })
     },
   })
 
