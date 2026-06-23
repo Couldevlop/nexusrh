@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
 import { useAuthStore } from '@/stores/authStore'
-import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard } from '@/guards/RoleGuard'
+import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard, RhDashboardGuard } from '@/guards/RoleGuard'
 import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
 
@@ -209,7 +209,7 @@ export default function App() {
           <Route path="/" element={
             <AuthGuard><MainLayout /></AuthGuard>
           }>
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="dashboard" element={<RhDashboardGuard><DashboardPage /></RhDashboardGuard>} />
 
             {/* ── Vue DG 360° (rôle dg + module opt-in dg_view) ── */}
             <Route path="dg" element={
