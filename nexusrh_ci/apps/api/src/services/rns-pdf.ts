@@ -70,6 +70,35 @@ interface CoordSpec {
    * débordait plus de sa colonne puisqu'il est désormais collé au bord droit).
    */
   align?: 'left' | 'right' | 'center'
+  /**
+   * Nombre maximum de lignes autorisées dans la case. La police est réduite
+   * automatiquement jusqu'à ce que le texte tienne (largeur + nb de lignes),
+   * de sorte qu'un nom/adresse très long ne déborde JAMAIS sur les cases
+   * voisines (cause des superpositions sur les valeurs extrêmes). Défaut : 1
+   * pour les champs ancrés à droite/centrés (montants, dates), 2 sinon.
+   */
+  maxLines?: number
+}
+
+/**
+ * Réduit la taille de police jusqu'à ce que `text` tienne dans `maxWidth` sur au
+ * plus `maxLines` lignes (et qu'aucun mot ne déborde). Empêche tout débordement
+ * sur les cases voisines quel que soit la longueur de la donnée.
+ */
+function fitFontSize(
+  font: PDFFont, text: string, baseSize: number, maxWidth: number, maxLines: number,
+): number {
+  const longestWord = text.split(/\s+/).reduce((a, b) => (b.length > a.length ? b : a), '')
+  let size = baseSize
+  const MIN = 5.5
+  while (size > MIN) {
+    const totalW = font.widthOfTextAtSize(text, size)
+    const lines  = Math.ceil(totalW / maxWidth)
+    const wordOk = font.widthOfTextAtSize(longestWord, size) <= maxWidth
+    if (lines <= maxLines && wordOk) break
+    size -= 0.5
+  }
+  return size
 }
 interface RnsCoords {
   employer: {
@@ -164,13 +193,20 @@ function overlayFromCoords(
     // chiffres dans leur colonne). Un align explicite est prioritaire.
     const align = spec.align ?? (spec.format === 'fcfa' ? 'right' : 'left')
 
+    // Auto-réduction de la police pour que la donnée tienne dans sa case sans
+    // déborder sur les voisines (noms/adresses/signataires très longs).
+    const maxLines = spec.maxLines ?? (align === 'left' ? 2 : 1)
+    const size = spec.maxWidth
+      ? fitFontSize(useFont, value, spec.size, spec.maxWidth, maxLines)
+      : spec.size
+
     // Ancrage horizontal dans la case [x, x+maxWidth] : x calculé depuis la
     // largeur RÉELLE du texte. Pas de wrapping pour right/center (montant sur
     // une seule ligne, collé au bord voulu).
     let x = spec.x
     let wrap: number | undefined = spec.maxWidth
     if (align !== 'left' && spec.maxWidth) {
-      const w = useFont.widthOfTextAtSize(value, spec.size)
+      const w = useFont.widthOfTextAtSize(value, size)
       x = align === 'right'
         ? spec.x + spec.maxWidth - w
         : spec.x + (spec.maxWidth - w) / 2
@@ -182,11 +218,12 @@ function overlayFromCoords(
     // pdf-lib utilise y depuis le BAS de la page. Le JSON est en y-depuis-le-haut.
     page.drawText(value, {
       x,
-      y:    H - spec.y - spec.size,
-      size: spec.size,
+      y:    H - spec.y - size,
+      size,
       font: useFont,
       color: rgb(0, 0, 0),
       ...(wrap ? { maxWidth: wrap } : {}),
+      lineHeight: size * 1.12,
     })
   }
 

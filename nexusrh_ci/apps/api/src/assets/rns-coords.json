@@ -7,16 +7,16 @@
     "lastCalibratedOn": "2026-06-23"
   },
   "employer": {
-    "name":        { "x":  52, "y": 152, "size": 11, "bold": true,  "maxWidth": 195 },
-    "address":     { "x":  52, "y": 168, "size":  9, "bold": false, "maxWidth": 195 },
-    "cnpsNumber":  { "x": 252, "y": 178, "size":  7, "bold": true,  "maxWidth":  52 },
+    "name":        { "x":  52, "y": 150, "size": 11, "bold": true,  "maxWidth": 195, "maxLines": 2 },
+    "address":     { "x":  52, "y": 178, "size":  8, "bold": false, "maxWidth": 195, "maxLines": 2 },
+    "cnpsNumber":  { "x": 252, "y": 178, "size":  7, "bold": true,  "maxWidth":  52, "maxLines": 1 },
     "issuedAt":    { "x": 488, "y": 270, "size":  7, "bold": false, "maxWidth": 100, "align": "center" },
-    "affiliation": { "x": 258, "y": 698, "size":  9, "bold": false, "maxWidth":  95 }
+    "affiliation": { "x": 258, "y": 698, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 1 }
   },
   "employee": {
-    "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 190 },
+    "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 190, "maxLines": 1 },
     "year":              { "x": 300, "y": 252, "size": 11, "bold": true,  "maxWidth":  50, "align": "center" },
-    "matriculeCnps":     { "x": 258, "y": 300, "size": 10, "bold": false, "maxWidth":  95 },
+    "matriculeCnps":     { "x": 258, "y": 300, "size": 10, "bold": false, "maxWidth":  95, "maxLines": 1 },
     "hireDate":          { "x": 258, "y": 350, "size":  9, "bold": false, "maxWidth":  95 },
     "exitDate":          { "x": 258, "y": 400, "size":  9, "bold": false, "maxWidth":  95 },
     "periodFrom":        { "x": 258, "y": 460, "size":  9, "bold": false, "maxWidth":  95 },
@@ -27,8 +27,8 @@
     "annualGross":       { "x": 360, "y": 305, "size":  9, "bold": true,  "maxWidth":  88, "format": "fcfa", "align": "right" }
   },
   "signature": {
-    "city":      { "x": 258, "y": 516, "size":  8, "bold": false, "maxWidth":  95 },
-    "name":      { "x": 258, "y": 536, "size": 10, "bold": true,  "maxWidth":  95 },
-    "title":     { "x": 258, "y": 560, "size":  9, "bold": false, "maxWidth":  95 }
+    "city":      { "x": 258, "y": 514, "size":  8, "bold": false, "maxWidth":  95, "maxLines": 1 },
+    "name":      { "x": 258, "y": 530, "size": 10, "bold": true,  "maxWidth":  95, "maxLines": 2 },
+    "title":     { "x": 258, "y": 568, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 2 }
   }
 }
