@@ -60,23 +60,30 @@ describe('LegislationPack — pack par défaut CIV-2024', () => {
   })
 })
 
-describe('LegislationPack — packs stub : refus de calcul', () => {
-  const stubs = [
-    BEN_2024, TGO_2024, BFA_2024, SEN_2024, MLI_2024, NER_2024, TCD_2024, NGA_2024,
-  ] as const
+describe('LegislationPack — garde-fou stub : refus de calcul', () => {
+  // Tous les packs déclarés sont désormais ACTIFS (valeurs sourcées dans
+  // docs/referentiel-paie-afrique.md). Le mécanisme de refus reste actif pour
+  // tout futur pack marqué stub : on le teste avec un pack synthétique.
+  it('un pack stub fait toujours lever une erreur explicite (sécurité)', () => {
+    const fakeStub = { ...CIV_2024, code: 'XXX-2024', status: 'stub' as const }
+    const ctx: PayrollContext = {
+      baseSalary: 300_000, workedDays: 26, workingDaysMonth: 26,
+      atRate: 0.02, maritalStatus: 'single', childrenCount: 0,
+      variableElements: {}, legislationPack: fakeStub,
+    }
+    expect(() => calculatePayrollCI(ctx)).toThrow(/stub/i)
+  })
 
-  it.each(stubs.map(p => [p.code, p] as const))(
-    '%s refuse explicitement le calcul (status=stub)',
+  it.each([BEN_2024, TGO_2024, BFA_2024, SEN_2024, MLI_2024, NER_2024, TCD_2024, NGA_2024].map(p => [p.code, p] as const))(
+    '%s est actif et calcule sans lever',
     (_code, pack) => {
-      expect(pack.status).toBe('stub')
+      expect(pack.status).toBe('active')
       const ctx: PayrollContext = {
         baseSalary: 300_000, workedDays: 26, workingDaysMonth: 26,
         atRate: 0.02, maritalStatus: 'single', childrenCount: 0,
-        variableElements: {},
-        legislationPack: pack,
+        variableElements: {}, legislationPack: pack,
       }
-      expect(() => calculatePayrollCI(ctx))
-        .toThrow(/stub/i)
+      expect(() => calculatePayrollCI(ctx)).not.toThrow()
     },
   )
 })
@@ -94,10 +101,9 @@ describe('LegislationPack — inventaire complet', () => {
     ]) expect(codes).toContain(c)
   })
 
-  it('CIV est le seul pack actif (les autres sont stub)', () => {
+  it('les 15 packs sont actifs (valeurs sourcées appliquées)', () => {
     const actifs = Object.values(LEGISLATION_PACKS).filter(p => p.status === 'active')
-    expect(actifs).toHaveLength(1)
-    expect(actifs[0]!.code).toBe('CIV-2024')
+    expect(actifs).toHaveLength(15)
   })
 
   it('Tchad utilise XAF (CEMAC, pas XOF UEMOA)', () => {
@@ -160,13 +166,10 @@ describe('LegislationPack — résolution par PAYS (paramétrage tenant)', () =>
     expect(isSupportedCountry(null)).toBe(false)
   })
 
-  it('listCountries expose 15 pays, pack actif (CI) en tête', () => {
+  it('listCountries expose 15 pays, tous actifs', () => {
     const list = listCountries()
     expect(list).toHaveLength(15)
-    expect(list[0]!.countryCode).toBe('CIV')
-    expect(list[0]!.status).toBe('active')
-    // un seul actif
-    expect(list.filter(c => c.status === 'active')).toHaveLength(1)
+    expect(list.filter(c => c.status === 'active')).toHaveLength(15)
     // chaque entrée porte SMIG + devise + packCode
     for (const c of list) {
       expect(c.smigMensuel).toBeGreaterThan(0)

@@ -180,16 +180,15 @@ describe('resolvePayrollContext — Sécurité (OWASP A04)', () => {
     expect(r.legislationPack).toBe(CIV_2024)
   })
 
-  it('packs UEMOA stub sont retournés tels quels (le moteur refusera)', () => {
-    // Le resolver ne filtre PAS les packs stub : c'est la responsabilité du
-    // moteur lui-même. Cette séparation respecte le SRP.
+  it('le resolver retourne le pack du pays tel quel (pas de filtrage de statut)', () => {
+    // Le resolver ne filtre PAS le statut : c'est la responsabilité du moteur
+    // (SRP). BEN-2024 est désormais ACTIF (valeurs sourcées) → calcul autorisé.
     const r = resolvePayrollContext({
       tenant: TENANT_MULTI,
       employee: EMP_CI,
       legalEntity: { id: 'le-ci', atRate: 0.03, legislationPackCode: 'BEN-2024' },
     })
     expect(r.legislationPack).toBe(BEN_2024)
-    expect(r.legislationPack.status).toBe('stub')
-    // Le moteur calculatePayrollCI throw si pack.status === 'stub'.
+    expect(r.legislationPack.status).toBe('active')
   })
 })

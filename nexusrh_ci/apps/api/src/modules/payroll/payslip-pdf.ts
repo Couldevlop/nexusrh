@@ -36,6 +36,9 @@ export interface PayslipPdfData {
   paymentMethod?:    string | null
   paymentReference?: string | null
   generatedAt?:      string | null
+  // Libellés locaux (multi-pays) : caisse sociale + impôt. Défaut CNPS / ITS (CI).
+  caisseLabel?:      string | null   // ex: 'CNPS', 'IPRES + CSS', 'CNSS'
+  impotLabel?:       string | null   // ex: 'ITS', 'IR — Impôt sur le Revenu', 'IRPP'
   // PAY-025 — cumuls annuels (YTD) : somme des bulletins de l'année jusqu'au mois courant
   annualCumuls?:     { grossSalary: number; totalCnpsSal: number; its: number; netPayable: number } | null
   // Bulletin personnalisable à la convenance du tenant (logo, colonnes, sections, couleur)
@@ -138,6 +141,11 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
   const accent = hexToRgb(cfg.accentColor, ACCENT)
   const showBase = cfg.showBaseColumn !== false
   const showCode = cfg.showCodeColumn !== false
+  // Libellés locaux (multi-pays) ; version courte pour les champs compacts.
+  const caisse = data.caisseLabel || 'CNPS'
+  const caisseShort = (caisse.split(/[ +]/)[0] || 'CNPS')
+  const impotLbl = data.impotLabel || 'ITS'
+  const impotShort = (impotLbl.split(/[ —-]/)[0] || 'ITS').trim()
   let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null
   if (cfg.logo?.bytes?.length) {
     try {
@@ -191,7 +199,7 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     text(data.tenantName || '-', ML + 10, y0 + 32, 9, { bold: true })
     if (data.employer?.address) text(data.employer.address, ML + 10, y0 + 46, 8, { color: SLATE })
     if (data.employer?.city) text(data.employer.city, ML + 10, y0 + 58, 8, { color: SLATE })
-    if (data.employer?.cnpsNumber) text(`N° CNPS employeur : ${data.employer.cnpsNumber}`, ML + 10, y0 + 72, 8, { color: SLATE })
+    if (data.employer?.cnpsNumber) text(`N° ${caisseShort} employeur : ${data.employer.cnpsNumber}`, ML + 10, y0 + 72, 8, { color: SLATE })
     const x2 = ML + colW + 16
     const empName = `${data.employee.firstName ?? ''} ${data.employee.lastName ?? ''}`.trim()
     text('SALARIÉ', x2, y0 + 16, 8, { bold: true, color: accent })
@@ -230,8 +238,8 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     let yy = y0
     const recap: Array<[string, number]> = [
       ['Salaire brut', data.grossSalary],
-      ['Total cotisations salariales (CNPS)', -data.totalCnpsSal],
-      ['ITS (Impôt sur traitements et salaires)', -data.its],
+      [`Total cotisations salariales (${caisseShort})`, -data.totalCnpsSal],
+      [`${impotLbl}`, -data.its],
       ['Total des retenues', -data.totalDeductions],
     ]
     for (const [label, val] of recap) {
@@ -269,8 +277,8 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     yy += 16
     const cumLines: Array<[string, number]> = [
       ['Cumul salaire brut', cum.grossSalary],
-      ['Cumul cotisations salariales (CNPS)', cum.totalCnpsSal],
-      ['Cumul ITS', cum.its],
+      [`Cumul cotisations salariales (${caisseShort})`, cum.totalCnpsSal],
+      [`Cumul ${impotShort}`, cum.its],
       ['Cumul net payé', cum.netPayable],
     ]
     for (const [label, val] of cumLines) {

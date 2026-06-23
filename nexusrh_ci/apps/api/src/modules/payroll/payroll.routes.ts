@@ -4,6 +4,7 @@ import { pool as rawPool } from '../../db/pool.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
+import { getPackByCountry } from '../../services/legislation-packs.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
@@ -1150,6 +1151,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           grossSalary: Number(c0.g), totalCnpsSal: Number(c0.c),
           its: Number(c0.i), netPayable: Number(c0.n),
         },
+        caisseLabel: getPackByCountry(country)?.labelCaisseSociale ?? null,
+        impotLabel: getPackByCountry(country)?.labelImpotSalaire ?? null,
         template: {
           accentColor: typeof tpl.accentColor === 'string' ? tpl.accentColor : null,
           logo,
