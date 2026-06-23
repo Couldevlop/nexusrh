@@ -43,7 +43,7 @@ describe('buildLegislationConfig — paramétrage légal par pays', () => {
 
   it('la liste des pays sélectionnables accompagne toujours la vue', () => {
     const v = buildLegislationConfig('CIV')
-    expect(v.available).toHaveLength(9)
+    expect(v.available).toHaveLength(15)
     expect(v.available.some(c => c.countryCode === 'SEN')).toBe(true)
   })
 })
