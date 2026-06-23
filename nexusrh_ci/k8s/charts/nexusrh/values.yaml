@@ -42,6 +42,12 @@ ingress:
     nginx.ingress.kubernetes.io/limit-rps: "30"
     nginx.ingress.kubernetes.io/limit-connections: "10"
     nginx.ingress.kubernetes.io/add-base-url: "true"
+    # WAF (OWASP CRS) : la règle 911100 restreint les méthodes HTTP à
+    # GET/HEAD/POST/OPTIONS et bloque donc PUT/PATCH/DELETE (toutes les MAJ et
+    # suppressions de l'API REST → 403 nginx). On retire CETTE règle pour
+    # l'ingress NexusRH uniquement ; le reste de la CRS (SQLi, XSS, RCE…) reste
+    # actif. Nécessite annotations-risk-level=Critical sur le contrôleur (cf. deploy.sh).
+    nginx.ingress.kubernetes.io/modsecurity-snippet: "SecRuleRemoveById 911100"
 
 # ── API ───────────────────────────────────────────────────────────────────────
 api:
