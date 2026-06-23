@@ -628,6 +628,197 @@ export const NGA_2024: LegislationPack = {
          'prévoit pas — 14 jours appliqués au civil service fédéral. À valider.',
 }
 
+// ─── Packs CEMAC + UEMOA complémentaires (campagne 2026-06-23) ────────────────
+// Valeurs recherchées sur sources officielles/PwC/CLEISS, documentées dans
+// docs/referentiel-paie-afrique.md (confiance + sources par pays). status='stub'
+// (le moteur refuse) tant que : règles fines pays (quotient familial, santé,
+// surtaxes) implémentées + validation expert local. Activation par surcharge DB.
+
+// Cameroun — CNPS + IRPP 2024 (CEMAC, XAF)
+export const CMR_2024: LegislationPack = {
+  code: 'CMR-2024', name: 'Cameroun — CNPS + IRPP 2024', countryCode: 'CMR', year: 2024,
+  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  smigMensuel: 60_000,
+  plafondCnpsRetraite: 750_000, plafondCnpsAtPf: 750_000,
+  tauxCotisationRetraiteSalarie: 0.042, tauxCotisationRetraitePatronal: 0.042,
+  tauxCotisationPfPatronal: 0.07, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.0175, tauxAtMin: 0.0175, tauxAtMax: 0.05,
+  abattementImpotSalaire: 0.30,
+  tranchesImpotSalaire: [
+    { min: 0,          max: 2_000_000, taux: 0.10 },
+    { min: 2_000_001,  max: 3_000_000, taux: 0.15 },
+    { min: 3_000_001,  max: 5_000_000, taux: 0.25 },
+    { min: 5_000_001,  max: Infinity,  taux: 0.35 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
+  labelCaisseSociale: 'CNPS',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 }, maternityPayRate: 1.0, maternityFunding: 'social',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 1.0 }], annualLeaveDaysPerMonth: 1.5, bereavementDays: 3,
+    workingDaysPerWeek: 6, overtimeRates: { weekly: 0.20, night: 0.5, sunday: 0.4, holiday: 1.0 },
+  },
+  notes: 'CNPS sal 4,2%/pat 4,2%+7%PF+1,75-5%AT, plafond 750k (cnps.cm/CLEISS). IRPP annuel ' +
+         'après abattement 30% plafonné 400k/mois (impots.cm, Circ. LF 2024). NON MODÉLISÉ : ' +
+         'CAC 10% IRPP, CFC 1%sal+1,5%pat, FNE 1%pat, CRTV. Voir docs/referentiel-paie-afrique.md.',
+}
+
+// Gabon — CNSS + CNAMGS + IRPP 2024 (CEMAC, XAF)
+export const GAB_2024: LegislationPack = {
+  code: 'GAB-2024', name: 'Gabon — CNSS + CNAMGS + IRPP 2024', countryCode: 'GAB', year: 2024,
+  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  smigMensuel: 150_000,
+  plafondCnpsRetraite: 1_500_000, plafondCnpsAtPf: 1_500_000,
+  tauxCotisationRetraiteSalarie: 0.045, tauxCotisationRetraitePatronal: 0.05,
+  tauxCotisationPfPatronal: 0.121, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.03,
+  abattementImpotSalaire: 0.20,
+  tranchesImpotSalaire: [
+    { min: 0,          max: 1_500_000,  taux: 0.00 },
+    { min: 1_500_001,  max: 1_920_000,  taux: 0.05 },
+    { min: 1_920_001,  max: 2_700_000,  taux: 0.10 },
+    { min: 2_700_001,  max: 3_600_000,  taux: 0.15 },
+    { min: 3_600_001,  max: 5_160_000,  taux: 0.20 },
+    { min: 5_160_001,  max: 7_500_000,  taux: 0.25 },
+    { min: 7_500_001,  max: 11_000_000, taux: 0.30 },
+    { min: 11_000_001, max: Infinity,   taux: 0.35 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
+  labelCaisseSociale: 'CNSS + CNAMGS',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 }, maternityPayRate: 1.0, maternityFunding: 'social',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }, { minYears: 1, rate: 1.0 }], annualLeaveDaysPerMonth: 2.0,
+    bereavementDays: 3, workingDaysPerWeek: 6, overtimeRates: { weekly: 0.10, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'PwC Tax Summaries Gabon + CLEISS. Salarié 4,5% = CNSS pension 2,5% + CNAMGS santé 2%. ' +
+         'Patronal 20,1% (pension 5 + PF 8 + AT 3 + CNAMGS 4,1 replié dans PF). Plafond 1,5M/mois. ' +
+         'IRPP annuel abattement 20%. NON MODÉLISÉ : quotient familial 1-4,5 parts, TCTS 5% (exo<150k).',
+}
+
+// Congo (Brazzaville) — CNSS + IRPP 2024 (CEMAC, XAF)
+export const COG_2024: LegislationPack = {
+  code: 'COG-2024', name: 'Congo (Brazzaville) — CNSS + IRPP 2024', countryCode: 'COG', year: 2024,
+  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  smigMensuel: 90_000,
+  plafondCnpsRetraite: 1_200_000, plafondCnpsAtPf: 1_200_000,
+  tauxCotisationRetraiteSalarie: 0.04, tauxCotisationRetraitePatronal: 0.08,
+  tauxCotisationPfPatronal: 0.1003, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.0225,
+  abattementImpotSalaire: 0.20,
+  tranchesImpotSalaire: [
+    { min: 0,          max: 464_000,    taux: 0.01 },
+    { min: 464_001,    max: 1_000_000,  taux: 0.10 },
+    { min: 1_000_001,  max: 3_000_000,  taux: 0.25 },
+    { min: 3_000_001,  max: Infinity,   taux: 0.40 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
+  labelCaisseSociale: 'CNSS',
+  leaveRules: {
+    maternityWeeks: 15, maternitySplit: { before: 6, after: 9 }, maternityPayRate: 0.5, maternityFunding: 'social',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }, { minYears: 1, rate: 1.0 }], annualLeaveDaysPerMonth: 2.0,
+    bereavementDays: 3, workingDaysPerWeek: 6, overtimeRates: { weekly: 0.10, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'PwC Tax Summaries Congo + CLEISS. Salarié CNSS 4% (plafond ~1,2M/mois ≈ 21952€/an). ' +
+         'IRPP annuel abattement 20% (à confirmer). Patronal estimé (retraite 8 + PF 10,03 + AT 2,25). ' +
+         'NON MODÉLISÉ : Taxe Unique sur Salaires 7,5%. Maternité 15 sem. indemnité 50%. À valider CNSS.cg.',
+}
+
+// Centrafrique — CNSS + IRPP 2024 (CEMAC, XAF) — ESTIMATION (données rares)
+export const CAF_2024: LegislationPack = {
+  code: 'CAF-2024', name: 'Centrafrique — CNSS + IRPP 2024 (estimation)', countryCode: 'CAF', year: 2024,
+  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  smigMensuel: 35_000,
+  plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
+  tauxCotisationRetraiteSalarie: 0.03, tauxCotisationRetraitePatronal: 0.07,
+  tauxCotisationPfPatronal: 0.06, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.03,
+  abattementImpotSalaire: 0.0,
+  tranchesImpotSalaire: [
+    { min: 0,          max: 1_500_000,  taux: 0.00 },
+    { min: 1_500_001,  max: 4_000_000,  taux: 0.10 },
+    { min: 4_000_001,  max: 8_000_000,  taux: 0.20 },
+    { min: 8_000_001,  max: Infinity,   taux: 0.30 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'IRPP — Impôt sur le Revenu des Personnes Physiques',
+  labelCaisseSociale: 'CNSS',
+  leaveRules: {
+    maternityWeeks: 14, maternitySplit: { before: 6, after: 8 }, maternityPayRate: 0.5, maternityFunding: 'social',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }], annualLeaveDaysPerMonth: 2.0, bereavementDays: 3,
+    workingDaysPerWeek: 6, overtimeRates: { weekly: 0.10, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'ESTIMATION RÉGIONALE CEMAC — quasi aucune donnée RCA en ligne (CNSS couvre <2% population). ' +
+         'SMIG, taux, barème À CONFIRMER impérativement (CNSS RCA / DGI Centrafrique). NE PAS ACTIVER sans source officielle.',
+}
+
+// Guinée équatoriale — INSESO + IRPF 2024 (CEMAC, XAF, doc espagnole)
+export const GNQ_2024: LegislationPack = {
+  code: 'GNQ-2024', name: 'Guinée équatoriale — INSESO + IRPF 2024', countryCode: 'GNQ', year: 2024,
+  currency: 'XAF', bracketScale: 'annual', status: 'stub',
+  smigMensuel: 128_000,
+  plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
+  tauxCotisationRetraiteSalarie: 0.05, tauxCotisationRetraitePatronal: 0.225,
+  tauxCotisationPfPatronal: 0.0, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.0,
+  abattementImpotSalaire: 0.0,
+  tranchesImpotSalaire: [
+    { min: 0,          max: 1_400_000,  taux: 0.00 },
+    { min: 1_400_001,  max: 5_000_000,  taux: 0.10 },
+    { min: 5_000_001,  max: 10_000_000, taux: 0.15 },
+    { min: 10_000_001, max: 15_000_000, taux: 0.20 },
+    { min: 15_000_001, max: Infinity,   taux: 0.25 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'IRPF — Impuesto sobre la Renta de las Personas Físicas',
+  labelCaisseSociale: 'INSESO',
+  leaveRules: {
+    maternityWeeks: 12, maternitySplit: { before: 6, after: 6 }, maternityPayRate: 1.0, maternityFunding: 'social',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }], annualLeaveDaysPerMonth: 2.5, bereavementDays: 3,
+    workingDaysPerWeek: 5, overtimeRates: { weekly: 0.25, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'IRPF annuel 0-25% vérifié PwC Tax Summaries Equatorial Guinea. INSESO salarié 4,5% + WPF 0,5%; ' +
+         'patronal 21,5% + WPF 1% (sources secondaires, à confirmer INSESO). Doc en espagnol. À valider.',
+}
+
+// Guinée-Bissau — INSS + Imposto Profissional 2024 (UEMOA lusophone, XOF)
+export const GNB_2024: LegislationPack = {
+  code: 'GNB-2024', name: 'Guinée-Bissau — INSS + Imposto Profissional 2024', countryCode: 'GNB', year: 2024,
+  currency: 'XOF', bracketScale: 'monthly', status: 'stub',
+  smigMensuel: 50_000,
+  plafondCnpsRetraite: 0, plafondCnpsAtPf: 0,
+  tauxCotisationRetraiteSalarie: 0.08, tauxCotisationRetraitePatronal: 0.14,
+  tauxCotisationPfPatronal: 0.0, tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.02,
+  abattementImpotSalaire: 0.0,
+  tranchesImpotSalaire: [
+    // CANDIDAT NON CONFIRMÉ (Código do Imposto Profissional, Decreto 4/84 art. 27) — à valider
+    { min: 0,        max: 100_000,   taux: 0.10 },
+    { min: 100_001,  max: 300_000,   taux: 0.20 },
+    { min: 300_001,  max: 500_000,   taux: 0.30 },
+    { min: 500_001,  max: Infinity,  taux: 0.35 },
+  ],
+  creditImpotMarieSansEnfant: 0, creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'Imposto Profissional',
+  labelCaisseSociale: 'INSS',
+  leaveRules: {
+    maternityWeeks: 9, maternitySplit: { before: 0, after: 9 }, maternityPayRate: 1.0, maternityFunding: 'employer',
+    paternityDays: 0, workAccidentDayJEmployer: false, workAccidentIjssRate: 0.6667, workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 0.5 }], annualLeaveDaysPerMonth: 2.5, bereavementDays: 3,
+    workingDaysPerWeek: 5, overtimeRates: { weekly: 0.5, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  notes: 'SSA/ISSA + Britacom (Sistema Fiscal Guineense 2025). INSS sal 8%/pat 14%, AT 2%, PAS de prestations ' +
+         'familiales, pas de plafond, Imposto do Selo 0,3% (non modélisé). SMIG 50k (décret déc. 2024). ' +
+         'BARÈME Imposto Profissional NON CONFIRMÉ (sources contradictoires) — tranches = CANDIDAT à valider ' +
+         '(Código do Imposto Profissional, Decreto 4/84 art. 27). Lusophone, IVA depuis 2025.',
+}
+
 export const LEGISLATION_PACKS: Record<string, LegislationPack> = {
   'CIV-2024': CIV_2024,
   'BEN-2024': BEN_2024,
@@ -638,6 +829,12 @@ export const LEGISLATION_PACKS: Record<string, LegislationPack> = {
   'NER-2024': NER_2024,
   'TCD-2024': TCD_2024,
   'NGA-2024': NGA_2024,
+  'CMR-2024': CMR_2024,
+  'GAB-2024': GAB_2024,
+  'COG-2024': COG_2024,
+  'CAF-2024': CAF_2024,
+  'GNQ-2024': GNQ_2024,
+  'GNB-2024': GNB_2024,
 }
 
 /** Pack par défaut : CI 2024 — garantit le comportement existant. */
@@ -653,6 +850,8 @@ export function getLegislationPack(code: string | null | undefined): Legislation
 const COUNTRY_TO_PACK_CODE: Record<string, string> = {
   CIV: 'CIV-2024', BEN: 'BEN-2024', TGO: 'TGO-2024', BFA: 'BFA-2024',
   SEN: 'SEN-2024', MLI: 'MLI-2024', NER: 'NER-2024', TCD: 'TCD-2024', NGA: 'NGA-2024',
+  CMR: 'CMR-2024', GAB: 'GAB-2024', COG: 'COG-2024', CAF: 'CAF-2024',
+  GNQ: 'GNQ-2024', GNB: 'GNB-2024',
 }
 
 /** Pack législatif d'un pays ISO-3 (null si le pays n'est pas pris en charge). */
@@ -671,6 +870,8 @@ export function isSupportedCountry(countryCode: string | null | undefined): bool
 export const COUNTRY_LABELS: Record<string, string> = {
   CIV: 'Côte d\'Ivoire', BEN: 'Bénin', TGO: 'Togo', BFA: 'Burkina Faso',
   SEN: 'Sénégal', MLI: 'Mali', NER: 'Niger', TCD: 'Tchad', NGA: 'Nigeria',
+  CMR: 'Cameroun', GAB: 'Gabon', COG: 'Congo', CAF: 'Centrafrique',
+  GNQ: 'Guinée équatoriale', GNB: 'Guinée-Bissau',
 }
 
 /**
