@@ -5,7 +5,7 @@ import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Loader2, Lock, Calculator, Download, BookOpen, CheckCircle2, XCircle,
-  Clock, Shield, ShieldAlert, Users, AlertCircle, ChevronRight, X
+  Clock, Shield, ShieldAlert, Users, AlertCircle, ChevronRight, X, CalendarPlus
 } from 'lucide-react'
 
 interface PayPeriod {
@@ -342,6 +342,12 @@ export default function PayrollPage() {
     },
   })
 
+  // PAY-019 — créer une période au statut 'open' (avant la génération via close).
+  const createMut = useMutation({
+    mutationFn: (month: string) => api.post(`/payroll/periods/${month}`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payroll-periods'] }),
+  })
+
   const periods = periodsData?.data ?? []
 
   const exportLivre = async () => {
@@ -433,6 +439,18 @@ export default function PayrollPage() {
               </p>
             </div>
           )}
+
+          {/* PAY-019 — créer la période au statut open (si elle n'existe pas encore) */}
+          <button
+            onClick={() => selectedMonth && createMut.mutate(selectedMonth)}
+            disabled={!selectedMonth || createMut.isPending || periods.some(p => p.month === selectedMonth)}
+            title={t('create.title', 'Créer la période (statut open)')}
+            className="flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          >
+            {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            <CalendarPlus className="h-4 w-4" />
+            {t('create.submit', 'Créer la période')}
+          </button>
 
           <button
             onClick={() => selectedMonth && closeMut.mutate(selectedMonth)}
