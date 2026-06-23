@@ -350,8 +350,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // browser n'a plus à manipuler le token en JS. Les clients API
             // peuvent toujours utiliser le `token` renvoyé en JSON dans Authorization.
             reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
-            // Refresh token rotatif (renouvellement silencieux du JWT — AUTH-008)
-            const refreshToken = await issueRefreshToken(pool, {
+            // Refresh token rotatif (renouvellement silencieux du JWT — AUTH-008).
+            // PAS de refresh token tant qu'un MFA est requis ou que le mot de
+            // passe doit être changé (expiré/compromis) : sinon un rafraîchissement
+            // émettrait un JWT « propre » contournant le garde pwdResetRequired.
+            const refreshToken = (mfaPending || pwdResetRequired) ? null : await issueRefreshToken(pool, {
               sub: platformUser.id, tenantId: null, schemaName: 'platform', role: 'super_admin',
               email: platformUser.email, firstName: platformUser.first_name, lastName: platformUser.last_name, employeeId: null,
             })
@@ -601,8 +604,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A02 — cookie httpOnly mode SPA (cf. helper authCookieOptions)
         reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
 
-        // Refresh token rotatif (renouvellement silencieux du JWT — AUTH-008)
-        const refreshToken = await issueRefreshToken(pool, {
+        // Refresh token rotatif (AUTH-008) — PAS émis si MFA en attente ou mot de
+        // passe à changer (sinon le refresh contournerait le garde pwdResetRequired).
+        const refreshToken = (tenantMfaPending || pwdResetRequired) ? null : await issueRefreshToken(pool, {
           sub: user.id, tenantId: tenant.id, schemaName: tenant.schema_name, role: user.role,
           email: user.email, firstName: user.first_name, lastName: user.last_name, employeeId,
         })
@@ -716,6 +720,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const account = await verifyAccountActive(pool, claims.schemaName, claims.sub)
       if (!account) {
         return reply.status(401).send({ error: 'Compte introuvable ou désactivé' })
+      }
+      // Le mot de passe ne doit pas avoir expiré entre-temps : sinon le refresh
+      // permettrait de prolonger indéfiniment une session dont le mdp doit être
+      // changé. → 401 force un re-login (qui imposera le changement).
+      const policy = await getSecurityPolicy(pool)
+      if (isPasswordExpired(account.passwordChangedAt, policy.passwordMaxAgeDays, new Date())) {
+        return reply.status(401).send({ error: 'Mot de passe expiré — reconnexion requise' })
       }
       const token = fastify.jwt.sign({
         sub:        claims.sub,
