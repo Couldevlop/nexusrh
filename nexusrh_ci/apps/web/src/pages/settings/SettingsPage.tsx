@@ -69,6 +69,7 @@ const TABS = [
   { id: 'departments',    labelKey: 'tabs.departments',   icon: Building2 },
   { id: 'absence-types',  labelKey: 'tabs.absenceTypes',  icon: FileText },
   { id: 'payroll-rules',  labelKey: 'tabs.payrollRules',  icon: Banknote },
+  { id: 'payslip-template', labelKey: 'tabs.payslipTemplate', icon: FileText },
   { id: 'legal-entities', labelKey: 'tabs.legalEntities', icon: Layers },
   { id: 'workflow',       labelKey: 'tabs.workflow',      icon: GitBranch },
   { id: 'data-import',   labelKey: 'tabs.dataImport',    icon: Database },
@@ -116,6 +117,7 @@ export default function SettingsPage() {
       {tab === 'departments'    && <DepartmentsTab qc={qc} />}
       {tab === 'absence-types'  && <AbsenceTypesTab qc={qc} />}
       {tab === 'payroll-rules'  && <PayrollRulesTab qc={qc} />}
+      {tab === 'payslip-template' && <PayslipTemplateTab qc={qc} />}
       {tab === 'legal-entities' && <LegalEntitiesTab qc={qc} />}
       {tab === 'workflow'       && <WorkflowTab qc={qc} />}
       {tab === 'data-import'   && <DataImportTab />}
@@ -2206,6 +2208,121 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Onglet : Modèle de bulletin (personnalisable par tenant) ──────────────────
+interface PayslipTemplateData {
+  accentColor: string; logoAssetId: string | null; logoUrl: string | null
+  showBaseColumn: boolean; showCodeColumn: boolean
+  showEmployerCost: boolean; showAnnualCumuls: boolean; footerText: string | null
+}
+function PayslipTemplateTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
+  const role = useAuthStore(s => s.user?.role ?? '')
+  const canEdit = role === 'admin'
+  const [form, setForm] = useState<PayslipTemplateData | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const { data } = useQuery<{ data: PayslipTemplateData }>({
+    queryKey: ['settings-payslip-template'],
+    queryFn: () => api.get('/settings/payslip-template').then(r => r.data),
+  })
+  const cfg = form ?? data?.data ?? null
+  const set = <K extends keyof PayslipTemplateData>(k: K, v: PayslipTemplateData[K]) =>
+    setForm({ ...(cfg as PayslipTemplateData), [k]: v })
+
+  const saveMut = useMutation({
+    mutationFn: (b: Partial<PayslipTemplateData>) => api.put('/settings/payslip-template', b),
+    onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2500); qc.invalidateQueries({ queryKey: ['settings-payslip-template'] }) },
+  })
+
+  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      await api.post('/settings/payslip-template/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      await qc.invalidateQueries({ queryKey: ['settings-payslip-template'] })
+      setForm(null)
+    } finally { setUploading(false); e.target.value = '' }
+  }
+
+  if (!cfg) return <div className="text-sm text-muted-foreground">{t('loading', 'Chargement…')}</div>
+
+  const Toggle = ({ label, k }: { label: string; k: keyof PayslipTemplateData }) => (
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+      <span className="text-sm">{label}</span>
+      <input type="checkbox" disabled={!canEdit} checked={Boolean(cfg[k])}
+        onChange={e => set(k, e.target.checked as never)} className="h-4 w-4 accent-primary" />
+    </label>
+  )
+
+  return (
+    <div className="p-6 max-w-2xl space-y-5">
+      <div className="flex items-center gap-2">
+        <Receipt className="h-5 w-5 text-primary" />
+        <div>
+          <h2 className="font-semibold">{t('payslipTemplate.title', 'Modèle de bulletin')}</h2>
+          <p className="text-xs text-muted-foreground">{t('payslipTemplate.subtitle', 'Personnalisez le bulletin de paie de votre entreprise (logo, colonnes, couleur, sections).')}</p>
+        </div>
+      </div>
+
+      {/* Logo */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <h3 className="text-sm font-semibold">{t('payslipTemplate.logo', 'Logo du bulletin (PNG ou JPEG, max 1 Mo)')}</h3>
+        <div className="flex items-center gap-4">
+          {cfg.logoUrl
+            ? <img src={cfg.logoUrl} alt="logo" className="h-14 max-w-[160px] object-contain rounded border border-border bg-white p-1" />
+            : <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground">—</div>}
+          {canEdit && (
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm hover:bg-accent">
+              {uploading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {t('payslipTemplate.uploadLogo', 'Téléverser un logo')}
+              <input type="file" accept="image/png,image/jpeg" onChange={handleLogo} className="hidden" />
+            </label>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">{t('payslipTemplate.logoHint', 'Le SVG n\'est pas accepté (non embarquable dans le PDF). Utilisez un PNG/JPEG.')}</p>
+      </div>
+
+      {/* Couleur + sections */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm">{t('payslipTemplate.accentColor', 'Couleur d\'accent (en-tête)')}</span>
+          <input type="color" disabled={!canEdit} value={cfg.accentColor || '#E85D04'}
+            onChange={e => set('accentColor', e.target.value)} className="h-8 w-14 rounded border border-border" />
+        </div>
+        <Toggle label={t('payslipTemplate.showBaseColumn', 'Afficher la colonne « Base »')} k="showBaseColumn" />
+        <Toggle label={t('payslipTemplate.showCodeColumn', 'Afficher le code des rubriques')} k="showCodeColumn" />
+        <Toggle label={t('payslipTemplate.showEmployerCost', 'Afficher le coût total employeur')} k="showEmployerCost" />
+        <Toggle label={t('payslipTemplate.showAnnualCumuls', 'Afficher les cumuls annuels')} k="showAnnualCumuls" />
+      </div>
+
+      {/* Mention pied de page */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-2">
+        <label className="text-sm font-medium">{t('payslipTemplate.footerText', 'Mention de pied de page (optionnel)')}</label>
+        <textarea disabled={!canEdit} rows={2} maxLength={400} value={cfg.footerText ?? ''}
+          onChange={e => set('footerText', e.target.value || null)}
+          placeholder={t('payslipTemplate.footerPlaceholder', 'Laisser vide pour la mention légale CI par défaut.')}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+      </div>
+
+      {canEdit && (
+        <div className="flex items-center gap-3">
+          <button onClick={() => saveMut.mutate({
+            accentColor: cfg.accentColor, showBaseColumn: cfg.showBaseColumn, showCodeColumn: cfg.showCodeColumn,
+            showEmployerCost: cfg.showEmployerCost, showAnnualCumuls: cfg.showAnnualCumuls, footerText: cfg.footerText,
+          })} disabled={saveMut.isPending}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            <Save className="h-4 w-4" /> {t('save', 'Enregistrer')}
+          </button>
+          {saved && <span className="flex items-center gap-1 text-sm text-emerald-600"><CheckCircle2 className="h-4 w-4" /> {t('saved', 'Enregistré')}</span>}
+        </div>
+      )}
     </div>
   )
 }

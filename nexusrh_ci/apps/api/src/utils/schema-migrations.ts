@@ -618,6 +618,9 @@ export async function ensurePlatformSchema(): Promise<void> {
     // la vue DG 360°, opt-in). Cf. services/tenant-modules.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
 
+    // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,
+
     // ── IA : autorisation d'usage de la clé plateforme par tenant ─────────────
     // true (défaut) = le tenant sans sa propre clé bénéficie du repli sur la clé
     // générale du super_admin. false = ce tenant n'a l'IA que s'il configure sa

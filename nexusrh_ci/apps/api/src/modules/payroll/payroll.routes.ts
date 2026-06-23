@@ -1078,15 +1078,45 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const slip = slipRes.rows[0]
       if (!slip) return reply.status(404).send({ error: 'Bulletin introuvable' })
 
-      const tenantRes = await rawPool.query<{ name: string }>(
-        `SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
-      ).catch(() => ({ rows: [] as Array<{ name: string }> }))
-      const tenantName = tenantRes.rows[0]?.name ?? 'Employeur'
+      // Employeur + modèle de bulletin personnalisable (logo, colonnes, couleur…)
+      const tenantRes = await rawPool.query<{
+        name: string; cnps_number: string | null; city: string | null; payslip_config: unknown
+      }>(
+        `SELECT name, cnps_number, city, payslip_config FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+        [schema],
+      ).catch(() => ({ rows: [] as Array<{ name: string; cnps_number: string | null; city: string | null; payslip_config: unknown }> }))
+      const tenant = tenantRes.rows[0]
+      const tenantName = tenant?.name ?? 'Employeur'
+      const tpl = (tenant?.payslip_config && typeof tenant.payslip_config === 'object'
+        ? tenant.payslip_config as Record<string, unknown> : {})
+
+      // Logo raster (PNG/JPG) du modèle, depuis le store d'images de la plateforme.
+      let logo: { bytes: Uint8Array; mime: string } | null = null
+      if (typeof tpl.logoAssetId === 'string' && tpl.logoAssetId) {
+        const a = await rawPool.query<{ bytes: Buffer; mime: string }>(
+          `SELECT bytes, mime FROM platform.brand_assets WHERE id = $1 LIMIT 1`, [tpl.logoAssetId],
+        ).catch(() => ({ rows: [] as Array<{ bytes: Buffer; mime: string }> }))
+        if (a.rows[0] && !/svg/i.test(a.rows[0].mime)) {
+          logo = { bytes: new Uint8Array(a.rows[0].bytes), mime: a.rows[0].mime }
+        }
+      }
+
+      // PAY-025 — cumuls annuels (YTD) : somme des bulletins de l'année ≤ ce mois.
+      const year = slip.month.slice(0, 4)
+      const cum = await rawPool.query<{ g: string; c: string; i: string; n: string }>(
+        `SELECT COALESCE(SUM(gross_salary),0) g, COALESCE(SUM(total_cnps_sal),0) c,
+                COALESCE(SUM(its),0) i, COALESCE(SUM(net_payable),0) n
+           FROM "${schema}".pay_slips
+          WHERE employee_id = $1 AND month LIKE $2 AND month <= $3`,
+        [employeeId, `${year}-%`, slip.month],
+      ).catch(() => ({ rows: [{ g: '0', c: '0', i: '0', n: '0' }] }))
+      const c0 = cum.rows[0]!
 
       const rawLines = Array.isArray(slip.lines) ? (slip.lines as PayslipPdfLine[]) : []
 
       const pdf = await renderPayslipPdf({
         tenantName,
+        employer: { cnpsNumber: tenant?.cnps_number ?? null, city: tenant?.city ?? null },
         employee: {
           firstName: slip.first_name, lastName: slip.last_name, jobTitle: slip.job_title,
           cnpsNumber: slip.cnps_number, nni: slip.nni,
@@ -1103,6 +1133,19 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         paymentMethod: slip.payment_method,
         paymentReference: slip.payment_reference,
         generatedAt: slip.generated_at,
+        annualCumuls: {
+          grossSalary: Number(c0.g), totalCnpsSal: Number(c0.c),
+          its: Number(c0.i), netPayable: Number(c0.n),
+        },
+        template: {
+          accentColor: typeof tpl.accentColor === 'string' ? tpl.accentColor : null,
+          logo,
+          showBaseColumn: tpl.showBaseColumn !== false,
+          showCodeColumn: tpl.showCodeColumn !== false,
+          showEmployerCost: tpl.showEmployerCost !== false,
+          showAnnualCumuls: tpl.showAnnualCumuls !== false,
+          footerText: typeof tpl.footerText === 'string' ? tpl.footerText : null,
+        },
       })
 
       return reply

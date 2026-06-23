@@ -501,6 +501,100 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // ── GET /settings/payslip-template — modèle de bulletin personnalisable ─────
+  fastify.get('/payslip-template', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const r = await pool.query<{ payslip_config: unknown; primary_color: string | null }>(
+        `SELECT payslip_config, primary_color FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      )
+      const t = r.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const cfg = (t.payslip_config && typeof t.payslip_config === 'object' ? t.payslip_config as Record<string, unknown> : {})
+      const logoAssetId = typeof cfg.logoAssetId === 'string' ? cfg.logoAssetId : null
+      return reply.send({
+        data: {
+          accentColor: typeof cfg.accentColor === 'string' ? cfg.accentColor : (t.primary_color ?? '#E85D04'),
+          logoAssetId,
+          logoUrl: logoAssetId ? `${config.apiUrl}/public/brand/${logoAssetId}` : null,
+          showBaseColumn: cfg.showBaseColumn !== false,
+          showCodeColumn: cfg.showCodeColumn !== false,
+          showEmployerCost: cfg.showEmployerCost !== false,
+          showAnnualCumuls: cfg.showAnnualCumuls !== false,
+          footerText: typeof cfg.footerText === 'string' ? cfg.footerText : null,
+        },
+      })
+    },
+  })
+
+  // ── PUT /settings/payslip-template — enregistre le modèle (admin) ───────────
+  fastify.put('/payslip-template', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const tplSchema = z.object({
+        accentColor:      z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Couleur hex #RRGGBB attendue').nullable().optional(),
+        showBaseColumn:   z.boolean().optional(),
+        showCodeColumn:   z.boolean().optional(),
+        showEmployerCost: z.boolean().optional(),
+        showAnnualCumuls: z.boolean().optional(),
+        footerText:       z.string().max(400).nullable().optional(),
+      }).strict()
+      const parsed = tplSchema.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      const cur = await pool.query<{ payslip_config: unknown }>(
+        `SELECT payslip_config FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      )
+      const base = (cur.rows[0]?.payslip_config && typeof cur.rows[0].payslip_config === 'object'
+        ? cur.rows[0].payslip_config as Record<string, unknown> : {})
+      const merged = { ...base, ...parsed.data }
+      await pool.query(
+        `UPDATE platform.tenants SET payslip_config = $1::jsonb, updated_at = now() WHERE id = $2`,
+        [JSON.stringify(merged), tenantId],
+      )
+      auditLogSettings(request.user.schemaName, request.user.sub, 'settings.payslip_template_updated',
+        tenantId, parsed.data, request.ip)
+      return reply.send({ data: { ok: true } })
+    },
+  })
+
+  // ── POST /settings/payslip-template/logo — logo raster du bulletin (admin) ──
+  fastify.post('/payslip-template/logo', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const file = await request.file()
+      if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu.' })
+      // pdf-lib n'embarque que le raster : on impose PNG/JPEG (SVG refusé).
+      if (!['image/png', 'image/jpeg'].includes(file.mimetype)) {
+        return reply.status(400).send({ error: 'Format non supporté : logo PNG ou JPEG attendu (le SVG n\'est pas embarquable dans le PDF).' })
+      }
+      const buf = await file.toBuffer()
+      if (buf.length > 1_000_000) return reply.status(400).send({ error: 'Logo trop volumineux (max 1 Mo).' })
+      const ins = await pool.query<{ id: string }>(
+        `INSERT INTO platform.brand_assets (mime, bytes) VALUES ($1, $2) RETURNING id`, [file.mimetype, buf],
+      )
+      const assetId = ins.rows[0]!.id
+      const cur = await pool.query<{ payslip_config: unknown }>(
+        `SELECT payslip_config FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      )
+      const base = (cur.rows[0]?.payslip_config && typeof cur.rows[0].payslip_config === 'object'
+        ? cur.rows[0].payslip_config as Record<string, unknown> : {})
+      await pool.query(
+        `UPDATE platform.tenants SET payslip_config = $1::jsonb, updated_at = now() WHERE id = $2`,
+        [JSON.stringify({ ...base, logoAssetId: assetId }), tenantId],
+      )
+      auditLogSettings(request.user.schemaName, request.user.sub, 'settings.payslip_logo_updated', tenantId, {}, request.ip)
+      return reply.send({ data: { logoAssetId: assetId, logoUrl: `${config.apiUrl}/public/brand/${assetId}` } })
+    },
+  })
+
   // ── PUT /settings/email — enregistre le SMTP tenant (mot de passe chiffré) ──
   // OWASP A02 : mot de passe SMTP chiffré AES-256-GCM. Sentinelle KEEP : champ
   // absent = inchangé ; '' / null = effacé. A09 : audité (sans le mot de passe).
