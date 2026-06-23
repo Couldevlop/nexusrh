@@ -9,6 +9,7 @@
     "departments": "Departments",
     "absenceTypes": "Absence types",
     "payrollRules": "Payroll items",
+    "payslipTemplate": "Payslip",
     "legalEntities": "Legal entities",
     "workflow": "Workflow",
     "dataImport": "Data migration",

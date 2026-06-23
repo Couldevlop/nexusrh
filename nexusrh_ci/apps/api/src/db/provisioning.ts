@@ -306,6 +306,9 @@ export async function createPlatformSchema(): Promise<void> {
   // l'IA QUE s'il configure sa propre clé. Priorité : clé tenant > clé plateforme.
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS ai_platform_key_enabled boolean NOT NULL DEFAULT true`)
 
+  // Bulletin de paie personnalisable par tenant (logo, colonnes, couleur, sections).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`)
+
   // ── IA : consommation de tokens par tenant SUR LA CLÉ PLATEFORME ──────────────
   // Agrégat (tenant × provider × mois). Alimenté UNIQUEMENT quand un appel chat a
   // utilisé la clé générale du super_admin (key_source='platform') — jamais quand
