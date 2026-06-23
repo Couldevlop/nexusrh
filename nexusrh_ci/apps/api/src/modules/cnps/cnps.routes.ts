@@ -2,8 +2,11 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { encodeField } from '../sage/sage.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// CNP-002 — anti-injection CSV (OWASP A03) : neutralise +/-/=/@ et quote.
+const csvCell = (v: unknown) => encodeField(v, ';')
 
 // OWASP A03 — validation year query param (regex + plage)
 function parseYearParam(raw: string | undefined): number | null {
@@ -336,14 +339,14 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       ]
       for (const emp of employees) {
         lines.push([
-          emp.nni ?? '',
-          emp.last_name.toUpperCase(),
-          emp.first_name,
-          emp.cnps_number ?? '',
-          emp.gross_salary ?? '0',
-          emp.total_cnps_sal ?? '0',
-          emp.total_cnps_pat ?? '0',
-          String(parseInt(emp.total_cnps_sal ?? '0') + parseInt(emp.total_cnps_pat ?? '0')),
+          csvCell(emp.nni ?? ''),
+          csvCell(emp.last_name.toUpperCase()),
+          csvCell(emp.first_name),
+          csvCell(emp.cnps_number ?? ''),
+          csvCell(emp.gross_salary ?? '0'),
+          csvCell(emp.total_cnps_sal ?? '0'),
+          csvCell(emp.total_cnps_pat ?? '0'),
+          csvCell(String(parseInt(emp.total_cnps_sal ?? '0') + parseInt(emp.total_cnps_pat ?? '0'))),
         ].join(';'))
       }
 
@@ -1019,17 +1022,17 @@ ${salaries}
       const dataLines = employees.map(e => {
         const totalPrelevements = parseInt(e.cotis_sal_annuelle ?? '0') + parseInt(e.its_annuel ?? '0')
         return [
-          e.nni,
-          e.last_name.toUpperCase(),
-          e.first_name,
-          e.cnps_number,
-          e.job_title,
-          e.mois_travailles,
-          e.salaire_brut_annuel,
-          e.cotis_sal_annuelle,
-          e.cotis_pat_annuelle,
-          e.its_annuel,
-          String(totalPrelevements),
+          csvCell(e.nni),
+          csvCell(e.last_name.toUpperCase()),
+          csvCell(e.first_name),
+          csvCell(e.cnps_number),
+          csvCell(e.job_title),
+          csvCell(e.mois_travailles),
+          csvCell(e.salaire_brut_annuel),
+          csvCell(e.cotis_sal_annuelle),
+          csvCell(e.cotis_pat_annuelle),
+          csvCell(e.its_annuel),
+          csvCell(String(totalPrelevements)),
         ].join(';')
       })
 
@@ -1103,15 +1106,15 @@ ${salaries}
       const dataLines = employees.map(e => {
         const totalPrelevements = parseInt(e.total_cnps_sal ?? '0') + parseInt(e.total_its ?? '0')
         return [
-          e.nni ?? '',
-          e.last_name.toUpperCase(),
-          e.first_name,
-          e.cnps_number ?? '',
-          e.job_title ?? '',
-          e.total_sal ?? '0',
-          e.total_cnps_sal ?? '0',
-          e.total_its ?? '0',
-          String(totalPrelevements),
+          csvCell(e.nni ?? ''),
+          csvCell(e.last_name.toUpperCase()),
+          csvCell(e.first_name),
+          csvCell(e.cnps_number ?? ''),
+          csvCell(e.job_title ?? ''),
+          csvCell(e.total_sal ?? '0'),
+          csvCell(e.total_cnps_sal ?? '0'),
+          csvCell(e.total_its ?? '0'),
+          csvCell(String(totalPrelevements)),
         ].join(';')
       })
 

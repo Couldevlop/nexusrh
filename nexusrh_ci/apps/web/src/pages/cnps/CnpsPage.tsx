@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
-import { FileText, Download, Loader2, Send, ShieldCheck, AlertTriangle, CheckCircle, XCircle, ClipboardList, Building2 } from 'lucide-react'
+import { FileText, Download, Loader2, Send, ShieldCheck, AlertTriangle, CheckCircle, XCircle, ClipboardList, Building2, RefreshCw } from 'lucide-react'
 
 interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
 
@@ -46,6 +46,10 @@ export default function CnpsPage() {
   const [validating, setValidating] = useState(false)
   const [rnsYear, setRnsYear] = useState(currentYear)
   const [rnsLoading, setRnsLoading] = useState<'pdf' | 'csv' | null>(null)
+  // CNP-004/005 — DISA annuelle (génération + export CSV)
+  const [disaYear, setDisaYear] = useState(currentYear)
+  const [disaLoading, setDisaLoading] = useState<'generate' | 'csv' | null>(null)
+  const [disaMsg, setDisaMsg] = useState<string | null>(null)
 
   // Charge les filiales SEULEMENT en multi-filiales (cf. Palier 3)
   const { data: entitiesData } = useQuery<{ data: LegalEntity[] }>({
@@ -128,6 +132,32 @@ export default function CnpsPage() {
     }
   }
 
+  // CNP-004 — génère la DISA annuelle (cumuls 12 mois par employé)
+  const handleDisaGenerate = async () => {
+    setDisaLoading('generate'); setDisaMsg(null)
+    try {
+      const res = await api.post('/cnps/disa/generate',
+        hasSubsidiaries && legalEntityId ? { year: disaYear, legalEntityId } : { year: disaYear })
+      const n = (res.data as { data?: { employeesCount?: number } })?.data?.employeesCount
+      setDisaMsg(t('disa.generated', { count: n ?? 0, year: disaYear, defaultValue: `DISA ${disaYear} générée (${n ?? 0} salariés).` }))
+    } catch (e) {
+      setDisaMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('disa.error', 'Échec de la génération DISA.'))
+    } finally { setDisaLoading(null) }
+  }
+  // CNP-005 — export DISA CSV
+  const handleDisaExport = async () => {
+    setDisaLoading('csv')
+    try {
+      const res = await api.get(`/cnps/disa/${disaYear}/export`, { responseType: 'blob' })
+      const blobUrl = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = blobUrl; a.download = `DISA_${disaYear}_CNPS.csv`; a.click()
+      URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      setDisaMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('disa.exportError', 'Aucune DISA pour cette année — générez-la d\'abord.'))
+    } finally { setDisaLoading(null) }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -203,6 +233,40 @@ export default function CnpsPage() {
             <Trans i18nKey="rns.deadlineNotice" ns="cnps" components={{ strong: <strong /> }} />
           </p>
         </div>
+      </div>
+
+      {/* ── DISA annuelle (CNP-004/005) ───────────────────────────────────── */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+              <ClipboardList className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-base">{t('disa.title', 'DISA — Déclaration Individuelle des Salaires Annuels')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t('disa.intro', 'Déclaration annuelle (Loi 99-477) : cumuls salaire brut, cotisations CNPS et ITS par salarié, à déposer en janvier N+1 (CNPS + DGI).')}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={disaYear} onChange={e => setDisaYear(parseInt(e.target.value))}
+              className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-ring outline-none">
+              {[currentYear, currentYear - 1, currentYear - 2].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button onClick={() => void handleDisaGenerate()} disabled={disaLoading !== null}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {disaLoading === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {t('disa.generate', 'Générer la DISA')}
+            </button>
+            <button onClick={() => void handleDisaExport()} disabled={disaLoading !== null}
+              className="flex items-center gap-2 rounded-lg border border-primary bg-background px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50">
+              {disaLoading === 'csv' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {t('disa.exportCsv', 'Exporter (CSV)')}
+            </button>
+          </div>
+        </div>
+        {disaMsg && <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{disaMsg}</p>}
       </div>
 
       {/* Récapitulatif annuel */}
