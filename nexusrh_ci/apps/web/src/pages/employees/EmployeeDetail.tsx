@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useRef, useState } from 'react'
 import { api, formatFCFA, formatDate } from '@/lib/api'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Camera, Loader2 } from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
 
 interface EmployeeDetails {
   id: string; first_name: string; last_name: string; email: string
@@ -16,17 +18,40 @@ interface EmployeeDetails {
   marital_status: string; children_count: number; city: string
   // EMP-009 — ancienneté calculée renvoyée par l'API
   seniority_label?: string; seniority_months?: number
+  // EMP-015 — photo de profil
+  profile_photo_url?: string | null
 }
 
 export default function EmployeeDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation('employees')
+  const queryClient = useQueryClient()
+  const role = useAuthStore((s) => s.user?.role ?? '')
+  const canEditPhoto = ['admin', 'hr_manager', 'hr_officer'].includes(role)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   const { data, isLoading } = useQuery<{ data: EmployeeDetails }>({
     queryKey: ['employee', id],
     queryFn: () => api.get(`/employees/${id}`).then(r => r.data),
   })
+
+  // EMP-015 — upload de la photo de profil (multipart) puis rafraîchissement.
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      await api.post(`/employees/${id}/photo`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      await queryClient.invalidateQueries({ queryKey: ['employee', id] })
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const emp = data?.data
   if (isLoading) return <div className="p-6 text-center text-muted-foreground">{t('loadingEmployee')}</div>
@@ -48,10 +73,39 @@ export default function EmployeeDetail() {
         <ArrowLeft className="h-4 w-4" /> {t('detail.back')}
       </button>
 
-      {/* Header */}
+      {/* Header — avatar = vraie photo si disponible, sinon initiales (EMP-015) */}
       <div className="flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
-          {emp.first_name?.[0]}{emp.last_name?.[0]}
+        <div className="relative h-14 w-14 shrink-0">
+          {emp.profile_photo_url ? (
+            <img
+              src={emp.profile_photo_url}
+              alt={`${emp.first_name} ${emp.last_name}`}
+              className="h-14 w-14 rounded-full object-cover border border-border"
+            />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
+              {emp.first_name?.[0]}{emp.last_name?.[0]}
+            </div>
+          )}
+          {canEditPhoto && (
+            <>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                title={t('detail.changePhoto', 'Changer la photo')}
+                className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card shadow hover:bg-accent disabled:opacity-50">
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </>
+          )}
         </div>
         <div>
           <h1 className="text-2xl font-bold">{emp.first_name} {emp.last_name}</h1>

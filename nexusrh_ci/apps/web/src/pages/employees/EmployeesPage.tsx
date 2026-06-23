@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
-import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil } from 'lucide-react'
+import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil, Download, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 interface Employee {
@@ -616,21 +616,49 @@ export default function EmployeesPage() {
   const employees = data?.data ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const navigate = useNavigate()
+
+  // EMP-014 — export CSV de la liste (téléchargement blob authentifié).
+  async function handleExport() {
+    const res = await api.get('/employees/export.csv', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'employes.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t('subtitle', { count: data?.total ?? 0 })}</p>
         </div>
-        {canCreate && (
-          <button onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> {t('newEmployee')}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate && (
+            <>
+              {/* EMP-014 — Export CSV */}
+              <button onClick={() => void handleExport()}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm font-medium hover:bg-accent">
+                <Download className="h-4 w-4" /> {t('export', 'Exporter')}
+              </button>
+              {/* EMP-013 — Import CSV (formulaire de reprise de données dans Paramètres) */}
+              <button onClick={() => navigate('/settings?tab=data-import')}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm font-medium hover:bg-accent">
+                <Upload className="h-4 w-4" /> {t('import', 'Importer')}
+              </button>
+            </>
+          )}
+          {canCreate && (
+            <button onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
+              <Plus className="h-4 w-4" /> {t('newEmployee')}
+            </button>
+          )}
+        </div>
       </div>
 
       {createdMsg && (
