@@ -4,31 +4,31 @@
     "templateRef": "EN-GDAV-06 v03 (CNPS Côte d'Ivoire)",
     "pageSize": { "width": 595.32, "height": 841.92 },
     "yIsFromTop": true,
-    "lastCalibratedOn": "2026-06-01"
+    "lastCalibratedOn": "2026-06-23"
   },
   "employer": {
-    "name":        { "x":  85, "y": 138, "size": 11, "bold": true,  "maxWidth": 320 },
-    "address":     { "x":  85, "y": 153, "size":  9, "bold": false, "maxWidth": 320 },
-    "cnpsNumber":  { "x": 410, "y": 138, "size": 11, "bold": true,  "maxWidth": 140 },
-    "issuedAt":    { "x": 410, "y": 153, "size":  9, "bold": false, "maxWidth": 160 },
-    "affiliation": { "x": 410, "y": 168, "size":  9, "bold": false, "maxWidth": 160 }
+    "name":        { "x":  52, "y": 152, "size": 11, "bold": true,  "maxWidth": 195 },
+    "address":     { "x":  52, "y": 168, "size":  9, "bold": false, "maxWidth": 195 },
+    "cnpsNumber":  { "x": 252, "y": 178, "size":  7, "bold": true,  "maxWidth":  52 },
+    "issuedAt":    { "x": 488, "y": 270, "size":  7, "bold": false, "maxWidth": 100, "align": "center" },
+    "affiliation": { "x": 258, "y": 698, "size":  9, "bold": false, "maxWidth":  95 }
   },
   "employee": {
-    "lastNameFirstName": { "x":  85, "y": 218, "size": 12, "bold": true,  "maxWidth": 280 },
-    "year":              { "x": 380, "y": 218, "size": 12, "bold": true,  "maxWidth":  60, "align": "center" },
-    "matriculeCnps":     { "x":  85, "y": 252, "size": 11, "bold": false, "maxWidth": 200 },
-    "hireDate":          { "x": 320, "y": 252, "size": 10, "bold": false, "maxWidth":  90 },
-    "exitDate":          { "x": 450, "y": 252, "size": 10, "bold": false, "maxWidth":  90 },
-    "periodFrom":        { "x":  85, "y": 286, "size": 10, "bold": false, "maxWidth": 100 },
-    "periodTo":          { "x": 250, "y": 286, "size": 10, "bold": false, "maxWidth": 100 },
-    "monthsWorked":      { "x": 410, "y": 286, "size": 11, "bold": true,  "maxWidth":  50, "align": "right" }
+    "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 190 },
+    "year":              { "x": 300, "y": 252, "size": 11, "bold": true,  "maxWidth":  50, "align": "center" },
+    "matriculeCnps":     { "x": 258, "y": 300, "size": 10, "bold": false, "maxWidth":  95 },
+    "hireDate":          { "x": 258, "y": 350, "size":  9, "bold": false, "maxWidth":  95 },
+    "exitDate":          { "x": 258, "y": 400, "size":  9, "bold": false, "maxWidth":  95 },
+    "periodFrom":        { "x": 258, "y": 460, "size":  9, "bold": false, "maxWidth":  95 },
+    "periodTo":          { "x": 258, "y": 498, "size":  9, "bold": false, "maxWidth":  95 },
+    "monthsWorked":      { "x": 452, "y": 305, "size": 11, "bold": true,  "maxWidth":  82, "align": "center" }
   },
   "salary": {
-    "annualGross":       { "x":  85, "y": 332, "size": 14, "bold": true,  "maxWidth": 200, "format": "fcfa", "align": "right" }
+    "annualGross":       { "x": 360, "y": 305, "size":  9, "bold": true,  "maxWidth":  88, "format": "fcfa", "align": "right" }
   },
   "signature": {
-    "city":      { "x":  85, "y": 720, "size": 10, "bold": false, "maxWidth": 200 },
-    "name":      { "x": 390, "y": 740, "size": 11, "bold": true,  "maxWidth": 180 },
-    "title":     { "x": 390, "y": 755, "size":  9, "bold": false, "maxWidth": 180 }
+    "city":      { "x": 258, "y": 516, "size":  8, "bold": false, "maxWidth":  95 },
+    "name":      { "x": 258, "y": 536, "size": 10, "bold": true,  "maxWidth":  95 },
+    "title":     { "x": 258, "y": 560, "size":  9, "bold": false, "maxWidth":  95 }
   }
 }
