@@ -11,20 +11,20 @@
     "address":     { "x":  52, "y": 178, "size":  8, "bold": false, "maxWidth": 183, "maxLines": 2 },
     "cnpsNumber":  { "x": 252, "y": 178, "size":  7, "bold": true,  "maxWidth":  52, "maxLines": 1 },
     "issuedAt":    { "x": 488, "y": 270, "size":  7, "bold": false, "maxWidth": 100, "align": "center" },
-    "affiliation": { "x": 258, "y": 698, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 1 }
+    "affiliation": { "x": 258, "y": 690, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 1 }
   },
   "employee": {
     "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 190, "maxLines": 1 },
     "year":              { "x": 300, "y": 252, "size": 11, "bold": true,  "maxWidth":  50, "align": "center" },
-    "matriculeCnps":     { "x": 258, "y": 305, "size": 10, "bold": false, "maxWidth":  95, "maxLines": 1 },
-    "hireDate":          { "x": 258, "y": 340, "size":  9, "bold": false, "maxWidth":  95 },
-    "exitDate":          { "x": 258, "y": 390, "size":  9, "bold": false, "maxWidth":  95 },
-    "periodFrom":        { "x": 258, "y": 456, "size":  9, "bold": false, "maxWidth":  95 },
-    "periodTo":          { "x": 258, "y": 494, "size":  9, "bold": false, "maxWidth":  95 },
-    "monthsWorked":      { "x": 452, "y": 305, "size": 11, "bold": true,  "maxWidth":  82, "align": "center" }
+    "matriculeCnps":     { "x": 258, "y": 288, "size": 10, "bold": false, "maxWidth":  95, "maxLines": 1 },
+    "hireDate":          { "x": 258, "y": 338, "size":  9, "bold": false, "maxWidth":  95 },
+    "exitDate":          { "x": 258, "y": 388, "size":  9, "bold": false, "maxWidth":  95 },
+    "periodFrom":        { "x": 258, "y": 452, "size":  9, "bold": false, "maxWidth":  95 },
+    "periodTo":          { "x": 258, "y": 489, "size":  9, "bold": false, "maxWidth":  95 },
+    "monthsWorked":      { "x": 452, "y": 288, "size": 11, "bold": true,  "maxWidth":  82, "align": "center" }
   },
   "salary": {
-    "annualGross":       { "x": 360, "y": 305, "size":  9, "bold": true,  "maxWidth":  88, "format": "fcfa", "align": "right" }
+    "annualGross":       { "x": 360, "y": 288, "size":  9, "bold": true,  "maxWidth":  88, "format": "fcfa", "align": "right" }
   },
   "signature": {
     "city":      { "x": 258, "y": 514, "size":  8, "bold": false, "maxWidth":  95, "maxLines": 1 },
