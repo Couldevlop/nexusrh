@@ -211,20 +211,20 @@ export function createTenantSchema(schemaName: string) {
   })
 
   // ── DISA RECORDS ──────────────────────────────────────────────────────────
+  // DISA : shape AGRÉGÉE (1 ligne/année) — cohérente avec provisioning.ts,
+  // schema-migrations.ts et les handlers cnps. (Pas de shape par-employé.)
   const disaRecords = schema.table('disa_records', {
-    id:            uuid('id').primaryKey().defaultRandom(),
-    year:          integer('year').notNull(),
-    employeeId:    uuid('employee_id').notNull(),
-    nni:           varchar('nni', { length: 50 }),
-    cnpsNumber:    varchar('cnps_number', { length: 50 }),
-    firstName:     varchar('first_name', { length: 100 }).notNull(),
-    lastName:      varchar('last_name', { length: 100 }).notNull(),
-    annualGross:   numeric('annual_gross', { precision: 14, scale: 0 }).notNull(),
-    annualCnpsSal: numeric('annual_cnps_sal', { precision: 12, scale: 0 }).default('0'),
-    annualIts:     numeric('annual_its', { precision: 12, scale: 0 }).default('0'),
-    status:        varchar('status', { length: 20 }).default('draft'),
-    exportUrl:     text('export_url'),
-    createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    id:             uuid('id').primaryKey().defaultRandom(),
+    year:           integer('year').notNull().unique(),
+    employeesCount: integer('employees_count').default(0),
+    masseSalariale: numeric('masse_salariale', { precision: 14, scale: 0 }).default('0'),
+    totalCnps:      numeric('total_cnps', { precision: 14, scale: 0 }).default('0'),
+    totalIts:       numeric('total_its', { precision: 14, scale: 0 }).default('0'),
+    data:           jsonb('data').default('[]'),
+    status:         varchar('status', { length: 20 }).default('draft'),
+    exportUrl:      text('export_url'),
+    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   })
 
   // ── MOBILE MONEY PAYMENTS ─────────────────────────────────────────────────

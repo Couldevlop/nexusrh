@@ -125,21 +125,23 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS data jsonb DEFAULT '[]'`,
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS submitted_by uuid`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS paid_at timestamptz`,
+    // DISA : shape AGRÉGÉE (1 ligne / année), identique à provisioning.ts et aux
+    // handlers cnps (INSERT employees_count/masse_salariale/total_cnps/total_its
+    // + ON CONFLICT (year)). NE PAS revenir à une shape par-employé : la
+    // divergence cassait generate (42703) et l'export DISA (CSV vide) sur tout
+    // tenant dont la table aurait été matérialisée par cette migration.
     `CREATE TABLE IF NOT EXISTS "${schemaName}".disa_records (
-      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      year           int NOT NULL,
-      employee_id    uuid NOT NULL,
-      nni            varchar(50),
-      cnps_number    varchar(50),
-      first_name     varchar(100) NOT NULL,
-      last_name      varchar(100) NOT NULL,
-      annual_gross   numeric(14,0) NOT NULL DEFAULT 0,
-      annual_cnps_sal numeric(12,0) DEFAULT 0,
-      annual_its     numeric(12,0) DEFAULT 0,
-      status         varchar(20) DEFAULT 'draft',
-      export_url     text,
-      created_at     timestamptz NOT NULL DEFAULT now(),
-      UNIQUE(year, employee_id)
+      id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      year             int NOT NULL UNIQUE,
+      employees_count  int DEFAULT 0,
+      masse_salariale  numeric(14,0) DEFAULT 0,
+      total_cnps       numeric(14,0) DEFAULT 0,
+      total_its        numeric(14,0) DEFAULT 0,
+      data             jsonb DEFAULT '[]',
+      status           varchar(20) DEFAULT 'draft',
+      export_url       text,
+      created_at       timestamptz NOT NULL DEFAULT now(),
+      updated_at       timestamptz NOT NULL DEFAULT now()
     )`,
     // ── Multi-filiales (Palier 3) : scope par legal_entity_id ──
     // Permet la clôture paie / déclarations CNPS / DISA scopées à une filiale
