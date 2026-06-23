@@ -10,6 +10,7 @@ import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
+import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
 
 // OWASP A03 — patterns de validation stricts
@@ -501,64 +502,135 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // ── GET /settings/payslip-template — modèle de bulletin personnalisable ─────
+  // Schéma d'un modèle (scope groupe ou pays) pour le constructeur par blocs.
+  const PAYSLIP_BLOCK = z.object({
+    id: z.string().max(40), enabled: z.boolean().optional(), text: z.string().max(2000).optional(),
+  })
+  const PAYSLIP_SCOPE = z.object({
+    accentColor:      z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Couleur hex #RRGGBB attendue').nullable().optional(),
+    logoAssetId:      z.string().uuid().nullable().optional(),
+    showBaseColumn:   z.boolean().optional(),
+    showCodeColumn:   z.boolean().optional(),
+    showEmployerCost: z.boolean().optional(),
+    showAnnualCumuls: z.boolean().optional(),
+    footerText:       z.string().max(400).nullable().optional(),
+    blocks:           z.array(PAYSLIP_BLOCK).max(20).optional(),
+  }).strict()
+  const PAYSLIP_CONFIG = PAYSLIP_SCOPE.extend({
+    byCountry: z.record(z.string().min(2).max(3), PAYSLIP_SCOPE).optional(),
+  }).strict()
+
+  // ── GET /settings/payslip-template — modèle + détection auto mono/multi-pays ─
   fastify.get('/payslip-template', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
-      const r = await pool.query<{ payslip_config: unknown; primary_color: string | null }>(
-        `SELECT payslip_config, primary_color FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      const r = await pool.query<{
+        payslip_config: unknown; primary_color: string | null
+        has_subsidiaries: boolean | null; default_country_code: string | null
+      }>(
+        `SELECT payslip_config, primary_color, has_subsidiaries, default_country_code
+           FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
       )
       const t = r.rows[0]
       if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
       const cfg = (t.payslip_config && typeof t.payslip_config === 'object' ? t.payslip_config as Record<string, unknown> : {})
-      const logoAssetId = typeof cfg.logoAssetId === 'string' ? cfg.logoAssetId : null
+      // Détection automatique : pays distincts des filiales actives. Le système
+      // décide seul mono- vs multi-pays (pas de saisie manuelle).
+      let countries: string[] = []
+      if (t.has_subsidiaries) {
+        const ce = await pool.query<{ country_code: string }>(
+          `SELECT DISTINCT country_code FROM "${request.user.schemaName}".legal_entities
+            WHERE is_active = true AND country_code IS NOT NULL ORDER BY country_code`,
+        ).catch(() => ({ rows: [] as Array<{ country_code: string }> }))
+        countries = ce.rows.map(x => x.country_code)
+      }
       return reply.send({
         data: {
-          accentColor: typeof cfg.accentColor === 'string' ? cfg.accentColor : (t.primary_color ?? '#E85D04'),
-          logoAssetId,
-          logoUrl: logoAssetId ? `${config.apiUrl}/public/brand/${logoAssetId}` : null,
-          showBaseColumn: cfg.showBaseColumn !== false,
-          showCodeColumn: cfg.showCodeColumn !== false,
-          showEmployerCost: cfg.showEmployerCost !== false,
-          showAnnualCumuls: cfg.showAnnualCumuls !== false,
-          footerText: typeof cfg.footerText === 'string' ? cfg.footerText : null,
+          multiCountry: !!t.has_subsidiaries && countries.length > 1,
+          countries,
+          defaultCountry: t.default_country_code ?? 'CIV',
+          defaultAccent: t.primary_color ?? '#E85D04',
+          assetBase: `${config.apiUrl}/public/brand/`,
+          config: cfg,
         },
       })
     },
   })
 
-  // ── PUT /settings/payslip-template — enregistre le modèle (admin) ───────────
+  // ── PUT /settings/payslip-template — enregistre le modèle complet (admin) ────
+  // Remplace payslip_config par la config postée (groupe + byCountry + blocs).
   fastify.put('/payslip-template', {
     preHandler: [fastify.authorize('admin')],
     config: SETTINGS_WRITE_RATE_LIMIT,
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
-      const tplSchema = z.object({
-        accentColor:      z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Couleur hex #RRGGBB attendue').nullable().optional(),
-        showBaseColumn:   z.boolean().optional(),
-        showCodeColumn:   z.boolean().optional(),
-        showEmployerCost: z.boolean().optional(),
-        showAnnualCumuls: z.boolean().optional(),
-        footerText:       z.string().max(400).nullable().optional(),
-      }).strict()
-      const parsed = tplSchema.safeParse(request.body)
+      const parsed = PAYSLIP_CONFIG.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
-      const cur = await pool.query<{ payslip_config: unknown }>(
-        `SELECT payslip_config FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
-      )
-      const base = (cur.rows[0]?.payslip_config && typeof cur.rows[0].payslip_config === 'object'
-        ? cur.rows[0].payslip_config as Record<string, unknown> : {})
-      const merged = { ...base, ...parsed.data }
       await pool.query(
         `UPDATE platform.tenants SET payslip_config = $1::jsonb, updated_at = now() WHERE id = $2`,
-        [JSON.stringify(merged), tenantId],
+        [JSON.stringify(parsed.data), tenantId],
       )
       auditLogSettings(request.user.schemaName, request.user.sub, 'settings.payslip_template_updated',
-        tenantId, parsed.data, request.ip)
+        tenantId, { byCountry: Object.keys(parsed.data.byCountry ?? {}) }, request.ip)
       return reply.send({ data: { ok: true } })
+    },
+  })
+
+  // ── POST /settings/payslip-template/preview — aperçu PDF d'un modèle (live) ──
+  fastify.post('/payslip-template/preview', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const parsed = PAYSLIP_SCOPE.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      const b = parsed.data
+      const tRes = await pool.query<{ name: string; cnps_number: string | null; city: string | null }>(
+        `SELECT name, cnps_number, city FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      )
+      const t = tRes.rows[0]
+      let logo: { bytes: Uint8Array; mime: string } | null = null
+      if (b.logoAssetId) {
+        const a = await pool.query<{ bytes: Buffer; mime: string }>(
+          `SELECT bytes, mime FROM platform.brand_assets WHERE id = $1 LIMIT 1`, [b.logoAssetId],
+        ).catch(() => ({ rows: [] as Array<{ bytes: Buffer; mime: string }> }))
+        if (a.rows[0] && !/svg/i.test(a.rows[0].mime)) logo = { bytes: new Uint8Array(a.rows[0].bytes), mime: a.rows[0].mime }
+      }
+      // Bulletin d'exemple (données fictives) rendu avec le modèle en cours d'édition.
+      const pdf = await renderPayslipPdf({
+        tenantName: t?.name ?? 'Votre entreprise',
+        employer: { cnpsNumber: t?.cnps_number ?? 'CI-0000000-X', city: t?.city ?? 'Abidjan' },
+        employee: { firstName: 'Awa', lastName: 'Koné', jobTitle: 'Exemple', cnpsNumber: 'CI-1234567', nni: 'CI000000001' },
+        month: '2025-05',
+        lines: [
+          { code: '1000', label: 'Salaire de base', type: 'earning', base: 250000, amount: 250000 },
+          { code: '1300', label: 'Prime de transport', type: 'earning', base: null, amount: 30000 },
+          { code: '2000', label: 'CNPS Retraite (6,3%)', type: 'employee_contribution', base: 250000, amount: 15750 },
+          { code: '2100', label: 'ITS', type: 'employee_contribution', base: null, amount: 3200 },
+          { code: '3300', label: 'CNPS Accidents du travail', type: 'employer_contribution', base: 70000, amount: 2100 },
+        ],
+        grossSalary: 280000, totalCnpsSal: 15750, its: 3200, totalDeductions: 18950,
+        netPayable: 261050, employerCost: 312000, currency: 'XOF',
+        paymentMethod: 'Wave', paymentReference: 'APERCU-0001', generatedAt: '2025-05-31',
+        annualCumuls: { grossSalary: 1400000, totalCnpsSal: 78750, its: 16000, netPayable: 1305250 },
+        template: {
+          accentColor: b.accentColor ?? null, logo,
+          showBaseColumn: b.showBaseColumn !== false,
+          showCodeColumn: b.showCodeColumn !== false,
+          showEmployerCost: b.showEmployerCost !== false,
+          showAnnualCumuls: b.showAnnualCumuls !== false,
+          footerText: b.footerText ?? null,
+          blocks: b.blocks,
+        },
+      })
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', 'inline; filename="apercu-bulletin.pdf"')
+        .send(Buffer.from(pdf))
     },
   })
 
@@ -577,20 +649,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const buf = await file.toBuffer()
       if (buf.length > 1_000_000) return reply.status(400).send({ error: 'Logo trop volumineux (max 1 Mo).' })
+      // Stocke l'image et renvoie l'id : le constructeur l'affecte au modèle
+      // (groupe ou pays) puis l'enregistre via PUT — pas d'écriture config ici.
       const ins = await pool.query<{ id: string }>(
         `INSERT INTO platform.brand_assets (mime, bytes) VALUES ($1, $2) RETURNING id`, [file.mimetype, buf],
       )
       const assetId = ins.rows[0]!.id
-      const cur = await pool.query<{ payslip_config: unknown }>(
-        `SELECT payslip_config FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
-      )
-      const base = (cur.rows[0]?.payslip_config && typeof cur.rows[0].payslip_config === 'object'
-        ? cur.rows[0].payslip_config as Record<string, unknown> : {})
-      await pool.query(
-        `UPDATE platform.tenants SET payslip_config = $1::jsonb, updated_at = now() WHERE id = $2`,
-        [JSON.stringify({ ...base, logoAssetId: assetId }), tenantId],
-      )
-      auditLogSettings(request.user.schemaName, request.user.sub, 'settings.payslip_logo_updated', tenantId, {}, request.ip)
+      auditLogSettings(request.user.schemaName, request.user.sub, 'settings.payslip_logo_uploaded', tenantId, {}, request.ip)
       return reply.send({ data: { logoAssetId: assetId, logoUrl: `${config.apiUrl}/public/brand/${assetId}` } })
     },
   })
