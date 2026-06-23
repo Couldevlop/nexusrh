@@ -15,7 +15,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
   assertValidSchemaName(schemaName)
 
   const alters = [
-    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS nni varchar(50)`,
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS nni varchar(255)`,
+    // EMP-101 — le NNI est chiffré AES (base64 ~100+ chars) : varchar(50) était trop
+    // petit (22001 à la création). Élargi à 255 (élargissement varchar = catalogue,
+    // sans réécriture de table) ; no-op si déjà 255.
+    `ALTER TABLE "${schemaName}".employees ALTER COLUMN nni TYPE varchar(255)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS cnps_number varchar(50)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS mobile_money_provider varchar(20)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS mobile_money_phone varchar(20)`,
