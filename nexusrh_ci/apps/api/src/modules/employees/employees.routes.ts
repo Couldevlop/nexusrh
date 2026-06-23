@@ -291,7 +291,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         // Aucune erreur technique brute ne doit remonter : message personnalisé.
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Email déjà utilisé dans ce tenant' },
+          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
         })
         request.log.error({ err, schema, action: 'employee.create' }, 'Échec création employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
@@ -409,7 +409,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Email déjà utilisé dans ce tenant' },
+          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
         })
         request.log.error({ err, schema, action: 'employee.update', id }, 'Échec modification employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })

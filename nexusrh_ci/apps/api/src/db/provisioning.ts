@@ -386,7 +386,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     birth_place           varchar(100),
     nationality           varchar(100) DEFAULT 'Ivoirienne',
     gender                varchar(10),
-    nni                   varchar(50),
+    nni                   varchar(255),
     cnps_number           varchar(50),
     mobile_money_provider varchar(20),
     mobile_money_phone    varchar(20),

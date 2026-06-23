@@ -141,7 +141,7 @@ describe('POST /employees — Zod validation (OWASP A03)', () => {
       payload: validEmployee,
     })
     expect(res.statusCode).toBe(409)
-    expect(JSON.parse(res.body).error).toBe('Email déjà utilisé dans ce tenant')
+    expect(JSON.parse(res.body).error).toBe('Un employé avec cet email existe déjà.')
   })
 
   it('chiffrement NNI/IBAN non configuré → 503 message clair, pas de 500 opaque', async () => {
@@ -252,7 +252,7 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
       payload: { email: 'doublon@sotra.ci' },
     })
     expect(res.statusCode).toBe(409)
-    expect(JSON.parse(res.body).error).toBe('Email déjà utilisé dans ce tenant')
+    expect(JSON.parse(res.body).error).toBe('Un employé avec cet email existe déjà.')
   })
 
   it('refuse baseSalary < SMIG (422)', async () => {

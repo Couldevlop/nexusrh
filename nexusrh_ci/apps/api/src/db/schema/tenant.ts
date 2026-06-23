@@ -52,7 +52,7 @@ export function createTenantSchema(schemaName: string) {
     nationality:     varchar('nationality', { length: 100 }).default('Ivoirienne'),
     gender:          varchar('gender', { length: 10 }),
     // CI-specific
-    nni:             varchar('nni', { length: 50 }),           // Numéro National d'Identité
+    nni:             varchar('nni', { length: 255 }),           // Numéro National d'Identité
     cnpsNumber:      varchar('cnps_number', { length: 50 }),   // Numéro CNPS salarié
     mobileMoneyProvider: varchar('mobile_money_provider', { length: 20 }),
     mobileMoneyPhone:    varchar('mobile_money_phone', { length: 20 }),
