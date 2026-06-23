@@ -1,15 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { api } from '@/lib/api'
-import { Building2, Users, TrendingUp, AlertCircle } from 'lucide-react'
+import { api, formatFCFA } from '@/lib/api'
+import { Building2, Users, TrendingUp, AlertCircle, Wallet } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 interface DashStats {
   activeCount: number
   trialCount: number
   suspendedCount: number
   totalCount: number
+  // PLT-022 — MRR estimé (FCFA)
+  estimatedMrr?: number
   // PLT-019 — trials expirant sous 7 jours
   expiringTrials?: { id: string; name: string; slug: string; trialEndsAt: string }[]
+  // PLT-021 — croissance tenants (12 mois)
+  growth?: { period: string; count: number }[]
 }
 
 interface Tenant {
@@ -54,18 +59,20 @@ export default function PlatformDashboard() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
-          { label: t('dashboard.kpi.activeTenants'), value: stats?.activeCount ?? 0,    icon: Building2, color: 'bg-green-50 text-green-600' },
-          { label: t('dashboard.kpi.trial'),         value: stats?.trialCount ?? 0,     icon: TrendingUp, color: 'bg-yellow-50 text-yellow-600' },
-          { label: t('dashboard.kpi.suspended'),     value: stats?.suspendedCount ?? 0, icon: AlertCircle, color: 'bg-red-50 text-red-600' },
-          { label: t('dashboard.kpi.totalTenants'),  value: stats?.totalCount ?? 0,     icon: Users, color: 'bg-blue-50 text-blue-600' },
-        ].map(({ label, value, icon: Icon, color }) => (
+          { label: t('dashboard.kpi.activeTenants'), value: String(stats?.activeCount ?? 0),    icon: Building2, color: 'bg-green-50 text-green-600', valueClass: 'text-2xl' },
+          { label: t('dashboard.kpi.trial'),         value: String(stats?.trialCount ?? 0),     icon: TrendingUp, color: 'bg-yellow-50 text-yellow-600', valueClass: 'text-2xl' },
+          { label: t('dashboard.kpi.suspended'),     value: String(stats?.suspendedCount ?? 0), icon: AlertCircle, color: 'bg-red-50 text-red-600', valueClass: 'text-2xl' },
+          { label: t('dashboard.kpi.totalTenants'),  value: String(stats?.totalCount ?? 0),     icon: Users, color: 'bg-blue-50 text-blue-600', valueClass: 'text-2xl' },
+          // PLT-022 — MRR estimé (FCFA)
+          { label: 'MRR estimé', value: formatFCFA(stats?.estimatedMrr ?? 0), icon: Wallet, color: 'bg-indigo-50 text-indigo-600', valueClass: 'text-lg' },
+        ].map(({ label, value, icon: Icon, color, valueClass }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                <p className="text-2xl font-bold">{value}</p>
+                <p className={`font-bold ${valueClass}`}>{value}</p>
               </div>
               <div className={`rounded-lg p-2 ${color}`}>
                 <Icon className="h-4 w-4" />
@@ -74,6 +81,22 @@ export default function PlatformDashboard() {
           </div>
         ))}
       </div>
+
+      {/* PLT-021 — Croissance des tenants (12 derniers mois) */}
+      {(stats?.growth?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-border bg-card p-6">
+          <h2 className="font-semibold mb-4">Croissance des tenants (12 mois)</h2>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={stats!.growth}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="period" fontSize={11} />
+              <YAxis allowDecimals={false} fontSize={11} />
+              <Tooltip />
+              <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* PLT-019 — Alertes : trials expirant sous 7 jours */}
       {(stats?.expiringTrials?.length ?? 0) > 0 && (
