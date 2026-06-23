@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
-import { renderPayslipPdf, type PayslipPdfLine } from './payslip-pdf.js'
+import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
@@ -1081,14 +1081,27 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // Employeur + modèle de bulletin personnalisable (logo, colonnes, couleur…)
       const tenantRes = await rawPool.query<{
         name: string; cnps_number: string | null; city: string | null; payslip_config: unknown
+        has_subsidiaries: boolean | null; default_country_code: string | null
       }>(
-        `SELECT name, cnps_number, city, payslip_config FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+        `SELECT name, cnps_number, city, payslip_config, has_subsidiaries, default_country_code
+           FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
         [schema],
-      ).catch(() => ({ rows: [] as Array<{ name: string; cnps_number: string | null; city: string | null; payslip_config: unknown }> }))
+      ).catch(() => ({ rows: [] as Array<{ name: string; cnps_number: string | null; city: string | null; payslip_config: unknown; has_subsidiaries: boolean | null; default_country_code: string | null }> }))
       const tenant = tenantRes.rows[0]
       const tenantName = tenant?.name ?? 'Employeur'
-      const tpl = (tenant?.payslip_config && typeof tenant.payslip_config === 'object'
-        ? tenant.payslip_config as Record<string, unknown> : {})
+
+      // Portée auto : multi-filiale → pays de la filiale du bulletin ; sinon pays
+      // par défaut du tenant. resolvePayslipTemplateConfig applique la surcharge pays.
+      let country = tenant?.default_country_code ?? 'CIV'
+      if (tenant?.has_subsidiaries) {
+        const le = await rawPool.query<{ country_code: string | null }>(
+          `SELECT le.country_code FROM "${schema}".pay_slips ps
+             LEFT JOIN "${schema}".legal_entities le ON le.id = ps.legal_entity_id
+            WHERE ps.id = $1 LIMIT 1`, [id],
+        ).catch(() => ({ rows: [] as Array<{ country_code: string | null }> }))
+        country = le.rows[0]?.country_code || country
+      }
+      const tpl = resolvePayslipTemplateConfig(tenant?.payslip_config, country)
 
       // Logo raster (PNG/JPG) du modèle, depuis le store d'images de la plateforme.
       let logo: { bytes: Uint8Array; mime: string } | null = null
@@ -1145,6 +1158,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           showEmployerCost: tpl.showEmployerCost !== false,
           showAnnualCumuls: tpl.showAnnualCumuls !== false,
           footerText: typeof tpl.footerText === 'string' ? tpl.footerText : null,
+          blocks: Array.isArray(tpl.blocks)
+            ? (tpl.blocks as Array<{ id: string; enabled?: boolean; text?: string }>) : undefined,
         },
       })
 

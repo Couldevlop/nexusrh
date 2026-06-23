@@ -59,6 +59,22 @@ export interface PayslipTemplateConfig {
   showAnnualCumuls?: boolean   // bloc cumuls annuels YTD (défaut true)
   // Mention légale de pied de page personnalisée (sinon mention CI par défaut)
   footerText?:  string | null
+  // Constructeur par blocs : ordre + activation. `text` porte le contenu d'un bloc
+  // freeText. Si absent, ordre par défaut (identité→tableau→récap→net→…).
+  blocks?:      Array<{ id: string; enabled?: boolean; text?: string }>
+}
+
+/**
+ * Résout le modèle effectif pour un pays donné : config « Groupe » (champs de
+ * premier niveau) fusionnée avec la surcharge `byCountry[country]` si elle existe.
+ * En mono-pays, `byCountry` est généralement vide → on obtient la config Groupe.
+ */
+export function resolvePayslipTemplateConfig(payslipConfig: unknown, country: string): Record<string, unknown> {
+  const cfg = (payslipConfig && typeof payslipConfig === 'object') ? payslipConfig as Record<string, unknown> : {}
+  const byCountry = (cfg.byCountry && typeof cfg.byCountry === 'object') ? cfg.byCountry as Record<string, unknown> : {}
+  const override = (byCountry[country] && typeof byCountry[country] === 'object') ? byCountry[country] as Record<string, unknown> : {}
+  const { byCountry: _omit, ...group } = cfg
+  return { ...group, ...override }
 }
 
 function hexToRgb(hex: string | null | undefined, fallback: ReturnType<typeof rgb>): ReturnType<typeof rgb> {
@@ -156,100 +172,101 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
   textRight(formatMonthFr(data.month), W - MR, 34, 13, { bold: true, color: WHITE })
   textRight('Période', W - MR, 50, 9, { color: rgb(0xc7 / 255, 0xd2 / 255, 0xdd / 255) })
 
-  let y = 96
-
-  // ── Bloc employeur / salarié ────────────────────────────────────────────────
-  const colW = contentW / 2
-  const boxH = 86
-  page.drawRectangle({ x: ML, y: toY(y + boxH), width: colW - 6, height: boxH, color: LIGHT })
-  page.drawRectangle({ x: ML + colW + 6, y: toY(y + boxH), width: colW - 6, height: boxH, color: LIGHT })
-
-  text('EMPLOYEUR', ML + 10, y + 16, 8, { bold: true, color: accent })
-  text(data.tenantName || '-', ML + 10, y + 32, 9, { bold: true })
-  if (data.employer?.address) text(data.employer.address, ML + 10, y + 46, 8, { color: SLATE })
-  if (data.employer?.city) text(data.employer.city, ML + 10, y + 58, 8, { color: SLATE })
-  if (data.employer?.cnpsNumber) text(`N° CNPS employeur : ${data.employer.cnpsNumber}`, ML + 10, y + 72, 8, { color: SLATE })
-
-  const x2 = ML + colW + 16
-  const empName = `${data.employee.firstName ?? ''} ${data.employee.lastName ?? ''}`.trim()
-  text('SALARIÉ', x2, y + 16, 8, { bold: true, color: accent })
-  text(empName || '-', x2, y + 32, 9, { bold: true })
-  if (data.employee.jobTitle) text(data.employee.jobTitle, x2, y + 46, 8, { color: SLATE })
-  if (data.employee.cnpsNumber) text(`N° CNPS : ${data.employee.cnpsNumber}`, x2, y + 58, 8, { color: SLATE })
-  if (data.employee.nni) text(`NNI : ${data.employee.nni}`, x2, y + 72, 8, { color: SLATE })
-
-  y += boxH + 22
-
-  // ── Tableau des rubriques ───────────────────────────────────────────────────
-  // Colonnes : Libellé | Base | Gain | Retenue
+  // Colonnes du tableau des rubriques (constantes, indépendantes de y).
   const cLabel = ML + 6
   const cBase = ML + contentW * 0.55
   const cGain = ML + contentW * 0.78
   const cRet = W - MR - 6
   const rowH = 16
-
-  page.drawRectangle({ x: ML, y: toY(y + rowH), width: contentW, height: rowH, color: NAVY })
-  text('Rubrique', cLabel, y + 11.5, 8.5, { bold: true, color: WHITE })
-  if (showBase) textRight('Base', cBase, y + 11.5, 8.5, { bold: true, color: WHITE })
-  textRight('Gain', cGain, y + 11.5, 8.5, { bold: true, color: WHITE })
-  textRight('Retenue', cRet, y + 11.5, 8.5, { bold: true, color: WHITE })
-  y += rowH
-
   const isDeduction = (t: string) => t === 'deduction' || t === 'employee_contribution'
-  let zebra = false
-  for (const l of data.lines) {
-    // n'affiche pas les contributions patronales dans le corps (récap en pied)
-    if (l.type === 'employer_contribution') continue
-    if (zebra) page.drawRectangle({ x: ML, y: toY(y + rowH), width: contentW, height: rowH, color: rgb(0xfa / 255, 0xfb / 255, 0xfc / 255) })
-    zebra = !zebra
-    const labelTxt = showCode && l.code ? `${l.code}  ${l.label}` : l.label
-    text(labelTxt.length > 52 ? labelTxt.slice(0, 51) + '…' : labelTxt, cLabel, y + 11, 8, { color: SLATE })
-    if (showBase && l.base != null && l.base > 0) textRight(formatMoney(l.base, data.currency), cBase, y + 11, 8, { color: SLATE })
-    if (isDeduction(l.type)) textRight(formatMoney(Math.abs(l.amount), data.currency), cRet, y + 11, 8, { color: rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) })
-    else textRight(formatMoney(l.amount, data.currency), cGain, y + 11, 8, { color: NAVY })
-    y += rowH
-  }
-  page.drawLine({ start: { x: ML, y: toY(y) }, end: { x: W - MR, y: toY(y) }, thickness: 0.6, color: LINE })
-  y += 14
 
-  // ── Récapitulatif ───────────────────────────────────────────────────────────
-  const recap: Array<[string, number, boolean]> = [
-    ['Salaire brut', data.grossSalary, false],
-    ['Total cotisations salariales (CNPS)', -data.totalCnpsSal, false],
-    ['ITS (Impôt sur traitements et salaires)', -data.its, false],
-    ['Total des retenues', -data.totalDeductions, false],
-  ]
-  for (const [label, val] of recap) {
-    text(label, cLabel, y + 11, 9, { color: SLATE })
-    textRight(formatMoney(val, data.currency), cRet, y + 11, 9, { color: val < 0 ? rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) : NAVY })
-    y += rowH
+  // ── Blocs (chaque fonction dessine à partir de `y` et renvoie le nouveau y) ──
+  // Bloc identité : employeur + salarié
+  function drawIdentity(y0: number): number {
+    const colW = contentW / 2
+    const boxH = 86
+    page.drawRectangle({ x: ML, y: toY(y0 + boxH), width: colW - 6, height: boxH, color: LIGHT })
+    page.drawRectangle({ x: ML + colW + 6, y: toY(y0 + boxH), width: colW - 6, height: boxH, color: LIGHT })
+    text('EMPLOYEUR', ML + 10, y0 + 16, 8, { bold: true, color: accent })
+    text(data.tenantName || '-', ML + 10, y0 + 32, 9, { bold: true })
+    if (data.employer?.address) text(data.employer.address, ML + 10, y0 + 46, 8, { color: SLATE })
+    if (data.employer?.city) text(data.employer.city, ML + 10, y0 + 58, 8, { color: SLATE })
+    if (data.employer?.cnpsNumber) text(`N° CNPS employeur : ${data.employer.cnpsNumber}`, ML + 10, y0 + 72, 8, { color: SLATE })
+    const x2 = ML + colW + 16
+    const empName = `${data.employee.firstName ?? ''} ${data.employee.lastName ?? ''}`.trim()
+    text('SALARIÉ', x2, y0 + 16, 8, { bold: true, color: accent })
+    text(empName || '-', x2, y0 + 32, 9, { bold: true })
+    if (data.employee.jobTitle) text(data.employee.jobTitle, x2, y0 + 46, 8, { color: SLATE })
+    if (data.employee.cnpsNumber) text(`N° CNPS : ${data.employee.cnpsNumber}`, x2, y0 + 58, 8, { color: SLATE })
+    if (data.employee.nni) text(`NNI : ${data.employee.nni}`, x2, y0 + 72, 8, { color: SLATE })
+    return y0 + boxH + 22
   }
-  y += 6
-
-  // Net à payer (bandeau)
-  const netH = 28
-  page.drawRectangle({ x: ML, y: toY(y + netH), width: contentW, height: netH, color: rgb(0xd1 / 255, 0xfa / 255, 0xdf / 255) })
-  text('NET À PAYER', cLabel, y + 18.5, 11, { bold: true, color: GREEN })
-  textRight(formatMoney(data.netPayable, data.currency), cRet, y + 18.5, 13, { bold: true, color: GREEN })
-  y += netH + 14
-
-  if (cfg.showEmployerCost !== false) {
-    text(`Coût total employeur : ${formatMoney(data.employerCost, data.currency)}`, cLabel, y + 10, 8.5, { color: SLATE })
-    y += 16
+  // Bloc tableau des rubriques
+  function drawTable(y0: number): number {
+    let yy = y0
+    page.drawRectangle({ x: ML, y: toY(yy + rowH), width: contentW, height: rowH, color: NAVY })
+    text('Rubrique', cLabel, yy + 11.5, 8.5, { bold: true, color: WHITE })
+    if (showBase) textRight('Base', cBase, yy + 11.5, 8.5, { bold: true, color: WHITE })
+    textRight('Gain', cGain, yy + 11.5, 8.5, { bold: true, color: WHITE })
+    textRight('Retenue', cRet, yy + 11.5, 8.5, { bold: true, color: WHITE })
+    yy += rowH
+    let zebra = false
+    for (const l of data.lines) {
+      if (l.type === 'employer_contribution') continue // patronales : récap en pied
+      if (zebra) page.drawRectangle({ x: ML, y: toY(yy + rowH), width: contentW, height: rowH, color: rgb(0xfa / 255, 0xfb / 255, 0xfc / 255) })
+      zebra = !zebra
+      const labelTxt = showCode && l.code ? `${l.code}  ${l.label}` : l.label
+      text(labelTxt.length > 52 ? labelTxt.slice(0, 51) + '…' : labelTxt, cLabel, yy + 11, 8, { color: SLATE })
+      if (showBase && l.base != null && l.base > 0) textRight(formatMoney(l.base, data.currency), cBase, yy + 11, 8, { color: SLATE })
+      if (isDeduction(l.type)) textRight(formatMoney(Math.abs(l.amount), data.currency), cRet, yy + 11, 8, { color: rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) })
+      else textRight(formatMoney(l.amount, data.currency), cGain, yy + 11, 8, { color: NAVY })
+      yy += rowH
+    }
+    page.drawLine({ start: { x: ML, y: toY(yy) }, end: { x: W - MR, y: toY(yy) }, thickness: 0.6, color: LINE })
+    return yy + 14
   }
-  if (data.paymentMethod) {
+  // Bloc récapitulatif
+  function drawRecap(y0: number): number {
+    let yy = y0
+    const recap: Array<[string, number]> = [
+      ['Salaire brut', data.grossSalary],
+      ['Total cotisations salariales (CNPS)', -data.totalCnpsSal],
+      ['ITS (Impôt sur traitements et salaires)', -data.its],
+      ['Total des retenues', -data.totalDeductions],
+    ]
+    for (const [label, val] of recap) {
+      text(label, cLabel, yy + 11, 9, { color: SLATE })
+      textRight(formatMoney(val, data.currency), cRet, yy + 11, 9, { color: val < 0 ? rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) : NAVY })
+      yy += rowH
+    }
+    return yy + 6
+  }
+  // Bloc net à payer
+  function drawNet(y0: number): number {
+    const netH = 28
+    page.drawRectangle({ x: ML, y: toY(y0 + netH), width: contentW, height: netH, color: rgb(0xd1 / 255, 0xfa / 255, 0xdf / 255) })
+    text('NET À PAYER', cLabel, y0 + 18.5, 11, { bold: true, color: GREEN })
+    textRight(formatMoney(data.netPayable, data.currency), cRet, y0 + 18.5, 13, { bold: true, color: GREEN })
+    return y0 + netH + 14
+  }
+  function drawEmployerCost(y0: number): number {
+    text(`Coût total employeur : ${formatMoney(data.employerCost, data.currency)}`, cLabel, y0 + 10, 8.5, { color: SLATE })
+    return y0 + 16
+  }
+  function drawPayment(y0: number): number {
+    if (!data.paymentMethod) return y0
     const ref = data.paymentReference ? ` · réf. ${data.paymentReference}` : ''
-    text(`Mode de paiement : ${data.paymentMethod}${ref}`, cLabel, y + 10, 8.5, { color: SLATE })
-    y += 16
+    text(`Mode de paiement : ${data.paymentMethod}${ref}`, cLabel, y0 + 10, 8.5, { color: SLATE })
+    return y0 + 16
   }
-
-  // ── Cumuls annuels (YTD) — PAY-025 ──────────────────────────────────────────
-  if (data.annualCumuls && cfg.showAnnualCumuls !== false) {
-    y += 4
+  // Bloc cumuls annuels (YTD) — PAY-025
+  function drawCumuls(y0: number): number {
+    if (!data.annualCumuls) return y0
+    let yy = y0 + 4
     const cum = data.annualCumuls
-    page.drawRectangle({ x: ML, y: toY(y + 16), width: contentW, height: 16, color: LIGHT })
-    text(`Cumuls annuels ${data.month.slice(0, 4)} (à fin ${formatMonthFr(data.month)})`, cLabel, y + 11.5, 8, { bold: true, color: NAVY })
-    y += 16
+    page.drawRectangle({ x: ML, y: toY(yy + 16), width: contentW, height: 16, color: LIGHT })
+    text(`Cumuls annuels ${data.month.slice(0, 4)} (à fin ${formatMonthFr(data.month)})`, cLabel, yy + 11.5, 8, { bold: true, color: NAVY })
+    yy += 16
     const cumLines: Array<[string, number]> = [
       ['Cumul salaire brut', cum.grossSalary],
       ['Cumul cotisations salariales (CNPS)', cum.totalCnpsSal],
@@ -257,11 +274,58 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
       ['Cumul net payé', cum.netPayable],
     ]
     for (const [label, val] of cumLines) {
-      text(label, cLabel, y + 10.5, 8, { color: SLATE })
-      textRight(formatMoney(val, data.currency), cRet, y + 10.5, 8, { color: NAVY })
-      y += 14
+      text(label, cLabel, yy + 10.5, 8, { color: SLATE })
+      textRight(formatMoney(val, data.currency), cRet, yy + 10.5, 8, { color: NAVY })
+      yy += 14
     }
-    y += 6
+    return yy + 6
+  }
+  // Bloc texte libre (mention personnalisée, multi-lignes auto)
+  function drawFreeText(content: string, y0: number): number {
+    const clean = (content ?? '').trim()
+    if (!clean) return y0
+    let yy = y0
+    for (const para of clean.split('\n')) {
+      const words = para.split(/\s+/)
+      let line = ''
+      for (const w of words) {
+        if ((line + ' ' + w).trim().length > 95) { text(line, cLabel, yy + 10, 8, { color: SLATE }); yy += 12; line = w }
+        else line = line ? `${line} ${w}` : w
+      }
+      if (line) { text(line, cLabel, yy + 10, 8, { color: SLATE }); yy += 12 }
+    }
+    return yy + 6
+  }
+
+  // Ordre des blocs : config tenant si fournie, sinon ordre par défaut. Les blocs
+  // légaux obligatoires (identité, tableau, récap, net) restent présents même si
+  // omis de la config. `text` sur un bloc freeText = mention personnalisée.
+  const DEFAULT_BLOCKS: Array<{ id: string; enabled?: boolean; text?: string }> = [
+    { id: 'identity', enabled: true },
+    { id: 'table', enabled: true },
+    { id: 'recap', enabled: true },
+    { id: 'net', enabled: true },
+    { id: 'employerCost', enabled: cfg.showEmployerCost !== false },
+    { id: 'payment', enabled: true },
+    { id: 'cumuls', enabled: cfg.showAnnualCumuls !== false },
+  ]
+  const blocks: Array<{ id: string; enabled?: boolean; text?: string }> =
+    Array.isArray(cfg.blocks) && cfg.blocks.length ? cfg.blocks : DEFAULT_BLOCKS
+
+  let y = 96
+  for (const blk of blocks) {
+    if (blk.enabled === false) continue
+    switch (blk.id) {
+      case 'identity':     y = drawIdentity(y); break
+      case 'table':        y = drawTable(y); break
+      case 'recap':        y = drawRecap(y); break
+      case 'net':          y = drawNet(y); break
+      case 'employerCost': y = drawEmployerCost(y); break
+      case 'payment':      y = drawPayment(y); break
+      case 'cumuls':       y = drawCumuls(y); break
+      case 'freeText':     y = drawFreeText(blk.text ?? '', y); break
+      default: break
+    }
   }
 
   // ── Pied de page (mentions légales) ─ origine pdf-lib = bas-gauche : y bas ────
