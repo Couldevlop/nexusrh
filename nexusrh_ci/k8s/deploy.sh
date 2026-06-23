@@ -126,6 +126,8 @@ install_ingress() {
     --version "$INGRESS_NGINX_VERSION" \
     --set controller.hostPort.enabled=true \
     --set controller.service.type=NodePort \
+    --set controller.config.allow-snippet-annotations=true \
+    --set controller.config.annotations-risk-level=Critical \
     --set "controller.nodeSelector.ingress-ready=true" \
     --set "controller.tolerations[0].key=node-role.kubernetes.io/control-plane" \
     --set "controller.tolerations[0].operator=Equal" \
