@@ -45,6 +45,19 @@ const SECTORS = [
 ]
 const CITIES = ['Abidjan', 'Bouaké', 'San-Pédro', 'Daloa', 'Man', 'Yamoussoukro', 'Korhogo', 'Divo']
 
+// Slug auto-généré depuis le nom (minuscules, accents retirés, espaces→tirets).
+// Ex : "Tech Corp" → "tech-corp". Le slug reste éditable par l'utilisateur.
+function slugify(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+// Nettoyage léger pendant la frappe dans le champ slug (n'élague pas le tiret
+// final pour ne pas gêner la saisie).
+function sanitizeSlug(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+}
+
 export default function PlatformTenantNew() {
   const { t } = useTranslation('platform')
   const navigate = useNavigate()
@@ -54,6 +67,9 @@ export default function PlatformTenantNew() {
   // (dg_view décoché par défaut, comme partout ailleurs dans le produit).
   const [modules, setModules] = useState<Record<ModuleKey, boolean>>({ ...MODULE_DEFAULTS })
   const enabledModulesCount = MODULE_KEYS.filter((k) => modules[k]).length
+  // Le slug est auto-généré depuis le nom tant que l'utilisateur ne l'a pas
+  // édité manuellement (PLT-003).
+  const [slugEdited, setSlugEdited] = useState(false)
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -149,12 +165,30 @@ export default function PlatformTenantNew() {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-sm font-medium">{t('tenantNew.fields.name')}</label>
-              <input {...register('name')} placeholder="SOTRA" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" />
+              <input
+                {...register('name')}
+                onChange={(e) => {
+                  register('name').onChange(e)
+                  // Auto-remplit le slug depuis le nom tant qu'il n'a pas été édité à la main.
+                  if (!slugEdited) setValue('slug', slugify(e.target.value), { shouldValidate: true })
+                }}
+                placeholder="SOTRA"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
+              />
               {errors.name && <p className="text-xs text-destructive mt-1">{fieldError(errors.name.message)}</p>}
             </div>
             <div>
               <label className="text-sm font-medium">{t('tenantNew.fields.slug')}</label>
-              <input {...register('slug')} placeholder="sotra" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" />
+              <input
+                {...register('slug')}
+                onChange={(e) => {
+                  const cleaned = sanitizeSlug(e.target.value)
+                  setValue('slug', cleaned, { shouldValidate: true })
+                  setSlugEdited(true)
+                }}
+                placeholder="sotra"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
+              />
               {errors.slug && <p className="text-xs text-destructive mt-1">{fieldError(errors.slug.message)}</p>}
             </div>
             <div>
