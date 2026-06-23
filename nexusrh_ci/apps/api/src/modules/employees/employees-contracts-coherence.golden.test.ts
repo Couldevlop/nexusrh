@@ -72,10 +72,10 @@ beforeEach(() => { queryMock.mockReset(); queryMock.mockResolvedValue({ rows: []
 
 describe('PATCH /employees/:id — modification d\'un dossier', () => {
   it('ajout du numéro CNPS a posteriori (premier emploi) → 200', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ id: EMP, cnps_number: 'CI-999' }] }) // UPDATE RETURNING
+    queryMock.mockResolvedValueOnce({ rows: [{ id: EMP, cnps_number: 'CI12345678A' }] }) // UPDATE RETURNING
     const res = await app.inject({
       method: 'PATCH', url: `/employees/${EMP}`,
-      headers: auth(token(app)), payload: { cnpsNumber: 'CI-999' },
+      headers: auth(token(app)), payload: { cnpsNumber: 'CI12345678A' },
     })
     expect(res.statusCode).toBe(200)
     const upd = sqlMatched(/UPDATE "tenant_sotra"\.employees SET/)

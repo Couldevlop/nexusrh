@@ -10,6 +10,28 @@ import { archiveEmployeeCascade } from '../../services/employee-archive.service.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// EMP-003/004/005 — validations de format (NNI, CNPS, Mobile Money).
+// Champs optionnels : '' / null → undefined (non fourni) ; sinon le format est
+// imposé. NNI/CNPS = format ivoirien (l'employeur est en CI) ; le téléphone
+// Mobile Money accepte toute la zone africaine (employés CI, Burkina, Mali…).
+const emptyToUndef = (v: unknown) => (v === '' || v === null ? undefined : v)
+const nniField = z.preprocess(emptyToUndef,
+  z.string().regex(/^CI\d{9,13}$/, 'NNI invalide : format attendu CI suivi de 9 à 13 chiffres (ex : CI123456789)').optional())
+const cnpsField = z.preprocess(emptyToUndef,
+  z.string().regex(/^CI\d{8}[A-Z]$/, 'Numéro CNPS invalide : format attendu CI + 8 chiffres + 1 lettre (ex : CI12345678A)').optional())
+// Téléphone Mobile Money : les employés peuvent venir de toute la zone (CI,
+// Burkina, Mali, Niger, Sénégal, Tchad, Congo, RDC, Cameroun…). On valide donc
+// un indicatif AFRICAIN supporté (CEDEAO + CEMAC + RDC), suivi de 6 à 10 chiffres,
+// espaces tolérés. Rejette les indicatifs hors zone (ex : +33 France) et trop courts.
+const AFRICA_MM_DIAL_CODES = [
+  '225', '226', '223', '227', '221', '229', '228', '224', '245', '220', '238', '234', '233', '231', '232', // CEDEAO
+  '237', '235', '236', '242', '241', '240', '243', // CEMAC + RDC
+]
+const AFRICA_MM_PHONE_RE = new RegExp(`^\\+(${AFRICA_MM_DIAL_CODES.join('|')})\\d{6,10}$`)
+const mmPhoneField = z.preprocess(emptyToUndef,
+  z.string().refine((v) => AFRICA_MM_PHONE_RE.test(String(v).replace(/\s/g, '')),
+    'Numéro Mobile Money invalide : indicatif africain attendu (ex : +225, +226, +223, +235, +242…) suivi du numéro').optional())
+
 // OWASP A03 — validation Zod du body POST /employees
 const createEmployeeSchema = z.object({
   firstName:           z.string().min(1).max(100).trim(),
@@ -18,10 +40,10 @@ const createEmployeeSchema = z.object({
   phone:               z.string().max(30).optional(),
   birthDate:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   gender:              z.enum(['M', 'F', 'X']).optional(),
-  nni:                 z.string().max(50).optional(),
-  cnpsNumber:          z.string().max(30).optional(),
+  nni:                 nniField,
+  cnpsNumber:          cnpsField,
   mobileMoneyProvider: z.enum(['wave', 'mtn', 'orange', 'cofina']).optional(),
-  mobileMoneyPhone:    z.string().max(30).optional(),
+  mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().optional(),
   managerId:           z.string().uuid().optional(),
   jobTitle:            z.string().max(200).optional(),
@@ -50,10 +72,10 @@ const patchEmployeeSchema = z.object({
   phone:               z.string().max(30).optional(),
   birthDate:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   gender:              z.enum(['M', 'F', 'X']).optional(),
-  nni:                 z.string().max(50).optional(),
-  cnpsNumber:          z.string().max(30).optional(),
+  nni:                 nniField,
+  cnpsNumber:          cnpsField,
   mobileMoneyProvider: z.enum(['wave', 'mtn', 'orange', 'cofina']).optional(),
-  mobileMoneyPhone:    z.string().max(30).optional(),
+  mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().nullable().optional(),
   managerId:           z.string().uuid().nullable().optional(),
   jobTitle:            z.string().max(200).optional(),
@@ -246,7 +268,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         // Aucune erreur technique brute ne doit remonter : message personnalisé.
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+          uniqueMessages: { email: 'Email déjà utilisé dans ce tenant' },
         })
         request.log.error({ err, schema, action: 'employee.create' }, 'Échec création employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
@@ -355,7 +377,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+          uniqueMessages: { email: 'Email déjà utilisé dans ce tenant' },
         })
         request.log.error({ err, schema, action: 'employee.update', id }, 'Échec modification employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
