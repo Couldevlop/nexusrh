@@ -636,6 +636,23 @@ export async function ensurePlatformSchema(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS platform_refresh_tokens_user_idx ON platform.refresh_tokens(user_id)`,
     `CREATE INDEX IF NOT EXISTS platform_refresh_tokens_exp_idx ON platform.refresh_tokens(expires_at)`,
 
+    // ── Audit plateforme (actions super_admin cross-tenant — OWASP A09) ────────
+    // Journalise création/suspension/suppression de tenant, reset-admin,
+    // suspension d'utilisateur, etc. (cf. auditLogPlatform). Sans cette table,
+    // l'audit plateforme était silencieusement perdu (.catch()).
+    `CREATE TABLE IF NOT EXISTS platform.audit_log (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     uuid,
+      action      varchar(100) NOT NULL,
+      entity      varchar(60),
+      entity_id   uuid,
+      changes     jsonb,
+      ip_address  varchar(64),
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_audit_log_created_idx ON platform.audit_log(created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS platform_audit_log_entity_idx ON platform.audit_log(entity_id)`,
+
     // ── IA : consommation de tokens par tenant sur la CLÉ PLATEFORME ──────────
     // Agrégat (tenant × provider × modèle × mois). Alimenté uniquement quand un
     // appel chat utilise la clé générale du super_admin (key_source='platform').
