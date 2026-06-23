@@ -14,6 +14,8 @@ interface EmployeeDetails {
   department_name: string; manager_first_name: string; manager_last_name: string
   mobile_money_provider: string; mobile_money_phone: string
   marital_status: string; children_count: number; city: string
+  // EMP-009 — ancienneté calculée renvoyée par l'API
+  seniority_label?: string; seniority_months?: number
 }
 
 export default function EmployeeDetail() {
@@ -86,6 +88,7 @@ export default function EmployeeDetail() {
           {[
             [t('detail.fields.contractType'), emp.contract_type?.toUpperCase()],
             [t('detail.fields.hireDate'), emp.hire_date ? formatDate(emp.hire_date) : '—'],
+            [t('detail.fields.seniority', 'Ancienneté'), emp.seniority_label ?? '—'],
             [t('detail.fields.baseSalary'), formatFCFA(parseInt(emp.base_salary ?? '0'))],
             [t('detail.fields.weeklyHours'), emp.weekly_hours ? `${parseFloat(emp.weekly_hours)} h` : '40 h'],
             [t('detail.fields.professionalCategory'), emp.professional_category ?? '—'],

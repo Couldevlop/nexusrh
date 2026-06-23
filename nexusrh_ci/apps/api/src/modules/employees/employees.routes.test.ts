@@ -220,7 +220,9 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
 
   it('un hr_manager peut modifier baseSalary, audit_log trace les champs', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ id: 'emp-1', base_salary: 400000 }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [{ base_salary: 350000 }] }) // SELECT ancien salaire (EMP-010)
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-1', base_salary: 400000 }] }) // UPDATE RETURNING
+      .mockResolvedValueOnce({ rows: [] }) // INSERT hr_events (salaire 350k -> 400k)
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
 
     const token = tokenFor(app, 'hr_manager')

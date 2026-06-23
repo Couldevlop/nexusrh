@@ -41,13 +41,13 @@ export default function PlatformLogs() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         {isLoading ? (
           <div className="flex items-center justify-center p-12">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="p-3">Date</th>
