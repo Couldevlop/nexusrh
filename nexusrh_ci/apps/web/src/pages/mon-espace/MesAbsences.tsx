@@ -54,6 +54,9 @@ export default function MesAbsences() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  // ABS-014 — vue Liste / Calendrier + mois affiché dans le calendrier
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [calRef, setCalRef] = useState(() => { const d = new Date(); d.setDate(1); return d })
 
   const { data: typesData } = useQuery<{ data: AbsenceType[] }>({
     queryKey: ['absence-types'],
@@ -213,12 +216,24 @@ export default function MesAbsences() {
         </div>
       )}
 
-      {/* Historique */}
+      {/* Historique / Calendrier */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="font-semibold">{t('absences.history')}</h2>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="font-semibold">{view === 'calendar' ? t('absences.calendar', 'Calendrier') : t('absences.history')}</h2>
+          <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+            <button onClick={() => setView('list')}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${view === 'list' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+              {t('absences.viewList', 'Liste')}
+            </button>
+            <button onClick={() => setView('calendar')}
+              className={`flex items-center gap-1 rounded-md px-3 py-1 text-xs font-medium ${view === 'calendar' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+              <Calendar className="h-3.5 w-3.5" /> {t('absences.viewCalendar', 'Calendrier')}
+            </button>
+          </div>
         </div>
-        {isLoading ? (
+        {view === 'calendar' ? (
+          <AbsenceCalendar absences={absences} monthRef={calRef} onPrev={() => setCalRef(d => { const n = new Date(d); n.setMonth(n.getMonth() - 1); return n })} onNext={() => setCalRef(d => { const n = new Date(d); n.setMonth(n.getMonth() + 1); return n })} />
+        ) : isLoading ? (
           <div className="flex items-center justify-center p-8">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
@@ -265,6 +280,61 @@ export default function MesAbsences() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ABS-014 — vue calendrier mensuelle : les absences apparaissent sur les jours
+// concernés, colorées par type (couleur du type_color renvoyé par l'API).
+function AbsenceCalendar({ absences, monthRef, onPrev, onNext }: {
+  absences: Absence[]; monthRef: Date; onPrev: () => void; onNext: () => void
+}) {
+  const year = monthRef.getFullYear()
+  const month = monthRef.getMonth()
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n))
+  const monthLabel = monthRef.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  // Lundi = 0 (semaine FR) : getDay() renvoie 0=dimanche → on décale.
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7
+  const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+
+  const absOfDay = (d: number): Absence | undefined => {
+    const ds = `${year}-${pad(month + 1)}-${pad(d)}`
+    // start_date / end_date sont au format YYYY-MM-DD (comparaison lexicographique)
+    return absences.find(a => (a.start_date.slice(0, 10) <= ds) && (ds <= a.end_date.slice(0, 10))
+      && a.status !== 'rejected' && a.status !== 'cancelled')
+  }
+
+  const cells: Array<{ d: number | null }> = []
+  for (let i = 0; i < firstDow; i++) cells.push({ d: null })
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ d })
+
+  return (
+    <div className="p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <button onClick={onPrev} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">‹</button>
+        <span className="text-sm font-semibold capitalize">{monthLabel}</span>
+        <button onClick={onNext} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-accent">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
+        {weekDays.map(w => <div key={w} className="py-1 font-medium">{w}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((c, i) => {
+          if (c.d === null) return <div key={`b${i}`} />
+          const a = absOfDay(c.d)
+          return (
+            <div key={c.d}
+              title={a ? `${a.type_label} (${a.status})` : undefined}
+              className="flex min-h-[44px] flex-col items-center justify-start rounded-md border border-border p-1 text-xs"
+              style={a ? { backgroundColor: `${a.type_color}22`, borderColor: a.type_color } : undefined}>
+              <span className="font-medium">{c.d}</span>
+              {a && <span className="mt-0.5 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: a.type_color }} />}
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Les jours colorés correspondent à vos absences (couleur = type).</p>
     </div>
   )
 }

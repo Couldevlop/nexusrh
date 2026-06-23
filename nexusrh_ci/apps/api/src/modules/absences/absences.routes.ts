@@ -5,6 +5,8 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
 import { joursFeriesCI } from '../../utils/ci-holidays.js'
+import { sendAbsenceRequestEmail } from '../../services/email.js'
+import { config } from '../../config.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -260,16 +262,36 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const newAbsenceId = res.rows[0].id as string
       void (async () => {
         try {
-          const r = await rawPool.query<{ manager_user_id: string | null; first_name: string; last_name: string }>(
-            `SELECT m.user_id AS manager_user_id, e.first_name, e.last_name
+          const r = await rawPool.query<{
+            manager_user_id: string | null; manager_email: string | null; manager_first: string | null
+            first_name: string; last_name: string; type_label: string | null
+          }>(
+            `SELECT m.user_id AS manager_user_id, m.email AS manager_email, m.first_name AS manager_first,
+                    e.first_name, e.last_name,
+                    (SELECT label FROM "${schema}".absence_types WHERE id = $2) AS type_label
                FROM "${schema}".employees e LEFT JOIN "${schema}".employees m ON m.id = e.manager_id
-              WHERE e.id = $1 LIMIT 1`, [employeeId],
+              WHERE e.id = $1 LIMIT 1`, [employeeId, body.absenceTypeId],
           )
           const row = r?.rows?.[0]
-          if (row?.manager_user_id) notifyUser(schema, row.manager_user_id, 'absence_request',
+          if (!row) return
+          const employeeName = `${row.first_name} ${row.last_name}`.trim()
+          // Notification in-app (ABS-002)
+          if (row.manager_user_id) notifyUser(schema, row.manager_user_id, 'absence_request',
             'Nouvelle demande d\'absence',
-            `${row.first_name} ${row.last_name} a soumis une demande d'absence du ${body.startDate} au ${body.endDate} (${days} j) — à valider.`,
+            `${employeeName} a soumis une demande d'absence du ${body.startDate} au ${body.endDate} (${days} j) — à valider.`,
             { absenceId: newAbsenceId, employeeId })
+          // Email manager (ABS-016) — best-effort, uniquement si SMTP configuré
+          if (row.manager_email && config.smtp.user) {
+            const t = await rawPool.query<{ name: string; primary_color: string | null }>(
+              `SELECT name, primary_color FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+            ).catch(() => ({ rows: [] as Array<{ name: string; primary_color: string | null }> }))
+            await sendAbsenceRequestEmail({
+              to: row.manager_email, managerName: row.manager_first || 'Manager', employeeName,
+              absenceType: row.type_label || 'Absence', startDate: body.startDate, endDate: body.endDate, days,
+              reason: body.reason ?? null, tenantName: t.rows[0]?.name || 'NexusRH CI',
+              primaryColor: t.rows[0]?.primary_color ?? null, approvalUrl: `${config.appUrl}/absences`,
+            }).catch(() => undefined)
+          }
         } catch { /* non bloquant */ }
       })()
 

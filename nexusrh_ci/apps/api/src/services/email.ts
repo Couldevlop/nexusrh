@@ -561,3 +561,45 @@ export async function sendPasswordResetLinkEmail(params: {
     text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH CI.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
   })
 }
+
+// ABS-016 — email au manager à la soumission d'une demande d'absence (avec lien
+// d'approbation). Best-effort : l'appelant le lance sans bloquer la réponse.
+export async function sendAbsenceRequestEmail(params: {
+  to: string; managerName: string; employeeName: string
+  absenceType: string; startDate: string; endDate: string; days: number
+  reason?: string | null; tenantName: string; primaryColor?: string | null
+  logoUrl?: string | null; approvalUrl: string
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, managerName, employeeName, absenceType, startDate, endDate, days,
+    reason, tenantName, primaryColor, logoUrl, approvalUrl, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(tenantName, 'Demande d\'absence à valider', color, logoUrl)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>Bonjour ${managerName},</p>
+        <p><strong>${employeeName}</strong> a soumis une demande d'absence soumise à votre validation :</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:6px 0;color:#6b7280;">Type</td><td style="padding:6px 0;text-align:right;font-weight:600;">${absenceType}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">Période</td><td style="padding:6px 0;text-align:right;font-weight:600;">${startDate} → ${endDate} (${days} j)</td></tr>
+          ${reason ? `<tr><td style="padding:6px 0;color:#6b7280;">Motif</td><td style="padding:6px 0;text-align:right;">${reason}</td></tr>` : ''}
+        </table>
+        <p style="text-align:center;margin:24px 0;">
+          <a href="${approvalUrl}" style="background:${color};color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;display:inline-block;">Examiner la demande</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;">Vous recevez cet email en tant que responsable hiérarchique du demandeur.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject: `Demande d'absence à valider — ${employeeName}`,
+    html,
+  })
+}
