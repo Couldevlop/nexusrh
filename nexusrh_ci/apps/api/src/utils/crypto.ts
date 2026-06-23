@@ -3,8 +3,29 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 const ALGO = 'aes-256-gcm'
 const KEY_HEX = process.env.ENCRYPTION_KEY ?? ''
 
+/**
+ * Erreur typée levée quand ENCRYPTION_KEY est absente/malformée. Porte un `code`
+ * et un `statusCode` reconnus par le error handler global et par describeDbError
+ * → le client reçoit un message clair (503) au lieu d'une « Erreur interne du
+ * serveur » opaque. C'est la cause classique d'un 500 à la création d'un employé
+ * portant un NNI/IBAN quand la clé n'est pas provisionnée.
+ */
+export class EncryptionUnavailableError extends Error {
+  readonly code = 'ENCRYPTION_UNAVAILABLE'
+  readonly statusCode = 503
+  constructor() {
+    super("Le chiffrement des données sensibles (NNI, IBAN) n'est pas configuré sur le serveur. Contactez votre administrateur.")
+    this.name = 'EncryptionUnavailableError'
+  }
+}
+
+/** Le chiffrement est-il opérationnel (clé 64 hex présente) ? */
+export function isEncryptionConfigured(): boolean {
+  return KEY_HEX.length === 64
+}
+
 function getKey(): Buffer {
-  if (KEY_HEX.length !== 64) throw new Error('ENCRYPTION_KEY must be 64 hex chars (32 bytes)')
+  if (KEY_HEX.length !== 64) throw new EncryptionUnavailableError()
   return Buffer.from(KEY_HEX, 'hex')
 }
 

@@ -99,6 +99,9 @@ export default function TrainingPage() {
     mutationFn: (data: typeof newSession) =>
       api.post('/training/sessions', {
         ...data,
+        // Date de fin facultative : ne pas envoyer '' (rejeté par le regex date
+        // côté API même si le champ est optionnel) → undefined = omis.
+        end_date: data.end_date || undefined,
         max_places: parseInt(data.max_places),
         ...(sessionEmployees.length > 0 ? { employee_ids: sessionEmployees } : {}),
       }),
@@ -124,6 +127,10 @@ export default function TrainingPage() {
   const fdfpMut = useMutation({
     mutationFn: () => api.post('/training/fdfp/request', {
       ...fdfpForm,
+      // Ne pas envoyer les champs optionnels vides (training_id/fdfp_code) :
+      // une chaîne vide ferait échouer la validation UUID côté API.
+      training_id: fdfpForm.training_id || undefined,
+      fdfp_code:   fdfpForm.fdfp_code || undefined,
       employees_count: parseInt(fdfpForm.employees_count),
       total_cost: parseInt(fdfpForm.total_cost),
     }),

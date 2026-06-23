@@ -54,12 +54,14 @@ interface WorkflowConfig { id: string; module: string; levels_count: number }
 const ROLE_KEYS = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly'] as const
 // Couleur par type de rubrique (clé technique = valeur API ; libellé traduit via ruleTypes.<key>).
 const RULE_TYPE_COLORS: Record<string, string> = {
-  earning:          'bg-green-100 text-green-700',
-  deduction:        'bg-red-100 text-red-700',
-  employee_contrib: 'bg-orange-100 text-orange-700',
-  employer_contrib: 'bg-blue-100 text-blue-700',
+  earning:                'bg-green-100 text-green-700',
+  deduction:              'bg-red-100 text-red-700',
+  employee_contribution:  'bg-orange-100 text-orange-700',
+  employer_contribution:  'bg-blue-100 text-blue-700',
 }
-const RULE_TYPE_KEYS = ['earning', 'deduction', 'employee_contrib', 'employer_contrib'] as const
+// Valeurs canoniques alignées sur l'API + le moteur de paie (le seed stocke
+// déjà employee_contribution/employer_contribution).
+const RULE_TYPE_KEYS = ['earning', 'deduction', 'employee_contribution', 'employer_contribution'] as const
 const TABS = [
   { id: 'general',        labelKey: 'tabs.general',       icon: Settings },
   { id: 'legislation',    labelKey: 'tabs.legislation',   icon: Globe },

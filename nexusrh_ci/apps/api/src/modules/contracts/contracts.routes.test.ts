@@ -159,6 +159,11 @@ describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () 
     const changes = JSON.parse(auditCall?.[1]?.[3] as string)
     expect(changes.reason).toBe('resignation')
     expect(changes.terminationDate).toBe('2026-06-30')
+    // Régression : l'INSERT hr_events doit cibler la colonne RÉELLE « date »
+    // (et jamais « event_date » qui n'existe pas → 42703 → 500 à chaque rupture).
+    const hrEventCall = queryMock.mock.calls.find((c) => String(c[0]).includes('hr_events'))
+    expect(String(hrEventCall?.[0])).toMatch(/\bdate\b/)
+    expect(String(hrEventCall?.[0])).not.toContain('event_date')
   })
 
   it('refuse rupture par un hr_officer (403)', async () => {

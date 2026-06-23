@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encryptIfPresent, decryptIfPresent } from '../../utils/crypto.js'
+import { describeDbError } from '../../utils/db-error.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
@@ -215,30 +216,44 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // pool module-level
       const schema = request.user.schemaName
 
-      const res = await pool.query(
-        `INSERT INTO "${schema}".employees
-           (first_name, last_name, email, phone, birth_date, gender,
-            nni, cnps_number, mobile_money_provider, mobile_money_phone,
-            department_id, manager_id, job_title, job_level, contract_type,
-            hire_date, base_salary, weekly_hours, professional_category,
-            iban, bank_name, city, marital_status, children_count)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-         RETURNING *`,
-        [
-          body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
-          body.birthDate ?? null, body.gender ?? null,
-          encryptIfPresent(body.nni), body.cnpsNumber ?? null,
-          body.mobileMoneyProvider ?? null, body.mobileMoneyPhone ?? null,
-          body.departmentId ?? null, body.managerId ?? null,
-          body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
-          body.hireDate ?? null, body.baseSalary,
-          // Base légale CI : 40h hebdomadaires par défaut
-          body.weeklyHours ?? 40, body.professionalCategory ?? null,
-          // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
-          encryptIfPresent(body.iban), body.bankName ?? null,
-          body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
-        ]
-      )
+      let res
+      try {
+        res = await pool.query(
+          `INSERT INTO "${schema}".employees
+             (first_name, last_name, email, phone, birth_date, gender,
+              nni, cnps_number, mobile_money_provider, mobile_money_phone,
+              department_id, manager_id, job_title, job_level, contract_type,
+              hire_date, base_salary, weekly_hours, professional_category,
+              iban, bank_name, city, marital_status, children_count)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+           RETURNING *`,
+          [
+            body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
+            body.birthDate ?? null, body.gender ?? null,
+            encryptIfPresent(body.nni), body.cnpsNumber ?? null,
+            body.mobileMoneyProvider ?? null, body.mobileMoneyPhone ?? null,
+            body.departmentId ?? null, body.managerId ?? null,
+            body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
+            body.hireDate ?? null, body.baseSalary,
+            // Base légale CI : 40h hebdomadaires par défaut
+            body.weeklyHours ?? 40, body.professionalCategory ?? null,
+            // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
+            encryptIfPresent(body.iban), body.bankName ?? null,
+            body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
+          ]
+        )
+      } catch (err) {
+        // Aucune erreur technique brute ne doit remonter : message personnalisé.
+        const mapped = describeDbError(err, {
+          entity: 'employé',
+          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+        })
+        request.log.error({ err, schema, action: 'employee.create' }, 'Échec création employé')
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
+        return reply.status(500).send({
+          error: "Impossible d'enregistrer l'employé pour le moment. Réessayez ou contactez le support.",
+        })
+      }
 
       // OWASP A09 : trace de la création
       auditLogEmployee(schema, request.user.sub, 'employee.created', res.rows[0].id, {
@@ -331,10 +346,23 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
       sets.push(`updated_at = now()`)
       vals.push(id)
-      const res = await pool.query(
-        `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
-        vals
-      )
+      let res
+      try {
+        res = await pool.query(
+          `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+          vals
+        )
+      } catch (err) {
+        const mapped = describeDbError(err, {
+          entity: 'employé',
+          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+        })
+        request.log.error({ err, schema, action: 'employee.update', id }, 'Échec modification employé')
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
+        return reply.status(500).send({
+          error: "Impossible de modifier l'employé pour le moment. Réessayez ou contactez le support.",
+        })
+      }
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       // OWASP A09 : trace de la modification (clés modifiées sans les valeurs
@@ -374,9 +402,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
   
         return reply.send({ canDelete: pending.length === 0, pendingActions: pending })
       } catch (err) {
-        fastify.log.error(err)
-  
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err, employeeId: id, action: 'employee.check-delete' }, 'Échec vérification suppression')
+        const mapped = describeDbError(err, { entity: 'employé' })
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
+        return reply.status(500).send({
+          error: "Impossible de vérifier la suppression de l'employé pour le moment. Réessayez plus tard.",
+        })
       }
     },
   })
@@ -427,8 +458,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           cancelledSignatures: cascade.cancelledSignatures,
         })
       } catch (err) {
-        fastify.log.error({ err, employeeId: id }, 'employee archive failed')
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err, employeeId: id, action: 'employee.archive' }, 'Échec archivage employé')
+        const mapped = describeDbError(err, { entity: 'employé' })
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
+        return reply.status(500).send({
+          error: "Impossible d'archiver l'employé pour le moment. Réessayez ou contactez le support.",
+        })
       }
     },
   })

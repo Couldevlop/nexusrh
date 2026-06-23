@@ -19,6 +19,10 @@ vi.mock('../../services/redis.js', () => ({
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
 }))
 
+vi.mock('../../utils/schema-migrations.js', () => ({
+  ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',

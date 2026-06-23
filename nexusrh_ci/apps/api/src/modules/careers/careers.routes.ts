@@ -22,8 +22,11 @@ const upsertEmployeeSkillsSchema = z.object({
 
 const createEvaluationSchema = z.object({
   employee_id:       z.string().uuid(),
-  type:              z.enum(['annual', 'mid_year', 'probation', '360', 'manager_review']).optional(),
-  year:              z.number().int().min(2000).max(2100).optional(),
+  // Inclut trial_end (fin d'essai) et exit (entretien de sortie) proposés par
+  // l'UI — sinon ces choix renvoyaient un 400 à la création de l'entretien.
+  type:              z.enum(['annual', 'mid_year', 'probation', '360', 'manager_review', 'trial_end', 'exit']).optional(),
+  // coerce : le champ année du formulaire est une chaîne ("2026").
+  year:              z.coerce.number().int().min(2000).max(2100).optional(),
   period:            z.string().max(50).optional(),
   global_score:      z.number().int().min(0).max(100).optional(),
   performance_score: z.number().int().min(0).max(100).optional(),

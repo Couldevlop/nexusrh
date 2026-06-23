@@ -11,6 +11,10 @@ vi.mock('../../services/redis.js', () => ({
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
 }))
 
+vi.mock('../../utils/schema-migrations.js', () => ({
+  ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',
@@ -326,6 +330,26 @@ describe('POST /training/fdfp/request — bornes anti-fraude (OWASP A04)', () =>
     expect(body.data.estimated_refund).toBe(2_000_000) // 50% du total
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('training.fdfp_requested')
+  })
+
+  it('accepte training_id vide (formulaire sans formation liée) → 201, pas de 400', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'evt-2' }] }) // INSERT hr_events
+      .mockResolvedValueOnce({ rows: [] })                  // audit_log
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/training/fdfp/request',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        training_title: 'Sécurité chantier', training_id: '', fdfp_code: '',
+        session_date: '2026-07-01', employees_count: 5, total_cost: 1_000_000,
+        provider_name: 'BTP Formation',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    // L'INSERT hr_events niveau entreprise ne référence PAS employee_id (nullable).
+    const insCall = queryMock.mock.calls.find((c) => String(c[0]).includes('hr_events'))
+    expect(String(insCall?.[0])).not.toContain('employee_id')
   })
 
   it('refuse FDFP par un employee (admin/hr seulement, 403)', async () => {

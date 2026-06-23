@@ -27,8 +27,8 @@
   "ruleTypes": {
     "earning": "Gain",
     "deduction": "Retenue",
-    "employee_contrib": "Cotis. salariale",
-    "employer_contrib": "Cotis. patronale"
+    "employee_contribution": "Cotis. salariale",
+    "employer_contribution": "Cotis. patronale"
   },
   "legislation": {
     "intro": "Choisissez le pays du tenant : la convention collective, le SMIG, le barème d'imposition et les cotisations sociales correspondants s'installent automatiquement comme paramétrage de paie.",

@@ -6,8 +6,10 @@ import { decryptIfPresent } from '../../utils/crypto.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Catégories de frais autorisées (OHADA CI : transport, repas, hébergement…)
-const EXPENSE_CATEGORIES = ['transport', 'repas', 'hebergement', 'fournitures', 'representation', 'formation', 'autre'] as const
+// Catégories de frais autorisées (OHADA CI : transport, repas, hébergement…).
+// Inclut materiel/communication proposés par l'UI : sans eux ces choix du
+// formulaire renvoyaient un 400 à la soumission.
+const EXPENSE_CATEGORIES = ['transport', 'repas', 'hebergement', 'fournitures', 'representation', 'formation', 'materiel', 'communication', 'autre'] as const
 // Cap par ligne : 10M FCFA (>16k€), bien au-delà de la note de frais réaliste.
 // Anti-overflow + anti-fraude (un attaquant ne peut pas injecter 99 999 999 999).
 const EXPENSE_LINE_MAX = 10_000_000

@@ -161,6 +161,21 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('settings.legal_entity_created')
   })
+
+  it('accepte legal_form « SASU » + at_rate en chaîne (régression mismatch front↔back)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'le-2', name: 'Filiale SASU', at_rate: '0.03' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${token}` },
+      // legal_form proposé par l'UI + at_rate envoyé en chaîne (coerce)
+      payload: { name: 'Filiale SASU', legal_form: 'SASU', at_rate: '0.03' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
 })
 
 describe('PATCH /settings/legal-entities/:id — UUID + audit', () => {

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { describeDbError } from '../../utils/db-error.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -225,7 +226,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         // Enregistrer l'événement RH
         await pool.query(`
           INSERT INTO "${schema}".hr_events
-            (employee_id, type, title, description, event_date)
+            (employee_id, type, title, description, date)
           VALUES ($1,'termination',$2,$3,$4)
         `, [
           res.rows[0].employee_id,
@@ -245,8 +246,12 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
 
         return reply.send({ success: true })
       } catch (err) {
-        fastify.log.error(err)
-        return reply.status(500).send({ error: 'Erreur serveur' })
+        fastify.log.error({ err, contractId: id, action: 'contract.terminate' }, 'Échec rupture de contrat')
+        const mapped = describeDbError(err, { entity: 'contrat' })
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
+        return reply.status(500).send({
+          error: 'Impossible de rompre le contrat pour le moment. Réessayez ou contactez le support.',
+        })
       }
     },
   })
