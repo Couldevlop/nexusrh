@@ -35,6 +35,13 @@ const { createTenantMock } = vi.hoisted(() => ({ createTenantMock: vi.fn() }))
 vi.mock('../../services/tenant-provisioning.service.js', () => ({
   createTenantWithSchema: createTenantMock,
   TenantSlugConflictError: class TenantSlugConflictError extends Error {},
+  PLAN_DEFAULTS: {
+    trial:         { maxUsers: 10,   maxEmployees: 20  },
+    starter:       { maxUsers: 30,   maxEmployees: 30  },
+    business:      { maxUsers: 100,  maxEmployees: 150 },
+    enterprise:    { maxUsers: 9999, maxEmployees: 9999 },
+    public_sector: { maxUsers: 200,  maxEmployees: 500 },
+  },
 }))
 
 const { sendResetEmailMock } = vi.hoisted(() => ({ sendResetEmailMock: vi.fn().mockResolvedValue(undefined) }))
