@@ -10,7 +10,7 @@ import {
   resolveOfflineMessage,
   invalidateOfflineStatusCache,
 } from '../../services/offline-status.service.js'
-import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
+import { createTenantWithSchema, TenantSlugConflictError, PLAN_DEFAULTS } from '../../services/tenant-provisioning.service.js'
 import { listLegislationPacks } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import {
@@ -240,6 +240,15 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           modifiedFields.push(k)
         }
       }
+      // PLT-011 — changer le plan réajuste automatiquement maxUsers/maxEmployees
+      // selon PLAN_DEFAULTS, SAUF si le client fournit des valeurs explicites.
+      const planKey = typeof body.plan_type === 'string' ? body.plan_type : null
+      const planDefaults = planKey ? PLAN_DEFAULTS?.[planKey] : undefined
+      if (planDefaults) {
+        if (!('max_users' in body))     { sets.push(`max_users = $${idx++}`);     vals.push(planDefaults.maxUsers);     modifiedFields.push('max_users') }
+        if (!('max_employees' in body)) { sets.push(`max_employees = $${idx++}`); vals.push(planDefaults.maxEmployees); modifiedFields.push('max_employees') }
+      }
+
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ valide' })
 
       // OWASP A04 (Insecure Design) : activer le multi-pays IMPOSE que le schéma
@@ -549,6 +558,57 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       invalidateOfflineStatusCache()
       auditLogPlatform((request.user as { sub: string }).sub, 'tenant.delete', 'tenant', id, { slug: t.slug, name: t.name }, request.ip ?? null)
       return reply.send({ message: `Tenant "${t.name}" supprimé définitivement.` })
+    },
+  })
+
+  // ── GET /platform/tenants/:id/users (consultation — PLT-014) ──────────────
+  // Lecture seule : email, rôle, statut, date création. Pas de création ici.
+  fastify.get('/tenants/:id/users', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Lister les utilisateurs d\'un tenant (lecture)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const res = await pool.query<{ schema_name: string }>(
+        `SELECT schema_name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+      )
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const sc = t.schema_name
+      if (!sc || !/^[a-z][a-z0-9_]{0,62}$/.test(sc)) return reply.send({ data: [] })
+      const users = await pool.query(
+        `SELECT id, email, first_name, last_name, role, is_active, created_at, last_login_at
+           FROM "${sc}".users ORDER BY created_at ASC`,
+      ).catch(() => ({ rows: [] }))
+      return reply.send({ data: users.rows })
+    },
+  })
+
+  // ── PATCH /platform/tenants/:id/users/:userId (suspendre/réactiver — PLT-015) ──
+  fastify.patch('/tenants/:id/users/:userId', {
+    preHandler: [fastify.authorize('super_admin')],
+    schema: { tags: ['platform'], summary: 'Activer/désactiver un utilisateur de tenant' },
+    handler: async (request, reply) => {
+      const { id, userId } = request.params as { id: string; userId: string }
+      if (!UUID_RE.test(id) || !UUID_RE.test(userId)) {
+        return reply.status(400).send({ error: 'id/userId invalides (UUID requis)' })
+      }
+      const { isActive } = (request.body ?? {}) as { isActive?: boolean }
+      if (typeof isActive !== 'boolean') return reply.status(400).send({ error: 'isActive (boolean) requis' })
+      const res = await pool.query<{ schema_name: string }>(
+        `SELECT schema_name FROM platform.tenants WHERE id = $1 LIMIT 1`, [id],
+      )
+      const t = res.rows[0]
+      if (!t) return reply.status(404).send({ error: 'Tenant introuvable' })
+      const sc = t.schema_name
+      if (!sc || !/^[a-z][a-z0-9_]{0,62}$/.test(sc)) return reply.status(400).send({ error: 'Schéma tenant invalide' })
+      const upd = await pool.query(
+        `UPDATE "${sc}".users SET is_active = $2, updated_at = now() WHERE id = $1 RETURNING id, email, is_active`,
+        [userId, isActive],
+      )
+      if (!upd.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
+      auditLogPlatform((request.user as { sub: string }).sub,
+        isActive ? 'tenant.user.reactivate' : 'tenant.user.suspend', 'user', userId, { tenantId: id }, request.ip ?? null)
+      return reply.send({ data: upd.rows[0] })
     },
   })
 

@@ -115,6 +115,28 @@ export default function PlatformTenantDetail() {
   const deleteErrMsg = (deleteMut.error as { response?: { data?: { error?: string } } } | null)
     ?.response?.data?.error ?? null
 
+  // PLT-011 — changer le plan (le backend réajuste maxUsers/maxEmployees).
+  const planMut = useMutation({
+    mutationFn: (plan: string) => api.patch(`/platform/tenants/${id}`, { plan_type: plan }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tenant', id] }),
+  })
+
+  // PLT-014 — liste des utilisateurs du tenant (lecture + suspension).
+  const { data: usersData } = useQuery<{ data: Array<{
+    id: string; email: string; first_name: string; last_name: string
+    role: string; is_active: boolean; created_at: string
+  }> }>({
+    queryKey: ['tenant-users', id],
+    queryFn: () => api.get(`/platform/tenants/${id}/users`).then(r => r.data),
+    enabled: !!id,
+  })
+  // PLT-015 — suspendre / réactiver un utilisateur.
+  const userToggleMut = useMutation({
+    mutationFn: (v: { userId: string; isActive: boolean }) =>
+      api.patch(`/platform/tenants/${id}/users/${v.userId}`, { isActive: v.isActive }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tenant-users', id] }),
+  })
+
   // Variable système : message hors-ligne par défaut + caractère obligatoire.
   const { data: settingsData } = useQuery<{ data: OfflinePolicySettings }>({
     queryKey: ['platform-settings'],
@@ -312,6 +334,29 @@ export default function PlatformTenantDetail() {
       {/* ── Onglet Plan (infos + filiales + clé IA + actions) ── */}
       {tab === 'plan' && (
         <div className="space-y-6">
+          {/* PLT-011 — changer le plan (réajuste maxUsers/maxEmployees) */}
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h2 className="font-semibold mb-1">Plan d'abonnement</h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              Changer le plan réajuste automatiquement les quotas (utilisateurs / employés).
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={tenant.plan_type}
+                onChange={(e) => planMut.mutate(e.target.value)}
+                disabled={planMut.isPending}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
+                {['trial', 'starter', 'business', 'enterprise', 'public_sector'].map(p => (
+                  <option key={p} value={p}>{t(`plans.${p}`)}</option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Quotas actuels : {tenant.max_users} utilisateurs · {tenant.max_employees} employés
+              </span>
+              {planMut.isPending && <span className="text-xs text-muted-foreground">{t('modules.saving')}</span>}
+            </div>
+          </div>
+
           {/* Infos */}
           <div className="grid grid-cols-2 gap-4">
             {[
@@ -599,6 +644,57 @@ export default function PlatformTenantDetail() {
                   <p className="text-xs text-muted-foreground mt-1">{label}</p>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* PLT-014/015 — utilisateurs du tenant (lecture + suspension) */}
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h2 className="font-semibold mb-1">Utilisateurs du tenant</h2>
+            <p className="text-xs text-muted-foreground mb-4">Consultation et suspension — pas de création depuis ici.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-2 pr-4">Email</th>
+                    <th className="py-2 pr-4">Rôle</th>
+                    <th className="py-2 pr-4">Statut</th>
+                    <th className="py-2 pr-4">Créé le</th>
+                    <th className="py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(usersData?.data ?? []).map(u => (
+                    <tr key={u.id}>
+                      <td className="py-2 pr-4">
+                        <p className="font-medium">{u.email}</p>
+                        <p className="text-xs text-muted-foreground">{u.first_name} {u.last_name}</p>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{u.role}</span>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {u.is_active ? 'Actif' : 'Suspendu'}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-muted-foreground">{u.created_at?.slice(0, 10)}</td>
+                      <td className="py-2">
+                        <button
+                          onClick={() => userToggleMut.mutate({ userId: u.id, isActive: !u.is_active })}
+                          disabled={userToggleMut.isPending}
+                          className={`text-xs font-medium hover:underline disabled:opacity-50 ${
+                            u.is_active ? 'text-red-600' : 'text-green-600'}`}>
+                          {u.is_active ? 'Suspendre' : 'Réactiver'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {(usersData?.data?.length ?? 0) === 0 && (
+                    <tr><td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">Aucun utilisateur.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
