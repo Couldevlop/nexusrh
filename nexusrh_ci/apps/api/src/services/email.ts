@@ -603,3 +603,40 @@ export async function sendAbsenceRequestEmail(params: {
     html,
   })
 }
+
+// Virement bancaire — envoie le fichier .xlsx d'ordre de virement à la banque.
+export async function sendBankTransferEmail(params: {
+  to: string; bankName: string; month: string; count: number; total: number
+  tenantName: string; primaryColor?: string | null
+  attachment: { filename: string; content: Buffer }
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, bankName, month, count, total, tenantName, primaryColor, attachment, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const totalFmt = total.toLocaleString('fr-FR')
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(tenantName, 'Ordre de virement des salaires', color, null)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>Bonjour,</p>
+        <p>Veuillez trouver ci-joint l'ordre de virement des salaires de <strong>${tenantName}</strong> pour la période <strong>${month}</strong>, à exécuter sur les comptes des bénéficiaires (banque <strong>${bankName}</strong>).</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:6px 0;color:#6b7280;">Nombre de virements</td><td style="padding:6px 0;text-align:right;font-weight:600;">${count}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">Montant total</td><td style="padding:6px 0;text-align:right;font-weight:700;">${totalFmt} FCFA</td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Le détail (bénéficiaire, IBAN/RIB, montant) figure dans le fichier Excel joint.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject: `Ordre de virement des salaires — ${tenantName} — ${month}`,
+    html,
+    attachments: [{ filename: attachment.filename, content: attachment.content }],
+  })
+}

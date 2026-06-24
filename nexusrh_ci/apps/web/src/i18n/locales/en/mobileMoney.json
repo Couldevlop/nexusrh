@@ -30,5 +30,25 @@
     "completed": "Successful",
     "failed": "Failed",
     "pending": "Pending"
+  },
+  "tabs": {
+    "mobileMoney": "Mobile Money",
+    "bankTransfer": "Bank transfer"
+  },
+  "bank": {
+    "title": "Salary bank transfer",
+    "subtitle": "Generates an Excel file per bank (beneficiaries + IBAN + amounts) and emails it to the bank. The sender is your company's configured email.",
+    "bank": "Bank",
+    "count": "Transfers",
+    "total": "Total",
+    "email": "Bank email",
+    "file": "File",
+    "download": "Download Excel",
+    "generateSend": "Generate and send",
+    "empty": "No employee paid by bank transfer for this period (check employees' payment method + IBAN).",
+    "ok": "sent",
+    "failed": "failed",
+    "sendError": "Send failed — check emails and tenant SMTP.",
+    "selectedCount": "{{count}} bank(s) selected"
   }
 }

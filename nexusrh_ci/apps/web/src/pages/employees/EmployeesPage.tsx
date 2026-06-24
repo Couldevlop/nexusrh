@@ -43,7 +43,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     contractType: 'cdi', hireDate: new Date().toISOString().slice(0, 10),
     baseSalary: '', weeklyHours: '40',
     mobileMoneyProvider: '', mobileMoneyPhone: '',
-    iban: '', bankName: '',
+    iban: '', bankName: '', paymentMethod: 'mobile_money',
     city: 'Abidjan', maritalStatus: '', childrenCount: '0',
   })
   const [saving, setSaving] = useState(false)
@@ -95,6 +95,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         ...(form.mobileMoneyPhone ? { mobileMoneyPhone: form.mobileMoneyPhone.trim() } : {}),
         ...(form.iban ? { iban: form.iban.replace(/\s+/g, '') } : {}),
         ...(form.bankName ? { bankName: form.bankName.trim() } : {}),
+        paymentMethod: form.paymentMethod || 'mobile_money',
         city: form.city || 'Abidjan',
         ...(form.maritalStatus ? { maritalStatus: form.maritalStatus } : {}),
         childrenCount: parseInt(form.childrenCount, 10) || 0,
@@ -194,20 +195,40 @@ function CreateEmployeeModal({ onClose, onCreated }: {
               <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
                 <input type="number" min={75000} step={1} className={inputCls}
                   value={form.baseSalary} onChange={set('baseSalary')} required placeholder={t('form.placeholders.baseSalary')} /></div>
-              <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
-                <select className={inputCls} value={form.mobileMoneyProvider} onChange={set('mobileMoneyProvider')}>
-                  <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
-                  <option value="mtn">{t('form.providers.mtn')}</option><option value="orange">{t('form.providers.orange')}</option>
-                  <option value="cofina">{t('form.providers.cofina')}</option>
-                </select></div>
-              <div><label className={labelCls}>{t('form.fields.mobileMoneyPhone')}</label>
-                <input className={inputCls} value={form.mobileMoneyPhone} onChange={set('mobileMoneyPhone')}
-                  placeholder={t('form.placeholders.mobileMoneyPhone')} maxLength={30} /></div>
-              <div className="sm:col-span-2"><label className={labelCls}>{t('form.fields.iban')}</label>
-                <input className={inputCls} value={form.iban} onChange={set('iban')}
-                  placeholder={t('form.placeholders.iban')} maxLength={50} /></div>
-              <div><label className={labelCls}>{t('form.fields.bankName')}</label>
-                <input className={inputCls} value={form.bankName} onChange={set('bankName')} maxLength={100} /></div>
+              {/* Mode de réception du salaire — pilote l'affichage RIB / Mobile Money */}
+              <div className="sm:col-span-3"><label className={labelCls}>{t('form.fields.paymentMethod', 'Mode de réception du salaire')}</label>
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={() => set('paymentMethod')({ target: { value: 'mobile_money' } } as never)}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${form.paymentMethod !== 'bank_transfer' ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground'}`}>
+                    {t('form.paymentMobileMoney', 'Mobile Money')}
+                  </button>
+                  <button type="button" onClick={() => set('paymentMethod')({ target: { value: 'bank_transfer' } } as never)}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${form.paymentMethod === 'bank_transfer' ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground'}`}>
+                    {t('form.paymentBankTransfer', 'Virement bancaire')}
+                  </button>
+                </div>
+              </div>
+              {form.paymentMethod !== 'bank_transfer' ? (
+                <>
+                  <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
+                    <select className={inputCls} value={form.mobileMoneyProvider} onChange={set('mobileMoneyProvider')}>
+                      <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
+                      <option value="mtn">{t('form.providers.mtn')}</option><option value="orange">{t('form.providers.orange')}</option>
+                      <option value="cofina">{t('form.providers.cofina')}</option>
+                    </select></div>
+                  <div className="sm:col-span-2"><label className={labelCls}>{t('form.fields.mobileMoneyPhone')}</label>
+                    <input className={inputCls} value={form.mobileMoneyPhone} onChange={set('mobileMoneyPhone')}
+                      placeholder={t('form.placeholders.mobileMoneyPhone')} maxLength={30} /></div>
+                </>
+              ) : (
+                <>
+                  <div className="sm:col-span-2"><label className={labelCls}>{t('form.fields.iban')}</label>
+                    <input className={inputCls} value={form.iban} onChange={set('iban')}
+                      placeholder={t('form.placeholders.iban')} maxLength={50} /></div>
+                  <div><label className={labelCls}>{t('form.fields.bankName')}</label>
+                    <input className={inputCls} value={form.bankName} onChange={set('bankName')} maxLength={100} /></div>
+                </>
+              )}
             </div>
           </fieldset>
 

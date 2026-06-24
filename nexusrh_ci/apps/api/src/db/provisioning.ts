@@ -440,6 +440,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     city                  varchar(100) DEFAULT 'Abidjan',
     iban                  varchar(255),
     bank_name             varchar(100),
+    payment_method        varchar(20) DEFAULT 'mobile_money',  -- mobile_money | bank_transfer
     retention_score       numeric(3,2),
     burnout_risk          varchar(10),
     ai_score_updated_at   timestamptz,

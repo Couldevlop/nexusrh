@@ -33,6 +33,14 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS professional_category varchar(50)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS iban varchar(255)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS bank_name varchar(100)`,
+    // Mode de réception du salaire : mobile_money (numéro) | bank_transfer (RIB)
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS payment_method varchar(20) DEFAULT 'mobile_money'`,
+    // Annuaire des banques (destinataires des fichiers de virement)
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".bank_directory (
+      bank_name varchar(100) PRIMARY KEY,
+      email varchar(255),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS retention_score numeric(3,2)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS burnout_risk varchar(10)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS ai_score_factors jsonb DEFAULT '[]'`,
