@@ -871,10 +871,23 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        email: string; first_name: string; last_name: string
-        role?: string; department_id?: string; is_active?: boolean
+      const tenantId = request.user.tenantId
+      // OWASP A03 + A01 — validation Zod stricte + allowlist de rôles TENANT.
+      // Sans cela, le body brut permettait d'injecter role='super_admin' à la
+      // création (escalade de privilège plateforme). Aligné sur PATCH /users/:id.
+      const createUserSchema = z.object({
+        email:         z.string().email().max(200),
+        first_name:    z.string().min(1).max(100).trim(),
+        last_name:     z.string().min(1).max(100).trim(),
+        role:          z.enum(['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg']).optional(),
+        department_id: z.string().uuid().optional(),
+        is_active:     z.boolean().optional(),
+      }).strict()
+      const parsed = createUserSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
+      const body = parsed.data
       try {
         const tempPassword = generateTempPassword()
         const hash = await bcrypt.hash(tempPassword, 12)
@@ -921,7 +934,31 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           )
         }
 
-        return reply.status(201).send({ data: res.rows[0], tempPassword })
+        // SET-004 — email d'invitation (non bloquant). Le tempPassword reste dans
+        // la réponse comme filet de sécurité si l'envoi échoue.
+        let emailSent = false
+        if (tenantId) {
+          try {
+            const mail = await loadTenantMail(tenantId)
+            await sendEmployeeWelcomeEmail({
+              to: body.email,
+              firstName: body.first_name,
+              lastName: body.last_name,
+              tenantName: mail.name,
+              primaryColor: mail.primaryColor,
+              loginUrl: config.appUrl ?? 'http://localhost:3001',
+              tempPassword,
+              from: mail.from,
+              replyTo: mail.from,
+              smtp: mail.smtp,
+            })
+            emailSent = true
+          } catch (emailErr) {
+            fastify.log.warn({ emailErr }, 'invitation email failed')
+          }
+        }
+
+        return reply.status(201).send({ data: res.rows[0], tempPassword, emailSent })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur lors de la création' })

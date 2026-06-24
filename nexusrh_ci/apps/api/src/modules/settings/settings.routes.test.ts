@@ -562,3 +562,35 @@ describe('GET/PUT /settings/email — SMTP tenant (option C)', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('POST /settings/users — Zod + allowlist rôles (OWASP A01 + A03, SET-004)', () => {
+  it('refuse l\'injection role=super_admin à la création (400, anti-escalade)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'x@sotra.ci', first_name: 'A', last_name: 'B', role: 'super_admin' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un body sans email (400)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { first_name: 'A', last_name: 'B', role: 'hr_officer' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('crée un utilisateur tenant valide (201) avec rôle autorisé', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'u-new', email: 'x@sotra.ci', first_name: 'A', last_name: 'B', role: 'hr_officer', is_active: true, created_at: '2026-01-01' }] }) // INSERT users
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'x@sotra.ci', first_name: 'A', last_name: 'B', role: 'hr_officer' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).tempPassword).toBeTruthy()
+  })
+})
