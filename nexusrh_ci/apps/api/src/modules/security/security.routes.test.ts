@@ -66,6 +66,13 @@ describe('OWASP A02 — secrets jamais renvoyés en clair', () => {
     expect(body.data.secretSet).toBe(true)
     expect(body.data).not.toHaveProperty('client_secret_enc')
     expect(JSON.stringify(body.data)).not.toContain('shh')
+    // Réponse en camelCase cohérente (sinon le front plantait sur la config par défaut)
+    expect(body.data).toHaveProperty('defaultRole', 'employee')
+    expect(body.data).toHaveProperty('clientId', 'cid')
+    expect(body.data).toHaveProperty('groupMappings')
+    expect(body.data).not.toHaveProperty('default_role')
+    expect(body.data).not.toHaveProperty('group_mappings')
+    expect(body.data).not.toHaveProperty('id') // pas de colonnes DB brutes exposées
   })
 })
 
