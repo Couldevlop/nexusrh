@@ -20,11 +20,17 @@ function parseYearParam(raw: string | undefined): number | null {
 // OWASP A03 — schemas Zod pour les POST principaux
 const generateDeclarationSchema = z.object({
   year:          z.number().int().min(2000).max(2100),
-  quarter:       z.number().int().min(1).max(4),
+  // CNP-001 — période : trimestrielle (quarter) OU MENSUELLE (month, e-CNPS légal
+  // = dépôt avant le 15 du mois M+1). Exactement l'un des deux.
+  quarter:       z.number().int().min(1).max(4).optional(),
+  month:         z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format AAAA-MM attendu').optional(),
   // Palier 3 multi-filiales : si tenant.has_subsidiaries=true, REQUIS pour
   // scoper la déclaration à une filiale (chaque numéro CNPS est distinct).
   legalEntityId: z.string().regex(UUID_RE, 'UUID requis').optional(),
-}).strict()
+}).strict().refine((d) => (d.quarter != null) !== (d.month != null), {
+  message: 'Fournir soit "quarter" (trimestriel) soit "month" (mensuel), pas les deux ni aucun',
+  path: ['month'],
+})
 
 const disaGenerateSchema = z.object({
   year:          z.number().int().min(2000).max(2100),
@@ -113,7 +119,12 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         })
       }
-      const { year, quarter, legalEntityId } = parsed.data
+      const { year, month, legalEntityId } = parsed.data
+      const isMonthly = month != null
+      // En mensuel, le trimestre est dérivé du mois (pour la cohérence d'affichage).
+      const quarter = isMonthly ? Math.ceil(parseInt(month!.slice(5, 7), 10) / 3) : parsed.data.quarter!
+      const periodType = isMonthly ? 'monthly' : 'quarterly'
+      const periodMonth = isMonthly ? month! : null
       const schema = request.user.schemaName
 
       // Multi-filiales : si tenant.has_subsidiaries=true, exiger legalEntityId
@@ -136,24 +147,30 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         if (!le.rows[0]) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
       }
 
-      // Mois du trimestre
+      // Mois couverts : le mois seul (mensuel) ou les 3 mois du trimestre
       const months: string[] = []
-      for (let m = (quarter - 1) * 3 + 1; m <= quarter * 3; m++) {
-        months.push(`${year}-${String(m).padStart(2, '0')}`)
+      if (isMonthly) {
+        months.push(month!)
+      } else {
+        for (let m = (quarter - 1) * 3 + 1; m <= quarter * 3; m++) {
+          months.push(`${year}-${String(m).padStart(2, '0')}`)
+        }
       }
 
-      // Vérifier si déclaration déjà existante (pour CE legalEntityId)
+      // Vérifier si déclaration déjà existante (même période + CE legalEntityId)
       const existing = await rawPool.query<{ id: string; status: string }>(
         `SELECT id, status FROM "${schema}".cnps_declarations
-         WHERE year = $1 AND quarter = $2 AND (legal_entity_id IS NOT DISTINCT FROM $3)
+         WHERE year = $1 AND quarter = $2 AND (period_month IS NOT DISTINCT FROM $3)
+           AND (legal_entity_id IS NOT DISTINCT FROM $4)
          LIMIT 1`,
-        [year, quarter, legalEntityId ?? null],
+        [year, quarter, periodMonth, legalEntityId ?? null],
       ).catch(async () => rawPool.query<{ id: string; status: string }>(
         `SELECT id, status FROM "${schema}".cnps_declarations
-         WHERE year = $1 AND quarter = $2 LIMIT 1`, [year, quarter],
+         WHERE year = $1 AND quarter = $2 AND (period_month IS NOT DISTINCT FROM $3) LIMIT 1`,
+        [year, quarter, periodMonth],
       ))
       if (existing.rows[0]?.status === 'submitted') {
-        return reply.status(422).send({ error: 'Déclaration déjà soumise pour ce trimestre / cette filiale' })
+        return reply.status(422).send({ error: `Déclaration déjà soumise pour cette période (${isMonthly ? month : 'T' + quarter}) / cette filiale` })
       }
 
       // Agréger les bulletins du trimestre scopés filiale si applicable
@@ -209,26 +226,26 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
            SET total_cotisations_salariales = $1, total_cotisations_patronales = $2,
                total_cotisations = $3, masse_salariale = $4,
                employees_count = $5, data = $6,
-               months = $7, status = 'draft', updated_at = now()
-           WHERE id = $8`,
+               months = $7, period_type = $8, period_month = $9, status = 'draft', updated_at = now()
+           WHERE id = $10`,
           [
             totalSalarial, totalPatronal, totalCotisations, totalMasseSalariale,
             employees.length, JSON.stringify(employees), JSON.stringify(months),
-            existing.rows[0].id,
+            periodType, periodMonth, existing.rows[0].id,
           ]
         )
         declarationId = existing.rows[0].id
       } else {
         const insRes = await rawPool.query<{ id: string }>(
           `INSERT INTO "${schema}".cnps_declarations
-             (year, quarter, months,
+             (year, quarter, period_type, period_month, months,
               total_cotisations_salariales, total_cotisations_patronales,
               total_cotisations, masse_salariale, employees_count, data, status,
               legal_entity_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft',$12)
            RETURNING id`,
           [
-            year, quarter, JSON.stringify(months),
+            year, quarter, periodType, periodMonth, JSON.stringify(months),
             totalSalarial, totalPatronal,
             totalCotisations, totalMasseSalariale,
             employees.length, JSON.stringify(employees),
@@ -236,13 +253,13 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           ]
         ).catch(async () => rawPool.query<{ id: string }>(
           `INSERT INTO "${schema}".cnps_declarations
-             (year, quarter, months,
+             (year, quarter, period_type, period_month, months,
               total_cotisations_salariales, total_cotisations_patronales,
               total_cotisations, masse_salariale, employees_count, data, status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft')
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft')
            RETURNING id`,
           [
-            year, quarter, JSON.stringify(months),
+            year, quarter, periodType, periodMonth, JSON.stringify(months),
             totalSalarial, totalPatronal,
             totalCotisations, totalMasseSalariale,
             employees.length, JSON.stringify(employees),
@@ -315,10 +332,10 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
 
       const res = await rawPool.query<{
-        year: number; quarter: number; data: unknown
+        year: number; quarter: number; period_month: string | null; data: unknown
         total_cotisations: string; employees_count: number
       }>(
-        `SELECT year, quarter, data,
+        `SELECT year, quarter, period_month, data,
                 COALESCE(total_cotisations, 0)::text AS total_cotisations,
                 COALESCE(employees_count, 0) AS employees_count
          FROM "${schema}".cnps_declarations WHERE id = $1 LIMIT 1`,
@@ -351,7 +368,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const csv = lines.join('\r\n')
-      const filename = `CNPS_${decl.year}_T${decl.quarter}.csv`
+      const filename = decl.period_month
+        ? `CNPS_${String(decl.period_month).replace('-', '_')}.csv`   // mensuel : CNPS_2025_05.csv
+        : `CNPS_${decl.year}_T${decl.quarter}.csv`                     // trimestriel
 
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="${filename}"`)

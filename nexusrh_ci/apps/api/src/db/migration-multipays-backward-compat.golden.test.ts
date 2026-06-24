@@ -87,12 +87,14 @@ describe('Migration multi-pays — backward-compat sur données existantes', () 
     expect(destructive).toEqual([])
   })
 
-  it('le seul DROP est la bascule de clé : DROP CONSTRAINT IF EXISTS pay_periods_month_key', () => {
+  it('les DROP CONSTRAINT sont des bascules de clé sûres (IF EXISTS uniquement)', () => {
     const drops = flat.filter((s) => /\bDROP\s+CONSTRAINT\b/i.test(s))
-    expect(drops.length).toBe(1)
-    expect(drops[0]).toMatch(/DROP CONSTRAINT IF EXISTS pay_periods_month_key/i)
+    // 2 bascules de clé légitimes : pay_periods (multi-pays) + cnps_declarations (mode mensuel)
+    expect(drops.length).toBe(2)
+    expect(drops.some((d) => /DROP CONSTRAINT IF EXISTS pay_periods_month_key/i.test(d))).toBe(true)
+    expect(drops.some((d) => /DROP CONSTRAINT IF EXISTS cnps_declarations_year_quarter_key/i.test(d))).toBe(true)
     // jamais un DROP "sec" sans IF EXISTS (sinon échec sur tenant sans la contrainte)
-    expect(drops[0]).toMatch(/IF EXISTS/i)
+    for (const d of drops) expect(d).toMatch(/IF EXISTS/i)
   })
 
   // ── 2. ADDITIF (les lignes existantes sont rétro-remplies) ──────────────────

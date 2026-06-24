@@ -41,6 +41,9 @@ export default function CnpsPage() {
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
   const [quarter, setQuarter] = useState<number>(Math.ceil((new Date().getMonth() + 1) / 3))
+  // CNP-001 — période de déclaration : trimestrielle ou MENSUELLE (e-CNPS légal)
+  const [declPeriod, setDeclPeriod] = useState<'quarterly' | 'monthly'>('quarterly')
+  const [declMonth, setDeclMonth] = useState<number>(new Date().getMonth() + 1)
   const [legalEntityId, setLegalEntityId] = useState<string>('')
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [validating, setValidating] = useState(false)
@@ -70,11 +73,13 @@ export default function CnpsPage() {
   })
 
   const generateMut = useMutation({
-    mutationFn: () => api.post('/cnps/declarations/generate',
-      hasSubsidiaries && legalEntityId
-        ? { year, quarter, legalEntityId }
-        : { year, quarter },
-    ),
+    mutationFn: () => {
+      const period = declPeriod === 'monthly'
+        ? { year, month: `${year}-${String(declMonth).padStart(2, '0')}` }
+        : { year, quarter }
+      return api.post('/cnps/declarations/generate',
+        hasSubsidiaries && legalEntityId ? { ...period, legalEntityId } : period)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cnps-declarations'] })
       setValidation(null)
@@ -306,15 +311,40 @@ export default function CnpsPage() {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">{t('validator.quarter')}</label>
-            <select value={quarter} onChange={e => { setQuarter(parseInt(e.target.value)); setValidation(null) }}
-              className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
-              <option value={1}>{t('validator.quarterOptions.q1')}</option>
-              <option value={2}>{t('validator.quarterOptions.q2')}</option>
-              <option value={3}>{t('validator.quarterOptions.q3')}</option>
-              <option value={4}>{t('validator.quarterOptions.q4')}</option>
-            </select>
+            <label className="text-sm font-medium mb-1 block">{t('validator.periodType', 'Périodicité')}</label>
+            <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+              <button type="button" onClick={() => { setDeclPeriod('monthly'); setValidation(null) }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${declPeriod === 'monthly' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+                {t('validator.monthly', 'Mensuelle')}
+              </button>
+              <button type="button" onClick={() => { setDeclPeriod('quarterly'); setValidation(null) }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${declPeriod === 'quarterly' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+                {t('validator.quarterly', 'Trimestrielle')}
+              </button>
+            </div>
           </div>
+          {declPeriod === 'monthly' ? (
+            <div>
+              <label className="text-sm font-medium mb-1 block">{t('validator.month', 'Mois')}</label>
+              <select value={declMonth} onChange={e => { setDeclMonth(parseInt(e.target.value)); setValidation(null) }}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
+                {['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'].map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="text-sm font-medium mb-1 block">{t('validator.quarter')}</label>
+              <select value={quarter} onChange={e => { setQuarter(parseInt(e.target.value)); setValidation(null) }}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
+                <option value={1}>{t('validator.quarterOptions.q1')}</option>
+                <option value={2}>{t('validator.quarterOptions.q2')}</option>
+                <option value={3}>{t('validator.quarterOptions.q3')}</option>
+                <option value={4}>{t('validator.quarterOptions.q4')}</option>
+              </select>
+            </div>
+          )}
 
           {hasSubsidiaries && (
             <div>
