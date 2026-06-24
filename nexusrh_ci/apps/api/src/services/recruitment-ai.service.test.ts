@@ -364,9 +364,14 @@ describe('recruitment-ai.service — resolveDefaultCurrency', () => {
     expect(__internals.resolveDefaultCurrency(base, [])).toBe('XOF')
   })
 
-  it('la devise explicite de l\'offre prime sur le pays', () => {
+  it('la devise du pays cible prime sur la devise de l\'offre (profils dans le pays cible)', () => {
     const ctx = { title: 'X', currency: 'EUR' } as Parameters<typeof __internals.resolveDefaultCurrency>[0]
-    expect(__internals.resolveDefaultCurrency(ctx, ['NG'])).toBe('EUR')
+    expect(__internals.resolveDefaultCurrency(ctx, ['NG'])).toBe('NGN')
+  })
+
+  it('repli sur la devise de l\'offre si le pays cible n\'a pas de devise connue', () => {
+    const ctx = { title: 'X', currency: 'EUR' } as Parameters<typeof __internals.resolveDefaultCurrency>[0]
+    expect(__internals.resolveDefaultCurrency(ctx, ['XX'])).toBe('EUR')
   })
 })
 
