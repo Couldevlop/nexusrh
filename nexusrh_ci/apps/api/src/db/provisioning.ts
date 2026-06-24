@@ -551,6 +551,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     id                            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     year                          int NOT NULL,
     quarter                       int NOT NULL,
+    period_type                   varchar(10) NOT NULL DEFAULT 'quarterly',  -- 'monthly' | 'quarterly'
+    period_month                  varchar(7),                                -- AAAA-MM si mensuel, NULL si trimestriel
     months                        jsonb DEFAULT '[]',
     status                        varchar(20) DEFAULT 'draft',
     total_cotisations_salariales  numeric(14,0) DEFAULT 0,
@@ -565,8 +567,13 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     due_date                      date,
     created_at                    timestamptz NOT NULL DEFAULT now(),
     updated_at                    timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (year, quarter)
+    -- Unicité par période : trimestre (period_month NULL) OU mois (NULLS NOT DISTINCT, PG15+)
+    UNIQUE NULLS NOT DISTINCT (year, quarter, period_month)
   )`)
+  // Migration lazy (schémas déjà provisionnés avant l'ajout du mode mensuel)
+  await q(`ALTER TABLE ${s}.cnps_declarations ADD COLUMN IF NOT EXISTS period_type varchar(10) NOT NULL DEFAULT 'quarterly'`)
+  await q(`ALTER TABLE ${s}.cnps_declarations ADD COLUMN IF NOT EXISTS period_month varchar(7)`)
+  await q(`ALTER TABLE ${s}.cnps_declarations DROP CONSTRAINT IF EXISTS cnps_declarations_year_quarter_key`)
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.disa_records (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
