@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
+import MobileMoneyTab from './MobileMoneyTab'
 import PayslipBuilder from './PayslipBuilder'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ const TABS = [
   { id: 'mfa',           labelKey: 'tabs.mfa',           icon: Lock },
   { id: 'ai',            labelKey: 'tabs.ai',            icon: Bot },
   { id: 'connectivity',  labelKey: 'tabs.connectivity',  icon: Plug },
+  { id: 'mobile-money',  labelKey: 'tabs.mobileMoney',    icon: Smartphone },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -125,6 +127,7 @@ export default function SettingsPage() {
       {tab === 'mfa'           && <MfaSettingsPage />}
       {tab === 'ai'            && <AiTab qc={qc} />}
       {tab === 'connectivity'  && <ConnectivityTab />}
+      {tab === 'mobile-money'  && <MobileMoneyTab qc={qc} />}
     </div>
   )
 }

@@ -43,6 +43,18 @@ export default function MonProfil() {
   const [editMM, setEditMM] = useState(false)
   const [newMMProvider, setNewMMProvider] = useState('')
   const [newMMPhone, setNewMMPhone] = useState('')
+  const [mmError, setMmError] = useState<string | null>(null)
+  // MM-009 — format Mobile Money CI : +225 07/05 + 8 chiffres (cohérent virement)
+  const CI_MM_PHONE = /^\+2250[57]\d{8}$/
+  const handleSaveMM = () => {
+    const clean = newMMPhone.replace(/\s/g, '')
+    if (clean && !CI_MM_PHONE.test(clean)) {
+      setMmError(t('profile.mmPhoneInvalid', 'Numéro invalide : format +225 07/05 suivi de 8 chiffres requis (Wave/MTN/Orange CI).'))
+      return
+    }
+    setMmError(null)
+    updateMut.mutate({ mobile_money_provider: newMMProvider, mobile_money_phone: clean })
+  }
 
   // ── Sécurité : changement de mot de passe ──────────────────────────────────
   const [oldPassword, setOldPassword] = useState('')
@@ -240,13 +252,14 @@ export default function MonProfil() {
             </div>
             <div>
               <label className="text-sm font-medium">{t('profile.mmNumber')}</label>
-              <input value={newMMPhone} onChange={e => setNewMMPhone(e.target.value)}
-                placeholder={t('profile.phonePlaceholder')}
+              <input value={newMMPhone} onChange={e => { setNewMMPhone(e.target.value); setMmError(null) }}
+                placeholder="+225 07 12 34 56 78"
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" />
+              {mmError && <p className="mt-1 text-xs text-destructive">{mmError}</p>}
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => updateMut.mutate({ mobile_money_provider: newMMProvider, mobile_money_phone: newMMPhone })}
+                onClick={handleSaveMM}
                 className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90">
                 {t('profile.save')}
               </button>

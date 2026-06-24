@@ -47,6 +47,26 @@ vi.mock('../../utils/schema-migrations.js', () => ({
   ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Service providers mocké : déterministe, sans HTTP réel ni requête DB. Chaque
+// test règle le résultat via initiateTransferMock selon le scénario.
+const { initiateTransferMock, verifyNumberMock } = vi.hoisted(() => ({
+  initiateTransferMock: vi.fn().mockResolvedValue({ success: true, status: 'completed', transactionId: 'TXN_MOCK' }),
+  verifyNumberMock: vi.fn().mockResolvedValue({ valid: true, active: true, provider: 'wave', reason: 'ok' }),
+}))
+vi.mock('../../services/mobile-money-providers.js', () => ({
+  initiateTransfer: initiateTransferMock,
+  verifyNumber: verifyNumberMock,
+  normalizeMmProvider: (raw: string | null | undefined) => {
+    const v = (raw ?? '').toLowerCase()
+    if (v === 'wave') return 'wave'
+    if (v === 'mtn' || v === 'mtn_momo') return 'mtn_momo'
+    if (v === 'orange' || v === 'orange_money') return 'orange_money'
+    return null
+  },
+  MM_PROVIDERS: ['wave', 'mtn_momo', 'orange_money'],
+  CI_MM_PHONE_RE: /^\+2250[57]\d{8}$/,
+}))
+
 import authPlugin from '../../plugins/auth.js'
 import mobileMoneyRoutes from './mobile-money.routes.js'
 
@@ -188,6 +208,7 @@ describe('POST /mobile-money/campaigns/:reference/execute — branches', () => {
   })
 
   it('numéro CI invalide → success:false (Numéro invalide)', async () => {
+    initiateTransferMock.mockResolvedValueOnce({ success: false, status: 'failed', error: 'Numéro invalide pour la CI : +33612345678' })
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: UUID_A, employee_id: UUID_B, net_payable: '150000', month: '2024-12',
@@ -208,7 +229,8 @@ describe('POST /mobile-money/campaigns/:reference/execute — branches', () => {
     expect(r.error).toContain('Numéro invalide')
   })
 
-  it('provider non configuré (mtn_momo) → success:false (Provider non configuré)', async () => {
+  it('virement en échec (provider) → success:false + erreur propagée', async () => {
+    initiateTransferMock.mockResolvedValueOnce({ success: false, status: 'failed', error: 'Provider mtn_momo non configuré' })
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: UUID_A, employee_id: UUID_B, net_payable: '150000', month: '2024-12',
@@ -397,13 +419,14 @@ describe('POST /mobile-money/webhooks/:provider — branches restantes', () => {
     expect(JSON.parse(res.body).error).toContain('Configuration tenant')
   })
 
-  it('webhook failed → met le paiement en failed (pas de maj bulletin)', async () => {
+  it('webhook failed → met le paiement ET le bulletin en failed (MM-007)', async () => {
     const body = { reference: 'CAMP_F', transactionId: 'TXN_F', status: 'failed' as const, message: 'KO' }
     const sig = signBody(WAVE_SECRET, body)
     queryMock
       .mockResolvedValueOnce({ rows: [{ schema_name: TENANT, status: 'active' }] }) // tenant
       .mockResolvedValueOnce({ rows: [{ id: UUID_A, pay_slip_id: UUID_B, status: 'pending', external_ref: null }] }) // payment
       .mockResolvedValueOnce({ rows: [] }) // UPDATE mobile_money_payments
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE pay_slips → failed (MM-007)
       .mockResolvedValueOnce({ rows: [] }) // audit_log
     const res = await app.inject({
       method: 'POST', url: '/mobile-money/webhooks/wave?tenant=sotra',
@@ -412,9 +435,10 @@ describe('POST /mobile-money/webhooks/:provider — branches restantes', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).status).toBe('failed')
-    // aucun UPDATE pay_slips puisque non completed
-    const slipUpdates = queryMock.mock.calls.filter(c => String(c[0]).includes('pay_slips'))
-    expect(slipUpdates.length).toBe(0)
+    // MM-007 : le bulletin repasse en 'failed' (avant : aucun update)
+    const slipUpdate = queryMock.mock.calls.find(c => String(c[0]).includes('pay_slips'))
+    expect(slipUpdate).toBeDefined()
+    expect(String(slipUpdate?.[0])).toContain("payment_status = 'failed'")
   })
 
   it('tenant introuvable → 404', async () => {
