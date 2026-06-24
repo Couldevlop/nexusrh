@@ -398,7 +398,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
       .mockResolvedValueOnce({ rows: [] }) // audit_log INSERT
 
     vi.mocked(sourceProfiles).mockResolvedValueOnce({
-      provider: 'claude', model: 'claude-sonnet-4-test',
+      provider: 'claude', model: 'claude-sonnet-4-test', label: 'Claude',
       data: {
         strategy: {
           summary: 's', bestPlatforms: [], searchKeywords: [],
@@ -442,7 +442,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
       .mockResolvedValueOnce({ rows: [] })
 
     vi.mocked(sourceProfiles).mockResolvedValueOnce({
-      provider: 'claude', model: 'm', data: null, jsonValid: false,
+      provider: 'claude', model: 'm', label: 'Claude', data: null, jsonValid: false,
       richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
       inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
     })
@@ -464,7 +464,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
       .mockResolvedValueOnce({ rows: [] })
 
     vi.mocked(sourceProfiles).mockResolvedValueOnce({
-      provider: 'claude', model: 'm', data: null, jsonValid: false,
+      provider: 'claude', model: 'm', label: 'Claude', data: null, jsonValid: false,
       richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
       inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
     })
@@ -539,8 +539,9 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
     expect(res.statusCode).toBe(403)
   })
 
-  it('retourne 422 si MISTRAL_API_KEY absente', async () => {
-    // isModelAvailable est mocké : claude=true, mistral=false → comparaison KO
+  it('retourne 422 seulement si AUCUNE clé IA n\'est configurée', async () => {
+    // Aucune clé → comparaison impossible (deux concurrents introuvables)
+    vi.mocked(isModelAvailable).mockImplementation(() => false)
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST',
@@ -549,7 +550,34 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
       payload: { max_profiles: 3 },
     })
     expect(res.statusCode).toBe(422)
-    expect(JSON.parse(res.body).error).toMatch(/MISTRAL/i)
+    expect(JSON.parse(res.body).error).toMatch(/aucune clé IA/i)
+    vi.mocked(isModelAvailable).mockImplementation((m: string) => m === 'claude')
+  })
+
+  it('compare deux paliers de modèles quand une seule clé est configurée (Mistral seul)', async () => {
+    vi.mocked(isModelAvailable).mockImplementation((m: string) => m === 'mistral')
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Lead', description: 'd', requirements: 'r' }] })
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
+      winner: 'mistral',
+      claude:  { provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral Small', data: null, jsonValid: true, richnessScore: 55, profilesGenerated: 3, latencyMs: 900, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.004, error: null },
+      mistral: { provider: 'mistral', model: 'mistral-large-latest', label: 'Mistral Large', data: null, jsonValid: true, richnessScore: 78, profilesGenerated: 3, latencyMs: 1600, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.012, error: null },
+      ratios: { latency: 'l', cost: 'c', richness: 'r' },
+      recommendation: 'Mistral Large recommandé',
+    })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source/compare',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { max_profiles: 3 },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.comparison.summary.claude.label).toBe('Mistral Small')
+    expect(body.comparison.summary.mistral.label).toBe('Mistral Large')
+    vi.mocked(isModelAvailable).mockImplementation((m: string) => m === 'claude')
   })
 
   it('appelle sourceProfilesCompare quand les deux modèles sont disponibles', async () => {
@@ -561,12 +589,12 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
     vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
       winner: 'claude',
       claude: {
-        provider: 'claude', model: 'c', data: null, jsonValid: true,
+        provider: 'claude', model: 'c', label: 'Claude', data: null, jsonValid: true,
         richnessScore: 75, profilesGenerated: 3, latencyMs: 2000,
         inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.025, error: null,
       },
       mistral: {
-        provider: 'mistral', model: 'm', data: null, jsonValid: true,
+        provider: 'mistral', model: 'm', label: 'Mistral', data: null, jsonValid: true,
         richnessScore: 60, profilesGenerated: 3, latencyMs: 1500,
         inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.011, error: null,
       },
@@ -972,5 +1000,67 @@ describe('POST /recruitment/jobs/:id/preselect — pré-sélection en lot', () =
     // analyzeCV doit avoir reçu un job dont requirements contient le focus sauvegardé
     const callArgs = vi.mocked(analyzeCV).mock.calls[0]
     expect(callArgs?.[1].requirements).toContain('Critère sauvegardé pour cette offre')
+  })
+})
+
+// ── REC-007 — Génération contrat OHADA à l'embauche ──────────────────────────
+describe('POST /recruitment/applications/:id/contract', () => {
+  const HIRED_APP = {
+    id: 'app-1', first_name: 'Awa', last_name: 'Traoré', stage: 'hired',
+    job_title: 'Chauffeur Senior', job_contract_type: 'cdi',
+    salary_min: 200000, salary_max: 280000, job_location: 'Abidjan',
+  }
+  const TENANT_ROW = { name: 'SOTRA', city: 'Abidjan', cnps_number: 'CI-001', rccm: 'CI-ABJ-1' }
+
+  it('génère un PDF CDI pour une candidature recrutée (admin)', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 }) // défaut (audit_log fire-and-forget)
+    queryMock
+      .mockResolvedValueOnce({ rows: [HIRED_APP], rowCount: 1 }) // app + job
+      .mockResolvedValueOnce({ rows: [TENANT_ROW], rowCount: 1 }) // tenant
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/app-1/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdi_ci', salary: 250000, startDate: '2026-07-01', isCadre: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/pdf')
+    expect(res.rawPayload.subarray(0, 4).toString()).toBe('%PDF')
+  })
+
+  it('refuse un CDD sans date de fin (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/app-1/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdd_ci', startDate: '2026-07-01' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('retourne 404 si la candidature est introuvable', async () => {
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/inconnu/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdi_ci' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('interdit la génération à un employee (RBAC 403)', async () => {
+    const token = tokenFor(app, 'employee')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/app-1/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdi_ci' },
+    })
+    expect(res.statusCode).toBe(403)
   })
 })

@@ -15,6 +15,7 @@ import {
   Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
   Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
   Link2, Share2, Copy, MoreHorizontal, UserPlus, Ban,
+  FileSignature,
 } from 'lucide-react'
 
 interface Department { id: string; name: string }
@@ -162,6 +163,14 @@ export default function RecruitmentPage() {
   const [compareTop3, setCompareTop3] = useState(false)
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([])
   const [compareSelected, setCompareSelected] = useState(false)
+  // REC-007 — génération du contrat OHADA à l'embauche
+  const [contractApp, setContractApp] = useState<Application | null>(null)
+  const [contractForm, setContractForm] = useState({
+    type: 'cdi_ci' as 'cdi_ci' | 'cdd_ci',
+    salary: '', startDate: '', endDate: '', isCadre: false, nni: '', category: '',
+  })
+  const [contractBusy, setContractBusy] = useState(false)
+  const [contractError, setContractError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
   interface DecisionHistoryEntry {
@@ -278,6 +287,49 @@ export default function RecruitmentPage() {
       }
     },
   })
+
+  // REC-007 — ouvre le formulaire de contrat pour une candidature recrutée,
+  // pré-rempli avec le poste et une date de début au jour même.
+  const openContract = (app: Application) => {
+    setContractError(null)
+    setContractForm({
+      type: 'cdi_ci', salary: '', startDate: new Date().toISOString().slice(0, 10),
+      endDate: '', isCadre: false, nni: '', category: '',
+    })
+    setContractApp(app)
+  }
+
+  const generateContract = async () => {
+    if (!contractApp) return
+    setContractBusy(true)
+    setContractError(null)
+    try {
+      const body: Record<string, unknown> = { type: contractForm.type, isCadre: contractForm.isCadre }
+      if (contractForm.salary) body.salary = Number(contractForm.salary)
+      if (contractForm.startDate) body.startDate = contractForm.startDate
+      if (contractForm.endDate) body.endDate = contractForm.endDate
+      if (contractForm.nni) body.nni = contractForm.nni
+      if (contractForm.category) body.category = contractForm.category
+      const res = await api.post(
+        `/recruitment/applications/${contractApp.id}/contract`,
+        body,
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(res.data as Blob)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      setContractApp(null)
+    } catch (err) {
+      const detail = (err as { response?: { data?: unknown } })?.response?.data
+      let msg = t('contract.error')
+      if (detail instanceof Blob) {
+        try { msg = JSON.parse(await detail.text())?.error ?? msg } catch { /* garder msg */ }
+      }
+      setContractError(msg)
+    } finally {
+      setContractBusy(false)
+    }
+  }
 
   const preselect = useMutation({
     mutationFn: ({ jobId, criteria }: { jobId: string; criteria?: string }) =>
@@ -1100,11 +1152,18 @@ export default function RecruitmentPage() {
                             <span className="text-xs font-medium text-muted-foreground">{app.ai_score}%</span>
                           </div>
                         )}
-                        <div className="mt-2 flex gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => updateStage.mutate({ id: app.id, stage: 'hired' })}
-                            className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
-                            <CheckCircle className="h-3 w-3" /> {t('pipeline.recruit')}
-                          </button>
+                        <div className="mt-2 flex flex-wrap gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
+                          {app.stage === 'hired' ? (
+                            <button onClick={() => openContract(app)}
+                              className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+                              <FileSignature className="h-3 w-3" /> {t('contract.generate')}
+                            </button>
+                          ) : (
+                            <button onClick={() => updateStage.mutate({ id: app.id, stage: 'hired' })}
+                              className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
+                              <CheckCircle className="h-3 w-3" /> {t('pipeline.recruit')}
+                            </button>
+                          )}
                           <span className="text-muted-foreground">·</span>
                           <button onClick={() => updateStage.mutate({ id: app.id, stage: 'rejected' })}
                             className="flex items-center gap-0.5 text-xs text-red-500 hover:text-red-600 font-medium">
@@ -1202,6 +1261,86 @@ export default function RecruitmentPage() {
           onClose={() => setSelectedApp(null)}
           onChanged={() => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })}
         />
+      )}
+
+      {/* REC-007 — Modal de génération du contrat OHADA à l'embauche */}
+      {contractApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+             onClick={() => !contractBusy && setContractApp(null)}>
+          <div className="w-full max-w-lg rounded-xl bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <FileSignature className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold">{t('contract.title')}</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              {contractApp.first_name} {contractApp.last_name}
+              {contractApp.job_title ? ` · ${contractApp.job_title}` : ''}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm col-span-2">
+                <span className="text-muted-foreground">{t('contract.type')}</span>
+                <select value={contractForm.type}
+                  onChange={e => setContractForm(f => ({ ...f, type: e.target.value as 'cdi_ci' | 'cdd_ci' }))}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2">
+                  <option value="cdi_ci">{t('contract.cdi')}</option>
+                  <option value="cdd_ci">{t('contract.cdd')}</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-muted-foreground">{t('contract.salary')}</span>
+                <input type="number" min={0} value={contractForm.salary}
+                  onChange={e => setContractForm(f => ({ ...f, salary: e.target.value }))}
+                  placeholder="FCFA" className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-muted-foreground">{t('contract.category')}</span>
+                <input value={contractForm.category}
+                  onChange={e => setContractForm(f => ({ ...f, category: e.target.value }))}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-muted-foreground">{t('contract.startDate')}</span>
+                <input type="date" value={contractForm.startDate}
+                  onChange={e => setContractForm(f => ({ ...f, startDate: e.target.value }))}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-muted-foreground">{t('contract.endDate')}{contractForm.type === 'cdd_ci' ? ' *' : ''}</span>
+                <input type="date" value={contractForm.endDate}
+                  onChange={e => setContractForm(f => ({ ...f, endDate: e.target.value }))}
+                  disabled={contractForm.type !== 'cdd_ci'}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 disabled:opacity-50" />
+              </label>
+              <label className="text-sm">
+                <span className="text-muted-foreground">{t('contract.nni')}</span>
+                <input value={contractForm.nni}
+                  onChange={e => setContractForm(f => ({ ...f, nni: e.target.value }))}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+              </label>
+              <label className="text-sm flex items-center gap-2 mt-6">
+                <input type="checkbox" checked={contractForm.isCadre}
+                  onChange={e => setContractForm(f => ({ ...f, isCadre: e.target.checked }))}
+                  className="h-4 w-4 accent-primary" />
+                <span>{t('contract.isCadre')}</span>
+              </label>
+            </div>
+
+            {contractError && <p className="mt-3 text-sm text-red-600">{contractError}</p>}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setContractApp(null)} disabled={contractBusy}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted">
+                {t('contract.cancel')}
+              </button>
+              <button onClick={generateContract} disabled={contractBusy}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
+                {contractBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                {t('contract.generatePdf')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1875,6 +2014,7 @@ interface SourcingResponse {
 }
 
 interface CompareSummary {
+  label?: string; model?: string
   latencyMs: number; estimatedCostEur: number
   profilesGenerated: number; jsonValid: boolean
   richnessScore: number; error: string | null
@@ -2193,7 +2333,9 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
   }
 
   const hasAnyModel = aiCaps.claude || aiCaps.mistral
-  const canCompare  = aiCaps.claude && aiCaps.mistral
+  // La comparaison fonctionne dès qu'au moins une clé IA est configurée : deux
+  // fournisseurs si possible, sinon deux paliers de modèles du même fournisseur.
+  const canCompare  = hasAnyModel
   const selectedJobObj = jobs.find(j => j.id === jobId)
   const openJobs = jobs.filter(j => j.status === 'open')
 
@@ -2824,7 +2966,9 @@ function CompareReport({ compare, onContact }: {
 }) {
   const { t } = useTranslation('recruitment')
   const [view, setView] = useState<'claude' | 'mistral'>(compare.comparison.winner)
-  const winnerLabel = compare.comparison.winner === 'claude' ? t('compareReport.winnerClaude') : t('compareReport.winnerMistral')
+  const labelFor = (m: 'claude' | 'mistral') => compare.comparison.summary[m]?.label
+    ?? (m === 'claude' ? t('compareReport.winnerClaude') : t('compareReport.winnerMistral'))
+  const winnerLabel = labelFor(compare.comparison.winner)
   const result = view === 'claude' ? compare.results.claude : compare.results.mistral
   const summary = view === 'claude' ? compare.comparison.summary.claude : compare.comparison.summary.mistral
 
@@ -2872,7 +3016,7 @@ function CompareReport({ compare, onContact }: {
                     </div>
                   )}
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-bold uppercase tracking-wide text-slate-800">{m}</span>
+                    <span className="text-sm font-bold uppercase tracking-wide text-slate-800">{s.label ?? m}</span>
                     {s.jsonValid
                       ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                           <CheckCircle className="h-2.5 w-2.5" /> OK
@@ -2941,7 +3085,7 @@ function CompareReport({ compare, onContact }: {
                   ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'}
                 ${!compare.results[m] ? 'opacity-40 cursor-not-allowed' : ''}`}>
-              {m === 'claude' ? 'Claude' : 'Mistral'}
+              {labelFor(m)}
             </button>
           ))}
         </div>

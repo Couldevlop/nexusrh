@@ -131,6 +131,22 @@
     "dropHere": "Drop here",
     "empty": "Empty"
   },
+  "contract": {
+    "generate": "Contract",
+    "title": "Generate employment contract",
+    "type": "Contract type",
+    "cdi": "Permanent (CDI)",
+    "cdd": "Fixed-term (CDD)",
+    "salary": "Gross monthly salary",
+    "category": "Category",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "nni": "Employee NNI",
+    "isCadre": "Executive status (3-month trial)",
+    "cancel": "Cancel",
+    "generatePdf": "Generate PDF",
+    "error": "Failed to generate the contract"
+  },
   "newJobModal": {
     "title": "New job opening",
     "close": "Close",

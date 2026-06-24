@@ -420,6 +420,10 @@ export interface SourcingResult {
 export interface SourcingProviderResult {
   provider:         AiModelChoice
   model:            string
+  // Libellé d'affichage du concurrent (ex: "Claude", "Mistral", "Mistral Small",
+  // "Mistral Large") — utile quand la comparaison oppose deux modèles d'un même
+  // fournisseur (cas où une seule clé est configurée).
+  label:            string
   data:             SourcingResult | null
   jsonValid:        boolean
   richnessScore:    number
@@ -679,10 +683,10 @@ interface AIRawResult {
   model:            string
 }
 
-async function callClaudeRaw(prompt: string, maxTokens: number, creds?: AiCreds): Promise<AIRawResult> {
+async function callClaudeRaw(prompt: string, maxTokens: number, creds?: AiCreds, modelOverride?: string): Promise<AIRawResult> {
   const apiKey = claudeKey(creds)
   if (!apiKey) throw new Error('Clé Anthropic non configurée (ANTHROPIC_API_KEY)')
-  const model = claudeModel(creds)
+  const model = modelOverride ?? claudeModel(creds)
   const Anthropic = (await import('@anthropic-ai/sdk')).default
   const client = new Anthropic({ apiKey })
   const t0 = Date.now()
@@ -704,10 +708,10 @@ async function callClaudeRaw(prompt: string, maxTokens: number, creds?: AiCreds)
   }
 }
 
-async function callMistralRaw(prompt: string, maxTokens: number, creds?: AiCreds): Promise<AIRawResult> {
+async function callMistralRaw(prompt: string, maxTokens: number, creds?: AiCreds, modelOverride?: string): Promise<AIRawResult> {
   const apiKey = mistralKey(creds)
   if (!apiKey) throw new Error('Clé Mistral non configurée (MISTRAL_API_KEY)')
-  const model = mistralModel(creds)
+  const model = modelOverride ?? mistralModel(creds)
   const t0 = Date.now()
   const res = await fetch(`${config.mistral.apiUrl}/chat/completions`, {
     method: 'POST',
@@ -763,13 +767,15 @@ async function sourceWithProvider(
   maxProfiles: number,
   countries: string[],
   creds?: AiCreds,
+  opts?: { modelOverride?: string; label?: string },
 ): Promise<SourcingProviderResult> {
   const prompt = buildSourcingPrompt(ctx, platforms, maxProfiles, countries)
   const settings = await loadSourcingSettings().catch(() => null)
+  const label = opts?.label ?? (provider === 'claude' ? 'Claude' : 'Mistral')
   try {
     const raw = provider === 'claude'
-      ? await callClaudeRaw(prompt, 4000, creds)
-      : await callMistralRaw(prompt, 4000, creds)
+      ? await callClaudeRaw(prompt, 4000, creds, opts?.modelOverride)
+      : await callMistralRaw(prompt, 4000, creds, opts?.modelOverride)
 
     let data: SourcingResult | null = null
     try {
@@ -791,6 +797,7 @@ async function sourceWithProvider(
     return {
       provider,
       model:            raw.model,
+      label,
       data,
       jsonValid:        data !== null,
       richnessScore:    computeSourcingRichness(data, settings?.richnessWeights),
@@ -804,7 +811,8 @@ async function sourceWithProvider(
   } catch (err) {
     return {
       provider,
-      model:            provider === 'claude' ? claudeModel(creds) : mistralModel(creds),
+      model:            opts?.modelOverride ?? (provider === 'claude' ? claudeModel(creds) : mistralModel(creds)),
+      label,
       data:             null,
       jsonValid:        false,
       richnessScore:    0,
@@ -837,27 +845,28 @@ export async function sourceProfiles(
   return sourceWithProvider(preferred, ctx, platforms, capped, countries, creds)
 }
 
-function buildSourcingRecommendation(claude: SourcingProviderResult, mistral: SourcingProviderResult): string {
-  if (!claude.jsonValid && !mistral.jsonValid) return 'Aucun résultat exploitable des deux modèles.'
-  if (!mistral.jsonValid) return 'Mistral indisponible — utilisez Claude.'
-  if (!claude.jsonValid)  return 'Claude indisponible — utilisez Mistral.'
+function buildSourcingRecommendation(a: SourcingProviderResult, b: SourcingProviderResult): string {
+  const A = a.label, B = b.label
+  if (!a.jsonValid && !b.jsonValid) return 'Aucun résultat exploitable des deux modèles.'
+  if (!b.jsonValid) return `${B} indisponible — utilisez ${A}.`
+  if (!a.jsonValid)  return `${A} indisponible — utilisez ${B}.`
 
-  const richnessGap = Math.abs(claude.richnessScore - mistral.richnessScore)
-  const costRatio = claude.estimatedCostEur / (mistral.estimatedCostEur || 0.0001)
+  const richnessGap = Math.abs(a.richnessScore - b.richnessScore)
+  const costRatio = a.estimatedCostEur / (b.estimatedCostEur || 0.0001)
 
-  if (claude.richnessScore > mistral.richnessScore + 15) {
-    return `Claude recommandé — richesse significativement supérieure (+${richnessGap} pts). Surcoût (×${costRatio.toFixed(1)}) justifié.`
+  if (a.richnessScore > b.richnessScore + 15) {
+    return `${A} recommandé — richesse significativement supérieure (+${richnessGap} pts). Surcoût (×${costRatio.toFixed(1)}) justifié.`
   }
-  if (mistral.richnessScore > claude.richnessScore + 15) {
-    return `Mistral recommandé — qualité supérieure à moindre coût (+${richnessGap} pts).`
+  if (b.richnessScore > a.richnessScore + 15) {
+    return `${B} recommandé — qualité supérieure à moindre coût (+${richnessGap} pts).`
   }
   if (costRatio > 2 && richnessGap < 10) {
-    return `Mistral recommandé — qualité comparable à ${costRatio.toFixed(1)}× moins cher. Idéal pour volume.`
+    return `${B} recommandé — qualité comparable à ${costRatio.toFixed(1)}× moins cher. Idéal pour le volume.`
   }
-  if (mistral.latencyMs < claude.latencyMs * 0.7) {
-    return `Mistral recommandé pour la réactivité — ${Math.round((claude.latencyMs - mistral.latencyMs) / 1000)}s plus rapide à qualité équivalente.`
+  if (b.latencyMs < a.latencyMs * 0.7) {
+    return `${B} recommandé pour la réactivité — ${Math.round((a.latencyMs - b.latencyMs) / 1000)}s plus rapide à qualité équivalente.`
   }
-  return 'Qualité équivalente. Choisissez Claude pour la précision (OHADA, droit du travail africain) ou Mistral pour le volume.'
+  return `Qualité équivalente. ${A} pour la précision (OHADA, droit du travail africain), ${B} pour le volume.`
 }
 
 export async function sourceProfilesCompare(
@@ -867,32 +876,51 @@ export async function sourceProfilesCompare(
   countries: string[],
   creds?: AiCreds,
 ): Promise<SourcingCompareResult> {
-  if (!isModelAvailable('claude', creds)) {
-    throw new Error('Clé Anthropic non configurée — comparaison impossible')
-  }
-  if (!isModelAvailable('mistral', creds)) {
-    throw new Error('Clé Mistral non configurée — comparaison impossible')
+  const claudeAvail = isModelAvailable('claude', creds)
+  const mistralAvail = isModelAvailable('mistral', creds)
+  if (!claudeAvail && !mistralAvail) {
+    throw new Error('Aucune clé IA configurée — comparaison impossible')
   }
   const capped = Math.max(1, Math.min(maxProfiles, 10))
-  const [claude, mistral] = await Promise.all([
-    sourceWithProvider('claude',  ctx, platforms, capped, countries, creds),
-    sourceWithProvider('mistral', ctx, platforms, capped, countries, creds),
+
+  // Détermine les deux concurrents. Idéal : Claude vs Mistral. Si une SEULE clé
+  // est configurée (cas prod : Mistral seul), on compare deux PALIERS de modèles
+  // du même fournisseur — ex. Mistral Small (rapide/économique) vs Mistral Large
+  // (riche) — afin que la comparaison reste fonctionnelle sans l'autre clé.
+  let left: { provider: AiModelChoice; model?: string; label: string }
+  let right: { provider: AiModelChoice; model?: string; label: string }
+  if (claudeAvail && mistralAvail) {
+    left  = { provider: 'claude',  label: 'Claude' }
+    right = { provider: 'mistral', label: 'Mistral' }
+  } else if (mistralAvail) {
+    left  = { provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral Small' }
+    right = { provider: 'mistral', model: 'mistral-large-latest', label: 'Mistral Large' }
+  } else {
+    left  = { provider: 'claude', model: 'claude-haiku-4-5-20251001', label: 'Claude Haiku' }
+    right = { provider: 'claude', label: 'Claude Sonnet' }
+  }
+
+  // Slots fixes du résultat : 'claude' = concurrent gauche (a), 'mistral' =
+  // concurrent droit (b). Les libellés réels sont portés par a.label / b.label.
+  const [a, b] = await Promise.all([
+    sourceWithProvider(left.provider,  ctx, platforms, capped, countries, creds, { modelOverride: left.model, label: left.label }),
+    sourceWithProvider(right.provider, ctx, platforms, capped, countries, creds, { modelOverride: right.model, label: right.label }),
   ])
 
-  const winner: AiModelChoice = claude.richnessScore >= mistral.richnessScore ? 'claude' : 'mistral'
+  const winner: AiModelChoice = a.richnessScore >= b.richnessScore ? 'claude' : 'mistral'
 
-  const ratios = (claude.jsonValid && mistral.jsonValid) ? {
-    latency:  `Mistral ${mistral.latencyMs < claude.latencyMs ? 'plus rapide' : 'plus lent'} de ${Math.abs(mistral.latencyMs - claude.latencyMs)}ms`,
-    cost:     `Mistral ${mistral.estimatedCostEur < claude.estimatedCostEur ? 'moins cher' : 'plus cher'} (×${(mistral.estimatedCostEur / (claude.estimatedCostEur || 0.0001)).toFixed(2)})`,
-    richness: `${claude.richnessScore >= mistral.richnessScore ? 'Claude' : 'Mistral'} plus riche (+${Math.abs(claude.richnessScore - mistral.richnessScore)} pts)`,
+  const ratios = (a.jsonValid && b.jsonValid) ? {
+    latency:  `${b.label} ${b.latencyMs < a.latencyMs ? 'plus rapide' : 'plus lent'} de ${Math.abs(b.latencyMs - a.latencyMs)}ms`,
+    cost:     `${b.label} ${b.estimatedCostEur < a.estimatedCostEur ? 'moins cher' : 'plus cher'} (×${(b.estimatedCostEur / (a.estimatedCostEur || 0.0001)).toFixed(2)})`,
+    richness: `${a.richnessScore >= b.richnessScore ? a.label : b.label} plus riche (+${Math.abs(a.richnessScore - b.richnessScore)} pts)`,
   } : null
 
   return {
     winner,
-    claude,
-    mistral,
+    claude: a,
+    mistral: b,
     ratios,
-    recommendation: buildSourcingRecommendation(claude, mistral),
+    recommendation: buildSourcingRecommendation(a, b),
   }
 }
 

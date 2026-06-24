@@ -424,7 +424,7 @@ describe('sourceProfilesCompare — recommandations & garde-fous', () => {
 describe('buildSourcingRecommendation — toutes les branches comparatives', () => {
   function provider(over: Partial<SourcingProviderResult>): SourcingProviderResult {
     return {
-      provider: 'claude', model: 'm', data: RICH, jsonValid: true,
+      provider: 'claude', model: 'm', label: 'Claude', data: RICH, jsonValid: true,
       richnessScore: 50, profilesGenerated: 1, latencyMs: 1000,
       inputTokens: 100, outputTokens: 100, estimatedCostEur: 0.01, error: null,
       ...over,

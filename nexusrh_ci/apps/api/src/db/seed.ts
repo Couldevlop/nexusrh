@@ -443,9 +443,23 @@ async function runSeed(): Promise<void> {
       ('employe@sotra.ci',  $3, 'Kouassi',   'Coulibaly',   'employee',   true, now()),
       ('raf.abidjan@sotra.ci', $1, 'RAF', 'Abidjan', 'raf_site', true, now()),
       ('raf.bouake@sotra.ci',  $1, 'RAF', 'Bouaké',  'raf_site', true, now()),
-      ('dg@sotra.ci',          $1, 'Directeur', 'Général', 'dg', true, now())
+      ('dg@sotra.ci',          $1, 'Directeur', 'Général', 'dg', true, now()),
+      ('mfa@sotra.ci',         $1, 'Demo',      'MFA',     'hr_officer', true, now())
     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = true
   `, [adminHash, managerHash, employeeHash])
+
+  // Compte de démonstration MFA (AUTH-012/013) : double authentification déjà
+  // activée avec un secret TOTP fixe et connu, afin de rendre le parcours
+  // « login → challenge 202 → vérification OTP → JWT » testable de bout en bout
+  // (sinon aucun compte MFA n'existe sur une base fraîche).
+  // Secret base32 : JBSWY3DPEHPK3PXP — à saisir dans une app TOTP (Google
+  // Authenticator, etc.) ou clé otpauth ci-dessous pour générer le code à 6 chiffres.
+  await pool.query(
+    `UPDATE "${sotraSchema}".users
+        SET mfa_enabled = true, mfa_secret = $1
+      WHERE email = 'mfa@sotra.ci'`,
+    ['JBSWY3DPEHPK3PXP'],
+  )
 
   // ── Filiales SOTRA (legal_entities) + RAF affectés ──────────────────────────
   // Deux filiales pour démontrer le workflow paie centralisé : la RH groupe
@@ -1963,6 +1977,7 @@ async function runSeed(): Promise<void> {
   console.log('  chef.perso@sotra.ci   /  Admin1234!  (hr_officer)')
   console.log('  manager@sotra.ci      /  Admin1234!  (manager — équipe Exploitation)')
   console.log('  employe@sotra.ci      /  Admin1234!  (employee)')
+  console.log('  mfa@sotra.ci          /  Admin1234!  (hr_officer — MFA activé, secret TOTP: JBSWY3DPEHPK3PXP)')
   console.log()
   console.log('  [Cabinet Expertise CI]')
   console.log('  admin@cabinet-expertise.ci   /  Admin1234!  (admin)')
