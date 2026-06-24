@@ -1176,8 +1176,8 @@ describe('POST /recruitment/jobs/:id/source/compare — branches restantes', () 
       .mockResolvedValueOnce({ rows: [] }) // audit_log
     vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
       winner: 'mistral',
-      claude: { provider: 'claude', model: 'c', data: null, jsonValid: true, richnessScore: 50, profilesGenerated: 2, latencyMs: 100, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.01, error: null },
-      mistral: { provider: 'mistral', model: 'm', data: null, jsonValid: true, richnessScore: 70, profilesGenerated: 2, latencyMs: 90, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.005, error: null },
+      claude: { provider: 'claude', model: 'c', label: 'Claude', data: null, jsonValid: true, richnessScore: 50, profilesGenerated: 2, latencyMs: 100, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.01, error: null },
+      mistral: { provider: 'mistral', model: 'm', label: 'Mistral', data: null, jsonValid: true, richnessScore: 70, profilesGenerated: 2, latencyMs: 90, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.005, error: null },
       ratios: { latency: 'l', cost: 'c', richness: 'r' },
       recommendation: 'Mistral recommandé',
     })
@@ -1427,8 +1427,8 @@ describe('POST /recruitment/jobs/:id/source/compare — platforms explicites', (
       .mockResolvedValueOnce({ rows: [] }) // audit_log
     vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
       winner: 'claude',
-      claude: { provider: 'claude', model: 'c', data: null, jsonValid: true, richnessScore: 70, profilesGenerated: 2, latencyMs: 100, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.01, error: null },
-      mistral: { provider: 'mistral', model: 'm', data: null, jsonValid: true, richnessScore: 50, profilesGenerated: 2, latencyMs: 90, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.005, error: null },
+      claude: { provider: 'claude', model: 'c', label: 'Claude', data: null, jsonValid: true, richnessScore: 70, profilesGenerated: 2, latencyMs: 100, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.01, error: null },
+      mistral: { provider: 'mistral', model: 'm', label: 'Mistral', data: null, jsonValid: true, richnessScore: 50, profilesGenerated: 2, latencyMs: 90, inputTokens: 1, outputTokens: 1, estimatedCostEur: 0.005, error: null },
       ratios: { latency: 'l', cost: 'c', richness: 'r' },
       recommendation: 'Claude recommandé',
     })

@@ -131,6 +131,22 @@
     "dropHere": "Déposer ici",
     "empty": "Vide"
   },
+  "contract": {
+    "generate": "Contrat",
+    "title": "Générer le contrat d'embauche",
+    "type": "Type de contrat",
+    "cdi": "CDI (durée indéterminée)",
+    "cdd": "CDD (durée déterminée)",
+    "salary": "Salaire brut mensuel",
+    "category": "Catégorie",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "nni": "NNI du salarié",
+    "isCadre": "Statut cadre (essai 3 mois)",
+    "cancel": "Annuler",
+    "generatePdf": "Générer le PDF",
+    "error": "Échec de la génération du contrat"
+  },
   "newJobModal": {
     "title": "Nouvelle offre d'emploi",
     "close": "Fermer",

@@ -10,6 +10,8 @@ import {
 import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
+import { generateHRDocument, type HrDocumentType } from '../../services/hr-document-generator.service.js'
+import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
 
 /**
@@ -631,6 +633,109 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         return reply.send({ data: app })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── GÉNÉRATION CONTRAT OHADA À L'EMBAUCHE (REC-007) ────────────────────────
+  // POST /applications/:id/contract → PDF CDI/CDD conforme Code du Travail CI +
+  // OHADA, à partir de la candidature recrutée et des infos employeur du tenant.
+  // L'admin complète les informations contractuelles (salaire, dates, cadre, NNI)
+  // au moment de l'embauche. RBAC : seuls admin/hr_manager/hr_officer.
+  const contractBodySchema = z.object({
+    type:      z.enum(['cdi_ci', 'cdd_ci']).default('cdi_ci'),
+    salary:    z.number().int().positive().max(100_000_000).optional(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date début invalide (YYYY-MM-DD)').optional(),
+    endDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date fin invalide (YYYY-MM-DD)').optional(),
+    isCadre:   z.boolean().optional(),
+    nni:       z.string().max(50).trim().optional(),
+    category:  z.string().max(50).trim().optional(),
+    jobTitle:  z.string().max(150).trim().optional(),
+  })
+
+  fastify.post('/applications/:id/contract', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+
+      const parsed = contractBodySchema.safeParse(request.body ?? {})
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Données invalides' })
+      }
+      const body = parsed.data
+
+      if (body.type === 'cdd_ci' && !body.endDate) {
+        return reply.status(400).send({ error: 'Un CDD requiert une date de fin (endDate)' })
+      }
+
+      try {
+        // Candidature + offre liée (titre de poste, type de contrat)
+        const appRes = await pool.query<{
+          id: string; first_name: string; last_name: string; stage: string
+          job_title: string | null; job_contract_type: string | null
+          salary_min: number | null; salary_max: number | null; job_location: string | null
+        }>(
+          `SELECT a.id, a.first_name, a.last_name, a.stage,
+                  rj.title AS job_title, rj.contract_type AS job_contract_type,
+                  rj.salary_min, rj.salary_max, rj.location AS job_location
+             FROM "${schema}".applications a
+             LEFT JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
+            WHERE a.id = $1`,
+          [id],
+        )
+        const app = appRes.rows[0]
+        if (!app) {
+          return reply.status(404).send({ error: 'Candidature introuvable' })
+        }
+
+        // Infos employeur (tenant) : raison sociale, ville, CNPS, RCCM
+        const tenantRes = await pool.query<{
+          name: string; city: string | null; cnps_number: string | null; rccm: string | null
+        }>(
+          `SELECT name, city, cnps_number, rccm FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+          [schema],
+        )
+        const tenant = tenantRes.rows[0]
+
+        const salary = body.salary
+          ?? app.salary_max ?? app.salary_min ?? undefined
+        const { title, markdown } = generateHRDocument({
+          type: body.type as HrDocumentType,
+          tenantName: tenant?.name,
+          city: tenant?.city ?? app.job_location ?? undefined,
+          employer: { cnpsNumber: tenant?.cnps_number ?? undefined, rccm: tenant?.rccm ?? undefined },
+          employee: {
+            firstName: app.first_name,
+            lastName:  app.last_name,
+            nni:       body.nni,
+            jobTitle:  body.jobTitle ?? app.job_title ?? undefined,
+            category:  body.category,
+          },
+          salary: typeof salary === 'number' ? salary : undefined,
+          startDate: body.startDate,
+          endDate:   body.endDate,
+          isCadre:   body.isCadre,
+        })
+
+        const pdf = await renderHrDocumentPdf(markdown)
+
+        // OWASP A09 : trace la génération du contrat (acte RH significatif)
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.contract_generated', 'application', $2, $3, $4)`,
+          [request.user.sub, app.id, JSON.stringify({ type: body.type, title }), request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+
+        const fileBase = `${body.type}_${(app.last_name || 'contrat').replace(/[^a-zA-Z0-9]/g, '')}`
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Disposition', `inline; filename="${fileBase}.pdf"`)
+          .send(Buffer.from(pdf))
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1735,19 +1840,14 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         const creds = await resolveAiCreds(schema)
-        // La comparaison nécessite IMPÉRATIVEMENT les deux fournisseurs. Si l'un
-        // manque, on renvoie un 422 explicite (et non un 500) pour guider la
-        // configuration (OWASP — pas d'erreur serveur sur cas prévisible).
-        if (!isModelAvailable('claude', creds)) {
+        // La comparaison fonctionne dès qu'AU MOINS UNE clé IA est configurée :
+        // deux fournisseurs (Claude vs Mistral) si les deux sont présents, sinon
+        // deux paliers de modèles du fournisseur disponible (ex. Mistral Small vs
+        // Mistral Large). 422 seulement si AUCUNE clé n'est configurée.
+        if (!isModelAvailable('claude', creds) && !isModelAvailable('mistral', creds)) {
           return reply.status(422).send({
-            error: 'ANTHROPIC_API_KEY non configurée — comparaison impossible',
-            hint:  'Ajoutez ANTHROPIC_API_KEY=... dans votre .env (ou la clé du tenant) pour activer la comparaison Claude vs Mistral.',
-          })
-        }
-        if (!isModelAvailable('mistral', creds)) {
-          return reply.status(422).send({
-            error: 'MISTRAL_API_KEY non configurée — comparaison impossible',
-            hint:  'Ajoutez MISTRAL_API_KEY=... dans votre .env (ou la clé du tenant) pour activer la comparaison.',
+            error: 'Aucune clé IA configurée — comparaison impossible',
+            hint:  'Configurez au moins une clé IA (MISTRAL_API_KEY ou ANTHROPIC_API_KEY) — au niveau plateforme ou du tenant.',
           })
         }
 
@@ -1787,6 +1887,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             recommendation: result.recommendation,
             summary: {
               claude: {
+                label:             result.claude.label,
+                model:             result.claude.model,
                 latencyMs:         result.claude.latencyMs,
                 inputTokens:       result.claude.inputTokens,
                 outputTokens:      result.claude.outputTokens,
@@ -1797,6 +1899,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                 error:             result.claude.error,
               },
               mistral: {
+                label:             result.mistral.label,
+                model:             result.mistral.model,
                 latencyMs:         result.mistral.latencyMs,
                 inputTokens:       result.mistral.inputTokens,
                 outputTokens:      result.mistral.outputTokens,
