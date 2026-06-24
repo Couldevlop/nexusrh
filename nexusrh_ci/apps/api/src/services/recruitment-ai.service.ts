@@ -480,6 +480,14 @@ export const CURRENCY_BY_COUNTRY: Record<string, string> = {
   CD: 'CDF', FR: 'EUR',
 }
 
+// Devise par défaut à appliquer : devise explicite de l'offre, sinon devise du
+// pays cible principal, sinon XOF. Utilisée à la fois pour construire le prompt
+// et comme valeur de repli lors de la normalisation (si l'IA omet la devise).
+export function resolveDefaultCurrency(ctx: SourcingContext, countries: string[]): string {
+  const primaryCountry = countries[0] ?? 'CI'
+  return ctx.currency ?? CURRENCY_BY_COUNTRY[primaryCountry] ?? 'XOF'
+}
+
 function buildSourcingPrompt(
   ctx: SourcingContext,
   platforms: string[],
@@ -487,8 +495,7 @@ function buildSourcingPrompt(
   countries: string[],
 ): string {
   const countriesList = countries.length ? countries.join(', ') : 'Afrique de l\'Ouest et Centrale'
-  const primaryCountry = countries[0] ?? 'CI'
-  const defaultCurrency = ctx.currency ?? CURRENCY_BY_COUNTRY[primaryCountry] ?? 'XOF'
+  const defaultCurrency = resolveDefaultCurrency(ctx, countries)
   const salary = ctx.salaryMin && ctx.salaryMax
     ? `${ctx.salaryMin}–${ctx.salaryMax} ${defaultCurrency}`
     : '(non précisée)'
@@ -548,7 +555,7 @@ Réponds UNIQUEMENT en JSON valide (sans markdown, sans texte avant/après) avec
 }`
 }
 
-function normalizeSourcing(raw: unknown): SourcingResult | null {
+function normalizeSourcing(raw: unknown, defaultCurrency = 'XOF'): SourcingResult | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   const profiles = Array.isArray(r['profiles']) ? r['profiles'] : []
@@ -588,7 +595,7 @@ function normalizeSourcing(raw: unknown): SourcingResult | null {
       min:      num(bench['min']),
       max:      num(bench['max']),
       median:   num(bench['median']),
-      currency: typeof bench['currency'] === 'string' ? bench['currency'] : 'XOF',
+      currency: typeof bench['currency'] === 'string' ? bench['currency'] : defaultCurrency,
     },
     tips: strArr(strategy['tips']),
   }
@@ -613,7 +620,7 @@ function normalizeSourcing(raw: unknown): SourcingResult | null {
       estimatedSalary:      Math.max(0, Math.round(num(pp['estimatedSalary']))),
       estimatedSalaryCurrency: typeof pp['estimatedSalaryCurrency'] === 'string'
         ? pp['estimatedSalaryCurrency']
-        : 'XOF',
+        : defaultCurrency,
     }
   })
 
@@ -765,7 +772,7 @@ async function sourceWithProvider(
     let data: SourcingResult | null = null
     try {
       const parsed = extractJson(raw.text)
-      data = normalizeSourcing(parsed)
+      data = normalizeSourcing(parsed, resolveDefaultCurrency(ctx, countries))
     } catch {
       data = null
     }
@@ -893,4 +900,5 @@ export const __internals = {
   normalizeSourcing,
   computeSourcingRichness,
   buildSourcingRecommendation,
+  resolveDefaultCurrency,
 }
