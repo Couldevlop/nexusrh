@@ -15,7 +15,8 @@
     "dataImport": "Data migration",
     "mfa": "Security (MFA)",
     "ai": "AI (key & model)",
-    "connectivity": "Connectivity"
+    "connectivity": "Connectivity",
+    "mobileMoney": "Mobile Money"
   },
   "roles": {
     "admin": "Administrator",

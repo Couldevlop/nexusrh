@@ -725,6 +725,125 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // ── Mobile Money — config des providers + agrégateur par tenant (chiffré) ───
+  // cinetpay = agrégateur (une intégration → tous les opérateurs).
+  const MM_PROVIDERS_SET = ['wave', 'mtn_momo', 'orange_money', 'cinetpay'] as const
+  // Crée la table si absente (tenant ancien) — idempotent.
+  async function ensureMmConfig(schema: string): Promise<void> {
+    await pool.query(`CREATE TABLE IF NOT EXISTS "${schema}".mobile_money_config (
+      provider varchar(20) PRIMARY KEY, enabled boolean NOT NULL DEFAULT false,
+      api_url text, api_key_enc text, webhook_secret_enc text,
+      subscription_key_enc text, merchant_key_enc text, env varchar(20) DEFAULT 'sandbox',
+      updated_at timestamptz NOT NULL DEFAULT now())`)
+  }
+
+  // GET /settings/mobile-money — état config des 3 providers (secrets masqués)
+  fastify.get('/mobile-money', {
+    preHandler: [fastify.authorize('admin')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        await ensureMmConfig(schema)
+        const res = await pool.query<{
+          provider: string; enabled: boolean; api_url: string | null
+          api_key_enc: string | null; webhook_secret_enc: string | null
+          subscription_key_enc: string | null; merchant_key_enc: string | null; env: string | null
+        }>(`SELECT * FROM "${schema}".mobile_money_config`)
+        const byProvider = new Map(res.rows.map(r => [r.provider, r]))
+        const platform: Record<string, boolean> = {
+          wave: !!config.mobileMoney.wave.apiKey,
+          mtn_momo: !!config.mobileMoney.mtn.apiKey,
+          orange_money: !!config.mobileMoney.orange.apiKey,
+        }
+        const data = MM_PROVIDERS_SET.map(p => {
+          const r = byProvider.get(p)
+          return {
+            provider: p,
+            enabled: r?.enabled ?? false,
+            apiUrl: r?.api_url ?? null,
+            env: r?.env ?? 'sandbox',
+            hasApiKey: !!r?.api_key_enc,
+            hasWebhookSecret: !!r?.webhook_secret_enc,
+            hasSubscriptionKey: !!r?.subscription_key_enc,
+            hasMerchantKey: !!r?.merchant_key_enc,
+            platformFallback: platform[p] ?? false,
+          }
+        })
+        return reply.send({ data, encryptionAvailable: isEncryptionAvailable() })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // PUT /settings/mobile-money — enregistre la config d'UN provider (secrets chiffrés)
+  fastify.put('/mobile-money', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const mmSchema = z.object({
+        provider:        z.enum(MM_PROVIDERS_SET),
+        enabled:         z.boolean().optional(),
+        apiUrl:          z.string().max(300).nullable().optional(),
+        apiKey:          z.string().max(300).nullable().optional(),
+        webhookSecret:   z.string().max(300).nullable().optional(),
+        subscriptionKey: z.string().max(300).nullable().optional(),
+        merchantKey:     z.string().max(300).nullable().optional(),
+        env:             z.enum(['sandbox', 'production']).optional(),
+      }).strict()
+      const parsed = mmSchema.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      const b = parsed.data
+
+      const wantsSecret = [b.apiKey, b.webhookSecret, b.subscriptionKey, b.merchantKey].some(v => v != null && v !== '')
+      if (wantsSecret && !isEncryptionAvailable()) {
+        return reply.status(400).send({ error: 'Chiffrement non configuré (ENCRYPTION_KEY) — impossible de stocker un secret.' })
+      }
+      try {
+        await ensureMmConfig(schema)
+        const KEEP = Symbol('keep')
+        const encVal = (v: string | null | undefined): string | null | typeof KEEP =>
+          v === undefined ? KEEP : (v === '' || v === null ? null : encrypt(v))
+        const plainVal = (v: string | null | undefined): string | null | typeof KEEP =>
+          v === undefined ? KEEP : (v === '' ? null : v)
+        const fields: Array<{ col: string; val: string | boolean | null | typeof KEEP }> = [
+          { col: 'enabled',              val: b.enabled === undefined ? KEEP : b.enabled },
+          { col: 'api_url',              val: plainVal(b.apiUrl) },
+          { col: 'api_key_enc',          val: encVal(b.apiKey) },
+          { col: 'webhook_secret_enc',   val: encVal(b.webhookSecret) },
+          { col: 'subscription_key_enc', val: encVal(b.subscriptionKey) },
+          { col: 'merchant_key_enc',     val: encVal(b.merchantKey) },
+          { col: 'env',                  val: b.env === undefined ? KEEP : b.env },
+        ]
+        const existing = await pool.query<{ provider: string }>(
+          `SELECT provider FROM "${schema}".mobile_money_config WHERE provider = $1`, [b.provider])
+        if (!existing.rows[0]) {
+          await pool.query(
+            `INSERT INTO "${schema}".mobile_money_config
+               (provider, enabled, api_url, api_key_enc, webhook_secret_enc, subscription_key_enc, merchant_key_enc, env)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [b.provider, ...fields.map(f => f.val === KEEP ? (f.col === 'enabled' ? false : f.col === 'env' ? 'sandbox' : null) : f.val)],
+          )
+        } else {
+          const sets: string[] = []; const vals: unknown[] = []
+          for (const f of fields) { if (f.val === KEEP) continue; sets.push(`${f.col} = $${vals.length + 1}`); vals.push(f.val) }
+          if (sets.length) {
+            sets.push('updated_at = now()'); vals.push(b.provider)
+            await pool.query(`UPDATE "${schema}".mobile_money_config SET ${sets.join(', ')} WHERE provider = $${vals.length}`, vals)
+          }
+        }
+        auditLogSettings(schema, request.user.sub, 'settings.mobile_money_updated', schema,
+          { provider: b.provider, changed: fields.filter(f => f.val !== KEEP).map(f => f.col) }, request.ip ?? null)
+        return reply.send({ success: true })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // GET /settings/users
   fastify.get('/users', {
     preHandler: [fastify.authorize('admin')],

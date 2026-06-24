@@ -607,6 +607,20 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at    timestamptz NOT NULL DEFAULT now()
   )`)
 
+  // Identifiants Mobile Money par TENANT (secrets chiffrés AES). Priorité sur
+  // l'env plateforme. 1 ligne par provider (wave | mtn_momo | orange_money).
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.mobile_money_config (
+    provider              varchar(20) PRIMARY KEY,
+    enabled               boolean NOT NULL DEFAULT false,
+    api_url               text,
+    api_key_enc           text,
+    webhook_secret_enc    text,
+    subscription_key_enc  text,
+    merchant_key_enc      text,
+    env                   varchar(20) DEFAULT 'sandbox',
+    updated_at            timestamptz NOT NULL DEFAULT now()
+  )`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.absence_types (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     code              varchar(20) NOT NULL UNIQUE,

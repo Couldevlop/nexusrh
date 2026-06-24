@@ -32,6 +32,26 @@ vi.mock('../../utils/schema-migrations.js', () => ({
   ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Le service providers est mocké : pas d'appel HTTP réel ni de requête DB de
+// résolution d'identifiants. Comportement déterministe (succès) par défaut.
+const { initiateTransferMock, verifyNumberMock } = vi.hoisted(() => ({
+  initiateTransferMock: vi.fn().mockResolvedValue({ success: true, status: 'completed', transactionId: 'TXN_MOCK' }),
+  verifyNumberMock: vi.fn().mockResolvedValue({ valid: true, active: true, provider: 'wave', reason: 'ok' }),
+}))
+vi.mock('../../services/mobile-money-providers.js', () => ({
+  initiateTransfer: initiateTransferMock,
+  verifyNumber: verifyNumberMock,
+  normalizeMmProvider: (raw: string | null | undefined) => {
+    const v = (raw ?? '').toLowerCase()
+    if (v === 'wave') return 'wave'
+    if (v === 'mtn' || v === 'mtn_momo') return 'mtn_momo'
+    if (v === 'orange' || v === 'orange_money') return 'orange_money'
+    return null
+  },
+  MM_PROVIDERS: ['wave', 'mtn_momo', 'orange_money'],
+  CI_MM_PHONE_RE: /^\+2250[57]\d{8}$/,
+}))
+
 import authPlugin from '../../plugins/auth.js'
 import mobileMoneyRoutes from './mobile-money.routes.js'
 
@@ -156,9 +176,9 @@ describe('POST /mobile-money/campaigns — RBAC + audit_log (OWASP A01 + A09)', 
       payload: { month: '2024-12', provider: 'orange_money' },
     })
     const selectCall = queryMock.mock.calls.find((c) => String(c[0]).includes('mobile_money_provider'))
-    // ligne reformatée : utilise $2, plus d'interpolation littérale
-    expect(String(selectCall?.[0])).toContain('mobile_money_provider = $2')
-    expect(selectCall?.[1]).toEqual(['2024-12', 'orange_money'])
+    // param binding via ANY($2::text[]) : matche le code canonique ET l'alias hérité
+    expect(String(selectCall?.[0])).toContain('mobile_money_provider = ANY($2::text[])')
+    expect(selectCall?.[1]).toEqual(['2024-12', ['orange_money', 'orange']])
   })
 })
 
@@ -232,6 +252,42 @@ describe('POST /mobile-money/campaigns/:reference/execute — Zod + UUID (OWASP 
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('mobile_money.campaign.executed')
+  })
+})
+
+describe('POST /mobile-money/verify-number (MM-005)', () => {
+  it('un employee ne peut pas vérifier (403)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'POST', url: '/mobile-money/verify-number',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { phone: '+2250712345678', provider: 'wave' },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('numéro au format invalide → 422', async () => {
+    verifyNumberMock.mockResolvedValueOnce({ valid: false, active: false, provider: 'wave', reason: 'Format invalide' })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/mobile-money/verify-number',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { phone: '+33612345678', provider: 'wave' },
+    })
+    expect(res.statusCode).toBe(422)
+    expect(JSON.parse(res.body).valid).toBe(false)
+  })
+
+  it('numéro CI valide → 200 valid:true', async () => {
+    verifyNumberMock.mockResolvedValueOnce({ valid: true, active: true, provider: 'wave', reason: 'ok' })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/mobile-money/verify-number',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { phone: '+2250712345678' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).valid).toBe(true)
   })
 })
 

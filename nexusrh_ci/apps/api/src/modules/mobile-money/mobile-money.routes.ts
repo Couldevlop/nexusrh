@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { initiateTransfer, verifyNumber, normalizeMmProvider } from '../../services/mobile-money-providers.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE      = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -62,40 +63,22 @@ const statsQuerySchema = z.object({
   year: z.string().regex(/^\d{4}$/).optional(),
 }).strict()
 
-/**
- * Simule un initiation de paiement Mobile Money CI.
- * En production, remplacer par les vrais SDK Wave/MTN/Orange.
- */
-async function initiateMobileMoneyPayment(params: {
-  provider: Provider
-  phone: string
-  amount: number
-  reference: string
-  description: string
-}): Promise<{ success: boolean; transactionId?: string; error?: string }> {
-  const providers = {
-    wave:         config.mobileMoney.wave.apiKey,
-    mtn_momo:     config.mobileMoney.mtn.apiKey,
-    orange_money: config.mobileMoney.orange.apiKey,
-  }
-
-  if (!providers[params.provider]) {
-    return { success: false, error: `Provider ${params.provider} non configuré` }
-  }
-
-  // Validation format téléphone CI (+225 07 ou 05)
-  const cleanPhone = params.phone.replace(/\s/g, '')
-  if (!/^\+2250[57]\d{8}$/.test(cleanPhone)) {
-    return { success: false, error: `Numéro invalide pour la CI: ${params.phone}` }
-  }
-
-  // Simulation: 95% success rate
-  const success = Math.random() > 0.05
-  return {
-    success,
-    transactionId: success ? `TXN_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}` : undefined,
-    error: success ? undefined : 'Échec transaction (simulation)',
-  }
+// MM-007 — alerte admin/hr sur échec(s) de virement : crée une notification pour
+// chaque destinataire admin/hr_manager du tenant (non bloquant).
+function notifyAdminsMmFailure(schema: string, failedCount: number, reference: string): void {
+  if (failedCount <= 0) return
+  // Promise.resolve().then() : crash-safe même si rawPool.query renvoie undefined
+  // (mock de test épuisé) — un throw synchrone ne remonte jamais au handler.
+  void Promise.resolve().then(() => rawPool.query(
+    `INSERT INTO "${schema}".notifications (user_id, type, title, message, data)
+     SELECT id, 'mobile_money_failed', 'Échec de virement Mobile Money',
+            $1, $2
+       FROM "${schema}".users WHERE role IN ('admin','hr_manager') AND is_active = true`,
+    [
+      `${failedCount} virement(s) de la campagne ${reference} ont échoué — à vérifier dans Mobile Money.`,
+      JSON.stringify({ reference, failedCount }),
+    ],
+  )).catch(() => { /* tenant sans notifications : non bloquant */ })
 }
 
 const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
@@ -118,13 +101,19 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
       const { month, provider } = parsed.data
       const schema = request.user.schemaName
 
-      // OWASP A03 — provider passe par enum Zod puis par param binding
-      // (jamais par interpolation directe dans la requête SQL).
+      // OWASP A03 — provider passe par enum Zod puis par param binding.
+      // Les employés peuvent stocker un code hérité (mtn/orange) ou canonique
+      // (mtn_momo/orange_money) : on matche les deux pour ne perdre personne.
+      const PROVIDER_ALIASES: Record<string, string[]> = {
+        wave: ['wave'],
+        mtn_momo: ['mtn_momo', 'mtn'],
+        orange_money: ['orange_money', 'orange'],
+      }
       const params: unknown[] = [month]
       let providerFilter = ''
       if (provider && provider !== 'all') {
-        params.push(provider)
-        providerFilter = ` AND e.mobile_money_provider = $${params.length}`
+        params.push(PROVIDER_ALIASES[provider] ?? [provider])
+        providerFilter = ` AND e.mobile_money_provider = ANY($${params.length}::text[])`
       }
 
       const slipsRes = await rawPool.query<{
@@ -160,6 +149,9 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
             month,
             provider: provider ?? 'all',
             slips: [],
+            paySlips: [],          // alias contrat frontend
+            allPaid: true,
+            employeesCount: 0,
             summary: { total: 0, totalAmount: 0, currency: 'XOF', alreadyPaid: paidCount },
             message: 'Tous les bulletins de ce mois sont déjà payés',
           })
@@ -193,19 +185,23 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         request.ip ?? null,
       )
 
+      const slipList = slips.map(sl => ({
+        paySlipId: sl.id,
+        employeeId: sl.employee_id,
+        name: `${sl.first_name} ${sl.last_name}`,
+        provider: normalizeMmProvider(sl.mobile_money_provider) ?? sl.mobile_money_provider,
+        phone: sl.mobile_money_phone ?? '',
+        amount: parseInt(sl.net_payable ?? '0'),
+        currentStatus: sl.payment_status,
+      }))
       return reply.send({
         reference,
         month,
         provider: provider ?? 'all',
-        slips: slips.map(sl => ({
-          paySlipId: sl.id,
-          employeeId: sl.employee_id,
-          name: `${sl.first_name} ${sl.last_name}`,
-          provider: sl.mobile_money_provider,
-          phone: sl.mobile_money_phone ?? '',
-          amount: parseInt(sl.net_payable ?? '0'),
-          currentStatus: sl.payment_status,
-        })),
+        slips: slipList,
+        paySlips: slipList,       // alias contrat frontend (MM-001)
+        allPaid: false,
+        employeesCount: slipList.length,
         summary: { total: slips.length, totalAmount, currency: 'XOF' },
       })
     },
@@ -273,25 +269,30 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
           continue
         }
 
-        const payResult = await initiateMobileMoneyPayment({
-          provider: slip.mobile_money_provider as Provider,
+        const payResult = await initiateTransfer(schema, slip.mobile_money_provider, {
           phone: slip.mobile_money_phone,
           amount,
           reference: `${reference}_${paySlipId.slice(0, 8)}`,
           description: `Salaire ${slip.month} — ${slip.first_name} ${slip.last_name}`,
         })
+        // Statut interne : pending (virement réel async, confirmé par webhook) /
+        // completed (succès immédiat ou simulation) / failed.
+        const provider = normalizeMmProvider(slip.mobile_money_provider) ?? 'wave'
+        const slipStatus = payResult.status === 'completed' ? 'paid'
+          : payResult.status === 'failed' ? 'failed' : 'pending'
 
         await rawPool.query(
           `INSERT INTO "${schema}".mobile_money_payments
-             (employee_id, pay_slip_id, provider, phone_number, amount, reference, status, external_ref, error_message)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+             (employee_id, pay_slip_id, provider, phone_number, amount, reference, status, external_ref, error_message, initiated_at, confirmed_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), $10)`,
           [
-            slip.employee_id, paySlipId, slip.mobile_money_provider ?? 'wave',
+            slip.employee_id, paySlipId, provider,
             slip.mobile_money_phone ?? '',
             amount, `${reference}_${paySlipId.slice(0, 8)}`,
-            payResult.success ? 'completed' : 'failed',
+            payResult.status,
             payResult.transactionId ?? null,
             payResult.error ?? null,
+            payResult.status === 'completed' ? new Date() : null,
           ],
         )
 
@@ -301,9 +302,9 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
              paid_at = $3, updated_at = now()
            WHERE id = $4`,
           [
-            payResult.success ? 'paid' : 'failed',
+            slipStatus,
             payResult.transactionId ?? null,
-            payResult.success ? new Date() : null,
+            payResult.status === 'completed' ? new Date() : null,
             paySlipId,
           ],
         )
@@ -331,6 +332,8 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         { reference, total: results.length, succeeded: succeeded.length, failed: failed.length, totalPaid },
         request.ip ?? null,
       )
+      // MM-007 — alerte admin/hr en cas d'échec(s)
+      notifyAdminsMmFailure(schema, failed.length, reference)
 
       return reply.send({
         reference,
@@ -343,6 +346,27 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
           currency:  'XOF',
         },
       })
+    },
+  })
+
+  // POST /mobile-money/verify-number — vérifier un numéro avant virement (MM-005)
+  fastify.post('/verify-number', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    schema: { tags: ['mobile-money'], summary: 'Vérifier un numéro Mobile Money CI' },
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const parsed = z.object({
+        phone:    z.string().min(1).max(20),
+        provider: z.enum(PROVIDERS).optional(),
+      }).strict().safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const schema = request.user.schemaName
+      const res = await verifyNumber(schema, parsed.data.provider ?? 'wave', parsed.data.phone)
+      // Numéro de format invalide → 422 avec message explicite
+      if (!res.valid) return reply.status(422).send({ valid: false, active: false, error: res.reason })
+      return reply.send(res)
     },
   })
 
@@ -455,8 +479,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(422).send({ error: 'Provider inconnu sur ce paiement' })
       }
 
-      const retryResult = await initiateMobileMoneyPayment({
-        provider: payment.provider as Provider,
+      const retryResult = await initiateTransfer(schema, payment.provider, {
         phone: payment.phone_number,
         amount: retryAmount,
         reference: `${payment.reference}_RETRY_${Date.now()}`,
@@ -468,14 +491,14 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          SET status = $1, external_ref = $2, error_message = $3, updated_at = now()
          WHERE id = $4`,
         [
-          retryResult.success ? 'completed' : 'failed',
+          retryResult.status,
           retryResult.transactionId ?? null,
           retryResult.error ?? null,
           id,
         ],
       )
 
-      if (retryResult.success) {
+      if (retryResult.status === 'completed') {
         await rawPool.query(
           `UPDATE "${schema}".pay_slips
            SET payment_status = 'paid', payment_reference = $1,
@@ -650,6 +673,16 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
            WHERE id = $2`,
           [transactionId, payment.pay_slip_id],
         )
+      }
+      // MM-007 — si échec, repasser le bulletin en 'failed' + alerter les admins
+      if (status === 'failed') {
+        if (payment.pay_slip_id) {
+          await rawPool.query(
+            `UPDATE "${schema}".pay_slips SET payment_status = 'failed', updated_at = now() WHERE id = $1`,
+            [payment.pay_slip_id],
+          ).catch(() => undefined)
+        }
+        notifyAdminsMmFailure(schema, 1, reference)
       }
 
       auditLogMobileMoney(

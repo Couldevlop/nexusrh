@@ -15,7 +15,8 @@
     "dataImport": "Reprise de données",
     "mfa": "Sécurité (MFA)",
     "ai": "IA (clé & modèle)",
-    "connectivity": "Connectivité"
+    "connectivity": "Connectivité",
+    "mobileMoney": "Mobile Money"
   },
   "roles": {
     "admin": "Administrateur",
