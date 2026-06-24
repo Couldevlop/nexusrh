@@ -1735,6 +1735,15 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         const creds = await resolveAiCreds(schema)
+        // La comparaison nécessite IMPÉRATIVEMENT les deux fournisseurs. Si l'un
+        // manque, on renvoie un 422 explicite (et non un 500) pour guider la
+        // configuration (OWASP — pas d'erreur serveur sur cas prévisible).
+        if (!isModelAvailable('claude', creds)) {
+          return reply.status(422).send({
+            error: 'ANTHROPIC_API_KEY non configurée — comparaison impossible',
+            hint:  'Ajoutez ANTHROPIC_API_KEY=... dans votre .env (ou la clé du tenant) pour activer la comparaison Claude vs Mistral.',
+          })
+        }
         if (!isModelAvailable('mistral', creds)) {
           return reply.status(422).send({
             error: 'MISTRAL_API_KEY non configurée — comparaison impossible',

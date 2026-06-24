@@ -335,6 +335,39 @@ describe('recruitment-ai.service — normalizeSourcing', () => {
     })
     expect(norm!.profiles[0]!.availabilityEstimate).toBe('passive')
   })
+
+  it('utilise la devise du pays cible en repli quand l\'IA omet estimatedSalaryCurrency (SRC-008)', () => {
+    const norm = __internals.normalizeSourcing({
+      strategy: { summary: 'x' },
+      profiles: [{ firstName: 'A', lastName: 'B' }],
+    }, 'NGN')
+    expect(norm!.profiles[0]!.estimatedSalaryCurrency).toBe('NGN')
+    expect(norm!.strategy.salaryBenchmark.currency).toBe('NGN')
+  })
+
+  it('repli XOF par défaut si aucune devise fournie', () => {
+    const norm = __internals.normalizeSourcing({
+      strategy: { summary: 'x' },
+      profiles: [{ firstName: 'A', lastName: 'B' }],
+    })
+    expect(norm!.profiles[0]!.estimatedSalaryCurrency).toBe('XOF')
+  })
+})
+
+describe('recruitment-ai.service — resolveDefaultCurrency', () => {
+  it('mappe le pays cible vers sa devise (NG→NGN, CM→XAF, GH→GHS, CI→XOF)', () => {
+    const base = { title: 'X' } as Parameters<typeof __internals.resolveDefaultCurrency>[0]
+    expect(__internals.resolveDefaultCurrency(base, ['NG'])).toBe('NGN')
+    expect(__internals.resolveDefaultCurrency(base, ['CM'])).toBe('XAF')
+    expect(__internals.resolveDefaultCurrency(base, ['GH'])).toBe('GHS')
+    expect(__internals.resolveDefaultCurrency(base, ['CI'])).toBe('XOF')
+    expect(__internals.resolveDefaultCurrency(base, [])).toBe('XOF')
+  })
+
+  it('la devise explicite de l\'offre prime sur le pays', () => {
+    const ctx = { title: 'X', currency: 'EUR' } as Parameters<typeof __internals.resolveDefaultCurrency>[0]
+    expect(__internals.resolveDefaultCurrency(ctx, ['NG'])).toBe('EUR')
+  })
 })
 
 describe('recruitment-ai.service — sourceProfiles', () => {
