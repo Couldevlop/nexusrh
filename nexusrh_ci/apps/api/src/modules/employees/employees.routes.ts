@@ -60,6 +60,7 @@ const createEmployeeSchema = z.object({
   // RIB — chiffré AES-256 en base (RGPD, même traitement que le NNI)
   iban:                z.string().max(50).optional(),
   bankName:            z.string().max(100).optional(),
+  paymentMethod:       z.enum(['mobile_money', 'bank_transfer']).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
@@ -89,6 +90,7 @@ const patchEmployeeSchema = z.object({
   professionalCategory: z.string().max(50).optional(),
   iban:                z.string().max(50).optional(),
   bankName:            z.string().max(100).optional(),
+  paymentMethod:       z.enum(['mobile_money', 'bank_transfer']).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
@@ -102,7 +104,7 @@ const patchEmployeeSchema = z.object({
 // L'IBAN est modifiable par l'employé (self-service paie) — chiffré en base.
 const EMPLOYEE_SELF_FIELDS = new Set([
   'phone', 'address', 'mobileMoneyProvider', 'mobileMoneyPhone', 'profilePhotoUrl',
-  'iban', 'bankName',
+  'iban', 'bankName', 'paymentMethod',
 ])
 
 function auditLogEmployee(
@@ -269,8 +271,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
               nni, cnps_number, mobile_money_provider, mobile_money_phone,
               department_id, manager_id, job_title, job_level, contract_type,
               hire_date, base_salary, weekly_hours, professional_category,
-              iban, bank_name, city, marital_status, children_count)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+              iban, bank_name, payment_method, city, marital_status, children_count)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
            RETURNING *`,
           [
             body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
@@ -284,6 +286,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             body.weeklyHours ?? 40, body.professionalCategory ?? null,
             // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
             encryptIfPresent(body.iban), body.bankName ?? null,
+            body.paymentMethod ?? 'mobile_money',
             body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
           ]
         )

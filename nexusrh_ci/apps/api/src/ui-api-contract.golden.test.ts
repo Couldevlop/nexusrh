@@ -34,6 +34,7 @@ const PREFIX: Record<string, string> = {
   'payroll/payroll-workflow.routes.ts': '/payroll-workflow',
   'cnps/cnps.routes.ts': '/cnps',
   'mobile-money/mobile-money.routes.ts': '/mobile-money',
+  'bank-transfer/bank-transfer.routes.ts': '/bank-transfer',
   'recruitment/recruitment.routes.ts': '/recruitment',
   'training/training.routes.ts': '/training',
   'expenses/expenses.routes.ts': '/expenses',

@@ -44,6 +44,7 @@ import payrollRoutes    from './modules/payroll/payroll.routes.js'
 import payrollWorkflowRoutes from './modules/payroll/payroll-workflow.routes.js'
 import cnpsRoutes       from './modules/cnps/cnps.routes.js'
 import mobileMoneyRoutes  from './modules/mobile-money/mobile-money.routes.js'
+import bankTransferRoutes from './modules/bank-transfer/bank-transfer.routes.js'
 import recruitmentRoutes  from './modules/recruitment/recruitment.routes.js'
 import trainingRoutes     from './modules/training/training.routes.js'
 import expensesRoutes     from './modules/expenses/expenses.routes.js'
@@ -363,6 +364,7 @@ export async function buildApp() {
   await fastify.register(payrollWorkflowRoutes, { prefix: '/payroll-workflow' })
   await fastify.register(cnpsRoutes,         { prefix: '/cnps' })
   await fastify.register(mobileMoneyRoutes,  { prefix: '/mobile-money' })
+  await fastify.register(bankTransferRoutes, { prefix: '/bank-transfer' })
   await fastify.register(recruitmentRoutes, { prefix: '/recruitment' })
   await fastify.register(trainingRoutes,    { prefix: '/training' })
   await fastify.register(expensesRoutes,    { prefix: '/expenses' })

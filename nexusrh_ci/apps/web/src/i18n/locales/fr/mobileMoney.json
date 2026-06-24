@@ -30,5 +30,25 @@
     "completed": "Réussi",
     "failed": "Échec",
     "pending": "En attente"
+  },
+  "tabs": {
+    "mobileMoney": "Mobile Money",
+    "bankTransfer": "Virement bancaire"
+  },
+  "bank": {
+    "title": "Virement bancaire des salaires",
+    "subtitle": "Génère un fichier Excel par banque (bénéficiaires + RIB + montants) et l'envoie à la banque. L'expéditeur est l'email paramétré par votre entreprise.",
+    "bank": "Banque",
+    "count": "Virements",
+    "total": "Total",
+    "email": "Email banque",
+    "file": "Fichier",
+    "download": "Télécharger l'Excel",
+    "generateSend": "Générer et envoyer",
+    "empty": "Aucun employé payé par virement bancaire pour cette période (vérifiez le mode de paiement + RIB des employés).",
+    "ok": "envoyé",
+    "failed": "échec",
+    "sendError": "Échec de l'envoi — vérifiez les emails et le SMTP du tenant.",
+    "selectedCount": "{{count}} banque(s) sélectionnée(s)"
   }
 }
