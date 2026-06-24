@@ -1409,7 +1409,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT COUNT(*)::int AS cnt FROM "${schema}".employees WHERE legal_entity_id = $1 AND is_active = true`, [id]
         )
         if ((check.rows[0]?.cnt ?? 0) > 0) {
-          return reply.status(409).send({ error: 'Cette entite a des employes actifs' })
+          return reply.status(409).send({ error: 'Cette entité a des employés actifs' })
         }
         await pool.query(`DELETE FROM "${schema}".legal_entities WHERE id = $1`, [id])
         return reply.send({ success: true })

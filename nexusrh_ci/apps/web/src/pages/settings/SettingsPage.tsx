@@ -1217,18 +1217,23 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 // ── Tab: Entités juridiques ───────────────────────────────────────────────────
 // Libellé du pays traduit via legalEntities.countries.<code> ; ici uniquement
 // les données techniques (code, drapeau, pack législatif, devise).
+// Les codes `pack` doivent correspondre EXACTEMENT aux clés du moteur de paie
+// (LEGISLATION_PACKS dans legislation-packs.ts : ISO-3 + '-2024'). Un code non
+// reconnu retomberait silencieusement sur le pack CIV par défaut → paie fausse.
+// Ghana (GHA) n'a pas encore de pack paie modélisé : il reste au catalogue
+// commercial (onglet Multi-législatif super_admin) mais n'est pas proposé comme
+// filiale tant que la paie ghanéenne n'est pas implémentée.
 const COUNTRY_OPTIONS: Array<{ code: string; flag: string; pack: string; currency: string }> = [
-  { code: 'CIV', flag: '🇨🇮', pack: 'ci_2024', currency: 'XOF' },
-  { code: 'SEN', flag: '🇸🇳', pack: 'sn_2024', currency: 'XOF' },
-  { code: 'BEN', flag: '🇧🇯', pack: 'bj_2024', currency: 'XOF' },
-  { code: 'TGO', flag: '🇹🇬', pack: 'tg_2024', currency: 'XOF' },
-  { code: 'BFA', flag: '🇧🇫', pack: 'bf_2024', currency: 'XOF' },
-  { code: 'MLI', flag: '🇲🇱', pack: 'ml_2024', currency: 'XOF' },
-  { code: 'NER', flag: '🇳🇪', pack: 'ne_2024', currency: 'XOF' },
-  { code: 'CMR', flag: '🇨🇲', pack: 'cm_2024', currency: 'XAF' },
-  { code: 'TCD', flag: '🇹🇩', pack: 'td_2024', currency: 'XAF' },
-  { code: 'NGA', flag: '🇳🇬', pack: 'ng_2024', currency: 'NGN' },
-  { code: 'GHA', flag: '🇬🇭', pack: 'gh_2024', currency: 'GHS' },
+  { code: 'CIV', flag: '🇨🇮', pack: 'CIV-2024', currency: 'XOF' },
+  { code: 'SEN', flag: '🇸🇳', pack: 'SEN-2024', currency: 'XOF' },
+  { code: 'BEN', flag: '🇧🇯', pack: 'BEN-2024', currency: 'XOF' },
+  { code: 'TGO', flag: '🇹🇬', pack: 'TGO-2024', currency: 'XOF' },
+  { code: 'BFA', flag: '🇧🇫', pack: 'BFA-2024', currency: 'XOF' },
+  { code: 'MLI', flag: '🇲🇱', pack: 'MLI-2024', currency: 'XOF' },
+  { code: 'NER', flag: '🇳🇪', pack: 'NER-2024', currency: 'XOF' },
+  { code: 'CMR', flag: '🇨🇲', pack: 'CMR-2024', currency: 'XAF' },
+  { code: 'TCD', flag: '🇹🇩', pack: 'TCD-2024', currency: 'XAF' },
+  { code: 'NGA', flag: '🇳🇬', pack: 'NGA-2024', currency: 'NGN' },
 ]
 
 interface LegalEntityForm {
@@ -1242,7 +1247,7 @@ const EMPTY_LE_FORM: LegalEntityForm = {
   name: '', rccm: '', cnps_number: '', dgi_number: '',
   address: '', city: 'Abidjan', legal_form: 'SARL',
   collective_agreement: '', at_rate: '0.02',
-  country_code: 'CIV', legislation_pack_code: 'ci_2024',
+  country_code: 'CIV', legislation_pack_code: 'CIV-2024',
 }
 
 function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
@@ -1282,7 +1287,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       dgi_number: e.dgi_number ?? '', address: e.address ?? '', city: e.city,
       legal_form: e.legal_form, collective_agreement: e.collective_agreement ?? '',
       at_rate: e.at_rate, country_code: e.country_code ?? 'CIV',
-      legislation_pack_code: e.legislation_pack_code ?? 'ci_2024',
+      legislation_pack_code: e.legislation_pack_code ?? 'CIV-2024',
     })
     setShowModal(true)
   }

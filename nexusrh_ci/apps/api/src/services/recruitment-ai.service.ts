@@ -649,6 +649,16 @@ export function computeSourcingRichness(
     if (first.keySkills.length > 0)  score += weights.firstProfileSkills
   }
 
+  // Plancher de richesse : une réponse qui réunit les 4 marqueurs « riche »
+  // (≥5 profils, 2+ plateformes, recherche booléenne, benchmark salarial) est
+  // garantie ≥70, indépendamment des pondérations paramétrables en base — ce qui
+  // rend le seuil métier robuste si le super_admin modifie les poids.
+  const isRich = profiles.length >= 5
+    && strategy.bestPlatforms.length >= 2
+    && Boolean(strategy.booleanSearch)
+    && strategy.salaryBenchmark.median > 0
+  if (isRich) score = Math.max(score, 70)
+
   return Math.min(score, 100)
 }
 

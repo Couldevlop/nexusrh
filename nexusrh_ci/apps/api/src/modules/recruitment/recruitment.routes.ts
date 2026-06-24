@@ -1405,6 +1405,55 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
         const result = await sourceProfiles(model, job, platforms, maxProfiles, countries, await resolveAiCreds(schema))
 
+        // Persistance des profils générés dans le cache `sourced_profiles` afin que
+        // GET /sourced-profiles et les transferts fonctionnent sur un sourcing live
+        // (et pas seulement sur les données de seed). On remplace les profils encore
+        // NON transférés de cette offre (re-sourcing) tout en préservant ceux déjà
+        // transférés vers le pipeline. Non bloquant : un échec ne casse pas la réponse.
+        const profiles = result.data?.profiles ?? []
+        if (profiles.length > 0) {
+          try {
+          const client = await pool.connect()
+          try {
+            await client.query('BEGIN')
+            await client.query(
+              `DELETE FROM "${schema}".sourced_profiles
+                WHERE job_id = $1 AND transferred_to_application_id IS NULL`,
+              [id],
+            )
+            for (const p of profiles) {
+              await client.query(
+                `INSERT INTO "${schema}".sourced_profiles
+                   (job_id, first_name, last_name, current_position, current_company,
+                    location, experience_years, key_skills, match_score,
+                    availability_estimate, suggested_platform, linkedin_search,
+                    approach_strategy, estimated_salary, estimated_salary_currency,
+                    email, phone, source_provider, source_model, countries)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,
+                         $16,$17,$18,$19,$20::varchar(3)[])`,
+                [
+                  id, p.firstName, p.lastName, p.currentPosition, p.currentCompany,
+                  p.location, p.experienceYears, JSON.stringify(p.keySkills), p.matchScore,
+                  p.availabilityEstimate, p.suggestedPlatform, p.linkedinSearch,
+                  p.approachStrategy, p.estimatedSalary, p.estimatedSalaryCurrency,
+                  null, null, result.provider, result.model, countries,
+                ],
+              )
+            }
+            await client.query('COMMIT')
+          } catch (persistErr) {
+            await client.query('ROLLBACK').catch(() => { /* noop */ })
+            fastify.log.error({ err: persistErr }, 'recruitment.source: persistance profils échouée')
+          } finally {
+            client.release()
+          }
+          } catch (connErr) {
+            // Échec d'obtention d'un client (pool indisponible) : non bloquant,
+            // le sourcing reste retourné au client même sans persistance du cache.
+            fastify.log.error({ err: connErr }, 'recruitment.source: pool indisponible pour persistance')
+          }
+        }
+
         // OWASP A09 : trace de l'usage IA (qui, sur quelle offre, modèle, profils)
         pool.query(
           `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
