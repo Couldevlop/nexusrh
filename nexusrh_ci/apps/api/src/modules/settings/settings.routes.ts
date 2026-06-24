@@ -1204,7 +1204,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       try {
-        const res = await pool.query(`SELECT * FROM "${schema}".payroll_rules ORDER BY "order", code`)
+        // La table stocke `label` ; l'API/front exposent `name` → alias.
+        const res = await pool.query(`SELECT *, label AS name FROM "${schema}".payroll_rules ORDER BY "order", code`)
         return reply.send({ data: res.rows })
       } catch (err) {
         fastify.log.error(err)
@@ -1226,13 +1227,17 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       try {
+        // La table payroll_rules a : code, label, type, formula (NOT NULL), order,
+        // is_active. On mappe name→label et, si seul un taux est fourni, on le
+        // traduit en formule (convention moteur : "BRUT * <taux>"). RETURNING
+        // expose label AS name pour le front.
+        const formula = body.formula ?? (body.rate != null ? `BRUT * ${body.rate}` : '0')
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".payroll_rules
-            (code, name, type, formula, rate, ceiling_type, is_active, "order", description)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-        `, [body.code, body.name, body.type, body.formula ?? null,
-            body.rate ?? null, body.ceiling_type ?? null,
-            body.is_active ?? true, body.order ?? 99, body.description ?? null])
+            (code, label, type, formula, "order", is_active)
+          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *, label AS name
+        `, [body.code, body.name, body.type, formula,
+            body.order ?? 99, body.is_active ?? true])
         const created = res.rows[0]
         // OWASP A09 — création règle de paie = action critique (taux cotisation)
         auditLogSettings(
@@ -1264,22 +1269,31 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','formula','rate','ceiling_type','is_active','order','description']
+      // Mappe le modèle API (name/rate/formula) vers les colonnes réelles
+      // (label/formula). 'rate' seul devient une formule "BRUT * <taux>".
+      // ceiling_type/description ne sont pas stockés (colonnes absentes).
+      const colMap: Record<string, string> = { name: 'label', formula: 'formula', is_active: 'is_active', order: '"order"' }
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
-      for (const f of allowed) {
+      for (const [f, col] of Object.entries(colMap)) {
         if (f in body) {
-          updates.push(`${f === 'order' ? '"order"' : f} = $${values.length + 1}`)
+          updates.push(`${col} = $${values.length + 1}`)
           values.push(body[f])
           changedFields[f] = body[f]
         }
+      }
+      // rate fourni sans formula explicite → traduit en formule
+      if ('rate' in body && !('formula' in body) && body['rate'] != null) {
+        updates.push(`formula = $${values.length + 1}`)
+        values.push(`BRUT * ${body['rate']}`)
+        changedFields['formula'] = `BRUT * ${body['rate']}`
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       values.push(id)
       try {
         const res = await pool.query(
-          `UPDATE "${schema}".payroll_rules SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`, values
+          `UPDATE "${schema}".payroll_rules SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *, label AS name`, values
         )
         // OWASP A09 — traçabilité modification règle paie (modif rate = impact direct cotisations)
         auditLogSettings(
