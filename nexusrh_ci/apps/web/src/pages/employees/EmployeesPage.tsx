@@ -31,6 +31,7 @@ const CATEGORIES_CI = [
 ]
 
 interface Department { id: string; name: string }
+interface LegalEntityLite { id: string; name: string; country_code: string | null }
 
 function CreateEmployeeModal({ onClose, onCreated }: {
   onClose: () => void
@@ -39,7 +40,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', gender: '',
     birthDate: '', nni: '', cnpsNumber: '',
-    departmentId: '', jobTitle: '', jobLevel: '', professionalCategory: '',
+    departmentId: '', legalEntityId: '', jobTitle: '', jobLevel: '', professionalCategory: '',
     contractType: 'cdi', hireDate: new Date().toISOString().slice(0, 10),
     baseSalary: '', weeklyHours: '40',
     mobileMoneyProvider: '', mobileMoneyPhone: '',
@@ -57,6 +58,16 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
   })
   const departments = deptData?.data ?? []
+
+  // MPF-005 — rattachement à une filiale (visible uniquement pour les tenants
+  // multi-filiales). Le moteur de paie applique le pack législatif de la filiale.
+  const hasSubsidiaries = useAuthStore((s) => s.tenantConfig?.hasSubsidiaries === true)
+  const { data: leData } = useQuery<{ data: LegalEntityLite[] }>({
+    queryKey: ['settings-legal-entities'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data).catch(() => ({ data: [] })),
+    enabled: hasSubsidiaries,
+  })
+  const legalEntities = leData?.data ?? []
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm({ ...form, [k]: e.target.value })
@@ -84,6 +95,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         ...(form.nni ? { nni: form.nni.trim() } : {}),
         ...(form.cnpsNumber ? { cnpsNumber: form.cnpsNumber.trim() } : {}),
         ...(form.departmentId ? { departmentId: form.departmentId } : {}),
+        ...(form.legalEntityId ? { legalEntityId: form.legalEntityId } : {}),
         ...(form.jobTitle ? { jobTitle: form.jobTitle.trim() } : {}),
         ...(form.jobLevel ? { jobLevel: form.jobLevel } : {}),
         ...(form.professionalCategory ? { professionalCategory: form.professionalCategory.trim() } : {}),
@@ -162,6 +174,17 @@ function CreateEmployeeModal({ onClose, onCreated }: {
                   <option value="">—</option>
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select></div>
+              {hasSubsidiaries && legalEntities.length > 0 && (
+                <div><label className={labelCls}>{t('form.fields.legalEntity', 'Filiale')}</label>
+                  <select className={inputCls} value={form.legalEntityId} onChange={set('legalEntityId')}>
+                    <option value="">—</option>
+                    {legalEntities.map(le => (
+                      <option key={le.id} value={le.id}>
+                        {le.name}{le.country_code ? ` (${le.country_code})` : ''}
+                      </option>
+                    ))}
+                  </select></div>
+              )}
               <div><label className={labelCls}>{t('form.fields.seniority')}</label>
                 <select className={inputCls} value={form.jobLevel} onChange={set('jobLevel')}>
                   <option value="">—</option><option value="junior">{t('form.seniorityOptions.junior')}</option>
@@ -398,7 +421,7 @@ function DeleteModal({
 interface EmployeeDetail {
   id: string; first_name: string; last_name: string; email: string | null
   phone: string | null; gender: string | null; nni: string | null; cnps_number: string | null
-  city: string | null; department_id: string | null; job_title: string | null
+  city: string | null; department_id: string | null; legal_entity_id: string | null; job_title: string | null
   job_level: string | null; professional_category: string | null
   contract_type: string | null; hire_date: string | null; weekly_hours: string | null
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
@@ -425,6 +448,14 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
   })
   const departments = deptData?.data ?? []
+  // MPF-005 — réaffectation de filiale (tenants multi-filiales uniquement)
+  const hasSubsidiaries = useAuthStore((s) => s.tenantConfig?.hasSubsidiaries === true)
+  const { data: leData } = useQuery<{ data: LegalEntityLite[] }>({
+    queryKey: ['settings-legal-entities'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data).catch(() => ({ data: [] })),
+    enabled: hasSubsidiaries,
+  })
+  const legalEntities = leData?.data ?? []
   const emp = detail?.data
 
   // Valeur effective d'un champ : saisie en cours sinon valeur d'origine.
@@ -444,7 +475,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     const orig: Record<string, string> = {
       firstName: emp.first_name ?? '', lastName: emp.last_name ?? '', email: emp.email ?? '',
       phone: emp.phone ?? '', gender: emp.gender ?? '', nni: emp.nni ?? '', cnpsNumber: emp.cnps_number ?? '',
-      city: emp.city ?? '', departmentId: emp.department_id ?? '', jobTitle: emp.job_title ?? '',
+      city: emp.city ?? '', departmentId: emp.department_id ?? '', legalEntityId: emp.legal_entity_id ?? '', jobTitle: emp.job_title ?? '',
       jobLevel: emp.job_level ?? '', professionalCategory: emp.professional_category ?? '',
       contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
       weeklyHours: emp.weekly_hours ?? '', baseSalary: emp.base_salary ?? '',
@@ -527,6 +558,17 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                     <option value="">—</option>
                     {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select></div>
+                {hasSubsidiaries && legalEntities.length > 0 && (
+                  <div><label className={labelCls}>{t('form.fields.legalEntity', 'Filiale')}</label>
+                    <select className={inputCls} value={val('legalEntityId', emp.legal_entity_id)} onChange={set('legalEntityId')}>
+                      <option value="">—</option>
+                      {legalEntities.map(le => (
+                        <option key={le.id} value={le.id}>
+                          {le.name}{le.country_code ? ` (${le.country_code})` : ''}
+                        </option>
+                      ))}
+                    </select></div>
+                )}
                 <div><label className={labelCls}>{t('form.fields.seniority')}</label>
                   <select className={inputCls} value={val('jobLevel', emp.job_level)} onChange={set('jobLevel')}>
                     <option value="">—</option><option value="junior">{t('form.seniorityOptions.junior')}</option>

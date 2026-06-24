@@ -39,6 +39,7 @@
       "city": "City",
       "jobTitle": "Job title",
       "department": "Department",
+      "legalEntity": "Subsidiary",
       "seniority": "Seniority",
       "professionalCategory": "Professional category",
       "contractType": "Contract type",
@@ -131,6 +132,7 @@
       "weeklyHours": "Weekly hours",
       "professionalCategory": "Professional category",
       "department": "Department",
+      "legalEntity": "Subsidiary",
       "manager": "Manager",
       "iban": "Bank details / IBAN",
       "bankName": "Bank"

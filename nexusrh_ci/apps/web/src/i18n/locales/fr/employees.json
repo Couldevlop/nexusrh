@@ -39,6 +39,7 @@
       "city": "Ville",
       "jobTitle": "Intitulé du poste",
       "department": "Département",
+      "legalEntity": "Filiale",
       "seniority": "Séniorité",
       "professionalCategory": "Catégorie professionnelle",
       "contractType": "Type de contrat",
@@ -131,6 +132,7 @@
       "weeklyHours": "Heures hebdomadaires",
       "professionalCategory": "Catégorie professionnelle",
       "department": "Département",
+      "legalEntity": "Filiale",
       "manager": "Manager",
       "iban": "RIB / IBAN",
       "bankName": "Banque"

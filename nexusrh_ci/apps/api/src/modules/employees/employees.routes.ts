@@ -48,6 +48,8 @@ const createEmployeeSchema = z.object({
   mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().optional(),
   managerId:           z.string().uuid().optional(),
+  // MPF-005 — rattachement à une filiale (legal_entity) pour la paie multi-pays
+  legalEntityId:       z.string().uuid().optional(),
   jobTitle:            z.string().max(200).optional(),
   jobLevel:            z.string().max(50).optional(),
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
@@ -81,6 +83,8 @@ const patchEmployeeSchema = z.object({
   mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().nullable().optional(),
   managerId:           z.string().uuid().nullable().optional(),
+  // MPF-005 — réaffectation d'un employé à une autre filiale (ou détachement)
+  legalEntityId:       z.string().uuid().nullable().optional(),
   jobTitle:            z.string().max(200).optional(),
   jobLevel:            z.string().max(50).optional(),
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
@@ -269,17 +273,17 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           `INSERT INTO "${schema}".employees
              (first_name, last_name, email, phone, birth_date, gender,
               nni, cnps_number, mobile_money_provider, mobile_money_phone,
-              department_id, manager_id, job_title, job_level, contract_type,
+              department_id, manager_id, legal_entity_id, job_title, job_level, contract_type,
               hire_date, base_salary, weekly_hours, professional_category,
               iban, bank_name, payment_method, city, marital_status, children_count)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
            RETURNING *`,
           [
             body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
             body.birthDate ?? null, body.gender ?? null,
             encryptIfPresent(body.nni), body.cnpsNumber ?? null,
             body.mobileMoneyProvider ?? null, body.mobileMoneyPhone ?? null,
-            body.departmentId ?? null, body.managerId ?? null,
+            body.departmentId ?? null, body.managerId ?? null, body.legalEntityId ?? null,
             body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
             body.hireDate ?? null, body.baseSalary,
             // Base légale CI : 40h hebdomadaires par défaut
