@@ -473,6 +473,16 @@ describe('PATCH /expenses/:id/pay — remboursement', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('provider Mobile Money inconnu → 400 (avant tout accès DB)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/pay`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { provider: 'bitcoin' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it('note non remboursable (pas approved) : 400', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE 0 rows
     const token = tokenFor(app, 'hr_manager')

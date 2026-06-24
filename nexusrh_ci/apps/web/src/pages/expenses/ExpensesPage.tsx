@@ -27,6 +27,9 @@ export default function ExpensesPage() {
   const [statusFilter, setStatusFilter] = useState('submitted')
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [payId, setPayId] = useState<string | null>(null)
+  const [payProvider, setPayProvider] = useState('wave')
+  const [payError, setPayError] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<{ data: ExpenseReport[] }>({
     queryKey: ['expenses', statusFilter],
@@ -47,9 +50,18 @@ export default function ExpensesPage() {
     },
   })
 
+  // FRA-006 — remboursement Mobile Money : on transmet le provider choisi.
   const payMut = useMutation({
-    mutationFn: (id: string) => api.patch(`/expenses/${id}/pay`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+    mutationFn: ({ id, provider }: { id: string; provider?: string }) =>
+      api.patch(`/expenses/${id}/pay`, provider ? { provider } : {}),
+    onSuccess: () => {
+      setPayId(null)
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+    onError: (err: unknown) => {
+      const apiErr = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setPayError(apiErr ?? t('payModal.error', { defaultValue: 'Échec du remboursement.' }))
+    },
   })
 
   const reports = data?.data ?? []
@@ -138,8 +150,8 @@ export default function ExpensesPage() {
                         </>
                       )}
                       {r.status === 'approved' && (
-                        <button onClick={() => payMut.mutate(r.id)} disabled={payMut.isPending}
-                          className="flex items-center gap-1 rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50">
+                        <button onClick={() => { setPayError(null); setPayProvider('wave'); setPayId(r.id) }}
+                          className="flex items-center gap-1 rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200">
                           <CreditCard className="h-3 w-3" /> {t('actions.pay')}
                         </button>
                       )}
@@ -176,6 +188,35 @@ export default function ExpensesPage() {
                 disabled={rejectMut.isPending}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
                 {t('rejectModal.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FRA-006 — Modal remboursement Mobile Money */}
+      {payId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPayId(null)}>
+          <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold mb-3">{t('payModal.title', { defaultValue: 'Rembourser via Mobile Money' })}</h3>
+            <label className="text-xs font-medium text-muted-foreground">{t('payModal.provider', { defaultValue: 'Opérateur' })}</label>
+            <select value={payProvider} onChange={e => setPayProvider(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring">
+              <option value="wave">Wave</option>
+              <option value="mtn_momo">MTN MoMo</option>
+              <option value="orange_money">Orange Money</option>
+            </select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t('payModal.hint', { defaultValue: 'Le virement utilise le numéro Mobile Money enregistré du salarié.' })}
+            </p>
+            {payError && <p className="mt-2 text-xs text-red-600">{payError}</p>}
+            <div className="mt-4 flex gap-2 justify-end">
+              <button onClick={() => setPayId(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('rejectModal.cancel')}</button>
+              <button onClick={() => payMut.mutate({ id: payId, provider: payProvider })}
+                disabled={payMut.isPending}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
+                {t('payModal.confirm', { defaultValue: 'Confirmer le remboursement' })}
               </button>
             </div>
           </div>
