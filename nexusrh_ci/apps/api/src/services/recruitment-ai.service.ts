@@ -480,12 +480,14 @@ export const CURRENCY_BY_COUNTRY: Record<string, string> = {
   CD: 'CDF', FR: 'EUR',
 }
 
-// Devise par défaut à appliquer : devise explicite de l'offre, sinon devise du
-// pays cible principal, sinon XOF. Utilisée à la fois pour construire le prompt
-// et comme valeur de repli lors de la normalisation (si l'IA omet la devise).
+// Devise par défaut à appliquer pour le sourcing : la devise du PAYS CIBLE prime
+// (les profils sourcés sont dans ce pays — salaires dans la devise locale :
+// NG→NGN, CM→XAF, CI→XOF). Repli sur la devise explicite de l'offre si le pays
+// n'a pas de devise connue, puis XOF. Utilisée à la fois pour construire le
+// prompt et comme valeur de repli lors de la normalisation (si l'IA omet la devise).
 export function resolveDefaultCurrency(ctx: SourcingContext, countries: string[]): string {
   const primaryCountry = countries[0] ?? 'CI'
-  return ctx.currency ?? CURRENCY_BY_COUNTRY[primaryCountry] ?? 'XOF'
+  return CURRENCY_BY_COUNTRY[primaryCountry] ?? ctx.currency ?? 'XOF'
 }
 
 function buildSourcingPrompt(
