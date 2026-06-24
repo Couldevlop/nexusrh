@@ -78,7 +78,7 @@ describe('GET /settings/legislation', () => {
     expect(data.usable).toBe(true)
     expect(data.pack.smigMensuel).toBe(75_000)
     expect(data.pack.labelCaisseSociale).toBe('CNPS')
-    expect(data.available).toHaveLength(15)
+    expect(data.available).toHaveLength(16)
   })
 
   it('un tenant configuré sur le Sénégal voit le pack SEN (utilisable)', async () => {

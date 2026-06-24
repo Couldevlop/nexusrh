@@ -1220,9 +1220,6 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 // Les codes `pack` doivent correspondre EXACTEMENT aux clés du moteur de paie
 // (LEGISLATION_PACKS dans legislation-packs.ts : ISO-3 + '-2024'). Un code non
 // reconnu retomberait silencieusement sur le pack CIV par défaut → paie fausse.
-// Ghana (GHA) n'a pas encore de pack paie modélisé : il reste au catalogue
-// commercial (onglet Multi-législatif super_admin) mais n'est pas proposé comme
-// filiale tant que la paie ghanéenne n'est pas implémentée.
 const COUNTRY_OPTIONS: Array<{ code: string; flag: string; pack: string; currency: string }> = [
   { code: 'CIV', flag: '🇨🇮', pack: 'CIV-2024', currency: 'XOF' },
   { code: 'SEN', flag: '🇸🇳', pack: 'SEN-2024', currency: 'XOF' },
@@ -1234,6 +1231,7 @@ const COUNTRY_OPTIONS: Array<{ code: string; flag: string; pack: string; currenc
   { code: 'CMR', flag: '🇨🇲', pack: 'CMR-2024', currency: 'XAF' },
   { code: 'TCD', flag: '🇹🇩', pack: 'TCD-2024', currency: 'XAF' },
   { code: 'NGA', flag: '🇳🇬', pack: 'NGA-2024', currency: 'NGN' },
+  { code: 'GHA', flag: '🇬🇭', pack: 'GHA-2024', currency: 'GHS' },
 ]
 
 interface LegalEntityForm {

@@ -32,8 +32,8 @@ export interface LegislationPack {
   countryCode: string
   /** Année de référence des valeurs */
   year: number
-  /** Devise paie (XOF pour UEMOA, XAF pour CEMAC, NGN pour Nigeria) */
-  currency: 'XOF' | 'GNF' | 'EUR' | 'XAF' | 'NGN'
+  /** Devise paie (XOF pour UEMOA, XAF pour CEMAC, NGN pour Nigeria, GHS pour Ghana) */
+  currency: 'XOF' | 'GNF' | 'EUR' | 'XAF' | 'NGN' | 'GHS'
 
   /** Échelle du barème impôt : mensuel (CI/BEN) ou annuel (TGO/TCD/NGA) */
   bracketScale: 'monthly' | 'annual'
@@ -628,6 +628,62 @@ export const NGA_2024: LegislationPack = {
          'prévoit pas — 14 jours appliqués au civil service fédéral. À valider.',
 }
 
+// Ghana — PAYE (GRA) + SSNIT 2024 (CEDEAO anglophone, GHS). Non-OHADA, structure
+// proche du Nigeria (PAYE + caisse contributive). status='active'.
+export const GHA_2024: LegislationPack = {
+  code: 'GHA-2024',
+  name: 'Ghana — PAYE + SSNIT 2024',
+  countryCode: 'GHA',
+  year: 2024,
+  currency: 'GHS',
+  bracketScale: 'monthly',
+  status: 'active',
+  smigMensuel: 490,                          // ~ NDMW 18,15 GHS/j × 27 j (GH 2024)
+  plafondCnpsRetraite: 0,                     // SSNIT max insurable earning non modélisé (à valider)
+  plafondCnpsAtPf: 0,
+  tauxCotisationRetraiteSalarie: 0.055,       // SSNIT part salarié 5,5 % (Act 766)
+  tauxCotisationRetraitePatronal: 0.13,       // SSNIT part employeur 13 % (Tier 1 + Tier 2 = 18,5 %)
+  tauxCotisationPfPatronal: 0.0,
+  tauxCotisationMaternitePatronal: 0.0,
+  tauxAtDefaultPatronal: 0.0,                 // pas de branche AT séparée (Workmen's Comp. à charge employeur)
+  abattementImpotSalaire: 0.0,               // Ghana : pas d'abattement %, réliefs spécifiques (non modélisés)
+  tranchesImpotSalaire: [
+    // Bornes MENSUELLES en GHS — source : GRA PAYE 2024 (barème résidents)
+    { min: 0,        max: 490,     taux: 0.00 },
+    { min: 491,      max: 600,     taux: 0.05 },
+    { min: 601,      max: 730,     taux: 0.10 },
+    { min: 731,      max: 3_730,   taux: 0.175 },
+    { min: 3_731,    max: 20_125,  taux: 0.25 },
+    { min: 20_126,   max: 50_416,  taux: 0.30 },
+    { min: 50_417,   max: Infinity, taux: 0.35 },
+  ],
+  creditImpotMarieSansEnfant: 0,
+  creditImpotParEnfant: [0, 0, 0],
+  labelImpotSalaire: 'PAYE — Pay As You Earn (Income Tax)',
+  labelCaisseSociale: 'SSNIT',
+  // Labour Act 2003 (Act 651)
+  leaveRules: {
+    maternityWeeks: 12,                       // Act 651 s.57 — 12 semaines (14 si complications/multiples)
+    maternitySplit: { before: 0, after: 12 },
+    maternityPayRate: 1.0,                    // plein salaire
+    maternityFunding: 'employer',
+    paternityDays: 0,                         // non statutaire
+    workAccidentDayJEmployer: true,           // Workmen's Compensation Act — employeur responsable
+    workAccidentIjssRate: 1.0,
+    workAccidentMaxMonths: 12,
+    sickLeaveMaintien: [{ minYears: 0, rate: 1.0 }],
+    annualLeaveDaysPerMonth: 1.25,            // 15 j ouvrables/an (Act 651 s.20)
+    bereavementDays: 3,
+    workingDaysPerWeek: 5,                    // 40h/sem, lun-ven
+    overtimeRates: { weekly: 0.5, night: 0.5, sunday: 1.0, holiday: 1.0 },
+  },
+  notes: 'Sources : Ghana Revenue Authority (PAYE 2024, barème résidents converti en mensuel), ' +
+         'SSNIT (Act 766 : 18,5 % = 5,5 % salarié + 13 % employeur, Tier 1+2), Labour Act 2003 ' +
+         '(Act 651). NON MODÉLISÉ / À VALIDER PAR EXPERT LOCAL : plafond SSNIT (max insurable ' +
+         'earning ~GHS 52 000/mois), réliefs fiscaux (mariage, enfants, formation, prêt immo), ' +
+         'NHF/NHIL, Tier 3 facultatif. Devise GHS (Cedi).',
+}
+
 // ─── Packs CEMAC + UEMOA complémentaires (campagne 2026-06-23) ────────────────
 // Valeurs recherchées sur sources officielles/PwC/CLEISS, documentées dans
 // docs/referentiel-paie-afrique.md (confiance + sources par pays). status='stub'
@@ -829,6 +885,7 @@ export const LEGISLATION_PACKS: Record<string, LegislationPack> = {
   'NER-2024': NER_2024,
   'TCD-2024': TCD_2024,
   'NGA-2024': NGA_2024,
+  'GHA-2024': GHA_2024,
   'CMR-2024': CMR_2024,
   'GAB-2024': GAB_2024,
   'COG-2024': COG_2024,
@@ -851,7 +908,7 @@ const COUNTRY_TO_PACK_CODE: Record<string, string> = {
   CIV: 'CIV-2024', BEN: 'BEN-2024', TGO: 'TGO-2024', BFA: 'BFA-2024',
   SEN: 'SEN-2024', MLI: 'MLI-2024', NER: 'NER-2024', TCD: 'TCD-2024', NGA: 'NGA-2024',
   CMR: 'CMR-2024', GAB: 'GAB-2024', COG: 'COG-2024', CAF: 'CAF-2024',
-  GNQ: 'GNQ-2024', GNB: 'GNB-2024',
+  GNQ: 'GNQ-2024', GNB: 'GNB-2024', GHA: 'GHA-2024',
 }
 
 /** Pack législatif d'un pays ISO-3 (null si le pays n'est pas pris en charge). */
@@ -871,7 +928,7 @@ export const COUNTRY_LABELS: Record<string, string> = {
   CIV: 'Côte d\'Ivoire', BEN: 'Bénin', TGO: 'Togo', BFA: 'Burkina Faso',
   SEN: 'Sénégal', MLI: 'Mali', NER: 'Niger', TCD: 'Tchad', NGA: 'Nigeria',
   CMR: 'Cameroun', GAB: 'Gabon', COG: 'Congo', CAF: 'Centrafrique',
-  GNQ: 'Guinée équatoriale', GNB: 'Guinée-Bissau',
+  GNQ: 'Guinée équatoriale', GNB: 'Guinée-Bissau', GHA: 'Ghana',
 }
 
 /**

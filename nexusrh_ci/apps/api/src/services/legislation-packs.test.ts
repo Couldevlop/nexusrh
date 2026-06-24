@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   CIV_2024, BEN_2024, TGO_2024, BFA_2024, SEN_2024, MLI_2024, NER_2024,
-  TCD_2024, NGA_2024,
+  TCD_2024, NGA_2024, GHA_2024,
   LEGISLATION_PACKS, DEFAULT_LEGISLATION_PACK,
   getLegislationPack, listLegislationPacks,
   getPackByCountry, isSupportedCountry, listCountries,
@@ -89,21 +89,22 @@ describe('LegislationPack — garde-fou stub : refus de calcul', () => {
 })
 
 describe('LegislationPack — inventaire complet', () => {
-  it('exactement 15 packs déclarés (UEMOA + CEMAC + Nigeria)', () => {
-    expect(Object.keys(LEGISLATION_PACKS)).toHaveLength(15)
+  it('exactement 16 packs déclarés (UEMOA + CEMAC + Nigeria + Ghana)', () => {
+    expect(Object.keys(LEGISLATION_PACKS)).toHaveLength(16)
   })
 
-  it('les pays UEMOA + CEMAC + Nigeria sont présents', () => {
+  it('les pays UEMOA + CEMAC + Nigeria + Ghana sont présents', () => {
     const codes = Object.keys(LEGISLATION_PACKS)
     for (const c of [
       'CIV-2024', 'BEN-2024', 'TGO-2024', 'BFA-2024', 'SEN-2024', 'MLI-2024', 'NER-2024',
       'TCD-2024', 'NGA-2024', 'CMR-2024', 'GAB-2024', 'COG-2024', 'CAF-2024', 'GNQ-2024', 'GNB-2024',
+      'GHA-2024',
     ]) expect(codes).toContain(c)
   })
 
-  it('les 15 packs sont actifs (valeurs sourcées appliquées)', () => {
+  it('les 16 packs sont actifs (valeurs sourcées appliquées)', () => {
     const actifs = Object.values(LEGISLATION_PACKS).filter(p => p.status === 'active')
-    expect(actifs).toHaveLength(15)
+    expect(actifs).toHaveLength(16)
   })
 
   it('Tchad utilise XAF (CEMAC, pas XOF UEMOA)', () => {
@@ -112,6 +113,14 @@ describe('LegislationPack — inventaire complet', () => {
 
   it('Nigeria utilise NGN (hors zone franc)', () => {
     expect(NGA_2024.currency).toBe('NGN')
+  })
+
+  it('Ghana utilise GHS (CEDEAO anglophone, hors zone franc)', () => {
+    expect(GHA_2024.currency).toBe('GHS')
+    expect(GHA_2024.status).toBe('active')
+    expect(GHA_2024.labelCaisseSociale).toBe('SSNIT')
+    expect(getPackByCountry('GHA')).toBe(GHA_2024)
+    expect(isSupportedCountry('GHA')).toBe(true)
   })
 
   it('chaque pack a un libellé impôt et caisse non vide', () => {
@@ -123,7 +132,7 @@ describe('LegislationPack — inventaire complet', () => {
 
   it('listLegislationPacks expose les métadonnées (sans tranches/credits)', () => {
     const list = listLegislationPacks()
-    expect(list).toHaveLength(15)
+    expect(list).toHaveLength(16)
     const civ = list.find(p => p.code === 'CIV-2024')!
     expect(civ).toBeDefined()
     expect(civ.status).toBe('active')
@@ -166,10 +175,10 @@ describe('LegislationPack — résolution par PAYS (paramétrage tenant)', () =>
     expect(isSupportedCountry(null)).toBe(false)
   })
 
-  it('listCountries expose 15 pays, tous actifs', () => {
+  it('listCountries expose 16 pays, tous actifs', () => {
     const list = listCountries()
-    expect(list).toHaveLength(15)
-    expect(list.filter(c => c.status === 'active')).toHaveLength(15)
+    expect(list).toHaveLength(16)
+    expect(list.filter(c => c.status === 'active')).toHaveLength(16)
     // chaque entrée porte SMIG + devise + packCode
     for (const c of list) {
       expect(c.smigMensuel).toBeGreaterThan(0)
