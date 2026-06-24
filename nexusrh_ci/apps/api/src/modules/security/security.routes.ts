@@ -99,9 +99,20 @@ const securityRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const r = await rawPool.query(`SELECT * FROM "${schema}".sso_config WHERE id = 1`)
       const row = r.rows[0] as Record<string, unknown> | undefined
-      if (!row) return reply.send({ data: { enabled: false, provider: 'oidc', domains: [], defaultRole: 'employee', jitProvisioning: false, groupMappings: [], secretSet: false } })
-      const { client_secret_enc, ...rest } = row
-      return reply.send({ data: { ...rest, secretSet: !!client_secret_enc } })
+      if (!row) return reply.send({ data: { enabled: false, provider: 'oidc', issuer: null, clientId: null, domains: [], defaultRole: 'employee', jitProvisioning: false, groupMappings: [], secretSet: false } })
+      // Réponse TOUJOURS en camelCase (cohérente avec le cas par défaut + le PUT) :
+      // ne JAMAIS exposer les colonnes DB brutes (snake_case) qui cassaient le front.
+      return reply.send({ data: {
+        enabled: row.enabled ?? false,
+        provider: row.provider ?? 'oidc',
+        issuer: row.issuer ?? null,
+        clientId: row.client_id ?? null,
+        domains: row.domains ?? [],
+        defaultRole: row.default_role ?? 'employee',
+        jitProvisioning: row.jit_provisioning ?? false,
+        groupMappings: row.group_mappings ?? [],
+        secretSet: !!row.client_secret_enc,
+      } })
     },
   })
 

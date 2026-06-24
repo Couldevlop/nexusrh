@@ -14,8 +14,8 @@ const CATEGORIES = ['auth', 'rbac', 'data_access', 'export', 'config', 'admin'] 
 
 interface GroupMapping { group: string; role: string }
 interface SsoConfig {
-  enabled: boolean; provider: string; issuer?: string | null; client_id?: string | null
-  domains: string[]; default_role: string; jit_provisioning: boolean; group_mappings: GroupMapping[]; secretSet: boolean
+  enabled: boolean; provider: string; issuer?: string | null; clientId?: string | null
+  domains: string[]; defaultRole: string; jitProvisioning: boolean; groupMappings: GroupMapping[]; secretSet: boolean
 }
 interface SiemConfig {
   enabled: boolean; transport: string; endpoint?: string | null; format: string; categories: string[]; secretSet: boolean
@@ -48,9 +48,9 @@ export default function SecurityPage() {
     mutationFn: async () => {
       if (!sso) return
       await api.put('/security/sso-config', {
-        enabled: sso.enabled, provider: sso.provider, issuer: sso.issuer || undefined, clientId: sso.client_id || undefined,
-        clientSecret: ssoSecret || undefined, domains: sso.domains, defaultRole: sso.default_role,
-        jitProvisioning: sso.jit_provisioning, groupMappings: sso.group_mappings.filter((m) => m.group.trim()),
+        enabled: sso.enabled, provider: sso.provider, issuer: sso.issuer || undefined, clientId: sso.clientId || undefined,
+        clientSecret: ssoSecret || undefined, domains: sso.domains, defaultRole: sso.defaultRole,
+        jitProvisioning: sso.jitProvisioning, groupMappings: sso.groupMappings.filter((m) => m.group.trim()),
       })
     },
     onSuccess: () => { setSsoSecret(''); qc.invalidateQueries({ queryKey: ['security', 'sso'] }); setFlash({ ok: true, msg: t('saved') }) },
@@ -132,7 +132,7 @@ export default function SecurityPage() {
             <input type="url" placeholder={t('sso.issuer')} value={sso.issuer ?? ''} onChange={(e) => setSso({ ...sso, issuer: e.target.value })} className={field} />
             <button type="button" disabled={!sso.issuer || testSso.isPending} onClick={() => testSso.mutate()} className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs hover:bg-accent disabled:opacity-50">{testSso.isPending ? t('sso.testing') : t('sso.test')}</button>
           </div>
-          <input type="text" placeholder={t('sso.clientId')} value={sso.client_id ?? ''} onChange={(e) => setSso({ ...sso, client_id: e.target.value })} className={field} />
+          <input type="text" placeholder={t('sso.clientId')} value={sso.clientId ?? ''} onChange={(e) => setSso({ ...sso, clientId: e.target.value })} className={field} />
           <input type="password" placeholder={sso.secretSet ? t('sso.secretSet') : t('sso.clientSecret')} value={ssoSecret} onChange={(e) => setSsoSecret(e.target.value)} className={field} />
           <div>
             <label className="text-xs font-medium text-muted-foreground">{t('sso.domains')}</label>
@@ -141,25 +141,25 @@ export default function SecurityPage() {
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-xs font-medium text-muted-foreground">{t('sso.defaultRole')}</label>
-              <select value={sso.default_role} onChange={(e) => setSso({ ...sso, default_role: e.target.value })} className={field}>
+              <select value={sso.defaultRole} onChange={(e) => setSso({ ...sso, defaultRole: e.target.value })} className={field}>
                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={sso.jit_provisioning} onChange={(e) => setSso({ ...sso, jit_provisioning: e.target.checked })} /> {t('sso.jit')}</label>
+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={sso.jitProvisioning} onChange={(e) => setSso({ ...sso, jitProvisioning: e.target.checked })} /> {t('sso.jit')}</label>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">{t('sso.groupMappings')}</label>
-            {sso.group_mappings.map((m, i) => (
+            {sso.groupMappings.map((m, i) => (
               <div key={i} className="flex gap-2">
-                <input type="text" placeholder={t('sso.group')} value={m.group} onChange={(e) => setSso({ ...sso, group_mappings: sso.group_mappings.map((x, j) => j === i ? { ...x, group: e.target.value } : x) })} className={field} />
-                <select value={m.role} onChange={(e) => setSso({ ...sso, group_mappings: sso.group_mappings.map((x, j) => j === i ? { ...x, role: e.target.value } : x) })} className={field}>
+                <input type="text" placeholder={t('sso.group')} value={m.group} onChange={(e) => setSso({ ...sso, groupMappings: sso.groupMappings.map((x, j) => j === i ? { ...x, group: e.target.value } : x) })} className={field} />
+                <select value={m.role} onChange={(e) => setSso({ ...sso, groupMappings: sso.groupMappings.map((x, j) => j === i ? { ...x, role: e.target.value } : x) })} className={field}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
-                <button type="button" onClick={() => setSso({ ...sso, group_mappings: sso.group_mappings.filter((_, j) => j !== i) })} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setSso({ ...sso, groupMappings: sso.groupMappings.filter((_, j) => j !== i) })} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
-            <button type="button" onClick={() => setSso({ ...sso, group_mappings: [...sso.group_mappings, { group: '', role: 'employee' }] })} className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"><Plus className="h-3.5 w-3.5" /> {t('sso.addMapping')}</button>
+            <button type="button" onClick={() => setSso({ ...sso, groupMappings: [...sso.groupMappings, { group: '', role: 'employee' }] })} className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"><Plus className="h-3.5 w-3.5" /> {t('sso.addMapping')}</button>
           </div>
 
           <div className="flex justify-end">
