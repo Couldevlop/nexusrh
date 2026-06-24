@@ -676,11 +676,11 @@ DGI         : CI-DGI-7890
 RCCM        : CI-ABJ-2005-B-123456
 
 Utilisateurs tenant :
-  admin@sotra-ci.com    / Admin1234!  → admin
-  drh@sotra-ci.com      / Admin1234!  → hr_manager
-  chef.perso@sotra.ci   / Admin1234!  → hr_officer
-  manager@sotra-ci.com  / Admin1234!  → manager (département Exploitation)
-  employe@sotra-ci.com  / Admin1234!  → employee (lié à "Kouassi Jean-Paul")
+  admin@sotra.ci    / Admin1234!  → admin
+  rh@sotra.ci       / Admin1234!  → hr_manager
+  chef.perso@sotra.ci / Admin1234!  → hr_officer
+  manager@sotra.ci  / Admin1234!  → manager (département Exploitation)
+  employe@sotra.ci  / Admin1234!  → employee (lié à "Kouassi Jean-Paul")
 
 80 employés (noms ivoiriens réalistes) :
   Exploitation    : 35 (chauffeurs, contrôleurs, chefs de ligne)
@@ -929,17 +929,22 @@ pnpm run dev
 
 | Email                       | Mot de passe      | Redirige vers         |
 | --------------------------- | ----------------- | --------------------- |
-| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | `/platform/dashboard` |
+| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` (base fraîche) — **en prod, mot de passe custom** | `/platform/dashboard` |
 
-### SOTRA — thème orange `#E85D04`
+> ⚠️ Le super_admin est seedé avec `ON CONFLICT DO NOTHING` : en PROD le mot de passe
+> a été changé et survit aux re-seeds. `SuperAdmin1234!` ne fonctionne que sur une base
+> neuve. En prod, utiliser le mot de passe custom (cf. gestion des secrets).
+
+### SOTRA — thème orange `#E85D04` · domaine **`@sotra.ci`** (pas `sotra-ci.com`)
 
 | Email                  | Mot de passe | Rôle       | Redirige vers |
 | ---------------------- | ------------ | ---------- | ------------- |
-| `admin@sotra-ci.com`   | `Admin1234!` | admin      | `/dashboard`  |
-| `drh@sotra-ci.com`     | `Admin1234!` | hr_manager | `/dashboard`  |
+| `admin@sotra.ci`       | `Admin1234!` | admin      | `/dashboard`  |
+| `rh@sotra.ci`          | `Admin1234!` | hr_manager | `/dashboard`  |
 | `chef.perso@sotra.ci`  | `Admin1234!` | hr_officer | `/dashboard`  |
-| `manager@sotra-ci.com` | `Admin1234!` | manager    | `/dashboard`  |
-| `employe@sotra-ci.com` | `Admin1234!` | employee   | `/mon-espace` |
+| `manager@sotra.ci`     | `Admin1234!` | manager    | `/dashboard`  |
+| `employe@sotra.ci`     | `Admin1234!` | employee   | `/mon-espace` |
+| `dg@sotra.ci`          | `Admin1234!` | dg         | `/dashboard`  |
 
 ### Cabinet Expertise CI — thème bleu `#1D4ED8`
 
