@@ -14,7 +14,7 @@ import {
   Wand2, Mail, Linkedin, Loader2, FileText,
   Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
   Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
-  Link2, Share2, Copy, MoreHorizontal,
+  Link2, Share2, Copy, MoreHorizontal, UserPlus, Ban,
 } from 'lucide-react'
 
 interface Department { id: string; name: string }
@@ -253,8 +253,19 @@ export default function RecruitmentPage() {
   })
   const [editingJob, setEditingJob] = useState<Job | null>(null)
   const [sharingJob, setSharingJob] = useState<Job | null>(null)
+  const [addCandidateJob, setAddCandidateJob] = useState<Job | null>(null)  // REC-004
   const [jobFilter, setJobFilter] = useState<'all' | 'external' | 'internal' | 'both' | 'closed'>('all')
   const [copyToast, setCopyToast] = useState<string | null>(null)
+
+  // REC-004 — création manuelle d'une candidature (espace RH) sur une offre
+  const createApplication = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.post('/recruitment/applications', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
+      queryClient.invalidateQueries({ queryKey: ['recruitment-jobs'] })
+      setAddCandidateJob(null)
+    },
+  })
 
   const updateStage = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
@@ -407,7 +418,12 @@ export default function RecruitmentPage() {
                           <td className="p-3 text-xs">
                             {job.salary_min && job.salary_max
                               ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">
-                                  {formatFCFA(parseInt(job.salary_min))} – {formatFCFA(parseInt(job.salary_max))}
+                                  {/* REC-008 — « De X à Y FCFA », entiers, séparateur de milliers, zéro décimale */}
+                                  {t('table.salaryRange', {
+                                    min: parseInt(job.salary_min).toLocaleString('fr-FR'),
+                                    max: parseInt(job.salary_max).toLocaleString('fr-FR'),
+                                    defaultValue: 'De {{min}} à {{max}} FCFA',
+                                  })}
                                 </span>
                               : <span className="text-muted-foreground">—</span>}
                           </td>
@@ -452,6 +468,25 @@ export default function RecruitmentPage() {
                                 title={job.status === 'open' ? t('table.pause') : t('table.reopen')}>
                                 {job.status === 'open' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                               </button>
+                              {/* REC-004 — Ajouter une candidature à cette offre */}
+                              <button onClick={() => setAddCandidateJob(job)}
+                                className="rounded-md p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                                title={t('table.addCandidate', 'Ajouter une candidature')}>
+                                <UserPlus className="h-4 w-4" />
+                              </button>
+                              {/* REC-002 — Clôturer l'offre (action directe, distincte de Pause) */}
+                              {job.status !== 'closed' && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(t('table.closeConfirm', { title: job.title, defaultValue: 'Clôturer l\'offre « {{title}} » ? Elle ne sera plus visible dans les offres actives.' }))) {
+                                      updateJob.mutate({ id: job.id, body: { status: 'closed' } })
+                                    }
+                                  }}
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                                  title={t('table.close', 'Clôturer l\'offre')}>
+                                  <Ban className="h-4 w-4" />
+                                </button>
+                              )}
                               <button onClick={() => setEditingJob(job)}
                                 className="rounded-md p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
                                 title={t('table.edit')}>
@@ -1143,6 +1178,16 @@ export default function RecruitmentPage() {
         />
       )}
 
+      {addCandidateJob && (
+        <AddCandidateModal
+          job={addCandidateJob}
+          submitting={createApplication.isPending}
+          error={createApplication.isError}
+          onClose={() => setAddCandidateJob(null)}
+          onSubmit={(payload) => createApplication.mutate(payload)}
+        />
+      )}
+
       {copyToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle className="h-4 w-4 text-emerald-400" />
@@ -1163,6 +1208,98 @@ export default function RecruitmentPage() {
 }
 
 // ── Modale création offre ───────────────────────────────────────────────────────
+// REC-004 — Modal d'ajout manuel d'une candidature (espace RH) sur une offre.
+function AddCandidateModal({ job, submitting, error, onClose, onSubmit }: {
+  job: Job
+  submitting: boolean
+  error: boolean
+  onClose: () => void
+  onSubmit: (payload: Record<string, unknown>) => void
+}) {
+  const { t } = useTranslation('recruitment')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [coverLetter, setCoverLetter] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+  const CI_PHONE = /^\+225\d{8,10}$/
+
+  const submit = () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      setLocalError(t('addCandidate.nameRequired', 'Prénom et nom requis.')); return
+    }
+    const cleanPhone = phone.replace(/\s/g, '')
+    if (cleanPhone && !CI_PHONE.test(cleanPhone)) {
+      setLocalError(t('addCandidate.phoneInvalid', 'Téléphone CI invalide : +225 suivi de 8 à 10 chiffres.')); return
+    }
+    setLocalError(null)
+    onSubmit({
+      job_id: job.id,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      ...(email.trim() ? { email: email.trim() } : {}),
+      ...(cleanPhone ? { phone: cleanPhone } : {}),
+      ...(coverLetter.trim() ? { cover_letter: coverLetter.trim() } : {}),
+      source: 'manual',
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[min(90vh,720px)] flex flex-col rounded-xl bg-card shadow-xl my-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-4">
+          <div>
+            <h3 className="font-semibold">{t('addCandidate.title', 'Ajouter une candidature')}</h3>
+            <p className="text-xs text-muted-foreground">{job.title}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><XCircle className="h-5 w-5" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">{t('addCandidate.firstName', 'Prénom')} *</label>
+              <input value={firstName} onChange={e => { setFirstName(e.target.value); setLocalError(null) }}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">{t('addCandidate.lastName', 'Nom')} *</label>
+              <input value={lastName} onChange={e => { setLastName(e.target.value); setLocalError(null) }}
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('addCandidate.email', 'Email')}</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('addCandidate.phone', 'Téléphone (CI)')}</label>
+            <input value={phone} onChange={e => { setPhone(e.target.value); setLocalError(null) }} placeholder="+225 07 12 34 56 78"
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('addCandidate.coverLetter', 'Note / lettre de motivation')}</label>
+            <textarea value={coverLetter} onChange={e => setCoverLetter(e.target.value)} rows={3}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          {(localError || error) && (
+            <p className="text-xs text-destructive">{localError ?? t('addCandidate.serverError', 'Échec de la création — vérifiez les champs.')}</p>
+          )}
+        </div>
+        <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-border bg-card px-5 py-3">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('common.cancel', 'Annuler')}</button>
+          <button onClick={submit} disabled={submitting}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+            {t('addCandidate.create', 'Créer la candidature')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NewJobModal({
   form, setForm, departments, onClose, onSubmit, submitting,
 }: {
