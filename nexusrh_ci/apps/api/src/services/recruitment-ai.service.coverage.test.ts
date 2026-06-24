@@ -343,16 +343,28 @@ describe('sourceProfiles — sélection de modèle', () => {
 
 // ── buildSourcingRecommendation — toutes les branches ────────────────────────
 describe('sourceProfilesCompare — recommandations & garde-fous', () => {
-  it('clé Claude absente → throw', async () => {
+  it('clé Claude absente → bascule sur deux paliers Mistral (pas de throw)', async () => {
     mutableConfig.ai.apiKey = undefined
-    await expect(sourceProfilesCompare(SRC_JOB, ['LinkedIn'], 3, ['CI']))
-      .rejects.toThrow(/Clé Anthropic non configurée/)
+    // Une seule clé (Mistral) : la comparaison reste fonctionnelle en opposant
+    // deux paliers du même fournisseur (Small vs Large). Deux appels fetch.
+    const mistralOk = () => new Response(
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(RICH) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 100 },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mistralOk()).mockResolvedValueOnce(mistralOk())
+    const r = await sourceProfilesCompare(SRC_JOB, ['LinkedIn'], 3, ['CI'])
+    expect(r.claude.label).toBe('Mistral Small')
+    expect(r.mistral.label).toBe('Mistral Large')
   })
 
-  it('clé Mistral absente → throw', async () => {
+  it('les deux clés IA absentes → throw "Aucune clé IA configurée"', async () => {
+    mutableConfig.ai.apiKey = undefined
     mutableConfig.mistral.apiKey = undefined
     await expect(sourceProfilesCompare(SRC_JOB, ['LinkedIn'], 3, ['CI']))
-      .rejects.toThrow(/Clé Mistral non configurée/)
+      .rejects.toThrow(/Aucune clé IA configurée/)
   })
 
   // Pour couvrir buildSourcingRecommendation on appelle compare avec des
@@ -423,12 +435,14 @@ describe('sourceProfilesCompare — recommandations & garde-fous', () => {
 // ── buildSourcingRecommendation — branches restantes (test direct) ───────────
 describe('buildSourcingRecommendation — toutes les branches comparatives', () => {
   function provider(over: Partial<SourcingProviderResult>): SourcingProviderResult {
-    return {
-      provider: 'claude', model: 'm', label: 'Claude', data: RICH, jsonValid: true,
+    const base = {
+      provider: 'claude' as const, model: 'm', data: RICH, jsonValid: true,
       richnessScore: 50, profilesGenerated: 1, latencyMs: 1000,
       inputTokens: 100, outputTokens: 100, estimatedCostEur: 0.01, error: null,
       ...over,
     }
+    // Le libellé suit le fournisseur (buildSourcingRecommendation raisonne sur label).
+    return { ...base, label: over.label ?? (base.provider === 'claude' ? 'Claude' : 'Mistral') }
   }
   const reco = __internals.buildSourcingRecommendation
 
