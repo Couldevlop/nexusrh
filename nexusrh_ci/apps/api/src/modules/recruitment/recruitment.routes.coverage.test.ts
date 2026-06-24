@@ -535,7 +535,7 @@ describe('POST /recruitment/applications', () => {
       method: 'POST',
       url: '/recruitment/applications',
       headers: { authorization: `Bearer ${token}` },
-      payload: { job_id: 'job-1', first_name: 'A', last_name: 'B', email: 'a@b.com' },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'A', last_name: 'B', email: 'a@b.com' },
     })
     expect(res.statusCode).toBe(201)
   })
@@ -547,9 +547,32 @@ describe('POST /recruitment/applications', () => {
       method: 'POST',
       url: '/recruitment/applications',
       headers: { authorization: `Bearer ${token}` },
-      payload: { job_id: 'job-1', first_name: 'A', last_name: 'B', email: 'a@b.com' },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'A', last_name: 'B', email: 'a@b.com' },
     })
     expect(res.statusCode).toBe(500)
+  })
+
+  it('REC-004 — refuse un téléphone non-CI (400)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'A', last_name: 'B', phone: '+33612345678' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('REC-004 — accepte un téléphone CI valide (201)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'app-ci', source: 'manual' }] })
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'A', last_name: 'B', phone: '+2250712345678' },
+    })
+    expect(res.statusCode).toBe(201)
   })
 })
 

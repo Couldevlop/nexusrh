@@ -524,7 +524,25 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
-      const body = request.body as Record<string, unknown>
+      // REC-004 — validation Zod stricte + téléphone CI (+225 suivi de 8 à 10 chiffres)
+      const CI_PHONE_RE = /^\+225\d{8,10}$/
+      const rhApplicationSchema = z.object({
+        job_id:       z.string().uuid('Offre invalide'),
+        first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
+        last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
+        email:        z.preprocess(v => (v === '' ? undefined : v), z.string().email('Email invalide').max(255).toLowerCase().optional()),
+        phone:        z.preprocess(v => (v === '' ? undefined : v),
+                        z.string().refine(s => CI_PHONE_RE.test(String(s).replace(/\s/g, '')),
+                          'Téléphone CI invalide : +225 suivi de 8 à 10 chiffres').optional()),
+        cover_letter: z.string().max(5000).optional(),
+        cv_text:      z.string().max(50000).optional(),
+        source:       z.string().max(50).optional(),
+      }).strict()
+      const parsed = rhApplicationSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const body = parsed.data
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".applications
@@ -533,10 +551,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           VALUES ($1,$2,$3,$4,$5,$6,$7,'new',$8)
           RETURNING *
         `, [
-          body.job_id, body.first_name, body.last_name, body.email,
-          body.phone || null, body.cover_letter || null,
-          body.cv_text || null,
-          body.source || 'manual',
+          body.job_id, body.first_name, body.last_name, body.email ?? null,
+          body.phone ? body.phone.replace(/\s/g, '') : null, body.cover_letter ?? null,
+          body.cv_text ?? null,
+          body.source ?? 'manual',
         ])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
