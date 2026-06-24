@@ -172,12 +172,12 @@ describe('PUT /careers/employee-skills — Zod + IDOR manager (OWASP A01 + A03)'
 })
 
 describe('POST /careers/evaluations — Zod + IDOR manager (OWASP A01 + A03)', () => {
-  it('refuse score > 100 (400)', async () => {
+  it('refuse score hors échelle 0-5 (400)', async () => {
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST', url: '/careers/evaluations',
       headers: { authorization: `Bearer ${token}` },
-      payload: { employee_id: EMP_A, global_score: 200 },
+      payload: { employee_id: EMP_A, global_score: 6 },
     })
     expect(res.statusCode).toBe(400)
   })
@@ -199,7 +199,7 @@ describe('POST /careers/evaluations — Zod + IDOR manager (OWASP A01 + A03)', (
     const res = await app.inject({
       method: 'POST', url: '/careers/evaluations',
       headers: { authorization: `Bearer ${token}` },
-      payload: { employee_id: EMP_B, global_score: 75 },
+      payload: { employee_id: EMP_B, global_score: 4 },
     })
     expect(res.statusCode).toBe(403)
   })
@@ -214,7 +214,7 @@ describe('POST /careers/evaluations — Zod + IDOR manager (OWASP A01 + A03)', (
     const res = await app.inject({
       method: 'POST', url: '/careers/evaluations',
       headers: { authorization: `Bearer ${token}` },
-      payload: { employee_id: EMP_A, type: 'annual', global_score: 78, year: 2026 },
+      payload: { employee_id: EMP_A, type: 'annual', global_score: 4, year: 2026 },
     })
     expect(res.statusCode).toBe(201)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
@@ -231,7 +231,7 @@ describe('POST /careers/evaluations — Zod + IDOR manager (OWASP A01 + A03)', (
       method: 'POST', url: '/careers/evaluations',
       headers: { authorization: `Bearer ${token}` },
       // year envoyé en chaîne par le formulaire (coerce), type fin d'essai
-      payload: { employee_id: EMP_A, type: 'trial_end', global_score: 80, year: '2026' },
+      payload: { employee_id: EMP_A, type: 'trial_end', global_score: 4, year: '2026' },
     })
     expect(res.statusCode).toBe(201)
   })
@@ -267,7 +267,7 @@ describe('PATCH /careers/evaluations/:id — IDOR + audit_log', () => {
     const res = await app.inject({
       method: 'PATCH', url: `/careers/evaluations/${EMP_A}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { status: 'completed', global_score: 82 },
+      payload: { status: 'completed', global_score: 4 },
     })
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
