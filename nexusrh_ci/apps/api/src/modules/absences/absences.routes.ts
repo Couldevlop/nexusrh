@@ -92,7 +92,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['absences'], summary: 'Liste des absences' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { employeeId, status, year } = request.query as Record<string, string>
+      const { employeeId, status, year, today } = request.query as Record<string, string>
       let sql = `SELECT a.*, at.label AS type_label, at.color AS type_color,
                         e.first_name, e.last_name
                  FROM "${schema}".absences a
@@ -104,6 +104,11 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       if (employeeId) { sql += ` AND a.employee_id = $${idx++}`; params.push(employeeId) }
       if (status)     { sql += ` AND a.status = $${idx++}`; params.push(status) }
       if (year)       { sql += ` AND EXTRACT(YEAR FROM a.start_date) = $${idx++}`; params.push(parseInt(year)) }
+      // REP — "Absences aujourd'hui" : ne compter que les absences en cours ce
+      // jour (la date du jour est dans l'intervalle start_date..end_date).
+      if (today === 'true' || today === '1') {
+        sql += ` AND CURRENT_DATE BETWEEN a.start_date AND a.end_date`
+      }
       if (request.user.role === 'manager') {
         const emp = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]

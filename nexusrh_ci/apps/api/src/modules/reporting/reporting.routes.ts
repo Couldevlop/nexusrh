@@ -51,9 +51,11 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
             GROUP BY d.name ORDER BY count DESC
           `),
           pool.query(`
-            SELECT month, total_gross::int, total_net::int, total_cnps::int, COALESCE(total_its,0)::int AS total_its
-            FROM "${schema}".pay_periods
-            WHERE month LIKE $1 AND status = 'closed' ORDER BY month
+            SELECT pp.month, pp.total_gross::int, pp.total_net::int, pp.total_cnps::int,
+                   COALESCE(pp.total_its,0)::int AS total_its,
+                   (SELECT COUNT(*)::int FROM "${schema}".pay_slips ps WHERE ps.month = pp.month) AS employees_count
+            FROM "${schema}".pay_periods pp
+            WHERE pp.month LIKE $1 AND pp.status = 'closed' ORDER BY pp.month
           `, [`${year}-%`]),
           pool.query(`
             SELECT at.label AS type_label, at.color AS type_color,
@@ -201,6 +203,62 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
             monthlyHistory: monthlyHistory.rows,
           },
         })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /reporting/insights — alertes IA du dashboard (REP-007), max 3, calculées
+  // sur des données réelles : périodes d'essai expirant, absentéisme du mois,
+  // échéance de déclaration CNPS. Risque + libellé en français.
+  fastify.get('/insights', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
+    config: HEAVY_REPORT_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const insights: Array<{ type: string; severity: 'low'|'medium'|'high'; title: string; message: string }> = []
+
+        // 1) Périodes d'essai qui expirent sous 14 jours (essai cadre ~3 mois)
+        const trials = await pool.query<{ n: string }>(
+          `SELECT COUNT(*)::int AS n FROM "${schema}".employees
+            WHERE is_active = true AND deleted_at IS NULL AND hire_date IS NOT NULL
+              AND (hire_date + INTERVAL '3 months') BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '14 days')`,
+        ).catch(() => ({ rows: [{ n: '0' }] }))
+        const nTrials = Number(trials.rows[0]?.n) || 0
+        if (nTrials > 0) insights.push({
+          type: 'trial_expiring', severity: 'medium',
+          title: 'Périodes d\'essai à statuer',
+          message: `${nTrials} période(s) d'essai arrive(nt) à échéance sous 14 jours — décision à prendre (confirmation/rupture).`,
+        })
+
+        // 2) Absentéisme du mois en cours (jours approuvés)
+        const absMonth = await pool.query<{ d: string }>(
+          `SELECT COALESCE(SUM(days),0) AS d FROM "${schema}".absences
+            WHERE status = 'approved'
+              AND date_trunc('month', start_date) = date_trunc('month', CURRENT_DATE)`,
+        ).catch(() => ({ rows: [{ d: '0' }] }))
+        const absDays = Number(absMonth.rows[0]?.d) || 0
+        if (absDays > 20) insights.push({
+          type: 'absenteeism', severity: absDays > 60 ? 'high' : 'medium',
+          title: 'Absentéisme élevé ce mois',
+          message: `${absDays} jours d'absence approuvés ce mois — surveiller les pics par département.`,
+        })
+
+        // 3) Échéance de déclaration CNPS (avant le 15 du mois)
+        const day = new Date().getDate()
+        if (day <= 15) insights.push({
+          type: 'cnps_deadline', severity: day >= 12 ? 'high' : 'low',
+          title: 'Déclaration CNPS à soumettre',
+          message: `La déclaration e-CNPS du mois doit être déposée avant le 15 (J-${Math.max(0, 15 - day)}).`,
+        })
+
+        // Max 3 alertes (priorité severity high > medium > low)
+        const rank = { high: 0, medium: 1, low: 2 }
+        insights.sort((a, b) => rank[a.severity] - rank[b.severity])
+        return reply.send({ data: insights.slice(0, 3) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

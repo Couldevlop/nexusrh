@@ -39,6 +39,13 @@ interface AbsenceToday {
   type?: string
 }
 
+interface Insight {
+  type: string
+  severity: 'low' | 'medium' | 'high'
+  title: string
+  message: string
+}
+
 // ── Export helpers ────────────────────────────────────────────────────────────
 
 function downloadCSV(rows: (string | number)[][], filename: string) {
@@ -85,9 +92,16 @@ export default function DashboardPage() {
     queryFn: () => api.get('/absences?status=approved&today=true').then(r => r.data).catch(() => ({ data: [] })),
   })
 
+  // REP-007 — Insights IA (max 3 alertes calculées sur données réelles)
+  const { data: insightsData } = useQuery<{ data: Insight[] }>({
+    queryKey: ['reporting-insights'],
+    queryFn: () => api.get('/reporting/insights').then(r => r.data).catch(() => ({ data: [] })),
+  })
+
   const periods  = periodsData?.data ?? []
   const employees = empsData?.data ?? []
   const absToday  = absData?.data ?? []
+  const insights  = insightsData?.data ?? []
 
   const last    = periods[0]
   const prev    = periods[1]
@@ -457,6 +471,26 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ── Insights IA (REP-007) — max 3 alertes calculées ──── */}
+        {insights.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('insights.title', { defaultValue: 'Insights IA' })}
+            </h2>
+            <div className="grid gap-4 md:grid-cols-3">
+              {insights.map((ins, i) => (
+                <AlertCard
+                  key={ins.type + i}
+                  color={ins.severity === 'high' ? 'red' : ins.severity === 'medium' ? 'orange' : 'blue'}
+                  icon={AlertCircle}
+                  title={ins.title}
+                  text={ins.message}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Alertes ──────────────────────────────────────────── */}
         <div className="grid gap-4 md:grid-cols-2">
           <AlertCard
@@ -518,11 +552,14 @@ export function KpiCard({ label, value, icon: Icon, color, trend, sub }: {
 }
 
 function AlertCard({ color, icon: Icon, title, text }: {
-  color: 'orange' | 'blue'; icon: React.ElementType; title: string; text: string
+  color: 'orange' | 'blue' | 'red'; icon: React.ElementType; title: string; text: string
 }) {
-  const c = color === 'orange'
-    ? { border: 'border-orange-200', bg: 'bg-orange-50', title: 'text-orange-800', body: 'text-orange-600', icon: 'text-orange-500' }
-    : { border: 'border-blue-200',   bg: 'bg-blue-50',   title: 'text-blue-800',   body: 'text-blue-600',   icon: 'text-blue-500' }
+  const PALETTE = {
+    orange: { border: 'border-orange-200', bg: 'bg-orange-50', title: 'text-orange-800', body: 'text-orange-600', icon: 'text-orange-500' },
+    blue:   { border: 'border-blue-200',   bg: 'bg-blue-50',   title: 'text-blue-800',   body: 'text-blue-600',   icon: 'text-blue-500' },
+    red:    { border: 'border-red-200',    bg: 'bg-red-50',    title: 'text-red-800',    body: 'text-red-600',    icon: 'text-red-500' },
+  } as const
+  const c = PALETTE[color]
   return (
     <div className={`rounded-2xl border ${c.border} ${c.bg} p-4 flex items-start gap-3`}>
       <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${c.icon}`} />

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -20,6 +21,11 @@ const upsertEmployeeSkillsSchema = z.object({
   })).min(1).max(200),
 }).strict()
 
+// Échelle de notation des entretiens : 0–5 avec 1 décimale (cohérent DB
+// numeric(3,1), seed 1.0–5.0, UI /5). On borne aussi le pas à 0,1 pour rester
+// compatible avec la précision de la colonne.
+const SCORE_0_5 = z.number().min(0).max(5)
+
 const createEvaluationSchema = z.object({
   employee_id:       z.string().uuid(),
   // Inclut trial_end (fin d'essai) et exit (entretien de sortie) proposés par
@@ -28,10 +34,13 @@ const createEvaluationSchema = z.object({
   // coerce : le champ année du formulaire est une chaîne ("2026").
   year:              z.coerce.number().int().min(2000).max(2100).optional(),
   period:            z.string().max(50).optional(),
-  global_score:      z.number().int().min(0).max(100).optional(),
-  performance_score: z.number().int().min(0).max(100).optional(),
-  goals_score:       z.number().int().min(0).max(100).optional(),
-  skills_score:      z.number().int().min(0).max(100).optional(),
+  // Échelle de notation 0–5 (1 décimale) — cohérente avec la colonne DB
+  // numeric(3,1), le seed (1.0–5.0) et l'affichage UI en /5. (Auparavant
+  // int 0–100 : un score décimal 4,5 renvoyait un 400, un score >99,9 un 500.)
+  global_score:      SCORE_0_5.optional(),
+  performance_score: SCORE_0_5.optional(),
+  goals_score:       SCORE_0_5.optional(),
+  skills_score:      SCORE_0_5.optional(),
   comments:          z.string().max(5000).optional(),
   goals:             z.array(z.string().max(500)).max(50).optional(),
   strengths:         z.array(z.string().max(500)).max(50).optional(),
@@ -40,10 +49,10 @@ const createEvaluationSchema = z.object({
 }).strict()
 
 const patchEvaluationSchema = z.object({
-  global_score:        z.number().int().min(0).max(100).optional(),
-  performance_score:   z.number().int().min(0).max(100).optional(),
-  goals_score:         z.number().int().min(0).max(100).optional(),
-  skills_score:        z.number().int().min(0).max(100).optional(),
+  global_score:        SCORE_0_5.optional(),
+  performance_score:   SCORE_0_5.optional(),
+  goals_score:         SCORE_0_5.optional(),
+  skills_score:        SCORE_0_5.optional(),
   comments:            z.string().max(5000).optional(),
   manager_comments:    z.string().max(5000).optional(),
   employee_comments:   z.string().max(5000).optional(),
@@ -464,6 +473,28 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
           ORDER BY ev.global_score DESC NULLS LAST
         `, [parseInt(year)])
         return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /careers/retention/:employeeId — analyse du risque de rétention (CAR-006)
+  // Heuristique CI déterministe : { score, risk, factors[], recommendations[] }.
+  fastify.get('/retention/:employeeId', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { employeeId } = request.params as { employeeId: string }
+      if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
+      // OWASP A01 — un manager ne peut analyser que son équipe directe
+      const allowed = await userCanActOnEmployee(schema, request.user.role, request.user.email, employeeId)
+      if (!allowed) return reply.status(403).send({ error: 'Accès interdit (hors équipe directe)' })
+      try {
+        const result = await analyzeRetentionRisk(pool, schema, employeeId)
+        if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
+        return reply.send({ data: result })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

@@ -260,7 +260,7 @@ describe('POST /careers/evaluations — branches restantes', () => {
     const res = await app.inject({
       method: 'POST', url: '/careers/evaluations',
       headers: { authorization: `Bearer ${token}` },
-      payload: { employee_id: EMP_A, global_score: 70 },
+      payload: { employee_id: EMP_A, global_score: 4 },
     })
     expect(res.statusCode).toBe(500)
   })
@@ -305,7 +305,7 @@ describe('PATCH /careers/evaluations/:id — branches restantes', () => {
     const res = await app.inject({
       method: 'PATCH', url: `/careers/evaluations/${EVAL_ID}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { global_score: 60 },
+      payload: { global_score: 4 },
     })
     expect(res.statusCode).toBe(404)
   })
@@ -318,7 +318,7 @@ describe('PATCH /careers/evaluations/:id — branches restantes', () => {
     const res = await app.inject({
       method: 'PATCH', url: `/careers/evaluations/${EVAL_ID}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { global_score: 60 },
+      payload: { global_score: 4 },
     })
     expect(res.statusCode).toBe(403)
   })
@@ -344,7 +344,7 @@ describe('PATCH /careers/evaluations/:id — branches restantes', () => {
     const res = await app.inject({
       method: 'PATCH', url: `/careers/evaluations/${EVAL_ID}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { global_score: 80 },
+      payload: { global_score: 4 },
     })
     expect(res.statusCode).toBe(404)
   })
@@ -355,7 +355,7 @@ describe('PATCH /careers/evaluations/:id — branches restantes', () => {
     const res = await app.inject({
       method: 'PATCH', url: `/careers/evaluations/${EVAL_ID}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { global_score: 80 },
+      payload: { global_score: 4 },
     })
     expect(res.statusCode).toBe(500)
   })

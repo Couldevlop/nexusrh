@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
+import { generateHRDocument } from '../../services/hr-document-generator.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
 import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
@@ -44,6 +46,30 @@ const simulateItsSchema = z.object({
   childrenCount:  z.number().int().min(0).max(30).optional(),
   atRate:         z.number().min(0).max(0.10).optional(),
   primes:         z.number().int().min(0).max(100_000_000).optional(),
+}).strict()
+
+// AI-006/007 — génération de documents RH (CDI/CDD/certificat/attestation).
+const generateDocSchema = z.object({
+  type:       z.enum(['cdi_ci', 'cdd_ci', 'certificat_travail', 'attestation_emploi']),
+  tenantName: z.string().max(200).optional(),
+  city:       z.string().max(100).optional(),
+  employer:   z.object({
+    cnpsNumber: z.string().max(50).optional(),
+    rccm:       z.string().max(50).optional(),
+    address:    z.string().max(300).optional(),
+  }).optional(),
+  employee:   z.object({
+    firstName:  z.string().max(100).optional(),
+    lastName:   z.string().max(100).optional(),
+    nni:        z.string().max(50).optional(),
+    cnpsNumber: z.string().max(50).optional(),
+    jobTitle:   z.string().max(150).optional(),
+    category:   z.string().max(50).optional(),
+  }).optional(),
+  salary:     z.number().int().min(0).max(100_000_000).optional(),
+  startDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  isCadre:    z.boolean().optional(),
 }).strict()
 
 // OWASP A03 — sanitization anti prompt-injection : retire newlines/tabs et
@@ -221,10 +247,13 @@ INSTRUCTIONS :
 
 CONTEXTE CI IMPORTANT :
 - CNPS : plafond retraite 1 647 315 FCFA, plafond AT/PF 70 000 FCFA
+- CNPS retraite : 6,3% salarié + 7,7% employeur ; Prestations familiales 5% pat. ; Maternité 0,75% pat.
+- Taux AT (accidents du travail) PAR SECTEUR : Commerce/Services/tertiaire 2% | BTP/Transport 3% | Industrie/manufacture 4% | Extraction/Mines 5%
 - ITS : abattement 15% sur brut, tranches 0%→1,5%→5%→10%→15%
-- Congés : 2,5 jours ouvrables/mois travaillé
+- Congés : 2,5 jours ouvrables/mois travaillé (ex : 8 mois → 20 jours)
 - Mobile Money : Wave, MTN MoMo, Orange Money pour paiement salaires
 - DISA : déclaration annuelle obligatoire (loi 99-477)
+- FDFP : contribution patronale 0,4% de la masse salariale (formation professionnelle)
 
 DEUX TYPES DE QUESTIONS — tu sais répondre aux deux :
 1. QUESTIONS INTERNES (données de l'entreprise) : « la DRH a-t-elle validé la
@@ -469,6 +498,49 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         },
         currency: 'XOF',
       })
+    },
+  })
+
+  // POST /ai/generate-document — génération de documents RH CI/OHADA (AI-006/007)
+  // RBAC : exclut employee/readonly → la génération de documents est refusée au
+  // salarié (AI-009). Sortie Markdown déterministe (mentions légales CI).
+  fastify.post('/generate-document', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    schema: { tags: ['ai'], summary: 'Génère un document RH (CDI/CDD/certificat) conforme CI/OHADA' },
+    handler: async (request, reply) => {
+      const parsed = generateDocSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      try {
+        const doc = generateHRDocument(parsed.data)
+        return reply.send({ data: { type: parsed.data.type, title: doc.title, markdown: doc.markdown } })
+      } catch (err) {
+        request.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /ai/retention/:employeeId — analyse du risque de rétention (AI-008)
+  // Réutilise le service partagé (heuristique CI déterministe).
+  fastify.get('/retention/:employeeId', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'dg')],
+    schema: { tags: ['ai'], summary: 'Analyse du risque de rétention d\'un salarié' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { employeeId } = request.params as { employeeId: string }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) {
+        return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
+      }
+      try {
+        const result = await analyzeRetentionRisk(rawPool, schema, employeeId)
+        if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
+        return reply.send({ data: result })
+      } catch (err) {
+        request.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
     },
   })
 }
