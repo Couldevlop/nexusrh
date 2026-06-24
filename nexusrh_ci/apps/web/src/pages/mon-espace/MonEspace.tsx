@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
-import { Calendar, FileText, ShieldCheck } from 'lucide-react'
+import { Calendar, FileText, ShieldCheck, BookOpen } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 interface AbsenceBalance {
@@ -22,6 +22,11 @@ interface Absence {
 
 interface AccessLog {
   id: string; action: string; entity: string; ip_address: string | null; created_at: string
+}
+
+interface TrainingReco {
+  id: string; title: string; duration: number | null; duration_unit: string
+  format: string; category: string | null
 }
 
 export default function MonEspace() {
@@ -49,10 +54,17 @@ export default function MonEspace() {
     queryFn: () => api.get('/payroll/my-access-log').then(r => r.data),
   })
 
+  // ESP-007 — formations recommandées (2 cards) sur le dashboard
+  const { data: trainingsData } = useQuery<{ data: TrainingReco[] }>({
+    queryKey: ['my-recommended-trainings'],
+    queryFn: () => api.get('/training/catalog').then(r => r.data).catch(() => ({ data: [] })),
+  })
+
   const balances = balancesData?.data ?? []
   const slips = slipsData?.data ?? []
   const absences = absencesData?.data ?? []
   const accessLogs = accessLogData?.data ?? []
+  const recommendedTrainings = (trainingsData?.data ?? []).slice(0, 2)
 
   const lastSlip = slips[0]
   const recentAbsences = absences.slice(0, 3)
@@ -169,6 +181,26 @@ export default function MonEspace() {
           )}
         </div>
       </div>
+      {/* ESP-007 — Formations recommandées (2 cards) */}
+      {recommendedTrainings.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-6">
+          <h2 className="font-semibold mb-3 flex items-center gap-2">
+            <BookOpen className="h-4 w-4" /> {t('dashboard.recommendedTrainings', { defaultValue: 'Formations recommandées' })}
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {recommendedTrainings.map(tr => (
+              <Link key={tr.id} to="/mon-espace/formation"
+                className="rounded-lg border border-border p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                <p className="font-medium text-sm">{tr.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {tr.category && <span>{tr.category} · </span>}
+                  {tr.duration ? `${tr.duration} ${tr.duration_unit === 'hours' ? 'h' : 'j'} · ` : ''}{tr.format}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Journal d'accès ARTCI */}
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-semibold mb-3 flex items-center gap-2">

@@ -346,7 +346,7 @@ describe('POST /settings/users', () => {
       .mockResolvedValueOnce({ rows: [] })                 // UPDATE users employee_id
     const res = await app.inject({
       method: 'POST', url: '/settings/users', headers: auth(tokenFor(app, 'admin')),
-      payload: { email: 'a@b.ci', first_name: 'A', last_name: 'B', department_id: 'd1', role: 'manager', is_active: false },
+      payload: { email: 'a@b.ci', first_name: 'A', last_name: 'B', department_id: '99999999-9999-9999-9999-999999999999', role: 'manager', is_active: false },
     })
     expect(res.statusCode).toBe(201)
   })
@@ -359,7 +359,7 @@ describe('POST /settings/users', () => {
       .mockResolvedValueOnce({ rows: [] })                  // UPDATE users employee_id
     const res = await app.inject({
       method: 'POST', url: '/settings/users', headers: auth(tokenFor(app, 'admin')),
-      payload: { email: 'c@d.ci', first_name: 'C', last_name: 'D', department_id: 'd1' },
+      payload: { email: 'c@d.ci', first_name: 'C', last_name: 'D', department_id: '99999999-9999-9999-9999-999999999999' },
     })
     expect(res.statusCode).toBe(201)
   })

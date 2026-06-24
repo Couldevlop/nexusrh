@@ -486,6 +486,32 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           ))}
         </div>
 
+        {/* SET-001 — Logo du tenant (upload PNG/JPG → data URL, appliqué sidebar + login) */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            {t('general.logo', { defaultValue: 'Logo de l\'entreprise' })}
+          </label>
+          <div className="mt-1 flex items-center gap-3">
+            {(() => {
+              const logo = (form.logo_url ?? s.logo_url) as string | null | undefined
+              return logo
+                ? <img src={logo} alt="logo" className="h-12 w-12 rounded-lg border border-input object-contain bg-white" />
+                : <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-input text-xs text-muted-foreground">Logo</div>
+            })()}
+            <input type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                if (file.size > 1_000_000) { window.alert(t('general.logoTooLarge', { defaultValue: 'Image trop volumineuse (max 1 Mo).' })); return }
+                const reader = new FileReader()
+                reader.onload = () => setForm(p => ({ ...p, logo_url: String(reader.result) }))
+                reader.readAsDataURL(file)
+              }}
+              className="text-sm" />
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{t('general.logoHint', { defaultValue: 'PNG/JPG carré, max 1 Mo. Affiché dans la barre latérale et sur la page de connexion.' })}</p>
+        </div>
+
         <h2 className="font-semibold pt-2">{t('general.emailSender')}</h2>
         <p className="text-xs text-muted-foreground -mt-2">{t('general.emailSenderHint')}</p>
         <div className="grid grid-cols-2 gap-4">
