@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import { api, formatDate } from '@/lib/api'
-import { BookOpen, Clock, MapPin, CheckCircle, Info, Loader2 } from 'lucide-react'
+import { BookOpen, Clock, MapPin, CheckCircle, Info, Loader2, Download } from 'lucide-react'
 
 interface Training {
   id: string; title: string; description: string | null
@@ -51,6 +51,46 @@ export default function MaFormation() {
       setFeedback({ type: 'error', text: apiErr ?? t('training.enrollError') })
     },
   })
+
+  // FRM-006 — désinscription self-service
+  const unenrollMut = useMutation({
+    mutationFn: (enrollmentId: string) => api.delete(`/training/enroll/${enrollmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['training-my-enrollments'] })
+      queryClient.invalidateQueries({ queryKey: ['training-sessions-emp'] })
+      setFeedback({ type: 'success', text: t('training.unenrollSuccess', { defaultValue: 'Désinscription enregistrée.' }) })
+    },
+    onError: (err: unknown) => {
+      const apiErr = err instanceof AxiosError
+        ? (err.response?.data as { error?: string } | undefined)?.error
+        : undefined
+      setFeedback({ type: 'error', text: apiErr ?? t('training.unenrollError', { defaultValue: 'Désinscription impossible.' }) })
+    },
+  })
+
+  // FRM-007 — téléchargement de l'attestation PDF (formation terminée)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const downloadAttestation = async (enrollmentId: string) => {
+    setDownloadingId(enrollmentId)
+    try {
+      const res = await api.get(`/training/enrollments/${enrollmentId}/attestation`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `attestation_${enrollmentId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const apiErr = err instanceof AxiosError
+        ? (err.response?.data as { error?: string } | undefined)?.error
+        : undefined
+      setFeedback({ type: 'error', text: apiErr ?? t('training.attestationError', { defaultValue: 'Attestation indisponible.' }) })
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   const { data: catalogData } = useQuery<{ data: Training[] }>({
     queryKey: ['training-catalog-emp'],
@@ -136,6 +176,15 @@ export default function MaFormation() {
                       <span>{formatLabel(e.format)}</span>
                       {e.duration && <span>{e.duration} {unitLabel(e.duration_unit)}</span>}
                     </div>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={() => unenrollMut.mutate(e.id)}
+                        disabled={unenrollMut.isPending}
+                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {unenrollMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : t('training.unenroll', { defaultValue: 'Annuler' })}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -156,6 +205,18 @@ export default function MaFormation() {
                       <span className="flex items-center gap-1 text-xs font-medium text-green-700">
                         <CheckCircle className="h-3.5 w-3.5" /> {t('training.completedTag')}
                       </span>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={() => downloadAttestation(e.id)}
+                        disabled={downloadingId === e.id}
+                        className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                      >
+                        {downloadingId === e.id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <Download className="h-3 w-3" />}
+                        {t('training.downloadAttestation', { defaultValue: 'Télécharger attestation' })}
+                      </button>
                     </div>
                   </div>
                 ))}

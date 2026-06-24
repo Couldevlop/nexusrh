@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { renderAttestationPdf } from './training-attestation-pdf.js'
 
 const rawPool = pool
 
@@ -472,6 +473,115 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
           ORDER BY ts.start_date DESC
         `, [employeeId])
         return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // DELETE /training/enroll/:id — désinscription (FRM-006)
+  // Self-service : un employee ne peut annuler QUE sa propre inscription (OWASP A01)
+  // et uniquement tant qu'elle n'est pas terminée. admin/hr peuvent désinscrire.
+  fastify.delete('/enroll/:id', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','employee')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      try {
+        const enr = await pool.query<{ id: string; employee_id: string; status: string }>(
+          `SELECT id, employee_id, status FROM "${schema}".training_enrollments WHERE id = $1 LIMIT 1`, [id],
+        )
+        const row = enr.rows[0]
+        if (!row) return reply.status(404).send({ error: 'Inscription introuvable' })
+        // OWASP A01 — un employee ne peut annuler que SA propre inscription
+        if (request.user.role === 'employee') {
+          let selfId = request.user.employeeId
+          if (!selfId) {
+            const emp = await pool.query<{ id: string }>(
+              `SELECT id FROM "${schema}".employees WHERE email = $1 AND is_active = true LIMIT 1`,
+              [request.user.email],
+            )
+            selfId = emp.rows[0]?.id ?? null
+          }
+          if (!selfId || selfId !== row.employee_id) {
+            return reply.status(403).send({ error: 'Vous ne pouvez annuler que vos propres inscriptions' })
+          }
+        }
+        if (row.status === 'completed') {
+          return reply.status(409).send({ error: 'Formation déjà terminée — désinscription impossible' })
+        }
+        await pool.query(`DELETE FROM "${schema}".training_enrollments WHERE id = $1`, [id])
+        auditLogTraining(schema, request.user.sub, 'training.unenrolled', id, {
+          employeeId: row.employee_id, bySelf: request.user.role === 'employee',
+        }, request.ip ?? null)
+        return reply.send({ data: { id, cancelled: true } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /training/enrollments/:id/attestation — attestation PDF (FRM-007)
+  // Disponible quand la formation est terminée (status='completed' ou completed_at).
+  // Self-service : un employee ne télécharge QUE sa propre attestation (OWASP A01).
+  fastify.get('/enrollments/:id/attestation', {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      try {
+        const res = await pool.query<{
+          status: string; completed_at: string | null; employee_id: string
+          first_name: string; last_name: string; emp_email: string | null
+          training_title: string; duration: number | null; duration_unit: string | null
+          session_start: string | null; session_end: string | null; location: string | null; trainer: string | null
+        }>(`
+          SELECT te.status, te.completed_at, te.employee_id,
+                 e.first_name, e.last_name, e.email AS emp_email,
+                 t.title AS training_title, t.duration, t.duration_unit,
+                 ts.start_date AS session_start, ts.end_date AS session_end, ts.location, ts.trainer
+            FROM "${schema}".training_enrollments te
+            JOIN "${schema}".training_sessions ts ON ts.id = te.session_id
+            JOIN "${schema}".trainings t ON t.id = ts.training_id
+            JOIN "${schema}".employees e ON e.id = te.employee_id
+           WHERE te.id = $1 LIMIT 1
+        `, [id])
+        const row = res.rows[0]
+        if (!row) return reply.status(404).send({ error: 'Inscription introuvable' })
+        // OWASP A01 — un employee ne peut télécharger que SA propre attestation
+        const privileged = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
+        if (!privileged) {
+          const mine = request.user.employeeId === row.employee_id ||
+            (row.emp_email && row.emp_email === request.user.email)
+          if (!mine) return reply.status(403).send({ error: 'Accès interdit' })
+        }
+        if (row.status !== 'completed' && !row.completed_at) {
+          return reply.status(409).send({ error: 'Attestation indisponible : formation non terminée' })
+        }
+        const tenant = await pool.query<{ name: string; city: string | null }>(
+          `SELECT name, city FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+        )
+        const pdf = await renderAttestationPdf({
+          tenantName:    tenant.rows[0]?.name ?? 'NexusRH',
+          employeeName:  `${row.first_name} ${row.last_name}`.trim(),
+          trainingTitle: row.training_title,
+          duration:      row.duration,
+          durationUnit:  row.duration_unit,
+          sessionStart:  row.session_start,
+          sessionEnd:    row.session_end,
+          location:      row.location,
+          trainer:       row.trainer,
+          completedAt:   row.completed_at,
+          city:          tenant.rows[0]?.city ?? null,
+        })
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Disposition', `inline; filename="attestation_${id.slice(0, 8)}.pdf"`)
+          .send(Buffer.from(pdf))
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

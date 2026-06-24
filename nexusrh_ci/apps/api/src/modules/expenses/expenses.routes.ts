@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
+import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-money-providers.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,6 +46,13 @@ const rejectSchema = z.object({
   reason: z.string().min(1).max(1000).optional(),
 }).strict()
 
+// FRA-006 — remboursement Mobile Money (opt-in). Sans body, /pay reste un simple
+// flag comptable (rétro-compat). Avec provider, on initie un vrai virement.
+const paySchema = z.object({
+  provider: z.string().max(20).optional(),
+  phone:    z.string().max(20).optional(),
+}).strict()
+
 /**
  * OWASP A01 — un manager ne peut approver/rejeter que les notes de frais des
  * employés de son équipe directe. admin/hr_manager ont la portée tenant globale.
@@ -62,6 +70,43 @@ async function managerCanActOnReport(
     [reportId, managerEmail],
   )
   return r.rows.length > 0
+}
+
+/** Notification non bloquante (table notifications). Échec silencieux. */
+function notifyUser(
+  schema: string, userId: string | null | undefined, type: string,
+  title: string, message: string, data: Record<string, unknown> = {},
+): void {
+  if (!userId) return
+  pool.query(
+    `INSERT INTO "${schema}".notifications (user_id, type, title, message, data)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, type, title, message, JSON.stringify(data)],
+  ).catch(() => { /* table absente / user supprimé : non bloquant */ })
+}
+
+/** user_id du compte lié à un employé (null si aucun). */
+async function userIdOfEmployee(schema: string, employeeId: string | null | undefined): Promise<string | null> {
+  if (!employeeId) return null
+  try {
+    const r = await pool.query<{ user_id: string | null }>(
+      `SELECT user_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
+    )
+    return r?.rows?.[0]?.user_id ?? null
+  } catch { return null }
+}
+
+/** user_id du manager direct d'un employé (pour notifier la soumission). */
+async function managerUserIdOfEmployee(schema: string, employeeId: string | null | undefined): Promise<string | null> {
+  if (!employeeId) return null
+  try {
+    const r = await pool.query<{ user_id: string | null }>(
+      `SELECT m.user_id FROM "${schema}".employees e
+         JOIN "${schema}".employees m ON m.id = e.manager_id
+        WHERE e.id = $1 LIMIT 1`, [employeeId],
+    )
+    return r?.rows?.[0]?.user_id ?? null
+  } catch { return null }
 }
 
 function auditLogExpense(
@@ -260,7 +305,13 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE id = $1 AND status = 'draft' RETURNING *
         `, [id])
         if (!res.rows[0]) return reply.status(400).send({ error: 'Note non modifiable' })
-        return reply.send({ data: res.rows[0] })
+        // FRA-003 — notifier le manager direct (non bloquant)
+        const submitted = res.rows[0]
+        void managerUserIdOfEmployee(schema, submitted.employee_id).then((uid) =>
+          notifyUser(schema, uid, 'expense_submitted', 'Note de frais à valider',
+            `La note « ${submitted.title} » a été soumise pour validation.`,
+            { reportId: submitted.id, employeeId: submitted.employee_id }))
+        return reply.send({ data: submitted })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -296,6 +347,11 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         emitIntegrationEvent(pool, schema, 'expense.approved', {
           id, employeeId: res.rows[0].employee_id, totalAmount: res.rows[0].total_amount,
         }, decryptIfPresent)
+        // FRA-004 — notifier l'employé que sa note est approuvée (non bloquant)
+        void userIdOfEmployee(schema, res.rows[0].employee_id).then((uid) =>
+          notifyUser(schema, uid, 'expense_approved', 'Note de frais approuvée',
+            'Votre note de frais a été approuvée — remboursement à venir.',
+            { reportId: id }))
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -335,6 +391,11 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           reason: reason ?? null,
           employeeId: res.rows[0].employee_id,
         }, request.ip ?? null)
+        // FRA-005 — notifier l'employé du refus avec le motif (non bloquant)
+        void userIdOfEmployee(schema, res.rows[0].employee_id).then((uid) =>
+          notifyUser(schema, uid, 'expense_rejected', 'Note de frais refusée',
+            reason ? `Votre note de frais a été refusée : ${reason}` : 'Votre note de frais a été refusée.',
+            { reportId: id, reason: reason ?? null }))
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -350,7 +411,78 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+      const parsedPay = paySchema.safeParse(request.body ?? {})
+      if (!parsedPay.success) return reply.status(400).send({ error: 'Paramètres de paiement invalides' })
+      const mmProvider = parsedPay.data.provider ? normalizeMmProvider(parsedPay.data.provider) : null
+      if (parsedPay.data.provider && !mmProvider) {
+        return reply.status(400).send({ error: 'Fournisseur Mobile Money inconnu (wave | mtn_momo | orange_money)' })
+      }
       try {
+        // ── FRA-006 : remboursement Mobile Money réel (opt-in via provider) ──
+        if (mmProvider) {
+          const repRes = await pool.query<{
+            status: string; total_amount: string; employee_id: string; currency: string
+            mm_phone: string | null; mm_provider: string | null
+          }>(`
+            SELECT er.status, er.total_amount, er.employee_id, er.currency,
+                   e.mobile_money_phone AS mm_phone, e.mobile_money_provider AS mm_provider
+              FROM "${schema}".expense_reports er
+              JOIN "${schema}".employees e ON e.id = er.employee_id
+             WHERE er.id = $1 LIMIT 1
+          `, [id])
+          const rep = repRes.rows[0]
+          if (!rep) return reply.status(404).send({ error: 'Note introuvable' })
+          if (rep.status !== 'approved') return reply.status(400).send({ error: 'Note non remboursable' })
+          const phone = (parsedPay.data.phone ?? rep.mm_phone ?? '').trim()
+          if (!phone) return reply.status(400).send({ error: 'Numéro Mobile Money manquant pour cet employé' })
+          const amount = Math.round(Number(rep.total_amount) || 0)
+          const reference = `EXP-${id.slice(0, 8)}-${Date.now().toString(36).toUpperCase()}`
+
+          let transfer
+          try {
+            transfer = await initiateTransfer(schema, mmProvider, {
+              phone, amount, reference, description: 'Remboursement note de frais',
+            })
+          } catch (e) {
+            transfer = { success: false, status: 'failed' as const, error: e instanceof Error ? e.message : 'Échec du virement' }
+          }
+
+          // Traçabilité du virement (mobile_money_payments) — non bloquant
+          pool.query(`
+            INSERT INTO "${schema}".mobile_money_payments
+              (employee_id, amount, currency, provider, phone_number, reference, external_ref, status, initiated_at, confirmed_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now(), $9)
+          `, [rep.employee_id, amount, rep.currency || 'XOF', mmProvider, phone, reference,
+              transfer.transactionId ?? null, transfer.status,
+              transfer.status === 'completed' ? new Date().toISOString() : null,
+          ]).catch(() => { /* table absente : non bloquant */ })
+
+          if (transfer.status === 'failed') {
+            return reply.status(502).send({ error: 'Virement Mobile Money échoué', detail: transfer.error ?? null, reference })
+          }
+
+          // Le virement est initié/abouti → on marque la note remboursée + référence TXN
+          await pool.query(
+            `ALTER TABLE "${schema}".expense_reports ADD COLUMN IF NOT EXISTS payment_reference varchar(100)`,
+          ).catch(() => { /* idempotent */ })
+          const upd = await pool.query(`
+            UPDATE "${schema}".expense_reports
+            SET status = 'paid', payment_method = $2, payment_reference = $3, paid_at = now(), updated_at = now()
+            WHERE id = $1 AND status = 'approved' RETURNING *
+          `, [id, mmProvider, reference])
+          if (!upd.rows[0]) return reply.status(400).send({ error: 'Note non remboursable' })
+          auditLogExpense(schema, request.user.sub, 'expense.paid', id, {
+            totalAmount: upd.rows[0].total_amount, employeeId: upd.rows[0].employee_id,
+            provider: mmProvider, reference, mmStatus: transfer.status,
+          }, request.ip ?? null)
+          void userIdOfEmployee(schema, upd.rows[0].employee_id).then((uid) =>
+            notifyUser(schema, uid, 'expense_paid', 'Note de frais remboursée',
+              `Votre note de frais a été remboursée par ${mmProvider} (réf. ${reference}).`,
+              { reportId: id, reference, provider: mmProvider }))
+          return reply.send({ data: upd.rows[0], payment: { reference, status: transfer.status, transactionId: transfer.transactionId ?? null } })
+        }
+
+        // ── Rétro-compat : simple flag comptable (sans Mobile Money) ──
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
           SET status = 'paid', paid_at = now(), updated_at = now()

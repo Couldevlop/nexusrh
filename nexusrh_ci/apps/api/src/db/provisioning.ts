@@ -682,6 +682,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     approved_at      timestamptz,
     rejection_reason text,
     payment_method   varchar(20) DEFAULT 'mobile_money',
+    payment_reference varchar(100),
     paid_at          timestamptz,
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now()

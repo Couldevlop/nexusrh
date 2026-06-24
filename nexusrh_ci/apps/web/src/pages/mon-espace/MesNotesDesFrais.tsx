@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Receipt, Plus, Send, Trash2, Paperclip, FileText, Loader2 } from 'lucide-react'
@@ -33,6 +33,10 @@ const STATUS_KEY: Record<string, string> = {
 
 const CATEGORY_VALUES = ['transport', 'repas', 'hebergement', 'materiel', 'communication', 'autre'] as const
 
+// FRA-007 — brouillon auto-sauvegardé localement (survit à la fermeture du modal
+// / navigation tant que la note n'est pas créée côté serveur).
+const DRAFT_KEY = 'nexusrh:expense-draft'
+
 export default function MesNotesDesFrais() {
   const { t } = useTranslation('monEspace')
   const queryClient = useQueryClient()
@@ -43,6 +47,29 @@ export default function MesNotesDesFrais() {
   ])
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [draftRestored, setDraftRestored] = useState(false)
+
+  // FRA-007 — restaure le brouillon local au montage (une seule fois)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const d = JSON.parse(raw) as { title?: string; lines?: Line[] }
+        if (d.title) setTitle(d.title)
+        if (Array.isArray(d.lines) && d.lines.length) setLines(d.lines)
+        if (d.title || (d.lines && d.lines.some(l => l.description || l.amount))) setDraftRestored(true)
+      }
+    } catch { /* localStorage indisponible : ignoré */ }
+  }, [])
+
+  // FRA-007 — auto-sauvegarde du brouillon à chaque modification
+  useEffect(() => {
+    const hasContent = title.trim() !== '' || lines.some(l => l.description.trim() !== '' || l.amount !== '')
+    try {
+      if (hasContent) localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, lines }))
+      else localStorage.removeItem(DRAFT_KEY)
+    } catch { /* quota / indisponible : ignoré */ }
+  }, [title, lines])
 
   const { data, isLoading } = useQuery<{ data: ExpenseReport[] }>({
     queryKey: ['my-expenses'],
@@ -65,6 +92,8 @@ export default function MesNotesDesFrais() {
       setShowNew(false)
       setTitle('')
       setLines([{ description: '', category: 'transport', date: new Date().toISOString().slice(0, 10), amount: '' }])
+      setDraftRestored(false)
+      try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignoré */ }
       queryClient.invalidateQueries({ queryKey: ['my-expenses'] })
     },
   })
@@ -199,6 +228,11 @@ export default function MesNotesDesFrais() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowNew(false)}>
           <div className="rounded-xl border border-border bg-card p-6 w-full max-w-xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold mb-4">{t('expenses.modalTitle')}</h3>
+            {draftRestored && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {t('expenses.draftRestored', { defaultValue: 'Brouillon non enregistré restauré automatiquement.' })}
+              </div>
+            )}
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">{t('expenses.fieldTitle')}</label>

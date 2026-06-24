@@ -106,6 +106,95 @@ describe('GET /training/catalog', () => {
   })
 })
 
+describe('DELETE /training/enroll/:id — désinscription (FRM-006)', () => {
+  it('refuse un id non-UUID (400)', async () => {
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'DELETE', url: '/training/enroll/not-uuid',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('un employee annule SA propre inscription (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, employee_id: UUID_A, status: 'enrolled' }] }) // SELECT enrollment
+      .mockResolvedValueOnce({ rows: [] }) // DELETE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'DELETE', url: `/training/enroll/${UUID_A}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data.cancelled).toBe(true)
+  })
+
+  it('un employee NE PEUT PAS annuler l\'inscription d\'un autre (403)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: UUID_A, employee_id: 'autre-emp', status: 'enrolled' }] })
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'DELETE', url: `/training/enroll/${UUID_A}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('formation terminée → désinscription impossible (409)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: UUID_A, employee_id: UUID_A, status: 'completed' }] })
+    const token = tokenFor(app, 'employee', { employeeId: UUID_A })
+    const res = await app.inject({
+      method: 'DELETE', url: `/training/enroll/${UUID_A}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(409)
+  })
+})
+
+describe('GET /training/enrollments/:id/attestation (FRM-007)', () => {
+  it('refuse un id non-UUID (400)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: '/training/enrollments/not-uuid/attestation',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('formation non terminée → 409', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{
+      status: 'enrolled', completed_at: null, employee_id: UUID_A,
+      first_name: 'Kouassi', last_name: 'Jean', emp_email: null,
+      training_title: 'Excel', duration: 8, duration_unit: 'hours',
+      session_start: '2026-09-01', session_end: null, location: 'Abidjan', trainer: 'M. Koné',
+    }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: `/training/enrollments/${UUID_A}/attestation`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('formation terminée → PDF (200, application/pdf)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{
+        status: 'completed', completed_at: '2026-09-02T10:00:00Z', employee_id: UUID_A,
+        first_name: 'Kouassi', last_name: 'Jean', emp_email: null,
+        training_title: 'Excel avancé', duration: 8, duration_unit: 'hours',
+        session_start: '2026-09-01', session_end: '2026-09-02', location: 'Abidjan', trainer: 'M. Koné',
+      }] })
+      .mockResolvedValueOnce({ rows: [{ name: 'SOTRA', city: 'Abidjan' }] }) // tenant
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: `/training/enrollments/${UUID_A}/attestation`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/pdf')
+  })
+})
+
 describe('POST /training/catalog — erreur serveur', () => {
   it('erreur DB sur INSERT → 500', async () => {
     queryMock.mockRejectedValueOnce(new Error('insert failed'))
