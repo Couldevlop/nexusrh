@@ -153,13 +153,19 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
       // employé associé, il ne voit personne au lieu de tout le tenant).
+      // On privilégie l'employeeId du token (autoritatif) ; repli sur l'email
+      // (l'ancienne recherche par email seule pouvait retourner un mauvais
+      // dossier quand l'email n'est pas unique → équipe vide à tort).
       if (request.user.role === 'manager') {
-        const empRes = await pool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
-        )
-        const mgr = empRes.rows[0]
-        if (!mgr) return reply.send({ data: [], total: 0, page, limit })
-        where += ` AND e.manager_id = $${idx++}`; params.push(mgr.id)
+        let mgrId = request.user.employeeId
+        if (!mgrId) {
+          const empRes = await pool.query<{ id: string }>(
+            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          )
+          mgrId = empRes.rows[0]?.id ?? null
+        }
+        if (!mgrId) return reply.send({ data: [], total: 0, page, limit })
+        where += ` AND e.manager_id = $${idx++}`; params.push(mgrId)
       }
 
       // total réel (mêmes filtres) — affiché « 80+ employés » même en page 1.

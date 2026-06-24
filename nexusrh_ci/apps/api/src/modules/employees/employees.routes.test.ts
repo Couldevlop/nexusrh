@@ -327,3 +327,35 @@ describe('DELETE /employees/:id — audit log + UUID validation (OWASP A09)', ()
     expect(res.statusCode).toBe(403)
   })
 })
+
+describe('GET /employees — scope manager équipe directe (OWASP A01, RBA-005)', () => {
+  const MGR_EMP = '427dfb30-73b4-4209-a26a-54f1e91f32a8'
+  it('manager : filtre via employeeId du token (pas de re-lookup email)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ c: 3 }] })                          // COUNT
+      .mockResolvedValueOnce({ rows: [{ id: 'e1' }, { id: 'e2' }, { id: 'e3' }] }) // liste
+    const token = tokenFor(app, 'manager', { employeeId: MGR_EMP })
+    const res = await app.inject({
+      method: 'GET', url: '/employees?limit=200',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.total).toBe(3)
+    // le filtre doit porter sur manager_id = employeeId du token
+    const countCall = queryMock.mock.calls[0]
+    expect(String(countCall?.[0])).toContain('manager_id')
+    expect(countCall?.[1]).toContain(MGR_EMP)
+  })
+
+  it('manager sans employeeId ni dossier → équipe vide (fail-closed)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup email → aucun dossier
+    const token = tokenFor(app, 'manager', {}) // employeeId null
+    const res = await app.inject({
+      method: 'GET', url: '/employees',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data).toEqual([])
+  })
+})
