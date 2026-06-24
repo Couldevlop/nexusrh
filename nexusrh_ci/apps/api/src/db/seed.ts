@@ -1188,7 +1188,7 @@ async function runSeed(): Promise<void> {
         ON CONFLICT DO NOTHING
       `, [
         jobIds[3], emp.first_name, emp.last_name,
-        emp.email ?? `${emp.first_name.toLowerCase()}@sotra-ci.com`,
+        emp.email ?? `${emp.first_name.toLowerCase()}@sotra.ci`,
         emp.phone ?? null,
         `Bonjour, je souhaite postuler à ce poste de promotion interne. Mon expérience terrain en exploitation me permet de prendre la relève.`,
         emp.id,
