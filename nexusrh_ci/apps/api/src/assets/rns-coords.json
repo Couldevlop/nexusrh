@@ -1,34 +1,35 @@
 {
-  "_doc": "Coordonnées (x, y depuis le haut, en points PDF) des zones du formulaire EN-GDAV-06 v03 fourni dans rns-template.pdf. Ajustez ces valeurs si vous observez un décalage à l'impression. La police par défaut est Helvetica. Pour calibrer visuellement : générer un PDF de référence via `pnpm --filter api run rns:calibrate` (affiche une grille superposée au template). `align` = left|right|center dans la case [x, x+maxWidth] ; les montants sont ancrés à droite.",
+  "_doc": "Coordonnées (x, y depuis le haut, en points PDF) des zones du formulaire EN-GDAV-06 v03 fourni dans rns-template.pdf. Ajustez ces valeurs si vous observez un décalage à l'impression. La police par défaut est Helvetica. Pour calibrer visuellement : générer un PDF de référence via `pnpm --filter api run rns:calibrate` (affiche une grille superposée au template). `align` = left|right|center dans la case [x, x+maxWidth] ; les montants sont ancrés à droite. Colonnes réelles du gabarit (lignes verticales) : A[28-164] (libellés) · B[164-262] (n° employeur / matricule / dates / périodes / affiliation / signataire) · C[262-349] (année + salaires bruts) · D[349-441] (nombre de mois) · E[441-574] (date & lieu d'établissement / observations).",
   "_meta": {
     "templateRef": "EN-GDAV-06 v03 (CNPS Côte d'Ivoire)",
     "pageSize": { "width": 595.32, "height": 841.92 },
     "yIsFromTop": true,
-    "lastCalibratedOn": "2026-06-23"
+    "lastCalibratedOn": "2026-06-28",
+    "columns": { "A": [28, 164], "B": [164, 262], "C": [262, 349], "D": [349, 441], "E": [441, 574] }
   },
   "employer": {
-    "name":        { "x":  52, "y": 150, "size": 11, "bold": true,  "maxWidth": 183, "maxLines": 2 },
-    "address":     { "x":  52, "y": 178, "size":  8, "bold": false, "maxWidth": 183, "maxLines": 2 },
-    "cnpsNumber":  { "x": 252, "y": 178, "size":  7, "bold": true,  "maxWidth":  52, "maxLines": 1 },
-    "issuedAt":    { "x": 488, "y": 270, "size":  7, "bold": false, "maxWidth": 100, "align": "center" },
-    "affiliation": { "x": 258, "y": 690, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 1 }
+    "name":        { "x":  52, "y": 150, "size":  9, "bold": true,  "maxWidth": 108, "maxLines": 2 },
+    "address":     { "x":  52, "y": 182, "size":  8, "bold": false, "maxWidth": 108, "maxLines": 1 },
+    "cnpsNumber":  { "x": 164, "y": 178, "size":  8, "bold": true,  "maxWidth":  98, "maxLines": 1, "align": "center" },
+    "issuedAt":    { "x": 445, "y": 270, "size":  7, "bold": false, "maxWidth": 127, "align": "center" },
+    "affiliation": { "x": 164, "y": 690, "size":  9, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" }
   },
   "employee": {
-    "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 190, "maxLines": 1 },
-    "year":              { "x": 300, "y": 252, "size": 11, "bold": true,  "maxWidth":  50, "align": "center" },
-    "matriculeCnps":     { "x": 258, "y": 288, "size": 10, "bold": false, "maxWidth":  95, "maxLines": 1 },
-    "hireDate":          { "x": 258, "y": 338, "size":  9, "bold": false, "maxWidth":  95 },
-    "exitDate":          { "x": 258, "y": 388, "size":  9, "bold": false, "maxWidth":  95 },
-    "periodFrom":        { "x": 258, "y": 452, "size":  9, "bold": false, "maxWidth":  95 },
-    "periodTo":          { "x": 258, "y": 489, "size":  9, "bold": false, "maxWidth":  95 },
-    "monthsWorked":      { "x": 452, "y": 288, "size": 11, "bold": true,  "maxWidth":  82, "align": "center" }
+    "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 108, "maxLines": 1 },
+    "year":              { "x": 262, "y": 252, "size": 11, "bold": true,  "maxWidth":  87, "align": "center" },
+    "matriculeCnps":     { "x": 164, "y": 288, "size": 10, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" },
+    "hireDate":          { "x": 164, "y": 338, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "exitDate":          { "x": 164, "y": 388, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "periodFrom":        { "x": 164, "y": 452, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "periodTo":          { "x": 164, "y": 489, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "monthsWorked":      { "x": 349, "y": 288, "size": 11, "bold": true,  "maxWidth":  92, "align": "center" }
   },
   "salary": {
-    "annualGross":       { "x": 360, "y": 288, "size":  9, "bold": true,  "maxWidth":  88, "format": "fcfa", "align": "right" }
+    "annualGross":       { "x": 264, "y": 288, "size":  9, "bold": true,  "maxWidth":  82, "format": "fcfa", "align": "right" }
   },
   "signature": {
-    "city":      { "x": 258, "y": 514, "size":  8, "bold": false, "maxWidth":  95, "maxLines": 1 },
-    "name":      { "x": 258, "y": 530, "size": 10, "bold": true,  "maxWidth":  95, "maxLines": 2 },
-    "title":     { "x": 258, "y": 568, "size":  9, "bold": false, "maxWidth":  95, "maxLines": 2 }
+    "city":      { "x": 172, "y": 514, "size":  8, "bold": false, "maxWidth":  88, "maxLines": 1 },
+    "name":      { "x": 172, "y": 530, "size": 10, "bold": true,  "maxWidth":  88, "maxLines": 2 },
+    "title":     { "x": 172, "y": 568, "size":  9, "bold": false, "maxWidth":  88, "maxLines": 2 }
   }
 }

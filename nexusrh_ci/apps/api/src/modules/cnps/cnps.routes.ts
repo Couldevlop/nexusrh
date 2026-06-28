@@ -914,9 +914,17 @@ ${salaries}
                COALESCE(SUM(ps.gross_salary)::int, 0) AS annual_salary,
                COALESCE(COUNT(ps.id)::int, 0) AS months_worked
         FROM "${schema}".employees e
+        LEFT JOIN "${schema}".legal_entities le ON le.id = e.legal_entity_id
         LEFT JOIN "${schema}".pay_slips ps
                ON ps.employee_id = e.id AND ps.month = ANY($1::text[])
-        WHERE e.is_active = true AND e.deleted_at IS NULL`
+        WHERE e.is_active = true AND e.deleted_at IS NULL
+          -- Le RNS est un document CNPS Côte d'Ivoire : il ne concerne QUE les
+          -- salariés relevant de la réglementation ivoirienne. La maison mère est
+          -- en CI mais peut avoir des filiales à l'étranger : on inclut donc les
+          -- employés du tenant mono-pays (legal_entity_id NULL) ou rattachés à une
+          -- entité juridique ivoirienne (country_code = 'CIV'), et on exclut les
+          -- filiales étrangères.
+          AND (e.legal_entity_id IS NULL OR le.country_code = 'CIV')`
       if (employeeId) { params.push(employeeId); empSql += ` AND e.id = $${params.length}` }
       empSql += ` GROUP BY e.id ORDER BY e.last_name, e.first_name`
 
