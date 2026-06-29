@@ -203,6 +203,7 @@ describe('garde pwdResetRequired — token restreint au changement de mot de pas
       .mockResolvedValueOnce({ rows: [{ password_history_count: 0, breach_check_enabled: false }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] }) // SELECT password_hash
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // audit
     const res = await app.inject({ method: 'POST', url: '/auth/change-password',
       headers: { authorization: `Bearer ${restrictedToken()}` },
@@ -261,6 +262,7 @@ describe('change-password — historique anti-réutilisation + refus mot de pass
       .mockResolvedValueOnce({ rows: [{ password_hash: currentHash }] }) // SELECT password_hash
       .mockResolvedValueOnce({ rows: [] })                              // SELECT password_history (vide)
       .mockResolvedValueOnce({ rows: [] })                              // UPDATE
+      .mockResolvedValueOnce({ rows: [] })                              // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] })                              // INSERT history
       .mockResolvedValueOnce({ rows: [] })                              // DELETE trim history
       .mockResolvedValueOnce({ rows: [] })                              // audit

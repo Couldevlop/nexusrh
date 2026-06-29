@@ -210,7 +210,7 @@ async function main(): Promise<void> {
       continue
     }
     if (dryRun) {
-      console.log(`${prefix} DRY-RUN (password "${target.password}")`)
+      console.log(`${prefix} DRY-RUN (${target.label})`)
       continue
     }
     const r = await resetOne(target)
@@ -228,9 +228,11 @@ async function main(): Promise<void> {
   }
 
   console.log(`\n${okCount} succès · ${protectedCount} protégé(s) (réel/prod) · ${skippedCount} ignoré(s) (tenant absent) · ${koCount} échec(s)\n`)
-  console.log('Comptes documentés :')
+  // OWASP A09/A02 — ne JAMAIS imprimer les mots de passe en clair dans les logs
+  // du job (les logs K8s sont collectés/persistés). On liste seulement les emails.
+  console.log('Comptes traités :')
   for (const t of TARGETS) {
-    console.log(`  ${t.email.padEnd(35)} ${t.password.padEnd(20)} (${t.label})`)
+    console.log(`  ${t.email.padEnd(35)} (${t.label})`)
   }
 
   await pool.end().catch(() => {})

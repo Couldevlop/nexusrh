@@ -10,6 +10,12 @@ import { isValidSchemaName } from '../utils/schema-name.js'
 // Les clients API peuvent toujours utiliser Authorization: Bearer (backward-compat).
 export const AUTH_COOKIE_NAME = 'nexusrh_token'
 
+// Nom du cookie qui transporte le refresh token rotatif en httpOnly (OWASP A02).
+// Il n'est JAMAIS lisible en JS (anti-exfiltration XSS) : seul ce cookie — et,
+// pour backward-compat, le corps JSON — alimente /auth/refresh-token. Portée
+// limitée à /auth pour qu'il ne soit envoyé qu'aux endpoints refresh/logout.
+export const REFRESH_COOKIE_NAME = 'nexusrh_rt'
+
 export interface JwtSignPayload {
   sub:        string
   tenantId:   string | null

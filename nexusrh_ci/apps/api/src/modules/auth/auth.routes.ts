@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { blacklistTokenSafe } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
-import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
+import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../plugins/auth.js'
 import {
   getSecurityPolicy,
   isPasswordExpired,
@@ -18,7 +18,7 @@ import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
-import { issueRefreshToken, consumeRefreshToken, revokeRefreshToken, verifyAccountActive } from '../../services/refresh-token.service.js'
+import { issueRefreshToken, consumeRefreshToken, revokeRefreshToken, revokeAllRefreshTokensForUser, verifyAccountActive } from '../../services/refresh-token.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
 // httpOnly  : JS ne peut pas lire le cookie (anti-XSS exfiltration)
@@ -36,6 +36,28 @@ function authCookieOptions(): {
     path:     '/',
     maxAge:   60 * 60 * 24 * 7,
   }
+}
+
+// OWASP A02 — le refresh token (longue durée, 30 j) est posé en cookie httpOnly
+// portée /auth : illisible en JS, donc non exfiltrable par une XSS (contrairement
+// à un stockage localStorage). Le corps JSON continue de le renvoyer pour les
+// clients API (backward-compat), mais le navigateur s'appuie sur le cookie.
+function refreshCookieOptions(): {
+  httpOnly: boolean; secure: boolean; sameSite: 'lax'; path: string; maxAge: number
+} {
+  return {
+    httpOnly: true,
+    secure:   process.env['NODE_ENV'] === 'production',
+    sameSite: 'lax',
+    path:     '/auth',
+    maxAge:   60 * 60 * 24 * 30,
+  }
+}
+
+// Pose (ou efface) le cookie refresh selon que l'émission a réussi.
+function setRefreshCookie(reply: { setCookie: (n: string, v: string, o: object) => void; clearCookie: (n: string, o: object) => void }, token: string | null): void {
+  if (token) reply.setCookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions())
+  else reply.clearCookie(REFRESH_COOKIE_NAME, { path: '/auth' })
 }
 
 // OWASP A05 — sanity-check du nom de schema (defense in depth, le schema vient
@@ -358,6 +380,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               sub: platformUser.id, tenantId: null, schemaName: 'platform', role: 'super_admin',
               email: platformUser.email, firstName: platformUser.first_name, lastName: platformUser.last_name, employeeId: null,
             })
+            setRefreshCookie(reply, refreshToken)
             return reply.send({
               token,
               refreshToken,
@@ -610,6 +633,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           sub: user.id, tenantId: tenant.id, schemaName: tenant.schema_name, role: user.role,
           email: user.email, firstName: user.first_name, lastName: user.last_name, employeeId,
         })
+        setRefreshCookie(reply, refreshToken)
 
         return reply.send({
           token,
@@ -706,12 +730,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     config: REFRESH_RATE_LIMIT,
     schema: { tags: ['auth'], summary: 'Renouveler le JWT via refresh token (rotation)' },
     handler: async (request, reply) => {
-      const parsed = z.object({ refreshToken: z.string().min(32).max(256) }).strict().safeParse(request.body)
-      if (!parsed.success) {
+      // OWASP A02 — le refresh token vient en priorité du cookie httpOnly
+      // (navigateur, illisible en JS) ; le corps JSON reste accepté pour les
+      // clients API (backward-compat). Schéma souple : au moins une source.
+      const cookieRt = (request.cookies as Record<string, string | undefined> | undefined)?.[REFRESH_COOKIE_NAME]
+      const parsed = z.object({ refreshToken: z.string().min(32).max(256).optional() }).strict().safeParse(request.body ?? {})
+      const incomingRt = cookieRt ?? (parsed.success ? parsed.data.refreshToken : undefined)
+      if (!incomingRt) {
         return reply.status(400).send({ error: 'refreshToken requis' })
       }
       // Rotation : consomme (révoque) l'ancien token et récupère ses claims.
-      const claims = await consumeRefreshToken(pool, parsed.data.refreshToken)
+      const claims = await consumeRefreshToken(pool, incomingRt)
       if (!claims) {
         return reply.status(401).send({ error: 'Refresh token invalide ou expiré' })
       }
@@ -741,6 +770,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       // Émet un NOUVEAU refresh token (rotation) avec le rôle à jour.
       const newRefresh = await issueRefreshToken(pool, { ...claims, role: account.role })
       reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
+      setRefreshCookie(reply, newRefresh)
       return reply.send({ token, refreshToken: newRefresh })
     },
   })
@@ -755,11 +785,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const exp = (user as unknown as { exp?: number }).exp
       const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
       await blacklistTokenSafe(jti, ttl)
-      // Révoque le refresh token associé (s'il est fourni) → plus de renouvellement.
+      // Révoque le refresh token associé (cookie httpOnly en priorité, sinon
+      // corps JSON pour les clients API) → plus de renouvellement possible.
       const body = (request.body ?? {}) as { refreshToken?: string }
-      await revokeRefreshToken(pool, body.refreshToken)
-      // OWASP A02 — révoque le cookie httpOnly (mode SPA browser)
+      const cookieRt = (request.cookies as Record<string, string | undefined> | undefined)?.[REFRESH_COOKIE_NAME]
+      await revokeRefreshToken(pool, cookieRt ?? body.refreshToken)
+      // OWASP A02 — révoque les cookies httpOnly (JWT + refresh).
       reply.clearCookie(AUTH_COOKIE_NAME, { path: '/' })
+      reply.clearCookie(REFRESH_COOKIE_NAME, { path: '/auth' })
       auditLogAuth(
         user.schemaName, user.sub, 'auth.logout',
         { jti },
@@ -934,6 +967,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE ${table} SET password_hash = $1, password_changed_at = now(), updated_at = now() WHERE id = $2`,
         [newHash, user.sub],
       )
+
+      // OWASP A07 — révoque TOUS les refresh tokens existants : un token volé
+      // avant le changement de mot de passe ne doit plus pouvoir régénérer de
+      // JWT. Sans ça, changer son mot de passe (remédiation d'un compte
+      // compromis) ne mettait pas fin à la session de l'attaquant.
+      await revokeAllRefreshTokensForUser(pool, user.schemaName, user.sub)
+      // Le cookie refresh du client courant est lui aussi invalidé (il devra
+      // se reconnecter ou rafraîchir échouera) — on l'efface proprement.
+      setRefreshCookie(reply, null)
 
       // OWASP A07 — archive l'ANCIEN hash dans l'historique puis purge au-delà de
       // la fenêtre conservée. Non bloquant (table absente → on ignore).
