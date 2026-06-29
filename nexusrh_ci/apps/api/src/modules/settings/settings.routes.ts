@@ -53,6 +53,10 @@ function auditLogSettings(
 // OWASP A03 — schémas Zod stricts
 const patchTenantSchema = z.object({
   name:            z.string().min(1).max(200).optional(),
+  // Secteur d'activité (formulaire « Général ») — liste fermée côté UI, mais on
+  // reste souple côté API ('' = non défini). Sans ce champ, le PATCH du
+  // formulaire Général renvoyait 400 (schéma .strict()).
+  sector:          z.string().max(50).optional().nullable().or(z.literal('')),
   primary_color:   z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
   secondary_color: z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
   logo_url:        z.string().regex(URL_OR_DATA_RE, 'URL http(s) ou data:image requise').max(8192).optional().nullable(),
@@ -225,7 +229,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','sender_email','sender_name']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','sender_email','sender_name']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
