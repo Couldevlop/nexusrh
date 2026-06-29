@@ -497,6 +497,7 @@ describe('POST /auth/change-password — politique historique & fuite', () => {
       .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] }) // SELECT
       .mockResolvedValueOnce({ rows: [] }) // SELECT history (aucune réutilisation)
       .mockResolvedValueOnce({ rows: [] }) // UPDATE password
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // INSERT history
       .mockResolvedValueOnce({ rows: [] }) // DELETE purge
       .mockResolvedValueOnce({ rows: [] }) // audit changed
@@ -514,6 +515,7 @@ describe('POST /auth/change-password — politique historique & fuite', () => {
       .mockResolvedValueOnce({ rows: [{ password_history_count: 0, breach_check_enabled: false }] }) // policy
       .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] }) // SELECT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // audit
     const t = app.jwt.sign({ sub: 'sa1', tenantId: null, schemaName: 'platform', role: 'super_admin',
       email: 'sa@b.ci', firstName: 'S', lastName: 'A', employeeId: null })

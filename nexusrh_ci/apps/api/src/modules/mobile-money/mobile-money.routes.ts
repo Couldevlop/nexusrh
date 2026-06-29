@@ -243,8 +243,9 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
           id: string; employee_id: string; net_payable: string; month: string
           first_name: string; last_name: string
           mobile_money_provider: string; mobile_money_phone: string
+          payment_status: string
         }>(
-          `SELECT ps.id, ps.employee_id, ps.net_payable, ps.month,
+          `SELECT ps.id, ps.employee_id, ps.net_payable, ps.month, ps.payment_status,
                   e.first_name, e.last_name,
                   e.mobile_money_provider, e.mobile_money_phone
            FROM "${schema}".pay_slips ps
@@ -255,6 +256,20 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         const slip = slipRes.rows[0]
         if (!slip) {
           results.push({ paySlipId, employeeId: '', name: '?', provider: '?', phone: '?', amount: 0, success: false, error: 'Bulletin introuvable' })
+          continue
+        }
+        // OWASP A04 — idempotence : ne JAMAIS réinitier un virement pour un
+        // bulletin déjà payé ou en cours (statut 'pending', virement réel async).
+        // Sans ce garde, un double-clic / un rejeu de la requête déclencherait un
+        // SECOND paiement réel pour le même salarié.
+        if (slip.payment_status === 'paid' || slip.payment_status === 'pending') {
+          results.push({
+            paySlipId, employeeId: slip.employee_id,
+            name: `${slip.first_name} ${slip.last_name}`,
+            provider: slip.mobile_money_provider, phone: slip.mobile_money_phone,
+            amount: 0, success: false,
+            error: slip.payment_status === 'paid' ? 'Déjà payé' : 'Virement déjà en cours',
+          })
           continue
         }
 

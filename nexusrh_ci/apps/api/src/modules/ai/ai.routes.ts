@@ -534,6 +534,22 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
       }
       try {
+        // OWASP A01 (IDOR) — un manager ne peut analyser QUE les membres de son
+        // équipe directe (même règle que GET /employees/:id et /absences). Sans
+        // ce contrôle, il accédait au profil de risque (salaire, absences,
+        // évaluations) de n'importe quel salarié du tenant via un UUID deviné.
+        if (request.user.role === 'manager') {
+          const mgrId = request.user.employeeId
+          if (!mgrId) return reply.status(403).send({ error: 'Accès interdit' })
+          const tgt = await rawPool.query<{ manager_id: string | null }>(
+            `SELECT manager_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+            [employeeId],
+          )
+          if (!tgt.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+          if (tgt.rows[0].manager_id !== mgrId) {
+            return reply.status(403).send({ error: 'Accès interdit' })
+          }
+        }
         const result = await analyzeRetentionRisk(rawPool, schema, employeeId)
         if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
         return reply.send({ data: result })

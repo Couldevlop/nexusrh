@@ -168,6 +168,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'nexusrhci-auth',
+      // OWASP A02 — ne JAMAIS persister le refresh token (longue durée, 30 j)
+      // dans localStorage : illisible par une XSS. Il vit côté serveur dans un
+      // cookie httpOnly (cf. /auth/refresh-token) ; le navigateur s'en sert sans
+      // y accéder en JS. Tout le reste (JWT court — déjà aussi en cookie httpOnly,
+      // contexte cabinet, branding) reste persisté pour survivre à un rechargement.
+      partialize: ({ refreshToken: _omit, ...rest }) => rest,
       onRehydrateStorage: () => (state) => {
         if (state?.tenantConfig) applyTenantTheme(state.tenantConfig)
         else if (state?.agencyConfig) applyAgencyTheme(state.agencyConfig)

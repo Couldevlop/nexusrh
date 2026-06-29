@@ -504,7 +504,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /expenses/:id/lines
   fastify.post('/:id/lines', {
-    preHandler: [fastify.authenticate],
+    // RBAC — readonly exclu (consultation seule). Le périmètre est ensuite
+    // affiné par rôle dans le handler (employee → son rapport, manager → équipe).
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
@@ -544,6 +546,11 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           if (report.employee_id !== employeeId) {
             return reply.status(403).send({ error: 'Accès interdit' })
           }
+        } else if (request.user.role === 'manager') {
+          // OWASP A01 — un manager ne peut compléter QUE les notes de frais des
+          // membres de son équipe directe (mêmes règles que /approve, /reject).
+          const allowed = await managerCanActOnReport(schema, request.user.email, id)
+          if (!allowed) return reply.status(403).send({ error: 'Accès interdit' })
         }
         // Seul un rapport en brouillon accepte de nouvelles lignes (cohérent avec
         // le workflow : une fois soumis/approuvé/payé, le contenu est figé).

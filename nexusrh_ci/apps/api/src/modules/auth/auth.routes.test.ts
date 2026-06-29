@@ -217,6 +217,7 @@ describe('POST /auth/change-password — Zod + audit (OWASP A03 + A09)', () => {
       .mockResolvedValueOnce({ rows: [{ password_history_count: 0, breach_check_enabled: false }] }) // getSecurityPolicy
       .mockResolvedValueOnce({ rows: [{ password_hash: correctOldHash }] }) // SELECT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE (password_hash + password_changed_at)
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
     const token = tokenFor('admin')

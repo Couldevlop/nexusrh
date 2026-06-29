@@ -75,6 +75,25 @@ export async function consumeRefreshToken(pool: Pool, token: string | null | und
   }
 }
 
+/**
+ * Révoque TOUS les refresh tokens actifs d'un utilisateur (OWASP A07).
+ * Appelé lors d'un changement de mot de passe / désactivation / reset admin :
+ * un token volé AVANT le changement ne doit plus pouvoir régénérer de JWT
+ * (sinon la remédiation standard « changer son mot de passe » serait inopérante).
+ * Non bloquant.
+ */
+export async function revokeAllRefreshTokensForUser(
+  pool: Pool, schemaName: string, userId: string,
+): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE platform.refresh_tokens SET revoked_at = now()
+        WHERE user_id = $1 AND schema_name = $2 AND revoked_at IS NULL`,
+      [userId, schemaName],
+    )
+  } catch { /* non bloquant */ }
+}
+
 /** Révoque un refresh token (déconnexion). Non bloquant. */
 export async function revokeRefreshToken(pool: Pool, token: string | null | undefined): Promise<void> {
   if (!token || typeof token !== 'string') return

@@ -17,6 +17,7 @@
 import { config } from '../config.js'
 import { pool as rawPool } from '../db/pool.js'
 import { decryptIfPresent } from '../utils/crypto.js'
+import { assertSafeOutboundUrl } from './ssrf-guard.js'
 
 export const MM_PROVIDERS = ['wave', 'mtn_momo', 'orange_money'] as const
 export type MmProvider = typeof MM_PROVIDERS[number]
@@ -157,6 +158,10 @@ function simulate(): TransferResult {
 }
 
 async function fetchJson(url: string, init: RequestInit, timeoutMs = 15_000): Promise<{ ok: boolean; status: number; body: unknown }> {
+  // OWASP A10 (SSRF) — défense en profondeur : même si l'URL provient d'une
+  // config tenant (validée à l'écriture) ou plateforme, on revérifie qu'elle ne
+  // résout pas vers une adresse interne/privée juste avant l'appel sortant.
+  await assertSafeOutboundUrl(url)
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {

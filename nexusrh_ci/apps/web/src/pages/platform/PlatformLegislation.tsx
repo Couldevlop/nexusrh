@@ -78,7 +78,7 @@ export default function PlatformLegislation() {
                           ))}
                         </div>
                       )}
-                      {p.source && <a href={p.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline">{t('legislation.source', 'source')}</a>}
+                      {p.source && /^https?:\/\//i.test(p.source) && <a href={p.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline">{t('legislation.source', 'source')}</a>}
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <button onClick={() => approve.mutate(p.id)} disabled={approve.isPending}

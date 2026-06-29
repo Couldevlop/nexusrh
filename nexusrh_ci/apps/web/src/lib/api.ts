@@ -52,13 +52,15 @@ api.interceptors.request.use((config) => {
 let refreshPromise: Promise<string | null> | null = null
 
 async function trySilentRefresh(): Promise<string | null> {
+  // Le refresh token est porté par un cookie httpOnly (illisible en JS). On
+  // l'envoie quand même dans le corps s'il est encore en mémoire (session
+  // courante non rechargée) pour rester compatible ; sinon le cookie suffit.
   const rt = useAuthStore.getState().refreshToken
-  if (!rt) return null
   if (!refreshPromise) {
     // axios brut (pas `api`) → n'enclenche pas l'intercepteur (anti-récursion).
     refreshPromise = axios
       .post<{ token?: string; refreshToken?: string | null }>(`${API_BASE}/auth/refresh-token`,
-        { refreshToken: rt }, { withCredentials: true })
+        rt ? { refreshToken: rt } : {}, { withCredentials: true })
       .then((r) => {
         const newToken = r.data?.token
         if (!newToken) return null
@@ -107,8 +109,12 @@ api.interceptors.response.use(
       // 401 sur une route protégée : le JWT a probablement expiré. On tente UN
       // refresh silencieux via le refresh token rotatif, puis on REJOUE la
       // requête d'origine (l'utilisateur n'est pas déconnecté — AUTH-008).
+      // On tente le refresh tant qu'une session existe (JWT présent). Le refresh
+      // token n'est plus en localStorage : il vit dans un cookie httpOnly que le
+      // navigateur envoie automatiquement (withCredentials) — d'où le test sur
+      // `token` et non sur `refreshToken` (absent après un rechargement de page).
       const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined
-      if (original && !original._retry && useAuthStore.getState().refreshToken) {
+      if (original && !original._retry && useAuthStore.getState().token) {
         original._retry = true
         const newToken = await trySilentRefresh()
         if (newToken) {

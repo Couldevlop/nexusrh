@@ -12,6 +12,7 @@ import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
+import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -800,6 +801,17 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const wantsSecret = [b.apiKey, b.webhookSecret, b.subscriptionKey, b.merchantKey].some(v => v != null && v !== '')
       if (wantsSecret && !isEncryptionAvailable()) {
         return reply.status(400).send({ error: 'Chiffrement non configuré (ENCRYPTION_KEY) — impossible de stocker un secret.' })
+      }
+
+      // OWASP A10 (SSRF) — l'endpoint provider/agrégateur est appelé côté serveur
+      // pendant une campagne de paiement. Un admin tenant ne doit pas pouvoir le
+      // pointer vers le réseau interne / l'endpoint de métadonnées cloud. On exige
+      // une URL http(s) publique (résolution DNS, rejet des plages privées).
+      if (b.apiUrl != null && b.apiUrl !== '') {
+        const verdict = await isSafeOutboundUrl(b.apiUrl)
+        if (!verdict.ok) {
+          return reply.status(400).send({ error: `URL d'API invalide ou interdite : ${verdict.reason}` })
+        }
       }
       try {
         await ensureMmConfig(schema)
