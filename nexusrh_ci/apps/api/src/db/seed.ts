@@ -265,8 +265,38 @@ const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_o
 async function runSeed(): Promise<void> {
   console.log('NexusRH CI — Initialisation du seed...')
 
-  // Nettoyage idempotent : drop des schémas tenant pour repartir propre
+  // ── Garde-fou PRODUCTION : ne JAMAIS détruire une base déjà initialisée ──────
+  // Le seed est destructif (DROP SCHEMA ... CASCADE → efface utilisateurs,
+  // employés, bulletins, absences…). En production, une fois la base initialisée,
+  // un re-seed effacerait les comptes/données ACTIFS (et seuls les mots de passe
+  // des comptes de démo étaient « restaurés », pas les comptes/données réels).
+  // → En prod (NODE_ENV=production ou SEED_PRESERVE=true), si un schéma tenant
+  //   existe déjà, on NE touche à RIEN. Échappatoire explicite : SEED_FORCE_RESET=true.
+  const forceReset = process.env['SEED_FORCE_RESET'] === 'true'
+  const preserve = !forceReset && (
+    process.env['NODE_ENV'] === 'production' || process.env['SEED_PRESERVE'] === 'true'
+  )
+  if (preserve) {
+    const existing = await pool.query<{ schema_name: string }>(
+      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = ANY($1::text[])`,
+      [TENANT_SCHEMAS],
+    )
+    if (existing.rows.length > 0) {
+      console.log('═══════════════════════════════════════════════════════════════════')
+      console.log('  MODE PRÉSERVATION (production) — base déjà initialisée.')
+      console.log(`  Schémas tenant présents : ${existing.rows.map((r) => r.schema_name).join(', ')}`)
+      console.log('  → Aucun DROP, aucun re-seed : comptes et données actifs intacts.')
+      console.log('  → Migrations de schéma : appliquées à la volée (ensureSchemaMigrated).')
+      console.log('  Pour forcer un reset complet (DESTRUCTIF) : SEED_FORCE_RESET=true')
+      console.log('═══════════════════════════════════════════════════════════════════')
+      return
+    }
+    console.log('[0] Mode préservation : aucun schéma tenant existant → bootstrap initial (sans DROP).')
+  }
+
+  // Reset complet (dev / bootstrap initial / SEED_FORCE_RESET) — repart propre.
   for (const schema of TENANT_SCHEMAS) {
+    if (preserve) break // bootstrap initial en prod : pas de DROP (schémas absents)
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     console.log(`[0] Schéma ${schema} supprimé (reset)`)
   }
