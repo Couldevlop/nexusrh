@@ -12,24 +12,24 @@
     "address":     { "x":  52, "y": 182, "size":  8, "bold": false, "maxWidth": 108, "maxLines": 1 },
     "cnpsNumber":  { "x": 164, "y": 178, "size":  8, "bold": true,  "maxWidth":  98, "maxLines": 1, "align": "center" },
     "issuedAt":    { "x": 445, "y": 270, "size":  7, "bold": false, "maxWidth": 127, "align": "center" },
-    "affiliation": { "x": 164, "y": 690, "size":  9, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" }
+    "affiliation": { "x": 164, "y": 704, "size":  9, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" }
   },
   "employee": {
     "lastNameFirstName": { "x":  52, "y": 240, "size": 11, "bold": true,  "maxWidth": 108, "maxLines": 1 },
     "year":              { "x": 262, "y": 252, "size": 11, "bold": true,  "maxWidth":  87, "align": "center" },
-    "matriculeCnps":     { "x": 164, "y": 288, "size": 10, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" },
+    "matriculeCnps":     { "x": 164, "y": 302, "size": 10, "bold": false, "maxWidth":  98, "maxLines": 1, "align": "center" },
     "hireDate":          { "x": 164, "y": 338, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
     "exitDate":          { "x": 164, "y": 388, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
-    "periodFrom":        { "x": 164, "y": 452, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
-    "periodTo":          { "x": 164, "y": 489, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
-    "monthsWorked":      { "x": 349, "y": 288, "size": 11, "bold": true,  "maxWidth":  92, "align": "center" }
+    "periodFrom":        { "x": 164, "y": 466, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "periodTo":          { "x": 164, "y": 492, "size":  9, "bold": false, "maxWidth":  98, "align": "center" },
+    "monthsWorked":      { "x": 349, "y": 302, "size": 11, "bold": true,  "maxWidth":  92, "align": "center" }
   },
   "salary": {
-    "annualGross":       { "x": 264, "y": 288, "size":  9, "bold": true,  "maxWidth":  82, "format": "fcfa", "align": "right" }
+    "annualGross":       { "x": 264, "y": 302, "size":  9, "bold": true,  "maxWidth":  82, "format": "fcfa", "align": "right" }
   },
   "signature": {
     "city":      { "x": 172, "y": 514, "size":  8, "bold": false, "maxWidth":  88, "maxLines": 1 },
-    "name":      { "x": 172, "y": 530, "size": 10, "bold": true,  "maxWidth":  88, "maxLines": 2 },
+    "name":      { "x": 172, "y": 540, "size": 10, "bold": true,  "maxWidth":  88, "maxLines": 2 },
     "title":     { "x": 172, "y": 568, "size":  9, "bold": false, "maxWidth":  88, "maxLines": 2 }
   }
 }
