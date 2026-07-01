@@ -112,6 +112,24 @@ describe('PATCH /settings/tenant — Zod + audit (OWASP A03 + A09)', () => {
     const changes = JSON.parse(auditCall?.[1]?.[3] as string)
     expect(changes.modifiedFields).toEqual(expect.arrayContaining(['name', 'at_rate', 'primary_color']))
   })
+
+  it('accepte un logo data URL réaliste (~60 Ko) — pas de 400 sur la borne max', async () => {
+    // Régression : le plafond .max(8192) rejetait tout vrai logo (une data URL
+    // base64 de 1 Mo ≈ 1,37 M car.), faisant échouer le PATCH complet — donc
+    // ni le logo NI les couleurs ne s'appliquaient. Un logo modeste dépasse déjà.
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 't1', name: 'SOTRA' }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+
+    const logoDataUrl = 'data:image/png;base64,' + 'A'.repeat(60_000)
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/tenant',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { primary_color: '#E85D04', logo_url: logoDataUrl },
+    })
+    expect(res.statusCode).toBe(200)
+  })
 })
 
 describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 + A04 + A09)', () => {

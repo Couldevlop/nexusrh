@@ -431,6 +431,12 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       setForm({})
     },
   })
+  // Un 400 (ex. logo trop volumineux) ne doit jamais être silencieux : sans ça,
+  // l'admin croyait que « rien ne se passait » à l'enregistrement.
+  const updateError = update.isError
+    ? ((update.error as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? t('general.updateError', { defaultValue: 'Échec de l\'enregistrement.' }))
+    : null
   const s = data?.data
   if (!s) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
 
@@ -545,6 +551,7 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           </button>
         </div>
         {update.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
+        {updateError && <p className="text-xs text-red-600">{updateError}</p>}
       </div>
 
       <EmailSmtpCard />
