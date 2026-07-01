@@ -59,7 +59,10 @@ const patchTenantSchema = z.object({
   sector:          z.string().max(50).optional().nullable().or(z.literal('')),
   primary_color:   z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
   secondary_color: z.string().regex(HEX_COLOR_RE, 'Format hex requis (#RRGGBB)').optional(),
-  logo_url:        z.string().regex(URL_OR_DATA_RE, 'URL http(s) ou data:image requise').max(8192).optional().nullable(),
+  // Le logo est uploadé en data URL base64 (limite front 1 Mo). Une image de
+  // 1 Mo ≈ 1,37 M caractères une fois encodée : plafond à 1,5 M (marge), sinon
+  // .max(8192) rejetait TOUT vrai logo → PATCH 400 → ni logo ni couleurs appliqués.
+  logo_url:        z.string().regex(URL_OR_DATA_RE, 'URL http(s) ou data:image requise').max(1_500_000).optional().nullable(),
   city:            z.string().min(1).max(100).optional(),
   cnps_number:     z.string().regex(CNPS_NUMBER_RE).optional().nullable(),
   dgi_number:      z.string().regex(DGI_NUMBER_RE).optional().nullable(),
