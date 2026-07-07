@@ -6,6 +6,7 @@ import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
 import { joursFeriesCI } from '../../utils/ci-holidays.js'
 import { sendAbsenceRequestEmail } from '../../services/email.js'
+import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
@@ -285,17 +286,20 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
             'Nouvelle demande d\'absence',
             `${employeeName} a soumis une demande d'absence du ${body.startDate} au ${body.endDate} (${days} j) — à valider.`,
             { absenceId: newAbsenceId, employeeId })
-          // Email manager (ABS-016) — best-effort, uniquement si SMTP configuré
-          if (row.manager_email && config.smtp.user) {
-            const t = await rawPool.query<{ name: string; primary_color: string | null }>(
-              `SELECT name, primary_color FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
-            ).catch(() => ({ rows: [] as Array<{ name: string; primary_color: string | null }> }))
-            await sendAbsenceRequestEmail({
-              to: row.manager_email, managerName: row.manager_first || 'Manager', employeeName,
-              absenceType: row.type_label || 'Absence', startDate: body.startDate, endDate: body.endDate, days,
-              reason: body.reason ?? null, tenantName: t.rows[0]?.name || 'NexusRH CI',
-              primaryColor: t.rows[0]?.primary_color ?? null, approvalUrl: `${config.appUrl}/absences`,
-            }).catch(() => undefined)
+          // Email manager (ABS-016) — best-effort, via le SMTP du TENANT s'il est
+          // configuré (Paramètres → Email), sinon repli sur le SMTP plateforme
+          // (comme tous les autres envois au nom du tenant).
+          if (row.manager_email) {
+            const mail = await loadTenantMailBySchema(schema).catch(() => null)
+            if (mail?.smtp || config.smtp.user) {
+              await sendAbsenceRequestEmail({
+                to: row.manager_email, managerName: row.manager_first || 'Manager', employeeName,
+                absenceType: row.type_label || 'Absence', startDate: body.startDate, endDate: body.endDate, days,
+                reason: body.reason ?? null, tenantName: mail?.name || 'NexusRH CI',
+                primaryColor: mail?.primaryColor ?? null, approvalUrl: `${config.appUrl}/absences`,
+                from: mail?.from, replyTo: mail?.from, smtp: mail?.smtp ?? null,
+              }).catch(() => undefined)
+            }
           }
         } catch { /* non bloquant */ }
       })()

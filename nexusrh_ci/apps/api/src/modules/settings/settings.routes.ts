@@ -5,7 +5,8 @@ import { config } from '../../config.js'
 import { pool } from '../../db/pool.js'
 import bcrypt from 'bcryptjs'
 import { provisionTenantSchema } from '../../db/provisioning.js'
-import { sendEmployeeWelcomeEmail, type TenantSmtp } from '../../services/email.js'
+import { sendEmployeeWelcomeEmail, sendTestEmail } from '../../services/email.js'
+import { loadTenantMailById } from '../../services/tenant-mail.service.js'
 import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
@@ -13,6 +14,7 @@ import { buildLegislationConfig } from '../../services/legislation-config.servic
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { describeDbError } from '../../utils/db-error.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -143,47 +145,23 @@ function generateTempPassword(): string {
   return chars.join('')
 }
 
-// Construit l'adresse "From" d'un email destiné aux membres du tenant à partir
-// de l'expéditeur configuré (Paramètres → société). NULL → repli plateforme
-// (config.smtp.from) géré par le service email.
-function buildTenantFrom(senderName: string | null | undefined, senderEmail: string | null | undefined): string | undefined {
-  if (!senderEmail) return undefined
-  return senderName ? `${senderName} <${senderEmail}>` : senderEmail
-}
+// Config email d'envoi du tenant (expéditeur + SMTP propre option C) —
+// centralisée dans services/tenant-mail.service.ts (partagée avec absences,
+// bank-transfer…). Alias local pour garder les appels existants lisibles.
+const loadTenantMail = loadTenantMailById
 
-// Charge la config email d'envoi d'un tenant (expéditeur + SMTP propre option C).
-// Le mot de passe SMTP est déchiffré ici ; `smtp` est null si aucun serveur
-// tenant n'est configuré (→ repli plateforme dans le service email).
-async function loadTenantMail(tenantId: string): Promise<{
-  name: string; primaryColor: string; from: string | undefined; smtp: TenantSmtp | null
-}> {
-  const r = await pool.query<{
-    name: string; primary_color: string | null
-    sender_email: string | null; sender_name: string | null
-    smtp_host: string | null; smtp_port: number | null; smtp_secure: boolean | null
-    smtp_user: string | null; smtp_pass_enc: string | null
-  }>(
-    `SELECT name, primary_color, sender_email, sender_name,
-            smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc
-     FROM platform.tenants WHERE id = $1 LIMIT 1`,
-    [tenantId],
-  )
-  const row = r.rows[0]
-  const smtp: TenantSmtp | null = row?.smtp_host
-    ? {
-        host: row.smtp_host,
-        port: row.smtp_port ?? 587,
-        secure: row.smtp_secure ?? false,
-        user: row.smtp_user,
-        pass: decryptIfPresent(row.smtp_pass_enc),
-      }
-    : null
-  return {
-    name: row?.name ?? 'Votre entreprise',
-    primaryColor: row?.primary_color ?? '#4F46E5',
-    from: buildTenantFrom(row?.sender_name, row?.sender_email),
-    smtp,
-  }
+// Disponibilité : la réponse HTTP (création d'utilisateur, reset…) ne doit
+// jamais rester suspendue derrière un SMTP qui rame — au-delà de cette borne,
+// on répond avec `emailSent: false` (le mot de passe temporaire dans la réponse
+// sert de filet) et l'envoi continue en arrière-plan. Surchargeable par env
+// (EMAIL_WAIT_MS) pour l'exploitation et les tests.
+const EMAIL_WAIT_MS = Number(process.env['EMAIL_WAIT_MS'] ?? 8_000)
+const EMAIL_TIMED_OUT = Symbol('email-timeout')
+function waitAtMost<T>(p: Promise<T>, ms: number): Promise<T | typeof EMAIL_TIMED_OUT> {
+  return Promise.race([
+    p,
+    new Promise<typeof EMAIL_TIMED_OUT>((resolve) => { setTimeout(() => resolve(EMAIL_TIMED_OUT), ms).unref?.() }),
+  ])
 }
 
 // Applique les migrations lazy (legal_entities, variable_elements.month, etc.)
@@ -733,6 +711,55 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // ── POST /settings/email/test — envoie un email de test via la config du tenant ──
+  // Permet à l'admin de vérifier ses identifiants SMTP sans attendre un envoi
+  // réel (création de compte, virement…). Destinataire = l'admin connecté par
+  // défaut. Réponse 502 (et non 500) si le serveur SMTP refuse l'envoi.
+  fastify.post('/email/test', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const tenantId = request.user.tenantId
+      if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const parsed = z.object({
+        to: z.string().email('Email destinataire invalide').max(255).optional(),
+      }).strict().safeParse(request.body ?? {})
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      }
+      const to = parsed.data.to ?? request.user.email
+      if (!to) return reply.status(400).send({ error: 'Aucun destinataire — précisez une adresse email.' })
+      try {
+        const mail = await loadTenantMail(tenantId)
+        const viaTenantSmtp = !!mail.smtp
+        try {
+          await sendTestEmail({
+            to,
+            tenantName: mail.name,
+            primaryColor: mail.primaryColor,
+            from: mail.from,
+            replyTo: mail.from,
+            smtp: mail.smtp,
+          })
+        } catch (sendErr) {
+          const msg = sendErr instanceof Error ? sendErr.message : 'Erreur SMTP inconnue'
+          fastify.log.warn({ sendErr }, 'test email failed')
+          return reply.status(502).send({
+            error: `Échec de l'envoi de l'email de test : ${msg}`, viaTenantSmtp,
+          })
+        }
+        auditLogSettings(
+          request.user.schemaName, request.user.sub, 'settings.email_test_sent', tenantId,
+          { to, viaTenantSmtp }, request.ip ?? null,
+        )
+        return reply.send({ success: true, to, viaTenantSmtp })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // ── Mobile Money — config des providers + agrégateur par tenant (chiffré) ───
   // cinetpay = agrégateur (une intégration → tous les opérateurs).
   const MM_PROVIDERS_SET = ['wave', 'mtn_momo', 'orange_money', 'cinetpay'] as const
@@ -953,13 +980,16 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           )
         }
 
-        // SET-004 — email d'invitation (non bloquant). Le tempPassword reste dans
-        // la réponse comme filet de sécurité si l'envoi échoue.
+        // SET-004 — email d'invitation (non bloquant ET borné dans le temps).
+        // Le tempPassword reste dans la réponse comme filet de sécurité si
+        // l'envoi échoue ou dépasse la borne (SMTP lent → le 201 part quand même,
+        // sinon le proxy coupe la requête et l'admin ne voit AUCUNE confirmation
+        // alors que le compte est créé).
         let emailSent = false
         if (tenantId) {
           try {
             const mail = await loadTenantMail(tenantId)
-            await sendEmployeeWelcomeEmail({
+            const sending = sendEmployeeWelcomeEmail({
               to: body.email,
               firstName: body.first_name,
               lastName: body.last_name,
@@ -971,7 +1001,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               replyTo: mail.from,
               smtp: mail.smtp,
             })
-            emailSent = true
+            sending.catch((emailErr) => fastify.log.warn({ emailErr }, 'invitation email failed'))
+            emailSent = (await waitAtMost(sending, EMAIL_WAIT_MS)) !== EMAIL_TIMED_OUT
           } catch (emailErr) {
             fastify.log.warn({ emailErr }, 'invitation email failed')
           }
@@ -980,6 +1011,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(201).send({ data: res.rows[0], tempPassword, emailSent })
       } catch (err) {
         fastify.log.error(err)
+        // Email déjà pris, département introuvable… → message métier clair
+        // (409/422) au lieu d'un 500 générique (OWASP A05 : pas d'erreur brute).
+        const mapped = describeDbError(err, {
+          entity: 'utilisateur',
+          uniqueMessages: { email: 'Un utilisateur avec cet email existe déjà.' },
+        })
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
         return reply.status(500).send({ error: 'Erreur lors de la création' })
       }
     },
@@ -1650,12 +1688,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           [hash, id]
         )
 
-        // Essayer d'envoyer l'email (non bloquant)
+        // Essayer d'envoyer l'email (non bloquant ET borné — cf. POST /users)
         let emailSent = false
         if (tenantId) {
           try {
             const mail = await loadTenantMail(tenantId)
-            await sendEmployeeWelcomeEmail({
+            const sending = sendEmployeeWelcomeEmail({
               to: user.email,
               firstName: user.first_name,
               lastName: user.last_name,
@@ -1667,7 +1705,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               replyTo: mail.from,
               smtp: mail.smtp,
             })
-            emailSent = true
+            sending.catch((emailErr) => fastify.log.warn({ emailErr }, 'reset-password email failed'))
+            emailSent = (await waitAtMost(sending, EMAIL_WAIT_MS)) !== EMAIL_TIMED_OUT
           } catch (emailErr) {
             fastify.log.warn({ emailErr }, 'reset-password email failed')
           }

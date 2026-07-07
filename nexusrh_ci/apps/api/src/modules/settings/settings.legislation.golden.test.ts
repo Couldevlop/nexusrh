@@ -19,7 +19,10 @@ vi.mock('../../services/redis.js', () => ({
 vi.mock('../../db/provisioning.js', () => ({
   provisionTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../../services/email.js', () => ({ sendEmployeeWelcomeEmail: vi.fn().mockResolvedValue({ sent: true }) }))
+vi.mock('../../services/email.js', () => ({
+  sendEmployeeWelcomeEmail: vi.fn().mockResolvedValue({ sent: true }),
+  sendTestEmail:            vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../utils/crypto.js', () => ({
   encrypt: (v: string) => `enc(${v})`,
   encryptIfPresent: (v: string | null | undefined) => (v ? `enc(${v})` : null),

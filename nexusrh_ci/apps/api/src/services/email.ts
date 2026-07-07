@@ -6,6 +6,23 @@ import { config } from '../config.js'
 // l'import (Clean Architecture) — un module qui importe email.ts (ex.
 // settings.routes) ne dépend plus de la présence de config.smtp au chargement,
 // ce qui casserait notamment les tests qui mockent une config partielle.
+// Bornes de temps SMTP (disponibilité) : un serveur injoignable/lent ne doit
+// JAMAIS suspendre une requête HTTP (création d'utilisateur…) au-delà du
+// timeout du proxy — l'envoi échoue proprement et `emailSent: false` le signale.
+const SMTP_TIMEOUTS = {
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
+} as const
+
+// OWASP A02 — TLS strict en production (protège les credentials SMTP du MITM),
+// certificats auto-signés tolérés uniquement en dev/test (smtp4dev, mailhog).
+// Même politique que le worker (apps/worker/src/jobs/email.ts).
+const SMTP_TLS = {
+  rejectUnauthorized: config.env === 'production',
+  minVersion: 'TLSv1.2',
+} as const
+
 let _transporter: Transporter | null = null
 function getTransporter(): Transporter {
   if (!_transporter) {
@@ -15,7 +32,8 @@ function getTransporter(): Transporter {
       secure: config.smtp.secure,
       auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
       requireTLS: config.smtp.host === 'smtp.gmail.com',
-      tls: { rejectUnauthorized: false },
+      tls: SMTP_TLS,
+      ...SMTP_TIMEOUTS,
     })
   }
   return _transporter
@@ -45,7 +63,8 @@ function transporterFor(smtp?: TenantSmtp | null): Transporter {
     secure: smtp.secure,
     auth: smtp.user ? { user: smtp.user, pass: smtp.pass ?? '' } : undefined,
     requireTLS: smtp.port === 587 && !smtp.secure,
-    tls: { rejectUnauthorized: false },
+    tls: SMTP_TLS,
+    ...SMTP_TIMEOUTS,
   })
 }
 
@@ -601,6 +620,41 @@ export async function sendAbsenceRequestEmail(params: {
     to,
     subject: `Demande d'absence à valider — ${employeeName}`,
     html,
+  })
+}
+
+// Email de TEST de la configuration d'envoi (Paramètres → Email). Permet à
+// l'admin de vérifier immédiatement ses identifiants SMTP : l'envoi passe par
+// le serveur du tenant si `smtp` est fourni, sinon par la plateforme (repli).
+export async function sendTestEmail(params: {
+  to: string; tenantName: string; primaryColor?: string | null
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, tenantName, primaryColor, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const via = smtp?.host
+    ? `votre serveur SMTP (<strong>${smtp.host}</strong>)`
+    : 'le serveur de la plateforme NexusRH CI (aucun serveur SMTP tenant configuré)'
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(tenantName, 'Test de la configuration email', color, null)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>✅ <strong>Ceci est un email de test</strong> envoyé depuis les paramètres de <strong>${tenantName}</strong> sur NexusRH CI.</p>
+        <p>Il a été acheminé via ${via}.</p>
+        <p style="color:#6b7280;font-size:13px;">Si vous recevez ce message, votre configuration d'envoi fonctionne. Aucune action n'est requise.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject: `✅ Email de test — ${tenantName} (NexusRH CI)`,
+    html,
+    text: `Ceci est un email de test envoyé depuis les paramètres de ${tenantName} sur NexusRH CI. Si vous recevez ce message, votre configuration d'envoi fonctionne.`,
   })
 }
 

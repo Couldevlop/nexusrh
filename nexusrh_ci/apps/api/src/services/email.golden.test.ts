@@ -32,7 +32,7 @@ vi.mock('../config.js', () => ({
   },
 }))
 
-import { sendWelcomeTenantEmail, sendEmployeeWelcomeEmail } from './email.js'
+import { sendWelcomeTenantEmail, sendEmployeeWelcomeEmail, sendTestEmail } from './email.js'
 
 beforeEach(() => { sendMailMock.mockClear() })
 
@@ -82,5 +82,32 @@ describe('sendEmployeeWelcomeEmail — email création utilisateur tenant', () =
     expect(mail.to).toBe('user@acme.ci')
     expect(mail.html).toContain('CI_EMP42!')
     expect(mail.text).toContain('CI_EMP42!')
+  })
+})
+
+describe('sendTestEmail — test de la configuration SMTP (Paramètres → Email)', () => {
+  it('passe par le serveur SMTP du TENANT quand une config est fournie', async () => {
+    createTransportMock.mockClear()
+    await sendTestEmail({
+      to: 'admin@acme.ci', tenantName: 'ACME', primaryColor: '#1D4ED8',
+      from: 'ACME RH <rh@acme.ci>', replyTo: 'ACME RH <rh@acme.ci>',
+      smtp: { host: 'smtp.acme.ci', port: 465, secure: true, user: 'rh@acme.ci', pass: 's3cret' },
+    })
+    // Transporter créé avec le serveur du tenant, pas celui de la plateforme
+    const cfg = (createTransportMock.mock.calls.at(-1)?.[0] ?? {}) as Record<string, unknown>
+    expect(cfg['host']).toBe('smtp.acme.ci')
+    expect(cfg['auth']).toEqual({ user: 'rh@acme.ci', pass: 's3cret' })
+    const mail = (sendMailMock.mock.calls.at(-1)?.[0] ?? {}) as Record<string, string>
+    expect(mail.from).toBe('ACME RH <rh@acme.ci>')
+    expect(mail.to).toBe('admin@acme.ci')
+    expect(mail.subject).toContain('test')
+    expect(mail.html).toContain('smtp.acme.ci') // dit à l'admin par où l'email est passé
+  })
+
+  it('repli plateforme sans config tenant (expéditeur plateforme)', async () => {
+    await sendTestEmail({ to: 'admin@acme.ci', tenantName: 'ACME' })
+    const mail = (sendMailMock.mock.calls.at(-1)?.[0] ?? {}) as Record<string, string>
+    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.html).toContain('plateforme')
   })
 })

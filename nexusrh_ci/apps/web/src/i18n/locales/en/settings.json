@@ -122,7 +122,13 @@
       "configured": "SMTP server configured ✓",
       "notConfigured": "No SMTP server — sending via the platform",
       "noEncryption": "Encryption is not configured on the platform: cannot store an SMTP password.",
-      "saveError": "Error while saving SMTP"
+      "saveError": "Error while saving SMTP",
+      "testButton": "Send a test email",
+      "testSending": "Sending test…",
+      "testUnsaved": "Save your changes first",
+      "testOkTenant": "Test email sent to {{to}} via your SMTP server ✓ — check your inbox.",
+      "testOkPlatform": "Test email sent to {{to}} via the platform server (no company SMTP configured).",
+      "testFail": "Failed to send the test email"
     },
     "sector": "Business sector",
     "selectOption": "— Select —",
@@ -177,6 +183,8 @@
     "createResult": {
       "title": "User created!",
       "tempPasswordLabel": "Temporary password:",
+      "emailSent": "Welcome email sent to the user",
+      "emailNotSent": "The email could not be sent — share the password manually.",
       "hint": "Share this password securely.",
       "close": "Close"
     },
@@ -193,7 +201,8 @@
       "inactive": "Inactive",
       "cancel": "Cancel",
       "create": "Create",
-      "creating": "Creating..."
+      "creating": "Creating...",
+      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error."
     }
   },
   "departments": {

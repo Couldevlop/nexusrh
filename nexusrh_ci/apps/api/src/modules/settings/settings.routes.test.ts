@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+
+// Borne d'attente email courte pour tester le comportement « SMTP qui pend »
+// sans ralentir la suite (production : 8 s).
+vi.hoisted(() => { process.env['EMAIL_WAIT_MS'] = '50' })
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
@@ -17,6 +21,7 @@ vi.mock('../../db/provisioning.js', () => ({
 
 vi.mock('../../services/email.js', () => ({
   sendEmployeeWelcomeEmail: vi.fn().mockResolvedValue({ sent: true }),
+  sendTestEmail:            vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../config.js', () => ({
@@ -30,6 +35,7 @@ vi.mock('../../config.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import settingsRoutes from './settings.routes.js'
+import { sendTestEmail, sendEmployeeWelcomeEmail } from '../../services/email.js'
 
 const TENANT = 'tenant_sotra'
 const UUID_A = '11111111-1111-1111-1111-111111111111'
@@ -610,5 +616,119 @@ describe('POST /settings/users — Zod + allowlist rôles (OWASP A01 + A03, SET-
     })
     expect(res.statusCode).toBe(201)
     expect(JSON.parse(res.body).tempPassword).toBeTruthy()
+  })
+
+  it('SMTP qui ne répond pas → 201 quand même (borné) avec emailSent=false', async () => {
+    // Reproduit le bug terrain : l'envoi de l'email de bienvenue restait suspendu
+    // sur un SMTP injoignable → la réponse HTTP dépassait le timeout du proxy →
+    // l'admin ne voyait AUCUNE confirmation alors que le compte était créé.
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'u-slow', email: 'slow@sotra.ci', first_name: 'S', last_name: 'L', role: 'employee', is_active: true, created_at: '2026-01-01' }] }) // INSERT users
+      .mockResolvedValueOnce({ rows: [{ name: 'SOTRA', primary_color: '#E85D04', sender_email: null, sender_name: null, smtp_host: 'smtp.mort.ci', smtp_port: 587, smtp_secure: false, smtp_user: 'x', smtp_pass_enc: null }] }) // config mail tenant
+    vi.mocked(sendEmployeeWelcomeEmail).mockImplementationOnce(() => new Promise(() => { /* ne résout jamais */ }))
+    const started = Date.now()
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'slow@sotra.ci', first_name: 'S', last_name: 'L', role: 'employee' },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body)
+    expect(body.tempPassword).toBeTruthy() // filet : le mdp est dans la réponse
+    expect(body.emailSent).toBe(false)     // et l'UI peut le signaler
+    expect(Date.now() - started).toBeLessThan(4000) // borné (50 ms en test, 8 s en prod)
+  })
+
+  it('email déjà utilisé (23505) → 409 avec message métier clair, pas de 500', async () => {
+    queryMock.mockRejectedValueOnce(Object.assign(new Error('duplicate key'), {
+      code: '23505', constraint: 'users_email_key', detail: 'Key (email)=(x@sotra.ci) already exists.',
+    }))
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'x@sotra.ci', first_name: 'A', last_name: 'B', role: 'employee' },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toContain('existe déjà')
+  })
+})
+
+describe('POST /settings/email/test — email de test de la config SMTP', () => {
+  const TENANT_MAIL_ROW = {
+    name: 'SOTRA', primary_color: '#E85D04',
+    sender_email: 'rh@sotra.ci', sender_name: 'RH SOTRA',
+    smtp_host: 'smtp.sotra.ci', smtp_port: 465, smtp_secure: true,
+    smtp_user: 'rh@sotra.ci', smtp_pass_enc: null,
+  }
+
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('refuse un champ inconnu (400, Zod strict — OWASP A03)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { to: 'x@sotra.ci', injected: true },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('envoie via le SMTP TENANT au compte de l\'admin connecté + audite (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [TENANT_MAIL_ROW] }) // SELECT platform.tenants (config mail)
+      .mockResolvedValueOnce({ rows: [] })                // INSERT audit_log
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.success).toBe(true)
+    expect(body.viaTenantSmtp).toBe(true)
+    expect(body.to).toBe('admin@sotra.ci') // email du JWT (destinataire par défaut)
+    expect(vi.mocked(sendTestEmail)).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'admin@sotra.ci',
+      from: 'RH SOTRA <rh@sotra.ci>',
+      smtp: expect.objectContaining({ host: 'smtp.sotra.ci', port: 465, secure: true }),
+    }))
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]?.[1]).toBe('settings.email_test_sent')
+  })
+
+  it('signale le repli plateforme quand aucun SMTP tenant (viaTenantSmtp=false)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ ...TENANT_MAIL_ROW, smtp_host: null, smtp_user: null }] })
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { to: 'dest@sotra.ci' },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.viaTenantSmtp).toBe(false)
+    expect(body.to).toBe('dest@sotra.ci')
+    expect(vi.mocked(sendTestEmail)).toHaveBeenCalledWith(expect.objectContaining({ to: 'dest@sotra.ci', smtp: null }))
+  })
+
+  it('SMTP en échec → 502 maîtrisé avec le message (jamais de 500 brute)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [TENANT_MAIL_ROW] })
+    vi.mocked(sendTestEmail).mockRejectedValueOnce(new Error('Invalid login: 535'))
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(502)
+    const body = JSON.parse(res.body)
+    expect(body.error).toContain('Invalid login')
+    expect(body.viaTenantSmtp).toBe(true)
   })
 })
