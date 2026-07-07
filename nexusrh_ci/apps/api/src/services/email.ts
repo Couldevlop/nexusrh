@@ -604,6 +604,41 @@ export async function sendAbsenceRequestEmail(params: {
   })
 }
 
+// Email de TEST de la configuration d'envoi (Paramètres → Email). Permet à
+// l'admin de vérifier immédiatement ses identifiants SMTP : l'envoi passe par
+// le serveur du tenant si `smtp` est fourni, sinon par la plateforme (repli).
+export async function sendTestEmail(params: {
+  to: string; tenantName: string; primaryColor?: string | null
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, tenantName, primaryColor, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const via = smtp?.host
+    ? `votre serveur SMTP (<strong>${smtp.host}</strong>)`
+    : 'le serveur de la plateforme NexusRH CI (aucun serveur SMTP tenant configuré)'
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(tenantName, 'Test de la configuration email', color, null)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>✅ <strong>Ceci est un email de test</strong> envoyé depuis les paramètres de <strong>${tenantName}</strong> sur NexusRH CI.</p>
+        <p>Il a été acheminé via ${via}.</p>
+        <p style="color:#6b7280;font-size:13px;">Si vous recevez ce message, votre configuration d'envoi fonctionne. Aucune action n'est requise.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject: `✅ Email de test — ${tenantName} (NexusRH CI)`,
+    html,
+    text: `Ceci est un email de test envoyé depuis les paramètres de ${tenantName} sur NexusRH CI. Si vous recevez ce message, votre configuration d'envoi fonctionne.`,
+  })
+}
+
 // Virement bancaire — envoie le fichier .xlsx d'ordre de virement à la banque.
 export async function sendBankTransferEmail(params: {
   to: string; bankName: string; month: string; count: number; total: number

@@ -25,6 +25,7 @@ const { sendEmployeeWelcomeEmailMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../services/email.js', () => ({
   sendEmployeeWelcomeEmail: sendEmployeeWelcomeEmailMock,
+  sendTestEmail:            vi.fn().mockResolvedValue(undefined),
 }))
 
 // crypto : on contrôle encrypt/encryptIfPresent pour rester déterministe et

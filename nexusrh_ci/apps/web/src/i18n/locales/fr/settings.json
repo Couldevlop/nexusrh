@@ -122,7 +122,13 @@
       "configured": "Serveur SMTP configuré ✓",
       "notConfigured": "Aucun serveur SMTP — envoi via la plateforme",
       "noEncryption": "Le chiffrement n'est pas configuré sur la plateforme : impossible d'enregistrer un mot de passe SMTP.",
-      "saveError": "Erreur lors de l'enregistrement du SMTP"
+      "saveError": "Erreur lors de l'enregistrement du SMTP",
+      "testButton": "Envoyer un email de test",
+      "testSending": "Envoi du test…",
+      "testUnsaved": "Enregistrez d'abord vos modifications",
+      "testOkTenant": "Email de test envoyé à {{to}} via votre serveur SMTP ✓ — vérifiez votre boîte de réception.",
+      "testOkPlatform": "Email de test envoyé à {{to}} via le serveur de la plateforme (aucun serveur SMTP société configuré).",
+      "testFail": "Échec de l'envoi de l'email de test"
     },
     "sector": "Secteur d'activité",
     "selectOption": "— Sélectionner —",
@@ -177,6 +183,8 @@
     "createResult": {
       "title": "Utilisateur créé !",
       "tempPasswordLabel": "Mot de passe temporaire :",
+      "emailSent": "Email de bienvenue envoyé à l'utilisateur",
+      "emailNotSent": "L'email n'a pas pu être envoyé — communiquez le mot de passe manuellement.",
       "hint": "Communiquez ce mot de passe de façon sécurisée.",
       "close": "Fermer"
     },

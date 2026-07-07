@@ -8,7 +8,7 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
@@ -578,6 +578,19 @@ function EmailSmtpCard() {
     mutationFn: (d: typeof form) => api.put('/settings/email', d),
     onSuccess: () => { setForm({}); refetch() },
   })
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const test = useMutation({
+    mutationFn: () => api.post<{ success: boolean; to: string; viaTenantSmtp: boolean }>('/settings/email/test', {}),
+    onSuccess: (res) => setTestResult({
+      ok: true,
+      msg: t(res.data.viaTenantSmtp ? 'smtp.testOkTenant' : 'smtp.testOkPlatform', { to: res.data.to }),
+    }),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: string } } }
+      setTestResult({ ok: false, msg: e.response?.data?.error || t('smtp.testFail') })
+    },
+  })
+  const hasUnsaved = Object.keys(form).length > 0
 
   return (
     <div className="rounded-xl border border-border bg-card p-6 space-y-4">
@@ -623,15 +636,30 @@ function EmailSmtpCard() {
         <p className="text-xs text-muted-foreground">
           {cfg?.smtpConfigured ? t('smtp.configured') : t('smtp.notConfigured')}
         </p>
-        <button onClick={() => save.mutate(form)}
-          disabled={Object.keys(form).length === 0 || save.isPending}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-          <Save className="h-4 w-4" />
-          {save.isPending ? t('general.saving') : t('general.save')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setTestResult(null); test.mutate() }}
+            disabled={test.isPending || hasUnsaved}
+            title={hasUnsaved ? t('smtp.testUnsaved') : undefined}
+            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">
+            <Send className="h-4 w-4" />
+            {test.isPending ? t('smtp.testSending') : t('smtp.testButton')}
+          </button>
+          <button onClick={() => save.mutate(form)}
+            disabled={!hasUnsaved || save.isPending}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            <Save className="h-4 w-4" />
+            {save.isPending ? t('general.saving') : t('general.save')}
+          </button>
+        </div>
       </div>
       {save.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
       {save.isError && <p className="text-xs text-destructive">{t('smtp.saveError')}</p>}
+      {testResult && (
+        <p className={`text-xs ${testResult.ok ? 'text-green-600' : 'text-destructive'} flex items-center gap-1`}>
+          {testResult.ok && <CheckCircle2 className="h-3.5 w-3.5" />}
+          {testResult.msg}
+        </p>
+      )}
     </div>
   )
 }
@@ -642,7 +670,7 @@ const EMPTY_USER_FORM = { email: '', first_name: '', last_name: '', role: 'emplo
 function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
-  const [tempPwd, setTempPwd] = useState<string | null>(null)
+  const [tempPwd, setTempPwd] = useState<{ pwd: string; emailSent: boolean } | null>(null)
   const [form, setForm] = useState(EMPTY_USER_FORM)
 
   const { data } = useQuery<{ data: TenantUser[] }>({
@@ -661,7 +689,10 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
   const create = useMutation({
     mutationFn: (d: typeof form) => api.post('/settings/users', { ...d, department_id: d.department_id || undefined }),
-    onSuccess: (res) => { setTempPwd(res.data.tempPassword); qc.invalidateQueries({ queryKey: ['settings-users'] }) },
+    onSuccess: (res) => {
+      setTempPwd({ pwd: res.data.tempPassword, emailSent: !!res.data.emailSent })
+      qc.invalidateQueries({ queryKey: ['settings-users'] })
+    },
   })
   const toggle = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => api.patch(`/settings/users/${id}`, { is_active }),
@@ -784,7 +815,11 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <ShieldCheck className="mx-auto h-10 w-10 text-green-600" />
                 <h3 className="font-semibold">{t('users.createResult.title')}</h3>
                 <p className="text-sm text-muted-foreground">{t('users.createResult.tempPasswordLabel')}</p>
-                <div className="rounded-lg bg-muted px-4 py-3 font-mono text-lg font-bold tracking-widest">{tempPwd}</div>
+                <div className="rounded-lg bg-muted px-4 py-3 font-mono text-lg font-bold tracking-widest">{tempPwd.pwd}</div>
+                {tempPwd.emailSent
+                  ? <p className="text-xs text-green-600 flex items-center justify-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> {t('users.createResult.emailSent')}</p>
+                  : <p className="text-xs text-amber-600">{t('users.createResult.emailNotSent')}</p>
+                }
                 <p className="text-xs text-muted-foreground">{t('users.createResult.hint')}</p>
                 <button onClick={() => { setShowNew(false); setTempPwd(null); setForm(EMPTY_USER_FORM) }}
                   className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t('users.createResult.close')}</button>

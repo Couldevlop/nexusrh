@@ -13,6 +13,7 @@ import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
 import { sendBankTransferEmail } from '../../services/email.js'
+import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 
@@ -147,23 +148,10 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Config email du TENANT : l'expéditeur (from) et le serveur SMTP sont ceux
       // paramétrés par le tenant (repli plateforme si non configuré).
-      const tRes = await rawPool.query<{
-        name: string; primary_color: string | null; sender_email: string | null; sender_name: string | null
-        smtp_host: string | null; smtp_port: number | null; smtp_secure: boolean | null
-        smtp_user: string | null; smtp_pass_enc: string | null
-      }>(
-        `SELECT name, primary_color, sender_email, sender_name,
-                smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc
-           FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
-      ).catch(() => ({ rows: [] as never[] }))
-      const trow = tRes.rows[0]
-      const tenantName = trow?.name ?? 'NexusRH CI'
-      const tenantFrom = trow?.sender_email
-        ? (trow.sender_name ? `${trow.sender_name} <${trow.sender_email}>` : trow.sender_email)
-        : undefined
-      const tenantSmtp = trow?.smtp_host
-        ? { host: trow.smtp_host, port: trow.smtp_port ?? 587, secure: trow.smtp_secure ?? false, user: trow.smtp_user, pass: decryptIfPresent(trow.smtp_pass_enc) }
-        : null
+      const mail = await loadTenantMailBySchema(schema).catch(() => null)
+      const tenantName = mail?.name ?? 'NexusRH CI'
+      const tenantFrom = mail?.from
+      const tenantSmtp = mail?.smtp ?? null
 
       const results: Array<{ bank: string; count: number; total: number; sent: boolean; error?: string }> = []
       for (const b of banks) {
@@ -174,7 +162,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
           const buf = await buildXlsx(b.name, month, rows, tenantName)
           await sendBankTransferEmail({
             to: b.email, bankName: b.name, month, count: rows.length, total, tenantName,
-            primaryColor: trow?.primary_color ?? null,
+            primaryColor: mail?.primaryColor ?? null,
             from: tenantFrom, replyTo: tenantFrom, smtp: tenantSmtp,
             attachment: { filename: `Virements_${b.name.replace(/[^A-Za-z0-9]/g, '_')}_${month}.xlsx`, content: buf },
           })

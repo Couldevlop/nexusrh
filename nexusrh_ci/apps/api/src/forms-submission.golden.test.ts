@@ -53,6 +53,7 @@ vi.mock('./services/email.js', () => ({
   sendWelcomeTenantEmail:     vi.fn().mockResolvedValue(undefined),
   sendPasswordResetEmail:     vi.fn().mockResolvedValue(undefined),
   sendPasswordResetLinkEmail: vi.fn().mockResolvedValue(undefined),
+  sendTestEmail:              vi.fn().mockResolvedValue(undefined),
 }))
 
 import { buildApp } from './app.js'
@@ -103,6 +104,7 @@ const FORMS: FormEndpoint[] = [
   { method: 'PATCH', url: `/settings/legal-entities/${UUID}`, scope: 'tenant' },
   { method: 'PATCH', url: '/settings/workflow',             scope: 'tenant' },
   { method: 'POST',  url: '/settings/variable-elements',    scope: 'tenant' },
+  { method: 'POST',  url: '/settings/email/test',           scope: 'tenant' },
   { method: 'PUT',   url: '/settings/ai',                   scope: 'tenant' },
   // ── Carrières / compétences ──
   { method: 'POST',  url: '/careers/skills',             scope: 'tenant' },
