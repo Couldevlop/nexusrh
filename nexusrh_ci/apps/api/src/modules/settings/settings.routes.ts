@@ -14,6 +14,7 @@ import { buildLegislationConfig } from '../../services/legislation-config.servic
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { describeDbError } from '../../utils/db-error.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -148,6 +149,20 @@ function generateTempPassword(): string {
 // centralisée dans services/tenant-mail.service.ts (partagée avec absences,
 // bank-transfer…). Alias local pour garder les appels existants lisibles.
 const loadTenantMail = loadTenantMailById
+
+// Disponibilité : la réponse HTTP (création d'utilisateur, reset…) ne doit
+// jamais rester suspendue derrière un SMTP qui rame — au-delà de cette borne,
+// on répond avec `emailSent: false` (le mot de passe temporaire dans la réponse
+// sert de filet) et l'envoi continue en arrière-plan. Surchargeable par env
+// (EMAIL_WAIT_MS) pour l'exploitation et les tests.
+const EMAIL_WAIT_MS = Number(process.env['EMAIL_WAIT_MS'] ?? 8_000)
+const EMAIL_TIMED_OUT = Symbol('email-timeout')
+function waitAtMost<T>(p: Promise<T>, ms: number): Promise<T | typeof EMAIL_TIMED_OUT> {
+  return Promise.race([
+    p,
+    new Promise<typeof EMAIL_TIMED_OUT>((resolve) => { setTimeout(() => resolve(EMAIL_TIMED_OUT), ms).unref?.() }),
+  ])
+}
 
 // Applique les migrations lazy (legal_entities, variable_elements.month, etc.)
 async function ensureMigrated(schemaName: string) {
@@ -965,13 +980,16 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           )
         }
 
-        // SET-004 — email d'invitation (non bloquant). Le tempPassword reste dans
-        // la réponse comme filet de sécurité si l'envoi échoue.
+        // SET-004 — email d'invitation (non bloquant ET borné dans le temps).
+        // Le tempPassword reste dans la réponse comme filet de sécurité si
+        // l'envoi échoue ou dépasse la borne (SMTP lent → le 201 part quand même,
+        // sinon le proxy coupe la requête et l'admin ne voit AUCUNE confirmation
+        // alors que le compte est créé).
         let emailSent = false
         if (tenantId) {
           try {
             const mail = await loadTenantMail(tenantId)
-            await sendEmployeeWelcomeEmail({
+            const sending = sendEmployeeWelcomeEmail({
               to: body.email,
               firstName: body.first_name,
               lastName: body.last_name,
@@ -983,7 +1001,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               replyTo: mail.from,
               smtp: mail.smtp,
             })
-            emailSent = true
+            sending.catch((emailErr) => fastify.log.warn({ emailErr }, 'invitation email failed'))
+            emailSent = (await waitAtMost(sending, EMAIL_WAIT_MS)) !== EMAIL_TIMED_OUT
           } catch (emailErr) {
             fastify.log.warn({ emailErr }, 'invitation email failed')
           }
@@ -992,6 +1011,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(201).send({ data: res.rows[0], tempPassword, emailSent })
       } catch (err) {
         fastify.log.error(err)
+        // Email déjà pris, département introuvable… → message métier clair
+        // (409/422) au lieu d'un 500 générique (OWASP A05 : pas d'erreur brute).
+        const mapped = describeDbError(err, {
+          entity: 'utilisateur',
+          uniqueMessages: { email: 'Un utilisateur avec cet email existe déjà.' },
+        })
+        if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
         return reply.status(500).send({ error: 'Erreur lors de la création' })
       }
     },
@@ -1662,12 +1688,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           [hash, id]
         )
 
-        // Essayer d'envoyer l'email (non bloquant)
+        // Essayer d'envoyer l'email (non bloquant ET borné — cf. POST /users)
         let emailSent = false
         if (tenantId) {
           try {
             const mail = await loadTenantMail(tenantId)
-            await sendEmployeeWelcomeEmail({
+            const sending = sendEmployeeWelcomeEmail({
               to: user.email,
               firstName: user.first_name,
               lastName: user.last_name,
@@ -1679,7 +1705,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               replyTo: mail.from,
               smtp: mail.smtp,
             })
-            emailSent = true
+            sending.catch((emailErr) => fastify.log.warn({ emailErr }, 'reset-password email failed'))
+            emailSent = (await waitAtMost(sending, EMAIL_WAIT_MS)) !== EMAIL_TIMED_OUT
           } catch (emailErr) {
             fastify.log.warn({ emailErr }, 'reset-password email failed')
           }

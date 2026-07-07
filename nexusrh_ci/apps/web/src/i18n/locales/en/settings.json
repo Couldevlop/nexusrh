@@ -201,7 +201,8 @@
       "inactive": "Inactive",
       "cancel": "Cancel",
       "create": "Create",
-      "creating": "Creating..."
+      "creating": "Creating...",
+      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error."
     }
   },
   "departments": {

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+
+// Borne d'attente email courte pour tester le comportement « SMTP qui pend »
+// sans ralentir la suite (production : 8 s).
+vi.hoisted(() => { process.env['EMAIL_WAIT_MS'] = '50' })
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
@@ -31,7 +35,7 @@ vi.mock('../../config.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import settingsRoutes from './settings.routes.js'
-import { sendTestEmail } from '../../services/email.js'
+import { sendTestEmail, sendEmployeeWelcomeEmail } from '../../services/email.js'
 
 const TENANT = 'tenant_sotra'
 const UUID_A = '11111111-1111-1111-1111-111111111111'
@@ -612,6 +616,40 @@ describe('POST /settings/users — Zod + allowlist rôles (OWASP A01 + A03, SET-
     })
     expect(res.statusCode).toBe(201)
     expect(JSON.parse(res.body).tempPassword).toBeTruthy()
+  })
+
+  it('SMTP qui ne répond pas → 201 quand même (borné) avec emailSent=false', async () => {
+    // Reproduit le bug terrain : l'envoi de l'email de bienvenue restait suspendu
+    // sur un SMTP injoignable → la réponse HTTP dépassait le timeout du proxy →
+    // l'admin ne voyait AUCUNE confirmation alors que le compte était créé.
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'u-slow', email: 'slow@sotra.ci', first_name: 'S', last_name: 'L', role: 'employee', is_active: true, created_at: '2026-01-01' }] }) // INSERT users
+      .mockResolvedValueOnce({ rows: [{ name: 'SOTRA', primary_color: '#E85D04', sender_email: null, sender_name: null, smtp_host: 'smtp.mort.ci', smtp_port: 587, smtp_secure: false, smtp_user: 'x', smtp_pass_enc: null }] }) // config mail tenant
+    vi.mocked(sendEmployeeWelcomeEmail).mockImplementationOnce(() => new Promise(() => { /* ne résout jamais */ }))
+    const started = Date.now()
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'slow@sotra.ci', first_name: 'S', last_name: 'L', role: 'employee' },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body)
+    expect(body.tempPassword).toBeTruthy() // filet : le mdp est dans la réponse
+    expect(body.emailSent).toBe(false)     // et l'UI peut le signaler
+    expect(Date.now() - started).toBeLessThan(4000) // borné (50 ms en test, 8 s en prod)
+  })
+
+  it('email déjà utilisé (23505) → 409 avec message métier clair, pas de 500', async () => {
+    queryMock.mockRejectedValueOnce(Object.assign(new Error('duplicate key'), {
+      code: '23505', constraint: 'users_email_key', detail: 'Key (email)=(x@sotra.ci) already exists.',
+    }))
+    const res = await app.inject({
+      method: 'POST', url: '/settings/users',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { email: 'x@sotra.ci', first_name: 'A', last_name: 'B', role: 'employee' },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toContain('existe déjà')
   })
 })
 

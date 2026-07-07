@@ -201,7 +201,8 @@
       "inactive": "Inactif",
       "cancel": "Annuler",
       "create": "Créer",
-      "creating": "Création..."
+      "creating": "Création...",
+      "error": "La création a échoué. Si le problème persiste, actualisez la liste : le compte a pu être créé malgré l'erreur."
     }
   },
   "departments": {

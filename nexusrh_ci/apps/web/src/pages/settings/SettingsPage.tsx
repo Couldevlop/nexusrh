@@ -667,7 +667,8 @@ function EmailSmtpCard() {
 // ── Tab: Utilisateurs ─────────────────────────────────────────────────────────
 const EMPTY_USER_FORM = { email: '', first_name: '', last_name: '', role: 'employee', department_id: '', is_active: true }
 
-function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+// Exporté pour les tests de composant (users-tab.test.tsx).
+export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const { t } = useTranslation('settings')
   const [showNew, setShowNew] = useState(false)
   const [tempPwd, setTempPwd] = useState<{ pwd: string; emailSent: boolean } | null>(null)
@@ -691,8 +692,10 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     mutationFn: (d: typeof form) => api.post('/settings/users', { ...d, department_id: d.department_id || undefined }),
     onSuccess: (res) => {
       setTempPwd({ pwd: res.data.tempPassword, emailSent: !!res.data.emailSent })
-      qc.invalidateQueries({ queryKey: ['settings-users'] })
     },
+    // Rafraîchir la liste même en cas d'échec (timeout réseau/proxy…) : si le
+    // compte a malgré tout été créé côté serveur, il apparaît sans F5 manuel.
+    onSettled: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
   })
   const toggle = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => api.patch(`/settings/users/${id}`, { is_active }),
@@ -878,6 +881,12 @@ function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     {create.isPending ? t('users.form.creating') : t('users.form.create')}
                   </button>
                 </div>
+                {create.isError && (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {(create.error as { response?: { data?: { error?: string } } })?.response?.data?.error
+                      ?? t('users.form.error')}
+                  </p>
+                )}
               </>
             )}
           </div>

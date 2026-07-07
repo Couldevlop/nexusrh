@@ -6,6 +6,23 @@ import { config } from '../config.js'
 // l'import (Clean Architecture) — un module qui importe email.ts (ex.
 // settings.routes) ne dépend plus de la présence de config.smtp au chargement,
 // ce qui casserait notamment les tests qui mockent une config partielle.
+// Bornes de temps SMTP (disponibilité) : un serveur injoignable/lent ne doit
+// JAMAIS suspendre une requête HTTP (création d'utilisateur…) au-delà du
+// timeout du proxy — l'envoi échoue proprement et `emailSent: false` le signale.
+const SMTP_TIMEOUTS = {
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
+} as const
+
+// OWASP A02 — TLS strict en production (protège les credentials SMTP du MITM),
+// certificats auto-signés tolérés uniquement en dev/test (smtp4dev, mailhog).
+// Même politique que le worker (apps/worker/src/jobs/email.ts).
+const SMTP_TLS = {
+  rejectUnauthorized: config.env === 'production',
+  minVersion: 'TLSv1.2',
+} as const
+
 let _transporter: Transporter | null = null
 function getTransporter(): Transporter {
   if (!_transporter) {
@@ -15,7 +32,8 @@ function getTransporter(): Transporter {
       secure: config.smtp.secure,
       auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
       requireTLS: config.smtp.host === 'smtp.gmail.com',
-      tls: { rejectUnauthorized: false },
+      tls: SMTP_TLS,
+      ...SMTP_TIMEOUTS,
     })
   }
   return _transporter
@@ -45,7 +63,8 @@ function transporterFor(smtp?: TenantSmtp | null): Transporter {
     secure: smtp.secure,
     auth: smtp.user ? { user: smtp.user, pass: smtp.pass ?? '' } : undefined,
     requireTLS: smtp.port === 587 && !smtp.secure,
-    tls: { rejectUnauthorized: false },
+    tls: SMTP_TLS,
+    ...SMTP_TIMEOUTS,
   })
 }
 
