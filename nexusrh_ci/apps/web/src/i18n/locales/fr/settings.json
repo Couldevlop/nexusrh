@@ -24,7 +24,9 @@
     "hr_officer": "Chargé RH",
     "manager": "Manager",
     "employee": "Employé",
-    "readonly": "Lecture seule"
+    "readonly": "Lecture seule",
+    "dg": "Directeur Général (vue 360°)",
+    "raf_site": "RAF de site (filiale)"
   },
   "ruleTypes": {
     "earning": "Gain",
