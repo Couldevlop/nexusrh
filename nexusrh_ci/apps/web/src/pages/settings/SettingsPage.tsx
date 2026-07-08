@@ -53,7 +53,9 @@ interface WorkflowConfig { id: string; module: string; levels_count: number }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Rôles disponibles (clé technique = valeur API ; libellé traduit via roles.<key>).
-const ROLE_KEYS = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly'] as const
+// Doit rester aligné sur l'allowlist API (settings.routes.ts : createUserSchema +
+// TENANT_ROLES) — dg (vue 360°) et raf_site (multi-filiales) en font partie.
+const ROLE_KEYS = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'dg', 'raf_site'] as const
 // Couleur par type de rubrique (clé technique = valeur API ; libellé traduit via ruleTypes.<key>).
 const RULE_TYPE_COLORS: Record<string, string> = {
   earning:                'bg-green-100 text-green-700',

@@ -24,7 +24,9 @@
     "hr_officer": "HR Officer",
     "manager": "Manager",
     "employee": "Employee",
-    "readonly": "Read only"
+    "readonly": "Read only",
+    "dg": "General Manager (360° view)",
+    "raf_site": "Site RAF (subsidiary)"
   },
   "ruleTypes": {
     "earning": "Earning",
