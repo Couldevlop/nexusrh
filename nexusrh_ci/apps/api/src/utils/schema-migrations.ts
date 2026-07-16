@@ -308,6 +308,94 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON "${schemaName}".disciplinary_actions(employee_id, action_date DESC)`,
 
+    // ── Badgeuse / Pointage (attendance) — additif, idempotent ─────────────────
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_devices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name varchar(150) NOT NULL,
+      base_url text NOT NULL,
+      auth_type varchar(20) NOT NULL DEFAULT 'none',
+      auth_secret_enc text,
+      auth_header_name varchar(100),
+      default_headers jsonb NOT NULL DEFAULT '{}',
+      field_mapping jsonb NOT NULL DEFAULT '{}',
+      poll_enabled boolean NOT NULL DEFAULT true,
+      poll_interval_min integer NOT NULL DEFAULT 15,
+      sync_cursor text,
+      last_sync_at timestamptz,
+      last_sync_status varchar(20),
+      is_active boolean NOT NULL DEFAULT true,
+      created_by uuid,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_punches (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid,
+      raw_employee_ref text,
+      device_id uuid,
+      punched_at timestamptz NOT NULL,
+      direction varchar(10) NOT NULL DEFAULT 'unknown',
+      source varchar(10) NOT NULL DEFAULT 'device',
+      raw jsonb,
+      dedup_key text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (device_id, dedup_key)
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_att_punch_emp_idx" ON "${schemaName}".attendance_punches(employee_id, punched_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_schedules (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      scope varchar(12) NOT NULL,
+      scope_id uuid,
+      expected_start time NOT NULL,
+      tolerance_min integer NOT NULL DEFAULT 10,
+      expected_end time,
+      workdays integer[] NOT NULL DEFAULT '{1,2,3,4,5}',
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_days (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid NOT NULL,
+      work_date date NOT NULL,
+      first_in timestamptz,
+      last_out timestamptz,
+      expected_start time,
+      late_minutes integer NOT NULL DEFAULT 0,
+      status varchar(20) NOT NULL,
+      justified_by uuid,
+      computed_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (employee_id, work_date)
+    )`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_warnings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid NOT NULL,
+      tier varchar(20) NOT NULL,
+      trigger_reason varchar(40) NOT NULL,
+      occurrence_dates date[] NOT NULL DEFAULT '{}',
+      threshold_snapshot jsonb,
+      status varchar(12) NOT NULL DEFAULT 'active',
+      employee_response text,
+      responded_at timestamptz,
+      disciplinary_action_id uuid,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_att_warn_emp_idx" ON "${schemaName}".attendance_warnings(employee_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_config (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      late_minutes_tier1 integer NOT NULL DEFAULT 30,
+      occurrences_tier1 integer NOT NULL DEFAULT 3,
+      late_minutes_tier2 integer NOT NULL DEFAULT 60,
+      occurrences_tier2 integer NOT NULL DEFAULT 3,
+      unjustified_absence_occurrences integer NOT NULL DEFAULT 1,
+      warnings_before_sanction integer NOT NULL DEFAULT 2,
+      window_mode varchar(24) NOT NULL DEFAULT 'consecutive_or_month',
+      default_expected_start time NOT NULL DEFAULT '08:00',
+      default_tolerance_min integer NOT NULL DEFAULT 10,
+      default_workdays integer[] NOT NULL DEFAULT '{1,2,3,4,5}',
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+
     // ── Processus de sortie (offboarding) + solde de tout compte ──────────────
     // Motif de départ, checklist de restitution, calcul du solde (Code du travail
     // CI) historisé en jsonb. Additif, idempotent.
