@@ -8,10 +8,10 @@ export function resolveSchedule(input: {
   tenant: Sched
 }): EffectiveSchedule {
   // Cascade: employee > department > tenant
-  if (input.employee) {
+  if (input.employee != null) {
     return input.employee
   }
-  if (input.department) {
+  if (input.department != null) {
     return input.department
   }
   return input.tenant
