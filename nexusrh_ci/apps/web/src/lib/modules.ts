@@ -33,6 +33,7 @@ export const MODULE_KEYS = [
   'security',
   'sage',
   'dg_view',
+  'attendance',
 ] as const
 
 export type ModuleKey = (typeof MODULE_KEYS)[number]
@@ -65,6 +66,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   security:     true,
   sage:         true,
   dg_view:      false,
+  attendance:   false,
 }
 
 /** Module activé pour le tenant courant ? (défauts si config absente) */
