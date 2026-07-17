@@ -82,6 +82,18 @@ const FORMS: FormEndpoint[] = [
   { method: 'POST',  url: '/absences',                 scope: 'tenant' },
   { method: 'PATCH', url: `/absences/${UUID}/approve`, scope: 'tenant' },
   { method: 'PATCH', url: `/absences/${UUID}/reject`,  scope: 'tenant' },
+  // ── Pointage (Badgeuse) ──
+  { method: 'PUT',   url: '/attendance/config',                        scope: 'tenant' },
+  { method: 'POST',  url: '/attendance/devices',                       scope: 'tenant' },
+  { method: 'PATCH', url: `/attendance/devices/${UUID}`,               scope: 'tenant' },
+  { method: 'POST',  url: `/attendance/devices/${UUID}/test`,          scope: 'tenant' },
+  { method: 'POST',  url: `/attendance/devices/${UUID}/sync`,          scope: 'tenant' },
+  { method: 'POST',  url: '/attendance/schedules',                     scope: 'tenant' },
+  { method: 'PATCH', url: `/attendance/schedules/${UUID}`,             scope: 'tenant' },
+  { method: 'POST',  url: '/attendance/punches',                       scope: 'tenant' },
+  { method: 'POST',  url: '/attendance/recompute',                     scope: 'tenant' },
+  { method: 'PATCH', url: `/attendance/warnings/${UUID}`,              scope: 'tenant' },
+  { method: 'POST',  url: `/attendance/me/warnings/${UUID}/respond`,   scope: 'tenant' },
   // ── Notes de frais ──
   { method: 'POST',  url: '/expenses',                 scope: 'tenant' },
   { method: 'POST',  url: `/expenses/${UUID}/lines`,   scope: 'tenant' },

@@ -30,6 +30,7 @@ const PREFIX: Record<string, string> = {
   'platform/legal-watch.routes.ts': '/platform/legal-watch',
   'employees/employees.routes.ts': '/employees',
   'absences/absences.routes.ts': '/absences',
+  'attendance/attendance.routes.ts': '/attendance',
   'payroll/payroll.routes.ts': '/payroll',
   'payroll/payroll-workflow.routes.ts': '/payroll-workflow',
   'cnps/cnps.routes.ts': '/cnps',
