@@ -667,41 +667,72 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       }
       const b = parsed.data
 
-      // Cohérence scope/scope_id : ce n'est significatif que si l'un des deux
-      // change dans ce PATCH. On recharge l'état actuel pour valider l'état
-      // RÉSULTANT (fusion patch + existant), jamais seulement le delta fourni —
-      // sinon un PATCH partiel pourrait faire passer la ligne dans un état
-      // incohérent (ex. scope='tenant' avec un scope_id hérité de l'ancien
-      // scope='employee').
-      if (b.scope !== undefined || b.scope_id !== undefined) {
-        const current = await pool.query<{ scope: string; scope_id: string | null }>(
-          `SELECT scope, scope_id FROM "${schema}".attendance_schedules WHERE id = $1 LIMIT 1`,
-          [id],
-        )
-        const row = current.rows[0]
-        if (!row) return reply.status(404).send({ error: 'Horaire introuvable' })
-        const nextScope = b.scope ?? row.scope
-        const nextScopeId = b.scope_id !== undefined ? b.scope_id : row.scope_id
-        if (!scopeConsistent({ scope: nextScope, scope_id: nextScopeId })) {
-          return reply.status(400).send({ error: SCOPE_CONSISTENCY_MESSAGE })
-        }
-      }
-
-      const sets: string[] = []
-      const vals: unknown[] = []
-      let i = 1
-      if (b.scope !== undefined) { sets.push(`scope = $${i++}`); vals.push(b.scope) }
-      if (b.scope_id !== undefined) { sets.push(`scope_id = $${i++}`); vals.push(b.scope_id) }
-      if (b.expected_start !== undefined) { sets.push(`expected_start = $${i++}`); vals.push(b.expected_start) }
-      if (b.expected_end !== undefined) { sets.push(`expected_end = $${i++}`); vals.push(b.expected_end) }
-      if (b.tolerance_min !== undefined) { sets.push(`tolerance_min = $${i++}`); vals.push(b.tolerance_min) }
-      if (b.workdays !== undefined) { sets.push(`workdays = $${i++}`); vals.push(b.workdays) }
-      if (b.is_active !== undefined) { sets.push(`is_active = $${i++}`); vals.push(b.is_active) }
-      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
-      sets.push('updated_at = now()')
-      vals.push(id)
-
       try {
+        // Cohérence scope/scope_id + unicité logique : ce n'est significatif
+        // que si scope, scope_id OU is_active change dans ce PATCH (les trois
+        // champs qui déterminent l'identité "un seul horaire ACTIF par
+        // (scope, scope_id)"). On recharge l'état actuel pour valider l'état
+        // RÉSULTANT (fusion patch + existant), jamais seulement le delta
+        // fourni — sinon un PATCH partiel pourrait faire passer la ligne dans
+        // un état incohérent (ex. scope='tenant' avec un scope_id hérité de
+        // l'ancien scope='employee') OU, plus grave, contourner l'unicité
+        // vérifiée au POST : réactiver un horaire désactivé (is_active
+        // false→true) ou re-scoper un horaire déjà actif peut faire
+        // coexister DEUX horaires actifs sur le même (scope, scope_id) —
+        // `resolveEmployeeSchedule` choisirait alors silencieusement le plus
+        // récemment modifié (dérive silencieuse de l'horaire qui alimente le
+        // moteur d'escalade). D'où la ré-application, ICI, du même contrôle
+        // que POST (SELECT + `IS NOT DISTINCT FROM`), en excluant la ligne
+        // elle-même (`id <> $n`), à chaque fois que l'état résultant serait
+        // actif.
+        let nextScope: string | undefined = b.scope
+        let nextScopeId: string | null | undefined = b.scope_id
+        let nextIsActive: boolean | undefined = b.is_active
+
+        if (b.scope !== undefined || b.scope_id !== undefined || b.is_active !== undefined) {
+          const current = await pool.query<{ scope: string; scope_id: string | null; is_active: boolean }>(
+            `SELECT scope, scope_id, is_active FROM "${schema}".attendance_schedules WHERE id = $1 LIMIT 1`,
+            [id],
+          )
+          const row = current.rows[0]
+          if (!row) return reply.status(404).send({ error: 'Horaire introuvable' })
+          nextScope = b.scope ?? row.scope
+          nextScopeId = b.scope_id !== undefined ? b.scope_id : row.scope_id
+          nextIsActive = b.is_active !== undefined ? b.is_active : row.is_active
+
+          if (!scopeConsistent({ scope: nextScope, scope_id: nextScopeId })) {
+            return reply.status(400).send({ error: SCOPE_CONSISTENCY_MESSAGE })
+          }
+
+          if (nextIsActive) {
+            const dup = await pool.query<{ id: string }>(
+              `SELECT id FROM "${schema}".attendance_schedules
+                WHERE is_active = true AND scope = $1 AND scope_id IS NOT DISTINCT FROM $2 AND id <> $3
+                LIMIT 1`,
+              [nextScope, nextScopeId ?? null, id],
+            )
+            if (dup.rows[0]) {
+              return reply.status(409).send({
+                error: 'Un horaire actif existe déjà pour cette portée (scope + scope_id). Désactivez-le ou modifiez-le avant de (ré)activer ou déplacer celui-ci.',
+              })
+            }
+          }
+        }
+
+        const sets: string[] = []
+        const vals: unknown[] = []
+        let i = 1
+        if (b.scope !== undefined) { sets.push(`scope = $${i++}`); vals.push(b.scope) }
+        if (b.scope_id !== undefined) { sets.push(`scope_id = $${i++}`); vals.push(b.scope_id) }
+        if (b.expected_start !== undefined) { sets.push(`expected_start = $${i++}`); vals.push(b.expected_start) }
+        if (b.expected_end !== undefined) { sets.push(`expected_end = $${i++}`); vals.push(b.expected_end) }
+        if (b.tolerance_min !== undefined) { sets.push(`tolerance_min = $${i++}`); vals.push(b.tolerance_min) }
+        if (b.workdays !== undefined) { sets.push(`workdays = $${i++}`); vals.push(b.workdays) }
+        if (b.is_active !== undefined) { sets.push(`is_active = $${i++}`); vals.push(b.is_active) }
+        if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
+        sets.push('updated_at = now()')
+        vals.push(id)
+
         const res = await pool.query(
           `UPDATE "${schema}".attendance_schedules SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`,
           vals,

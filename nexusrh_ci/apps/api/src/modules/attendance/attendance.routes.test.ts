@@ -582,6 +582,15 @@ describe('POST /attendance/schedules', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it("scope='department' sans scope_id → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { scope: 'department', expected_start: '08:00' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it("scope='tenant' avec un scope_id → 400", async () => {
     const res = await app.inject({
       method: 'POST', url: '/attendance/schedules',
@@ -738,6 +747,98 @@ describe('PATCH /attendance/schedules/:id', () => {
       headers: adminAuth(app), payload: { tolerance_min: 20 },
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('modifie un champ non-identitaire (tolerance_min) sans déclencher de re-vérif d’unicité → 200, aucun SELECT de doublon', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: SCHEDULE_ID }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { tolerance_min: 25 },
+    })
+    expect(res.statusCode).toBe(200)
+    // Aucun SELECT de contrôle scope/doublon : seuls UPDATE + audit_log ont tourné.
+    expect(queryMock.mock.calls).toHaveLength(2)
+    const dupCheck = queryMock.mock.calls.find((c) => String(c[0]).includes('is_active = true') && String(c[0]).includes('id <>'))
+    expect(dupCheck).toBeUndefined()
+  })
+
+  it('contournement par RÉACTIVATION : POST A actif → PATCH A inactif → POST B actif (même portée) → PATCH A actif → 409', async () => {
+    const scheduleA = SCHEDULE_ID
+    const scheduleB = 'dddddddd-dddd-dddd-dddd-dddddddddddd'
+
+    // 1) Création de A (actif) — aucun doublon existant.
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // SELECT doublon → aucun
+      .mockResolvedValueOnce({ rows: [{ id: scheduleA }] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const createA = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: VALID_SCHEDULE_EMPLOYEE,
+    })
+    expect(createA.statusCode).toBe(201)
+
+    // 2) PATCH A → is_active=false (désactivation, aucun risque de doublon).
+    queryMock.mockReset()
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ scope: 'employee', scope_id: EMP_SCOPE_ID, is_active: true }] }) // SELECT courant
+      .mockResolvedValueOnce({ rows: [{ id: scheduleA }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const deactivateA = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${scheduleA}`,
+      headers: adminAuth(app), payload: { is_active: false },
+    })
+    expect(deactivateA.statusCode).toBe(200)
+
+    // 3) POST B — même portée, actif. Comme A est désormais inactif, le SELECT
+    // de doublon ne trouve rien → 201.
+    queryMock.mockReset()
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // SELECT doublon → aucun (A inactif)
+      .mockResolvedValueOnce({ rows: [{ id: scheduleB }] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const createB = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: VALID_SCHEDULE_EMPLOYEE,
+    })
+    expect(createB.statusCode).toBe(201)
+
+    // 4) PATCH A → is_active=true (réactivation). B est déjà actif sur la même
+    // portée → la re-vérification doit désormais bloquer avec 409 (avant le
+    // fix, aucun contrôle ne tournait ici : A redevenait actif en silence,
+    // créant deux horaires actifs sur le même scope+scope_id).
+    queryMock.mockReset()
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ scope: 'employee', scope_id: EMP_SCOPE_ID, is_active: false }] }) // SELECT courant (A)
+      .mockResolvedValueOnce({ rows: [{ id: scheduleB }] }) // SELECT doublon → B trouvé
+    const reactivateA = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${scheduleA}`,
+      headers: adminAuth(app), payload: { is_active: true },
+    })
+    expect(reactivateA.statusCode).toBe(409)
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('attendance_schedules'))
+    expect(updateCall).toBeUndefined()
+  })
+
+  it('contournement par RE-SCOPING : PATCH scope+scope_id vers une portée déjà occupée par un autre horaire actif → 409', async () => {
+    const scheduleX = SCHEDULE_ID // scope='department', scope_id=DEPT_ID, actif
+    const scheduleY = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' // scope='employee', scope_id=EMP_SCOPE_ID, actif
+    const DEPT_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ scope: 'department', scope_id: DEPT_ID, is_active: true }] }) // SELECT courant (X)
+      .mockResolvedValueOnce({ rows: [{ id: scheduleY }] }) // SELECT doublon → Y trouvé sur la portée cible
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${scheduleX}`,
+      headers: adminAuth(app),
+      payload: { scope: 'employee', scope_id: EMP_SCOPE_ID },
+    })
+    expect(res.statusCode).toBe(409)
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('attendance_schedules'))
+    expect(updateCall).toBeUndefined()
   })
 })
 
