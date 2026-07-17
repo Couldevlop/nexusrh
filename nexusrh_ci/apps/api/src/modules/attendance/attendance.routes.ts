@@ -389,6 +389,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         if (b.auth_type !== undefined) changes.auth_type = b.auth_type
         if (b.auth_secret !== undefined) changes.secretChanged = true
         if (b.auth_header_name !== undefined) changes.auth_header_name = b.auth_header_name
+        if (b.default_headers !== undefined) changes.default_headers = b.default_headers
         if (b.poll_interval_min !== undefined) changes.poll_interval_min = b.poll_interval_min
         if (b.is_active !== undefined) changes.is_active = b.is_active
         if (b.field_mapping !== undefined) changes.field_mapping = b.field_mapping

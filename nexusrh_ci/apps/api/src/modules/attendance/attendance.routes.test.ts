@@ -374,6 +374,27 @@ describe('PATCH /attendance/devices/:id', () => {
     expect(changesJson).not.toContain('nouveau-secret-999')
     expect(changesJson).not.toContain('auth_secret')
   })
+
+  it('audite default_headers quand modifiés', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: DEVICE_ID }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const testHeaders = { 'X-Custom-Auth': 'test-value', 'X-Request-ID': 'req-123' }
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/devices/${DEVICE_ID}`,
+      headers: adminAuth(app),
+      payload: { default_headers: testHeaders },
+    })
+    expect(res.statusCode).toBe(200)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall).toBeDefined()
+    const changesJson = String(auditCall?.[1]?.[4])
+    expect(changesJson).toContain('"default_headers"')
+    expect(changesJson).toContain('X-Custom-Auth')
+    expect(changesJson).toContain('test-value')
+    expect(changesJson).toContain('X-Request-ID')
+    expect(changesJson).toContain('req-123')
+  })
 })
 
 describe('DELETE /attendance/devices/:id', () => {
