@@ -497,6 +497,287 @@ describe('POST /attendance/devices/:id/test', () => {
   })
 })
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CRUD horaires de référence (/attendance/schedules) — validation stricte
+// (ferme le trou fail-open de `computeDay`/`thresholdInstant`, qui renvoie
+// silencieusement `lateMinutes = 0` sur un `expected_start` malformé) +
+// unicité logique (un seul horaire actif par scope+scope_id, 409 sinon).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const EMP_SCOPE_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+const SCHEDULE_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+
+const VALID_SCHEDULE_TENANT = {
+  scope: 'tenant' as const,
+  expected_start: '08:00',
+  tolerance_min: 10,
+  expected_end: '17:00',
+  workdays: [1, 2, 3, 4, 5],
+  is_active: true,
+}
+
+const VALID_SCHEDULE_EMPLOYEE = {
+  scope: 'employee' as const,
+  scope_id: EMP_SCOPE_ID,
+  expected_start: '09:00',
+}
+
+describe('GET /attendance/schedules', () => {
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/schedules',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('liste les horaires actifs (200)', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{
+        id: SCHEDULE_ID, scope: 'tenant', scope_id: null, expected_start: '08:00:00',
+        tolerance_min: 10, expected_end: '17:00:00', workdays: [1, 2, 3, 4, 5],
+        is_active: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+    })
+    const res = await app.inject({ method: 'GET', url: '/attendance/schedules', headers: adminAuth(app) })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toHaveLength(1)
+  })
+})
+
+describe('POST /attendance/schedules', () => {
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_SCHEDULE_TENANT,
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('rejette un champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette un scope invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, scope: 'company' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("scope='employee' sans scope_id → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { scope: 'employee', expected_start: '08:00' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("scope='tenant' avec un scope_id → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, scope_id: EMP_SCOPE_ID },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("rejette expected_start='8:00' (un seul chiffre) → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, expected_start: '8:00' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("rejette expected_start='25:00' (heure hors bornes) → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, expected_start: '25:00' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("rejette expected_start='08:60' (minute hors bornes) → 400", async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, expected_start: '08:60' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette workdays=[1,1,8] (doublon + hors 1..7) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, workdays: [1, 1, 8] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette workdays=[1,2,1] (doublon valide sinon) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, workdays: [1, 2, 1] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette tolerance_min=-1 → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: { ...VALID_SCHEDULE_TENANT, tolerance_min: -1 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('crée un horaire valide (201) + audit', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // SELECT doublon → aucun
+      .mockResolvedValueOnce({ rows: [{ id: SCHEDULE_ID }] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: VALID_SCHEDULE_EMPLOYEE,
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().data.id).toBe(SCHEDULE_ID)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]).toContain('attendance.schedule.created')
+  })
+
+  it('doublon actif (même scope + scope_id) → 409, aucun INSERT exécuté', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'existing-schedule-id' }] }) // SELECT doublon → trouvé
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/schedules',
+      headers: adminAuth(app),
+      payload: VALID_SCHEDULE_EMPLOYEE,
+    })
+    expect(res.statusCode).toBe(409)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_schedules'))
+    expect(insertCall).toBeUndefined()
+  })
+})
+
+describe('PATCH /attendance/schedules/:id', () => {
+  it('id invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/attendance/schedules/not-a-uuid',
+      headers: adminAuth(app), payload: { tolerance_min: 15 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_officer')}` },
+      payload: { tolerance_min: 15 },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('rejette un champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette un expected_start malformé → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { expected_start: '25:00' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('modifie un horaire (200, champ simple sans re-vérif scope) + audit', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: SCHEDULE_ID }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { tolerance_min: 20 },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.updated).toBe(true)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]).toContain('attendance.schedule.updated')
+  })
+
+  it("re-vérifie la cohérence scope/scope_id quand l'un des deux change → 400 si incohérent", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ scope: 'employee', scope_id: EMP_SCOPE_ID }] }) // SELECT courant
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { scope: 'tenant' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('404 si introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app), payload: { tolerance_min: 20 },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+})
+
+describe('DELETE /attendance/schedules/:id', () => {
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'DELETE', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('id invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'DELETE', url: '/attendance/schedules/not-a-uuid',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('supprime (200) quand trouvé', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: SCHEDULE_ID }] })
+    const res = await app.inject({
+      method: 'DELETE', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.deleted).toBe(true)
+  })
+
+  it('404 si introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'DELETE', url: `/attendance/schedules/${SCHEDULE_ID}`,
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(404)
+  })
+})
+
 describe('POST /attendance/devices/:id/sync', () => {
   it('refuse un non-admin (403)', async () => {
     const res = await app.inject({

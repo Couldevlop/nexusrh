@@ -123,6 +123,61 @@ const deviceBody = z.object({
 }).strict()
 const devicePatch = deviceBody.partial()
 
+// ── Validation Zod — horaires de référence (attendance_schedules) ──────────
+//
+// CRITIQUE (fail-closed pour le moteur d'escalade) : `computeDay`
+// (attendance.compute.ts, `thresholdInstant`) est DÉFENSIF par construction —
+// un `expected_start` malformé qui échapperait à la validation d'écriture ne
+// lève jamais côté calcul, il renvoie silencieusement `NaN` → `lateMinutes = 0`
+// → statut `present`. Autrement dit une config horaire corrompue en base fait
+// FAIL-OPEN le calcul de retard (un employé réellement en retard serait compté
+// présent). Cette route est donc la SEULE frontière qui peut fermer ce trou :
+// la validation ci-dessous doit rester stricte sur le format ET les bornes
+// réelles de l'heure (HH:MM, 00-23:00-59) — pas seulement la forme `\d{2}:\d{2}`
+// utilisée par `thresholdInstant`, qui laisserait passer '25:99'.
+const HHMM_STRICT_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
+const scheduleScopeId = z.string().regex(UUID_RE, 'scope_id invalide (uuid attendu)').nullable().optional()
+const scheduleTime = z.string().regex(HHMM_STRICT_RE, 'Format attendu HH:MM (heures 00-23, minutes 00-59)')
+const scheduleWorkdays = z
+  .array(z.number().int().min(1).max(7))
+  .min(1, 'Au moins un jour ouvré')
+  .max(7, 'Au plus 7 jours (1 par jour de la semaine)')
+  .refine((arr) => new Set(arr).size === arr.length, { message: 'Jours dupliqués interdits dans workdays' })
+
+/** Cohérence scope ↔ scope_id : requis pour department/employee, interdit pour tenant. */
+function scopeConsistent(b: { scope: string; scope_id?: string | null }): boolean {
+  if (b.scope === 'tenant') return b.scope_id === undefined || b.scope_id === null
+  return b.scope_id !== undefined && b.scope_id !== null
+}
+const SCOPE_CONSISTENCY_MESSAGE =
+  "scope_id est requis pour les portées 'department'/'employee' et doit être absent pour la portée 'tenant'"
+
+const scheduleBody = z.object({
+  scope: z.enum(['tenant', 'department', 'employee'], {
+    errorMap: () => ({ message: "scope doit être 'tenant', 'department' ou 'employee'" }),
+  }),
+  scope_id: scheduleScopeId,
+  expected_start: scheduleTime,
+  expected_end: scheduleTime.nullable().optional(),
+  tolerance_min: z.number().int().min(0).max(1440).optional(),
+  workdays: scheduleWorkdays.optional(),
+  is_active: z.boolean().optional(),
+}).strict()
+const scheduleCreate = scheduleBody.refine(scopeConsistent, {
+  message: SCOPE_CONSISTENCY_MESSAGE,
+  path: ['scope_id'],
+})
+const schedulePatch = z.object({
+  scope: z.enum(['tenant', 'department', 'employee']).optional(),
+  scope_id: scheduleScopeId,
+  expected_start: scheduleTime.optional(),
+  expected_end: scheduleTime.nullable().optional(),
+  tolerance_min: z.number().int().min(0).max(1440).optional(),
+  workdays: scheduleWorkdays.optional(),
+  is_active: z.boolean().optional(),
+}).strict()
+
 interface AttendanceDeviceRow {
   base_url: string
   auth_type: string
@@ -500,6 +555,184 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
       audit(schema, request.user.sub, 'attendance.device.sync_requested', id, {}, request.ip ?? null, 'attendance_device')
       return reply.send({ data: { enqueued: true } })
+    },
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Horaires de référence (attendance_schedules) — CRUD des surcharges
+  // consommées par `resolveEmployeeSchedule` (attendance.repo.ts) puis
+  // `resolveSchedule` (cascade employé > département > tenant).
+  //
+  // SÉCURITÉ (transverse, cf. bloc de commentaires au-dessus de `scheduleBody`) :
+  //  - Admin-only ; isolation tenant via `request.user.schemaName` (jamais le
+  //    corps de la requête) ; toutes les valeurs sont paramétrées ($n).
+  //  - Validation Zod STRICTE (`.strict()` + regex horaire bornée + cohérence
+  //    scope/scope_id via `.refine()`) : c'est un contrôle de sécurité/
+  //    correction à part entière, la frontière d'écriture qui empêche une
+  //    config corrompue de faire fail-open le calcul de retard en aval.
+  //  - Unicité LOGIQUE (un seul horaire ACTIF par (scope, scope_id)) : pas de
+  //    contrainte DB dédiée, vérifiée en base via SELECT dans le même
+  //    handler que l'INSERT ; violation → 409 (choix documenté : on rejette
+  //    plutôt que d'upsert-désactiver silencieusement l'ancien horaire, pour
+  //    forcer un geste explicite de l'admin — cohérence avec les autres 409
+  //    du dépôt).
+  // ═══════════════════════════════════════════════════════════════════════
+
+  fastify.get('/schedules', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Lister les horaires de référence actifs (toutes portées)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const res = await pool.query(
+          `SELECT id, scope, scope_id, expected_start, tolerance_min, expected_end, workdays,
+                  is_active, created_at, updated_at
+             FROM "${schema}".attendance_schedules
+            WHERE is_active = true
+            ORDER BY scope, created_at DESC`,
+        )
+        return reply.send({ data: res.rows })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de récupération des horaires : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  fastify.post('/schedules', {
+    preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Créer un horaire de référence (surcharge de portée)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = scheduleCreate.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+      const scopeId = b.scope_id ?? null
+
+      try {
+        // Unicité logique : un seul horaire ACTIF par (scope, scope_id). `IS NOT
+        // DISTINCT FROM` traite NULL = NULL (portée tenant) comme une égalité.
+        const dup = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".attendance_schedules
+            WHERE is_active = true AND scope = $1 AND scope_id IS NOT DISTINCT FROM $2
+            LIMIT 1`,
+          [b.scope, scopeId],
+        )
+        if (dup.rows[0]) {
+          return reply.status(409).send({
+            error: 'Un horaire actif existe déjà pour cette portée (scope + scope_id). Désactivez-le ou modifiez-le avant d’en créer un nouveau.',
+          })
+        }
+
+        const res = await pool.query<{ id: string }>(
+          `INSERT INTO "${schema}".attendance_schedules
+             (scope, scope_id, expected_start, tolerance_min, expected_end, workdays, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+          [
+            b.scope, scopeId, b.expected_start, b.tolerance_min ?? 10,
+            b.expected_end ?? null, b.workdays ?? [1, 2, 3, 4, 5], b.is_active ?? true,
+          ],
+        )
+        const id = res.rows[0]!.id
+        audit(schema, request.user.sub, 'attendance.schedule.created', id,
+          { scope: b.scope, scope_id: scopeId, expected_start: b.expected_start, tolerance_min: b.tolerance_min ?? 10 },
+          request.ip ?? null, 'attendance_schedule')
+        return reply.status(201).send({ data: { id } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de création de l'horaire : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  fastify.patch('/schedules/:id', {
+    preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Modifier un horaire de référence' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const parsed = schedulePatch.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      // Cohérence scope/scope_id : ce n'est significatif que si l'un des deux
+      // change dans ce PATCH. On recharge l'état actuel pour valider l'état
+      // RÉSULTANT (fusion patch + existant), jamais seulement le delta fourni —
+      // sinon un PATCH partiel pourrait faire passer la ligne dans un état
+      // incohérent (ex. scope='tenant' avec un scope_id hérité de l'ancien
+      // scope='employee').
+      if (b.scope !== undefined || b.scope_id !== undefined) {
+        const current = await pool.query<{ scope: string; scope_id: string | null }>(
+          `SELECT scope, scope_id FROM "${schema}".attendance_schedules WHERE id = $1 LIMIT 1`,
+          [id],
+        )
+        const row = current.rows[0]
+        if (!row) return reply.status(404).send({ error: 'Horaire introuvable' })
+        const nextScope = b.scope ?? row.scope
+        const nextScopeId = b.scope_id !== undefined ? b.scope_id : row.scope_id
+        if (!scopeConsistent({ scope: nextScope, scope_id: nextScopeId })) {
+          return reply.status(400).send({ error: SCOPE_CONSISTENCY_MESSAGE })
+        }
+      }
+
+      const sets: string[] = []
+      const vals: unknown[] = []
+      let i = 1
+      if (b.scope !== undefined) { sets.push(`scope = $${i++}`); vals.push(b.scope) }
+      if (b.scope_id !== undefined) { sets.push(`scope_id = $${i++}`); vals.push(b.scope_id) }
+      if (b.expected_start !== undefined) { sets.push(`expected_start = $${i++}`); vals.push(b.expected_start) }
+      if (b.expected_end !== undefined) { sets.push(`expected_end = $${i++}`); vals.push(b.expected_end) }
+      if (b.tolerance_min !== undefined) { sets.push(`tolerance_min = $${i++}`); vals.push(b.tolerance_min) }
+      if (b.workdays !== undefined) { sets.push(`workdays = $${i++}`); vals.push(b.workdays) }
+      if (b.is_active !== undefined) { sets.push(`is_active = $${i++}`); vals.push(b.is_active) }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
+      sets.push('updated_at = now()')
+      vals.push(id)
+
+      try {
+        const res = await pool.query(
+          `UPDATE "${schema}".attendance_schedules SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`,
+          vals,
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Horaire introuvable' })
+        audit(schema, request.user.sub, 'attendance.schedule.updated', id,
+          b as Record<string, unknown>, request.ip ?? null, 'attendance_schedule')
+        return reply.send({ data: { id, updated: true } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de mise à jour de l'horaire : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  fastify.delete('/schedules/:id', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Supprimer un horaire de référence' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+      try {
+        const res = await pool.query(
+          `DELETE FROM "${schema}".attendance_schedules WHERE id = $1 RETURNING id`, [id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Horaire introuvable' })
+        audit(schema, request.user.sub, 'attendance.schedule.deleted', id, {}, request.ip ?? null, 'attendance_schedule')
+        return reply.send({ data: { id, deleted: true } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de suppression de l'horaire : ${(e as Error).message}` })
+      }
     },
   })
 }
