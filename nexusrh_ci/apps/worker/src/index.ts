@@ -7,6 +7,7 @@ import { processCnpsDeclarationJob } from './jobs/cnps.js'
 import { processAiScoringJob } from './jobs/ai-scoring.js'
 import { processLegalWatchJob, type LegalWatchPayload } from './jobs/legal-watch.js'
 import { processLegislationWatchJob } from './jobs/legislation-watch.js'
+import { processAttendancePollJob } from './jobs/attendance-poll.js'
 
 type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
@@ -115,12 +116,18 @@ async function start(): Promise<void> {
   workers.push(createWorker('ai-scoring-ci', processAiScoringJob as JobHandler))
   workers.push(createWorker('legal-watch', processLegalWatchJob as JobHandler))
   workers.push(createWorker('legislation-watch', processLegislationWatchJob as JobHandler))
+  workers.push(createWorker('attendance-poll', processAttendancePollJob as JobHandler))
 
   await scheduleLegalWatchCron()
   await scheduleLegislationWatchCron()
 
   logger.info(
-    { queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci', 'legal-watch', 'legislation-watch'] },
+    {
+      queues: [
+        'email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci',
+        'legal-watch', 'legislation-watch', 'attendance-poll',
+      ],
+    },
     'Workers started',
   )
 }

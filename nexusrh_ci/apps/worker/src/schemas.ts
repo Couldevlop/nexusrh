@@ -185,3 +185,22 @@ export function parseLegalWatchPayload(data: unknown): LegalWatchPayload {
     sourceType: assertOptionalEnum('legal-watch', 'sourceType', o['sourceType'], LEGAL_WATCH_SOURCE_TYPES),
   }
 }
+
+export interface AttendancePollPayload {
+  schemaName: string
+  deviceId:   string
+}
+
+/**
+ * Payload du job `attendance-poll` (poll d'une badgeuse tenant). Miroir du
+ * producteur `apps/api/src/modules/attendance/attendance.queue.ts`
+ * (`AttendancePollJobData`). `schemaName`/`deviceId` sont validés ici AVANT
+ * toute requête DB — un job Redis est une entrée non fiable (OWASP A03/A01).
+ */
+export function parseAttendancePollPayload(data: unknown): AttendancePollPayload {
+  const o = assertObject('attendance-poll', 'data', data)
+  return {
+    schemaName: assertSchemaName('attendance-poll', 'schemaName', o['schemaName']),
+    deviceId:   assertUuid('attendance-poll', 'deviceId', o['deviceId']),
+  }
+}
