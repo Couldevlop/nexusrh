@@ -26,8 +26,14 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
+import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { fetchDevicePunches } from './attendance.fetch.js'
+import { enqueuePoll } from './attendance.queue.js'
 import { loadConfig } from './attendance.repo.js'
-import type { AttendanceConfig } from './attendance.types.js'
+import type { AttendanceConfig, FieldMapping } from './attendance.types.js'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ── Défauts (identiques aux défauts DB — appliqués si aucune ligne n'existe) ─
 const DEFAULT_CONFIG: AttendanceConfig & {
@@ -78,14 +84,53 @@ function audit(
   id: string | null,
   changes: Record<string, unknown>,
   ip: string | null,
+  entity = 'attendance_config',
 ): void {
   pool
     .query(
       `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, 'attendance_config', $3, $4, $5)`,
-      [userId ?? null, action, id, JSON.stringify(changes), ip],
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId ?? null, action, entity, id, JSON.stringify(changes), ip],
     )
     .catch(() => { /* tenant sans audit_log : non bloquant */ })
+}
+
+// ── Validation Zod — badgeuses (attendance_devices) ─────────────────────────
+// Calqué sur `integrations.routes.ts` (connectorBody) : même forme
+// (base_url/auth_type/auth_secret/auth_header_name/default_headers), avec en
+// plus `field_mapping` (extraction des pointages) et `poll_interval_min`.
+const fieldMappingSchema = z.object({
+  recordsPath: z.string().max(200).optional(),
+  employeePath: z.string().max(200).optional(),
+  employeeMatchBy: z.enum(['matricule', 'email', 'badge_id']).optional(),
+  timestampPath: z.string().max(200).optional(),
+  timestampFormat: z.string().max(50).optional(),
+  directionPath: z.string().max(200).optional(),
+  directionInValue: z.string().max(50).optional(),
+  directionOutValue: z.string().max(50).optional(),
+}).strict()
+
+const deviceBody = z.object({
+  name: z.string().min(1).max(150),
+  base_url: z.string().url().max(2000),
+  auth_type: z.enum(['none', 'bearer', 'basic', 'api_key']).optional(),
+  auth_secret: z.string().max(2000).optional(),
+  auth_header_name: z.string().max(80).optional(),
+  default_headers: z.record(z.string().max(500)).optional(),
+  field_mapping: fieldMappingSchema.optional(),
+  poll_interval_min: z.number().int().min(1).max(1440).optional(),
+  is_active: z.boolean().optional(),
+}).strict()
+const devicePatch = deviceBody.partial()
+
+interface AttendanceDeviceRow {
+  base_url: string
+  auth_type: string
+  auth_secret_enc: string | null
+  auth_header_name: string | null
+  default_headers: Record<string, string> | null
+  field_mapping: FieldMapping | null
+  sync_cursor: string | null
 }
 
 interface AttendanceConfigExtraRow {
@@ -213,6 +258,226 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       } catch (e) {
         return reply.status(500).send({ error: `Échec de mise à jour de la configuration : ${(e as Error).message}` })
       }
+    },
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Badgeuses (attendance_devices) — CRUD + test de connexion + sync manuel
+  //
+  // SÉCURITÉ (transverse, crux du module) :
+  //  - `base_url` passe TOUJOURS par la garde anti-SSRF (`isSafeOutboundUrl`,
+  //    résolution DNS incluse) AVANT tout INSERT/UPDATE et avant tout appel
+  //    réseau (`/test`) — jamais de court-circuit sur l'objet retourné.
+  //  - Le secret d'authentification est chiffré (AES-256-GCM) en base
+  //    (`auth_secret_enc`) et n'est JAMAIS renvoyé : GET/list n'exposent
+  //    qu'un booléen `has_secret` ; `/test` déchiffre en mémoire pour l'appel
+  //    sortant mais ne le renvoie jamais dans sa réponse.
+  //  - `/sync` n'effectue AUCUN appel HTTP sortant synchrone : elle enfile un
+  //    job BullMQ (`attendance-poll`) consommé par le worker (tâche ultérieure).
+  // ═══════════════════════════════════════════════════════════════════════
+
+  fastify.get('/devices', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Lister les badgeuses configurées' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const res = await pool.query(
+        `SELECT id, name, base_url, auth_type, auth_header_name, default_headers, field_mapping,
+                poll_enabled, poll_interval_min, last_sync_at, last_sync_status, is_active, created_at,
+                (auth_secret_enc IS NOT NULL) AS has_secret
+           FROM "${schema}".attendance_devices ORDER BY created_at DESC`,
+      )
+      return reply.send({ data: res.rows })
+    },
+  })
+
+  fastify.post('/devices', {
+    preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Créer une badgeuse' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = deviceBody.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      const safe = await isSafeOutboundUrl(b.base_url)
+      if (!safe.ok) return reply.status(422).send({ error: `URL refusée (SSRF) : ${safe.reason}` })
+
+      try {
+        const res = await pool.query<{ id: string }>(
+          `INSERT INTO "${schema}".attendance_devices
+             (name, base_url, auth_type, auth_secret_enc, auth_header_name, default_headers,
+              field_mapping, poll_interval_min, is_active, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+          [
+            b.name, b.base_url, b.auth_type ?? 'none', b.auth_secret ? encrypt(b.auth_secret) : null,
+            b.auth_header_name ?? null, JSON.stringify(b.default_headers ?? {}),
+            JSON.stringify(b.field_mapping ?? {}), b.poll_interval_min ?? 15, b.is_active ?? true,
+            request.user.sub,
+          ],
+        )
+        const id = res.rows[0]!.id
+        audit(schema, request.user.sub, 'attendance.device.created', id,
+          { name: b.name, base_url: b.base_url, auth_type: b.auth_type ?? 'none' }, request.ip ?? null,
+          'attendance_device')
+        return reply.status(201).send({ data: { id } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de création de la badgeuse : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  fastify.patch('/devices/:id', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Modifier une badgeuse' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const parsed = devicePatch.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      if (b.base_url !== undefined) {
+        const safe = await isSafeOutboundUrl(b.base_url)
+        if (!safe.ok) return reply.status(422).send({ error: `URL refusée (SSRF) : ${safe.reason}` })
+      }
+
+      const sets: string[] = []
+      const vals: unknown[] = []
+      let i = 1
+      if (b.name !== undefined) { sets.push(`name = $${i++}`); vals.push(b.name) }
+      if (b.base_url !== undefined) { sets.push(`base_url = $${i++}`); vals.push(b.base_url) }
+      if (b.auth_type !== undefined) { sets.push(`auth_type = $${i++}`); vals.push(b.auth_type) }
+      if (b.auth_secret !== undefined) {
+        sets.push(`auth_secret_enc = $${i++}`)
+        vals.push(b.auth_secret ? encrypt(b.auth_secret) : null)
+      }
+      if (b.auth_header_name !== undefined) { sets.push(`auth_header_name = $${i++}`); vals.push(b.auth_header_name) }
+      if (b.default_headers !== undefined) { sets.push(`default_headers = $${i++}`); vals.push(JSON.stringify(b.default_headers)) }
+      if (b.field_mapping !== undefined) { sets.push(`field_mapping = $${i++}`); vals.push(JSON.stringify(b.field_mapping)) }
+      if (b.poll_interval_min !== undefined) { sets.push(`poll_interval_min = $${i++}`); vals.push(b.poll_interval_min) }
+      if (b.is_active !== undefined) { sets.push(`is_active = $${i++}`); vals.push(b.is_active) }
+      if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
+      sets.push('updated_at = now()')
+      vals.push(id)
+
+      try {
+        const res = await pool.query(
+          `UPDATE "${schema}".attendance_devices SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`,
+          vals,
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+        audit(schema, request.user.sub, 'attendance.device.updated', id,
+          { name: b.name, base_url: b.base_url }, request.ip ?? null, 'attendance_device')
+        return reply.send({ data: { id, updated: true } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de mise à jour de la badgeuse : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  fastify.delete('/devices/:id', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Supprimer une badgeuse' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+      try {
+        const res = await pool.query(`DELETE FROM "${schema}".attendance_devices WHERE id = $1 RETURNING id`, [id])
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+        audit(schema, request.user.sub, 'attendance.device.deleted', id, {}, request.ip ?? null, 'attendance_device')
+        return reply.send({ data: { id, deleted: true } })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de suppression de la badgeuse : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  // Test de connexion : appelle réellement la badgeuse (frontière système externe
+  // non fiable) mais ne renvoie qu'un résumé BORNÉ — jamais le secret déchiffré,
+  // jamais la charge utile brute complète (peut contenir des données sensibles).
+  fastify.post('/devices/:id/test', {
+    preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    schema: { tags: ['attendance'], summary: 'Tester la connexion à une badgeuse' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const r = await pool.query<AttendanceDeviceRow>(
+        `SELECT base_url, auth_type, auth_secret_enc, auth_header_name, default_headers, field_mapping, sync_cursor
+           FROM "${schema}".attendance_devices WHERE id = $1 LIMIT 1`,
+        [id],
+      )
+      const d = r.rows[0]
+      if (!d) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+
+      const result = await fetchDevicePunches({
+        baseUrl: d.base_url,
+        authType: d.auth_type,
+        authSecret: decryptIfPresent(d.auth_secret_enc),
+        authHeaderName: d.auth_header_name,
+        defaultHeaders: d.default_headers ?? {},
+        fieldMapping: (d.field_mapping ?? {}) as FieldMapping,
+        syncCursor: d.sync_cursor,
+      })
+
+      // Échantillon BORNÉ, débarrassé du champ `raw` (payload d'origine potentiellement
+      // sensible) — seuls des champs déjà normalisés et sans risque sont renvoyés.
+      const sample = result.punches.slice(0, 5).map((p) => ({
+        rawEmployeeRef: p.rawEmployeeRef,
+        punchedAt: p.punchedAt.toISOString(),
+        direction: p.direction,
+      }))
+
+      audit(schema, request.user.sub, 'attendance.device.tested', id,
+        { ok: result.ok, count: result.punches.length }, request.ip ?? null, 'attendance_device')
+
+      return reply.send({
+        data: { ok: result.ok, count: result.punches.length, sample, ...(result.error ? { error: result.error } : {}) },
+      })
+    },
+  })
+
+  // Sync manuel : n'effectue JAMAIS d'appel HTTP sortant dans le cycle de la
+  // requête — enfile un job `attendance-poll` (BullMQ) traité par le worker.
+  fastify.post('/devices/:id/sync', {
+    preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    schema: { tags: ['attendance'], summary: 'Déclencher une synchronisation manuelle' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const r = await pool.query<{ id: string }>(
+        `SELECT id FROM "${schema}".attendance_devices WHERE id = $1 LIMIT 1`, [id],
+      )
+      if (!r.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+
+      try {
+        await enqueuePoll(schema, id)
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de mise en file de la synchronisation : ${(e as Error).message}` })
+      }
+
+      audit(schema, request.user.sub, 'attendance.device.sync_requested', id, {}, request.ip ?? null, 'attendance_device')
+      return reply.send({ data: { enqueued: true } })
     },
   })
 }
