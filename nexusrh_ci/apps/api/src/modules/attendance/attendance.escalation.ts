@@ -1,11 +1,21 @@
 import type { AttendanceConfig, ComputedDay, EscalationResult, GeneratedWarning, WarningTier } from './attendance.types.js'
 
+/** Semaine ouvrée CI par défaut (lundi→samedi) — utilisée quand `workdays` n'est pas fourni. */
+const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5, 6]
+
 export interface EvaluateEscalationInput {
   employeeId: string
   days: ComputedDay[]
   config: AttendanceConfig
   consumedByTier: { tier1: string[]; tier2: string[] }
   activeWarnings: number
+  /**
+   * Jours ouvrés effectifs de l'employé (1=lundi … 7=dimanche), au même format que
+   * `EffectiveSchedule.workdays`. Optionnel pour compatibilité ascendante — défaut
+   * `[1,2,3,4,5,6]` (CI Mon–Sat). Un tenant en activité 7j/7 (ex. SOTRA) doit passer
+   * `[1,2,3,4,5,6,7]` pour éviter de traiter samedi+lundi comme consécutifs.
+   */
+  workdays?: number[]
 }
 
 export interface EvaluateEscalationOutput extends EscalationResult {
@@ -13,32 +23,53 @@ export interface EvaluateEscalationOutput extends EscalationResult {
 }
 
 /**
- * Détermine si `next` est le prochain jour ouvré après `prev` (dates `YYYY-MM-DD`,
- * `prev < next`). Jours ouvrés CI = lundi→samedi ; seul le dimanche est sauté.
+ * Renvoie le jour ISO 1=lundi … 7=dimanche pour une date 'YYYY-MM-DD'.
+ * Même convention UTC que `attendance.compute.ts` (isoWeekday).
  */
-function isNextWorkday(prev: string, next: string): boolean {
-  const prevDate = new Date(`${prev}T00:00:00Z`)
-  const nextDate = new Date(`${next}T00:00:00Z`)
-  const diffDays = Math.round((nextDate.getTime() - prevDate.getTime()) / 86_400_000)
-  if (diffDays === 1) return true
-  if (diffDays === 2) {
-    const between = new Date(prevDate.getTime() + 86_400_000)
-    return between.getUTCDay() === 0 // dimanche sauté
+function isoWeekday(dateStr: string): number {
+  const day = new Date(`${dateStr}T00:00:00Z`).getUTCDay()
+  return day === 0 ? 7 : day
+}
+
+/** Ajoute `n` jours calendaires à une date 'YYYY-MM-DD' (arithmétique UTC). */
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Détermine si `next` est le prochain jour ouvré après `prev` (dates `YYYY-MM-DD`,
+ * `prev < next`), selon le calendrier ouvré réel `workdays` (1=lundi…7=dimanche).
+ * On avance jour calendaire par jour calendaire depuis `prev`, on saute les jours
+ * dont le jour ISO n'est pas dans `workdays`, et le premier jour ouvré rencontré
+ * doit être exactement `next` pour que la série soit consécutive.
+ */
+function isNextWorkday(prev: string, next: string, workdays: number[]): boolean {
+  let cursor = prev
+  // Borne défensive : une semaine ouvrée normale ne saute jamais plus de quelques
+  // jours calendaires d'affilée ; 14 itérations couvrent tous les cas plausibles
+  // (et empêchent toute boucle infinie si `workdays` est vide/mal configuré).
+  for (let i = 0; i < 14; i++) {
+    cursor = addDays(cursor, 1)
+    if (workdays.includes(isoWeekday(cursor))) {
+      return cursor === next
+    }
   }
   return false
 }
 
 /**
  * Cherche, dans une liste de dates `YYYY-MM-DD` triées ascendant et uniques,
- * la première série de `n` dates consécutives en jours ouvrés.
+ * la première série de `n` dates consécutives en jours ouvrés (selon `workdays`).
  * Retourne les `n` dates du premier groupe qui satisfait, sinon `null`.
  */
-function consecutiveRun(dates: string[], n: number): string[] | null {
-  if (n <= 0) return []
+function consecutiveRun(dates: string[], n: number, workdays: number[]): string[] | null {
+  if (n <= 0) return null
   if (dates.length < n) return null
   let runStart = 0
   for (let i = 0; i < dates.length; i++) {
-    if (i > 0 && !isNextWorkday(dates[i - 1]!, dates[i]!)) {
+    if (i > 0 && !isNextWorkday(dates[i - 1]!, dates[i]!, workdays)) {
       runStart = i
     }
     if (i - runStart + 1 >= n) {
@@ -54,7 +85,7 @@ function consecutiveRun(dates: string[], n: number): string[] | null {
  * Retourne les `n` premières dates de ce mois, sinon `null`.
  */
 function sameMonthGroup(dates: string[], n: number): string[] | null {
-  if (n <= 0) return []
+  if (n <= 0) return null
   if (dates.length < n) return null
   const byMonth = new Map<string, string[]>()
   for (const d of dates) {
@@ -81,14 +112,20 @@ interface TierMatch {
  * peut être une occurrence pour le palier 1 ET le palier 2 (seuils différents,
  * jeux de dates consommées distincts).
  */
-function evaluateTier(days: ComputedDay[], thresholdMinutes: number, occurrences: number, consumedDates: string[]): TierMatch | null {
+function evaluateTier(
+  days: ComputedDay[],
+  thresholdMinutes: number,
+  occurrences: number,
+  consumedDates: string[],
+  workdays: number[],
+): TierMatch | null {
   const consumedSet = new Set(consumedDates)
   const qualifyingDates = days
     .filter((d) => d.status === 'late' && d.lateMinutes >= thresholdMinutes && !consumedSet.has(d.workDate))
     .map((d) => d.workDate)
     .sort()
 
-  const consecutive = consecutiveRun(qualifyingDates, occurrences)
+  const consecutive = consecutiveRun(qualifyingDates, occurrences, workdays)
   if (consecutive) {
     return { dates: consecutive, triggerReason: `${thresholdMinutes}min_x${occurrences}_consecutive` }
   }
@@ -112,6 +149,7 @@ function evaluateTier(days: ComputedDay[], thresholdMinutes: number, occurrences
  */
 export function evaluateEscalation(input: EvaluateEscalationInput): EvaluateEscalationOutput {
   const { employeeId, days, config, consumedByTier, activeWarnings } = input
+  const workdays = input.workdays ?? DEFAULT_WORKDAYS
   const warnings: GeneratedWarning[] = []
   const newlyConsumed = { tier1: [] as string[], tier2: [] as string[] }
 
@@ -121,7 +159,7 @@ export function evaluateEscalation(input: EvaluateEscalationInput): EvaluateEsca
   ]
 
   for (const def of tierDefs) {
-    const match = evaluateTier(days, def.threshold, def.occurrences, def.consumed)
+    const match = evaluateTier(days, def.threshold, def.occurrences, def.consumed, workdays)
     if (match) {
       warnings.push({ employeeId, tier: def.tier, triggerReason: match.triggerReason, occurrenceDates: match.dates })
       newlyConsumed[def.bucket].push(...match.dates)

@@ -50,3 +50,53 @@ it('3 occurrences non consécutives mais dans le même mois civil → déclenche
   expect(r.warnings).toHaveLength(1)
   expect(r.warnings[0]!.triggerReason).toBe('30min_x3_month')
 })
+
+// --- workdays paramétrable (fenêtre consécutive selon le vrai calendrier ouvré) ---
+
+it('workdays 7j/7 (ex. SOTRA) : samedi + lundi ne sont PAS des jours ouvrés consécutifs (dimanche est un jour travaillé)', () => {
+  const r = evaluateEscalation({
+    employeeId: 'e1',
+    days: [late('2026-07-11', 35), late('2026-07-13', 35)], // samedi, lundi (dimanche 07-12 entre les deux)
+    config: { ...cfg, occurrencesTier1: 2 },
+    consumedByTier: none,
+    activeWarnings: 0,
+    workdays: [1, 2, 3, 4, 5, 6, 7],
+  })
+  const tier1Warning = r.warnings.find((w) => w.tier === 'avertissement')
+  // Le déclenchement (s'il a lieu) ne doit JAMAIS être via la voie "consecutive" ici :
+  // avec dimanche ouvré, samedi→lundi ne sont pas des jours ouvrés consécutifs.
+  expect(tier1Warning?.triggerReason).not.toMatch(/_consecutive$/)
+})
+
+it('workdays 6j/7 (CI, défaut) : samedi + lundi SONT des jours ouvrés consécutifs (dimanche sauté)', () => {
+  const r = evaluateEscalation({
+    employeeId: 'e1',
+    days: [late('2026-07-11', 35), late('2026-07-13', 35)], // samedi, lundi
+    config: { ...cfg, occurrencesTier1: 2 },
+    consumedByTier: none,
+    activeWarnings: 0,
+    workdays: [1, 2, 3, 4, 5, 6],
+  })
+  const tier1Warning = r.warnings.find((w) => w.tier === 'avertissement')
+  expect(tier1Warning?.triggerReason).toBe('30min_x2_consecutive')
+  expect(tier1Warning?.occurrenceDates).toEqual(['2026-07-11', '2026-07-13'])
+})
+
+it('dédoublonnage palier 2 : dates déjà consommées au palier 2 ne re-déclenchent pas ce palier, indépendamment du palier 1', () => {
+  const consumed = { tier1: [] as string[], tier2: ['2026-07-06', '2026-07-07', '2026-07-08'] }
+  const r = evaluateEscalation({ employeeId: 'e1', days: [late('2026-07-06', 65), late('2026-07-07', 65), late('2026-07-08', 65)], config: cfg, consumedByTier: consumed, activeWarnings: 0 })
+  expect(r.warnings.map((w) => w.tier)).toEqual(['avertissement'])
+  expect(r.newlyConsumed.tier2).toEqual([])
+  expect(r.newlyConsumed.tier1).toEqual(['2026-07-06', '2026-07-07', '2026-07-08'])
+})
+
+it('occurrences <= 0 (mauvaise config) ne déclenche jamais un avertissement fantôme', () => {
+  const r = evaluateEscalation({
+    employeeId: 'e1',
+    days: [late('2026-07-06', 35)],
+    config: { ...cfg, occurrencesTier1: 0 },
+    consumedByTier: none,
+    activeWarnings: 0,
+  })
+  expect(r.warnings.some((w) => w.tier === 'avertissement')).toBe(false)
+})
