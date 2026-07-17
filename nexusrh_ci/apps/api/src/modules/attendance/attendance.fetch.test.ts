@@ -150,4 +150,59 @@ describe('fetchDevicePunches', () => {
 
     expect(result.error).not.toContain('top-secret-value')
   })
+
+  it('construit l\'en-tête Authorization Basic avec le secret base64-encodé', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    const body = {
+      records: [
+        { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
+      ],
+    }
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }) as unknown as typeof fetch
+
+    await fetchDevicePunches(baseDevice({ authType: 'basic', authSecret: 'dXNlcjpwYXNz' }))
+
+    const callArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    if (!callArgs) throw new Error('fetch non appelé')
+    const init = callArgs[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['Authorization']).toBe('Basic dXNlcjpwYXNz')
+  })
+
+  it('ne fuite jamais le secret sur toutes les branches d\'échec', async () => {
+    const secretToken = 'SUPER_SECRET_TOKEN'
+
+    // Branche 1 : SSRF bloqué
+    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: false, reason: 'Blocked' })
+    let result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
+    expect(JSON.stringify(result)).not.toContain(secretToken)
+
+    // Branche 2 : fetch rejeté (réseau/timeout)
+    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    global.fetch = vi.fn().mockRejectedValueOnce(new Error('network timeout'))
+    result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
+    expect(JSON.stringify(result)).not.toContain(secretToken)
+
+    // Branche 3 : statut HTTP non-2xx
+    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    }) as unknown as typeof fetch
+    result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
+    expect(JSON.stringify(result)).not.toContain(secretToken)
+
+    // Branche 4 : réponse JSON invalide
+    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error('Invalid JSON')
+      },
+    }) as unknown as typeof fetch
+    result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
+    expect(JSON.stringify(result)).not.toContain(secretToken)
+  })
 })
