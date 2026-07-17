@@ -30,8 +30,13 @@ import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
 import { fetchDevicePunches } from './attendance.fetch.js'
 import { enqueuePoll } from './attendance.queue.js'
-import { loadConfig } from './attendance.repo.js'
-import type { AttendanceConfig, FieldMapping } from './attendance.types.js'
+import { loadConfig, resolveEmployeeSchedule, upsertDay } from './attendance.repo.js'
+import { computeDay } from './attendance.compute.js'
+import { resolveSchedule } from './attendance.schedule.js'
+import { joursFeriesCI } from '../../utils/ci-holidays.js'
+import type { AttendanceConfig, EffectiveSchedule, FieldMapping, NormalizedPunch } from './attendance.types.js'
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -214,6 +219,105 @@ async function loadConfigExtras(schema: string): Promise<AttendanceConfigExtraRo
     return null
   }
 }
+
+// ── Helpers — pointages/jours/recompute (Task 13) ───────────────────────────
+
+interface PunchDayRow {
+  raw_employee_ref: string | null
+  punched_at: Date | string
+  direction: string
+  dedup_key: string
+  raw: unknown
+}
+
+/** Charge les pointages BRUTS d'un employé pour un jour donné, normalisés vers `NormalizedPunch`. */
+async function loadPunchesForDate(schema: string, employeeId: string, workDate: string): Promise<NormalizedPunch[]> {
+  try {
+    const res = await pool.query<PunchDayRow>(
+      `SELECT raw_employee_ref, punched_at, direction, dedup_key, raw
+         FROM "${schema}".attendance_punches
+        WHERE employee_id = $1 AND punched_at::date = $2::date
+        ORDER BY punched_at ASC`,
+      [employeeId, workDate],
+    )
+    return res.rows.map((row) => ({
+      rawEmployeeRef: row.raw_employee_ref ?? '',
+      punchedAt: row.punched_at instanceof Date ? row.punched_at : new Date(row.punched_at),
+      direction: row.direction === 'in' || row.direction === 'out' ? row.direction : 'unknown',
+      dedupKey: row.dedup_key,
+      raw: row.raw,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/** Renvoie l'id de la première absence APPROUVÉE couvrant `workDate` pour cet employé, sinon `null`. */
+async function loadApprovedLeaveId(schema: string, employeeId: string, workDate: string): Promise<string | null> {
+  try {
+    const res = await pool.query<{ id: string }>(
+      `SELECT id FROM "${schema}".absences
+        WHERE employee_id = $1 AND status = 'approved' AND $2::date BETWEEN start_date AND end_date
+        LIMIT 1`,
+      [employeeId, workDate],
+    )
+    return res.rows[0]?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Résout le `department_id` d'un employé (pour la cascade d'horaires). Renvoie
+ * `undefined` si l'employé n'existe pas dans CE tenant (isolation : un id qui
+ * n'appartient pas au schéma courant n'aura simplement aucune ligne) — le
+ * caller doit alors ignorer cet employé plutôt que de recalculer sur un
+ * `department_id` nul par erreur.
+ */
+async function loadEmployeeDepartmentId(schema: string, employeeId: string): Promise<string | null | undefined> {
+  try {
+    const res = await pool.query<{ department_id: string | null }>(
+      `SELECT department_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+      [employeeId],
+    )
+    if (!res.rows[0]) return undefined
+    return res.rows[0].department_id
+  } catch {
+    return undefined
+  }
+}
+
+/** Énumère les dates 'YYYY-MM-DD' de `from` à `to` inclus (UTC, pas de dérive de fuseau). */
+function dateRangeInclusive(from: string, to: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(`${from}T00:00:00Z`)
+  const end = new Date(`${to}T00:00:00Z`)
+  while (cur.getTime() <= end.getTime()) {
+    dates.push(cur.toISOString().slice(0, 10))
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return dates
+}
+
+// ── Validation Zod — correction manuelle (POST /punches) ───────────────────
+const manualPunchBody = z.object({
+  employeeId: z.string().regex(UUID_RE, 'employeeId invalide (uuid attendu)'),
+  direction: z.enum(['in', 'out', 'unknown'], {
+    errorMap: () => ({ message: "direction doit être 'in', 'out' ou 'unknown'" }),
+  }),
+  punchedAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'punchedAt doit être une date/heure ISO valide'),
+  reason: z.string().max(500).optional(),
+}).strict()
+
+// ── Validation Zod — recalcul (POST /recompute) ─────────────────────────────
+const recomputeBody = z.object({
+  employeeIds: z.array(z.string().regex(UUID_RE, 'employeeIds doit contenir des UUID')).min(1).max(200),
+  from: z.string().regex(DATE_RE, 'Format attendu YYYY-MM-DD'),
+  to: z.string().regex(DATE_RE, 'Format attendu YYYY-MM-DD'),
+}).strict().refine((d) => d.from <= d.to, {
+  message: 'from doit être antérieur ou égal à to',
+  path: ['to'],
+})
 
 export async function attendanceRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', async (request) => {
@@ -764,6 +868,252 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       } catch (e) {
         return reply.status(500).send({ error: `Échec de suppression de l'horaire : ${(e as Error).message}` })
       }
+    },
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Pointages / jours calculés / recalcul (Task 13)
+  //
+  // SÉCURITÉ (transverse) :
+  //  - RBAC-équipe : les rôles RH (admin/hr_manager/hr_officer) voient tout le
+  //    tenant ; `manager` est filtré en SQL (`e.manager_id = $n`, JAMAIS côté
+  //    UI) sur SON équipe directe ; `employee`/`readonly` reçoivent 403 —
+  //    l'espace self-service (`/attendance/me`) est une tâche ultérieure.
+  //  - Un `manager` sans dossier employé associé (email non retrouvé) reçoit
+  //    une liste VIDE, jamais l'ensemble du tenant (fail-closed, même
+  //    stratégie que `absences.routes.ts`).
+  //  - Correction manuelle (`POST /punches`) : `source='manual'`, `device_id`
+  //    toujours NULL, toutes les valeurs paramétrées, employé vérifié dans LE
+  //    tenant courant avant insertion (jamais un id d'un autre schéma).
+  //  - Recalcul (`POST /recompute`) : intègre les services PURS déjà testés
+  //    (`resolveEmployeeSchedule` + `resolveSchedule`, `computeDay`) — cette
+  //    route ne réimplémente AUCUNE règle métier, elle assemble les entrées
+  //    (pointages du jour, horaire effectif, jour férié CI, congé approuvé)
+  //    et persiste via `upsertDay` (`ON CONFLICT … DO UPDATE`, idempotent :
+  //    deux appels identiques produisent la même ligne `attendance_days`).
+  //    Un employé sans aucun pointage ne fait jamais lever d'exception —
+  //    `computeDay` renvoie `absent_justified`/`absent_unjustified`/`off`.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // GET /attendance/punches — RH : tout le tenant ; manager : son équipe directe.
+  fastify.get('/punches', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
+    schema: { tags: ['attendance'], summary: 'Lister les pointages (RH : tous ; manager : son équipe)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { employeeId, from, to } = request.query as Record<string, string | undefined>
+
+      if (employeeId && !UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide' })
+      if (from && !DATE_RE.test(from)) return reply.status(400).send({ error: 'from invalide (YYYY-MM-DD attendu)' })
+      if (to && !DATE_RE.test(to)) return reply.status(400).send({ error: 'to invalide (YYYY-MM-DD attendu)' })
+
+      let sql = `SELECT p.id, p.employee_id, p.raw_employee_ref, p.device_id, p.punched_at,
+                        p.direction, p.source, p.created_at
+                   FROM "${schema}".attendance_punches p
+                   LEFT JOIN "${schema}".employees e ON e.id = p.employee_id
+                  WHERE 1=1`
+      const params: unknown[] = []
+      let idx = 1
+      if (employeeId) { sql += ` AND p.employee_id = $${idx++}`; params.push(employeeId) }
+      if (from) { sql += ` AND p.punched_at >= $${idx++}::date`; params.push(from) }
+      if (to) { sql += ` AND p.punched_at < ($${idx++}::date + interval '1 day')`; params.push(to) }
+
+      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      if (request.user.role === 'manager') {
+        const emp = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+        )
+        if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
+        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+      }
+
+      sql += ` ORDER BY p.punched_at DESC LIMIT 500`
+      try {
+        const res = await pool.query(sql, params)
+        return reply.send({ data: res.rows })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de récupération des pointages : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  // POST /attendance/punches — correction manuelle (admin/hr_manager/hr_officer).
+  fastify.post('/punches', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Créer un pointage (correction manuelle)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = manualPunchBody.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      try {
+        // Isolation tenant : on ne saisit un pointage QUE pour un employé du
+        // schéma courant — un id valide mais appartenant à un autre tenant ne
+        // matchera simplement aucune ligne ici.
+        const emp = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [b.employeeId],
+        )
+        if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+
+        const punchedAt = new Date(b.punchedAt)
+        const dedupKey = `manual|${b.employeeId}|${punchedAt.toISOString()}`
+
+        const res = await pool.query<{ id: string }>(
+          `INSERT INTO "${schema}".attendance_punches
+             (employee_id, raw_employee_ref, device_id, punched_at, direction, source, raw, dedup_key)
+           VALUES ($1, NULL, NULL, $2, $3, 'manual', $4, $5)
+           RETURNING id`,
+          [
+            b.employeeId,
+            punchedAt,
+            b.direction,
+            JSON.stringify({ enteredBy: request.user.sub, reason: b.reason ?? null }),
+            dedupKey,
+          ],
+        )
+        const id = res.rows[0]?.id ?? null
+
+        audit(schema, request.user.sub, 'attendance.punch.manual_created', id, {
+          employeeId: b.employeeId, direction: b.direction, punchedAt: punchedAt.toISOString(),
+        }, request.ip ?? null, 'attendance_punch')
+
+        return reply.status(201).send({
+          data: { id, employeeId: b.employeeId, direction: b.direction, punchedAt: punchedAt.toISOString(), source: 'manual' },
+        })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de création du pointage : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  // GET /attendance/days — même RBAC-équipe que /punches.
+  fastify.get('/days', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
+    schema: { tags: ['attendance'], summary: 'Lister les jours calculés (RH : tous ; manager : son équipe)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { employeeId, from, to } = request.query as Record<string, string | undefined>
+
+      if (employeeId && !UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide' })
+      if (from && !DATE_RE.test(from)) return reply.status(400).send({ error: 'from invalide (YYYY-MM-DD attendu)' })
+      if (to && !DATE_RE.test(to)) return reply.status(400).send({ error: 'to invalide (YYYY-MM-DD attendu)' })
+
+      let sql = `SELECT d.id, d.employee_id, d.work_date, d.first_in, d.last_out, d.expected_start,
+                        d.late_minutes, d.status, d.justified_by, d.computed_at
+                   FROM "${schema}".attendance_days d
+                   JOIN "${schema}".employees e ON e.id = d.employee_id
+                  WHERE 1=1`
+      const params: unknown[] = []
+      let idx = 1
+      if (employeeId) { sql += ` AND d.employee_id = $${idx++}`; params.push(employeeId) }
+      if (from) { sql += ` AND d.work_date >= $${idx++}`; params.push(from) }
+      if (to) { sql += ` AND d.work_date <= $${idx++}`; params.push(to) }
+
+      if (request.user.role === 'manager') {
+        const emp = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+        )
+        if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
+        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+      }
+
+      sql += ` ORDER BY d.work_date DESC LIMIT 500`
+      try {
+        const res = await pool.query(sql, params)
+        return reply.send({ data: res.rows })
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec de récupération des jours : ${(e as Error).message}` })
+      }
+    },
+  })
+
+  // POST /attendance/recompute — RH. Idempotent (ON CONFLICT DO UPDATE via upsertDay).
+  fastify.post('/recompute', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Recalculer les jours de présence (employé(s) + plage de dates)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = recomputeBody.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+      const dates = dateRangeInclusive(b.from, b.to)
+      if (dates.length > 366) {
+        return reply.status(400).send({ error: 'Plage de dates trop large (maximum 366 jours)' })
+      }
+
+      // Repli tenant : si aucune ligne `attendance_schedules` de portée
+      // 'tenant' n'existe, on utilise les défauts de `attendance_config`
+      // (ou les défauts applicatifs si le tenant n'a pas encore de config).
+      const extras = await loadConfigExtras(schema)
+      const fallbackTenant: EffectiveSchedule = {
+        expectedStart: extras?.default_expected_start
+          ? extras.default_expected_start.slice(0, 5)
+          : DEFAULT_CONFIG.defaultExpectedStart,
+        toleranceMin: extras?.default_tolerance_min ?? DEFAULT_CONFIG.defaultToleranceMin,
+        expectedEnd: null,
+        workdays: extras?.default_workdays ?? DEFAULT_CONFIG.defaultWorkdays,
+      }
+
+      // Cache des jours fériés CI par année (évite de recalculer Pâques à
+      // chaque date de la plage — `joursFeriesCI` est pure et déterministe).
+      const holidaysByYear = new Map<number, Set<string>>()
+      const isHolidayOn = (workDate: string): boolean => {
+        const year = Number(workDate.slice(0, 4))
+        let set = holidaysByYear.get(year)
+        if (!set) { set = joursFeriesCI(year); holidaysByYear.set(year, set) }
+        return set.has(workDate)
+      }
+
+      let recomputed = 0
+      try {
+        for (const employeeId of b.employeeIds) {
+          const departmentId = await loadEmployeeDepartmentId(schema, employeeId)
+          // Isolation tenant : employé introuvable dans CE schéma → ignoré (jamais d'erreur).
+          if (departmentId === undefined) continue
+
+          const rawScopes = await resolveEmployeeSchedule(pool, schema, employeeId, departmentId)
+          const schedule = resolveSchedule({
+            employee: rawScopes.employee,
+            department: rawScopes.department,
+            tenant: rawScopes.tenant ?? fallbackTenant,
+          })
+
+          for (const workDate of dates) {
+            const punches = await loadPunchesForDate(schema, employeeId, workDate)
+            const approvedLeaveId = await loadApprovedLeaveId(schema, employeeId, workDate)
+            const computed = computeDay({
+              workDate,
+              punches,
+              schedule,
+              isHoliday: isHolidayOn(workDate),
+              approvedLeaveId,
+            })
+            await upsertDay(pool, schema, { ...computed, employeeId, expectedStart: schedule.expectedStart })
+            recomputed += 1
+          }
+        }
+      } catch (e) {
+        return reply.status(500).send({ error: `Échec du recalcul : ${(e as Error).message}` })
+      }
+
+      audit(schema, request.user.sub, 'attendance.recompute', null, {
+        employeeIds: b.employeeIds, from: b.from, to: b.to, recomputed,
+      }, request.ip ?? null, 'attendance_days')
+
+      return reply.send({ data: { recomputed } })
     },
   })
 }

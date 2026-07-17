@@ -910,3 +910,343 @@ describe('POST /attendance/devices/:id/sync', () => {
     expect(fetchDevicePunchesMock).not.toHaveBeenCalled()
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Task 13 — GET/POST /attendance/punches, GET /attendance/days,
+// POST /attendance/recompute (RBAC-équipe, correction manuelle, idempotence).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const EMPLOYEE_ID = '11111111-1111-1111-1111-111111111111'
+const MANAGER_EMPLOYEE_ID = '22222222-2222-2222-2222-222222222222'
+
+describe('GET /attendance/punches — RBAC-équipe', () => {
+  for (const role of ['employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403) — self-service réservé à /attendance/me`, async () => {
+      const res = await app.inject({
+        method: 'GET', url: '/attendance/punches',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('sans token → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/attendance/punches' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('employeeId invalide → 400, aucune requête exécutée', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/punches?employeeId=not-a-uuid',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('from invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/punches?from=01-01-2026',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rôle RH (admin/hr_manager/hr_officer) voit tout le tenant — aucun filtre manager_id', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'p1', employee_id: EMPLOYEE_ID }] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/punches',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(queryMock).toHaveBeenCalledTimes(1) // pas de lookup employé manager
+    const call = queryMock.mock.calls[0]
+    expect(String(call?.[0])).not.toContain('manager_id')
+  })
+
+  it("manager SANS dossier employé associé → liste VIDE (fail-closed), jamais tout le tenant", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup employé manager → aucun
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/punches',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toEqual([])
+  })
+
+  it("manager AVEC dossier employé → filtre SQL 'e.manager_id = $n' avec son propre id, jamais côté UI", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: MANAGER_EMPLOYEE_ID }] }) // lookup employé manager
+      .mockResolvedValueOnce({ rows: [] }) // SELECT pointages filtré
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/punches',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const punchCall = queryMock.mock.calls.find((c) => String(c[0]).includes('attendance_punches') && String(c[0]).includes('manager_id'))
+    expect(punchCall).toBeDefined()
+    expect(String(punchCall?.[0])).toContain('e.manager_id = $')
+    expect(punchCall?.[1]).toContain(MANAGER_EMPLOYEE_ID)
+  })
+})
+
+describe('POST /attendance/punches — correction manuelle', () => {
+  const VALID_PUNCH = { employeeId: EMPLOYEE_ID, direction: 'in' as const, punchedAt: '2026-07-15T08:00:00.000Z' }
+
+  for (const role of ['manager', 'employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403)`, async () => {
+      const res = await app.inject({
+        method: 'POST', url: '/attendance/punches',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+        payload: VALID_PUNCH,
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('rejette un champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches',
+      headers: adminAuth(app), payload: { ...VALID_PUNCH, extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette une direction invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches',
+      headers: adminAuth(app), payload: { ...VALID_PUNCH, direction: 'sideways' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejette un punchedAt malformé → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches',
+      headers: adminAuth(app), payload: { ...VALID_PUNCH, punchedAt: 'pas-une-date' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('employé introuvable dans ce tenant → 404, aucun INSERT', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT employé → aucun
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches',
+      headers: adminAuth(app), payload: VALID_PUNCH,
+    })
+    expect(res.statusCode).toBe(404)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_punches'))
+    expect(insertCall).toBeUndefined()
+  })
+
+  it("crée un pointage manuel → 201, source='manual', device_id NULL, dedup_key préfixé 'manual|'", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] }) // SELECT employé → trouvé
+      .mockResolvedValueOnce({ rows: [{ id: 'punch-1' }] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches',
+      headers: adminAuth(app), payload: VALID_PUNCH,
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().data.source).toBe('manual')
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_punches'))
+    expect(insertCall).toBeDefined()
+    expect(String(insertCall?.[0])).toContain("'manual'")
+    expect(String(insertCall?.[0])).toContain('device_id')
+    const params = insertCall?.[1] as unknown[]
+    expect(params[0]).toBe(EMPLOYEE_ID) // employee_id
+    expect(String(params[params.length - 1])).toMatch(new RegExp(`^manual\\|${EMPLOYEE_ID}\\|`)) // dedup_key
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]).toContain('attendance.punch.manual_created')
+  })
+})
+
+describe('GET /attendance/days — RBAC-équipe', () => {
+  for (const role of ['employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403)`, async () => {
+      const res = await app.inject({
+        method: 'GET', url: '/attendance/days',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it("manager SANS dossier employé associé → liste VIDE (fail-closed)", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/days',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toEqual([])
+  })
+
+  it("manager AVEC dossier employé → filtre SQL 'e.manager_id = $n'", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: MANAGER_EMPLOYEE_ID }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/days',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const dayCall = queryMock.mock.calls.find((c) => String(c[0]).includes('attendance_days') && String(c[0]).includes('manager_id'))
+    expect(dayCall).toBeDefined()
+    expect(dayCall?.[1]).toContain(MANAGER_EMPLOYEE_ID)
+  })
+
+  it('rôle RH voit tout le tenant — aucun lookup manager', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/days',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_officer')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(queryMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /attendance/recompute — intégration services purs + idempotence', () => {
+  const RECOMPUTE_DAY = '2026-07-15' // mercredi, jour ouvré par défaut, non férié CI
+
+  /**
+   * Route chaque requête `pool.query` vers une réponse plausible en fonction
+   * du SQL, plutôt qu'une séquence positionnelle fragile — le recalcul
+   * enchaîne plusieurs requêtes par employé/jour (config, horaire, pointages,
+   * congés, upsert) et ce test appelle la route DEUX FOIS (idempotence).
+   */
+  function mockRecomputeQueries(): void {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('attendance_config') && s.includes('default_expected_start')) {
+        return Promise.resolve({ rows: [] }) // aucune config → défauts applicatifs
+      }
+      if (s.includes('.employees') && s.includes('department_id')) {
+        return Promise.resolve({ rows: [{ department_id: null }] })
+      }
+      if (s.includes('attendance_schedules')) {
+        return Promise.resolve({ rows: [] }) // aucune surcharge → repli tenant par défaut
+      }
+      if (s.includes('attendance_punches') && s.includes('raw_employee_ref')) {
+        return Promise.resolve({ rows: [] }) // aucun pointage ce jour
+      }
+      if (s.includes('.absences') && s.includes("status = 'approved'")) {
+        return Promise.resolve({ rows: [] }) // aucun congé approuvé
+      }
+      if (s.includes('INSERT INTO') && s.includes('attendance_days')) {
+        return Promise.resolve({ rows: [] })
+      }
+      if (s.includes('audit_log')) {
+        return Promise.resolve({ rows: [] })
+      }
+      return Promise.resolve({ rows: [] })
+    })
+  }
+
+  for (const role of ['manager', 'employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403) — recalcul réservé RH`, async () => {
+      const res = await app.inject({
+        method: 'POST', url: '/attendance/recompute',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+        payload: { employeeIds: [EMPLOYEE_ID], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('employeeIds vide → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('from > to → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [EMPLOYEE_ID], from: '2026-07-20', to: '2026-07-10' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [EMPLOYEE_ID], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY, extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("employé introuvable dans ce tenant → ignoré silencieusement, recomputed=0 (jamais d'erreur)", async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('.employees') && s.includes('department_id')) return Promise.resolve({ rows: [] }) // introuvable
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [EMPLOYEE_ID], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.recomputed).toBe(0)
+  })
+
+  it("employé sans AUCUN pointage → ne lève jamais, upsert un jour 'absent_unjustified'", async () => {
+    mockRecomputeQueries()
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [EMPLOYEE_ID], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.recomputed).toBe(1)
+    const upsertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_days'))
+    expect(upsertCall).toBeDefined()
+    expect(String(upsertCall?.[0])).toContain('ON CONFLICT (employee_id, work_date) DO UPDATE')
+    const params = upsertCall?.[1] as unknown[]
+    // employeeId, workDate, firstIn, lastOut, expectedStart, lateMinutes, status, justifiedBy
+    expect(params[0]).toBe(EMPLOYEE_ID)
+    expect(params[1]).toBe(RECOMPUTE_DAY)
+    expect(params[2]).toBeNull() // firstIn
+    expect(params[5]).toBe(0)    // lateMinutes
+    expect(params[6]).toBe('absent_unjustified')
+  })
+
+  it('deux appels identiques (mêmes employé+plage) → même upsert attendance_days (idempotent, ON CONFLICT DO UPDATE)', async () => {
+    mockRecomputeQueries()
+    const payload = { employeeIds: [EMPLOYEE_ID], from: RECOMPUTE_DAY, to: RECOMPUTE_DAY }
+
+    const res1 = await app.inject({ method: 'POST', url: '/attendance/recompute', headers: adminAuth(app), payload })
+    expect(res1.statusCode).toBe(200)
+    expect(res1.json().data.recomputed).toBe(1)
+
+    const res2 = await app.inject({ method: 'POST', url: '/attendance/recompute', headers: adminAuth(app), payload })
+    expect(res2.statusCode).toBe(200)
+    expect(res2.json().data.recomputed).toBe(1)
+
+    const upsertCalls = queryMock.mock.calls.filter((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_days'))
+    expect(upsertCalls).toHaveLength(2)
+    // Même requête paramétrée (idempotence) — les deux appels envoient EXACTEMENT
+    // les mêmes valeurs (employeeId, work_date, first_in, last_out, expected_start,
+    // late_minutes, status, justified_by) puisque les entrées (aucun pointage,
+    // même horaire, même jour) sont identiques.
+    expect(upsertCalls[0]?.[1]).toEqual(upsertCalls[1]?.[1])
+    expect(String(upsertCalls[0]?.[0])).toBe(String(upsertCalls[1]?.[0]))
+  })
+
+  it('plage > 366 jours → 400, aucune requête de recalcul exécutée', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute',
+      headers: adminAuth(app),
+      payload: { employeeIds: [EMPLOYEE_ID], from: '2026-01-01', to: '2028-01-01' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
