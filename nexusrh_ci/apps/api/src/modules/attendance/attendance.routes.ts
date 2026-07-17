@@ -100,6 +100,35 @@ function audit(
     .catch(() => { /* tenant sans audit_log : non bloquant */ })
 }
 
+// ── Notifications (calqué sur absences.routes.ts) ──────────────────────────
+// `notifyUser` insère une notification pour UN destinataire (non bloquant :
+// `.catch(()=>{})`, un tenant sans table `notifications` ou un `user_id`
+// supprimé ne doit jamais faire échouer la requête). `userIdOfEmployee`
+// résout le compte utilisateur lié à un employé (notifier l'EMPLOYÉ concerné
+// par une décision RH) — miroir exact de `absences.routes.ts`.
+function notifyUser(
+  schema: string, userId: string | null | undefined, type: string,
+  title: string, message: string, data: Record<string, unknown> = {},
+): void {
+  if (!userId) return
+  pool.query(
+    `INSERT INTO "${schema}".notifications (user_id, type, title, message, data)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, type, title, message, JSON.stringify(data)],
+  ).catch(() => { /* tenant sans notifications / user supprimé : non bloquant */ })
+}
+
+/** Résout le user_id du compte lié à un employé (null si aucun). Calqué sur absences.routes.ts. */
+async function userIdOfEmployee(schema: string, employeeId: string | null | undefined): Promise<string | null> {
+  if (!employeeId) return null
+  try {
+    const r = await pool.query<{ user_id: string | null }>(
+      `SELECT user_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
+    )
+    return r?.rows?.[0]?.user_id ?? null
+  } catch { return null }
+}
+
 // ── Validation Zod — badgeuses (attendance_devices) ─────────────────────────
 // Calqué sur `integrations.routes.ts` (connectorBody) : même forme
 // (base_url/auth_type/auth_secret/auth_header_name/default_headers), avec en
@@ -299,6 +328,27 @@ function dateRangeInclusive(from: string, to: string): string[] {
   return dates
 }
 
+/** Plage récente par défaut ('YYYY-MM-DD' UTC) — utilisée par `/me` et `/dashboard` quand `from`/`to` sont absents. */
+function recentRange(daysBack = 30): { from: string; to: string } {
+  const to = new Date()
+  const from = new Date(to)
+  from.setUTCDate(from.getUTCDate() - daysBack)
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
+}
+
+/**
+ * Résout l'id employé du compte APPELANT à partir du token (email) — JAMAIS
+ * d'un paramètre de requête/corps. Même requête que le filtre manager de
+ * `/punches`/`/days` (Task 13) : `SELECT id FROM employees WHERE email = $1`.
+ * Renvoie `null` si aucun dossier employé n'est associé au compte.
+ */
+async function resolveSelfEmployeeId(schema: string, email: string): Promise<string | null> {
+  const r = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email],
+  )
+  return r.rows[0]?.id ?? null
+}
+
 // ── Validation Zod — correction manuelle (POST /punches) ───────────────────
 const manualPunchBody = z.object({
   employeeId: z.string().regex(UUID_RE, 'employeeId invalide (uuid attendu)'),
@@ -318,6 +368,25 @@ const recomputeBody = z.object({
   message: 'from doit être antérieur ou égal à to',
   path: ['to'],
 })
+
+// ── Validation Zod — avertissements (attendance_warnings, Task 14) ─────────
+// `active` est le statut initial posé par le moteur d'escalade (hors périmètre
+// de cette tâche) — PATCH RH ne peut faire transitionner QUE vers un statut
+// de traitement (`explained`/`contested`/`closed`), jamais revenir à `active`
+// ni accepter une valeur arbitraire (`.strict()` + `z.enum` fermé).
+const WARNING_STATUSES = ['active', 'explained', 'contested', 'closed'] as const
+
+const warningPatchBody = z.object({
+  status: z.enum(['explained', 'contested', 'closed'], {
+    errorMap: () => ({ message: "status doit être 'explained', 'contested' ou 'closed'" }),
+  }),
+}).strict()
+
+const warningRespondBody = z.object({
+  response: z.string()
+    .min(1, 'La réponse ne peut pas être vide')
+    .max(2000, 'Réponse trop longue (2000 caractères maximum)'),
+}).strict()
 
 export async function attendanceRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', async (request) => {
@@ -1114,6 +1183,332 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       }, request.ip ?? null, 'attendance_days')
 
       return reply.send({ data: { recomputed } })
+    },
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Task 14 — Avertissements RH + self-service employé + dashboard
+  //
+  // SÉCURITÉ (transverse, crux de cette tâche) :
+  //  - `/warnings` (RH) suit EXACTEMENT le RBAC-équipe de `/punches`/`/days` :
+  //    admin/hr_manager/hr_officer voient tout le tenant, `manager` est filtré
+  //    SQL (`e.manager_id = son propre id employé`), employee/readonly → 403
+  //    (ils utilisent `/me/warnings`).
+  //  - `/me`, `/me/warnings` : l'id employé de l'appelant est TOUJOURS résolu
+  //    depuis le token (`resolveSelfEmployeeId`, email du JWT) — jamais d'un
+  //    paramètre de requête. Un `employeeId` glissé en querystring est
+  //    silencieusement ignoré (la route ne le lit même pas). Aucun dossier
+  //    employé associé → 404 (fail-closed, jamais les données d'un tiers).
+  //  - `POST /me/warnings/:id/respond` (IDOR, OWASP A01) : l'avertissement
+  //    DOIT appartenir à l'employé appelant. Introuvable OU appartenant à un
+  //    autre employé → LE MÊME 404 générique (jamais 403, jamais de message
+  //    qui distinguerait les deux cas) — ne révèle jamais l'existence d'un
+  //    avertissement d'un tiers. Aucun UPDATE n'est exécuté avant cette
+  //    vérification.
+  //  - `PATCH /warnings/:id` réservé RH (admin/hr_manager/hr_officer) —
+  //    manager et employee → 403.
+  //  - Notifications bidirectionnelles (best-effort, non bloquantes) : RH
+  //    change le statut → notifie l'EMPLOYÉ concerné (`userIdOfEmployee` +
+  //    `notifyUser`) ; l'employé répond → notifie les comptes RH du tenant
+  //    (`role IN ('admin','hr_manager','hr_officer')`, calqué sur
+  //    `notifyAdminsMmFailure` de mobile-money.routes.ts).
+  //  - Erreurs DB : message générique en français (jamais `(e as Error).message`
+  //    interpolé dans la réponse client) — anticipe le nettoyage transverse
+  //    des messages d'erreur bruts.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // GET /attendance/warnings — RH : tout le tenant ; manager : son équipe directe.
+  fastify.get('/warnings', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
+    schema: { tags: ['attendance'], summary: 'Lister les avertissements (RH : tous ; manager : son équipe)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { employeeId, status } = request.query as Record<string, string | undefined>
+
+      if (employeeId && !UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide' })
+      if (status && !WARNING_STATUSES.includes(status as typeof WARNING_STATUSES[number])) {
+        return reply.status(400).send({ error: `status doit être l'un de : ${WARNING_STATUSES.join(', ')}` })
+      }
+
+      let sql = `SELECT w.id, w.employee_id, w.tier, w.trigger_reason, w.occurrence_dates, w.status,
+                        w.employee_response, w.responded_at, w.disciplinary_action_id, w.created_at
+                   FROM "${schema}".attendance_warnings w
+                   LEFT JOIN "${schema}".employees e ON e.id = w.employee_id
+                  WHERE 1=1`
+      const params: unknown[] = []
+      let idx = 1
+      if (employeeId) { sql += ` AND w.employee_id = $${idx++}`; params.push(employeeId) }
+      if (status) { sql += ` AND w.status = $${idx++}`; params.push(status) }
+
+      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      if (request.user.role === 'manager') {
+        const emp = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+        )
+        if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
+        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+      }
+
+      sql += ' ORDER BY w.created_at DESC LIMIT 500'
+      try {
+        const res = await pool.query(sql, params)
+        return reply.send({ data: res.rows })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération des avertissements' })
+      }
+    },
+  })
+
+  // PATCH /attendance/warnings/:id — RH uniquement. Notifie l'employé concerné.
+  fastify.patch('/warnings/:id', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: "Changer le statut d'un avertissement (RH)" },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const parsed = warningPatchBody.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      try {
+        const res = await pool.query<{ id: string; employee_id: string }>(
+          `UPDATE "${schema}".attendance_warnings SET status = $1 WHERE id = $2 RETURNING id, employee_id`,
+          [b.status, id],
+        )
+        const row = res.rows[0]
+        if (!row) return reply.status(404).send({ error: 'Avertissement introuvable' })
+
+        audit(schema, request.user.sub, 'attendance.warning.status_updated', id,
+          { status: b.status }, request.ip ?? null, 'attendance_warning')
+
+        // Notifie l'employé concerné (non bloquant : `userIdOfEmployee`/`notifyUser`
+        // renvoient/no-opent silencieusement si le lien compte est absent).
+        const uid = await userIdOfEmployee(schema, row.employee_id)
+        notifyUser(schema, uid, 'attendance_warning_status', 'Mise à jour de votre avertissement',
+          `Le statut de votre avertissement de présence a été mis à jour : ${b.status}.`,
+          { warningId: id, status: b.status })
+
+        return reply.send({ data: { id, status: b.status, updated: true } })
+      } catch {
+        return reply.status(500).send({ error: "Échec de mise à jour de l'avertissement" })
+      }
+    },
+  })
+
+  // GET /attendance/me — mes pointages + jours calculés (self-service, plage récente).
+  fastify.get('/me', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['attendance'], summary: 'Mes pointages et jours calculés (self-service)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const employeeId = await resolveSelfEmployeeId(schema, request.user.email)
+      if (!employeeId) {
+        return reply.status(404).send({ error: 'Aucun dossier employé associé à ce compte.' })
+      }
+
+      // Note : `employeeId` n'est JAMAIS lu depuis `request.query` — seuls
+      // `from`/`to` (plage de dates) le sont, l'identité vient exclusivement du token.
+      const { from, to } = request.query as Record<string, string | undefined>
+      if (from && !DATE_RE.test(from)) return reply.status(400).send({ error: 'from invalide (YYYY-MM-DD attendu)' })
+      if (to && !DATE_RE.test(to)) return reply.status(400).send({ error: 'to invalide (YYYY-MM-DD attendu)' })
+      const range = recentRange()
+      const effFrom = from ?? range.from
+      const effTo = to ?? range.to
+
+      try {
+        const punches = await pool.query(
+          `SELECT id, employee_id, raw_employee_ref, device_id, punched_at, direction, source, created_at
+             FROM "${schema}".attendance_punches
+            WHERE employee_id = $1 AND punched_at >= $2::date AND punched_at < ($3::date + interval '1 day')
+            ORDER BY punched_at DESC LIMIT 500`,
+          [employeeId, effFrom, effTo],
+        )
+        const days = await pool.query(
+          `SELECT id, employee_id, work_date, first_in, last_out, expected_start, late_minutes, status, justified_by, computed_at
+             FROM "${schema}".attendance_days
+            WHERE employee_id = $1 AND work_date >= $2 AND work_date <= $3
+            ORDER BY work_date DESC LIMIT 500`,
+          [employeeId, effFrom, effTo],
+        )
+        return reply.send({ data: { punches: punches.rows, days: days.rows, from: effFrom, to: effTo } })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération de vos données de présence' })
+      }
+    },
+  })
+
+  // GET /attendance/me/warnings — mes avertissements uniquement (self-service).
+  fastify.get('/me/warnings', {
+    preHandler: [fastify.authenticate],
+    schema: { tags: ['attendance'], summary: 'Mes avertissements de présence (self-service)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const employeeId = await resolveSelfEmployeeId(schema, request.user.email)
+      if (!employeeId) {
+        return reply.status(404).send({ error: 'Aucun dossier employé associé à ce compte.' })
+      }
+
+      const { status } = request.query as Record<string, string | undefined>
+      if (status && !WARNING_STATUSES.includes(status as typeof WARNING_STATUSES[number])) {
+        return reply.status(400).send({ error: `status doit être l'un de : ${WARNING_STATUSES.join(', ')}` })
+      }
+
+      let sql = `SELECT id, employee_id, tier, trigger_reason, occurrence_dates, status,
+                        employee_response, responded_at, disciplinary_action_id, created_at
+                   FROM "${schema}".attendance_warnings
+                  WHERE employee_id = $1`
+      const params: unknown[] = [employeeId]
+      if (status) { sql += ' AND status = $2'; params.push(status) }
+      sql += ' ORDER BY created_at DESC LIMIT 500'
+
+      try {
+        const res = await pool.query(sql, params)
+        return reply.send({ data: res.rows })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération de vos avertissements' })
+      }
+    },
+  })
+
+  // POST /attendance/me/warnings/:id/respond — l'employé répond à SA demande
+  // d'explication. IDOR (A01) : l'avertissement doit lui appartenir → sinon 404
+  // générique (identique au cas "introuvable"), aucun UPDATE exécuté avant.
+  fastify.post('/me/warnings/:id/respond', {
+    preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    schema: { tags: ['attendance'], summary: 'Répondre à mon avertissement (self-service)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
+
+      const parsed = warningRespondBody.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const b = parsed.data
+
+      const employeeId = await resolveSelfEmployeeId(schema, request.user.email)
+      // Aucun dossier employé associé : même 404 générique que "introuvable"
+      // (jamais de distinction qui laisserait deviner qu'un compte est valide).
+      if (!employeeId) return reply.status(404).send({ error: 'Avertissement introuvable' })
+
+      try {
+        const cur = await pool.query<{ id: string; employee_id: string; tier: string }>(
+          `SELECT id, employee_id, tier FROM "${schema}".attendance_warnings WHERE id = $1 LIMIT 1`, [id],
+        )
+        const warning = cur.rows[0]
+        // OWASP A01 (IDOR) — introuvable OU appartenant à un autre employé :
+        // STRICTEMENT le même 404, jamais 403 (ne révèle pas l'existence).
+        if (!warning || warning.employee_id !== employeeId) {
+          return reply.status(404).send({ error: 'Avertissement introuvable' })
+        }
+
+        const res = await pool.query<{ id: string; employee_response: string; responded_at: string }>(
+          `UPDATE "${schema}".attendance_warnings
+              SET employee_response = $1, responded_at = now()
+            WHERE id = $2
+          RETURNING id, employee_response, responded_at`,
+          [b.response, id],
+        )
+
+        audit(schema, request.user.sub, 'attendance.warning.responded', id,
+          { employeeId }, request.ip ?? null, 'attendance_warning')
+
+        // Notifie les comptes RH du tenant (non bloquant — un échec de notification
+        // ne doit jamais faire échouer la réponse déjà enregistrée). Calqué sur
+        // `notifyAdminsMmFailure` (mobile-money.routes.ts).
+        try {
+          const rh = await pool.query<{ id: string }>(
+            `SELECT id FROM "${schema}".users WHERE role IN ('admin','hr_manager','hr_officer') AND is_active = true`,
+          )
+          for (const u of rh.rows) {
+            notifyUser(schema, u.id, 'attendance_warning_response', 'Réponse à un avertissement',
+              "Un employé a répondu à un avertissement de présence — à consulter.",
+              { warningId: id, employeeId })
+          }
+        } catch { /* non bloquant : la réponse de l'employé est déjà enregistrée */ }
+
+        return reply.send({ data: res.rows[0] })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de l’enregistrement de votre réponse' })
+      }
+    },
+  })
+
+  // GET /attendance/dashboard — KPIs agrégés (RH : tout le tenant ; manager : son équipe).
+  fastify.get('/dashboard', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager')],
+    schema: { tags: ['attendance'], summary: 'Indicateurs Badgeuse / Pointage (agrégés)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { from, to } = request.query as Record<string, string | undefined>
+      if (from && !DATE_RE.test(from)) return reply.status(400).send({ error: 'from invalide (YYYY-MM-DD attendu)' })
+      if (to && !DATE_RE.test(to)) return reply.status(400).send({ error: 'to invalide (YYYY-MM-DD attendu)' })
+      const range = recentRange()
+      const effFrom = from ?? range.from
+      const effTo = to ?? range.to
+
+      const params: unknown[] = [effFrom, effTo]
+      let mgrFilter = ''
+
+      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      if (request.user.role === 'manager') {
+        const emp = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+        )
+        if (!emp.rows[0]) {
+          // fail-closed : jamais les KPIs de tout le tenant sans dossier employé.
+          return reply.send({
+            data: { lateDays: 0, absentDays: 0, activeWarnings: 0, pendingExplanations: 0, sanctionDrafts: 0, from: effFrom, to: effTo },
+          })
+        }
+        params.push(emp.rows[0].id)
+        mgrFilter = ' AND e.manager_id = $3'
+      }
+
+      const sql = `SELECT
+          (SELECT COUNT(*)::int FROM "${schema}".attendance_days d JOIN "${schema}".employees e ON e.id = d.employee_id
+            WHERE d.status = 'late' AND d.work_date BETWEEN $1 AND $2${mgrFilter}) AS late_days,
+          (SELECT COUNT(*)::int FROM "${schema}".attendance_days d JOIN "${schema}".employees e ON e.id = d.employee_id
+            WHERE d.status IN ('absent_unjustified','absent_justified') AND d.work_date BETWEEN $1 AND $2${mgrFilter}) AS absent_days,
+          (SELECT COUNT(*)::int FROM "${schema}".attendance_warnings w JOIN "${schema}".employees e ON e.id = w.employee_id
+            WHERE w.status = 'active' AND w.created_at::date BETWEEN $1 AND $2${mgrFilter}) AS active_warnings,
+          (SELECT COUNT(*)::int FROM "${schema}".attendance_warnings w JOIN "${schema}".employees e ON e.id = w.employee_id
+            WHERE w.tier = 'demande_explication' AND w.status = 'active' AND w.created_at::date BETWEEN $1 AND $2${mgrFilter}) AS pending_explanations,
+          (SELECT COUNT(*)::int FROM "${schema}".disciplinary_actions s JOIN "${schema}".employees e ON e.id = s.employee_id
+            WHERE s.status = 'draft' AND s.created_at::date BETWEEN $1 AND $2${mgrFilter}) AS sanction_drafts`
+
+      try {
+        const res = await pool.query<{
+          late_days: number; absent_days: number; active_warnings: number
+          pending_explanations: number; sanction_drafts: number
+        }>(sql, params)
+        const row = res.rows[0]
+        return reply.send({
+          data: {
+            lateDays: row?.late_days ?? 0,
+            absentDays: row?.absent_days ?? 0,
+            activeWarnings: row?.active_warnings ?? 0,
+            pendingExplanations: row?.pending_explanations ?? 0,
+            sanctionDrafts: row?.sanction_drafts ?? 0,
+            from: effFrom, to: effTo,
+          },
+        })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération des indicateurs' })
+      }
     },
   })
 }

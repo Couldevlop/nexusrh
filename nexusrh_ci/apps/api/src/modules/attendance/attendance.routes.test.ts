@@ -1250,3 +1250,396 @@ describe('POST /attendance/recompute — intégration services purs + idempotenc
     expect(res.statusCode).toBe(400)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Task 14 — GET/PATCH /attendance/warnings, GET /attendance/me(/warnings),
+// POST /attendance/me/warnings/:id/respond, GET /attendance/dashboard.
+// Crux sécurité : isolation self-service (IDOR, OWASP A01) — un employé ne
+// doit jamais pouvoir lire/modifier les données d'un autre employé.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const WARNING_ID = '33333333-3333-3333-3333-333333333333'
+const OTHER_EMPLOYEE_ID = '44444444-4444-4444-4444-444444444444'
+
+describe('GET /attendance/warnings — RBAC-équipe', () => {
+  for (const role of ['employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403) — self-service réservé à /attendance/me/warnings`, async () => {
+      const res = await app.inject({
+        method: 'GET', url: '/attendance/warnings',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('sans token → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/attendance/warnings' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('employeeId invalide → 400, aucune requête exécutée', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/warnings?employeeId=not-a-uuid',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('status invalide (hors énumération) → 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/warnings?status=bogus',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rôle RH (admin/hr_manager/hr_officer) voit tout le tenant — aucun filtre manager_id', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_id: EMPLOYEE_ID }] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/warnings',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(queryMock).toHaveBeenCalledTimes(1) // pas de lookup employé manager
+    expect(String(queryMock.mock.calls[0]?.[0])).not.toContain('manager_id')
+  })
+
+  it("manager SANS dossier employé associé → liste VIDE (fail-closed), jamais tout le tenant", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup employé manager → aucun
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/warnings',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toEqual([])
+  })
+
+  it("manager AVEC dossier employé → filtre SQL 'e.manager_id = $n' avec son propre id", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: MANAGER_EMPLOYEE_ID }] }) // lookup employé manager
+      .mockResolvedValueOnce({ rows: [] }) // SELECT avertissements filtré
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/warnings',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const call = queryMock.mock.calls.find((c) => String(c[0]).includes('attendance_warnings') && String(c[0]).includes('manager_id'))
+    expect(call).toBeDefined()
+    expect(String(call?.[0])).toContain('e.manager_id = $')
+    expect(call?.[1]).toContain(MANAGER_EMPLOYEE_ID)
+  })
+})
+
+describe('PATCH /attendance/warnings/:id — RH uniquement', () => {
+  for (const role of ['employee', 'readonly', 'manager']) {
+    it(`refuse le rôle ${role} (403)`, async () => {
+      const res = await app.inject({
+        method: 'PATCH', url: `/attendance/warnings/${WARNING_ID}`,
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+        payload: { status: 'explained' },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('id invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/attendance/warnings/not-a-uuid',
+      headers: adminAuth(app), payload: { status: 'explained' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/warnings/${WARNING_ID}`,
+      headers: adminAuth(app), payload: { status: 'explained', extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("status='active' (retour en arrière interdit, hors énumération PATCH) → 400", async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/warnings/${WARNING_ID}`,
+      headers: adminAuth(app), payload: { status: 'active' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('404 si introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE → aucune ligne
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/warnings/${WARNING_ID}`,
+      headers: adminAuth(app), payload: { status: 'closed' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('transitionne le statut (200) + audit + notifie l’employé concerné (userIdOfEmployee/notifyUser)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_id: EMPLOYEE_ID }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-emp-1' }] }) // userIdOfEmployee
+      .mockResolvedValueOnce({ rows: [] }) // notifyUser insert
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/warnings/${WARNING_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { status: 'explained' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.status).toBe('explained')
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]).toContain('attendance.warning.status_updated')
+    const notifCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('.notifications'))
+    expect(notifCall).toBeDefined()
+    expect(notifCall?.[1]).toContain('user-emp-1')
+  })
+})
+
+describe('GET /attendance/me — self-service isolation (IDOR)', () => {
+  it('sans token → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/attendance/me' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it("aucun dossier employé associé au compte → 404, jamais les données d'un tiers", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup employé par email → aucun
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/me',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it("résout l'employé depuis le TOKEN (email), ignore tout employeeId fourni en querystring", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] }) // lookup employé par email
+      .mockResolvedValueOnce({ rows: [{ id: 'p1', employee_id: EMPLOYEE_ID }] }) // punches
+      .mockResolvedValueOnce({ rows: [{ id: 'd1', employee_id: EMPLOYEE_ID }] }) // days
+    const res = await app.inject({
+      // Tentative d'IDOR : employeeId d'un tiers glissé en querystring — doit être ignoré.
+      method: 'GET', url: `/attendance/me?employeeId=${OTHER_EMPLOYEE_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.data.punches).toEqual([{ id: 'p1', employee_id: EMPLOYEE_ID }])
+    expect(body.data.days).toEqual([{ id: 'd1', employee_id: EMPLOYEE_ID }])
+    const punchCall = queryMock.mock.calls.find((c) => String(c[0]).includes('attendance_punches'))
+    expect(punchCall?.[1]).toContain(EMPLOYEE_ID)
+    expect(punchCall?.[1]).not.toContain(OTHER_EMPLOYEE_ID)
+  })
+
+  it('from invalide → 400', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/me?from=01-01-2026',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('GET /attendance/me/warnings — self-service isolation (IDOR)', () => {
+  it('sans token → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/attendance/me/warnings' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('aucun dossier employé associé → 404', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/me/warnings',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('renvoie uniquement MES avertissements (filtre employee_id = mon id résolu par email)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] })
+      .mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_id: EMPLOYEE_ID }] })
+    const res = await app.inject({
+      method: 'GET', url: `/attendance/me/warnings?employeeId=${OTHER_EMPLOYEE_ID}`, // tentative IDOR ignorée
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const warnCall = queryMock.mock.calls.find((c) => String(c[0]).includes('attendance_warnings'))
+    expect(String(warnCall?.[0])).toContain('employee_id = $1')
+    expect(warnCall?.[1]).toEqual([EMPLOYEE_ID])
+  })
+})
+
+describe('POST /attendance/me/warnings/:id/respond — isolation IDOR (crux du module)', () => {
+  const VALID_RESPONSE = { response: "J'étais bloqué dans les transports, voici un justificatif." }
+
+  it('sans token → 401', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('id invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/me/warnings/not-a-uuid/respond',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('réponse vide → 400 (Zod)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: { response: '' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('champ inconnu (Zod strict) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: { ...VALID_RESPONSE, extraField: 'nope' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('aucun dossier employé associé → 404 (même message générique)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('avertissement introuvable → 404, aucun UPDATE exécuté', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] }) // lookup employé appelant
+      .mockResolvedValueOnce({ rows: [] }) // SELECT avertissement → aucun
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(404)
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('attendance_warnings'))
+    expect(updateCall).toBeUndefined()
+  })
+
+  it("IDOR — avertissement d'un AUTRE employé → 404 (jamais 403, ne révèle pas l'existence), aucun UPDATE exécuté", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] }) // lookup employé appelant
+      .mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_id: OTHER_EMPLOYEE_ID, tier: 'demande_explication' }] }) // avertissement d'un tiers
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json().error).not.toContain(OTHER_EMPLOYEE_ID)
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('attendance_warnings'))
+    expect(updateCall).toBeUndefined()
+  })
+
+  it('le propriétaire répond → 200, employee_response/responded_at renseignés, notifie les RH (notifyUser)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: EMPLOYEE_ID }] }) // lookup employé appelant
+      .mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_id: EMPLOYEE_ID, tier: 'demande_explication' }] }) // SELECT avertissement
+      .mockResolvedValueOnce({ rows: [{ id: WARNING_ID, employee_response: VALID_RESPONSE.response, responded_at: '2026-07-16T10:00:00Z' }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+      .mockResolvedValueOnce({ rows: [{ id: 'rh-user-1' }, { id: 'rh-user-2' }] }) // SELECT users RH
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/me/warnings/${WARNING_ID}/respond`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: VALID_RESPONSE,
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.data.employee_response).toBe(VALID_RESPONSE.response)
+    expect(body.data.responded_at).toBeDefined()
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('attendance_warnings'))
+    expect(updateCall).toBeDefined()
+    expect(updateCall?.[1]).toEqual([VALID_RESPONSE.response, WARNING_ID])
+    const notifCalls = queryMock.mock.calls.filter((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('.notifications'))
+    expect(notifCalls).toHaveLength(2) // un par utilisateur RH
+    expect(notifCalls[0]?.[1]).toContain('rh-user-1')
+    expect(notifCalls[1]?.[1]).toContain('rh-user-2')
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]).toContain('attendance.warning.responded')
+  })
+})
+
+describe('GET /attendance/dashboard — KPIs agrégés', () => {
+  for (const role of ['employee', 'readonly']) {
+    it(`refuse le rôle ${role} (403)`, async () => {
+      const res = await app.inject({
+        method: 'GET', url: '/attendance/dashboard',
+        headers: { authorization: `Bearer ${tokenFor(app, role)}` },
+      })
+      expect(res.statusCode).toBe(403)
+    })
+  }
+
+  it('sans token → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/attendance/dashboard' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('from invalide → 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/dashboard?from=01-01-2026',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('agrège les KPIs pour RH (une seule requête, aucun filtre manager_id)', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{ late_days: 5, absent_days: 2, active_warnings: 3, pending_explanations: 1, sanction_drafts: 1 }],
+    })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/dashboard',
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toMatchObject({
+      lateDays: 5, absentDays: 2, activeWarnings: 3, pendingExplanations: 1, sanctionDrafts: 1,
+    })
+    expect(queryMock).toHaveBeenCalledTimes(1)
+    expect(String(queryMock.mock.calls[0]?.[0])).not.toContain('manager_id')
+  })
+
+  it("manager SANS dossier employé associé → KPIs à zéro (fail-closed)", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // lookup employé manager → aucun
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/dashboard',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data).toMatchObject({
+      lateDays: 0, absentDays: 0, activeWarnings: 0, pendingExplanations: 0, sanctionDrafts: 0,
+    })
+  })
+
+  it("manager AVEC dossier employé → filtre 'e.manager_id' dans les sous-requêtes", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: MANAGER_EMPLOYEE_ID }] }) // lookup employé manager
+      .mockResolvedValueOnce({ rows: [{ late_days: 1, absent_days: 0, active_warnings: 0, pending_explanations: 0, sanction_drafts: 0 }] })
+    const res = await app.inject({
+      method: 'GET', url: '/attendance/dashboard',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const kpiCall = queryMock.mock.calls.find((c) => String(c[0]).includes('sanction_drafts'))
+    expect(kpiCall).toBeDefined()
+    expect(String(kpiCall?.[0])).toContain('e.manager_id = $3')
+    expect(kpiCall?.[1]).toContain(MANAGER_EMPLOYEE_ID)
+  })
+})
