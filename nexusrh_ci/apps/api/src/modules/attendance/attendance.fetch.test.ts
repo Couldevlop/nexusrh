@@ -1,0 +1,153 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { fetchDevicePunches } from './attendance.fetch.js'
+import type { FieldMapping } from './attendance.types.js'
+
+vi.mock('../../services/ssrf-guard.js', () => ({
+  isSafeOutboundUrl: vi.fn(),
+}))
+
+const mockedIsSafeOutboundUrl = vi.mocked(isSafeOutboundUrl)
+
+const mapping: FieldMapping = {
+  recordsPath: 'records',
+  employeePath: 'badge',
+  employeeMatchBy: 'badge_id',
+  timestampPath: 'ts',
+  timestampFormat: 'iso8601',
+  directionPath: 'dir',
+  directionInValue: 'IN',
+  directionOutValue: 'OUT',
+}
+
+function baseDevice(overrides: Partial<Parameters<typeof fetchDevicePunches>[0]> = {}) {
+  return {
+    baseUrl: 'https://badge.example.com/api/punches',
+    authType: 'none',
+    authSecret: null,
+    authHeaderName: null,
+    defaultHeaders: {},
+    fieldMapping: mapping,
+    syncCursor: null,
+    ...overrides,
+  }
+}
+
+describe('fetchDevicePunches', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    global.fetch = vi.fn()
+  })
+
+  it('(a) refuse une URL SSRF-dangereuse sans jamais appeler fetch', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: false, reason: 'Adresse IP privée/interne interdite' })
+
+    const result = await fetchDevicePunches(baseDevice({ baseUrl: 'http://10.0.0.1/punches' }))
+
+    expect(result.ok).toBe(false)
+    expect(result.punches).toEqual([])
+    expect(result.error).toBe('Adresse IP privée/interne interdite')
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('(b) appelle fetch et mappe les pointages sur une réponse OK', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    const body = {
+      records: [
+        { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
+        { badge: 'B002', ts: '2026-07-15T08:05:00.000Z', dir: 'OUT' },
+      ],
+    }
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(true)
+    expect(result.punches).toHaveLength(2)
+    expect(result.punches[0]?.rawEmployeeRef).toBe('B001')
+    expect(result.punches[1]?.direction).toBe('out')
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('(c) renvoie ok:false + error quand fetch rejette (réseau/timeout)', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    global.fetch = vi.fn().mockRejectedValue(new Error('fetch failed: timeout')) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(false)
+    expect(result.punches).toEqual([])
+    expect(result.error).toContain('timeout')
+  })
+
+  it('(d) renvoie ok:false sur un statut HTTP non-2xx', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(false)
+    expect(result.punches).toEqual([])
+    expect(result.error).toBe('HTTP 503')
+  })
+
+  it('construit l\'en-tête Authorization Bearer quand authType=bearer', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }) as unknown as typeof fetch
+
+    await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: 'sekrit-token' }))
+
+    const callArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    if (!callArgs) throw new Error('fetch non appelé')
+    const init = callArgs[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['Authorization']).toBe('Bearer sekrit-token')
+  })
+
+  it('construit l\'en-tête api_key personnalisé quand authType=api_key', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }) as unknown as typeof fetch
+
+    await fetchDevicePunches(baseDevice({ authType: 'api_key', authSecret: 'my-api-key', authHeaderName: 'X-Device-Key' }))
+
+    const callArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    if (!callArgs) throw new Error('fetch non appelé')
+    const init = callArgs[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-Device-Key']).toBe('my-api-key')
+  })
+
+  it('filtre les pointages par syncCursor (garde seulement les postérieurs)', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    const body = {
+      records: [
+        { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
+        { badge: 'B002', ts: '2026-07-15T09:00:00.000Z', dir: 'IN' },
+      ],
+    }
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice({ syncCursor: '2026-07-15T08:00:00.000Z' }))
+
+    expect(result.ok).toBe(true)
+    expect(result.punches).toHaveLength(1)
+    expect(result.punches[0]?.rawEmployeeRef).toBe('B002')
+  })
+
+  it('ne fuite jamais le secret dans le message d\'erreur', async () => {
+    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    global.fetch = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: 'top-secret-value' }))
+
+    expect(result.error).not.toContain('top-secret-value')
+  })
+})
