@@ -335,6 +335,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
   fastify.patch('/devices/:id', {
     preHandler: [fastify.authorize('admin')],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
     schema: { tags: ['attendance'], summary: 'Modifier une badgeuse' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
@@ -380,8 +381,19 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           vals,
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+        // Trace d'audit COMPLÈTE des champs modifiés fournis — jamais la valeur du
+        // secret (`auth_secret`) lui-même, seulement un booléen `secretChanged`.
+        const changes: Record<string, unknown> = {}
+        if (b.name !== undefined) changes.name = b.name
+        if (b.base_url !== undefined) changes.base_url = b.base_url
+        if (b.auth_type !== undefined) changes.auth_type = b.auth_type
+        if (b.auth_secret !== undefined) changes.secretChanged = true
+        if (b.auth_header_name !== undefined) changes.auth_header_name = b.auth_header_name
+        if (b.poll_interval_min !== undefined) changes.poll_interval_min = b.poll_interval_min
+        if (b.is_active !== undefined) changes.is_active = b.is_active
+        if (b.field_mapping !== undefined) changes.field_mapping = b.field_mapping
         audit(schema, request.user.sub, 'attendance.device.updated', id,
-          { name: b.name, base_url: b.base_url }, request.ip ?? null, 'attendance_device')
+          changes, request.ip ?? null, 'attendance_device')
         return reply.send({ data: { id, updated: true } })
       } catch (e) {
         return reply.status(500).send({ error: `Échec de mise à jour de la badgeuse : ${(e as Error).message}` })
@@ -426,6 +438,13 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       )
       const d = r.rows[0]
       if (!d) return reply.status(404).send({ error: 'Badgeuse introuvable' })
+
+      // Défense en profondeur : la garde SSRF est déjà appliquée à l'intérieur de
+      // `fetchDevicePunches` (Task 8), mais on la répète ici EXPLICITEMENT au niveau
+      // de la route — miroir du gate POST/PATCH — pour ne jamais dépendre uniquement
+      // du comportement interne d'un appelé et retourner un 422 homogène.
+      const safe = await isSafeOutboundUrl(d.base_url)
+      if (!safe.ok) return reply.code(422).send({ error: 'URL non autorisée (SSRF)', reason: safe.reason })
 
       const result = await fetchDevicePunches({
         baseUrl: d.base_url,

@@ -302,6 +302,15 @@ describe('PATCH /attendance/devices/:id', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('refuse un non-admin (403)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/devices/${DEVICE_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_officer')}` },
+      payload: { name: 'x' },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
   it('re-vérifie SSRF si base_url change → 422 si dangereuse', async () => {
     isSafeOutboundUrlMock.mockResolvedValueOnce({ ok: false, reason: 'Hôte interne interdit' })
     const res = await app.inject({
@@ -338,6 +347,32 @@ describe('PATCH /attendance/devices/:id', () => {
       headers: adminAuth(app), payload: { name: 'x' },
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('audite tous les champs modifiés fournis + secretChanged, jamais le secret en clair', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: DEVICE_ID }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'PATCH', url: `/attendance/devices/${DEVICE_ID}`,
+      headers: adminAuth(app),
+      payload: {
+        name: 'Badgeuse Renommée',
+        auth_secret: 'nouveau-secret-999',
+        is_active: false,
+        poll_interval_min: 30,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall).toBeDefined()
+    const changesJson = String(auditCall?.[1]?.[4])
+    expect(changesJson).toContain('"name":"Badgeuse Renommée"')
+    expect(changesJson).toContain('"is_active":false')
+    expect(changesJson).toContain('"poll_interval_min":30')
+    expect(changesJson).toContain('"secretChanged":true')
+    expect(changesJson).not.toContain('nouveau-secret-999')
+    expect(changesJson).not.toContain('auth_secret')
   })
 })
 
@@ -386,6 +421,23 @@ describe('POST /attendance/devices/:id/test', () => {
       headers: adminAuth(app),
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('URL non sûre (SSRF) → 422, fetchDevicePunches JAMAIS appelé', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{
+        base_url: 'http://169.254.169.254/latest/meta-data', auth_type: 'bearer',
+        auth_secret_enc: 'enc(topsecret123456)', auth_header_name: null,
+        default_headers: {}, field_mapping: {}, sync_cursor: null,
+      }],
+    })
+    isSafeOutboundUrlMock.mockResolvedValueOnce({ ok: false, reason: 'blocked' })
+    const res = await app.inject({
+      method: 'POST', url: `/attendance/devices/${DEVICE_ID}/test`,
+      headers: adminAuth(app),
+    })
+    expect(res.statusCode).toBe(422)
+    expect(fetchDevicePunchesMock).not.toHaveBeenCalled()
   })
 
   it('appelle fetchDevicePunches et renvoie un résumé SANS le secret ni le payload brut', async () => {
