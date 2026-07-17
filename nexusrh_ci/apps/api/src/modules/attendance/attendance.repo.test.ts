@@ -75,15 +75,23 @@ describe('insertPunches', () => {
     expect(selectParams).toEqual(['a@sotra.ci'])
   })
 
-  it("badge_id (colonne absente d'employees) : aucun SELECT, employee_id = null, insertion quand même effectuée", async () => {
-    const query = vi.fn().mockResolvedValueOnce({ rowCount: 1 }) // seul l'INSERT est appelé
+  it('badge_id → colonne badge_id (employees), rapprochement fonctionnel', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-3' }] }) // SELECT résolution employé
+      .mockResolvedValueOnce({ rowCount: 1 })              // INSERT
     const result = await insertPunches(mockPool(query), SCHEMA, 'dev-1', [punch({ rawEmployeeRef: 'B001' })], 'badge_id')
 
-    expect(query).toHaveBeenCalledTimes(1) // pas de SELECT contre une colonne inexistante
-    expect(result).toEqual({ total: 1, matched: 0, inserted: 1 })
-    const [insertSql, insertParams] = query.mock.calls[0]!
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ total: 1, matched: 1, inserted: 1 })
+
+    const [selectSql, selectParams] = query.mock.calls[0]!
+    expect(selectSql).toContain(`"${SCHEMA}"`)
+    expect(selectSql).toContain('WHERE badge_id = $1')
+    expect(selectParams).toEqual(['B001'])
+
+    const [insertSql, insertParams] = query.mock.calls[1]!
     expect(insertSql).toContain('attendance_punches')
-    expect(insertParams[0]).toBeNull()
+    expect(insertParams[0]).toBe('emp-3')
   })
 
   it('matchBy inconnu (valeur non validée en amont) : ignoré, jamais interpolé dans le SQL', async () => {
@@ -102,13 +110,16 @@ describe('insertPunches', () => {
   })
 
   it("un pointage en échec n'interrompt pas le lot", async () => {
-    // matchBy='badge_id' → une seule requête par pointage (l'INSERT, pas de SELECT
-    // puisque la colonne n'existe pas) : simplifie la séquence de mocks.
+    // matchBy inconnu → une seule requête par pointage (l'INSERT, pas de SELECT
+    // puisqu'aucune colonne n'est résolue) : simplifie la séquence de mocks.
     const query = vi.fn()
       .mockRejectedValueOnce(new Error('boom'))   // INSERT du 1er pointage échoue
       .mockResolvedValueOnce({ rowCount: 1 })       // INSERT du 2e pointage réussit
     const punches = [punch({ dedupKey: 'dk1' }), punch({ dedupKey: 'dk2' })]
-    const result = await insertPunches(mockPool(query), SCHEMA, 'dev-1', punches, 'badge_id')
+    const result = await insertPunches(
+      mockPool(query), SCHEMA, 'dev-1', punches,
+      'inconnu' as unknown as Parameters<typeof insertPunches>[4],
+    )
 
     expect(result.total).toBe(2)
     expect(result.inserted).toBe(1) // le 1er a échoué (catch), le 2e a réussi

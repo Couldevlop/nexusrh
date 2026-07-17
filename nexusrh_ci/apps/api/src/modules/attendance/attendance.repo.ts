@@ -51,16 +51,14 @@ import type {
 // ── employeeMatchBy → colonne réelle (allowlist figé, OWASP A03) ───────────
 //
 // `employees` (schema-migrations.ts / provisioning.ts) n'a PAS de colonne
-// `matricule` ni `badge_id`. La colonne fonctionnellement équivalente à
-// « matricule » est `employee_number` (cf. `csv_export.matricule_source`
-// dont le défaut est déjà `'employee_number'`). `badge_id` n'existe dans
-// aucune table employés à ce jour : la valeur `null` documente cette absence
-// et fait que `insertPunches` ignore silencieusement la résolution plutôt que
-// d'interroger une colonne inexistante (qui lèverait une erreur SQL).
+// `matricule`. La colonne fonctionnellement équivalente à « matricule » est
+// `employee_number` (cf. `csv_export.matricule_source` dont le défaut est
+// déjà `'employee_number'`). `badge_id` est une colonne dédiée (additive,
+// `schema-migrations.ts`), renseignée par l'admin lors du mapping badgeuse.
 const EMPLOYEE_MATCH_COLUMNS: Readonly<Record<FieldMapping['employeeMatchBy'], string | null>> = Object.freeze({
   matricule: 'employee_number',
   email: 'email',
-  badge_id: null,
+  badge_id: 'badge_id',
 })
 
 /**

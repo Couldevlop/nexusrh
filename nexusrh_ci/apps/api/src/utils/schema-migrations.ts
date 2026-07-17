@@ -309,6 +309,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disciplinary_emp_idx" ON "${schemaName}".disciplinary_actions(employee_id, action_date DESC)`,
 
     // ── Badgeuse / Pointage (attendance) — additif, idempotent ─────────────────
+    // Colonne de rapprochement badgeuse (employeeMatchBy: 'badge_id') — cf.
+    // attendance.repo.ts EMPLOYEE_MATCH_COLUMNS. Nullable, sans défaut : simple
+    // identifiant externe optionnel, renseigné par l'admin lors du mapping.
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS badge_id varchar(100)`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_emp_badge_idx" ON "${schemaName}".employees(badge_id)`,
     `CREATE TABLE IF NOT EXISTS "${schemaName}".attendance_devices (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name varchar(150) NOT NULL,
