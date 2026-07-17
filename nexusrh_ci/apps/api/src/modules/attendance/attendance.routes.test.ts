@@ -375,7 +375,7 @@ describe('PATCH /attendance/devices/:id', () => {
     expect(changesJson).not.toContain('auth_secret')
   })
 
-  it('audite default_headers quand modifiés', async () => {
+  it('audite default_headers_keys (clés seulement, jamais les valeurs) pour prévenir la fuite de secrets', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: DEVICE_ID }] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit
@@ -389,11 +389,13 @@ describe('PATCH /attendance/devices/:id', () => {
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall).toBeDefined()
     const changesJson = String(auditCall?.[1]?.[4])
-    expect(changesJson).toContain('"default_headers"')
+    // La clé doit être logged, mais sous `default_headers_keys` (tableau de noms seulement)
+    expect(changesJson).toContain('"default_headers_keys"')
     expect(changesJson).toContain('X-Custom-Auth')
-    expect(changesJson).toContain('test-value')
     expect(changesJson).toContain('X-Request-ID')
-    expect(changesJson).toContain('req-123')
+    // Les VALEURS ne doivent JAMAIS être logées
+    expect(changesJson).not.toContain('test-value')
+    expect(changesJson).not.toContain('req-123')
   })
 })
 

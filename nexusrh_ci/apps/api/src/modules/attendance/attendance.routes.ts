@@ -383,13 +383,15 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         if (!res.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
         // Trace d'audit COMPLÈTE des champs modifiés fournis — jamais la valeur du
         // secret (`auth_secret`) lui-même, seulement un booléen `secretChanged`.
+        // OWASP A09 : `default_headers` peut contenir des API keys → logger seulement les clés,
+        // jamais les valeurs (cf. ligne 392 : `default_headers_keys` au lieu de `default_headers`).
         const changes: Record<string, unknown> = {}
         if (b.name !== undefined) changes.name = b.name
         if (b.base_url !== undefined) changes.base_url = b.base_url
         if (b.auth_type !== undefined) changes.auth_type = b.auth_type
         if (b.auth_secret !== undefined) changes.secretChanged = true
         if (b.auth_header_name !== undefined) changes.auth_header_name = b.auth_header_name
-        if (b.default_headers !== undefined) changes.default_headers = b.default_headers
+        if (b.default_headers !== undefined) changes.default_headers_keys = Object.keys(b.default_headers)
         if (b.poll_interval_min !== undefined) changes.poll_interval_min = b.poll_interval_min
         if (b.is_active !== undefined) changes.is_active = b.is_active
         if (b.field_mapping !== undefined) changes.field_mapping = b.field_mapping
