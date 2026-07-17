@@ -483,8 +483,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           body as Record<string, unknown>, request.ip ?? null)
 
         return reply.send({ data: row ?? body })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de mise à jour de la configuration : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de mise à jour de la configuration' })
       }
     },
   })
@@ -555,8 +555,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           { name: b.name, base_url: b.base_url, auth_type: b.auth_type ?? 'none' }, request.ip ?? null,
           'attendance_device')
         return reply.status(201).send({ data: { id } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de création de la badgeuse : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de création de la badgeuse' })
       }
     },
   })
@@ -626,8 +626,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         audit(schema, request.user.sub, 'attendance.device.updated', id,
           changes, request.ip ?? null, 'attendance_device')
         return reply.send({ data: { id, updated: true } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de mise à jour de la badgeuse : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de mise à jour de la badgeuse' })
       }
     },
   })
@@ -644,8 +644,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         if (!res.rows[0]) return reply.status(404).send({ error: 'Badgeuse introuvable' })
         audit(schema, request.user.sub, 'attendance.device.deleted', id, {}, request.ip ?? null, 'attendance_device')
         return reply.send({ data: { id, deleted: true } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de suppression de la badgeuse : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de suppression de la badgeuse' })
       }
     },
   })
@@ -722,8 +722,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
       try {
         await enqueuePoll(schema, id)
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de mise en file de la synchronisation : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de mise en file de la synchronisation' })
       }
 
       audit(schema, request.user.sub, 'attendance.device.sync_requested', id, {}, request.ip ?? null, 'attendance_device')
@@ -765,8 +765,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
             ORDER BY scope, created_at DESC`,
         )
         return reply.send({ data: res.rows })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de récupération des horaires : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération des horaires' })
       }
     },
   })
@@ -816,8 +816,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           { scope: b.scope, scope_id: scopeId, expected_start: b.expected_start, tolerance_min: b.tolerance_min ?? 10 },
           request.ip ?? null, 'attendance_schedule')
         return reply.status(201).send({ data: { id } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de création de l'horaire : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: "Échec de création de l'horaire" })
       }
     },
   })
@@ -914,8 +914,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         audit(schema, request.user.sub, 'attendance.schedule.updated', id,
           b as Record<string, unknown>, request.ip ?? null, 'attendance_schedule')
         return reply.send({ data: { id, updated: true } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de mise à jour de l'horaire : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: "Échec de mise à jour de l'horaire" })
       }
     },
   })
@@ -934,8 +934,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         if (!res.rows[0]) return reply.status(404).send({ error: 'Horaire introuvable' })
         audit(schema, request.user.sub, 'attendance.schedule.deleted', id, {}, request.ip ?? null, 'attendance_schedule')
         return reply.send({ data: { id, deleted: true } })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de suppression de l'horaire : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: "Échec de suppression de l'horaire" })
       }
     },
   })
@@ -1000,8 +1000,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       try {
         const res = await pool.query(sql, params)
         return reply.send({ data: res.rows })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de récupération des pointages : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération des pointages' })
       }
     },
   })
@@ -1056,8 +1056,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         return reply.status(201).send({
           data: { id, employeeId: b.employeeId, direction: b.direction, punchedAt: punchedAt.toISOString(), source: 'manual' },
         })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de création du pointage : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de création du pointage' })
       }
     },
   })
@@ -1097,8 +1097,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       try {
         const res = await pool.query(sql, params)
         return reply.send({ data: res.rows })
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec de récupération des jours : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de récupération des jours' })
       }
     },
   })
@@ -1174,8 +1174,8 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
             recomputed += 1
           }
         }
-      } catch (e) {
-        return reply.status(500).send({ error: `Échec du recalcul : ${(e as Error).message}` })
+      } catch {
+        return reply.status(500).send({ error: 'Échec du recalcul' })
       }
 
       audit(schema, request.user.sub, 'attendance.recompute', null, {
