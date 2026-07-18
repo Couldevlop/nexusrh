@@ -1606,9 +1606,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // OWASP A04 — éléments variables de paie : montants qui alimentent directement
+  // le moteur de paie et in fine les virements Mobile Money réels. RBAC restreint
+  // à admin/hr_manager (aligné sur DELETE ci-dessous ; hr_officer n'a pas la main
+  // sur la paie — cf. matrice RBAC nexusrh_ci/CLAUDE.md) + validation Zod stricte
+  // bornée (montant plafonné, format mois/rule_code contraint).
+  const VARIABLE_ELEMENT_AMOUNT_MIN = -100_000_000 // FCFA — plafond défensif (~100M, bien au-delà d'un salaire CI réaliste)
+  const VARIABLE_ELEMENT_AMOUNT_MAX = 100_000_000
+  const variableElementSchema = z.object({
+    employee_id: z.string().uuid(),
+    rule_code:   z.string().min(1).max(10).regex(/^[A-Z0-9_]+$/, 'Code rubrique invalide (majuscules/chiffres/_)'),
+    month:       z.string().regex(/^\d{4}-\d{2}$/, 'Format mois invalide (YYYY-MM)'),
+    amount:      z.number().int().min(VARIABLE_ELEMENT_AMOUNT_MIN).max(VARIABLE_ELEMENT_AMOUNT_MAX),
+    description: z.string().max(500).optional(),
+  }).strict()
+
   // GET /settings/variable-elements
   fastify.get('/variable-elements', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin','hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureMigrated(schema)
@@ -1631,12 +1646,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /settings/variable-elements
   fastify.post('/variable-elements', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin','hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        employee_id: string; rule_code: string; amount: number; month: string; description?: string
+      const parsed = variableElementSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Élément variable invalide', issues: parsed.error.flatten() })
       }
+      const body = parsed.data
       try {
         // Le moteur de paie lit les éléments variables par period_id (colonne
         // NOT NULL) : on résout la période depuis le mois. Sans période ouverte

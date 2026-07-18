@@ -802,3 +802,130 @@ describe('POST /settings/email/test — email de test de la config SMTP', () => 
     expect(JSON.stringify(body)).not.toContain('169.254.169.254')
   })
 })
+
+describe('POST /settings/variable-elements — RBAC admin/hr_manager + Zod bornée (OWASP A04)', () => {
+  const validPayload = {
+    employee_id: UUID_A,
+    rule_code:   'PRIME01',
+    month:       '2026-01',
+    amount:      50000,
+  }
+
+  it('refuse un hr_officer (403 — pas de main sur la paie)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(403)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('refuse un amount non-numérique (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: 'beaucoup' as unknown as number },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un amount hors bornes (>100M FCFA) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: 999_999_999 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un amount négatif hors bornes (< -100M FCFA) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: -999_999_999 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un champ inconnu (.strict) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, isAdmin: true },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un rule_code hors format (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, rule_code: 'prime en minuscule !' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un month hors format YYYY-MM (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, month: '01-2026' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('admin — payload valide crée l\'élément variable (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'p1' }] }) // pay_periods lookup
+      .mockResolvedValueOnce({ rows: [{ id: 've1', ...validPayload }] }) // INSERT
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('hr_manager — payload valide crée l\'élément variable (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'p1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 've2', ...validPayload }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(201)
+  })
+})
+
+describe('GET /settings/variable-elements — RBAC admin/hr_manager (OWASP A04)', () => {
+  it('refuse un hr_officer (403)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('admin peut consulter (200)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'GET', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})
