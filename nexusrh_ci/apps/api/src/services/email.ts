@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 import { config } from '../config.js'
+import { assertSafeSmtpHost } from './ssrf-guard.js'
 
 // Création PARESSEUSE du transporter : on ne lit `config.smtp` qu'au premier
 // envoi réel, jamais à l'import du module. Évite tout effet de bord à
@@ -66,6 +67,18 @@ function transporterFor(smtp?: TenantSmtp | null): Transporter {
     tls: SMTP_TLS,
     ...SMTP_TIMEOUTS,
   })
+}
+
+/**
+ * Défense en profondeur anti-SSRF (OWASP A10) sur le SMTP TENANT. La validation
+ * primaire se fait à l'écriture (PUT /settings/email), mais des configs SMTP ont
+ * pu être stockées AVANT l'introduction de la garde : on re-valide donc l'hôte
+ * juste avant chaque envoi via un SMTP tenant. Le SMTP PLATEFORME (smtp absent)
+ * est de confiance et n'est jamais bloqué. Lève SsrfBlockedError si l'hôte
+ * résout vers le réseau interne.
+ */
+async function assertTenantSmtpSafe(smtp?: TenantSmtp | null): Promise<void> {
+  if (smtp?.host) await assertSafeSmtpHost(smtp.host)
 }
 
 // En-tête de marque : affiche le LOGO uploadé (URL absolue servie par
@@ -237,6 +250,7 @@ export async function sendWelcomeTenantEmail(params: {
 </body>
 </html>`
 
+  await assertTenantSmtpSafe(smtp)
   await transporterFor(smtp).sendMail({
     // From : adresse explicite (cabinet) si fournie, sinon le compte SMTP
     // authentifié quand un smtp dédié est passé (alignement domaine →
@@ -292,6 +306,7 @@ export async function sendEmployeeWelcomeEmail(params: {
 </table>
 </body></html>`
 
+  await assertTenantSmtpSafe(smtp)
   await transporterFor(smtp).sendMail({
     // From : adresse choisie par le tenant si fournie, sinon le compte SMTP
     // tenant authentifié (alignement domaine → délivrabilité), sinon plateforme.
@@ -614,6 +629,7 @@ export async function sendAbsenceRequestEmail(params: {
     </table>
   </td></tr></table>
 </body></html>`
+  await assertTenantSmtpSafe(smtp)
   await transporterFor(smtp).sendMail({
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
@@ -648,6 +664,7 @@ export async function sendTestEmail(params: {
     </table>
   </td></tr></table>
 </body></html>`
+  await assertTenantSmtpSafe(smtp)
   await transporterFor(smtp).sendMail({
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
@@ -685,6 +702,7 @@ export async function sendBankTransferEmail(params: {
     </table>
   </td></tr></table>
 </body></html>`
+  await assertTenantSmtpSafe(smtp)
   await transporterFor(smtp).sendMail({
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),

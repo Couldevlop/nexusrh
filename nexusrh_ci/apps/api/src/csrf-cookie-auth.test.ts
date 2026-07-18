@@ -202,3 +202,53 @@ describe('CSRF guard sur mutations (OWASP A01)', () => {
     expect(res.statusCode).toBe(200)
   })
 })
+
+describe('Anti-bypass MFA — un token de challenge n\'est pas un token de session (OWASP A07)', () => {
+  it('GET protégé refuse un token aud=mfa-challenge (header Authorization) → 401', async () => {
+    const challenge = app.jwt.sign(
+      { sub: 'u1', schemaName: 'tenant_sotra', tenantId: 't1', aud: 'mfa-challenge', userId: 'u1' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '3m' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${challenge}` },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé refuse un token aud=mfa-challenge (cookie) → 401', async () => {
+    const challenge = app.jwt.sign(
+      { sub: 'u1', schemaName: 'tenant_sotra', tenantId: 't1', aud: 'mfa-challenge', userId: 'u1' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '3m' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      cookies: { [AUTH_COOKIE_NAME]: challenge },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé refuse un token aud=csrf réutilisé comme session → 401', async () => {
+    const csrf = app.jwt.sign(
+      { sub: 'u1', aud: 'csrf' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '1h' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${csrf}` },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé reste OK avec un token de session normal (sans aud)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})

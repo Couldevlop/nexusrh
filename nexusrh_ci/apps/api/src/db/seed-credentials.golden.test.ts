@@ -145,4 +145,24 @@ describe('seed.ts — câblage de la préservation', () => {
     expect(agencyBlock).toContain('ON CONFLICT (email) DO UPDATE SET is_active = true')
     expect(agencyBlock).not.toContain('DO UPDATE SET password_hash')
   })
+
+  // OWASP A09 — le seed tourne à chaque déploiement prod via `kubectl exec`
+  // (pipeline CI/CD) : sans garde, tous les identifiants de démo + le secret
+  // TOTP statique (JBSWY3DPEHPK3PXP) sont streamés dans les logs GitHub Actions.
+  it('n\'imprime les identifiants de démo + le secret TOTP QUE hors production', () => {
+    const credsIdx = seedSrc.indexOf("console.log('Comptes de connexion:')")
+    // Occurrence du secret TOTP DANS le résumé imprimé (pas sa 1ʳᵉ définition/
+    // usage plus haut dans le fichier pour créer le compte mfa@sotra.ci).
+    const totpIdx  = seedSrc.indexOf('JBSWY3DPEHPK3PXP', credsIdx)
+    const guardIdx = seedSrc.lastIndexOf("process.env['NODE_ENV'] !== 'production'", credsIdx)
+    expect(credsIdx).toBeGreaterThan(-1)
+    expect(totpIdx).toBeGreaterThan(-1)
+    expect(guardIdx).toBeGreaterThan(-1)
+    // La garde doit englober la ligne 'Comptes de connexion:' ET le secret TOTP.
+    expect(guardIdx).toBeLessThan(credsIdx)
+    expect(totpIdx).toBeGreaterThan(credsIdx)
+    // La garde doit se refermer APRÈS le secret TOTP (accolade fermante du if).
+    const closingBraceIdx = seedSrc.indexOf('\n  }', totpIdx)
+    expect(closingBraceIdx).toBeGreaterThan(totpIdx)
+  })
 })

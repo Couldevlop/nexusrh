@@ -92,3 +92,52 @@ export async function isSafeOutboundUrl(raw: string): Promise<{ ok: true } | { o
   try { await assertSafeOutboundUrl(raw); return { ok: true } }
   catch (e) { return { ok: false, reason: (e as Error).message } }
 }
+
+/**
+ * Garde anti-SSRF pour un hôte SMTP (host seul, sans schéma URL). Un admin
+ * tenant configure host+port de son serveur SMTP puis peut déclencher une
+ * connexion sortante depuis le pod API (POST /settings/email/test). Sans cette
+ * garde, il pourrait viser l'endpoint de métadonnées cloud (169.254.169.254),
+ * un service interne (postgres.<ns>.svc, 10.x, localhost…) et s'en servir comme
+ * oracle de scan de ports / SSRF. Même politique de résolution DNS que
+ * `assertSafeOutboundUrl` : on rejette si UNE SEULE adresse résolue est privée.
+ * Lève `SsrfBlockedError` si dangereux, retourne void si sûr.
+ */
+export async function assertSafeSmtpHost(host: string): Promise<void> {
+  const h = (host ?? '').trim().toLowerCase().replace(/\.$/, '')
+  if (!h) throw new SsrfBlockedError('Hôte SMTP vide')
+  if (BLOCKED_HOSTNAMES.has(h) || h.endsWith('.local') || h.endsWith('.internal')) {
+    throw new SsrfBlockedError('Hôte SMTP interne interdit')
+  }
+
+  // Hôte déjà une IP littérale → vérifier directement.
+  if (isIP(h)) {
+    if (isPrivateIP(h)) throw new SsrfBlockedError('Adresse IP privée/interne interdite pour le SMTP')
+    return
+  }
+
+  // Sinon résoudre le DNS et rejeter si une IP résolue est privée.
+  let addrs: { address: string }[]
+  try {
+    addrs = await lookup(h, { all: true })
+  } catch {
+    throw new SsrfBlockedError('Hôte SMTP introuvable (DNS)')
+  }
+  if (addrs.length === 0) throw new SsrfBlockedError('Hôte SMTP introuvable')
+  for (const a of addrs) {
+    if (isPrivateIP(a.address)) throw new SsrfBlockedError('L\'hôte SMTP résout vers une adresse interne')
+  }
+}
+
+/** Variante non-levante (booléen) de `assertSafeSmtpHost`. */
+export async function isSafeSmtpHost(host: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try { await assertSafeSmtpHost(host); return { ok: true } }
+  catch (e) { return { ok: false, reason: (e as Error).message } }
+}
+
+/**
+ * Alias générique : valider un hôte:port sortant (hors URL http) revient à la
+ * même politique que pour le SMTP. Conservé pour les appelants qui raisonnent en
+ * termes d'« hôte sortant » plutôt que « SMTP ».
+ */
+export const assertSafeOutboundHost = assertSafeSmtpHost

@@ -97,6 +97,12 @@ export default fp(async (fastify) => {
       reply.status(401).send({ error: 'Token invalide (schéma non conforme)' })
       return
     }
+    // OWASP A07 — un token de challenge MFA ou CSRF n'est PAS un token de session :
+    // il ne doit jamais authentifier une route applicative (sinon bypass MFA).
+    const aud = (request.user as { aud?: string }).aud
+    if (aud === 'mfa-challenge' || aud === 'csrf') {
+      return reply.code(401).send({ error: 'Token non autorisé pour cette ressource' })
+    }
     // OWASP A07 — MFA obligatoire super_admin : un token "mfaPending" (super_admin
     // connecté sans MFA activé) est restreint au parcours d'activation MFA. Toute
     // autre route est refusée tant que le MFA n'est pas activé.

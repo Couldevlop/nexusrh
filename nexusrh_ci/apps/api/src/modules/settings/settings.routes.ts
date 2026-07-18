@@ -13,7 +13,7 @@ import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
-import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '../../services/ssrf-guard.js'
 import { describeDbError } from '../../utils/db-error.js'
 
 // OWASP A03 — patterns de validation stricts
@@ -667,6 +667,21 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const b = parsed.data
+      // OWASP A10 — SSRF : un admin tenant ne peut pas pointer le SMTP vers le
+      // réseau interne (metadata cloud 169.254.169.254, 10.x, postgres.<ns>.svc,
+      // localhost…). On valide dès l'écriture pour ne jamais stocker un hôte
+      // dangereux, en cohérence avec la garde des autres appels sortants. Le
+      // message reste générique (pas de détail résolveur/DNS — A09/A10).
+      if (b.smtpHost != null && b.smtpHost !== '') {
+        try {
+          await assertSafeOutboundHost(b.smtpHost)
+        } catch (e) {
+          if (e instanceof SsrfBlockedError) {
+            return reply.status(422).send({ error: 'Hôte SMTP non autorisé' })
+          }
+          throw e
+        }
+      }
       if (b.smtpPassword != null && b.smtpPassword !== '' && !isEncryptionAvailable()) {
         return reply.status(400).send({
           error: 'Chiffrement non configuré côté plateforme (ENCRYPTION_KEY). Impossible de stocker le mot de passe SMTP.',
@@ -732,6 +747,18 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const mail = await loadTenantMail(tenantId)
         const viaTenantSmtp = !!mail.smtp
+        // OWASP A10 — défense en profondeur : re-vérifie l'hôte SMTP tenant au
+        // moment de l'envoi (au cas où il aurait été enregistré avant ce correctif).
+        if (mail.smtp?.host) {
+          try {
+            await assertSafeOutboundHost(mail.smtp.host)
+          } catch (e) {
+            if (e instanceof SsrfBlockedError) {
+              return reply.status(422).send({ error: 'Hôte SMTP non autorisé' })
+            }
+            throw e
+          }
+        }
         try {
           await sendTestEmail({
             to,
@@ -742,10 +769,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             smtp: mail.smtp,
           })
         } catch (sendErr) {
-          const msg = sendErr instanceof Error ? sendErr.message : 'Erreur SMTP inconnue'
+          // OWASP A10 — ne JAMAIS renvoyer le message nodemailer brut au client :
+          // il révèle port ouvert/fermé/filtré et les bannières de services
+          // internes (oracle de scan de ports). Détail loggé côté serveur seul.
           fastify.log.warn({ sendErr }, 'test email failed')
           return reply.status(502).send({
-            error: `Échec de l'envoi de l'email de test : ${msg}`, viaTenantSmtp,
+            error: "Échec de l'envoi de l'email de test — vérifiez l'hôte, le port et les identifiants SMTP.",
+            viaTenantSmtp,
           })
         }
         auditLogSettings(
