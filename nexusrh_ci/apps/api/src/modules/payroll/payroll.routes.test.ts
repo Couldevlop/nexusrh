@@ -205,3 +205,60 @@ describe('GET /payroll/payslips/:id/transparency — UUID validation', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('GET /payroll/livre-de-paie/:year/export — anti-injection CSV (OWASP A03)', () => {
+  it('neutralise une formule CSV injectée via job_title (=HYPERLINK)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ name: 'Sotra', cnps_number: 'CI-CNPS-1', rccm: 'CI-RCCM-1' }] }) // tenant
+      .mockResolvedValueOnce({ rows: [{
+        month: '2026-01', first_name: 'Jean', last_name: 'Yao',
+        cnps_number: 'C1', nni: 'N1',
+        job_title: '=HYPERLINK("http://evil.test","clique-ici")',
+        department_name: 'RH', contract_type: 'cdi',
+        base_salary: 100000, gross_salary: 100000,
+        cnps_retraite_sal: 0, cnps_pf_pat: 0, cnps_at_pat: 0, cnps_retraite_pat: 0,
+        total_cnps_sal: 0, total_cnps_pat: 0, its: 0,
+        net_payable: 100000, employer_cost: 100000,
+        indemnite_absence: 0, payment_method: 'bank_transfer',
+      }] }) // rows
+
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: '/payroll/livre-de-paie/2026/export',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const csv = res.body.replace(/^﻿/, '')
+
+    // Le champ dangereux ne doit JAMAIS apparaître en tête de cellule avec un '='
+    // brut (ce qui exécuterait la formule à l'ouverture dans Excel) : il doit
+    // être préfixé d'une apostrophe (neutralisation) puis quoté (contient des ").
+    expect(csv).toContain("'=HYPERLINK")
+    expect(csv).not.toMatch(/;=HYPERLINK/)
+    expect(csv).toContain('"\'=HYPERLINK(""http://evil.test"",""clique-ici"")"')
+  })
+
+  it('export normal (sans caractère dangereux) reste inchangé', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ name: 'Sotra', cnps_number: 'CI-CNPS-1', rccm: 'CI-RCCM-1' }] })
+      .mockResolvedValueOnce({ rows: [{
+        month: '2026-01', first_name: 'Jean', last_name: 'Yao',
+        cnps_number: 'C1', nni: 'N1',
+        job_title: 'Comptable', department_name: 'RH', contract_type: 'cdi',
+        base_salary: 100000, gross_salary: 100000,
+        cnps_retraite_sal: 0, cnps_pf_pat: 0, cnps_at_pat: 0, cnps_retraite_pat: 0,
+        total_cnps_sal: 0, total_cnps_pat: 0, its: 0,
+        net_payable: 100000, employer_cost: 100000,
+        indemnite_absence: 0, payment_method: 'bank_transfer',
+      }] })
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'GET', url: '/payroll/livre-de-paie/2026/export',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const csv = res.body.replace(/^﻿/, '')
+    expect(csv).toContain('Yao;Jean;C1;N1;Comptable;RH;cdi')
+  })
+})
