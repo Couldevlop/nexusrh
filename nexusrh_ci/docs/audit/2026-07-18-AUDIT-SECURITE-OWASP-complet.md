@@ -260,15 +260,15 @@ Chaque correctif sera livré avec **test de non-régression** et **re-vérificat
 
 > Vérification : suite API complète **4166/4166 verte**, `tsc` 0 erreur, flux MFA (`auth-mfa.routes.test.ts`) confirmé.
 
-### P1 — Court terme (High)
-| ID | Correctif | Effort |
+### P1 — Court terme (High) — _A10-2 corrigé ✅ (commit `f3191fc`)_
+| ID | Correctif | Statut |
 |----|-----------|--------|
-| A01-1 | `blacklistTokenSafe` sur `PATCH`/`DELETE /users/:id` + `/auth/refresh` re-vérifie statut/rôle en DB (comme `/auth/refresh-token`) | S/M |
-| A10-2 | **Fix central** : épingler l'IP validée dans `ssrf-guard.ts` (undici `Agent` + `lookup`) → durcit tous les sites sortants | M |
-| A03-1 | `encodeField` sur chaque champ de `GET /payroll/livre-de-paie/:year/export` | S |
-| A04-1 | Restreindre `POST /settings/variable-elements` à admin/hr_manager + Zod `.strict()` borné | S |
-| A02-2 | Chiffrer `mfa_secret` au repos (`encrypt`/`decrypt` existants) + migration des seeds existants | M |
-| A02-3 | Blacklister le JWT présenté sur `change-password` **et** `reset-password` + `revokeAllRefreshTokensForUser` sur reset | S |
+| A10-2 | **Fix central** : épingler l'IP validée dans `ssrf-guard.ts` (undici `Agent`+`lookup`), 6 sorties + 2 copies | ✅ **Fait** — `tsc` 0, tests épinglage 50 verts, 4180 API |
+| A01-1 | `blacklistTokenSafe` sur `PATCH`/`DELETE /users/:id` + `/auth/refresh` re-vérifie statut/rôle en DB (comme `/auth/refresh-token`) | ⏳ à faire |
+| A03-1 | `encodeField` sur chaque champ de `GET /payroll/livre-de-paie/:year/export` | ⏳ à faire |
+| A04-1 | Restreindre `POST /settings/variable-elements` à admin/hr_manager + Zod `.strict()` borné | ⏳ à faire |
+| A02-2 | Chiffrer `mfa_secret` au repos (`encrypt`/`decrypt` existants) + migration des seeds existants | ⏳ à faire |
+| A02-3 | Blacklister le JWT présenté sur `change-password` **et** `reset-password` + `revokeAllRefreshTokensForUser` sur reset | ⏳ à faire |
 
 ### P2 — Moyen terme (Medium)
 | ID | Correctif | Effort |
