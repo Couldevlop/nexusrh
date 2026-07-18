@@ -35,6 +35,16 @@ import {
 } from './seed-demo-data.js'
 import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
 
+// ── Identifiants de démo (paramétrables — jamais imprimés/versionnés en clair) ─
+// Les valeurs par défaut restent fonctionnelles pour le dev local (et les tests
+// qui dépendent de `Admin1234!`), mais sont surchargeables par variables d'env
+// afin de ne jamais figer un secret dans la doc versionnée. La liste complète
+// des comptes est tenue dans `nexusrh_ci/.credentials-local.md` (NON versionné).
+const SEED_SUPERADMIN_PASSWORD = process.env['SEED_SUPERADMIN_PASSWORD'] ?? 'SuperAdmin1234!'
+const SEED_DEMO_PASSWORD       = process.env['SEED_DEMO_PASSWORD'] ?? 'Admin1234!'
+const SEED_OPENLAB_PASSWORD    = process.env['SEED_OPENLAB_PASSWORD'] ?? 'Openlab1234!'
+const SEED_MFA_TOTP_SECRET     = process.env['SEED_MFA_TOTP_SECRET'] ?? 'JBSWY3DPEHPK3PXP'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
@@ -317,14 +327,15 @@ async function runSeed(): Promise<void> {
   // ─────────────────────────────────────────────────────────────────────────────
   // SUPER ADMIN
   // ─────────────────────────────────────────────────────────────────────────────
-  const superAdminHash = await bcrypt.hash('SuperAdmin1234!', 12)
+  const superAdminHash = await bcrypt.hash(SEED_SUPERADMIN_PASSWORD, 12)
   await pool.query(`
     INSERT INTO platform.platform_users (email, password_hash, first_name, last_name, role, is_active)
     VALUES ('superadmin@nexusrh-ci.com', $1, 'Super', 'Admin', 'super_admin', true)
     ON CONFLICT (email) DO NOTHING
   `, [superAdminHash])
   // (DO NOTHING : un mot de passe super_admin changé survit au re-seed)
-  console.log('[2/10] Super admin créé: superadmin@nexusrh-ci.com / SuperAdmin1234!')
+  // Identifiant NON imprimé (mot de passe → .credentials-local.md / SEED_SUPERADMIN_PASSWORD)
+  console.log('[2/10] Super admin créé: superadmin@nexusrh-ci.com')
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Sourcing IA — Configuration paramétrable initiale
@@ -459,9 +470,9 @@ async function runSeed(): Promise<void> {
   console.log('[4/10] Schema SOTRA provisionné + rubriques CI seedées')
 
   // Utilisateurs SOTRA
-  const adminHash    = await bcrypt.hash('Admin1234!', 12)
-  const managerHash  = await bcrypt.hash('Admin1234!', 12)
-  const employeeHash = await bcrypt.hash('Admin1234!', 12)
+  const adminHash    = await bcrypt.hash(SEED_DEMO_PASSWORD, 12)
+  const managerHash  = await bcrypt.hash(SEED_DEMO_PASSWORD, 12)
+  const employeeHash = await bcrypt.hash(SEED_DEMO_PASSWORD, 12)
 
   await pool.query(`
     INSERT INTO "${sotraSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
@@ -482,13 +493,14 @@ async function runSeed(): Promise<void> {
   // activée avec un secret TOTP fixe et connu, afin de rendre le parcours
   // « login → challenge 202 → vérification OTP → JWT » testable de bout en bout
   // (sinon aucun compte MFA n'existe sur une base fraîche).
-  // Secret base32 : JBSWY3DPEHPK3PXP — à saisir dans une app TOTP (Google
-  // Authenticator, etc.) ou clé otpauth ci-dessous pour générer le code à 6 chiffres.
+  // Secret base32 (SEED_MFA_TOTP_SECRET) — à saisir dans une app TOTP (Google
+  // Authenticator, etc.) pour générer le code à 6 chiffres. Valeur par défaut et
+  // liste complète des comptes : nexusrh_ci/.credentials-local.md (NON versionné).
   await pool.query(
     `UPDATE "${sotraSchema}".users
         SET mfa_enabled = true, mfa_secret = $1
       WHERE email = 'mfa@sotra.ci'`,
-    ['JBSWY3DPEHPK3PXP'],
+    [SEED_MFA_TOTP_SECRET],
   )
 
   // ── Filiales SOTRA (legal_entities) + RAF affectés ──────────────────────────
@@ -1375,7 +1387,7 @@ async function runSeed(): Promise<void> {
   await seedAbsenceTypesCI(cabinetSchema)
 
   // Utilisateurs Cabinet
-  const cabAdminHash = await bcrypt.hash('Admin1234!', 12)
+  const cabAdminHash = await bcrypt.hash(SEED_DEMO_PASSWORD, 12)
   await pool.query(`
     INSERT INTO "${cabinetSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES
@@ -1696,7 +1708,7 @@ async function runSeed(): Promise<void> {
   await seedPayrollRulesCI(openlabSchema, openlabAtRate)
   await seedAbsenceTypesCI(openlabSchema)
 
-  const openlabHash = await bcrypt.hash('Openlab1234!', 12)
+  const openlabHash = await bcrypt.hash(SEED_OPENLAB_PASSWORD, 12)
   await pool.query(`
     INSERT INTO "${openlabSchema}".users (email, password_hash, first_name, last_name, role, is_active, last_login_at)
     VALUES ('coulwao@gmail.com', $1, 'Coulwao', 'Admin', 'admin', true, now())
@@ -1945,12 +1957,13 @@ async function runSeed(): Promise<void> {
   console.log(`  [OpenLab] ${openlabEmployees.length} employés, ${openlabPeriods.length} mois de paie, ` +
     'recrutement, onboarding, absences, frais, formations, 9-box, CNPS, Mobile Money, notifications')
 
-  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com / Openlab1234!')
+  // Identifiant NON imprimé (mot de passe → .credentials-local.md / SEED_OPENLAB_PASSWORD)
+  console.log('[10/10] Tenant OpenLab Consulting créé: coulwao@gmail.com')
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CABINET DE RECRUTEMENT — Cabinet Talents CI (gère SOTRA + Cabinet Expertise)
   // ─────────────────────────────────────────────────────────────────────────────
-  const agencyHash = await bcrypt.hash('Admin1234!', 12)
+  const agencyHash = await bcrypt.hash(SEED_DEMO_PASSWORD, 12)
   const agencyRes = await pool.query<{ id: string }>(`
     INSERT INTO platform.agencies
       (slug, name, status, country_code, city, contact_email, contact_phone,
@@ -2002,33 +2015,36 @@ async function runSeed(): Promise<void> {
   // statique dans les logs GitHub Actions. On ne les imprime jamais en prod ;
   // seul le résumé (comptages, non sensible) reste visible partout.
   if (process.env['NODE_ENV'] !== 'production') {
-    console.log('Comptes de connexion:')
+    // Hors production uniquement : les valeurs proviennent des variables SEED_*
+    // (défauts fonctionnels). Le secret TOTP n'est JAMAIS imprimé — cf. la
+    // source de vérité locale nexusrh_ci/.credentials-local.md (non versionné).
+    console.log('Comptes de connexion (démo — voir aussi .credentials-local.md):')
     console.log('  [Super Admin]')
-    console.log('  superadmin@nexusrh-ci.com  /  SuperAdmin1234!')
+    console.log(`  superadmin@nexusrh-ci.com  /  ${SEED_SUPERADMIN_PASSWORD}`)
     console.log()
     console.log('  [SOTRA - Transports Abidjanais]')
-    console.log('  admin@sotra.ci        /  Admin1234!  (admin)')
-    console.log('  rh@sotra.ci           /  Admin1234!  (hr_manager)')
-    console.log('  chef.perso@sotra.ci   /  Admin1234!  (hr_officer)')
-    console.log('  manager@sotra.ci      /  Admin1234!  (manager — équipe Exploitation)')
-    console.log('  employe@sotra.ci      /  Admin1234!  (employee)')
-    console.log('  mfa@sotra.ci          /  Admin1234!  (hr_officer — MFA activé, secret TOTP: JBSWY3DPEHPK3PXP)')
+    console.log(`  admin@sotra.ci        /  ${SEED_DEMO_PASSWORD}  (admin)`)
+    console.log(`  rh@sotra.ci           /  ${SEED_DEMO_PASSWORD}  (hr_manager)`)
+    console.log(`  chef.perso@sotra.ci   /  ${SEED_DEMO_PASSWORD}  (hr_officer)`)
+    console.log(`  manager@sotra.ci      /  ${SEED_DEMO_PASSWORD}  (manager — équipe Exploitation)`)
+    console.log(`  employe@sotra.ci      /  ${SEED_DEMO_PASSWORD}  (employee)`)
+    console.log(`  mfa@sotra.ci          /  ${SEED_DEMO_PASSWORD}  (hr_officer — MFA activé, secret TOTP : voir .credentials-local.md / SEED_MFA_TOTP_SECRET)`)
     console.log()
     console.log('  [Cabinet Expertise CI]')
-    console.log('  admin@cabinet-expertise.ci   /  Admin1234!  (admin)')
-    console.log('  employe2@cabinet-expertise.ci /  Admin1234!  (employee)')
+    console.log(`  admin@cabinet-expertise.ci   /  ${SEED_DEMO_PASSWORD}  (admin)`)
+    console.log(`  employe2@cabinet-expertise.ci /  ${SEED_DEMO_PASSWORD}  (employee)`)
     console.log()
     console.log('  [OpenLab Consulting]')
-    console.log('  coulwao@gmail.com     /  Openlab1234!  (admin)')
+    console.log(`  coulwao@gmail.com     /  ${SEED_OPENLAB_PASSWORD}  (admin)`)
     console.log()
     console.log('  [Cabinet Talents CI — cabinet de recrutement]')
-    console.log('  owner@cabinet-talents.ci     /  Admin1234!  (agency_owner)')
-    console.log('  recruteur@cabinet-talents.ci /  Admin1234!  (agency_member)')
+    console.log(`  owner@cabinet-talents.ci     /  ${SEED_DEMO_PASSWORD}  (agency_owner)`)
+    console.log(`  recruteur@cabinet-talents.ci /  ${SEED_DEMO_PASSWORD}  (agency_member)`)
     console.log('  → gère SOTRA + Cabinet Expertise CI')
     console.log()
     console.log('  [WOYAA SARL — conseil stratégique]')
-    console.log('  admin@woyaa.ci        /  Woyaa1234!  (admin)')
-    console.log('  sec.self@woyaa.ci     /  Woyaa1234!  (employee — secrétaire, maternité)')
+    console.log('  admin@woyaa.ci        /  (voir .credentials-local.md)  (admin)')
+    console.log('  sec.self@woyaa.ci     /  (voir .credentials-local.md)  (employee — secrétaire, maternité)')
     console.log()
   }
   console.log(`  SOTRA       : ${sotraEmployees.length} employés, ${sotraPeriods.length} mois de bulletins`)

@@ -147,22 +147,44 @@ describe('seed.ts — câblage de la préservation', () => {
   })
 
   // OWASP A09 — le seed tourne à chaque déploiement prod via `kubectl exec`
-  // (pipeline CI/CD) : sans garde, tous les identifiants de démo + le secret
-  // TOTP statique (JBSWY3DPEHPK3PXP) sont streamés dans les logs GitHub Actions.
-  it('n\'imprime les identifiants de démo + le secret TOTP QUE hors production', () => {
-    const credsIdx = seedSrc.indexOf("console.log('Comptes de connexion:')")
-    // Occurrence du secret TOTP DANS le résumé imprimé (pas sa 1ʳᵉ définition/
-    // usage plus haut dans le fichier pour créer le compte mfa@sotra.ci).
-    const totpIdx  = seedSrc.indexOf('JBSWY3DPEHPK3PXP', credsIdx)
+  // (pipeline CI/CD) : sans garde, tous les identifiants de démo seraient streamés
+  // dans les logs GitHub Actions.
+  it('n\'imprime le résumé des identifiants de démo QUE hors production', () => {
+    const credsIdx = seedSrc.indexOf("console.log('Comptes de connexion")
     const guardIdx = seedSrc.lastIndexOf("process.env['NODE_ENV'] !== 'production'", credsIdx)
     expect(credsIdx).toBeGreaterThan(-1)
-    expect(totpIdx).toBeGreaterThan(-1)
     expect(guardIdx).toBeGreaterThan(-1)
-    // La garde doit englober la ligne 'Comptes de connexion:' ET le secret TOTP.
+    // La garde englobe le bloc d'identifiants et se referme après.
     expect(guardIdx).toBeLessThan(credsIdx)
-    expect(totpIdx).toBeGreaterThan(credsIdx)
-    // La garde doit se refermer APRÈS le secret TOTP (accolade fermante du if).
-    const closingBraceIdx = seedSrc.indexOf('\n  }', totpIdx)
-    expect(closingBraceIdx).toBeGreaterThan(totpIdx)
+    const closingBraceIdx = seedSrc.indexOf('\n  }', credsIdx)
+    expect(closingBraceIdx).toBeGreaterThan(credsIdx)
+  })
+
+  // Sécurité — le secret TOTP statique ne doit JAMAIS être imprimé (aucun
+  // console.log ne contient le littéral). Il ne subsiste que comme valeur par
+  // défaut de SEED_MFA_TOTP_SECRET (surchargeable), consignée hors dépôt dans
+  // nexusrh_ci/.credentials-local.md.
+  it('n\'imprime jamais le secret TOTP en clair dans les logs', () => {
+    // Le littéral n'apparaît qu'une seule fois : le défaut de SEED_MFA_TOTP_SECRET.
+    const occurrences = seedSrc.split('JBSWY3DPEHPK3PXP').length - 1
+    expect(occurrences).toBe(1)
+    expect(seedSrc).toContain("SEED_MFA_TOTP_SECRET']")
+    // Aucun console.log ne doit contenir le secret.
+    for (const line of seedSrc.split('\n')) {
+      if (line.includes('console.log') || line.includes('console.warn')) {
+        expect(line).not.toContain('JBSWY3DPEHPK3PXP')
+      }
+    }
+  })
+
+  // Sécurité — les mots de passe de démo sont paramétrables par variables SEED_*
+  // (défauts fonctionnels) et non figés en dur à chaque usage.
+  it('lit les mots de passe de démo depuis les variables SEED_*', () => {
+    expect(seedSrc).toContain("SEED_SUPERADMIN_PASSWORD']")
+    expect(seedSrc).toContain("SEED_DEMO_PASSWORD']")
+    expect(seedSrc).toContain("SEED_OPENLAB_PASSWORD']")
+    expect(seedSrc).toContain('bcrypt.hash(SEED_DEMO_PASSWORD')
+    expect(seedSrc).toContain('bcrypt.hash(SEED_SUPERADMIN_PASSWORD')
+    expect(seedSrc).toContain('bcrypt.hash(SEED_OPENLAB_PASSWORD')
   })
 })

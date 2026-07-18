@@ -210,24 +210,28 @@ pnpm run dev
 
 ## COMPTES DE CONNEXION
 
-**Plateforme** — `superadmin@nexusrh-ci.com` / `SuperAdmin1234!` → `/platform/dashboard`
-> ⚠️ Seedé `ON CONFLICT DO NOTHING` : en PROD le mot de passe a été changé et survit aux re-seeds. `SuperAdmin1234!` ne marche que sur base neuve.
+> **Identifiants de démo (mots de passe + secret TOTP) → `nexusrh_ci/.credentials-local.md`** (fichier LOCAL, non versionné).
+> Les valeurs sont pilotées par les variables d'env `SEED_SUPERADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` / `SEED_OPENLAB_PASSWORD` / `SEED_MFA_TOTP_SECRET` (défauts fonctionnels dans `apps/api/src/db/seed.ts`). Aucun mot de passe n'est plus écrit en clair dans le dépôt.
+
+**Plateforme** — `superadmin@nexusrh-ci.com` → `/platform/dashboard`
+> ⚠️ Seedé `ON CONFLICT DO NOTHING` : en PROD le mot de passe a été changé et survit aux re-seeds. Le défaut ne marche que sur base neuve.
 
 **SOTRA** (thème orange `#E85D04` · domaine **`@sotra.ci`**, pas `sotra-ci.com`) :
-| Email | Mot de passe | Rôle | Redirige |
-|---|---|---|---|
-| `admin@sotra.ci` | `Admin1234!` | admin | `/dashboard` |
-| `rh@sotra.ci` | `Admin1234!` | hr_manager | `/dashboard` |
-| `chef.perso@sotra.ci` | `Admin1234!` | hr_officer | `/dashboard` |
-| `manager@sotra.ci` | `Admin1234!` | manager | `/dashboard` |
-| `employe@sotra.ci` | `Admin1234!` | employee | `/mon-espace` |
-| `dg@sotra.ci` | `Admin1234!` | dg | `/dashboard` |
+| Email | Rôle | Redirige |
+|---|---|---|
+| `admin@sotra.ci` | admin | `/dashboard` |
+| `rh@sotra.ci` | hr_manager | `/dashboard` |
+| `chef.perso@sotra.ci` | hr_officer | `/dashboard` |
+| `manager@sotra.ci` | manager | `/dashboard` |
+| `employe@sotra.ci` | employee | `/mon-espace` |
+| `dg@sotra.ci` | dg | `/dashboard` |
+| `mfa@sotra.ci` | hr_officer (MFA activé) | `/dashboard` |
 
 **Cabinet Expertise CI** (thème bleu `#1D4ED8`) :
-| Email | Mot de passe | Rôle |
-|---|---|---|
-| `admin@cabinet-expertise.ci` | `Admin1234!` | admin |
-| `employe2@cabinet-expertise.ci` | `Admin1234!` | employee |
+| Email | Rôle |
+|---|---|
+| `admin@cabinet-expertise.ci` | admin |
+| `employe2@cabinet-expertise.ci` | employee |
 
 ---
 
