@@ -204,3 +204,45 @@ export function parseAttendancePollPayload(data: unknown): AttendancePollPayload
     deviceId:   assertUuid('attendance-poll', 'deviceId', o['deviceId']),
   }
 }
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const MAX_EVALUATE_RANGE_DAYS = 366
+
+function assertIsoDate(queue: string, field: string, v: unknown): string {
+  const s = assertString(queue, field, v, 10)
+  if (!DATE_RE.test(s)) throw new JobValidationError(queue, field, 'Format attendu YYYY-MM-DD')
+  if (Number.isNaN(Date.parse(`${s}T00:00:00Z`))) throw new JobValidationError(queue, field, 'date invalide')
+  return s
+}
+
+export interface AttendanceEvaluatePayload {
+  schemaName:  string
+  employeeId?: string
+  dateFrom:    string
+  dateTo:      string
+}
+
+/**
+ * Payload du job `attendance-evaluate` (calcul des jours + escalade
+ * disciplinaire, Task 17). Miroir du producteur `attendance-poll.ts`
+ * (`AttendanceEvaluatePayload`) et de la route manuelle `POST
+ * /attendance/recompute` (même borne de 366 jours max — évite qu'un job
+ * malveillant/malformé fasse tourner une boucle de calcul non bornée sur
+ * plusieurs années). `schemaName`/`employeeId`/dates validés AVANT toute
+ * requête DB (OWASP A03/A01) — un job Redis est une entrée non fiable.
+ */
+export function parseAttendanceEvaluatePayload(data: unknown): AttendanceEvaluatePayload {
+  const o = assertObject('attendance-evaluate', 'data', data)
+  const schemaName = assertSchemaName('attendance-evaluate', 'schemaName', o['schemaName'])
+  const employeeId = assertOptionalUuid('attendance-evaluate', 'employeeId', o['employeeId'])
+  const dateFrom = assertIsoDate('attendance-evaluate', 'dateFrom', o['dateFrom'])
+  const dateTo = assertIsoDate('attendance-evaluate', 'dateTo', o['dateTo'])
+  if (dateFrom > dateTo) {
+    throw new JobValidationError('attendance-evaluate', 'dateFrom', 'doit être antérieure ou égale à dateTo')
+  }
+  const spanDays = Math.round((Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) / 86_400_000) + 1
+  if (spanDays > MAX_EVALUATE_RANGE_DAYS) {
+    throw new JobValidationError('attendance-evaluate', 'dateTo', `plage trop large (maximum ${MAX_EVALUATE_RANGE_DAYS} jours)`)
+  }
+  return { schemaName, employeeId, dateFrom, dateTo }
+}
