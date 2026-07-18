@@ -7,7 +7,7 @@ import {
   Smartphone, LogOut, ChevronRight, ChevronDown, Briefcase, BookOpen,
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
-  Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet,
+  Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet, Clock,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
@@ -73,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
   ] },
   { key: 'timeExpenses', items: [
     { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true, moduleKey: 'absences' },
+    { to: '/attendance',    labelKey: 'attendance', icon: Clock,      end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'attendance' },
     { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'expenses' },
   ] },
   { key: 'talent', items: [

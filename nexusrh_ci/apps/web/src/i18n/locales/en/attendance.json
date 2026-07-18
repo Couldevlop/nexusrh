@@ -1,0 +1,273 @@
+{
+  "title": "Time Clock / Attendance",
+  "subtitle": "Punches, lateness, absences and attendance warnings.",
+  "tabs": {
+    "dashboard": "Dashboard",
+    "punches": "Punches",
+    "days": "Lateness & absences",
+    "warnings": "Warnings",
+    "config": "Configuration"
+  },
+  "dashboard": {
+    "loading": "Loading…",
+    "loadError": "Unable to load KPIs.",
+    "lateDays": "Late days",
+    "absentDays": "Absent days",
+    "activeWarnings": "Active warnings",
+    "pendingExplanations": "Pending explanation requests",
+    "sanctionDrafts": "Sanction drafts"
+  },
+  "directions": {
+    "in": "Clock in",
+    "out": "Clock out",
+    "unknown": "Unknown"
+  },
+  "punches": {
+    "new": "Add a punch",
+    "empty": "No punches recorded.",
+    "loading": "Loading…",
+    "loadError": "Unable to load punches.",
+    "columns": {
+      "employee": "Employee",
+      "direction": "Direction",
+      "punchedAt": "Timestamp",
+      "source": "Source"
+    },
+    "form": {
+      "title": "Manual correction",
+      "employee": "Employee",
+      "employeePlaceholder": "— Select —",
+      "direction": "Direction",
+      "punchedAt": "Date and time",
+      "reason": "Reason (optional)",
+      "reasonPlaceholder": "Reason for the correction",
+      "submit": "Save",
+      "submitting": "Saving…",
+      "cancel": "Cancel",
+      "error": "Failed to save the punch."
+    }
+  },
+  "days": {
+    "empty": "No computed day for this period.",
+    "loading": "Loading…",
+    "loadError": "Unable to load days.",
+    "columns": {
+      "employee": "Employee",
+      "date": "Date",
+      "status": "Status",
+      "lateMinutes": "Late (min)",
+      "firstIn": "First in",
+      "lastOut": "Last out"
+    }
+  },
+  "statuses": {
+    "present": "Present",
+    "late": "Late",
+    "absent_unjustified": "Unjustified absence",
+    "absent_justified": "Justified absence",
+    "off": "Off"
+  },
+  "warnings": {
+    "empty": "No warnings recorded.",
+    "loading": "Loading…",
+    "loadError": "Unable to load warnings.",
+    "sanctionDraftsBanner": "{{count}} sanction draft(s) pending after automatic escalation.",
+    "columns": {
+      "employee": "Employee",
+      "tier": "Type",
+      "reason": "Reason",
+      "dates": "Occurrences",
+      "status": "Status",
+      "response": "Employee response",
+      "actions": "Actions"
+    },
+    "tiers": {
+      "avertissement": "Warning",
+      "demande_explication": "Explanation request"
+    },
+    "statuses": {
+      "active": "Active",
+      "explained": "Explained",
+      "contested": "Contested",
+      "closed": "Closed"
+    },
+    "actions": {
+      "explain": "Mark explained",
+      "contest": "Mark contested",
+      "close": "Close"
+    },
+    "error": "Failed to update the warning."
+  },
+  "config": {
+    "saved": "Configuration saved",
+    "saveError": "Failed to save the configuration",
+    "save": "Save",
+    "saving": "Saving…",
+    "loading": "Loading…",
+    "loadError": "Unable to load the configuration.",
+    "escalade": {
+      "title": "Escalation engine",
+      "lateMinutesTier1": "Late threshold — tier 1 (minutes)",
+      "occurrencesTier1": "Occurrences before warning — tier 1",
+      "lateMinutesTier2": "Late threshold — tier 2 (minutes)",
+      "occurrencesTier2": "Occurrences before warning — tier 2",
+      "unjustifiedAbsenceOccurrences": "Unjustified absence occurrences before warning",
+      "warningsBeforeSanction": "Warnings before sanction draft",
+      "defaultExpectedStart": "Expected start time (tenant default)",
+      "defaultToleranceMin": "Default tolerance (minutes)",
+      "defaultWorkdays": "Default workdays"
+    },
+    "devices": {
+      "title": "Devices",
+      "new": "Add a device",
+      "empty": "No device configured.",
+      "loading": "Loading…",
+      "loadError": "Unable to load devices.",
+      "columns": {
+        "name": "Name",
+        "baseUrl": "URL",
+        "authType": "Authentication",
+        "pollInterval": "Interval (min)",
+        "secret": "Secret",
+        "lastSync": "Last sync",
+        "active": "Active",
+        "actions": "Actions"
+      },
+      "secretConfigured": "Secret configured",
+      "secretNotSet": "No secret",
+      "neverSynced": "Never synced",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Permanently delete this device?",
+      "test": "Test",
+      "testing": "Testing…",
+      "testError": "Connection test failed.",
+      "testResultOk": "Connection OK — {{count}} punch(es) detected.",
+      "testResultFail": "Failed to connect to the device.",
+      "sync": "Sync",
+      "syncing": "Queuing…",
+      "syncQueued": "Synchronization queued.",
+      "syncError": "Failed to queue the synchronization.",
+      "form": {
+        "title": "Device",
+        "name": "Name",
+        "baseUrl": "Base URL",
+        "authType": "Authentication type",
+        "authSecret": "Secret / password",
+        "authSecretPlaceholderSet": "Secret configured — leave blank to keep",
+        "authHeaderName": "Header name (if API key)",
+        "pollInterval": "Sync interval (min)",
+        "active": "Active",
+        "fieldMapping": "Field mapping (JSON)",
+        "fieldMappingHint": "Extraction paths for punches in the device response.",
+        "mappingInvalid": "Invalid field mapping JSON.",
+        "submit": "Save",
+        "submitting": "Saving…",
+        "cancel": "Cancel",
+        "error": "Failed to save the device."
+      },
+      "authTypes": {
+        "none": "None",
+        "bearer": "Bearer token",
+        "basic": "Basic",
+        "api_key": "API key"
+      }
+    },
+    "schedules": {
+      "title": "Reference schedules",
+      "new": "Add a schedule",
+      "empty": "No schedule configured.",
+      "loading": "Loading…",
+      "loadError": "Unable to load schedules.",
+      "columns": {
+        "scope": "Scope",
+        "scopeId": "Target",
+        "expectedStart": "Expected start",
+        "expectedEnd": "Expected end",
+        "tolerance": "Tolerance (min)",
+        "workdays": "Workdays",
+        "active": "Active",
+        "actions": "Actions"
+      },
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Permanently delete this schedule?",
+      "form": {
+        "title": "Reference schedule",
+        "scope": "Scope",
+        "scopeId": "Target id (UUID)",
+        "scopeIdPlaceholder": "Department or employee UUID",
+        "expectedStart": "Expected start time",
+        "expectedEnd": "Expected end time (optional)",
+        "tolerance": "Tolerance (minutes)",
+        "workdays": "Workdays",
+        "active": "Active",
+        "submit": "Save",
+        "submitting": "Saving…",
+        "cancel": "Cancel",
+        "error": "Failed to save the schedule."
+      },
+      "scopes": {
+        "tenant": "Tenant (default)",
+        "department": "Department",
+        "employee": "Employee"
+      }
+    }
+  },
+  "weekdays": {
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday",
+    "7": "Sunday"
+  },
+  "me": {
+    "title": "My punches",
+    "subtitle": "Your punches and computed attendance days.",
+    "loading": "Loading…",
+    "loadError": "Unable to load your attendance data.",
+    "days": {
+      "title": "My days",
+      "empty": "No computed day for this period."
+    },
+    "punches": {
+      "title": "My recent punches",
+      "empty": "No punches recorded for this period."
+    },
+    "columns": {
+      "date": "Date",
+      "status": "Status",
+      "lateMinutes": "Late (min)",
+      "firstIn": "First in",
+      "lastOut": "Last out",
+      "direction": "Direction",
+      "punchedAt": "Timestamp"
+    },
+    "warnings": {
+      "title": "My warnings",
+      "subtitle": "Warnings related to your attendance — respond to an explanation request.",
+      "empty": "No warnings.",
+      "loading": "Loading…",
+      "loadError": "Unable to load your warnings.",
+      "columns": {
+        "tier": "Type",
+        "reason": "Reason",
+        "dates": "Occurrences",
+        "status": "Status",
+        "response": "My response",
+        "actions": "Actions"
+      },
+      "respond": "Respond",
+      "respondTitle": "Respond to this warning",
+      "responsePlaceholder": "Your explanation…",
+      "respondSubmit": "Send",
+      "respondSubmitting": "Sending…",
+      "respondCancel": "Cancel",
+      "respondSuccess": "Your response has been sent.",
+      "respondError": "Failed to send your response.",
+      "alreadyResponded": "Response already sent"
+    }
+  }
+}
