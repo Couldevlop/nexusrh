@@ -2,17 +2,24 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { authenticator } from 'otplib'
+import { encrypt, decrypt } from '../../utils/crypto.js'
+
+// ENCRYPTION_KEY (64 hex) AVANT les imports — crypto.ts la lit au chargement du
+// module (A02 — chiffrement du secret TOTP mfa_secret au repos).
+vi.hoisted(() => { process.env['ENCRYPTION_KEY'] = 'a'.repeat(64) })
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
 
+const { setTokenEpochMock } = vi.hoisted(() => ({ setTokenEpochMock: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:      vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
   consumeTotpStep:     vi.fn().mockResolvedValue(true), // anti-rejeu TOTP : step neuf
+  setTokenEpoch:       setTokenEpochMock,
 }))
 
 vi.mock('../../utils/schema-migrations.js', () => ({
@@ -60,7 +67,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await app.close() })
 
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => { queryMock.mockReset(); setTokenEpochMock.mockClear() })
 
 describe('POST /auth/mfa/setup — génère secret + QR + backup codes (OWASP A02)', () => {
   it('refuse sans authentification (401)', async () => {
@@ -149,6 +156,93 @@ describe('POST /auth/mfa/verify — active MFA après scan du QR (OWASP A03)', (
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('mfa.enabled')
+  })
+})
+
+describe('MFA — secret TOTP chiffré au repos (OWASP A02)', () => {
+  it('mfa/setup stocke le secret TOTP CHIFFRÉ en base (pas le base32 brut)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ email: 'a@b.ci', mfa_enabled: false, mfa_secret: null }] }) // SELECT user
+      .mockResolvedValueOnce({ rows: [] })   // UPDATE mfa_secret
+      .mockResolvedValueOnce({ rows: [] })   // DELETE backup codes
+      // 10 INSERT backup codes
+      .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })   // audit_log
+
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/setup',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+
+    const updateCall = queryMock.mock.calls.find((c) => String(c[0]).includes('SET mfa_secret'))
+    expect(updateCall).toBeDefined()
+    const stored = updateCall?.[1]?.[0] as string
+    expect(stored).not.toBe(body.secret)                              // jamais le base32 brut en base
+    expect(stored).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/)          // format iv:tag:enc (AES-256-GCM)
+    expect(decrypt(stored)).toBe(body.secret)                          // round-trip déchiffrable
+  }, 60_000)
+
+  it('mfa/verify avec secret chiffré en base → round-trip OK, active MFA', async () => {
+    const secret = authenticator.generateSecret()
+    const validCode = authenticator.generate(secret)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ email: 'a@b.ci', mfa_enabled: false, mfa_secret: encrypt(secret) }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE mfa_enabled
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/verify',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: validCode },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('mfa/login-verify avec secret chiffré en base → succès (round-trip sur le 2e call site)', async () => {
+    const secret = authenticator.generateSecret()
+    const validCode = authenticator.generate(secret)
+    const challenge = app.jwt.sign(
+      { sub: UUID_A, schemaName: TENANT, tenantId: 't1', aud: 'mfa-challenge', userId: UUID_A } as never,
+      { expiresIn: '3m' },
+    )
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ email: 'a@b.ci', mfa_enabled: true, mfa_secret: encrypt(secret) }] }) // findUserScope
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, email: 'a@b.ci', role: 'admin', first_name: 'A', last_name: 'B' }] }) // loadUserForToken user
+      .mockResolvedValueOnce({ rows: [{ id: 't1', name: 'Sotra', slug: 'sotra', primary_color: '#000', secondary_color: '#111',
+        logo_url: null, city: 'Abidjan', has_subsidiaries: false, payroll_mode: 'monthly', default_country_code: 'CI' }] }) // tenantR
+      .mockResolvedValueOnce({ rows: [] }) // empR
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/login-verify',
+      payload: { challenge, code: validCode },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).token).toBeDefined()
+  })
+
+  it('secret MFA legacy en clair (pré-migration, ENCRYPTION_KEY appliquée après coup) reste vérifiable — compat descendante', async () => {
+    // Le secret n'est PAS passé par encrypt() ici : simule une ligne mfa_secret
+    // écrite avant ce correctif (toujours en base32 brut).
+    const legacySecret = authenticator.generateSecret()
+    const validCode = authenticator.generate(legacySecret)
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ email: 'a@b.ci', mfa_enabled: false, mfa_secret: legacySecret }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE mfa_enabled
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/verify',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: validCode },
+    })
+    expect(res.statusCode).toBe(200)
   })
 })
 
