@@ -329,7 +329,7 @@ describe('POST /auth/reset-password — token unique-use (OWASP A02)', () => {
     expect(res.statusCode).toBe(410)
   })
 
-  it('token valide → UPDATE password + UPDATE used_at + audit', async () => {
+  it('token valide → UPDATE password + UPDATE used_at + révoque refresh tokens + audit', async () => {
     queryMock
       .mockResolvedValueOnce({
         rows: [{ id: UUID_A, user_id: UUID_A,
@@ -338,6 +338,7 @@ describe('POST /auth/reset-password — token unique-use (OWASP A02)', () => {
       })
       .mockResolvedValueOnce({ rows: [] }) // UPDATE password_hash
       .mockResolvedValueOnce({ rows: [] }) // UPDATE used_at
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // audit_log
     const res = await app.inject({
       method: 'POST', url: '/auth/reset-password',
@@ -346,6 +347,11 @@ describe('POST /auth/reset-password — token unique-use (OWASP A02)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('activity_log'))
     expect(auditCall?.[1]?.[1]).toBe('password.reset_completed')
+    // OWASP A01/A02 — invalide toute session existante (token-epoch) : un JWT
+    // volé avant la réinitialisation ne doit plus être utilisable.
+    expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_A)
+    const revokeCall = queryMock.mock.calls.find((c) => String(c[0]).includes('refresh_tokens'))
+    expect(revokeCall).toBeDefined()
   })
 })
 

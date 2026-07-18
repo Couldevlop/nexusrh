@@ -38,6 +38,8 @@ import {
   isTokenBlacklisted,
   blacklistTokenSafe,
   redisLockoutStore,
+  setTokenEpoch,
+  getTokenEpoch,
 } from './redis.js'
 
 describe('services/redis — blacklist JWT', () => {
@@ -76,6 +78,46 @@ describe('services/redis — blacklist JWT', () => {
   it('blacklistTokenSafe avale l\'erreur Redis sans rejeter', async () => {
     mockSet.mockRejectedValueOnce(new Error('Redis down'))
     await expect(blacklistTokenSafe('jti-safe-err', 60)).resolves.toBeUndefined()
+  })
+})
+
+describe('services/redis — époque d\'invalidation de session par utilisateur (OWASP A01/A02)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z')) // epoch-seconds = 1767225600
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('setTokenEpoch pose la clé token_epoch:<userId> = epoch-seconds courant avec un TTL ≥ durée de vie max token', async () => {
+    mockSet.mockResolvedValueOnce('OK')
+    await setTokenEpoch('user-1')
+    expect(mockSet).toHaveBeenCalledWith('token_epoch:user-1', '1767225600', 'EX', expect.any(Number))
+    const ttl = mockSet.mock.calls[0]?.[3] as number
+    expect(ttl).toBeGreaterThanOrEqual(8 * 24 * 60 * 60) // ≥ 8 jours
+  })
+
+  it('setTokenEpoch fail-open : n\'échoue pas si Redis lève une erreur', async () => {
+    mockSet.mockRejectedValueOnce(new Error('Redis down'))
+    await expect(setTokenEpoch('user-1')).resolves.toBeUndefined()
+  })
+
+  it('getTokenEpoch renvoie l\'epoch-seconds stocké (nombre)', async () => {
+    mockGet.mockResolvedValueOnce('1767225600')
+    await expect(getTokenEpoch('user-1')).resolves.toBe(1767225600)
+    expect(mockGet).toHaveBeenCalledWith('token_epoch:user-1')
+  })
+
+  it('getTokenEpoch renvoie 0 quand aucune époque n\'est enregistrée (utilisateur jamais invalidé)', async () => {
+    mockGet.mockResolvedValueOnce(null)
+    await expect(getTokenEpoch('user-1')).resolves.toBe(0)
+  })
+
+  it('getTokenEpoch fail-open : renvoie 0 si Redis lève une erreur (aucun token rejeté)', async () => {
+    mockGet.mockRejectedValueOnce(new Error('Redis down'))
+    await expect(getTokenEpoch('user-1')).resolves.toBe(0)
   })
 })
 

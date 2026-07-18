@@ -3,7 +3,7 @@ import fastifyJwt from '@fastify/jwt'
 import fastifyCookie from '@fastify/cookie'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { config } from '../config.js'
-import { isTokenBlacklisted } from '../services/redis.js'
+import { isTokenBlacklisted, getTokenEpoch } from '../services/redis.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
 // Nom du cookie qui transporte le JWT en httpOnly (mode SPA browser).
@@ -132,6 +132,22 @@ export default fp(async (fastify) => {
     const jti = (request.user as unknown as { jti?: string }).jti ?? request.user.sub
     if (await isTokenBlacklisted(jti)) {
       reply.status(401).send({ error: 'Token révoqué' })
+      return
+    }
+    // OWASP A01/A02 — époque d'invalidation de session par utilisateur : un
+    // changement de rôle/désactivation/mot de passe pose une nouvelle époque
+    // (services/redis.ts, setTokenEpoch). Tout token émis AVANT (iat < epoch)
+    // est rejeté ; un token émis après (nouveau login/refresh) reste valide.
+    // Try/catch en plus du fail-open interne à getTokenEpoch : robuste même si
+    // le module redis est partiellement mocké (tests) ou indisponible.
+    try {
+      const epoch = await getTokenEpoch(request.user.sub)
+      if (epoch > 0 && request.user.iat < epoch) {
+        reply.status(401).send({ error: 'Session invalidée — reconnectez-vous' })
+        return
+      }
+    } catch {
+      // Redis indisponible / fonction non mockée → fail-open (pas de rejet)
     }
   }
 

@@ -47,6 +47,38 @@ export async function consumeTotpStep(
   }
 }
 
+// ── Époque d'invalidation de session par utilisateur (OWASP A01/A02) ─────────
+// Un changement de privilège (rôle, désactivation) ou de mot de passe doit
+// invalider IMMÉDIATEMENT tout JWT déjà émis pour cet utilisateur — sans
+// bloquer le nouveau token qui vient d'être émis pour le remplacer (ce que
+// ferait blacklistTokenSafe, qui blackliste par `sub` : impossible ici, aucun
+// jti n'est jamais miné). On mémorise à la place une « époque » (epoch-seconds)
+// par utilisateur : tout token dont le `iat` est ANTÉRIEUR à cette époque est
+// rejeté au choke point verifyAndCheckBlacklist (plugins/auth.ts) ; un token
+// émis APRÈS (nouveau login/refresh) a un iat >= epoch et reste valide.
+// TTL généreux (8 jours, > durée de vie JWT 7 jours) pour couvrir tout token
+// déjà en circulation au moment de l'événement. Fail-open sur erreur Redis
+// (cohérent avec la posture du reste du module).
+const TOKEN_EPOCH_PREFIX = 'token_epoch:'
+const TOKEN_EPOCH_TTL_SECONDS = 8 * 24 * 60 * 60 // 8 jours
+
+export async function setTokenEpoch(userId: string): Promise<void> {
+  try {
+    await redis.set(`${TOKEN_EPOCH_PREFIX}${userId}`, String(Math.floor(Date.now() / 1000)), 'EX', TOKEN_EPOCH_TTL_SECONDS)
+  } catch {
+    // Redis indisponible → fail-open (pas d'invalidation rétroactive)
+  }
+}
+
+export async function getTokenEpoch(userId: string): Promise<number> {
+  try {
+    const val = await redis.get(`${TOKEN_EPOCH_PREFIX}${userId}`)
+    return val !== null ? Number(val) : 0
+  } catch {
+    return 0 // Redis indisponible → fail-open (aucun token rejeté)
+  }
+}
+
 // OWASP A07 — store Redis pour le verrouillage de compte (brute-force).
 // Implémente l'interface LockoutStore de account-lockout.service (logique pure).
 import type { LockoutStore } from './account-lockout.service.js'

@@ -375,6 +375,7 @@ describe('POST /auth/reset-password — tenant + 404', () => {
         expires_at: new Date(Date.now() + 600_000).toISOString(), used_at: null }] }) // token tenant
       .mockResolvedValueOnce({ rows: [] }) // UPDATE password
       .mockResolvedValueOnce({ rows: [] }) // UPDATE used_at
+      .mockResolvedValueOnce({ rows: [] }) // revokeAllRefreshTokensForUser (OWASP A07)
       .mockResolvedValueOnce({ rows: [] }) // audit_log tenant
     const res = await app.inject({
       method: 'POST', url: '/auth/reset-password',

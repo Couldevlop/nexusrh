@@ -80,6 +80,7 @@ describe('POST /auth/refresh — tokens cabinet', () => {
   })
 
   it('token contexte cabinet (platform) → claims préservés, pas de guard', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'agency_owner', is_active: true }] }) // platform.agency_users
     const ctx = app.jwt.sign({ sub: 'au1', tenantId: null, schemaName: 'platform', role: 'agency_owner',
       email: 'o@cab.ci', firstName: 'O', lastName: 'W', employeeId: null, actorType: 'agency', agencyId: AG })
     const res = await app.inject({ method: 'POST', url: '/auth/refresh',
@@ -92,6 +93,7 @@ describe('POST /auth/refresh — tokens cabinet', () => {
   })
 
   it('token tenant standard → inchangé (non-régression)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: true, password_changed_at: null }] }) // verifyAccountActive
     const t = app.jwt.sign({ sub: 'u1', tenantId: 't1', schemaName: 'tenant_x', role: 'admin',
       email: 'a@x.ci', firstName: 'A', lastName: 'D', employeeId: null })
     const res = await app.inject({ method: 'POST', url: '/auth/refresh',

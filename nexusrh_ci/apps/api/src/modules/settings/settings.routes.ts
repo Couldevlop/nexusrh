@@ -8,6 +8,7 @@ import { provisionTenantSchema } from '../../db/provisioning.js'
 import { sendEmployeeWelcomeEmail, sendTestEmail } from '../../services/email.js'
 import { loadTenantMailById } from '../../services/tenant-mail.service.js'
 import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
+import { setTokenEpoch } from '../../services/redis.js'
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
@@ -1100,6 +1101,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           },
           request.ip ?? null,
         )
+        // OWASP A01 — un changement de rôle ou une désactivation doit invalider
+        // IMMÉDIATEMENT toute session existante de la cible : sinon un compte
+        // démis/désactivé garde son accès (rôle périmé) jusqu'à expiration du
+        // JWT (7j) via /auth/refresh. cf. plugins/auth.ts (token-epoch).
+        const becameInactive = is_active === false
+        if (roleChanged || becameInactive) {
+          try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
+        }
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -1706,6 +1715,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (id === request.user.sub) return reply.status(400).send({ error: 'Impossible de supprimer votre propre compte' })
       try {
         await pool.query(`DELETE FROM "${schema}".users WHERE id = $1`, [id])
+        // OWASP A01 — un compte supprimé garderait sinon un accès valide via
+        // son JWT (jusqu'à 7j) et pourrait même le renouveler via /auth/refresh
+        // tant que le token n'a pas expiré. cf. plugins/auth.ts (token-epoch).
+        try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)

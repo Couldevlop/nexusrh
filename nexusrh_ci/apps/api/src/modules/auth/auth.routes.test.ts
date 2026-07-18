@@ -7,11 +7,14 @@ vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
 
+const { setTokenEpochMock } = vi.hoisted(() => ({ setTokenEpochMock: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:      vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
   redisLockoutStore:   {},  // store de verrouillage (fail-open : {}.get indéfini → non bloquant)
+  setTokenEpoch:       setTokenEpochMock,
+  getTokenEpoch:       vi.fn().mockResolvedValue(0),
 }))
 
 // auth-mfa.routes.ts (importé indirectement via buildMfaChallenge) tire
@@ -52,7 +55,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await app.close() })
 
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => { queryMock.mockReset(); setTokenEpochMock.mockClear() })
 
 describe('POST /auth/login — Zod stricte (OWASP A03)', () => {
   it('refuse body sans email (400)', async () => {
@@ -229,6 +232,9 @@ describe('POST /auth/change-password — Zod + audit (OWASP A03 + A09)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('auth.password.changed')
+    // OWASP A01/A02 — invalide toute session existante (token-epoch) : un JWT
+    // volé avant le changement ne doit plus être utilisable.
+    expect(setTokenEpochMock).toHaveBeenCalledWith('u1')
   })
 
   it('refuse un schemaName non-conforme à l\'authentification (401, defense in depth A03)', async () => {

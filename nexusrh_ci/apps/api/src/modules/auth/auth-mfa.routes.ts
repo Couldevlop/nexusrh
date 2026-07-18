@@ -509,6 +509,15 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         [newHash, match.userId])
       await pool.query(`UPDATE ${match.table} SET used_at = now() WHERE id = $1`, [match.tokenId])
 
+      // OWASP A07 — révoque TOUS les refresh tokens existants (mirroring
+      // change-password) : un token volé avant la réinitialisation ne doit
+      // plus pouvoir régénérer de JWT.
+      await revokeAllRefreshTokensForUser(pool, match.schemaName, match.userId)
+      // OWASP A01/A02 — pose une nouvelle époque d'invalidation de session :
+      // tout access token déjà émis pour ce compte devient caduc au prochain
+      // appel authentifié (cf. plugins/auth.ts).
+      try { await setTokenEpoch(match.userId) } catch { /* fail-open : Redis indisponible */ }
+
       auditMfa(match.schemaName, match.userId, 'password.reset_completed', {}, request.ip ?? null)
       return reply.send({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' })
     },

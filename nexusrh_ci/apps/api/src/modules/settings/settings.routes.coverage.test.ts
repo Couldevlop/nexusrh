@@ -9,9 +9,11 @@ vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
 
+const { setTokenEpochMock } = vi.hoisted(() => ({ setTokenEpochMock: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
+  setTokenEpoch:      setTokenEpochMock,
 }))
 
 // PIÈGE PROJET : toujours mocker schema-migrations / provisioning, sinon ~200
@@ -102,6 +104,7 @@ beforeEach(() => {
   queryMock.mockReset()
   // Défaut absorbant pour les requêtes best-effort non explicitement mockées.
   queryMock.mockResolvedValue({ rows: [] })
+  setTokenEpochMock.mockClear()
   sendEmployeeWelcomeEmailMock.mockReset().mockResolvedValue({ sent: true })
   isEncryptionAvailableMock.mockReturnValue(true)
   loadAiModelsMock.mockReset().mockResolvedValue([
@@ -405,7 +408,7 @@ describe('PATCH /settings/users/:id', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('change le rôle → audit user.role_changed (200)', async () => {
+  it('change le rôle → audit user.role_changed (200) + invalide les sessions existantes (token-epoch A01)', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: true }] })       // before
       .mockResolvedValueOnce({ rows: [{ id: UUID_A, email: 'x@y.ci', role: 'manager', is_active: true }] }) // UPDATE
@@ -417,9 +420,10 @@ describe('PATCH /settings/users/:id', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('user.role_changed')
+    expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_A)
   })
 
-  it('change is_active seul (même rôle) → audit user.updated (200)', async () => {
+  it('change is_active seul (même rôle) → audit user.updated (200) + invalide les sessions existantes', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: true }] })
       .mockResolvedValueOnce({ rows: [{ id: UUID_A, role: 'employee', is_active: false }] })
@@ -431,6 +435,20 @@ describe('PATCH /settings/users/:id', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('user.updated')
+    expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_A)
+  })
+
+  it('is_active=true SEUL (réactivation, pas de changement de rôle) → n\'invalide PAS les sessions', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: false }] })
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, role: 'employee', is_active: true }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+      payload: { is_active: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(setTokenEpochMock).not.toHaveBeenCalled()
   })
 
   it('404 si UPDATE ne renvoie aucune ligne', async () => {
@@ -1051,12 +1069,13 @@ describe('DELETE /settings/users/:id', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('supprime un autre compte (200)', async () => {
+  it('supprime un autre compte (200) + invalide les sessions existantes (token-epoch A01)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({
       method: 'DELETE', url: `/settings/users/${UUID_B}`, headers: auth(tokenFor(app, 'admin')),
     })
     expect(res.statusCode).toBe(200)
+    expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_B)
   })
 
   it('500 si DB échoue', async () => {
