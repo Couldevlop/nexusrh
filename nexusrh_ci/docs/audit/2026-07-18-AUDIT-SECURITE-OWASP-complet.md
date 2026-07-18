@@ -250,12 +250,15 @@ Deux points **Important** relevés lors de la revue de sécurité du module `att
 
 Chaque correctif sera livré avec **test de non-régression** et **re-vérification adversariale**. Ordre recommandé :
 
-### P0 — Immédiat (Critical, prod exposée)
-| ID | Correctif | Effort |
+### P0 — Immédiat (Critical, prod exposée) — **CODE : CORRIGÉ ✅ (commit `d86c7ea`)**
+| ID | Correctif | Statut |
 |----|-----------|--------|
-| A09-1 | Retirer le dump du seed (gate `NODE_ENV!=='production'`), **roter tous les mots de passe démo prod** + le secret TOTP `mfa@sotra.ci`, masquer tout credential CI (`::add-mask::`) | S |
-| A07-1 | Vérifier `aud` dans `verifyAndCheckBlacklist` → rejeter tout token non-session (`mfa-challenge`, `csrf`) | S |
-| A10-1 | Guard SSRF host:port sur `PUT /settings/email` + avant `sendTestEmail` ; ne plus renvoyer l'erreur SMTP brute | S/M |
+| A07-1 | Vérifier `aud` dans `verifyAndCheckBlacklist` → rejeter tout token non-session (`mfa-challenge`, `csrf`) | ✅ **Fait** — bypass MFA fermé, flux MFA légitime toujours vert |
+| A10-1 | Guard SSRF host:port (`assertSafeOutboundHost`) sur `PUT /settings/email` + re-garde à l'envoi (`email.ts`) ; message d'erreur SMTP générique | ✅ **Fait** — hôte interne → 422, plus d'oracle |
+| A09-1 (code) | Seed n'imprime plus identifiants/TOTP si `NODE_ENV==='production'` | ✅ **Fait** |
+| A09-1 (**opérationnel**) | **Roter les mots de passe démo réels en prod** + le **secret TOTP `mfa@sotra.ci`** + masquer les credentials en CI | ⚠️ **À faire par l'équipe** — voir §7 |
+
+> Vérification : suite API complète **4166/4166 verte**, `tsc` 0 erreur, flux MFA (`auth-mfa.routes.test.ts`) confirmé.
 
 ### P1 — Court terme (High)
 | ID | Correctif | Effort |
@@ -296,4 +299,17 @@ A01-6/7 (filtre manager IA, UUID_RE), A03-3 (échappement HTML emails), A10-4 (g
 
 ---
 
-_Audit conduit en lecture seule. La phase de correction fera l'objet de commits séparés avec tests de non-régression et re-vérification de chaque correctif._
+## 7. Actions opérationnelles à mener par l'équipe (A09-1)
+
+Le correctif code empêche **les futurs** dumps, mais les identifiants et le secret TOTP ont **déjà été exposés** (logs GitHub Actions historiques + `CLAUDE.md` versionné). Le code seul ne suffit pas — il faut **invalider ce qui a fuité** :
+
+1. **Roter les mots de passe des comptes démo réels en prod** (namespace `nexusrh-ci`) : `superadmin@nexusrh-ci.com`, `admin@sotra.ci`, `rh@sotra.ci`, `chef.perso@sotra.ci`, `manager@sotra.ci`, `employe@sotra.ci`, `mfa@sotra.ci`, `admin@cabinet-expertise.ci`, `coulwao@gmail.com`, comptes cabinet Talents / WOYAA. → via l'UI (changer le mot de passe) ou un script de reset admin **avec des valeurs neuves non documentées** (ne PAS réutiliser `Admin1234!`).
+2. **Réinitialiser la MFA de `mfa@sotra.ci`** : le secret `JBSWY3DPEHPK3PXP` est public → désactiver puis ré-enrôler la MFA (nouveau secret aléatoire), ou désactiver ce compte démo s'il n'est pas nécessaire en prod.
+3. **CI/CD** : confirmer que le seed n'imprime plus rien en prod (fait) ; si un credential doit un jour transiter par la CI, l'émettre via un secret GitHub + `::add-mask::`. Les **logs Actions historiques** contenant le dump ne peuvent pas être « dé-publiés » facilement → la rotation ci-dessus est ce qui les rend inoffensifs.
+4. **Repo** : retirer les mots de passe en clair de `CLAUDE.md`/docs versionnés (les remplacer par « voir coffre secrets »).
+
+> Ces actions touchent la prod et les secrets : **à exécuter par l'équipe** (je peux préparer un script de rotation à relire, mais je ne l'exécute pas sur la prod sans ton feu vert explicite).
+
+---
+
+_Audit conduit en lecture seule. Les correctifs P0 (code) sont appliqués et vérifiés (commit `d86c7ea`). Les lots P1→P3 suivront en commits séparés avec tests de non-régression et re-vérification de chaque correctif._
