@@ -52,7 +52,7 @@ import { Queue } from 'bullmq'
 import { createClient } from '../redis.js'
 import { logger } from '../logger.js'
 import { parseAttendancePollPayload, JobValidationError } from '../schemas.js'
-import { isSafeOutboundUrl } from '../utils/ssrf-guard.js'
+import { resolveSafeOutboundResult } from '../utils/ssrf-guard.js'
 import { decryptIfPresent } from '../utils/crypto.js'
 
 // OWASP A04 — cap connexions PG (chaque poll fait quelques requêtes courtes ;
@@ -229,20 +229,24 @@ function buildHeaders(device: DeviceConnectionConfig): Record<string, string> {
  * tout échec devient `{ ok: false, error }`.
  */
 async function fetchDevicePunches(device: DeviceConnectionConfig): Promise<FetchDevicePunchesResult> {
+  // Dispatcher épinglé sur l'IP validée (anti DNS-rebinding) ; fermé en `finally`.
+  let dispatcher: { close(): Promise<void> } | null = null
   try {
-    const safe = await isSafeOutboundUrl(device.baseUrl)
+    const safe = await resolveSafeOutboundResult(device.baseUrl)
     if (safe.ok !== true) {
       return { punches: [], ok: false, error: safe.reason }
     }
+    dispatcher = safe.value.dispatcher
 
     const headers = buildHeaders(device)
 
     let response: Response
     try {
-      response = await fetch(device.baseUrl, {
+      response = await fetch(safe.value.url.toString(), {
         headers,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         redirect: 'manual',
+        dispatcher: safe.value.dispatcher,
       })
     } catch (e) {
       return { punches: [], ok: false, error: `Appel badgeuse échoué : ${(e as Error).message}` }
@@ -265,6 +269,8 @@ async function fetchDevicePunches(device: DeviceConnectionConfig): Promise<Fetch
     return { punches, ok: true }
   } catch (e) {
     return { punches: [], ok: false, error: `Erreur inattendue : ${(e as Error).message}` }
+  } finally {
+    if (dispatcher) await dispatcher.close().catch(() => undefined)
   }
 }
 

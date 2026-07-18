@@ -2,7 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
-const { isSafeOutboundUrlMock } = vi.hoisted(() => ({ isSafeOutboundUrlMock: vi.fn() }))
+const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }))
+// Résolution « sûre » simulée : URL demandée + dispatcher épinglé factice
+// (dont `close()` est appelé en finally par le code sous test).
+const okResolve = async (raw: string) => ({
+  ok: true as const,
+  value: {
+    url: new URL(raw), ip: '203.0.113.10', family: 4,
+    dispatcher: { close: vi.fn().mockResolvedValue(undefined) } as never,
+  },
+})
 const { decryptIfPresentMock } = vi.hoisted(() => ({ decryptIfPresentMock: vi.fn(() => null as string | null) }))
 const { queueAddMock } = vi.hoisted(() => ({ queueAddMock: vi.fn() }))
 const { loggerMock } = vi.hoisted(() => ({
@@ -12,7 +21,7 @@ const { loggerMock } = vi.hoisted(() => ({
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
 vi.mock('../redis.js', () => ({ createClient: vi.fn(() => ({})) }))
-vi.mock('../utils/ssrf-guard.js', () => ({ isSafeOutboundUrl: isSafeOutboundUrlMock }))
+vi.mock('../utils/ssrf-guard.js', () => ({ resolveSafeOutboundResult: resolveMock }))
 vi.mock('../utils/crypto.js', () => ({ decryptIfPresent: decryptIfPresentMock }))
 vi.mock('bullmq', () => ({ Queue: vi.fn(() => ({ add: queueAddMock })) }))
 
@@ -46,8 +55,8 @@ const BASE_DEVICE_ROW = {
 
 beforeEach(() => {
   queryMock.mockReset()
-  isSafeOutboundUrlMock.mockReset()
-  isSafeOutboundUrlMock.mockResolvedValue({ ok: true })
+  resolveMock.mockReset()
+  resolveMock.mockImplementation(okResolve)
   decryptIfPresentMock.mockReset()
   decryptIfPresentMock.mockReturnValue(null)
   queueAddMock.mockReset()
@@ -126,7 +135,7 @@ describe('processAttendancePollJob — échec réseau (device injoignable)', () 
 
   it('URL bloquée par la garde SSRF → error, aucun fetch, curseur non avancé', async () => {
     queryMock.mockResolvedValueOnce({ rows: [BASE_DEVICE_ROW] })
-    isSafeOutboundUrlMock.mockResolvedValueOnce({ ok: false, reason: 'Adresse IP privée/interne interdite' })
+    resolveMock.mockResolvedValueOnce({ ok: false, reason: 'Adresse IP privée/interne interdite' })
     queryMock.mockResolvedValueOnce({ rows: [] })
 
     await expect(

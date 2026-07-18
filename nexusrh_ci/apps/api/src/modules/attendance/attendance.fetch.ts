@@ -1,4 +1,4 @@
-import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { resolveSafeOutboundResult } from '../../services/ssrf-guard.js'
 import { mapDeviceResponse } from './attendance.mapping.js'
 import type { FieldMapping, NormalizedPunch } from './attendance.types.js'
 
@@ -76,20 +76,26 @@ function filterBySyncCursor(punches: NormalizedPunch[], syncCursor: string | nul
  * d'authentification n'apparaît JAMAIS dans le message d'erreur retourné.
  */
 export async function fetchDevicePunches(device: DeviceConnectionConfig): Promise<FetchDevicePunchesResult> {
+  // Dispatcher épinglé sur l'IP validée (anti DNS-rebinding) ; fermé en `finally`
+  // pour ne pas fuiter de sockets. Typé structurellement pour éviter d'importer
+  // le type `Agent` d'undici ici.
+  let dispatcher: { close(): Promise<void> } | null = null
   try {
-    const safe = await isSafeOutboundUrl(device.baseUrl)
+    const safe = await resolveSafeOutboundResult(device.baseUrl)
     if (safe.ok !== true) {
       return { punches: [], ok: false, error: safe.reason }
     }
+    dispatcher = safe.value.dispatcher
 
     const headers = buildHeaders(device)
 
     let response: Response
     try {
-      response = await fetch(device.baseUrl, {
+      response = await fetch(safe.value.url.toString(), {
         headers,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         redirect: 'manual',
+        dispatcher: safe.value.dispatcher,
       })
     } catch (e) {
       return { punches: [], ok: false, error: `Appel badgeuse échoué : ${(e as Error).message}` }
@@ -112,5 +118,7 @@ export async function fetchDevicePunches(device: DeviceConnectionConfig): Promis
     return { punches, ok: true }
   } catch (e) {
     return { punches: [], ok: false, error: `Erreur inattendue : ${(e as Error).message}` }
+  } finally {
+    if (dispatcher) await dispatcher.close().catch(() => undefined)
   }
 }

@@ -8,11 +8,18 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { assertMock } = vi.hoisted(() => ({ assertMock: vi.fn() }))
+const { assertMock, resolveMock } = vi.hoisted(() => ({ assertMock: vi.fn(), resolveMock: vi.fn() }))
 vi.mock('./ssrf-guard.js', () => ({
   assertSafeOutboundUrl: assertMock,
+  resolveSafeOutbound: resolveMock,
   SsrfBlockedError: class SsrfBlockedError extends Error {},
 }))
+// Résolution « sûre » simulée : renvoie l'URL demandée + un dispatcher épinglé
+// factice (dont `close()` est appelé en finally par le code sous test).
+const okResolve = (raw: string) => ({
+  url: new URL(raw), ip: '93.184.216.34', family: 4,
+  dispatcher: { close: vi.fn().mockResolvedValue(undefined) },
+})
 vi.mock('../utils/schema-migrations.js', () => ({
   ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
@@ -29,6 +36,7 @@ const fetchSpy = vi.fn()
 beforeEach(() => {
   vi.clearAllMocks()
   assertMock.mockResolvedValue(new URL('https://ok.example.com'))
+  resolveMock.mockImplementation(async (raw: string) => okResolve(raw))
   fetchSpy.mockReset()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch
 })
@@ -56,6 +64,8 @@ describe('deliverWebhook', () => {
     expect(url).toBe(wh.target_url)
     expect(opts.method).toBe('POST')
     expect(opts.redirect).toBe('error')
+    // Anti DNS-rebinding : la connexion est épinglée via un dispatcher undici.
+    expect((opts as { dispatcher?: unknown }).dispatcher).toBeDefined()
     // En-têtes NexusRH non écrasables + en-tête custom présent
     expect(opts.headers['X-Custom']).toBe('v')
     expect(opts.headers['X-NexusRH-Event']).toBe('employee.created')
@@ -89,7 +99,7 @@ describe('deliverWebhook', () => {
   })
 
   it('SSRF bloqué : assertSafeOutboundUrl lève → aucun fetch, ok=false', async () => {
-    assertMock.mockRejectedValue(new Error('Adresse IP privée'))
+    resolveMock.mockRejectedValue(new Error('Adresse IP privée'))
     const { pool, query } = poolStub()
     await deliverWebhook(pool, 'tenant_test', wh, 'employee.created', {}, dec)
     expect(fetchSpy).not.toHaveBeenCalled()
@@ -193,7 +203,7 @@ describe('testConnector', () => {
     expect((await testConnector('https://api.example.com', 'none', null, null, null)).ok).toBe(false)
   })
   it('SSRF bloqué : retourne message d\'erreur sans fetch', async () => {
-    assertMock.mockRejectedValue(new Error('Hôte interne interdit'))
+    resolveMock.mockRejectedValue(new Error('Hôte interne interdit'))
     const res = await testConnector('http://169.254.169.254', 'none', null, null, null)
     expect(res).toEqual({ ok: false, status: null, message: 'Hôte interne interdit' })
     expect(fetchSpy).not.toHaveBeenCalled()

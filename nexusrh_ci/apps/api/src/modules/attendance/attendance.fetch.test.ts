@@ -1,13 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { resolveSafeOutboundResult } from '../../services/ssrf-guard.js'
 import { fetchDevicePunches } from './attendance.fetch.js'
 import type { FieldMapping } from './attendance.types.js'
 
 vi.mock('../../services/ssrf-guard.js', () => ({
-  isSafeOutboundUrl: vi.fn(),
+  resolveSafeOutboundResult: vi.fn(),
 }))
 
-const mockedIsSafeOutboundUrl = vi.mocked(isSafeOutboundUrl)
+const mockedResolve = vi.mocked(resolveSafeOutboundResult)
+
+// Résolution « sûre » simulée : renvoie l'URL demandée + un dispatcher épinglé
+// factice (dont `close()` est appelé en finally par le code sous test).
+const okResolve = async (raw: string) => ({
+  ok: true as const,
+  value: {
+    url: new URL(raw),
+    ip: '93.184.216.34',
+    family: 4,
+    dispatcher: { close: vi.fn().mockResolvedValue(undefined) } as never,
+  },
+})
 
 const mapping: FieldMapping = {
   recordsPath: 'records',
@@ -40,7 +52,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('(a) refuse une URL SSRF-dangereuse sans jamais appeler fetch', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: false, reason: 'Adresse IP privée/interne interdite' })
+    mockedResolve.mockResolvedValue({ ok: false, reason: 'Adresse IP privée/interne interdite' })
 
     const result = await fetchDevicePunches(baseDevice({ baseUrl: 'http://10.0.0.1/punches' }))
 
@@ -51,7 +63,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('(b) appelle fetch et mappe les pointages sur une réponse OK', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     const body = {
       records: [
         { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
@@ -74,7 +86,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('(c) renvoie ok:false + error quand fetch rejette (réseau/timeout)', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     global.fetch = vi.fn().mockRejectedValue(new Error('fetch failed: timeout')) as unknown as typeof fetch
 
     const result = await fetchDevicePunches(baseDevice())
@@ -85,7 +97,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('(d) renvoie ok:false sur un statut HTTP non-2xx', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 503,
@@ -100,7 +112,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('construit l\'en-tête Authorization Bearer quand authType=bearer', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }) as unknown as typeof fetch
 
     await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: 'sekrit-token' }))
@@ -110,10 +122,12 @@ describe('fetchDevicePunches', () => {
     const init = callArgs[1] as RequestInit
     const headers = init.headers as Record<string, string>
     expect(headers['Authorization']).toBe('Bearer sekrit-token')
+    // Anti DNS-rebinding : la connexion badgeuse est épinglée (dispatcher undici).
+    expect((init as { dispatcher?: unknown }).dispatcher).toBeDefined()
   })
 
   it('construit l\'en-tête api_key personnalisé quand authType=api_key', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }) as unknown as typeof fetch
 
     await fetchDevicePunches(baseDevice({ authType: 'api_key', authSecret: 'my-api-key', authHeaderName: 'X-Device-Key' }))
@@ -126,7 +140,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('filtre les pointages par syncCursor (garde seulement les postérieurs)', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     const body = {
       records: [
         { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
@@ -143,7 +157,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('ne fuite jamais le secret dans le message d\'erreur', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     global.fetch = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch
 
     const result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: 'top-secret-value' }))
@@ -152,7 +166,7 @@ describe('fetchDevicePunches', () => {
   })
 
   it('construit l\'en-tête Authorization Basic avec le secret base64-encodé', async () => {
-    mockedIsSafeOutboundUrl.mockResolvedValue({ ok: true })
+    mockedResolve.mockImplementation(okResolve)
     const body = {
       records: [
         { badge: 'B001', ts: '2026-07-15T08:00:00.000Z', dir: 'IN' },
@@ -173,18 +187,18 @@ describe('fetchDevicePunches', () => {
     const secretToken = 'SUPER_SECRET_TOKEN'
 
     // Branche 1 : SSRF bloqué
-    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: false, reason: 'Blocked' })
+    mockedResolve.mockResolvedValueOnce({ ok: false, reason: 'Blocked' })
     let result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
     expect(JSON.stringify(result)).not.toContain(secretToken)
 
     // Branche 2 : fetch rejeté (réseau/timeout)
-    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    mockedResolve.mockImplementationOnce(okResolve)
     global.fetch = vi.fn().mockRejectedValueOnce(new Error('network timeout'))
     result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
     expect(JSON.stringify(result)).not.toContain(secretToken)
 
     // Branche 3 : statut HTTP non-2xx
-    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    mockedResolve.mockImplementationOnce(okResolve)
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 401,
@@ -194,7 +208,7 @@ describe('fetchDevicePunches', () => {
     expect(JSON.stringify(result)).not.toContain(secretToken)
 
     // Branche 4 : réponse JSON invalide
-    mockedIsSafeOutboundUrl.mockResolvedValueOnce({ ok: true })
+    mockedResolve.mockImplementationOnce(okResolve)
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,

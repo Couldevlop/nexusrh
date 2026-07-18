@@ -1,5 +1,6 @@
 import { lookup } from 'dns/promises'
-import { isIP } from 'net'
+import { isIP, type LookupFunction } from 'net'
+import { Agent } from 'undici'
 
 /**
  * Garde anti-SSRF (OWASP A10) pour TOUS les appels sortants configurés par un
@@ -90,6 +91,107 @@ export async function assertSafeOutboundUrl(raw: string): Promise<URL> {
 /** Variante non-levante (booléen) pour la validation à la création. */
 export async function isSafeOutboundUrl(raw: string): Promise<{ ok: true } | { ok: false; reason: string }> {
   try { await assertSafeOutboundUrl(raw); return { ok: true } }
+  catch (e) { return { ok: false, reason: (e as Error).message } }
+}
+
+/**
+ * Résultat d'une résolution sûre : l'URL validée + l'IP EXACTE que la garde a
+ * contrôlée + un dispatcher undici épinglé sur cette IP.
+ */
+export interface SafeOutbound {
+  url: URL
+  ip: string
+  family: number
+  dispatcher: Agent
+}
+
+/**
+ * Construit un dispatcher undici dont la résolution DNS est ÉPINGLÉE sur l'IP
+ * déjà validée par la garde. Ferme la fenêtre de DNS-rebinding (TOCTOU) : la
+ * connexion TCP vise EXACTEMENT l'IP contrôlée, tandis que l'en-tête `Host` et
+ * le SNI TLS d'origine restent intacts (routage vhost/HTTPS des serveurs
+ * légitimes préservé). Le socket ne peut donc plus être détourné vers
+ * 169.254.169.254 / 10.x / 127.0.0.1 entre le contrôle de la garde et la
+ * connexion réelle de `fetch`.
+ *
+ * `lookup` suit la signature Node `dns.lookup` (celle attendue par
+ * net.connect / undici). undici l'appelle avec `{ all: true }` → forme tableau ;
+ * on gère AUSSI la forme `(err, address, family)` par prudence (compat versions).
+ */
+/**
+ * Fabrique une fonction `lookup` (signature Node `dns.lookup`) qui renvoie
+ * TOUJOURS l'IP épinglée, quel que soit le hostname demandé. undici l'appelle
+ * avec `{ all: true }` → forme tableau ; on gère aussi `(err, address, family)`
+ * par prudence (compat versions). Exportée pour test unitaire direct.
+ */
+export function pinnedLookupFor(ip: string, family: number): LookupFunction {
+  const fam = family === 6 ? 6 : 4
+  return (_hostname, options, callback) => {
+    if (options && (options as { all?: boolean }).all) {
+      callback(null, [{ address: ip, family: fam }])
+    } else {
+      callback(null, ip, fam)
+    }
+  }
+}
+
+export function pinnedDispatcher(ip: string, family: number): Agent {
+  return new Agent({ connect: { lookup: pinnedLookupFor(ip, family) } })
+}
+
+/**
+ * Valide une URL sortante ET construit le dispatcher épinglé sur l'IP validée.
+ * À utiliser à la place de `assertSafeOutboundUrl` + `fetch(url)` : passer
+ * `dispatcher` à `fetch` garantit que la connexion TCP vise l'IP contrôlée
+ * (anti DNS-rebinding). L'appelant DOIT fermer le dispatcher (`await
+ * dispatcher.close()`) dans un `finally` pour ne pas fuiter de sockets.
+ *
+ * Lève `SsrfBlockedError` si l'URL est dangereuse. Pour le cas DNS : vérifie que
+ * TOUTES les adresses résolues sont publiques, puis épingle sur la PREMIÈRE.
+ */
+export async function resolveSafeOutbound(raw: string): Promise<SafeOutbound> {
+  let url: URL
+  try { url = new URL(raw) } catch { throw new SsrfBlockedError('URL invalide') }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new SsrfBlockedError('Seuls http(s) sont autorisés')
+  }
+  if (url.username || url.password) {
+    throw new SsrfBlockedError('Identifiants dans l\'URL interdits')
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (BLOCKED_HOSTNAMES.has(host) || host.endsWith('.local') || host.endsWith('.internal')) {
+    throw new SsrfBlockedError('Hôte interne interdit')
+  }
+
+  // IP littérale → on épingle directement sur cette IP (aucun rebinding possible).
+  const litFamily = isIP(host)
+  if (litFamily) {
+    if (isPrivateIP(host)) throw new SsrfBlockedError('Adresse IP privée/interne interdite')
+    return { url, ip: host, family: litFamily, dispatcher: pinnedDispatcher(host, litFamily) }
+  }
+
+  // DNS : vérifier TOUTES les adresses résolues, épingler la première validée.
+  let addrs: { address: string; family: number }[]
+  try {
+    addrs = await lookup(host, { all: true })
+  } catch {
+    throw new SsrfBlockedError('Hôte introuvable (DNS)')
+  }
+  if (addrs.length === 0) throw new SsrfBlockedError('Hôte introuvable')
+  for (const a of addrs) {
+    if (isPrivateIP(a.address)) throw new SsrfBlockedError('L\'hôte résout vers une adresse interne')
+  }
+  const pinned = addrs[0]!
+  return { url, ip: pinned.address, family: pinned.family, dispatcher: pinnedDispatcher(pinned.address, pinned.family) }
+}
+
+/** Variante non-levante de `resolveSafeOutbound` (pour les appelants qui ne
+ *  doivent JAMAIS lever, ex. l'appel badgeuse attendance). */
+export async function resolveSafeOutboundResult(
+  raw: string,
+): Promise<{ ok: true; value: SafeOutbound } | { ok: false; reason: string }> {
+  try { return { ok: true, value: await resolveSafeOutbound(raw) } }
   catch (e) { return { ok: false, reason: (e as Error).message } }
 }
 

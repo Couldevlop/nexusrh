@@ -23,6 +23,12 @@ vi.mock('../../utils/crypto.js', () => ({
 // Évite toute résolution DNS réelle (le vrai guard fait un lookup).
 vi.mock('../../services/ssrf-guard.js', () => ({
   assertSafeOutboundUrl: vi.fn(async (raw: string) => new URL(raw)),
+  resolveSafeOutbound: vi.fn(async (raw: string) => ({
+    url: new URL(raw),
+    ip: '93.184.216.34',
+    family: 4,
+    dispatcher: { close: vi.fn().mockResolvedValue(undefined) },
+  })),
   SsrfBlockedError: class extends Error {},
 }))
 
@@ -119,8 +125,10 @@ describe('SIEM — test & forward (A10 SSRF + A09 audit)', () => {
     const res = await app.inject({ method: 'POST', url: '/security/siem-config/test', headers: { authorization: `Bearer ${token(app, 'admin')}` } })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data).toMatchObject({ ok: true, status: 202 })
-    const init = fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> }
+    const init = fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string>; dispatcher?: unknown }
     expect(init.headers['X-NexusRH-Signature']).toMatch(/^sha256=/)
+    // Anti DNS-rebinding : la connexion sortante est épinglée (dispatcher undici).
+    expect(init.dispatcher).toBeDefined()
   })
   it('forward désactivé → 400', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: 1, enabled: false, endpoint: 'https://siem.example.com/in' }] })

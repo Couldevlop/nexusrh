@@ -1,6 +1,6 @@
 import type { Pool } from 'pg'
 import { createHmac, createHash, randomBytes } from 'crypto'
-import { assertSafeOutboundUrl } from './ssrf-guard.js'
+import { resolveSafeOutbound } from './ssrf-guard.js'
 import { ensureTenantSchema } from '../utils/schema-migrations.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
@@ -108,11 +108,15 @@ export async function deliverWebhook(
   let excerpt = ''
 
   for (let attempt = 1; attempt <= maxAttempts && !ok; attempt++) {
+    // Re-valide à CHAQUE envoi + épingle la connexion sur l'IP validée (anti
+    // DNS-rebinding) : le socket vise l'IP contrôlée, jamais une IP interne
+    // qu'un DNS malveillant renverrait entre le contrôle et la connexion.
+    let safe: Awaited<ReturnType<typeof resolveSafeOutbound>> | null = null
     try {
-      await assertSafeOutboundUrl(wh.target_url) // re-valide à chaque envoi (DNS rebinding)
+      safe = await resolveSafeOutbound(wh.target_url)
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), 8000)
-      const res = await fetch(wh.target_url, {
+      const res = await fetch(safe.url.toString(), {
         method: 'POST',
         headers: {
           // En-têtes personnalisés d'abord : les en-têtes NexusRH (dont la
@@ -126,12 +130,15 @@ export async function deliverWebhook(
         body,
         signal: ctrl.signal,
         redirect: 'error', // pas de suivi de redirection (anti-SSRF)
+        dispatcher: safe.dispatcher,
       }).finally(() => clearTimeout(timer))
       lastStatus = res.status
       ok = res.status >= 200 && res.status < 300
       excerpt = (await res.text().catch(() => '')).slice(0, 300)
     } catch (e) {
       excerpt = (e as Error).message.slice(0, 300)
+    } finally {
+      if (safe) await safe.dispatcher.close().catch(() => undefined)
     }
   }
 
@@ -176,8 +183,9 @@ export async function testConnector(
   baseUrl: string, authType: string, authSecret: string | null,
   authHeaderName: string | null, defaultHeaders: Record<string, string> | null,
 ): Promise<ConnectorTestResult> {
+  let safe: Awaited<ReturnType<typeof resolveSafeOutbound>>
   try {
-    await assertSafeOutboundUrl(baseUrl)
+    safe = await resolveSafeOutbound(baseUrl)
   } catch (e) {
     return { ok: false, status: null, message: (e as Error).message }
   }
@@ -188,10 +196,13 @@ export async function testConnector(
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 8000)
-    const res = await fetch(baseUrl, { method: 'GET', headers, signal: ctrl.signal, redirect: 'error' })
+    // Connexion épinglée sur l'IP validée (anti DNS-rebinding).
+    const res = await fetch(safe.url.toString(), { method: 'GET', headers, signal: ctrl.signal, redirect: 'error', dispatcher: safe.dispatcher })
       .finally(() => clearTimeout(timer))
     return { ok: res.status < 500, status: res.status, message: `HTTP ${res.status}` }
   } catch (e) {
     return { ok: false, status: null, message: (e as Error).message.slice(0, 200) }
+  } finally {
+    await safe.dispatcher.close().catch(() => undefined)
   }
 }

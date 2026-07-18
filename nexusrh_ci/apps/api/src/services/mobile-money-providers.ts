@@ -17,7 +17,7 @@
 import { config } from '../config.js'
 import { pool as rawPool } from '../db/pool.js'
 import { decryptIfPresent } from '../utils/crypto.js'
-import { assertSafeOutboundUrl } from './ssrf-guard.js'
+import { resolveSafeOutbound } from './ssrf-guard.js'
 
 export const MM_PROVIDERS = ['wave', 'mtn_momo', 'orange_money'] as const
 export type MmProvider = typeof MM_PROVIDERS[number]
@@ -160,16 +160,17 @@ function simulate(): TransferResult {
 async function fetchJson(url: string, init: RequestInit, timeoutMs = 15_000): Promise<{ ok: boolean; status: number; body: unknown }> {
   // OWASP A10 (SSRF) — défense en profondeur : même si l'URL provient d'une
   // config tenant (validée à l'écriture) ou plateforme, on revérifie qu'elle ne
-  // résout pas vers une adresse interne/privée juste avant l'appel sortant.
-  await assertSafeOutboundUrl(url)
+  // résout pas vers une adresse interne/privée juste avant l'appel sortant, ET
+  // on ÉPINGLE la connexion sur l'IP validée (anti DNS-rebinding TOCTOU).
+  const safe = await resolveSafeOutbound(url)
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal })
+    const res = await fetch(safe.url.toString(), { ...init, signal: ctrl.signal, dispatcher: safe.dispatcher })
     let body: unknown = null
     try { body = await res.json() } catch { /* réponse non-JSON */ }
     return { ok: res.ok, status: res.status, body }
-  } finally { clearTimeout(t) }
+  } finally { clearTimeout(t); await safe.dispatcher.close().catch(() => undefined) }
 }
 
 /** Wave B2C payout — POST {apiUrl}/v1/payout (Bearer apiKey). Synchrone/quasi. */
