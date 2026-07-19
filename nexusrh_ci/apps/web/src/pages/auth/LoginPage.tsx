@@ -116,7 +116,17 @@ export default function LoginPage() {
   // pwdResetRequired). Si défini, on force une reconnexion après le changement
   // (on ne réutilise jamais le token restreint).
   const [forcedReason, setForcedReason] = useState<null | "expired" | "breached">(null);
-  const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  // Message de succès posté par la page d'enrôlement MFA (/mfa-setup) : après
+  // activation, le token reste restreint côté serveur → reconnexion imposée.
+  const [infoMsg, setInfoMsg] = useState<string | null>(() => {
+    try {
+      if (sessionStorage.getItem("nexusrh:mfa-enrolled") === null) return null;
+      sessionStorage.removeItem("nexusrh:mfa-enrolled");
+      return t("mfaEnroll.successRelogin");
+    } catch {
+      return null;
+    }
+  });
   // Message hors-ligne mémorisé par l'intercepteur API : la session a été
   // coupée parce que le tenant/cabinet a été mis hors ligne par la plateforme.
   const [offlineNotice] = useState<string | null>(() => {
@@ -200,8 +210,13 @@ export default function LoginPage() {
         return;
       }
 
-      // MFA OBLIGATOIRE mais pas encore configuré : token restreint au parcours
-      // d'activation MFA. On connecte et on redirige vers la configuration MFA.
+      // MFA OBLIGATOIRE mais pas encore configurée : le token remis est RESTREINT
+      // (mfaPending) et n'ouvre QUE /auth/mfa/setup + /auth/mfa/verify — toute
+      // route métier répond 403. On redirige donc vers /mfa-setup, page plein
+      // écran hors layouts gardés, accessible à TOUS les rôles. Surtout pas vers
+      // /settings (route tenant réservée aux admins) : un super_admin y était
+      // renvoyé vers /platform/dashboard et un employee n'y a aucun accès — dans
+      // les deux cas un écran vide sans explication (incident PROD).
       if (res.data.mfaSetupRequired === true && res.data.user && res.data.token) {
         setAuth(
           res.data.user,
@@ -209,7 +224,7 @@ export default function LoginPage() {
           res.data.refreshToken ?? "",
           res.data.tenantConfig ?? null,
         );
-        navigate("/settings?tab=mfa", { replace: true });
+        navigate("/mfa-setup", { replace: true });
         return;
       }
 

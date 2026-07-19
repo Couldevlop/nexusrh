@@ -16,6 +16,7 @@ const AgencyLayout     = lazy(() => import('@/components/layout/AgencyLayout'))
 const LoginPage          = lazy(() => import('@/pages/auth/LoginPage'))
 const RafPeriodsPage     = lazy(() => import('@/pages/raf/RafPeriodsPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
+const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
 
@@ -179,6 +180,10 @@ export default function App() {
 
           {/* Auth */}
           <Route path="/login" element={<LoginPage />} />
+          {/* Enrôlement MFA imposé : token restreint (mfaPending) → hors de tout
+              layout gardé, sinon les rôles sans accès à /settings (super_admin,
+              employee…) atterrissent sur un écran vide en 403. */}
+          <Route path="/mfa-setup" element={<MfaEnrollmentPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 
