@@ -9,11 +9,12 @@
 
 ```
 Email    : superadmin@nexusrh-ci.com
-Password : SuperAdmin1234!
+Password : voir .credentials-local.md (défaut = variable SEED_SUPERADMIN_PASSWORD)
 ```
 
 > ⚠️ Seedé avec `ON CONFLICT DO NOTHING` : en PROD le mot de passe a été changé et survit
-> aux re-seeds. `SuperAdmin1234!` ne fonctionne que sur une base neuve.
+> aux re-seeds. La valeur par défaut ne fonctionne que sur une base neuve.
+> **Mots de passe / secret TOTP → `nexusrh_ci/.credentials-local.md`** (non versionné).
 
 ### Tenant 1 — SOTRA (Société de Transport Abidjanais)
 
@@ -29,13 +30,13 @@ CNPS employeur : CI-00123456-X
 DGI         : CI-DGI-7890
 RCCM        : CI-ABJ-2005-B-123456
 
-Utilisateurs tenant :
-  admin@sotra.ci    / Admin1234!  → admin
-  rh@sotra.ci       / Admin1234!  → hr_manager
-  chef.perso@sotra.ci / Admin1234!  → hr_officer
-  manager@sotra.ci  / Admin1234!  → manager (département Exploitation)
-  employe@sotra.ci  / Admin1234!  → employee (lié à "Kouassi Jean-Paul")
-  dg@sotra.ci       / Admin1234!  → dg
+Utilisateurs tenant (mots de passe → .credentials-local.md / SEED_DEMO_PASSWORD) :
+  admin@sotra.ci      → admin
+  rh@sotra.ci         → hr_manager
+  chef.perso@sotra.ci → hr_officer
+  manager@sotra.ci    → manager (département Exploitation)
+  employe@sotra.ci    → employee (lié à "Kouassi Coulibaly")
+  dg@sotra.ci         → dg
 
 80 employés (noms ivoiriens réalistes) :
   Exploitation    : 35 (chauffeurs, contrôleurs, chefs de ligne)
@@ -102,9 +103,9 @@ Ville       : Abidjan (Plateau)
 Plan        : starter | status : active
 primaryColor : #1D4ED8 | logo : initiales "CE"
 
-Utilisateurs :
-  admin@cabinet-expertise.ci  / Admin1234!  → admin
-  employe2@cabinet-expertise.ci / Admin1234! → employee
+Utilisateurs (mots de passe → .credentials-local.md / SEED_DEMO_PASSWORD) :
+  admin@cabinet-expertise.ci    → admin
+  employe2@cabinet-expertise.ci → employee
 
 25 employés (auditeurs, comptables, juristes, assistants)
 3 mois de bulletins CI complets

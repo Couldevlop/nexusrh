@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Reset admin passwords — bcrypt 12 rounds (OWASP A02 Cryptographic Failures)
--- Généré le 2026-05-15 — passwords documentés dans CLAUDE.md/README.md
+-- Généré le 2026-05-15 — mots de passe → nexusrh_ci/.credentials-local.md (non versionné)
 -- =============================================================================
 --
 -- À exécuter en cas de régression auth 401 sur les comptes démo.
@@ -14,12 +14,11 @@
 --   kubectl exec -i -n nexusrh postgres-0 -- psql -U nexusrh -d nexusrh < nexusrh_ci/scripts/reset-admin-passwords.sql
 --
 -- Comptes DÉMO uniquement (tenants de démonstration) :
---   admin@sotra.ci                  Admin1234!
---   rh@sotra.ci                     Admin1234!
---   manager@sotra.ci                Admin1234!
---   employe@sotra.ci                Admin1234!
---   admin@cabinet-expertise.ci      Admin1234!
---   employe2@cabinet-expertise.ci   Admin1234!
+--   admin@sotra.ci, rh@sotra.ci, manager@sotra.ci, employe@sotra.ci,
+--   admin@cabinet-expertise.ci, employe2@cabinet-expertise.ci
+--   → mots de passe : voir nexusrh_ci/.credentials-local.md (non versionné).
+--     Les hashes bcrypt ci-dessous correspondent à SEED_DEMO_PASSWORD (défaut de démo) ;
+--     non réversibles, ils restent en source sans exposer le mot de passe en clair.
 --
 -- ⚠️ Les comptes RÉELS (super_admin plateforme `superadmin@nexusrh-ci.com`,
 --    éditeur OpenLab `coulwao@gmail.com`) ne sont VOLONTAIREMENT PAS réinitialisés

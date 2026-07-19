@@ -126,6 +126,9 @@ const SecurityPage = lazy(() => import('@/pages/security/SecurityPage'))
 // ── Interface SAGE (export amont-paie) ────────────────────────────────────────
 const SagePage = lazy(() => import('@/pages/sage/SagePage'))
 
+// ── Badgeuse / Pointage ────────────────────────────────────────────────────────
+const AttendancePage = lazy(() => import('@/pages/attendance/AttendancePage'))
+
 // ── Parcours d'intégration (onboarding) ──────────────────────────────────────
 const OnboardingPage   = lazy(() => import('@/pages/onboarding/OnboardingPage'))
 
@@ -139,6 +142,8 @@ const MaFormation      = lazy(() => import('@/pages/mon-espace/MaFormation'))
 const MaCarriere       = lazy(() => import('@/pages/mon-espace/MaCarriere'))
 const MonProfil        = lazy(() => import('@/pages/mon-espace/MonProfil'))
 const MesOffresInternes = lazy(() => import('@/pages/mon-espace/MesOffresInternes'))
+const MesPointages      = lazy(() => import('@/pages/mon-espace/MesPointages'))
+const MesAvertissements = lazy(() => import('@/pages/mon-espace/MesAvertissements'))
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -474,6 +479,14 @@ export default function App() {
                 </ModuleGuard>
               </RoleGuard>
             } />
+
+            <Route path="attendance" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager']}>
+                <ModuleGuard moduleKey="attendance">
+                  <AttendancePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
           </Route>
 
           {/* ── Espace employé (self-service) ──────────────────────── */}
@@ -491,6 +504,8 @@ export default function App() {
             <Route path="carriere"     element={<MaCarriere />} />
             <Route path="offres"       element={<MesOffresInternes />} />
             <Route path="climat"       element={<MonClimat />} />
+            <Route path="pointages"    element={<MesPointages />} />
+            <Route path="avertissements" element={<MesAvertissements />} />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 

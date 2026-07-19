@@ -21,8 +21,10 @@ import { config } from '../../config.js'
 import { ensurePlatformSchema, ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
 import { sendPasswordResetLinkEmail } from '../../services/email.js'
-import { consumeTotpStep } from '../../services/redis.js'
+import { consumeTotpStep, setTokenEpoch } from '../../services/redis.js'
 import { pool } from '../../db/pool.js'
+import { encrypt, decrypt, isEncryptionConfigured } from '../../utils/crypto.js'
+import { revokeAllRefreshTokensForUser } from '../../services/refresh-token.service.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -45,6 +47,32 @@ async function verifyTotpFresh(
 
 // MFA TOTP : authenticator.window=1 permet ±30s de dérive d'horloge mobile
 authenticator.options = { window: 1, step: 30, digits: 6 }
+
+// OWASP A02 — le secret TOTP (seed base32) est une clé cryptographique à part
+// entière : quiconque lit `mfa_secret` en base (dump, backup, accès DB direct)
+// peut générer des codes MFA valides indéfiniment. On le chiffre donc au repos
+// (AES-256-GCM, cf. utils/crypto.ts — déjà utilisé pour NNI/IBAN).
+//
+// Repli gracieux : si ENCRYPTION_KEY n'est pas configurée (dev local, base
+// non provisionnée), on stocke/lit en clair comme avant — MFA reste
+// opérationnel plutôt que de casser un environnement sans clé.
+function encryptMfaSecret(secret: string): string {
+  if (!isEncryptionConfigured()) return secret
+  return encrypt(secret)
+}
+
+// Compat legacy — des lignes `mfa_secret` écrites AVANT ce correctif restent
+// en base32 clair. `decrypt()` échoue sur un format non-ciphertext (pas de
+// "iv:tag:enc") : on retombe alors sur la valeur brute, qui est le
+// comportement historique (aucune régression pour les comptes déjà enrôlés).
+function decryptMfaSecret(stored: string): string {
+  if (!isEncryptionConfigured()) return stored
+  try {
+    return decrypt(stored)
+  } catch {
+    return stored // secret legacy en clair, ou format non reconnu
+  }
+}
 
 // OWASP A02 — sha256 utilisé pour les tokens reset (pas bcrypt — le token est
 // déjà cryptographiquement aléatoire 32 octets, pas besoin de cost factor)
@@ -176,7 +204,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       // En attendant, on stocke dans mfa_secret. La connexion ne demande PAS
       // de MFA tant que mfa_enabled=false.
       await pool.query(`UPDATE ${scope.table} SET mfa_secret = $1, updated_at = now() WHERE id = $2`,
-        [secret, user.sub])
+        [encryptMfaSecret(secret), user.sub])
 
       // Remplace les anciens backup codes par les nouveaux (mais non actifs
       // tant que /verify n'a pas confirmé). On purge d'abord pour éviter
@@ -220,7 +248,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(409).send({ error: 'MFA déjà activé' })
       }
 
-      const valid = await verifyTotpFresh(parsed.data.code, scope.mfaSecret, user.schemaName, user.sub)
+      const valid = await verifyTotpFresh(parsed.data.code, decryptMfaSecret(scope.mfaSecret), user.schemaName, user.sub)
       if (!valid) {
         auditMfa(user.schemaName, user.sub, 'mfa.verify_failed', { reason: 'invalid_code' }, request.ip ?? null)
         return reply.status(401).send({ error: 'Code TOTP invalide' })
@@ -296,7 +324,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       let validMfa = false
       let usedBackupCode: string | null = null
       if (/^[0-9]{6}$/.test(code)) {
-        validMfa = await verifyTotpFresh(code, scope.mfaSecret, payload.schemaName, payload.sub)
+        validMfa = await verifyTotpFresh(code, decryptMfaSecret(scope.mfaSecret), payload.schemaName, payload.sub)
       } else {
         // Backup code : essayer chaque code non utilisé
         const codesTable = payload.schemaName === 'platform'
@@ -480,6 +508,15 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       await pool.query(`UPDATE ${match.userTable} SET password_hash = $1, password_changed_at = now(), updated_at = now() WHERE id = $2`,
         [newHash, match.userId])
       await pool.query(`UPDATE ${match.table} SET used_at = now() WHERE id = $1`, [match.tokenId])
+
+      // OWASP A07 — révoque TOUS les refresh tokens existants (mirroring
+      // change-password) : un token volé avant la réinitialisation ne doit
+      // plus pouvoir régénérer de JWT.
+      await revokeAllRefreshTokensForUser(pool, match.schemaName, match.userId)
+      // OWASP A01/A02 — pose une nouvelle époque d'invalidation de session :
+      // tout access token déjà émis pour ce compte devient caduc au prochain
+      // appel authentifié (cf. plugins/auth.ts).
+      try { await setTokenEpoch(match.userId) } catch { /* fail-open : Redis indisponible */ }
 
       auditMfa(match.schemaName, match.userId, 'password.reset_completed', {}, request.ip ?? null)
       return reply.send({ success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' })

@@ -1,15 +1,27 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare } from 'lucide-react'
+import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare, Clock, AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
+import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 
-const NAV = [
+interface EmployeeNavItem {
+  to: string
+  labelKey: string
+  icon: React.ElementType
+  end?: boolean
+  /** Module activable : entrée MASQUÉE si le module est désactivé pour le tenant. */
+  moduleKey?: ModuleKey
+}
+
+const NAV: EmployeeNavItem[] = [
   { to: '/mon-espace',              labelKey: 'nav.home',        icon: Home,        end: true },
   { to: '/mon-espace/integration',  labelKey: 'nav.integration', icon: Rocket },
   { to: '/mon-espace/absences',     labelKey: 'nav.absences',    icon: Calendar },
+  { to: '/mon-espace/pointages',    labelKey: 'nav.attendance',  icon: Clock, moduleKey: 'attendance' },
+  { to: '/mon-espace/avertissements', labelKey: 'nav.attendanceWarnings', icon: AlertTriangle, moduleKey: 'attendance' },
   { to: '/mon-espace/bulletins',    labelKey: 'nav.payslips',    icon: FileText },
   { to: '/mon-espace/frais',        labelKey: 'nav.expenses',    icon: Receipt },
   { to: '/mon-espace/formation',    labelKey: 'nav.training',    icon: BookOpen },
@@ -23,6 +35,8 @@ const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/mon-espace': 'nav.titles.home',
   '/mon-espace/integration': 'nav.titles.integration',
   '/mon-espace/absences': 'nav.titles.absences',
+  '/mon-espace/pointages': 'nav.titles.attendance',
+  '/mon-espace/avertissements': 'nav.titles.attendanceWarnings',
   '/mon-espace/bulletins': 'nav.titles.payslips',
   '/mon-espace/frais': 'nav.titles.expenses',
   '/mon-espace/formation': 'nav.titles.training',
@@ -41,6 +55,9 @@ export default function EmployeeLayout() {
   const initials = tenantConfig?.name
     ? tenantConfig.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
     : 'RH'
+  // Module activable (ex. Badgeuse/Pointage, désactivé par défaut) : entrée
+  // masquée si le tenant n'a pas activé le module — piloté par le super_admin.
+  const visibleNav = NAV.filter((item) => !item.moduleKey || isModuleEnabled(tenantConfig, item.moduleKey))
 
   return (
     <div className="flex h-screen overflow-hidden flex-col">
@@ -84,7 +101,7 @@ export default function EmployeeLayout() {
 
           {/* Nav */}
           <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-            {NAV.map(({ to, labelKey, icon: Icon, end }) => (
+            {visibleNav.map(({ to, labelKey, icon: Icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -133,7 +150,7 @@ export default function EmployeeLayout() {
       {/* Bottom tab bar — mobile uniquement */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-card/95 backdrop-blur-sm">
         <div className="flex">
-          {NAV.slice(0, 5).map(({ to, labelKey, icon: Icon, end }) => (
+          {visibleNav.slice(0, 5).map(({ to, labelKey, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}

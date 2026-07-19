@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
-import { blacklistTokenSafe } from '../../services/redis.js'
+import { blacklistTokenSafe, setTokenEpoch } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
 import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../plugins/auth.js'
 import {
@@ -706,11 +706,38 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ token: scoped, scoped: true, expiresInSec: 1800 })
       }
 
+      // OWASP A01 — ne JAMAIS re-signer aveuglément les claims présentés : un
+      // compte démis/désactivé/désynchronisé ne doit pas pouvoir prolonger son
+      // rôle d'origine indéfiniment via /auth/refresh. On re-vérifie le compte
+      // en base et on utilise le RÔLE COURANT (mirroring /auth/refresh-token,
+      // cf. verifyAccountActive). Contexte cabinet non scopé (schemaName
+      // platform, actorType agency) : l'acteur vit dans platform.agency_users
+      // (pas platform.platform_users) — vérifié séparément.
+      let currentRole: string | null = null
+      if (user.actorType === 'agency' && user.schemaName === 'platform') {
+        try {
+          const r = await pool.query<{ role: string; is_active: boolean }>(
+            `SELECT role, is_active FROM platform.agency_users WHERE id = $1 LIMIT 1`,
+            [user.sub],
+          )
+          const row = r.rows[0]
+          currentRole = row && row.is_active ? row.role : null
+        } catch {
+          currentRole = null
+        }
+      } else {
+        const account = await verifyAccountActive(pool, user.schemaName, user.sub)
+        currentRole = account?.role ?? null
+      }
+      if (currentRole === null) {
+        return reply.status(401).send({ error: 'Compte introuvable ou désactivé' })
+      }
+
       const newToken = fastify.jwt.sign({
         sub:        user.sub,
         tenantId:   user.tenantId,
         schemaName: user.schemaName,
-        role:       user.role,
+        role:       currentRole,
         email:      user.email,
         firstName:  user.firstName,
         lastName:   user.lastName,
@@ -973,6 +1000,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       // JWT. Sans ça, changer son mot de passe (remédiation d'un compte
       // compromis) ne mettait pas fin à la session de l'attaquant.
       await revokeAllRefreshTokensForUser(pool, user.schemaName, user.sub)
+      // OWASP A01/A02 — pose une nouvelle époque d'invalidation de session :
+      // tout JWT déjà émis (access token, pas seulement le refresh) devient
+      // caduc au prochain appel authentifié (cf. plugins/auth.ts). Le NOUVEAU
+      // token de la requête courante (émis après ce point) reste valide.
+      try { await setTokenEpoch(user.sub) } catch { /* fail-open : Redis indisponible */ }
       // Le cookie refresh du client courant est lui aussi invalidé (il devra
       // se reconnecter ou rafraîchir échouera) — on l'efface proprement.
       setRefreshCookie(reply, null)

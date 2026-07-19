@@ -10,6 +10,8 @@
     "career": "Career",
     "offers": "Offers",
     "climate": "Climate",
+    "attendance": "My punches",
+    "attendanceWarnings": "My warnings",
     "profile": "Profile",
     "titles": {
       "home": "My space",
@@ -21,6 +23,8 @@
       "career": "My career",
       "offers": "Internal offers",
       "climate": "Climate surveys",
+      "attendance": "My punches",
+      "attendanceWarnings": "My warnings",
       "profile": "My profile",
       "default": "My space"
     }

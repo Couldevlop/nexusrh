@@ -26,6 +26,14 @@ import { config } from '../config.js'
 
 const pool = new Pool({ connectionString: config.database.url })
 
+// Mots de passe de démo par défaut — surchargeables (mêmes variables que le seed,
+// ou RESET_PWD_<email> par compte). Valeurs réelles/complètes hors dépôt :
+// nexusrh_ci/.credentials-local.md. Aucun mot de passe figé en dur ici.
+const SEED_SUPERADMIN_PASSWORD = process.env['SEED_SUPERADMIN_PASSWORD'] ?? 'SuperAdmin1234!'
+const SEED_DEMO_PASSWORD       = process.env['SEED_DEMO_PASSWORD'] ?? 'Admin1234!'
+const SEED_OPENLAB_PASSWORD    = process.env['SEED_OPENLAB_PASSWORD'] ?? 'Openlab1234!'
+const SEED_WOYAA_PASSWORD      = process.env['SEED_WOYAA_PASSWORD'] ?? 'Woyaa1234!'
+
 interface Target {
   scope:   'platform' | 'tenant'
   schema:  string
@@ -45,51 +53,51 @@ interface Target {
 const TARGETS: Target[] = [
   // Super admin (schema platform) — compte RÉEL, protégé en production.
   { scope: 'platform', schema: 'platform', table: 'platform_users',
-    email: 'superadmin@nexusrh-ci.com', password: 'SuperAdmin1234!',
+    email: 'superadmin@nexusrh-ci.com', password: SEED_SUPERADMIN_PASSWORD,
     label: 'Super Admin', demo: false },
 
   // SOTRA (tenant de démo principal)
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'admin@sotra.ci', password: 'Admin1234!', label: 'SOTRA admin', demo: true },
+    email: 'admin@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA admin', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'rh@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_manager', demo: true },
+    email: 'rh@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA hr_manager', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'chef.perso@sotra.ci', password: 'Admin1234!', label: 'SOTRA hr_officer', demo: true },
+    email: 'chef.perso@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA hr_officer', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'manager@sotra.ci', password: 'Admin1234!', label: 'SOTRA manager', demo: true },
+    email: 'manager@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA manager', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'employe@sotra.ci', password: 'Admin1234!', label: 'SOTRA employee', demo: true },
+    email: 'employe@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA employee', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'dg@sotra.ci', password: 'Admin1234!', label: 'SOTRA DG (vue 360)', demo: true },
+    email: 'dg@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA DG (vue 360)', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'raf.abidjan@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Abidjan', demo: true },
+    email: 'raf.abidjan@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA RAF Abidjan', demo: true },
   { scope: 'tenant', schema: 'tenant_sotra', table: 'users',
-    email: 'raf.bouake@sotra.ci', password: 'Admin1234!', label: 'SOTRA RAF Bouaké', demo: true },
+    email: 'raf.bouake@sotra.ci', password: SEED_DEMO_PASSWORD, label: 'SOTRA RAF Bouaké', demo: true },
 
   // Cabinet Expertise CI (démo)
   { scope: 'tenant', schema: 'tenant_cabinet_expertise_ci', table: 'users',
-    email: 'admin@cabinet-expertise.ci', password: 'Admin1234!',
+    email: 'admin@cabinet-expertise.ci', password: SEED_DEMO_PASSWORD,
     label: 'Cabinet admin', demo: true },
   { scope: 'tenant', schema: 'tenant_cabinet_expertise_ci', table: 'users',
-    email: 'employe2@cabinet-expertise.ci', password: 'Admin1234!',
+    email: 'employe2@cabinet-expertise.ci', password: SEED_DEMO_PASSWORD,
     label: 'Cabinet employee', demo: true },
 
   // OpenLab Consulting — compte RÉEL (éditeur), protégé en production.
   { scope: 'tenant', schema: 'tenant_openlab_consulting', table: 'users',
-    email: 'coulwao@gmail.com', password: 'Openlab1234!',
+    email: 'coulwao@gmail.com', password: SEED_OPENLAB_PASSWORD,
     label: 'OpenLab admin', demo: false },
 
   // Woyaa (démo — scénario maternité)
   { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
-    email: 'admin@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa admin', demo: true },
+    email: 'admin@woyaa.ci', password: SEED_WOYAA_PASSWORD, label: 'Woyaa admin', demo: true },
   { scope: 'tenant', schema: 'tenant_woyaa', table: 'users',
-    email: 'sec.self@woyaa.ci', password: 'Woyaa1234!', label: 'Woyaa employee', demo: true },
+    email: 'sec.self@woyaa.ci', password: SEED_WOYAA_PASSWORD, label: 'Woyaa employee', demo: true },
 
   // Cabinet de recrutement (agence démo — table platform.agency_users)
   { scope: 'platform', schema: 'platform', table: 'agency_users',
-    email: 'owner@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence owner', demo: true },
+    email: 'owner@cabinet-talents.ci', password: SEED_DEMO_PASSWORD, label: 'Agence owner', demo: true },
   { scope: 'platform', schema: 'platform', table: 'agency_users',
-    email: 'recruteur@cabinet-talents.ci', password: 'Admin1234!', label: 'Agence membre', demo: true },
+    email: 'recruteur@cabinet-talents.ci', password: SEED_DEMO_PASSWORD, label: 'Agence membre', demo: true },
 ]
 
 async function resetOne(target: Target): Promise<{ ok: boolean; reason: string }> {

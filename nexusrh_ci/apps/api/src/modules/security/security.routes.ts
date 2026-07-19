@@ -17,7 +17,7 @@ import { createHmac } from 'crypto'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
-import { assertSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { resolveSafeOutbound } from '../../services/ssrf-guard.js'
 import {
   SSO_PROVIDERS, TENANT_ROLES, SIEM_TRANSPORTS, SIEM_FORMATS, EVENT_CATEGORIES,
   isValidTenantRole, categorizeAction, shouldForward, formatEvent, type SecurityEvent, type SiemFormat,
@@ -60,7 +60,7 @@ interface SiemCfg { enabled: boolean; transport: string; endpoint: string | null
 
 /** Envoie un lot d'événements au collecteur SIEM (signé HMAC, SSRF-safe). */
 async function sendToSiem(cfg: SiemCfg, events: SecurityEvent[]): Promise<{ status: number }> {
-  const url = await assertSafeOutboundUrl(cfg.endpoint ?? '')
+  const safe = await resolveSafeOutbound(cfg.endpoint ?? '')
   const format = cfg.format as SiemFormat
   const body = format === 'cef'
     ? events.map((e) => formatEvent(e, 'cef')).join('\n')
@@ -70,7 +70,8 @@ async function sendToSiem(cfg: SiemCfg, events: SecurityEvent[]): Promise<{ stat
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
   try {
-    const res = await fetch(url.toString(), {
+    // Connexion épinglée sur l'IP validée par la garde (anti DNS-rebinding).
+    const res = await fetch(safe.url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': format === 'cef' ? 'text/plain' : 'application/json',
@@ -80,9 +81,10 @@ async function sendToSiem(cfg: SiemCfg, events: SecurityEvent[]): Promise<{ stat
       body,
       signal: ctrl.signal,
       redirect: 'error',
+      dispatcher: safe.dispatcher,
     })
     return { status: res.status }
-  } finally { clearTimeout(timer) }
+  } finally { clearTimeout(timer); await safe.dispatcher.close().catch(() => undefined) }
 }
 
 const securityRoutes: FastifyPluginAsync = async (fastify) => {
@@ -152,15 +154,19 @@ const securityRoutes: FastifyPluginAsync = async (fastify) => {
       const issuer = (request.body as { issuer?: string } | undefined)?.issuer
       if (!issuer || typeof issuer !== 'string') return badRequest(reply, 'issuer requis')
       const wellKnown = issuer.replace(/\/+$/, '') + '/.well-known/openid-configuration'
+      let safe: Awaited<ReturnType<typeof resolveSafeOutbound>> | null = null
       try {
-        const url = await assertSafeOutboundUrl(wellKnown)
+        safe = await resolveSafeOutbound(wellKnown)
         const ctrl = new AbortController()
         const timer = setTimeout(() => ctrl.abort(), 8000)
-        const res = await fetch(url.toString(), { method: 'GET', headers: { 'User-Agent': 'NexusRH-SSO/1' }, signal: ctrl.signal, redirect: 'error' }).finally(() => clearTimeout(timer))
+        // Connexion épinglée sur l'IP validée (anti DNS-rebinding).
+        const res = await fetch(safe.url.toString(), { method: 'GET', headers: { 'User-Agent': 'NexusRH-SSO/1' }, signal: ctrl.signal, redirect: 'error', dispatcher: safe.dispatcher }).finally(() => clearTimeout(timer))
         const ok = res.status >= 200 && res.status < 300
         return reply.send({ data: { ok, status: res.status, issuer } })
       } catch (e) {
         return reply.send({ data: { ok: false, status: null, error: (e as Error).message } })
+      } finally {
+        if (safe) await safe.dispatcher.close().catch(() => undefined)
       }
     },
   })

@@ -435,6 +435,10 @@
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."
+      },
+      "attendance": {
+        "label": "Badgeuse / Pointage",
+        "desc": "Suivi des horaires et pointages des employés (badgeuse, horaire fixe). Désactivé par défaut (opt-in) — à activer explicitement par le super admin."
       }
     },
     "bulk": {

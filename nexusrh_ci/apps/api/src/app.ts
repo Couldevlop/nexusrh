@@ -71,6 +71,7 @@ import signatureRoutes from './modules/signature/signature.routes.js'
 import securityRoutes from './modules/security/security.routes.js'
 import sageRoutes from './modules/sage/sage.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
+import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -406,6 +407,8 @@ export async function buildApp() {
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })
+  // Badgeuse / Pointage — module opt-in (attendance), enforcement via le hook modules.
+  await fastify.register(attendanceRoutes,   { prefix: '/attendance' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {

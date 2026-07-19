@@ -89,18 +89,21 @@ kubectl exec -i -n nexusrh-ci nexusrh-ci-postgres-postgresql-0 \
 
 ---
 
-## Comptes démo (CLAUDE.md fait foi)
+## Comptes démo
 
-| Email | Password | Rôle |
-|---|---|---|
-| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin (plateforme) |
-| `admin@sotra.ci` | `Admin1234!` | admin SOTRA |
-| `rh@sotra.ci` | `Admin1234!` | hr_manager SOTRA |
-| `manager@sotra.ci` | `Admin1234!` | manager SOTRA |
-| `employe@sotra.ci` | `Admin1234!` | employee SOTRA |
-| `admin@cabinet-expertise.ci` | `Admin1234!` | admin Cabinet Expertise CI |
-| `employe2@cabinet-expertise.ci` | `Admin1234!` | employee Cabinet Expertise CI |
-| `coulwao@gmail.com` | `Openlab1234!` | admin OpenLab Consulting |
+> **Mots de passe → `nexusrh_ci/.credentials-local.md`** (fichier LOCAL, non versionné) ;
+> valeurs pilotées par `SEED_SUPERADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` / `SEED_OPENLAB_PASSWORD` / `SEED_MFA_TOTP_SECRET`.
+
+| Email | Rôle |
+|---|---|
+| `superadmin@nexusrh-ci.com` | super_admin (plateforme) |
+| `admin@sotra.ci` | admin SOTRA |
+| `rh@sotra.ci` | hr_manager SOTRA |
+| `manager@sotra.ci` | manager SOTRA |
+| `employe@sotra.ci` | employee SOTRA |
+| `admin@cabinet-expertise.ci` | admin Cabinet Expertise CI |
+| `employe2@cabinet-expertise.ci` | employee Cabinet Expertise CI |
+| `coulwao@gmail.com` | admin OpenLab Consulting |
 
 ---
 

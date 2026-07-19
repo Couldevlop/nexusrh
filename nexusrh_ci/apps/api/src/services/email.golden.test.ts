@@ -21,6 +21,13 @@ vi.mock('nodemailer', () => ({
   createTransport: createTransportMock,
 }))
 
+// Garde SSRF sur l'hôte SMTP tenant : pass-through en test (les hôtes fictifs
+// « smtp.acme.ci » ne doivent pas déclencher de résolution DNS réseau). La
+// logique de blocage réelle est testée dans ssrf-guard.test.ts.
+vi.mock('./ssrf-guard.js', () => ({
+  assertSafeSmtpHost: vi.fn(async () => undefined),
+}))
+
 vi.mock('../config.js', () => ({
   config: {
     appUrl: 'http://localhost:3001',

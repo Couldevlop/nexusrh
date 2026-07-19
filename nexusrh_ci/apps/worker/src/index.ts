@@ -7,6 +7,9 @@ import { processCnpsDeclarationJob } from './jobs/cnps.js'
 import { processAiScoringJob } from './jobs/ai-scoring.js'
 import { processLegalWatchJob, type LegalWatchPayload } from './jobs/legal-watch.js'
 import { processLegislationWatchJob } from './jobs/legislation-watch.js'
+import { processAttendancePollJob } from './jobs/attendance-poll.js'
+import { processAttendanceEvaluateJob } from './jobs/attendance-evaluate.js'
+import { processAttendanceCronJob } from './jobs/attendance-cron.js'
 
 type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
@@ -106,6 +109,19 @@ async function scheduleLegislationWatchCron(): Promise<void> {
   logger.info({ pattern }, 'legislation-watch: cron hebdomadaire programmé')
 }
 
+// Badgeuse/Pointage : balayage quotidien (par défaut 05h15 Africa/Abidjan) qui
+// enfile l'évaluation de la veille + les polls des badgeuses actives par tenant.
+async function scheduleAttendanceCron(): Promise<void> {
+  const pattern = process.env['ATTENDANCE_CRON'] ?? '15 5 * * *'
+  const q = new Queue('attendance-cron', { connection })
+  await q.upsertJobScheduler(
+    'attendance-daily',
+    { pattern, tz: 'Africa/Abidjan' },
+    { name: 'attendance-daily', data: {} },
+  )
+  logger.info({ pattern }, 'attendance: cron quotidien programmé')
+}
+
 async function start(): Promise<void> {
   logger.info('NexusRH CI Worker starting...')
 
@@ -115,12 +131,21 @@ async function start(): Promise<void> {
   workers.push(createWorker('ai-scoring-ci', processAiScoringJob as JobHandler))
   workers.push(createWorker('legal-watch', processLegalWatchJob as JobHandler))
   workers.push(createWorker('legislation-watch', processLegislationWatchJob as JobHandler))
+  workers.push(createWorker('attendance-poll', processAttendancePollJob as JobHandler))
+  workers.push(createWorker('attendance-evaluate', processAttendanceEvaluateJob as JobHandler))
+  workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
 
   await scheduleLegalWatchCron()
   await scheduleLegislationWatchCron()
+  await scheduleAttendanceCron()
 
   logger.info(
-    { queues: ['email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci', 'legal-watch', 'legislation-watch'] },
+    {
+      queues: [
+        'email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci',
+        'legal-watch', 'legislation-watch', 'attendance-poll', 'attendance-evaluate',
+      ],
+    },
     'Workers started',
   )
 }

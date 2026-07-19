@@ -1,0 +1,273 @@
+{
+  "title": "Badgeuse / Pointage",
+  "subtitle": "Pointages, retards, absences et avertissements de présence.",
+  "tabs": {
+    "dashboard": "Tableau de bord",
+    "punches": "Pointages",
+    "days": "Retards & absences",
+    "warnings": "Avertissements",
+    "config": "Configuration"
+  },
+  "dashboard": {
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les indicateurs.",
+    "lateDays": "Jours de retard",
+    "absentDays": "Jours d'absence",
+    "activeWarnings": "Avertissements actifs",
+    "pendingExplanations": "Demandes d'explication en attente",
+    "sanctionDrafts": "Brouillons de sanction"
+  },
+  "directions": {
+    "in": "Entrée",
+    "out": "Sortie",
+    "unknown": "Inconnu"
+  },
+  "punches": {
+    "new": "Ajouter un pointage",
+    "empty": "Aucun pointage enregistré.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les pointages.",
+    "columns": {
+      "employee": "Salarié",
+      "direction": "Sens",
+      "punchedAt": "Horodatage",
+      "source": "Source"
+    },
+    "form": {
+      "title": "Correction manuelle",
+      "employee": "Salarié",
+      "employeePlaceholder": "— Sélectionner —",
+      "direction": "Sens",
+      "punchedAt": "Date et heure",
+      "reason": "Motif (facultatif)",
+      "reasonPlaceholder": "Motif de la correction",
+      "submit": "Enregistrer",
+      "submitting": "Enregistrement…",
+      "cancel": "Annuler",
+      "error": "Échec de l'enregistrement du pointage."
+    }
+  },
+  "days": {
+    "empty": "Aucun jour calculé sur la période.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les jours.",
+    "columns": {
+      "employee": "Salarié",
+      "date": "Date",
+      "status": "Statut",
+      "lateMinutes": "Retard (min)",
+      "firstIn": "Première entrée",
+      "lastOut": "Dernière sortie"
+    }
+  },
+  "statuses": {
+    "present": "Présent",
+    "late": "En retard",
+    "absent_unjustified": "Absence injustifiée",
+    "absent_justified": "Absence justifiée",
+    "off": "Repos"
+  },
+  "warnings": {
+    "empty": "Aucun avertissement enregistré.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les avertissements.",
+    "sanctionDraftsBanner": "{{count}} brouillon(s) de sanction en attente suite à l'escalade automatique.",
+    "columns": {
+      "employee": "Salarié",
+      "tier": "Type",
+      "reason": "Motif",
+      "dates": "Occurrences",
+      "status": "Statut",
+      "response": "Réponse du salarié",
+      "actions": "Actions"
+    },
+    "tiers": {
+      "avertissement": "Avertissement",
+      "demande_explication": "Demande d'explication"
+    },
+    "statuses": {
+      "active": "Actif",
+      "explained": "Justifié",
+      "contested": "Contesté",
+      "closed": "Clôturé"
+    },
+    "actions": {
+      "explain": "Marquer justifié",
+      "contest": "Marquer contesté",
+      "close": "Clôturer"
+    },
+    "error": "Échec de la mise à jour de l'avertissement."
+  },
+  "config": {
+    "saved": "Configuration enregistrée",
+    "saveError": "Échec de l'enregistrement de la configuration",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger la configuration.",
+    "escalade": {
+      "title": "Moteur d'escalade",
+      "lateMinutesTier1": "Seuil de retard — palier 1 (minutes)",
+      "occurrencesTier1": "Occurrences avant avertissement — palier 1",
+      "lateMinutesTier2": "Seuil de retard — palier 2 (minutes)",
+      "occurrencesTier2": "Occurrences avant avertissement — palier 2",
+      "unjustifiedAbsenceOccurrences": "Occurrences d'absence injustifiée avant avertissement",
+      "warningsBeforeSanction": "Avertissements avant brouillon de sanction",
+      "defaultExpectedStart": "Heure d'arrivée attendue (défaut tenant)",
+      "defaultToleranceMin": "Tolérance par défaut (minutes)",
+      "defaultWorkdays": "Jours ouvrés par défaut"
+    },
+    "devices": {
+      "title": "Badgeuses",
+      "new": "Ajouter une badgeuse",
+      "empty": "Aucune badgeuse configurée.",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les badgeuses.",
+      "columns": {
+        "name": "Nom",
+        "baseUrl": "URL",
+        "authType": "Authentification",
+        "pollInterval": "Intervalle (min)",
+        "secret": "Secret",
+        "lastSync": "Dernière synchro",
+        "active": "Active",
+        "actions": "Actions"
+      },
+      "secretConfigured": "Secret configuré",
+      "secretNotSet": "Aucun secret",
+      "neverSynced": "Jamais synchronisée",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer définitivement cette badgeuse ?",
+      "test": "Tester",
+      "testing": "Test…",
+      "testError": "Échec du test de connexion.",
+      "testResultOk": "Connexion OK — {{count}} pointage(s) détecté(s).",
+      "testResultFail": "Échec de la connexion à la badgeuse.",
+      "sync": "Synchroniser",
+      "syncing": "Mise en file…",
+      "syncQueued": "Synchronisation mise en file d'attente.",
+      "syncError": "Échec de la mise en file de la synchronisation.",
+      "form": {
+        "title": "Badgeuse",
+        "name": "Nom",
+        "baseUrl": "URL de base",
+        "authType": "Type d'authentification",
+        "authSecret": "Secret / mot de passe",
+        "authSecretPlaceholderSet": "Secret configuré — laisser vide pour conserver",
+        "authHeaderName": "Nom de l'en-tête (si API key)",
+        "pollInterval": "Intervalle de synchronisation (min)",
+        "active": "Active",
+        "fieldMapping": "Correspondance des champs (JSON)",
+        "fieldMappingHint": "Chemins d'extraction des pointages dans la réponse de la badgeuse.",
+        "mappingInvalid": "JSON de correspondance des champs invalide.",
+        "submit": "Enregistrer",
+        "submitting": "Enregistrement…",
+        "cancel": "Annuler",
+        "error": "Échec de l'enregistrement de la badgeuse."
+      },
+      "authTypes": {
+        "none": "Aucune",
+        "bearer": "Jeton (Bearer)",
+        "basic": "Basique",
+        "api_key": "Clé API"
+      }
+    },
+    "schedules": {
+      "title": "Horaires de référence",
+      "new": "Ajouter un horaire",
+      "empty": "Aucun horaire configuré.",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les horaires.",
+      "columns": {
+        "scope": "Portée",
+        "scopeId": "Cible",
+        "expectedStart": "Heure d'arrivée",
+        "expectedEnd": "Heure de départ",
+        "tolerance": "Tolérance (min)",
+        "workdays": "Jours ouvrés",
+        "active": "Active",
+        "actions": "Actions"
+      },
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer définitivement cet horaire ?",
+      "form": {
+        "title": "Horaire de référence",
+        "scope": "Portée",
+        "scopeId": "Identifiant cible (UUID)",
+        "scopeIdPlaceholder": "UUID du département ou de l'employé",
+        "expectedStart": "Heure d'arrivée attendue",
+        "expectedEnd": "Heure de départ attendue (facultatif)",
+        "tolerance": "Tolérance (minutes)",
+        "workdays": "Jours ouvrés",
+        "active": "Actif",
+        "submit": "Enregistrer",
+        "submitting": "Enregistrement…",
+        "cancel": "Annuler",
+        "error": "Échec de l'enregistrement de l'horaire."
+      },
+      "scopes": {
+        "tenant": "Tenant (défaut)",
+        "department": "Département",
+        "employee": "Employé"
+      }
+    }
+  },
+  "weekdays": {
+    "1": "Lundi",
+    "2": "Mardi",
+    "3": "Mercredi",
+    "4": "Jeudi",
+    "5": "Vendredi",
+    "6": "Samedi",
+    "7": "Dimanche"
+  },
+  "me": {
+    "title": "Mes pointages",
+    "subtitle": "Vos pointages et vos jours de présence calculés.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger vos données de présence.",
+    "days": {
+      "title": "Mes jours",
+      "empty": "Aucun jour calculé sur la période."
+    },
+    "punches": {
+      "title": "Mes pointages récents",
+      "empty": "Aucun pointage enregistré sur la période."
+    },
+    "columns": {
+      "date": "Date",
+      "status": "Statut",
+      "lateMinutes": "Retard (min)",
+      "firstIn": "Première entrée",
+      "lastOut": "Dernière sortie",
+      "direction": "Sens",
+      "punchedAt": "Horodatage"
+    },
+    "warnings": {
+      "title": "Mes avertissements",
+      "subtitle": "Avertissements liés à votre présence — répondez à une demande d'explication.",
+      "empty": "Aucun avertissement.",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger vos avertissements.",
+      "columns": {
+        "tier": "Type",
+        "reason": "Motif",
+        "dates": "Occurrences",
+        "status": "Statut",
+        "response": "Ma réponse",
+        "actions": "Actions"
+      },
+      "respond": "Répondre",
+      "respondTitle": "Répondre à cet avertissement",
+      "responsePlaceholder": "Votre explication…",
+      "respondSubmit": "Envoyer",
+      "respondSubmitting": "Envoi…",
+      "respondCancel": "Annuler",
+      "respondSuccess": "Votre réponse a été envoyée.",
+      "respondError": "Échec de l'envoi de votre réponse.",
+      "alreadyResponded": "Réponse déjà envoyée"
+    }
+  }
+}

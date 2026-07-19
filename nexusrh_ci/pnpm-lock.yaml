@@ -107,6 +107,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      undici:
+        specifier: ^7.25.0
+        version: 7.25.0
       unpdf:
         specifier: ^1.6.2
         version: 1.6.2
@@ -349,6 +352,9 @@ importers:
       pino-pretty:
         specifier: ^11.2.1
         version: 11.3.0
+      undici:
+        specifier: ^7.25.0
+        version: 7.25.0
       uuid:
         specifier: ^10.0.0
         version: 10.0.0
@@ -371,6 +377,9 @@ importers:
       typescript:
         specifier: ^5.4.5
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(jsdom@29.1.1)
 
 packages:
 

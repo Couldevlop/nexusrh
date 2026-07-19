@@ -342,6 +342,7 @@ describe('POST /auth/refresh', () => {
   }
 
   it('token normal → nouveau token', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: true, password_changed_at: null }] }) // verifyAccountActive
     const res = await app.inject({ method: 'POST', url: '/auth/refresh',
       headers: { authorization: `Bearer ${tok()}` } })
     expect(res.statusCode).toBe(200)
@@ -349,6 +350,7 @@ describe('POST /auth/refresh', () => {
   })
 
   it('token cabinet non scopé (schemaName=platform) → préserve actorType', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'agency_owner', is_active: true }] }) // platform.agency_users
     const t = app.jwt.sign({ sub: 'au1', tenantId: null, schemaName: 'platform', role: 'agency_owner',
       email: 'o@c.ci', firstName: 'O', lastName: 'C', employeeId: null,
       actorType: 'agency', agencyId: 'ag1' })
@@ -358,6 +360,29 @@ describe('POST /auth/refresh', () => {
     const decoded = app.jwt.decode(JSON.parse(res.body).token) as Record<string, unknown>
     expect(decoded.actorType).toBe('agency')
     expect(decoded.agencyId).toBe('ag1')
+  })
+
+  it('OWASP A01 — utilisateur démis (rôle changé en DB) → le nouveau token porte le RÔLE COURANT, pas le rôle périmé du token présenté', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: true, password_changed_at: null }] }) // rôle démis en base
+    const res = await app.inject({ method: 'POST', url: '/auth/refresh',
+      headers: { authorization: `Bearer ${tok({ role: 'admin' })}` } }) // token présenté = encore admin
+    expect(res.statusCode).toBe(200)
+    const decoded = app.jwt.decode(JSON.parse(res.body).token) as Record<string, unknown>
+    expect(decoded.role).toBe('employee')
+  })
+
+  it('OWASP A01 — compte désactivé entre-temps → 401 (pas de renouvellement)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: false, password_changed_at: null }] })
+    const res = await app.inject({ method: 'POST', url: '/auth/refresh',
+      headers: { authorization: `Bearer ${tok()}` } })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('OWASP A01 — compte introuvable (supprimé) → 401', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({ method: 'POST', url: '/auth/refresh',
+      headers: { authorization: `Bearer ${tok()}` } })
+    expect(res.statusCode).toBe(401)
   })
 
   it('token cabinet scopé valide → token scopé 30m', async () => {

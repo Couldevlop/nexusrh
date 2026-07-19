@@ -77,6 +77,13 @@ ORANGE_MONEY_MERCHANT_KEY=
 # CNPS CI
 ECNPS_EXPORT_FORMAT=csv  # format compatible plateforme e-CNPS
 
+# Seed — identifiants des comptes de démo (surcharge ; défauts dans seed.ts)
+# Liste complète / valeurs réelles → .credentials-local.md (fichier LOCAL, non versionné).
+# SEED_SUPERADMIN_PASSWORD=change-me-super-admin
+# SEED_DEMO_PASSWORD=change-me-demo
+# SEED_OPENLAB_PASSWORD=change-me-openlab
+# SEED_MFA_TOTP_SECRET=change-me-base32-secret
+
 # Feature flags
 FEATURE_AI_ASSISTANT=true
 FEATURE_MOBILE_MONEY=true

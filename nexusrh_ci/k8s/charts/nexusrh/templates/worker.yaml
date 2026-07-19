@@ -89,6 +89,19 @@ spec:
                 secretKeyRef:
                   name: nexusrh-app-secrets
                   key: jwt-secret
+            # Clé de chiffrement AES-256 (OWASP A02) — requise par le worker pour
+            # déchiffrer attendance_devices.auth_secret_enc avant d'appeler une
+            # badgeuse tenant (jobs/attendance-poll.ts). Même clé que l'API
+            # (api.yaml) : un secret chiffré côté API doit être déchiffrable ici.
+            # optional:true → le pod démarre même si la clé n'est pas encore
+            # provisionnée (le déchiffrement échouera à l'usage : decryptIfPresent
+            # renvoie null, le poll échoue proprement avec last_sync_status='error').
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: encryption-key
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

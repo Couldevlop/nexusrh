@@ -6,6 +6,7 @@ import { resolvePayrollContext } from '../../services/payroll-context-resolver.j
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { getPackByCountry } from '../../services/legislation-packs.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { encodeField } from '../sage/sage.service.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -1260,11 +1261,15 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         [`${year}-%`]
       )
 
+      // OWASP A03 — anti-injection de formule CSV (Excel `=`,`+`,`-`,`@`…) : chaque
+      // champ passe par encodeField (préfixe apostrophe + quoting) avant .join.
+      const csvCell = (v: unknown) => encodeField(v, ';')
+
       const header = [
         'Mois','Nom','Prénom','N° CNPS','NNI','Poste','Département','Contrat',
         'Salaire Base','Brut','CNPS Ret. Sal.','CNPS PF Pat.','CNPS AT Pat.','CNPS Ret. Pat.',
         'Total CNPS Sal.','Total CNPS Pat.','ITS','Indemnité Absence','Net à Payer','Coût Employeur','Mode Paiement',
-      ].join(';')
+      ].map(csvCell).join(';')
 
       const rows = res.rows.map((r: Record<string, unknown>) => [
         r.month, r.last_name, r.first_name, r.cnps_number, r.nni,
@@ -1273,9 +1278,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         r.cnps_retraite_sal, r.cnps_pf_pat, r.cnps_at_pat, r.cnps_retraite_pat,
         r.total_cnps_sal, r.total_cnps_pat, r.its, r.indemnite_absence,
         r.net_payable, r.employer_cost, r.payment_method,
-      ].join(';'))
+      ].map(csvCell).join(';'))
 
-      const csv = `Livre de paie ${year} — ${tenant?.name ?? ''} | CNPS: ${tenant?.cnps_number ?? ''}\n${header}\n${rows.join('\n')}`
+      const csv = `${csvCell(`Livre de paie ${year} — ${tenant?.name ?? ''} | CNPS: ${tenant?.cnps_number ?? ''}`)}\n${header}\n${rows.join('\n')}`
 
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="livre-paie-${year}.csv"`)

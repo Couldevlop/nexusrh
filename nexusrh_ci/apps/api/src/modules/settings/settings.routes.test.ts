@@ -24,6 +24,15 @@ vi.mock('../../services/email.js', () => ({
   sendTestEmail:            vi.fn().mockResolvedValue(undefined),
 }))
 
+// Par défaut : hôte sortant/SMTP considéré sûr (pass-through). Les tests SSRF
+// dédiés surchargent avec mockRejectedValueOnce(new SsrfBlockedError(...)).
+vi.mock('../../services/ssrf-guard.js', () => ({
+  isSafeOutboundUrl:      vi.fn(async () => ({ ok: true as const })),
+  assertSafeOutboundUrl:  vi.fn(async (raw: string) => new URL(raw)),
+  assertSafeOutboundHost: vi.fn(async () => undefined),
+  SsrfBlockedError:       class extends Error {},
+}))
+
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',
@@ -36,6 +45,7 @@ vi.mock('../../config.js', () => ({
 import authPlugin from '../../plugins/auth.js'
 import settingsRoutes from './settings.routes.js'
 import { sendTestEmail, sendEmployeeWelcomeEmail } from '../../services/email.js'
+import { assertSafeOutboundHost, SsrfBlockedError } from '../../services/ssrf-guard.js'
 
 const TENANT = 'tenant_sotra'
 const UUID_A = '11111111-1111-1111-1111-111111111111'
@@ -58,7 +68,10 @@ beforeAll(async () => {
 
 afterAll(async () => { await app.close() })
 
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => {
+  queryMock.mockReset()
+  vi.mocked(assertSafeOutboundHost).mockReset().mockResolvedValue(undefined)
+})
 
 describe('PATCH /settings/tenant — Zod + audit (OWASP A03 + A09)', () => {
   it('refuse champs inconnus (.strict)', async () => {
@@ -569,7 +582,8 @@ describe('GET/PUT /settings/email — SMTP tenant (option C)', () => {
     const res = await app.inject({
       method: 'PUT', url: '/settings/email',
       headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
-      payload: { smtpHost: 'smtp.sotra.ci', smtpPort: 587, smtpUser: 'rh@sotra.ci', smtpSecure: false },
+      // IP publique littérale : hôte SMTP valide sans dépendre du DNS réseau.
+      payload: { smtpHost: '8.8.8.8', smtpPort: 587, smtpUser: 'rh@sotra.ci', smtpSecure: false },
     })
     expect(res.statusCode).toBe(200)
     const upd = queryMock.mock.calls.find((c) => /UPDATE platform\.tenants SET/.test(String(c[0])))
@@ -584,6 +598,45 @@ describe('GET/PUT /settings/email — SMTP tenant (option C)', () => {
       payload: { smtpPort: 99999 },
     })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('PUT refuse un smtpHost interne (SSRF, 169.254.169.254) — 422, rien enregistré', async () => {
+    vi.mocked(assertSafeOutboundHost).mockRejectedValueOnce(new SsrfBlockedError('Adresse IP privée/interne interdite'))
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { smtpHost: '169.254.169.254' },
+    })
+    expect(res.statusCode).toBe(422)
+    // aucun message d'erreur brut (résolveur/DNS) ne doit fuiter
+    expect(JSON.stringify(res.body)).not.toContain('DNS')
+    const upd = queryMock.mock.calls.find((c) => /UPDATE platform\.tenants SET/.test(String(c[0])))
+    expect(upd).toBeUndefined()
+  })
+
+  it('PUT refuse un smtpHost interne (SSRF, 10.0.0.1) — 422, rien enregistré', async () => {
+    vi.mocked(assertSafeOutboundHost).mockRejectedValueOnce(new SsrfBlockedError('Adresse IP privée/interne interdite'))
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { smtpHost: '10.0.0.1' },
+    })
+    expect(res.statusCode).toBe(422)
+    const upd = queryMock.mock.calls.find((c) => /UPDATE platform\.tenants SET/.test(String(c[0])))
+    expect(upd).toBeUndefined()
+  })
+
+  it('PUT accepte toujours un smtpHost public normal (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE platform.tenants
+      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+    const res = await app.inject({
+      method: 'PUT', url: '/settings/email',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { smtpHost: 'smtp.gmail.com' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(vi.mocked(assertSafeOutboundHost)).toHaveBeenCalledWith('smtp.gmail.com')
   })
 })
 
@@ -718,9 +771,9 @@ describe('POST /settings/email/test — email de test de la config SMTP', () => 
     expect(vi.mocked(sendTestEmail)).toHaveBeenCalledWith(expect.objectContaining({ to: 'dest@sotra.ci', smtp: null }))
   })
 
-  it('SMTP en échec → 502 maîtrisé avec le message (jamais de 500 brute)', async () => {
+  it('SMTP en échec → 502 maîtrisé, message générique (jamais l\'erreur brute — OWASP A10)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [TENANT_MAIL_ROW] })
-    vi.mocked(sendTestEmail).mockRejectedValueOnce(new Error('Invalid login: 535'))
+    vi.mocked(sendTestEmail).mockRejectedValueOnce(new Error('Invalid login: 535 auth failed at smtp.internal.corp'))
     const res = await app.inject({
       method: 'POST', url: '/settings/email/test',
       headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
@@ -728,7 +781,151 @@ describe('POST /settings/email/test — email de test de la config SMTP', () => 
     })
     expect(res.statusCode).toBe(502)
     const body = JSON.parse(res.body)
-    expect(body.error).toContain('Invalid login')
+    expect(body.error).not.toContain('Invalid login')
+    expect(body.error).not.toContain('smtp.internal.corp')
     expect(body.viaTenantSmtp).toBe(true)
+  })
+
+  it('bloque un hôte SMTP interne (SSRF, défense en profondeur) — pas d\'erreur brute exposée', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ ...TENANT_MAIL_ROW, smtp_host: '169.254.169.254' }] })
+    vi.mocked(assertSafeOutboundHost).mockRejectedValueOnce(new SsrfBlockedError('Adresse IP privée/interne interdite'))
+    const callsBefore = vi.mocked(sendTestEmail).mock.calls.length
+    const res = await app.inject({
+      method: 'POST', url: '/settings/email/test',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: {},
+    })
+    expect(res.statusCode).not.toBe(200)
+    expect(vi.mocked(sendTestEmail).mock.calls.length).toBe(callsBefore) // pas de nouvel envoi
+    const body = JSON.parse(res.body)
+    expect(JSON.stringify(body)).not.toContain('DNS')
+    expect(JSON.stringify(body)).not.toContain('169.254.169.254')
+  })
+})
+
+describe('POST /settings/variable-elements — RBAC admin/hr_manager + Zod bornée (OWASP A04)', () => {
+  const validPayload = {
+    employee_id: UUID_A,
+    rule_code:   'PRIME01',
+    month:       '2026-01',
+    amount:      50000,
+  }
+
+  it('refuse un hr_officer (403 — pas de main sur la paie)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(403)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('refuse un amount non-numérique (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: 'beaucoup' as unknown as number },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un amount hors bornes (>100M FCFA) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: 999_999_999 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un amount négatif hors bornes (< -100M FCFA) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, amount: -999_999_999 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un champ inconnu (.strict) — 400', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, isAdmin: true },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un rule_code hors format (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, rule_code: 'prime en minuscule !' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuse un month hors format YYYY-MM (400)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validPayload, month: '01-2026' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('admin — payload valide crée l\'élément variable (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'p1' }] }) // pay_periods lookup
+      .mockResolvedValueOnce({ rows: [{ id: 've1', ...validPayload }] }) // INSERT
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('hr_manager — payload valide crée l\'élément variable (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'p1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 've2', ...validPayload }] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+      payload: validPayload,
+    })
+    expect(res.statusCode).toBe(201)
+  })
+})
+
+describe('GET /settings/variable-elements — RBAC admin/hr_manager (OWASP A04)', () => {
+  it('refuse un hr_officer (403)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('admin peut consulter (200)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'GET', url: '/settings/variable-elements',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
   })
 })

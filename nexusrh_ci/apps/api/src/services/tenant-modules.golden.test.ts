@@ -43,10 +43,15 @@ const provisioning   = read('services', 'tenant-provisioning.service.ts')
 const modulesService = read('services', 'tenant-modules.service.ts')
 
 describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
-  it('tous les modules sont actifs par défaut SAUF la vue DG 360° (opt-in)', () => {
+  it('tous les modules sont actifs par défaut SAUF la vue DG 360° et la Badgeuse (opt-in)', () => {
     for (const key of MODULE_KEYS) {
-      expect(MODULE_DEFAULTS[key]).toBe(key === 'dg_view' ? false : true)
+      expect(MODULE_DEFAULTS[key]).toBe(key === 'dg_view' || key === 'attendance' ? false : true)
     }
+  })
+
+  it('attendance est opt-in (défaut désactivé) et mappé sur /attendance', () => {
+    expect(MODULE_DEFAULTS.attendance).toBe(false)
+    expect(moduleKeyForUrl('/attendance/devices')).toBe('attendance')
   })
 
   it('surcharges jsonb partielles : seules les clés fournies changent', () => {

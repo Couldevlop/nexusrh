@@ -145,4 +145,46 @@ describe('seed.ts — câblage de la préservation', () => {
     expect(agencyBlock).toContain('ON CONFLICT (email) DO UPDATE SET is_active = true')
     expect(agencyBlock).not.toContain('DO UPDATE SET password_hash')
   })
+
+  // OWASP A09 — le seed tourne à chaque déploiement prod via `kubectl exec`
+  // (pipeline CI/CD) : sans garde, tous les identifiants de démo seraient streamés
+  // dans les logs GitHub Actions.
+  it('n\'imprime le résumé des identifiants de démo QUE hors production', () => {
+    const credsIdx = seedSrc.indexOf("console.log('Comptes de connexion")
+    const guardIdx = seedSrc.lastIndexOf("process.env['NODE_ENV'] !== 'production'", credsIdx)
+    expect(credsIdx).toBeGreaterThan(-1)
+    expect(guardIdx).toBeGreaterThan(-1)
+    // La garde englobe le bloc d'identifiants et se referme après.
+    expect(guardIdx).toBeLessThan(credsIdx)
+    const closingBraceIdx = seedSrc.indexOf('\n  }', credsIdx)
+    expect(closingBraceIdx).toBeGreaterThan(credsIdx)
+  })
+
+  // Sécurité — le secret TOTP statique ne doit JAMAIS être imprimé (aucun
+  // console.log ne contient le littéral). Il ne subsiste que comme valeur par
+  // défaut de SEED_MFA_TOTP_SECRET (surchargeable), consignée hors dépôt dans
+  // nexusrh_ci/.credentials-local.md.
+  it('n\'imprime jamais le secret TOTP en clair dans les logs', () => {
+    // Le littéral n'apparaît qu'une seule fois : le défaut de SEED_MFA_TOTP_SECRET.
+    const occurrences = seedSrc.split('JBSWY3DPEHPK3PXP').length - 1
+    expect(occurrences).toBe(1)
+    expect(seedSrc).toContain("SEED_MFA_TOTP_SECRET']")
+    // Aucun console.log ne doit contenir le secret.
+    for (const line of seedSrc.split('\n')) {
+      if (line.includes('console.log') || line.includes('console.warn')) {
+        expect(line).not.toContain('JBSWY3DPEHPK3PXP')
+      }
+    }
+  })
+
+  // Sécurité — les mots de passe de démo sont paramétrables par variables SEED_*
+  // (défauts fonctionnels) et non figés en dur à chaque usage.
+  it('lit les mots de passe de démo depuis les variables SEED_*', () => {
+    expect(seedSrc).toContain("SEED_SUPERADMIN_PASSWORD']")
+    expect(seedSrc).toContain("SEED_DEMO_PASSWORD']")
+    expect(seedSrc).toContain("SEED_OPENLAB_PASSWORD']")
+    expect(seedSrc).toContain('bcrypt.hash(SEED_DEMO_PASSWORD')
+    expect(seedSrc).toContain('bcrypt.hash(SEED_SUPERADMIN_PASSWORD')
+    expect(seedSrc).toContain('bcrypt.hash(SEED_OPENLAB_PASSWORD')
+  })
 })

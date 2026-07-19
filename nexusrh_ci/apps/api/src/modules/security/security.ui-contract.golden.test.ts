@@ -61,7 +61,7 @@ describe('GOLDEN security — endpoints consommés', () => {
   it('réservé admin (A01), secrets chiffrés (A02), SSRF guard (A10), audit (A09)', () => {
     expect(routes).toContain(`fastify.authorize(...ADMIN)`)
     expect(routes).toContain('encrypt(')
-    expect(routes).toContain('assertSafeOutboundUrl')
+    expect(routes).toContain('resolveSafeOutbound')
     expect(routes).toContain(`'security.sso_updated'`)
     expect(routes).toContain(`'security.siem_updated'`)
   })

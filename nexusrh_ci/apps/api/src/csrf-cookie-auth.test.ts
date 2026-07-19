@@ -1,12 +1,14 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: vi.fn(), end: vi.fn() })),
 }))
+const { getTokenEpochMock } = vi.hoisted(() => ({ getTokenEpochMock: vi.fn().mockResolvedValue(0) }))
 vi.mock('./services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
+  getTokenEpoch:      getTokenEpochMock,
 }))
 vi.mock('./config.js', () => ({
   config: {
@@ -75,6 +77,8 @@ beforeAll(async () => {
 })
 
 afterAll(async () => { await app.close() })
+
+beforeEach(() => { getTokenEpochMock.mockReset().mockResolvedValue(0) })
 
 describe('JWT depuis cookie httpOnly (OWASP A02)', () => {
   it('GET protégé OK avec JWT en cookie (au lieu de header)', async () => {
@@ -198,6 +202,112 @@ describe('CSRF guard sur mutations (OWASP A01)', () => {
     const res = await app.inject({
       method: 'GET', url: '/protected',
       cookies: { [AUTH_COOKIE_NAME]: token },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('Anti-bypass MFA — un token de challenge n\'est pas un token de session (OWASP A07)', () => {
+  it('GET protégé refuse un token aud=mfa-challenge (header Authorization) → 401', async () => {
+    const challenge = app.jwt.sign(
+      { sub: 'u1', schemaName: 'tenant_sotra', tenantId: 't1', aud: 'mfa-challenge', userId: 'u1' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '3m' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${challenge}` },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé refuse un token aud=mfa-challenge (cookie) → 401', async () => {
+    const challenge = app.jwt.sign(
+      { sub: 'u1', schemaName: 'tenant_sotra', tenantId: 't1', aud: 'mfa-challenge', userId: 'u1' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '3m' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      cookies: { [AUTH_COOKIE_NAME]: challenge },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé refuse un token aud=csrf réutilisé comme session → 401', async () => {
+    const csrf = app.jwt.sign(
+      { sub: 'u1', aud: 'csrf' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '1h' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${csrf}` },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('GET protégé reste OK avec un token de session normal (sans aud)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('Époque d\'invalidation de session — token-epoch (OWASP A01/A02)', () => {
+  it('token émis AVANT l\'époque enregistrée (iat < epoch) → 401 (session invalidée)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    const decoded = app.jwt.decode<{ iat: number }>(token)
+    getTokenEpochMock.mockResolvedValueOnce((decoded?.iat ?? 0) + 10) // epoch postérieure au token
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('token émis APRÈS l\'époque enregistrée (iat >= epoch) → reste valide (200)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    const decoded = app.jwt.decode<{ iat: number }>(token)
+    getTokenEpochMock.mockResolvedValueOnce((decoded?.iat ?? 0) - 10) // epoch antérieure au token
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('aucune époque enregistrée (0 = jamais invalidé) → reste valide (200)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    getTokenEpochMock.mockResolvedValueOnce(0)
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('Redis indisponible (getTokenEpoch rejette) → fail-open, reste valide (200)', async () => {
+    const token = app.jwt.sign({
+      sub: 'u1', tenantId: 't1', schemaName: 'tenant_sotra', role: 'admin',
+      email: 'a@b.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    getTokenEpochMock.mockRejectedValueOnce(new Error('Redis down'))
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
   })

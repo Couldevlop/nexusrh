@@ -55,41 +55,43 @@ pnpm run dev
 
 > Tous les comptes ci-dessous sont créés par `pnpm --filter @nexusrhci/api run db:seed` (idempotent, DO UPDATE password_hash à chaque run).
 > En cas de login 401 après un déploiement, voir [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) → procédure « Reset des passwords démo ».
+>
+> **Mots de passe et secret TOTP → `.credentials-local.md`** (fichier LOCAL, non versionné). Les valeurs sont pilotées par les variables d'env `SEED_SUPERADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` / `SEED_OPENLAB_PASSWORD` / `SEED_MFA_TOTP_SECRET`. Aucun mot de passe n'est écrit en clair dans le dépôt.
 
 ### Super Admin (plateforme)
 
-| Email                       | Mot de passe      | Rôle        | Redirige vers          |
-| --------------------------- | ----------------- | ----------- | ---------------------- |
-| `superadmin@nexusrh-ci.com` | `SuperAdmin1234!` | super_admin | `/platform/dashboard`  |
+| Email                       | Rôle        | Redirige vers          |
+| --------------------------- | ----------- | ---------------------- |
+| `superadmin@nexusrh-ci.com` | super_admin | `/platform/dashboard`  |
 
 ### SOTRA — Société des Transports Abidjanais · thème orange `#E85D04`
 
-| Email                | Mot de passe | Rôle       | Redirige vers   |
-| -------------------- | ------------ | ---------- | --------------- |
-| `admin@sotra.ci`     | `Admin1234!` | admin      | `/dashboard`    |
-| `rh@sotra.ci`        | `Admin1234!` | hr_manager | `/dashboard`    |
-| `manager@sotra.ci`   | `Admin1234!` | manager    | `/dashboard`    |
-| `employe@sotra.ci`   | `Admin1234!` | employee   | `/mon-espace`   |
+| Email                | Rôle       | Redirige vers   |
+| -------------------- | ---------- | --------------- |
+| `admin@sotra.ci`     | admin      | `/dashboard`    |
+| `rh@sotra.ci`        | hr_manager | `/dashboard`    |
+| `manager@sotra.ci`   | manager    | `/dashboard`    |
+| `employe@sotra.ci`   | employee   | `/mon-espace`   |
 
 ### Cabinet Expertise CI · thème bleu `#1D4ED8`
 
-| Email                            | Mot de passe | Rôle     | Redirige vers |
-| -------------------------------- | ------------ | -------- | ------------- |
-| `admin@cabinet-expertise.ci`     | `Admin1234!` | admin    | `/dashboard`  |
-| `employe2@cabinet-expertise.ci`  | `Admin1234!` | employee | `/mon-espace` |
+| Email                            | Rôle     | Redirige vers |
+| -------------------------------- | -------- | ------------- |
+| `admin@cabinet-expertise.ci`     | admin    | `/dashboard`  |
+| `employe2@cabinet-expertise.ci`  | employee | `/mon-espace` |
 
 ### OpenLab Consulting · thème violet `#7C3AED`
 
-| Email               | Mot de passe   | Rôle  | Redirige vers |
-| ------------------- | -------------- | ----- | ------------- |
-| `coulwao@gmail.com` | `Openlab1234!` | admin | `/dashboard`  |
+| Email               | Rôle  | Redirige vers |
+| ------------------- | ----- | ------------- |
+| `coulwao@gmail.com` | admin | `/dashboard`  |
 
 ### Cabinet Talents CI — cabinet de recrutement (gère SOTRA + Cabinet Expertise)
 
-| Email                          | Mot de passe | Rôle          | Redirige vers         |
-| ------------------------------ | ------------ | ------------- | --------------------- |
-| `owner@cabinet-talents.ci`     | `Admin1234!` | agency_owner  | `/agency/dashboard`   |
-| `recruteur@cabinet-talents.ci` | `Admin1234!` | agency_member | `/agency/dashboard`   |
+| Email                          | Rôle          | Redirige vers         |
+| ------------------------------ | ------------- | --------------------- |
+| `owner@cabinet-talents.ci`     | agency_owner  | `/agency/dashboard`   |
+| `recruteur@cabinet-talents.ci` | agency_member | `/agency/dashboard`   |
 
 > Guide client dédié : [`docs/GUIDE-CABINET-RECRUTEMENT.md`](docs/GUIDE-CABINET-RECRUTEMENT.md).
 

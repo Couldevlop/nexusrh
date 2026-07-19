@@ -8,12 +8,13 @@ import { provisionTenantSchema } from '../../db/provisioning.js'
 import { sendEmployeeWelcomeEmail, sendTestEmail } from '../../services/email.js'
 import { loadTenantMailById } from '../../services/tenant-mail.service.js'
 import { encrypt, decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
+import { setTokenEpoch } from '../../services/redis.js'
 import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.service.js'
 import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
-import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '../../services/ssrf-guard.js'
 import { describeDbError } from '../../utils/db-error.js'
 
 // OWASP A03 — patterns de validation stricts
@@ -667,6 +668,21 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const b = parsed.data
+      // OWASP A10 — SSRF : un admin tenant ne peut pas pointer le SMTP vers le
+      // réseau interne (metadata cloud 169.254.169.254, 10.x, postgres.<ns>.svc,
+      // localhost…). On valide dès l'écriture pour ne jamais stocker un hôte
+      // dangereux, en cohérence avec la garde des autres appels sortants. Le
+      // message reste générique (pas de détail résolveur/DNS — A09/A10).
+      if (b.smtpHost != null && b.smtpHost !== '') {
+        try {
+          await assertSafeOutboundHost(b.smtpHost)
+        } catch (e) {
+          if (e instanceof SsrfBlockedError) {
+            return reply.status(422).send({ error: 'Hôte SMTP non autorisé' })
+          }
+          throw e
+        }
+      }
       if (b.smtpPassword != null && b.smtpPassword !== '' && !isEncryptionAvailable()) {
         return reply.status(400).send({
           error: 'Chiffrement non configuré côté plateforme (ENCRYPTION_KEY). Impossible de stocker le mot de passe SMTP.',
@@ -732,6 +748,18 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const mail = await loadTenantMail(tenantId)
         const viaTenantSmtp = !!mail.smtp
+        // OWASP A10 — défense en profondeur : re-vérifie l'hôte SMTP tenant au
+        // moment de l'envoi (au cas où il aurait été enregistré avant ce correctif).
+        if (mail.smtp?.host) {
+          try {
+            await assertSafeOutboundHost(mail.smtp.host)
+          } catch (e) {
+            if (e instanceof SsrfBlockedError) {
+              return reply.status(422).send({ error: 'Hôte SMTP non autorisé' })
+            }
+            throw e
+          }
+        }
         try {
           await sendTestEmail({
             to,
@@ -742,10 +770,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             smtp: mail.smtp,
           })
         } catch (sendErr) {
-          const msg = sendErr instanceof Error ? sendErr.message : 'Erreur SMTP inconnue'
+          // OWASP A10 — ne JAMAIS renvoyer le message nodemailer brut au client :
+          // il révèle port ouvert/fermé/filtré et les bannières de services
+          // internes (oracle de scan de ports). Détail loggé côté serveur seul.
           fastify.log.warn({ sendErr }, 'test email failed')
           return reply.status(502).send({
-            error: `Échec de l'envoi de l'email de test : ${msg}`, viaTenantSmtp,
+            error: "Échec de l'envoi de l'email de test — vérifiez l'hôte, le port et les identifiants SMTP.",
+            viaTenantSmtp,
           })
         }
         auditLogSettings(
@@ -1070,6 +1101,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           },
           request.ip ?? null,
         )
+        // OWASP A01 — un changement de rôle ou une désactivation doit invalider
+        // IMMÉDIATEMENT toute session existante de la cible : sinon un compte
+        // démis/désactivé garde son accès (rôle périmé) jusqu'à expiration du
+        // JWT (7j) via /auth/refresh. cf. plugins/auth.ts (token-epoch).
+        const becameInactive = is_active === false
+        if (roleChanged || becameInactive) {
+          try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
+        }
         return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
@@ -1576,9 +1615,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // OWASP A04 — éléments variables de paie : montants qui alimentent directement
+  // le moteur de paie et in fine les virements Mobile Money réels. RBAC restreint
+  // à admin/hr_manager (aligné sur DELETE ci-dessous ; hr_officer n'a pas la main
+  // sur la paie — cf. matrice RBAC nexusrh_ci/CLAUDE.md) + validation Zod stricte
+  // bornée (montant plafonné, format mois/rule_code contraint).
+  const VARIABLE_ELEMENT_AMOUNT_MIN = -100_000_000 // FCFA — plafond défensif (~100M, bien au-delà d'un salaire CI réaliste)
+  const VARIABLE_ELEMENT_AMOUNT_MAX = 100_000_000
+  const variableElementSchema = z.object({
+    employee_id: z.string().uuid(),
+    rule_code:   z.string().min(1).max(10).regex(/^[A-Z0-9_]+$/, 'Code rubrique invalide (majuscules/chiffres/_)'),
+    month:       z.string().regex(/^\d{4}-\d{2}$/, 'Format mois invalide (YYYY-MM)'),
+    amount:      z.number().int().min(VARIABLE_ELEMENT_AMOUNT_MIN).max(VARIABLE_ELEMENT_AMOUNT_MAX),
+    description: z.string().max(500).optional(),
+  }).strict()
+
   // GET /settings/variable-elements
   fastify.get('/variable-elements', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin','hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureMigrated(schema)
@@ -1601,12 +1655,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /settings/variable-elements
   fastify.post('/variable-elements', {
-    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    preHandler: [fastify.authorize('admin','hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const body = request.body as {
-        employee_id: string; rule_code: string; amount: number; month: string; description?: string
+      const parsed = variableElementSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Élément variable invalide', issues: parsed.error.flatten() })
       }
+      const body = parsed.data
       try {
         // Le moteur de paie lit les éléments variables par period_id (colonne
         // NOT NULL) : on résout la période depuis le mois. Sans période ouverte
@@ -1659,6 +1715,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (id === request.user.sub) return reply.status(400).send({ error: 'Impossible de supprimer votre propre compte' })
       try {
         await pool.query(`DELETE FROM "${schema}".users WHERE id = $1`, [id])
+        // OWASP A01 — un compte supprimé garderait sinon un accès valide via
+        // son JWT (jusqu'à 7j) et pourrait même le renouveler via /auth/refresh
+        // tant que le token n'a pas expiré. cf. plugins/auth.ts (token-epoch).
+        try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)
