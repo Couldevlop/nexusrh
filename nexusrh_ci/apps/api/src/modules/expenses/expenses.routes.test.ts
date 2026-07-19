@@ -262,3 +262,99 @@ describe('GET /expenses/:id — UUID validation', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+// ── OWASP A01-3 — RBAC saisie/soumission des notes de frais ────────────────────
+const UUID_B = '22222222-2222-2222-2222-222222222222'
+
+describe('POST /expenses — readonly exclu + imputation bornée (OWASP A01-3)', () => {
+  it('un readonly NE PEUT PAS créer de note de frais (403)', async () => {
+    const token = tokenFor(app, 'readonly')
+    const res = await app.inject({
+      method: 'POST', url: '/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Note interdite' },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('un manager NE PEUT PAS imputer une note à un employé hors de son équipe (403)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // managerCanActOnEmployee → false
+    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Note imputée', employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toContain('équipe directe')
+    // aucun INSERT n'a été tenté
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('INSERT INTO'))).toBe(false)
+  })
+
+  it('un manager PEUT imputer une note à un membre de son équipe (201)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_B }] })                 // managerCanActOnEmployee → ok
+      .mockResolvedValueOnce({ rows: [{ id: 'r-9', total_amount: 0 }] }) // INSERT report
+      .mockResolvedValueOnce({ rows: [] })                              // audit_log
+    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Mission équipe', employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('un employee ne peut pas s\'imputer la note d\'un autre : employee_id ignoré', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A }] })                 // SELECT son dossier via email
+      .mockResolvedValueOnce({ rows: [{ id: 'r-1', total_amount: 0 }] }) // INSERT report
+      .mockResolvedValueOnce({ rows: [] })                              // audit_log
+    const token = tokenFor(app, 'employee', { email: 'kouassi@sotra.ci' })
+    const res = await app.inject({
+      method: 'POST', url: '/expenses',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Note', employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(201)
+    const insertCall = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('expense_reports'))
+    expect(insertCall?.[1]?.[0]).toBe(UUID_A)
+    expect(insertCall?.[1]?.[0]).not.toBe(UUID_B)
+  })
+})
+
+describe('PATCH /expenses/:id/submit — readonly exclu + périmètre manager (OWASP A01-3)', () => {
+  it('un readonly NE PEUT PAS soumettre une note (403)', async () => {
+    const token = tokenFor(app, 'readonly')
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/submit`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('un manager NE PEUT PAS soumettre la note d\'un employé hors équipe (403)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // managerCanActOnReport → false
+    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/submit`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('UPDATE'))).toBe(false)
+  })
+
+  it('un manager PEUT soumettre la note de son équipe directe (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'e-1' }] })                       // managerCanActOnReport → ok
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, status: 'submitted' }] }) // UPDATE
+    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/submit`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})

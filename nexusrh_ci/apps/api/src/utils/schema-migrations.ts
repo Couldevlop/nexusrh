@@ -28,6 +28,49 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS city varchar(100) DEFAULT 'Abidjan'`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS user_id uuid`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS profile_photo_url text`,
+    // ── A08-2 — Photos de profil (PII) TENANT-SCOPÉES ────────────────────────
+    // Historiquement stockées dans platform.brand_assets (table GLOBALE
+    // cross-tenant servie SANS auth par /public/brand/:id, prévue pour les
+    // logos publics) : toute fuite d'URL donnait un accès permanent, non
+    // révocable et inter-tenant à la photo d'un salarié. Les photos vivent
+    // désormais ici et ne sont lisibles que via GET /employees/:id/photo.
+    // Unicité employee_id → un ré-upload écrase l'ancienne image (A08-6).
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".employee_photos (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid NOT NULL UNIQUE,
+      mime        varchar(100) NOT NULL,
+      bytes       bytea NOT NULL,
+      size_bytes  integer NOT NULL DEFAULT 0,
+      uploaded_by uuid,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    // Filet si la table préexistait sans la contrainte (ON CONFLICT en dépend).
+    `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_employee_photos_emp_idx"
+       ON "${schemaName}".employee_photos(employee_id)`,
+    // Rétro-compat : RAPATRIEMENT des photos déjà publiées dans le bucket public.
+    // 1) copie des octets depuis platform.brand_assets vers le schéma du tenant.
+    `INSERT INTO "${schemaName}".employee_photos (employee_id, mime, bytes, size_bytes)
+     SELECT e.id, b.mime, b.bytes, octet_length(b.bytes)
+       FROM "${schemaName}".employees e
+       JOIN platform.brand_assets b
+         ON b.id = substring(e.profile_photo_url from '/public/brand/([0-9a-fA-F-]{36})$')::uuid
+      WHERE e.profile_photo_url ~ '/public/brand/[0-9a-fA-F-]{36}$'
+     ON CONFLICT (employee_id) DO NOTHING`,
+    // 2) suppression de la copie PUBLIQUE — uniquement si la copie tenant existe
+    //    (sinon on perdrait l'image). Les logos ne sont jamais visés : ils sont
+    //    référencés par tenants.logo_url / agencies.logo_url, pas par un employé.
+    `DELETE FROM platform.brand_assets b
+      USING "${schemaName}".employees e
+       JOIN "${schemaName}".employee_photos p ON p.employee_id = e.id
+      WHERE e.profile_photo_url ~ '/public/brand/[0-9a-fA-F-]{36}$'
+        AND b.id = substring(e.profile_photo_url from '/public/brand/([0-9a-fA-F-]{36})$')::uuid`,
+    // 3) bascule des URL vers l'endpoint authentifié.
+    `UPDATE "${schemaName}".employees e
+        SET profile_photo_url = '/employees/' || e.id || '/photo'
+       FROM "${schemaName}".employee_photos p
+      WHERE p.employee_id = e.id
+        AND e.profile_photo_url ~ '/public/brand/[0-9a-fA-F-]{36}$'`,
     // Dossier salarié complet : temps de travail, catégorie conventionnelle, RIB
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS weekly_hours numeric(4,1) DEFAULT 40`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS professional_category varchar(50)`,
@@ -242,6 +285,7 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       secret_enc   text NOT NULL,
       events       text[] NOT NULL DEFAULT '{}',
       headers      jsonb NOT NULL DEFAULT '{}',
+      headers_enc  text,
       is_active    boolean NOT NULL DEFAULT true,
       created_by   uuid,
       last_delivery_at timestamptz,
@@ -249,6 +293,12 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       created_at   timestamptz NOT NULL DEFAULT now(),
       updated_at   timestamptz NOT NULL DEFAULT now()
     )`,
+    // OWASP A09-3 — les en-têtes de webhook portent typiquement un
+    // `Authorization: Bearer <token>` du système destinataire : ils sont
+    // désormais chiffrés (AES-256-GCM) comme `auth_secret_enc`. La colonne
+    // `headers` en clair est conservée pour la LECTURE rétro-compatible des
+    // lignes antérieures ; plus rien n'y est écrit (cf. integrations.routes.ts).
+    `ALTER TABLE "${schemaName}".integration_webhooks ADD COLUMN IF NOT EXISTS headers_enc text`,
     `CREATE TABLE IF NOT EXISTS "${schemaName}".integration_api_keys (
       id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name         varchar(150) NOT NULL,

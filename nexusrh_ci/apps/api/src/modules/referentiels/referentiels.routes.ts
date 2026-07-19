@@ -139,9 +139,13 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     ).catch(() => { /* table absente sur ancien env : non bloquant */ })
   }
 
-  // ── Seed : data file → PostgreSQL → Elasticsearch (admin uniquement) ─────────
+  // ── Seed : data file → PostgreSQL → Elasticsearch (super_admin UNIQUEMENT) ───
+  // OWASP A01 — le référentiel légal (table `droit-ci`) et l'index ES sont des
+  // ressources GLOBALES partagées par tous les tenants. Un `admin` est
+  // tenant-scopé : lui laisser wipe-reseeder le référentiel commun serait une
+  // atteinte à la disponibilité/intégrité inter-tenants. → super_admin seul.
   app.post('/seed', {
-    preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
+    preHandler: [app.authenticate, app.authorize('super_admin')],
     config: HEAVY_ADMIN_RATE_LIMIT,
   }, async (req, reply) => {
     try {
@@ -156,9 +160,10 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  // ── Réindexation ES depuis PG (admin uniquement, sans re-seed) ──────────────
+  // ── Réindexation ES depuis PG (super_admin UNIQUEMENT, sans re-seed) ────────
+  // OWASP A01 — même raison que /seed : l'index ES est partagé par tous les tenants.
   app.post('/reindex', {
-    preHandler: [app.authenticate, app.authorize('admin', 'super_admin')],
+    preHandler: [app.authenticate, app.authorize('super_admin')],
     config: HEAVY_ADMIN_RATE_LIMIT,
   }, async (req, reply) => {
     try {

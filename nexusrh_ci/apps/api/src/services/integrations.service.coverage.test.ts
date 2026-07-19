@@ -78,6 +78,33 @@ describe('deliverWebhook', () => {
     expect(query.mock.calls.some(c => String(c[0]).includes('integration_webhooks SET last_delivery_at'))).toBe(true)
   })
 
+  // ── A09-3 : en-têtes chiffrés au repos ────────────────────────────────────
+  it('headers_enc déchiffré et envoyé au destinataire', async () => {
+    fetchSpy.mockResolvedValue(fakeRes(200))
+    const { pool } = poolStub()
+    const secretHeaders = { Authorization: 'Bearer token-destinataire' }
+    // `decryptSecret` est le même injecté que pour le secret HMAC.
+    const decJson = (enc: string): string | null =>
+      enc === 'HEADERS_ENC' ? JSON.stringify(secretHeaders) : 'topsecret'
+    const whEnc = { id: 'w1', target_url: 'https://hook.example.com/x', secret_enc: 'enc', headers: null, headers_enc: 'HEADERS_ENC' }
+    await deliverWebhook(pool, 'tenant_test', whEnc, 'employee.created', {}, decJson)
+
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }]
+    expect(opts.headers['Authorization']).toBe('Bearer token-destinataire')
+    // Les en-têtes NexusRH restent non écrasables.
+    expect(opts.headers['X-NexusRH-Event']).toBe('employee.created')
+  })
+
+  it('headers_enc indéchiffrable/corrompu : repli sur `headers` en clair (lignes héritées)', async () => {
+    fetchSpy.mockResolvedValue(fakeRes(200))
+    const { pool } = poolStub()
+    const whLegacy = { id: 'w1', target_url: 'https://hook.example.com/x', secret_enc: 'enc',
+      headers: { 'X-Legacy': 'v' }, headers_enc: 'CORROMPU' }
+    await deliverWebhook(pool, 'tenant_test', whLegacy, 'employee.created', {}, () => null)
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }]
+    expect(opts.headers['X-Legacy']).toBe('v')
+  })
+
   it('échec HTTP 500 : retry jusqu\'à maxAttempts (2 fetch) puis ok=false', async () => {
     fetchSpy.mockResolvedValue(fakeRes(500, 'boom'))
     const { pool, query } = poolStub()
@@ -245,5 +272,55 @@ describe('resolveApiKey — branches restantes', () => {
   it('exception DB → null (ne lève jamais)', async () => {
     const q = vi.fn().mockRejectedValue(new Error('db error'))
     expect(await resolveApiKey({ query: q } as never, 'nxk_acme.abc')).toBeNull()
+  })
+})
+
+// ── OWASP A10-3 — lecture bornée des corps de réponse sortants ──────────────
+describe('corps de réponse bornés (A10-3)', () => {
+  const wh = { id: 'w1', target_url: 'https://hook.example.com/x', secret_enc: 'enc', headers: null }
+
+  it('deliverWebhook : cible qui streame un corps géant → extrait vide, flux annulé, pas d\'OOM', async () => {
+    const cancel = vi.fn()
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { pulls += 1; controller.enqueue(new Uint8Array(8_000).fill(0x61)) },
+      cancel() { cancel() },
+    })
+    fetchSpy.mockResolvedValue({ status: 200, body, headers: { get: () => null } })
+    const { pool, query } = poolStub()
+
+    await deliverWebhook(pool, 'tenant_test', wh, 'employee.created', {}, () => 'sek')
+
+    expect(cancel).toHaveBeenCalled()
+    // Cap 64 Ko → au plus ~8 morceaux de 8 Ko lus (jamais le flux entier).
+    expect(pulls).toBeLessThanOrEqual(64_000 / 8_000 + 5)
+    const insert = query.mock.calls.find(c => String(c[0]).includes('webhook_deliveries'))!
+    expect((insert[1] as unknown[])[5]).toBe('') // extrait vide, jamais le corps géant
+  })
+
+  it('deliverWebhook : extrait tronqué à 300 caractères sur un corps en flux sous le cap', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('z'.repeat(1000))); controller.close() },
+    })
+    fetchSpy.mockResolvedValue({ status: 200, body, headers: { get: () => null } })
+    const { pool, query } = poolStub()
+
+    await deliverWebhook(pool, 'tenant_test', wh, 'employee.created', {}, () => 'sek')
+
+    const insert = query.mock.calls.find(c => String(c[0]).includes('webhook_deliveries'))!
+    expect((insert[1] as unknown[])[5]).toHaveLength(300)
+  })
+
+  it('testConnector : le corps n\'est jamais bufferisé, seulement annulé', async () => {
+    const cancel = vi.fn()
+    const pull = vi.fn()
+    const body = new ReadableStream<Uint8Array>({ pull, cancel() { cancel() } })
+    fetchSpy.mockResolvedValue({ status: 200, body, headers: { get: () => null } })
+
+    const r = await testConnector('https://api.example.com', 'none', null, null, null)
+
+    expect(r).toMatchObject({ ok: true, status: 200 })
+    expect(cancel).toHaveBeenCalled()
+    expect(body.locked).toBe(false) // aucun reader acquis → aucun octet bufferisé
   })
 })

@@ -253,7 +253,7 @@ describe('GET /referentiels/stats — RBAC', () => {
 describe('POST /referentiels/seed', () => {
   it('succès → 200 + audit log non bloquant', async () => {
     seedMock.mockResolvedValueOnce({ persisted: 5, indexed: 5 })
-    const token = tokenFor(app, 'admin')
+    const token = tokenFor(app, 'super_admin')
     const res = await app.inject({
       method: 'POST', url: '/referentiels/seed',
       headers: { authorization: `Bearer ${token}` },
@@ -268,7 +268,7 @@ describe('POST /referentiels/seed', () => {
 
   it('échec du seed → 500 message masqué', async () => {
     seedMock.mockRejectedValueOnce(new Error('connection string leaked: postgres://secret'))
-    const token = tokenFor(app, 'admin')
+    const token = tokenFor(app, 'super_admin')
     const res = await app.inject({
       method: 'POST', url: '/referentiels/seed',
       headers: { authorization: `Bearer ${token}` },
@@ -281,12 +281,22 @@ describe('POST /referentiels/seed', () => {
   it('audit log : INSERT activity_log en erreur reste non bloquant (200)', async () => {
     seedMock.mockResolvedValueOnce({ persisted: 1, indexed: 1 })
     queryMock.mockRejectedValueOnce(new Error('table activity_log absente'))
-    const token = tokenFor(app, 'admin')
+    const token = tokenFor(app, 'super_admin')
     const res = await app.inject({
       method: 'POST', url: '/referentiels/seed',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  // OWASP A01-5 — ressource légale GLOBALE : un admin TENANT est exclu.
+  it('un admin tenant ne peut PAS seed → 403', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/seed',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
   })
 
   it('un employee ne peut PAS seed → 403', async () => {

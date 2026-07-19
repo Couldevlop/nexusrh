@@ -522,3 +522,48 @@ describe('POST /mobile-money/webhooks/:provider — HMAC + idempotence (OWASP A0
     expect(res.statusCode).toBe(400)
   })
 })
+
+// ── OWASP A01-4 — RBAC de l'historique Mobile Money ────────────────────────────
+describe('GET /mobile-money/payments — RBAC matrice (OWASP A01-4)', () => {
+  it('hr_officer NE PEUT PAS lire l\'historique Mobile Money (403)', async () => {
+    // Matrice RBAC « Mobile Money Paiements » : hr_officer = aucun droit.
+    // L'historique expose téléphones, montants et IDs de transaction.
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET', url: '/mobile-money/payments',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+    // aucune requête SQL ne doit avoir été exécutée
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('hr_officer NE PEUT PAS filtrer l\'historique par employé (403)', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'GET', url: `/mobile-money/payments?employeeId=${UUID_B}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('hr_manager conserve l\'accès (200)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: '/mobile-money/payments',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('readonly conserve l\'accès en consultation (200)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'readonly')
+    const res = await app.inject({
+      method: 'GET', url: '/mobile-money/payments',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})

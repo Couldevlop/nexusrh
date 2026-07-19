@@ -53,6 +53,7 @@ import { createClient } from '../redis.js'
 import { logger } from '../logger.js'
 import { parseAttendancePollPayload, JobValidationError } from '../schemas.js'
 import { resolveSafeOutboundResult } from '../utils/ssrf-guard.js'
+import { readJsonCapped, BodyTooLargeError } from '../utils/http-body-limit.js'
 import { decryptIfPresent } from '../utils/crypto.js'
 
 // OWASP A04 — cap connexions PG (chaque poll fait quelques requêtes courtes ;
@@ -60,6 +61,8 @@ import { decryptIfPresent } from '../utils/crypto.js'
 const pool = new Pool({ connectionString: process.env['DATABASE_URL'], max: 5 })
 
 const FETCH_TIMEOUT_MS = 15_000
+/** OWASP A10 — cap mémoire de la réponse badgeuse (lecture bornée en flux). */
+const MAX_BODY_BYTES = 5_000_000
 
 // ── Types (miroir de attendance.types.ts — non partagés entre packages) ────
 
@@ -256,10 +259,16 @@ async function fetchDevicePunches(device: DeviceConnectionConfig): Promise<Fetch
       return { punches: [], ok: false, error: `HTTP ${response.status}` }
     }
 
+    // OWASP A10 — lecture BORNÉE (miroir de attendance.fetch.ts) : octets
+    // comptés en flux, flux annulé au-delà du cap. Une badgeuse qui streamerait
+    // plusieurs Go ne peut plus épuiser la mémoire du worker partagé.
     let body: unknown
     try {
-      body = await response.json()
+      body = await readJsonCapped(response, MAX_BODY_BYTES)
     } catch (e) {
+      if (e instanceof BodyTooLargeError) {
+        return { punches: [], ok: false, error: 'Réponse badgeuse trop volumineuse — abandon' }
+      }
       return { punches: [], ok: false, error: `Réponse badgeuse illisible (JSON) : ${(e as Error).message}` }
     }
 

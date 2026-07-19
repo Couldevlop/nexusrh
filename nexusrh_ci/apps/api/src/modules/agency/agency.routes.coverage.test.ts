@@ -18,12 +18,18 @@ import Fastify, { type FastifyInstance } from 'fastify'
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 
-const { blacklistMock } = vi.hoisted(() => ({ blacklistMock: vi.fn().mockResolvedValue(undefined) }))
+const { blacklistMock, setTokenEpochMock } = vi.hoisted(() => ({
+  blacklistMock: vi.fn().mockResolvedValue(undefined),
+  setTokenEpochMock: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe: blacklistMock,
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
   redisLockoutStore: {},
+  // A07-4 — suspension cabinet = révocation globale via l'époque de token.
+  setTokenEpoch: setTokenEpochMock,
+  getTokenEpoch: vi.fn().mockResolvedValue(0),
 }))
 
 const { createTenantMock } = vi.hoisted(() => ({ createTenantMock: vi.fn() }))
@@ -94,6 +100,7 @@ afterAll(async () => { await app.close() })
 beforeEach(() => {
   queryMock.mockReset().mockResolvedValue({ rows: [] })
   blacklistMock.mockClear()
+  setTokenEpochMock.mockClear()
   createTenantMock.mockReset()
 })
 
@@ -455,7 +462,7 @@ describe('POST /agency/agencies/:id/suspend (super_admin)', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('suspension avec includeClients → cascade + blacklist', async () => {
+  it('suspension avec includeClients → cascade + révocation des sessions membres', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [] })                            // policy défauts
       .mockResolvedValueOnce({ rows: [{ id: AG }] })                  // UPDATE agencies
@@ -467,7 +474,9 @@ describe('POST /agency/agencies/:id/suspend (super_admin)', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.data.clientsSuspended).toBe(2)
-    expect(blacklistMock).toHaveBeenCalledTimes(1)
+    // A07-4 — révocation par époque de token (et non plus par blacklist du sub).
+    expect(setTokenEpochMock).toHaveBeenCalledTimes(1)
+    expect(setTokenEpochMock).toHaveBeenCalledWith('au1')
   })
 })
 

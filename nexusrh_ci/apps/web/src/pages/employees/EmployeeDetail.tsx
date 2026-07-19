@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { ArrowLeft, Camera, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
@@ -31,11 +31,38 @@ export default function EmployeeDetail() {
   const canEditPhoto = ['admin', 'hr_manager', 'hr_officer'].includes(role)
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [photoSrc, setPhotoSrc] = useState<string | null>(null)
+  const [photoVersion, setPhotoVersion] = useState(0)
 
   const { data, isLoading } = useQuery<{ data: EmployeeDetails }>({
     queryKey: ['employee', id],
     queryFn: () => api.get(`/employees/${id}`).then(r => r.data),
   })
+
+  // A08-2 — la photo est désormais servie par un endpoint AUTHENTIFIÉ
+  // (GET /employees/:id/photo) : une balise <img> ne portant pas le header
+  // Authorization, on récupère l'image en BLOB via le client api (patron déjà
+  // utilisé partout pour les téléchargements authentifiés : bulletins PDF,
+  // exports CNPS, CV…) puis on pose une object URL locale.
+  const photoPath = data?.data?.profile_photo_url ?? null
+  useEffect(() => {
+    if (!photoPath) { setPhotoSrc(null); return }
+    // Rétro-compat : ancienne URL publique absolue (transition avant migration).
+    if (!photoPath.startsWith('/employees/')) { setPhotoSrc(photoPath); return }
+    let cancelled = false
+    let objectUrl: string | null = null
+    api.get(photoPath, { responseType: 'blob' })
+      .then((r) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(r.data as Blob)
+        setPhotoSrc(objectUrl)
+      })
+      .catch(() => { if (!cancelled) setPhotoSrc(null) })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [photoPath, photoVersion])
 
   // EMP-015 — upload de la photo de profil (multipart) puis rafraîchissement.
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -47,6 +74,9 @@ export default function EmployeeDetail() {
       form.append('file', file)
       await api.post(`/employees/${id}/photo`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       await queryClient.invalidateQueries({ queryKey: ['employee', id] })
+      // L'URL ne change pas d'un upload à l'autre (elle est dérivée de l'id) :
+      // on force le rechargement de l'image via un compteur de version.
+      setPhotoVersion((v) => v + 1)
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -76,9 +106,9 @@ export default function EmployeeDetail() {
       {/* Header — avatar = vraie photo si disponible, sinon initiales (EMP-015) */}
       <div className="flex items-center gap-4">
         <div className="relative h-14 w-14 shrink-0">
-          {emp.profile_photo_url ? (
+          {photoSrc ? (
             <img
-              src={emp.profile_photo_url}
+              src={photoSrc}
               alt={`${emp.first_name} ${emp.last_name}`}
               className="h-14 w-14 rounded-full object-cover border border-border"
             />

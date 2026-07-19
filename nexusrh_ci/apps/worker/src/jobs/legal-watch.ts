@@ -21,6 +21,7 @@ import { Pool } from 'pg'
 import { createHash } from 'crypto'
 import { logger } from '../logger.js'
 import { parseLegalWatchPayload, JobValidationError, type LegalWatchPayload } from '../schemas.js'
+import { readBodyCapped, BodyTooLargeError } from '../utils/http-body-limit.js'
 
 // OWASP A04 — cap connexions PG (le worker peut traiter plusieurs sources en
 // parallèle, chacune fait 2-3 queries — 5 connexions suffisent et empêchent
@@ -44,11 +45,18 @@ async function fetchText(url: string): Promise<string> {
       },
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const buf = await res.arrayBuffer()
-    if (buf.byteLength > MAX_BODY_BYTES) {
-      throw new Error(`Body trop grand (${buf.byteLength} bytes > ${MAX_BODY_BYTES})`)
+    // OWASP A10/A04 — lecture BORNÉE : l'ancien code appelait `arrayBuffer()`
+    // PUIS vérifiait la taille, donc allouait déjà tout le corps (une source
+    // qui streame plusieurs Go tuait le worker partagé). Désormais les octets
+    // sont comptés en flux et le flux est annulé dès le dépassement.
+    try {
+      return await readBodyCapped(res, MAX_BODY_BYTES)
+    } catch (e) {
+      if (e instanceof BodyTooLargeError) {
+        throw new Error(`Body trop grand (> ${MAX_BODY_BYTES} bytes)`)
+      }
+      throw e
     }
-    return new TextDecoder('utf-8').decode(buf)
   } finally {
     clearTimeout(timer)
   }

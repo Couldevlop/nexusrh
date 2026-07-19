@@ -56,6 +56,50 @@ const createTenantBodySchema = z.object({
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// ── PATCH /platform/tenants/:id — validation des VALEURS (OWASP A04-3) ────────
+// L'allowlist de clés protégeait déjà du mass-assignment, mais AUCUNE valeur
+// n'était validée : quotas négatifs/absurdes, `status`/`plan_type` en chaîne
+// libre hors enum, `logo_url` arbitraire. Tous les champs restent optionnels
+// (sémantique PATCH) et `.strict()` refuse les clés inconnues au lieu de les
+// ignorer silencieusement.
+const TENANT_STATUSES  = ['active', 'trial', 'suspended'] as const
+const TENANT_PLANS     = ['trial', 'starter', 'business', 'enterprise', 'public_sector'] as const
+const HEX_COLOR_RE     = /^#[0-9a-fA-F]{6}$/
+// Borne haute des quotas : très au-dessus du plan `enterprise` (9999) tout en
+// excluant les valeurs absurdes qui fausseraient la facturation et les KPI.
+const MAX_QUOTA = 1_000_000
+const quota = z.number({ invalid_type_error: 'Valeur numérique attendue' })
+  .int('Nombre entier attendu').nonnegative('Valeur négative interdite').max(MAX_QUOTA)
+// Booléens historiquement tolérants (true | 'true' | 1 | '1') — la coercition
+// applicative est conservée telle quelle en aval pour ne rien casser.
+const looseBool = z.union([z.boolean(), z.string().max(5), z.number().int().min(0).max(1)])
+const httpUrl = (max: number) => z.string().url('URL invalide').max(max).refine(
+  (v) => { try { return ['http:', 'https:'].includes(new URL(v).protocol) } catch { return false } },
+  'Seuls les schémas http(s) sont autorisés',
+)
+
+const tenantPatchBody = z.object({
+  name:                 z.string().trim().min(1).max(255),
+  plan_type:            z.enum(TENANT_PLANS),
+  status:               z.enum(TENANT_STATUSES),
+  primary_color:        z.string().regex(HEX_COLOR_RE, 'Couleur hexadécimale attendue (#RRGGBB)'),
+  secondary_color:      z.string().regex(HEX_COLOR_RE, 'Couleur hexadécimale attendue (#RRGGBB)'),
+  // `z.string().url()` seul accepterait `javascript:` / `data:` (il délègue à
+  // `new URL()`, qui ne filtre aucun schéma) : le logo étant réinjecté dans un
+  // `src`/`href` côté front, on restreint explicitement à http(s).
+  logo_url:             z.union([httpUrl(2000), z.literal(''), z.null()]),
+  max_users:            quota,
+  max_employees:        quota,
+  trial_ends_at:        z.union([z.string().datetime({ offset: true }), z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]),
+  city:                 z.string().trim().max(100),
+  sector:               z.string().trim().max(50),
+  has_subsidiaries:     z.boolean(),
+  payroll_mode:         z.enum(['single_country', 'multi_country']),
+  default_country_code: z.string().regex(/^[A-Z]{3}$/, 'Code pays ISO alpha-3 attendu'),
+  mfa_required:            looseBool,
+  ai_platform_key_enabled: looseBool,
+}).strict().partial()
+
 // OWASP A03 — carte { module: boolean } aux clés strictement bornées à la liste
 // canonique : forme unique importée de tenant-modules.service (réutilisée par la
 // création de tenant, le PUT modules et le bulk cabinet).
@@ -361,7 +405,17 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) {
         return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       }
-      const body = request.body as Record<string, unknown>
+      // OWASP A04-3 : valider les VALEURS avant tout UPDATE (quotas bornés,
+      // enums status/plan_type, URL du logo). `.strict()` refuse les clés
+      // inconnues plutôt que de les ignorer en silence.
+      const parsedBody = tenantPatchBody.safeParse(request.body ?? {})
+      if (!parsedBody.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsedBody.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsedBody.data as Record<string, unknown>
       const allowed = ['name','plan_type','status','primary_color','secondary_color',
                        'logo_url','max_users','max_employees','trial_ends_at','city','sector',
                        'has_subsidiaries','payroll_mode','default_country_code',

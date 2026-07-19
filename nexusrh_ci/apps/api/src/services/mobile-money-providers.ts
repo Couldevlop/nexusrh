@@ -18,6 +18,7 @@ import { config } from '../config.js'
 import { pool as rawPool } from '../db/pool.js'
 import { decryptIfPresent } from '../utils/crypto.js'
 import { resolveSafeOutbound } from './ssrf-guard.js'
+import { readJsonCapped } from './http-body-limit.js'
 
 export const MM_PROVIDERS = ['wave', 'mtn_momo', 'orange_money'] as const
 export type MmProvider = typeof MM_PROVIDERS[number]
@@ -157,6 +158,9 @@ function simulate(): TransferResult {
     : { success: false, status: 'failed', error: 'Échec transaction (simulation)' }
 }
 
+/** OWASP A10 — cap mémoire des réponses opérateurs (lecture bornée en flux). */
+const MM_MAX_BODY_BYTES = 5_000_000
+
 async function fetchJson(url: string, init: RequestInit, timeoutMs = 15_000): Promise<{ ok: boolean; status: number; body: unknown }> {
   // OWASP A10 (SSRF) — défense en profondeur : même si l'URL provient d'une
   // config tenant (validée à l'écriture) ou plateforme, on revérifie qu'elle ne
@@ -167,8 +171,11 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs = 15_000): Pr
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(safe.url.toString(), { ...init, signal: ctrl.signal, dispatcher: safe.dispatcher })
+    // OWASP A10 — lecture BORNÉE : l'`apiUrl` provient d'une config tenant ; on
+    // compte les octets en flux et on annule au-delà du cap plutôt que de
+    // bufferiser une réponse potentiellement illimitée (DoS mémoire).
     let body: unknown = null
-    try { body = await res.json() } catch { /* réponse non-JSON */ }
+    try { body = await readJsonCapped(res, MM_MAX_BODY_BYTES) } catch { /* non-JSON ou trop volumineux */ }
     return { ok: res.ok, status: res.status, body }
   } finally { clearTimeout(t); await safe.dispatcher.close().catch(() => undefined) }
 }

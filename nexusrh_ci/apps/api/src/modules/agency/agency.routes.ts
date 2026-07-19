@@ -4,8 +4,8 @@ import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool } from '../../db/pool.js'
-import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
-import { blacklistTokenSafe } from '../../services/redis.js'
+import { AUTH_COOKIE_NAME, withJti } from '../../plugins/auth.js'
+import { setTokenEpoch } from '../../services/redis.js'
 import { assertAgencyCanActOnTenant, assertTenantIsCI } from '../../services/agency.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
 import { createTenantWithSchema, TenantSlugConflictError } from '../../services/tenant-provisioning.service.js'
@@ -141,7 +141,7 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(403).send({ error: 'Accès au tenant refusé' })
       }
 
-      const token = fastify.jwt.sign({
+      const token = fastify.jwt.sign(withJti({
         sub:          request.user.sub,
         tenantId:     guard.tenant.tenantId,
         schemaName:   guard.tenant.schemaName,
@@ -154,7 +154,7 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
         agencyId,
         agencyUserId: request.user.sub,
         onBehalfOf:   guard.tenant.tenantId,
-      }, { expiresIn: '30m' })
+      }), { expiresIn: '30m' })
 
       auditLogPlatform(request.user.sub, 'agency.session.activated', 'tenant', guard.tenant.tenantId,
         { agencyId, agencyUserId: request.user.sub }, request.ip ?? null)
@@ -179,12 +179,12 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
       if (u.actorType !== 'agency' || !u.agencyId) {
         return reply.status(403).send({ error: 'Non applicable hors contexte cabinet' })
       }
-      const token = fastify.jwt.sign({
+      const token = fastify.jwt.sign(withJti({
         sub: request.user.sub, tenantId: null, schemaName: 'platform',
         role: request.user.role, email: request.user.email,
         firstName: request.user.firstName, lastName: request.user.lastName,
         employeeId: null, actorType: 'agency', agencyId: u.agencyId,
-      })
+      }))
       reply.setCookie(AUTH_COOKIE_NAME, token, {
         httpOnly: true, secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7,
@@ -545,9 +545,13 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Révoque immédiatement les sessions actives (contexte + scopées) des membres.
+      // OWASP A07 — révocation GLOBALE par utilisateur : elle passe par l'époque
+      // de token (`setTokenEpoch`), PAS par la blacklist. Depuis que chaque token
+      // porte un `jti` unique, blacklister l'id du membre ne révoquerait plus
+      // rien (la blacklist est indexée par jti) ; l'époque, elle, invalide tout
+      // token dont l'`iat` est antérieur — exactement l'effet recherché ici.
       const members = await pool.query<{ id: string }>(`SELECT id FROM platform.agency_users WHERE agency_id = $1`, [id])
-      const ttl = 60 * 60 * 24 * 7
-      await Promise.all(members.rows.map(m => blacklistTokenSafe(m.id, ttl)))
+      await Promise.all(members.rows.map(m => setTokenEpoch(m.id)))
       invalidateOfflineStatusCache()
       auditLogPlatform(request.user.sub, 'agency.suspended', 'agency', id,
         { membersRevoked: members.rows.length, offlineMessage: message, clientsSuspended }, request.ip ?? null)

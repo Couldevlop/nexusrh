@@ -284,3 +284,71 @@ describe('PATCH /absences/:id/reject — RBAC manager + audit_log', () => {
     expect(auditCall?.[1]?.[1]).toBe('absence.rejected')
   })
 })
+
+// ── OWASP A01-2 — IDOR sur les soldes de congés ────────────────────────────────
+describe('GET /absences/balances — IDOR employeeId (OWASP A01-2)', () => {
+  it('un employee NE PEUT PAS lire les soldes d\'un collègue via ?employeeId (forcé sur le sien)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT absence_balances
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-moi' })
+    const res = await app.inject({
+      method: 'GET', url: '/absences/balances?employeeId=emp-collegue',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    // La requête doit porter sur SON dossier, jamais sur celui passé en query.
+    const balancesCall = queryMock.mock.calls.find((c) => String(c[0]).includes('absence_balances'))
+    expect(balancesCall).toBeDefined()
+    expect(balancesCall?.[1]?.[0]).toBe('emp-moi')
+    expect(balancesCall?.[1]?.[0]).not.toBe('emp-collegue')
+  })
+
+  it('un readonly NE PEUT PAS cibler un employé arbitraire (param ignoré)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // SELECT employees par email (pas d'employeeId au token)
+      .mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'readonly')
+    const res = await app.inject({
+      method: 'GET', url: '/absences/balances?employeeId=emp-cible',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    // Aucune requête ne doit référencer emp-cible
+    expect(queryMock.mock.calls.some((c) => JSON.stringify(c[1] ?? []).includes('emp-cible'))).toBe(false)
+  })
+
+  it('un manager NE PEUT PAS lire les soldes hors de son équipe directe (403)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT employees ... manager_id → vide
+    const token = tokenFor(app, 'manager', { employeeId: 'mgr-1' })
+    const res = await app.inject({
+      method: 'GET', url: '/absences/balances?employeeId=emp-hors-equipe',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toContain('équipe directe')
+  })
+
+  it('un manager PEUT lire les soldes d\'un subordonné direct (200)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'emp-equipe' }] }) // vérif manager_id
+      .mockResolvedValueOnce({ rows: [{ remaining: 12 }] })    // SELECT balances
+    const token = tokenFor(app, 'manager', { employeeId: 'mgr-1' })
+    const res = await app.inject({
+      method: 'GET', url: '/absences/balances?employeeId=emp-equipe',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data).toHaveLength(1)
+  })
+
+  it('un hr_manager conserve la portée tenant (?employeeId honoré)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'GET', url: '/absences/balances?employeeId=emp-9',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const balancesCall = queryMock.mock.calls.find((c) => String(c[0]).includes('absence_balances'))
+    expect(balancesCall?.[1]?.[0]).toBe('emp-9')
+  })
+})

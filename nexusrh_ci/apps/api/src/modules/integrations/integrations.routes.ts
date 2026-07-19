@@ -19,6 +19,40 @@ function auditLog(schema: string, userId: string, action: string, entityId: stri
   ).catch(() => undefined)
 }
 
+// ── En-têtes de webhook : chiffrés au repos (OWASP A09-3) ────────────────────
+// Ils transportent des credentials du système destinataire (`Authorization:
+// Bearer …`). Stockés chiffrés dans `headers_enc`, exactement comme
+// `auth_secret_enc`. La colonne `headers` (jsonb en clair) n'est plus écrite ;
+// elle reste lue en repli pour les lignes créées avant cette migration.
+interface WebhookListRow {
+  id: string; name: string; target_url: string; events: string[]
+  headers: Record<string, string> | null
+  headers_enc: string | null
+  is_active: boolean; last_delivery_at: Date | null; last_status: number | null; created_at: Date
+}
+
+/** Déchiffre `headers_enc`, avec repli sur l'ancienne colonne `headers` en clair. */
+export function readWebhookHeaders(
+  headersEnc: string | null | undefined,
+  legacyHeaders: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const dec = decryptIfPresent(headersEnc)
+  if (dec) {
+    try {
+      const parsed: unknown = JSON.parse(dec)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, string>
+      }
+    } catch { /* valeur corrompue → repli ci-dessous */ }
+  }
+  return legacyHeaders ?? {}
+}
+
+/** Noms de clés uniquement — jamais les valeurs (réponses API + audit). */
+function headerKeys(headers: Record<string, string> | null | undefined): string[] {
+  return Object.keys(headers ?? {})
+}
+
 // ── Schémas Zod (OWASP A03) ───────────────────────────────────────────────────
 const webhookBody = z.object({
   name: z.string().min(1).max(150),
@@ -126,10 +160,18 @@ const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const s = request.user.schemaName
       await ensureTenantSchema(s)
-      const res = await pool.query(
-        `SELECT id, name, target_url, events, headers, is_active, last_delivery_at, last_status, created_at
+      // OWASP A09-3 : ne JAMAIS renvoyer les valeurs d'en-têtes (elles portent
+      // typiquement un `Authorization: Bearer …`). Seuls les NOMS de clés sont
+      // exposés, comme pour mobile-money / SSO / SIEM.
+      const res = await pool.query<WebhookListRow>(
+        `SELECT id, name, target_url, events, headers, headers_enc, is_active,
+                last_delivery_at, last_status, created_at
            FROM "${s}".integration_webhooks ORDER BY created_at DESC`)
-      return reply.send({ data: res.rows })
+      const data = res.rows.map(({ headers, headers_enc, ...row }) => ({
+        ...row,
+        header_keys: headerKeys(readWebhookHeaders(headers_enc, headers)),
+      }))
+      return reply.send({ data })
     },
   })
 
@@ -147,10 +189,13 @@ const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
       // Secret HMAC généré, montré UNE fois, stocké chiffré (AES-256).
       const secret = `whsec_${(await import('crypto')).randomBytes(24).toString('base64url')}`
       const res = await pool.query<{ id: string }>(
-        `INSERT INTO "${s}".integration_webhooks (name, target_url, secret_enc, events, headers, is_active, created_by)
+        // A09-3 : `headers_enc` chiffré ; `headers` reste à '{}' (plus jamais en clair).
+        `INSERT INTO "${s}".integration_webhooks (name, target_url, secret_enc, events, headers_enc, is_active, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [b.name, b.target_url, encrypt(secret), b.events, JSON.stringify(b.headers ?? {}), b.is_active ?? true, request.user.sub])
-      auditLog(s, request.user.sub, 'integration.webhook.created', res.rows[0]!.id, { name: b.name, events: b.events }, request.ip ?? null)
+        [b.name, b.target_url, encrypt(secret), b.events,
+         b.headers ? encrypt(JSON.stringify(b.headers)) : null, b.is_active ?? true, request.user.sub])
+      auditLog(s, request.user.sub, 'integration.webhook.created', res.rows[0]!.id,
+        { name: b.name, events: b.events, header_keys: headerKeys(b.headers) }, request.ip ?? null)
       return reply.status(201).send({ data: { id: res.rows[0]!.id }, secret, message: 'Conservez ce secret de signature : il ne sera plus affiché.' })
     },
   })
@@ -173,13 +218,25 @@ const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
       if (b.name !== undefined) { sets.push(`name = $${i++}`); vals.push(b.name) }
       if (b.target_url !== undefined) { sets.push(`target_url = $${i++}`); vals.push(b.target_url) }
       if (b.events !== undefined) { sets.push(`events = $${i++}`); vals.push(b.events) }
-      if (b.headers !== undefined) { sets.push(`headers = $${i++}`); vals.push(JSON.stringify(b.headers)) }
+      // A09-3 : chiffrement au repos + purge de l'ancienne valeur en clair
+      // éventuellement présente sur une ligne antérieure à la migration.
+      if (b.headers !== undefined) {
+        sets.push(`headers_enc = $${i++}`); vals.push(encrypt(JSON.stringify(b.headers)))
+        sets.push(`headers = '{}'::jsonb`)
+      }
       if (b.is_active !== undefined) { sets.push(`is_active = $${i++}`); vals.push(b.is_active) }
       if (!sets.length) return reply.status(400).send({ error: 'Aucun champ' })
       sets.push(`updated_at = now()`); vals.push(id)
       const res = await pool.query(`UPDATE "${s}".integration_webhooks SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`, vals)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Webhook introuvable' })
-      auditLog(s, request.user.sub, 'integration.webhook.updated', id, { ...b }, request.ip ?? null)
+      // A09-3 : le body entier était recopié dans l'audit (`{ ...b }`), y compris
+      // les VALEURS d'en-têtes → credential en clair dans audit_log. On ne trace
+      // plus que les champs modifiés et les NOMS de clés d'en-têtes.
+      auditLog(s, request.user.sub, 'integration.webhook.updated', id, {
+        modifiedFields: Object.keys(b),
+        name: b.name, target_url: b.target_url, events: b.events, is_active: b.is_active,
+        ...(b.headers !== undefined ? { header_keys: headerKeys(b.headers) } : {}),
+      }, request.ip ?? null)
       return reply.send({ data: { id, updated: true } })
     },
   })
@@ -206,7 +263,7 @@ const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureTenantSchema(s)
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      const r = await pool.query(`SELECT id, target_url, secret_enc, headers FROM "${s}".integration_webhooks WHERE id = $1 LIMIT 1`, [id])
+      const r = await pool.query(`SELECT id, target_url, secret_enc, headers, headers_enc FROM "${s}".integration_webhooks WHERE id = $1 LIMIT 1`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Webhook introuvable' })
       // Envoi synchrone d'un événement de test pour retour immédiat à l'UI.
       await deliverWebhook(pool, s, r.rows[0], 'ping.test', { message: 'Test depuis NexusRH', at: new Date().toISOString() }, decryptIfPresent)
