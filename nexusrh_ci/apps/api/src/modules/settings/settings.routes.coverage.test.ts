@@ -9,11 +9,15 @@ vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
 
-const { setTokenEpochMock } = vi.hoisted(() => ({ setTokenEpochMock: vi.fn().mockResolvedValue(undefined) }))
+const { setTokenEpochMock, getTokenEpochMock } = vi.hoisted(() => ({
+  setTokenEpochMock: vi.fn().mockResolvedValue(undefined),
+  getTokenEpochMock: vi.fn().mockResolvedValue(0),
+}))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
   setTokenEpoch:      setTokenEpochMock,
+  getTokenEpoch:      getTokenEpochMock,
 }))
 
 // PIÈGE PROJET : toujours mocker schema-migrations / provisioning, sinon ~200
@@ -105,6 +109,7 @@ beforeEach(() => {
   // Défaut absorbant pour les requêtes best-effort non explicitement mockées.
   queryMock.mockResolvedValue({ rows: [] })
   setTokenEpochMock.mockClear()
+  getTokenEpochMock.mockClear().mockResolvedValue(0)
   sendEmployeeWelcomeEmailMock.mockReset().mockResolvedValue({ sent: true })
   isEncryptionAvailableMock.mockReturnValue(true)
   loadAiModelsMock.mockReset().mockResolvedValue([
