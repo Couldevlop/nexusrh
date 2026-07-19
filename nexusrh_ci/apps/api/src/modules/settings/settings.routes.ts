@@ -1780,6 +1780,47 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // POST /settings/users/:id/reset-mfa — révoque le MFA d'un utilisateur.
+  // OWASP A07 — la politique MFA peut être rendue obligatoire (mfa_required_tenant_users) :
+  // un utilisateur qui perd à la fois son authenticator ET ses codes de secours est
+  // sinon bloqué sans recours (hors intervention DB). Admin only, comme reset-password.
+  fastify.post('/users/:id/reset-mfa', {
+    preHandler: [fastify.authorize('admin')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      try {
+        const userRes = await pool.query(
+          `SELECT id FROM "${schema}".users WHERE id = $1 LIMIT 1`, [id]
+        )
+        if (!userRes.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
+
+        await pool.query(
+          `UPDATE "${schema}".users SET mfa_enabled = false, mfa_secret = NULL, updated_at = now() WHERE id = $1`,
+          [id]
+        )
+
+        // Purge des codes de secours existants : table mfa_backup_codes, distincte
+        // de "users" (cf. auth-mfa.routes.ts /mfa/disable, même logique). Best-effort :
+        // certains tenants anciens n'ont pas encore cette table lazy-migrée.
+        try {
+          await pool.query(`DELETE FROM "${schema}".mfa_backup_codes WHERE user_id = $1`, [id])
+        } catch { /* table pas encore migrée pour ce tenant : non bloquant */ }
+
+        // OWASP A01 — une session déjà authentifiée (MFA déjà validé) garderait
+        // sinon un accès jusqu'à expiration du JWT (7j) malgré la révocation MFA.
+        try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
+
+        auditLogSettings(schema, request.user.sub, 'user.mfa_reset', id, {}, request.ip)
+
+        return reply.send({ data: { id, mfaReset: true } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // ── GET /settings/import/users-status ──────────────────────────────────────
   fastify.get('/import/users-status', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],

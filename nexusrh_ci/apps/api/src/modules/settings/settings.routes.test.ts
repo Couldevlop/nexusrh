@@ -10,9 +10,13 @@ vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
 
+const { setTokenEpochMock } = vi.hoisted(() => ({
+  setTokenEpochMock: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
+  setTokenEpoch:      setTokenEpochMock,
 }))
 
 vi.mock('../../db/provisioning.js', () => ({
@@ -71,6 +75,7 @@ afterAll(async () => { await app.close() })
 beforeEach(() => {
   queryMock.mockReset()
   vi.mocked(assertSafeOutboundHost).mockReset().mockResolvedValue(undefined)
+  setTokenEpochMock.mockClear()
 })
 
 describe('PATCH /settings/tenant — Zod + audit (OWASP A03 + A09)', () => {
@@ -927,5 +932,69 @@ describe('GET /settings/variable-elements — RBAC admin/hr_manager (OWASP A04)'
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('POST /settings/users/:id/reset-mfa — admin only (OWASP A07 + A01, déblocage MFA obligatoire)', () => {
+  const targetId = '33333333-3333-3333-3333-333333333333'
+
+  it('refuse un hr_manager (403)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/settings/users/${targetId}/reset-mfa`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('refuse un employee (403)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/settings/users/${targetId}/reset-mfa`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('404 si utilisateur introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT user vide
+    const res = await app.inject({
+      method: 'POST', url: `/settings/users/${targetId}/reset-mfa`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('admin réinitialise le MFA (200) — UPDATE désactive mfa_enabled/mfa_secret + purge backup codes + révoque la session', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: targetId }] })  // SELECT user (existe)
+      .mockResolvedValueOnce({ rows: [] })                  // UPDATE users mfa_enabled/mfa_secret
+      .mockResolvedValueOnce({ rows: [] })                  // DELETE mfa_backup_codes
+      .mockResolvedValueOnce({ rows: [] })                  // audit_log
+
+    const res = await app.inject({
+      method: 'POST', url: `/settings/users/${targetId}/reset-mfa`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data).toEqual({ id: targetId, mfaReset: true })
+
+    // Vérifie le texte SQL + les paramètres de l'UPDATE de désactivation MFA.
+    const updateCall = queryMock.mock.calls.find(([sql]: [string]) =>
+      /UPDATE .*\.users SET mfa_enabled = false, mfa_secret = NULL/.test(sql))
+    expect(updateCall).toBeTruthy()
+    expect(updateCall![1]).toEqual([targetId])
+
+    // La session déjà authentifiée (MFA validé) doit être révoquée.
+    expect(setTokenEpochMock).toHaveBeenCalledWith(targetId)
+  })
+
+  it('500 si la DB échoue', async () => {
+    queryMock.mockRejectedValueOnce(new Error('db down'))
+    const res = await app.inject({
+      method: 'POST', url: `/settings/users/${targetId}/reset-mfa`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(500)
   })
 })
