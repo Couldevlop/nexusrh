@@ -983,7 +983,7 @@ describe('PATCH /settings/workflow', () => {
 describe('GET /settings/variable-elements', () => {
   it('liste sans filtre mois (200)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: 've1' }] })
-    const res = await app.inject({ method: 'GET', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'hr_officer')) })
+    const res = await app.inject({ method: 'GET', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'hr_manager')) })
     expect(res.statusCode).toBe(200)
   })
 
@@ -1007,8 +1007,8 @@ describe('POST /settings/variable-elements', () => {
   it('400 si aucune période pour le mois', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT pay_periods vide
     const res = await app.inject({
-      method: 'POST', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'hr_officer')),
-      payload: { employee_id: 'e1', rule_code: 'PRIME', amount: 10000, month: '2024-06' },
+      method: 'POST', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'hr_manager')),
+      payload: { employee_id: UUID_A, rule_code: 'PRIME', amount: 10000, month: '2024-06' },
     })
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.body).error).toContain('Aucune période')
@@ -1020,7 +1020,7 @@ describe('POST /settings/variable-elements', () => {
       .mockResolvedValueOnce({ rows: [{ id: 've-1' }] })  // INSERT/UPSERT
     const res = await app.inject({
       method: 'POST', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'admin')),
-      payload: { employee_id: 'e1', rule_code: 'PRIME', amount: 10000, month: '2024-06', description: 'Prime' },
+      payload: { employee_id: UUID_A, rule_code: 'PRIME', amount: 10000, month: '2024-06', description: 'Prime' },
     })
     expect(res.statusCode).toBe(201)
   })
@@ -1029,7 +1029,7 @@ describe('POST /settings/variable-elements', () => {
     queryMock.mockRejectedValueOnce(new Error('x'))
     const res = await app.inject({
       method: 'POST', url: '/settings/variable-elements', headers: auth(tokenFor(app, 'admin')),
-      payload: { employee_id: 'e1', rule_code: 'PRIME', amount: 10000, month: '2024-06' },
+      payload: { employee_id: UUID_A, rule_code: 'PRIME', amount: 10000, month: '2024-06' },
     })
     expect(res.statusCode).toBe(500)
   })
