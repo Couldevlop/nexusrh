@@ -240,3 +240,67 @@ describe('processAttendancePollJob — succès', () => {
     expect(String(matchCall[0])).toContain('WHERE email = $1')
   })
 })
+
+// ── OWASP A10-3 — lecture bornée du corps de réponse badgeuse ──────────────
+describe('processAttendancePollJob — corps de réponse borné', () => {
+  it('badgeuse qui streame un corps géant → statut error, curseur non avancé, flux annulé', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [BASE_DEVICE_ROW] })
+    const cancel = vi.fn()
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { pulls += 1; controller.enqueue(new Uint8Array(64_000).fill(0x61)) },
+      cancel() { cancel() },
+    })
+    ;(global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true, status: 200, body, headers: { get: () => null },
+    })
+    queryMock.mockResolvedValueOnce({ rows: [] })
+
+    await processAttendancePollJob(jobFor({ schemaName: SCHEMA, deviceId: DEVICE_ID }))
+
+    expect(cancel).toHaveBeenCalled()
+    // Flux ANNULÉ, jamais drainé : au plus ~5 Mo lus (cap) + marge.
+    expect(pulls).toBeLessThanOrEqual(5_000_000 / 64_000 + 5)
+    const statusCall = queryMock.mock.calls[1]!
+    expect(String(statusCall[0])).not.toContain('sync_cursor')
+    expect(String(statusCall[0])).toContain('last_sync_status')
+    expect(queueAddMock).not.toHaveBeenCalled()
+  })
+
+  it('Content-Length au-dessus du cap → rejeté sans lire le corps', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [BASE_DEVICE_ROW] })
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(64_000)) },
+    })
+    ;(global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true, status: 200, body,
+      headers: { get: (n: string) => (n.toLowerCase() === 'content-length' ? '900000000' : null) },
+    })
+    queryMock.mockResolvedValueOnce({ rows: [] })
+
+    await processAttendancePollJob(jobFor({ schemaName: SCHEMA, deviceId: DEVICE_ID }))
+
+    expect(body.locked).toBe(false) // aucun reader acquis → rien n'a été lu
+    expect(loggerMock.error).toHaveBeenCalled()
+  })
+
+  it('corps en flux sous le cap → pointages traités normalement', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [BASE_DEVICE_ROW] })
+    const payload = JSON.stringify({ data: [{ matricule: 'M42', ts: '2026-07-12T07:00:00.000Z' }] })
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode(payload)); controller.close() },
+    })
+    ;(global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true, status: 200, body, headers: { get: () => null },
+    })
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'emp-42' }] })
+    queryMock.mockResolvedValueOnce({ rowCount: 1 })
+    queryMock.mockResolvedValueOnce({ rows: [] })
+
+    await processAttendancePollJob(jobFor({ schemaName: SCHEMA, deviceId: DEVICE_ID }))
+
+    const insertCall = queryMock.mock.calls[2]!
+    expect(String(insertCall[0])).toContain('attendance_punches')
+    expect(queueAddMock).toHaveBeenCalled()
+  })
+})

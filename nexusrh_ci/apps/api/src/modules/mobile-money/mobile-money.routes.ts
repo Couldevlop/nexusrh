@@ -386,8 +386,11 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /mobile-money/payments — historique des paiements
+  // OWASP A01 — matrice RBAC « Mobile Money Paiements » : admin RW, hr_manager RW,
+  // readonly R ; hr_officer n'y a AUCUN droit (cf. /payments/stats, même portée).
+  // L'historique expose téléphones, montants, provider et IDs de transaction.
   fastify.get('/payments', {
-    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'readonly')],
     schema: { tags: ['mobile-money'], summary: 'Historique des paiements Mobile Money' },
     handler: async (request, reply) => {
       // OWASP A03 — validation query (rejette filtres exotiques + injection)

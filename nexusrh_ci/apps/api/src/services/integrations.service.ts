@@ -1,6 +1,7 @@
 import type { Pool } from 'pg'
 import { createHmac, createHash, randomBytes } from 'crypto'
 import { resolveSafeOutbound } from './ssrf-guard.js'
+import { readBodyCapped } from './http-body-limit.js'
 import { ensureTenantSchema } from '../utils/schema-migrations.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
@@ -88,8 +89,39 @@ export function signPayload(secret: string, body: string): string {
   return createHmac('sha256', secret).update(body).digest('hex')
 }
 
+/**
+ * OWASP A10 — cap mémoire des réponses des cibles webhook/connecteur. On ne
+ * conserve qu'un extrait de 300 caractères : lire au-delà de 64 Ko n'a aucune
+ * utilité et exposerait le process API partagé à un DoS mémoire si la cible
+ * (URL choisie par un admin tenant) streamait plusieurs Go.
+ */
+const INTEGRATION_MAX_BODY_BYTES = 64_000
+
 interface WebhookRow {
-  id: string; target_url: string; secret_enc: string; headers: Record<string, string> | null
+  id: string; target_url: string; secret_enc: string
+  // OWASP A09-3 : en-têtes chiffrés au repos (`headers_enc`). `headers` (jsonb
+  // en clair) n'est plus écrit — conservé en LECTURE seule pour les lignes
+  // antérieures à la migration.
+  headers: Record<string, string> | null
+  headers_enc?: string | null
+}
+
+/** En-têtes personnalisés effectifs : `headers_enc` déchiffré, repli sur l'ancien clair. */
+function resolveCustomHeaders(
+  wh: WebhookRow, decryptSecret: (enc: string) => string | null,
+): Record<string, string> {
+  if (wh.headers_enc) {
+    const dec = decryptSecret(wh.headers_enc)
+    if (dec) {
+      try {
+        const parsed: unknown = JSON.parse(dec)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, string>
+        }
+      } catch { /* corrompu → repli */ }
+    }
+  }
+  return wh.headers ?? {}
 }
 
 /** Livre un webhook (SSRF guard + HMAC + retry borné), journalise la livraison.
@@ -101,6 +133,7 @@ export async function deliverWebhook(
 ): Promise<void> {
   const body = JSON.stringify({ event, data: payload, sentAt: new Date().toISOString() })
   const secret = decryptSecret(wh.secret_enc) ?? ''
+  const customHeaders = resolveCustomHeaders(wh, decryptSecret)
   const signature = signPayload(secret, body)
   const maxAttempts = 2
   let lastStatus: number | null = null
@@ -121,7 +154,7 @@ export async function deliverWebhook(
         headers: {
           // En-têtes personnalisés d'abord : les en-têtes NexusRH (dont la
           // signature HMAC) ne doivent jamais pouvoir être écrasés par la config.
-          ...(wh.headers ?? {}),
+          ...customHeaders,
           'Content-Type': 'application/json',
           'User-Agent': 'NexusRH-Webhook/1',
           'X-NexusRH-Event': event,
@@ -134,7 +167,9 @@ export async function deliverWebhook(
       }).finally(() => clearTimeout(timer))
       lastStatus = res.status
       ok = res.status >= 200 && res.status < 300
-      excerpt = (await res.text().catch(() => '')).slice(0, 300)
+      // Lecture BORNÉE (comptage en flux + annulation au-delà du cap) AVANT le
+      // `.slice(0, 300)` : l'ancien `res.text()` bufferisait tout le corps.
+      excerpt = (await readBodyCapped(res, INTEGRATION_MAX_BODY_BYTES).catch(() => '')).slice(0, 300)
     } catch (e) {
       excerpt = (e as Error).message.slice(0, 300)
     } finally {
@@ -166,7 +201,7 @@ export function emitIntegrationEvent(
   try {
     Promise.resolve(
       pool.query<WebhookRow>(
-        `SELECT id, target_url, secret_enc, headers FROM "${schema}".integration_webhooks
+        `SELECT id, target_url, secret_enc, headers, headers_enc FROM "${schema}".integration_webhooks
           WHERE is_active = true AND $1 = ANY(events)`, [event],
       ),
     ).then(r => {
@@ -199,6 +234,9 @@ export async function testConnector(
     // Connexion épinglée sur l'IP validée (anti DNS-rebinding).
     const res = await fetch(safe.url.toString(), { method: 'GET', headers, signal: ctrl.signal, redirect: 'error', dispatcher: safe.dispatcher })
       .finally(() => clearTimeout(timer))
+    // Seul le statut nous intéresse : on ANNULE le corps sans jamais le
+    // bufferiser (aucune mémoire allouée, quelle que soit la taille annoncée).
+    try { await res.body?.cancel() } catch { /* corps déjà consommé/absent */ }
     return { ok: res.status < 500, status: res.status, message: `HTTP ${res.status}` }
   } catch (e) {
     return { ok: false, status: null, message: (e as Error).message.slice(0, 200) }

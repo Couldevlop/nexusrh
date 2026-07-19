@@ -219,4 +219,63 @@ describe('fetchDevicePunches', () => {
     result = await fetchDevicePunches(baseDevice({ authType: 'bearer', authSecret: secretToken }))
     expect(JSON.stringify(result)).not.toContain(secretToken)
   })
+
+  // ── OWASP A10-3 — lecture bornée du corps de réponse ─────────────────────
+  it('(i) abandonne (sans OOM) une badgeuse qui streame un corps géant', async () => {
+    mockedResolve.mockImplementation(okResolve)
+    const cancel = vi.fn()
+    let pulls = 0
+    // Cible hostile : flux quasi infini de 64 Ko par morceau.
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { pulls += 1; controller.enqueue(new Uint8Array(64_000).fill(0x61)) },
+      cancel() { cancel() },
+    })
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, body, headers: { get: () => null } }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(false)
+    expect(result.punches).toEqual([])
+    expect(result.error).toBe('Réponse badgeuse trop volumineuse — abandon')
+    // Le flux a été ANNULÉ, pas drainé : moins de 5 Mo + une marge de morceaux.
+    expect(cancel).toHaveBeenCalled()
+    expect(pulls).toBeLessThanOrEqual(5_000_000 / 64_000 + 5)
+  })
+
+  it('(j) rejette sans rien lire un Content-Length déjà au-dessus du cap', async () => {
+    mockedResolve.mockImplementation(okResolve)
+    const cancel = vi.fn()
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(64_000)) },
+      cancel() { cancel() },
+    })
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, body,
+      headers: { get: (n: string) => (n.toLowerCase() === 'content-length' ? '900000000' : null) },
+    }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('Réponse badgeuse trop volumineuse — abandon')
+    // Aucun reader n'a été acquis (`locked === false`) : le corps n'a jamais
+    // été lu, et le flux a été annulé pour libérer le socket.
+    expect(body.locked).toBe(false)
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('(k) lit normalement un corps en flux sous le cap', async () => {
+    mockedResolve.mockImplementation(okResolve)
+    const payload = JSON.stringify({ records: [{ badge: 'B009', ts: '2026-07-15T09:00:00.000Z', dir: 'IN' }] })
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode(payload)); controller.close() },
+    })
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, body, headers: { get: () => null } }) as unknown as typeof fetch
+
+    const result = await fetchDevicePunches(baseDevice())
+
+    expect(result.ok).toBe(true)
+    expect(result.punches).toHaveLength(1)
+    expect(result.punches[0]?.rawEmployeeRef).toBe('B009')
+  })
 })

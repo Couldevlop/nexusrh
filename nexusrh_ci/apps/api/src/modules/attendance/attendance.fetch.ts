@@ -1,8 +1,11 @@
 import { resolveSafeOutboundResult } from '../../services/ssrf-guard.js'
+import { readJsonCapped, BodyTooLargeError } from '../../services/http-body-limit.js'
 import { mapDeviceResponse } from './attendance.mapping.js'
 import type { FieldMapping, NormalizedPunch } from './attendance.types.js'
 
 const FETCH_TIMEOUT_MS = 15_000
+/** OWASP A10 — cap mémoire de la réponse badgeuse (lecture bornée en flux). */
+const MAX_BODY_BYTES = 5_000_000
 
 export interface DeviceConnectionConfig {
   baseUrl: string
@@ -105,10 +108,17 @@ export async function fetchDevicePunches(device: DeviceConnectionConfig): Promis
       return { punches: [], ok: false, error: `HTTP ${response.status}` }
     }
 
+    // OWASP A10 — lecture BORNÉE : le corps est compté en flux et le flux
+    // annulé au-delà du cap. Une badgeuse (URL contrôlée par l'admin tenant)
+    // qui streamerait plusieurs Go ne peut plus épuiser la mémoire du process
+    // API partagé entre tous les tenants.
     let body: unknown
     try {
-      body = await response.json()
+      body = await readJsonCapped(response, MAX_BODY_BYTES)
     } catch (e) {
+      if (e instanceof BodyTooLargeError) {
+        return { punches: [], ok: false, error: 'Réponse badgeuse trop volumineuse — abandon' }
+      }
       return { punches: [], ok: false, error: `Réponse badgeuse illisible (JSON) : ${(e as Error).message}` }
     }
 

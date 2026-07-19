@@ -19,12 +19,18 @@ import bcrypt from 'bcryptjs'
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 
-const { blacklistMock } = vi.hoisted(() => ({ blacklistMock: vi.fn().mockResolvedValue(undefined) }))
+const { blacklistMock, setTokenEpochMock } = vi.hoisted(() => ({
+  blacklistMock: vi.fn().mockResolvedValue(undefined),
+  setTokenEpochMock: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),
   blacklistTokenSafe: blacklistMock,
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
   redisLockoutStore:  {},
+  // A07-4 — suspension cabinet = révocation globale via l'époque de token.
+  setTokenEpoch:      setTokenEpochMock,
+  getTokenEpoch:      vi.fn().mockResolvedValue(0),
 }))
 
 vi.mock('../../services/email.js', () => ({
@@ -114,6 +120,7 @@ afterAll(async () => { await app.close() })
 beforeEach(() => {
   queryMock.mockReset().mockResolvedValue({ rows: [] })
   blacklistMock.mockClear()
+  setTokenEpochMock.mockClear()
   offlineStatusCache.invalidate()
 })
 
@@ -225,8 +232,9 @@ describe('POST /agency/agencies/:id/suspend — cabinet hors usage', () => {
     const cascade = queryMock.mock.calls.find(c => String(c[0]).includes('agency_tenants'))
     expect(cascade).toBeDefined()
     expect(cascade![1]).toEqual([AG, 'Cabinet fermé temporairement.'])
-    // Sessions des membres révoquées immédiatement
-    expect(blacklistMock).toHaveBeenCalledTimes(2)
+    // Sessions des membres révoquées immédiatement (A07-4 : époque de token —
+    // révocation GLOBALE ; la blacklist est désormais indexée par jti).
+    expect(setTokenEpochMock).toHaveBeenCalledTimes(2)
   })
 
   it('sans includeClients → aucun tenant client touché', async () => {

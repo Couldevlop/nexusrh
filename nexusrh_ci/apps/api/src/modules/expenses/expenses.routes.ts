@@ -72,6 +72,32 @@ async function managerCanActOnReport(
   return r.rows.length > 0
 }
 
+/**
+ * OWASP A01 — un manager ne peut imputer une note de frais qu'à un membre de son
+ * équipe directe (ou à lui-même). Fail-closed : manager sans dossier employé →
+ * aucune imputation possible pour autrui.
+ */
+async function managerCanActOnEmployee(
+  schema: string,
+  managerEmail: string,
+  targetEmployeeId: string,
+): Promise<boolean> {
+  const r = await pool.query<{ id: string }>(
+    `SELECT e.id FROM "${schema}".employees e
+       JOIN "${schema}".employees m ON m.id = e.manager_id
+      WHERE e.id = $1 AND m.email = $2
+      UNION ALL
+     SELECT s.id FROM "${schema}".employees s
+      WHERE s.id = $1 AND s.email = $2
+      LIMIT 1`,
+    [targetEmployeeId, managerEmail],
+  )
+  return r.rows.length > 0
+}
+
+/** Rôles RH à portée tenant globale (matrice RBAC « Notes de frais (saisie) »). */
+const HR_SCOPE_ROLES = ['admin', 'hr_manager', 'hr_officer']
+
 /** Notification non bloquante (table notifications). Échec silencieux. */
 function notifyUser(
   schema: string, userId: string | null | undefined, type: string,
@@ -227,8 +253,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // POST /expenses
+  // OWASP A01 — `readonly` est consultation seule : exclu de la saisie.
   fastify.post('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       // OWASP A03 : validation Zod stricte (rejette champs arbitraires + bornes montants)
@@ -241,8 +268,24 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       try {
-        let employeeId = body.employee_id
-        if (!employeeId || request.user.role === 'employee') {
+        // OWASP A01 (IDOR) — `body.employee_id` n'est honoré que dans la portée
+        // du rôle : RH (admin/hr_manager/hr_officer) = tenant entier ; manager =
+        // son équipe directe ou lui-même ; tout autre rôle = son propre dossier
+        // (le champ est ignoré, jamais une erreur silencieuse d'imputation).
+        const role = request.user.role
+        let employeeId: string | undefined
+        if (HR_SCOPE_ROLES.includes(role)) {
+          employeeId = body.employee_id
+        } else if (role === 'manager' && body.employee_id) {
+          const allowed = await managerCanActOnEmployee(schema, request.user.email, body.employee_id)
+          if (!allowed) {
+            return reply.status(403).send({
+              error: 'Vous ne pouvez saisir une note de frais que pour votre équipe directe',
+            })
+          }
+          employeeId = body.employee_id
+        }
+        if (!employeeId) {
           const emp = await pool.query(
             `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
           )
@@ -281,12 +324,23 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // PATCH /expenses/:id/submit
+  // OWASP A01 — `readonly` est consultation seule : exclu de la soumission.
   fastify.patch('/:id/submit', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
+        // OWASP A01 — un manager ne soumet que les notes de son équipe directe
+        // (même helper que /approve et /reject). RH = portée tenant.
+        if (request.user.role === 'manager') {
+          const allowed = await managerCanActOnReport(schema, request.user.email, id)
+          if (!allowed) {
+            return reply.status(403).send({
+              error: 'Vous ne pouvez soumettre que les notes de votre équipe directe',
+            })
+          }
+        }
         // Vérifier l'ownership avant la mise à jour
         if (request.user.role === 'employee') {
           const ownerCheck = await pool.query(

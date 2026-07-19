@@ -126,7 +126,13 @@ export async function buildApp() {
   // partagé sur poste RH (multi-utilisateur).
   const API_CSP  = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
   const DOCS_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
-  const SENSITIVE_CONTENT_TYPES = /^(application\/pdf|text\/csv|application\/xml)/i
+  // OWASP A05-2 — l'allowlist est conservée (une denylist `text/html`+assets
+  // mettrait no-store sur TOUTES les réponses JSON : changement de sémantique
+  // de cache pour l'API entière, hors périmètre du correctif). Elle est étendue
+  // aux formats bureautiques : `GET /bank-transfer/file` sert un .xlsx qui
+  // contient les IBAN et NNI DÉCHIFFRÉS des salariés payés par virement.
+  // Le préfixe `vnd.openxmlformats-officedocument` couvre xlsx/docx/pptx.
+  const SENSITIVE_CONTENT_TYPES = /^(application\/pdf|text\/csv|application\/xml|application\/vnd\.openxmlformats-officedocument|application\/vnd\.ms-excel|application\/octet-stream|application\/zip)/i
 
   fastify.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options',  'nosniff')
@@ -150,8 +156,12 @@ export async function buildApp() {
     // (bulletins PDF, exports DISA/CNPS CSV, déclarations XML). Évite que le
     // bulletin d'un salarié reste accessible dans le cache après logout sur
     // un poste partagé.
+    // Filet transverse : toute réponse servie en pièce jointe est un
+    // téléchargement de données RH → no-store quel que soit son Content-Type.
+    // Couvre automatiquement les futurs formats d'export sans re-toucher au regex.
     const ct = String(reply.getHeader('content-type') ?? '')
-    if (SENSITIVE_CONTENT_TYPES.test(ct)) {
+    const cd = String(reply.getHeader('content-disposition') ?? '')
+    if (SENSITIVE_CONTENT_TYPES.test(ct) || /attachment/i.test(cd)) {
       reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
       reply.header('Pragma',         'no-cache')
     }

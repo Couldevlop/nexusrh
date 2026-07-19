@@ -8,9 +8,13 @@ import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import { encodeField } from '../sage/sage.service.js'
-import { config } from '../../config.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// A08-2 — la photo de profil est servie par un endpoint AUTHENTIFIÉ tenant-scopé.
+// On stocke une URL RELATIVE (chemin d'API) et non une URL publique absolue :
+// le front l'appelle via son client authentifié.
+export const employeePhotoUrl = (employeeId: string) => `/employees/${employeeId}/photo`
 
 // EMP-003/004/005 — validations de format (NNI, CNPS, Mobile Money).
 // Champs optionnels : '' / null → undefined (non fourni) ; sinon le format est
@@ -602,8 +606,14 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // EMP-015 — POST /employees/:id/photo : upload de la photo de profil (multipart).
-  // Réutilise le store image générique (platform.brand_assets) servi par /public/brand/:id.
+  // EMP-015 / A08-2 — POST /employees/:id/photo : upload de la photo de profil.
+  // SÉCURITÉ (audit OWASP A08-2) : la photo est une DONNÉE PERSONNELLE. Elle est
+  // stockée dans "<schema>".employee_photos (table TENANT-SCOPÉE) et JAMAIS dans
+  // platform.brand_assets (table globale cross-tenant servie sans auth par
+  // /public/brand/:id, réservée aux logos publics). Elle n'est lisible que par
+  // GET /employees/:id/photo (authentifié, schéma issu du JWT).
+  // A08-6 : UPSERT sur employee_id → une seule ligne par employé (l'ancienne
+  // image est écrasée, pas empilée).
   // RBAC : RH + l'employé sur SON propre dossier.
   fastify.post('/:id/photo', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'employee')],
@@ -628,19 +638,73 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Image trop volumineuse (max 2 MB).' })
       }
       try {
-        const ins = await pool.query<{ id: string }>(
-          `INSERT INTO platform.brand_assets (mime, bytes) VALUES ($1, $2) RETURNING id`, [mime, buf])
-        const url = `${config.apiUrl}/public/brand/${ins.rows[0]?.id}`
+        // URL RELATIVE vers l'endpoint authentifié (jamais une URL publique
+        // absolue : une URL publique qui fuit reste accessible à vie).
+        const url = employeePhotoUrl(id)
         const upd = await pool.query(
           `UPDATE "${schema}".employees SET profile_photo_url = $1, updated_at = now()
            WHERE id = $2 AND deleted_at IS NULL RETURNING id`, [url, id])
         if (!upd.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+        await pool.query(
+          `INSERT INTO "${schema}".employee_photos (employee_id, mime, bytes, size_bytes, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (employee_id) DO UPDATE
+             SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes,
+                 size_bytes = EXCLUDED.size_bytes, uploaded_by = EXCLUDED.uploaded_by,
+                 updated_at = now()`,
+          [id, mime, buf, buf.byteLength, request.user.sub])
         auditLogEmployee(schema, request.user.sub, 'employee.photo_updated', id, {}, request.ip ?? null)
         return reply.status(201).send({ data: { profilePhotoUrl: url } })
       } catch (err) {
         request.log.error({ err, schema, id }, 'Échec upload photo employé')
         return reply.status(500).send({ error: "Impossible d'enregistrer la photo. Réessayez." })
       }
+    },
+  })
+
+  // A08-2 — GET /employees/:id/photo : service AUTHENTIFIÉ et TENANT-SCOPÉ de la
+  // photo de profil. Le schéma vient EXCLUSIVEMENT du JWT (jamais du body/query/
+  // params) → aucune lecture cross-tenant possible. RBAC aligné sur
+  // GET /employees/:id : qui peut voir l'employé peut voir sa photo ; un
+  // `employee` ne voit que la sienne ; un `manager` que son équipe directe.
+  // Cache-Control: no-store (PII) — cohérent avec la politique de app.ts.
+  fastify.get('/:id/photo', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly')],
+    schema: { tags: ['employees'], summary: 'Photo de profil d\'un employé (authentifiée)' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      const schema = request.user.schemaName
+      const res = await pool.query<{
+        mime: string; bytes: Buffer; email: string | null; manager_id: string | null
+      }>(
+        `SELECT p.mime, p.bytes, e.email, e.manager_id
+           FROM "${schema}".employee_photos p
+           JOIN "${schema}".employees e ON e.id = p.employee_id
+          WHERE p.employee_id = $1 AND e.deleted_at IS NULL LIMIT 1`, [id])
+      const row = res.rows[0]
+      if (!row) return reply.status(404).send({ error: 'Photo introuvable' })
+
+      // OWASP A01 — contrôle d'accès fin, identique à GET /employees/:id.
+      const isSelf = row.email === request.user.email || request.user.employeeId === id
+      if (request.user.role === 'employee' && !isSelf) {
+        return reply.status(403).send({ error: 'Accès interdit' })
+      }
+      if (request.user.role === 'manager' && !isSelf) {
+        const mgrRes = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email])
+        const mgrId = mgrRes.rows[0]?.id
+        if (!mgrId || row.manager_id !== mgrId) {
+          return reply.status(403).send({ error: 'Accès interdit' })
+        }
+      }
+
+      reply
+        .header('Content-Type', row.mime)
+        .header('X-Content-Type-Options', 'nosniff')
+        .header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+        .header('Pragma', 'no-cache')
+      return reply.send(row.bytes)
     },
   })
 }

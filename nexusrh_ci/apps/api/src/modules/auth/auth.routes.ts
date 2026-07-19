@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { blacklistTokenSafe, setTokenEpoch } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
-import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../../plugins/auth.js'
+import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME, withJti, tokenBlacklistKey } from '../../plugins/auth.js'
 import {
   getSecurityPolicy,
   isPasswordExpired,
@@ -350,7 +350,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const pwdResetRequired = !mfaPending && (expired || breached)
 
-            const token = fastify.jwt.sign({
+            const token = fastify.jwt.sign(withJti({
               sub:        platformUser.id,
               tenantId:   null,
               schemaName: 'platform',
@@ -361,7 +361,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               employeeId: null,
               ...(mfaPending ? { mfaPending: true } : {}),
               ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
-            })
+            }))
             await pool.query(
               `UPDATE platform.platform_users SET updated_at = now() WHERE id = $1`,
               [platformUser.id],
@@ -459,7 +459,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const pwdResetRequired = !mfaPending && (expired || breached)
 
-            const token = fastify.jwt.sign({
+            const token = fastify.jwt.sign(withJti({
               sub:        agencyUser.id,
               tenantId:   null,
               schemaName: 'platform',
@@ -472,7 +472,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               agencyId:   agencyUser.agency_id,
               ...(mfaPending ? { mfaPending: true } : {}),
               ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
-            })
+            }))
             await pool.query(
               `UPDATE platform.agency_users SET last_login_at = now(), updated_at = now() WHERE id = $1`,
               [agencyUser.id],
@@ -592,7 +592,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const pwdResetRequired = !tenantMfaPending && (expired || breached)
 
-        const token = fastify.jwt.sign({
+        const token = fastify.jwt.sign(withJti({
           sub:        user.id,
           tenantId:   tenant.id,
           schemaName: tenant.schema_name,
@@ -603,7 +603,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           employeeId,
           ...(tenantMfaPending ? { mfaPending: true } : {}),
           ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
-        })
+        }))
 
         const mustChangePassword = !user.last_login_at || pwdResetRequired
 
@@ -697,12 +697,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (!guard.ok) {
           return reply.status(401).send({ error: 'Accès au tenant révoqué' })
         }
-        const scoped = fastify.jwt.sign({
+        const scoped = fastify.jwt.sign(withJti({
           sub: user.sub, tenantId: user.tenantId, schemaName: user.schemaName, role: 'admin',
           email: user.email, firstName: user.firstName, lastName: user.lastName, employeeId: null,
           actorType: 'agency', agencyId: user.agencyId, agencyUserId: user.agencyUserId ?? user.sub,
           onBehalfOf: user.tenantId,
-        }, { expiresIn: '30m' })
+        }), { expiresIn: '30m' })
         return reply.send({ token: scoped, scoped: true, expiresInSec: 1800 })
       }
 
@@ -733,7 +733,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(401).send({ error: 'Compte introuvable ou désactivé' })
       }
 
-      const newToken = fastify.jwt.sign({
+      // OWASP A07 — nouveau `jti` à chaque renouvellement : le token précédent
+      // reste révocable indépendamment de son remplaçant.
+      const newToken = fastify.jwt.sign(withJti({
         sub:        user.sub,
         tenantId:   user.tenantId,
         schemaName: user.schemaName,
@@ -746,7 +748,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         ...(user.actorType === 'agency' && user.agencyId
           ? { actorType: 'agency' as const, agencyId: user.agencyId }
           : {}),
-      })
+      }))
       return reply.send({ token: newToken })
     },
   })
@@ -784,7 +786,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       if (isPasswordExpired(account.passwordChangedAt, policy.passwordMaxAgeDays, new Date())) {
         return reply.status(401).send({ error: 'Mot de passe expiré — reconnexion requise' })
       }
-      const token = fastify.jwt.sign({
+      const token = fastify.jwt.sign(withJti({
         sub:        claims.sub,
         tenantId:   claims.tenantId,
         schemaName: claims.schemaName,
@@ -793,7 +795,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         firstName:  claims.firstName,
         lastName:   claims.lastName,
         employeeId: claims.employeeId,
-      })
+      }))
       // Émet un NOUVEAU refresh token (rotation) avec le rôle à jour.
       const newRefresh = await issueRefreshToken(pool, { ...claims, role: account.role })
       reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions())
@@ -808,7 +810,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['auth'], summary: 'Déconnexion' },
     handler: async (request, reply) => {
       const user = request.user
-      const jti = (user as unknown as { jti?: string }).jti ?? user.sub
+      // OWASP A07 — on ne blackliste QUE le token présenté (`jti`), jamais
+      // l'utilisateur : sinon un logout révoquait toutes ses sessions ET tout
+      // token futur pendant la TTL (self-lockout jusqu'à 7 j, DoS via token
+      // volé). La révocation globale reste `setTokenEpoch` (change-password,
+      // changement de rôle, désactivation). Fallback `sub` pour les seuls
+      // tokens legacy sans jti — cf. tokenBlacklistKey (plugins/auth.ts).
+      const jti = tokenBlacklistKey(user)
       const exp = (user as unknown as { exp?: number }).exp
       const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 0) : 604800
       await blacklistTokenSafe(jti, ttl)
@@ -841,7 +849,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['auth'], summary: 'Émettre un token CSRF (double-submit pattern)' },
     handler: async (request, reply) => {
       const csrfToken = fastify.jwt.sign(
-        { sub: request.user.sub, aud: 'csrf' } as unknown as Parameters<typeof fastify.jwt.sign>[0],
+        withJti({ sub: request.user.sub, aud: 'csrf' }) as unknown as Parameters<typeof fastify.jwt.sign>[0],
         { expiresIn: '1h' },
       )
       return reply.send({ csrfToken })

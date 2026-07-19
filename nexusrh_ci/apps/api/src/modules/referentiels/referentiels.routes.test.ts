@@ -185,3 +185,60 @@ describe('GET /referentiels/my-country', () => {
     expect(JSON.parse(res.body).scope).toBe('unknown')
   })
 })
+
+// ── OWASP A01-5 — ressource légale GLOBALE : super_admin uniquement ────────────
+describe('POST /referentiels/seed & /reindex — super_admin uniquement (OWASP A01-5)', () => {
+  it('un admin TENANT ne peut PAS wipe-reseed le référentiel partagé (403)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/seed',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('un admin TENANT ne peut PAS réindexer l\'index ES partagé (403)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/reindex',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('hr_manager (tenant) ne peut pas non plus (403)', async () => {
+    const token = tokenFor(app, 'hr_manager')
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/seed',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('le super_admin conserve le droit de seed (200)', async () => {
+    queryMock.mockResolvedValue({ rows: [] }) // audit activity_log
+    const token = app.jwt.sign({
+      sub: 'sa', tenantId: null, schemaName: 'platform', role: 'super_admin',
+      email: 'sa@nexusrh-ci.com', firstName: 'S', lastName: 'A', employeeId: null,
+    })
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/seed',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).success).toBe(true)
+  })
+
+  it('le super_admin conserve le droit de reindex (200)', async () => {
+    queryMock.mockResolvedValue({ rows: [] })
+    const token = app.jwt.sign({
+      sub: 'sa', tenantId: null, schemaName: 'platform', role: 'super_admin',
+      email: 'sa@nexusrh-ci.com', firstName: 'S', lastName: 'A', employeeId: null,
+    })
+    const res = await app.inject({
+      method: 'POST', url: '/referentiels/reindex',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})

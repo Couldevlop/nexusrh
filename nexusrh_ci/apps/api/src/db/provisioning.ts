@@ -456,6 +456,21 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     UNIQUE (email)
   )`)
 
+  // A08-2 — Photos de profil (PII) : TENANT-SCOPÉES, jamais dans le bucket
+  // public cross-tenant platform.brand_assets (réservé aux logos publics).
+  // Servies uniquement par GET /employees/:id/photo (authentifié).
+  // Unicité sur employee_id : un ré-upload écrase l'ancienne image (A08-6).
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.employee_photos (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id uuid NOT NULL UNIQUE REFERENCES ${s}.employees(id) ON DELETE CASCADE,
+    mime        varchar(100) NOT NULL,
+    bytes       bytea NOT NULL,
+    size_bytes  integer NOT NULL DEFAULT 0,
+    uploaded_by uuid,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+  )`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.contracts (
     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id           uuid NOT NULL,

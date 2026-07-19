@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin'
 import fastifyJwt from '@fastify/jwt'
 import fastifyCookie from '@fastify/cookie'
+import { randomUUID } from 'node:crypto'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { config } from '../config.js'
 import { isTokenBlacklisted, getTokenEpoch } from '../services/redis.js'
@@ -18,6 +19,13 @@ export const REFRESH_COOKIE_NAME = 'nexusrh_rt'
 
 export interface JwtSignPayload {
   sub:        string
+  /** OWASP A07 — identifiant UNIQUE du token (JWT ID, RFC 7519 §4.1.7).
+   *  Posé par `withJti()` sur CHAQUE token signé. C'est la clé de la blacklist
+   *  de révocation : sans lui, le logout retombait sur `sub` et blacklistait
+   *  l'utilisateur ENTIER (toutes ses sessions + tout futur login) pendant la
+   *  TTL du token — self-lockout jusqu'à 7 jours et DoS de compte trivial.
+   *  Optionnel dans le type UNIQUEMENT pour les tokens legacy déjà émis. */
+  jti?:       string
   tenantId:   string | null
   schemaName: string
   role:       string
@@ -55,6 +63,36 @@ declare module '@fastify/jwt' {
     payload: JwtSignPayload
     user: JwtPayload
   }
+}
+
+/**
+ * OWASP A07 — ajoute un `jti` aléatoire (UUID v4) au payload à signer.
+ *
+ * À appliquer sur TOUT `fastify.jwt.sign()` du dépôt (login, refresh,
+ * refresh-token, challenge MFA, token restreint mfaPending/pwdResetRequired,
+ * re-scoping cabinet, CSRF) — y compris les tokens de courte durée : un token
+ * de 3 minutes reste révocable pendant ces 3 minutes.
+ *
+ * Le `jti` rend la révocation PAR TOKEN. Il ne remplace PAS l'époque de token
+ * (`setTokenEpoch`, services/redis.ts) qui reste la révocation GLOBALE d'un
+ * utilisateur (changement de mot de passe, de rôle, désactivation) : les deux
+ * mécanismes sont complémentaires et évalués tous les deux à chaque requête.
+ */
+export function withJti<T extends object>(payload: T): T & { jti: string } {
+  return { ...payload, jti: randomUUID() }
+}
+
+/**
+ * Clé de blacklist d'un token vérifié.
+ *
+ * RÉTRO-COMPATIBILITÉ (à conserver) : les tokens émis AVANT l'introduction du
+ * `jti` n'en portent pas et resteraient irrévocables. On retombe donc sur `sub`
+ * pour eux, ce qui reproduit l'ancien comportement (blacklist de l'utilisateur)
+ * mais UNIQUEMENT pour ces tokens legacy. La branche `?? sub` peut être retirée
+ * une fois la fenêtre de validité écoulée (JWT_EXPIRES_IN, 7 jours max).
+ */
+export function tokenBlacklistKey(user: { sub: string; jti?: string }): string {
+  return user.jti ?? user.sub
 }
 
 declare module 'fastify' {
@@ -129,7 +167,10 @@ export default fp(async (fastify) => {
         return
       }
     }
-    const jti = (request.user as unknown as { jti?: string }).jti ?? request.user.sub
+    // OWASP A07 — révocation PAR TOKEN via le `jti` (cf. tokenBlacklistKey pour
+    // le fallback legacy `sub`). Un logout ne doit jamais bloquer les autres
+    // sessions de l'utilisateur ni ses futurs logins.
+    const jti = tokenBlacklistKey(request.user)
     if (await isTokenBlacklisted(jti)) {
       reply.status(401).send({ error: 'Token révoqué' })
       return

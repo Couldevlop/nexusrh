@@ -70,6 +70,26 @@ async function managerCanActOnAbsence(
   return r.rows.length > 0
 }
 
+/**
+ * OWASP A01 — portée de CONSULTATION d'un manager : son équipe directe, et
+ * lui-même. Fail-closed (manager sans dossier employé → aucun accès).
+ * Distinct de `managerCanActOnAbsence` qui interdit volontairement l'auto-action
+ * (anti auto-approbation) : consulter SON propre solde reste légitime.
+ */
+async function managerCanViewEmployee(
+  schema: string,
+  managerEmployeeId: string | null | undefined,
+  targetEmployeeId: string,
+): Promise<boolean> {
+  if (!managerEmployeeId) return false
+  if (managerEmployeeId === targetEmployeeId) return true
+  const r = await rawPool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE id = $1 AND manager_id = $2 LIMIT 1`,
+    [targetEmployeeId, managerEmployeeId],
+  )
+  return r.rows.length > 0
+}
+
 function auditLogAbsence(
   schema: string, userId: string, action: string,
   absenceId: string, changes: Record<string, unknown>, ip: string | null,
@@ -159,7 +179,36 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { employeeId } = request.query as { employeeId?: string }
       const year = new Date().getFullYear()
-      let empId = employeeId ?? request.user.employeeId ?? null
+      const role = request.user.role
+
+      // OWASP A01 (IDOR) — le paramètre `employeeId` n'est PAS de confiance :
+      //  - rôles RH (admin/hr_manager/hr_officer) : portée tenant → param honoré ;
+      //  - manager : uniquement son équipe directe (ou lui-même), sinon 403 ;
+      //  - tout autre rôle (employee, readonly, dg…) : forcé sur SON dossier,
+      //    le param est ignoré (même règle que GET /absences/my-absences).
+      const isHrRole = ['admin', 'hr_manager', 'hr_officer'].includes(role)
+      let empId: string | null
+      if (isHrRole) {
+        empId = employeeId ?? request.user.employeeId ?? null
+      } else if (role === 'manager' && employeeId) {
+        let managerEmpId: string | null = request.user.employeeId ?? null
+        if (!managerEmpId) {
+          const m = await rawPool.query(
+            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          )
+          managerEmpId = m.rows[0]?.id ?? null
+        }
+        const allowed = await managerCanViewEmployee(schema, managerEmpId, employeeId)
+        if (!allowed) {
+          return reply.status(403).send({
+            error: 'Vous ne pouvez consulter que les soldes de votre équipe directe',
+          })
+        }
+        empId = employeeId
+      } else {
+        empId = request.user.employeeId ?? null
+      }
+
       if (!empId) {
         const r = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]

@@ -19,7 +19,7 @@ import { toDataURL } from 'qrcode'
 import { randomBytes, randomUUID, createHash } from 'crypto'
 import { config } from '../../config.js'
 import { ensurePlatformSchema, ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { AUTH_COOKIE_NAME } from '../../plugins/auth.js'
+import { AUTH_COOKIE_NAME, withJti } from '../../plugins/auth.js'
 import { sendPasswordResetLinkEmail } from '../../services/email.js'
 import { consumeTotpStep, setTokenEpoch } from '../../services/redis.js'
 import { pool } from '../../db/pool.js'
@@ -356,7 +356,9 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       // Cast contrôlé : userInfo.tokenPayload est typé { sub, tenantId, schemaName,
       // role, email, firstName, lastName, employeeId } — compatible JwtSignPayload
       // mais TS ne le reconnait pas via le type object.
-      const finalToken = fastify.jwt.sign(userInfo.tokenPayload as Parameters<typeof fastify.jwt.sign>[0])
+      // OWASP A07 — `jti` unique (révocation par token, cf. plugins/auth.ts).
+      const finalToken = fastify.jwt.sign(
+        withJti(userInfo.tokenPayload) as Parameters<typeof fastify.jwt.sign>[0])
       auditMfa(payload.schemaName, payload.sub, 'mfa.login_success',
         { usedBackupCode: !!usedBackupCode }, request.ip ?? null)
 
@@ -594,9 +596,11 @@ export function buildMfaChallenge(
   payload: { sub: string; schemaName: string; tenantId: string | null },
 ): string {
   const f = fastify as FastifyJwtLike
+  // OWASP A07 — un `jti` même sur ce token court (3 min) : il doit rester
+  // révocable individuellement pendant sa fenêtre de validité.
   return f.jwt.sign(
-    { sub: payload.sub, schemaName: payload.schemaName, tenantId: payload.tenantId,
-      aud: 'mfa-challenge', userId: payload.sub },
+    withJti({ sub: payload.sub, schemaName: payload.schemaName, tenantId: payload.tenantId,
+      aud: 'mfa-challenge', userId: payload.sub }),
     { expiresIn: '3m' },
   )
 }

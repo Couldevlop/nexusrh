@@ -282,6 +282,68 @@ describe('PATCH /platform/tenants/:id', () => {
       payload: { has_subsidiaries: true } })
     expect(res.statusCode).toBe(500)
   })
+
+  // ── A04-3 (audit OWASP 2026-07-18) : validation des VALEURS, pas que des clés ──
+  describe('A04-3 — validation Zod des valeurs (quotas, enums, URL)', () => {
+    const patch = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PATCH', url: `/platform/tenants/${TID}`, headers: hSuper(), payload })
+
+    it('max_users négatif → 400 (jamais persisté)', async () => {
+      const res = await patch({ max_users: -50 })
+      expect(res.statusCode).toBe(400)
+      expect(queryMock.mock.calls.some(c => String(c[0]).includes('UPDATE platform.tenants SET'))).toBe(false)
+    })
+    it('max_employees non numérique → 400', async () => {
+      expect((await patch({ max_employees: 'beaucoup' })).statusCode).toBe(400)
+    })
+    it('max_employees absurde (hors borne) → 400', async () => {
+      expect((await patch({ max_employees: 99_999_999 })).statusCode).toBe(400)
+    })
+    it('max_users décimal → 400', async () => {
+      expect((await patch({ max_users: 12.5 })).statusCode).toBe(400)
+    })
+    it('status hors enum → 400', async () => {
+      expect((await patch({ status: 'pirate' })).statusCode).toBe(400)
+    })
+    it('plan_type hors enum → 400', async () => {
+      expect((await patch({ plan_type: 'gratuit_a_vie' })).statusCode).toBe(400)
+    })
+    it('logo_url non-URL → 400', async () => {
+      expect((await patch({ logo_url: 'javascript:alert(1)' })).statusCode).toBe(400)
+    })
+    it('primary_color hors format hexadécimal → 400', async () => {
+      expect((await patch({ primary_color: 'rouge' })).statusCode).toBe(400)
+    })
+    it('clé inconnue (strict) → 400, aucun UPDATE', async () => {
+      const res = await patch({ name: 'OK', slug: 'tentative-mass-assignment' })
+      expect(res.statusCode).toBe(400)
+      expect(queryMock.mock.calls.some(c => String(c[0]).includes('UPDATE platform.tenants SET'))).toBe(false)
+    })
+
+    // Non-régression : les valeurs valides gardent EXACTEMENT le comportement actuel.
+    it('valeurs valides (quotas, enums, couleurs, URL) → 200', async () => {
+      queryMock
+        .mockResolvedValueOnce({ rows: [] })                             // UPDATE
+        .mockResolvedValueOnce({ rows: [] })                             // audit
+        .mockResolvedValueOnce({ rows: [{ id: TID, max_users: 250 }] })  // SELECT
+      const res = await patch({
+        max_users: 250, max_employees: 400, status: 'active', plan_type: 'enterprise',
+        primary_color: '#E85D04', logo_url: 'https://cdn.example.ci/logo.png',
+      })
+      expect(res.statusCode).toBe(200)
+    })
+    it('mfa_required en chaîne "true" reste accepté (compat historique) → 200', async () => {
+      queryMock
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: TID }] })
+      const res = await patch({ mfa_required: 'true' })
+      expect(res.statusCode).toBe(200)
+      const update = queryMock.mock.calls.find(c => String(c[0]).includes('UPDATE platform.tenants SET'))
+      expect(String(update![0])).toContain('mfa_required')
+      expect(update![1]).toContain(true) // coercition préservée
+    })
+  })
 })
 
 // ─── POST /platform/tenants/:id/suspend (compléments non couverts ailleurs) ──

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
+import { readFileSync } from 'node:fs'
 
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: vi.fn(), end: vi.fn() })),
@@ -21,7 +22,20 @@ vi.mock('./config.js', () => ({
 
 const API_CSP  = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 const DOCS_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
-const SENSITIVE_CONTENT_TYPES = /^(application\/pdf|text\/csv|application\/xml)/i
+/**
+ * A05-2 — La constante est LUE DEPUIS `app.ts` au lieu d'être recopiée ici.
+ * La duplication précédente est exactement ce qui a permis au trou xlsx de
+ * passer inaperçu : le test restait vert sur sa propre copie du regex pendant
+ * que celui d'app.ts ne couvrait pas les téléchargements Excel. En dérivant la
+ * valeur de la source, toute régression du regex de production casse ce test.
+ */
+function readSensitiveContentTypesFromAppSource(): RegExp {
+  const src = readFileSync(new URL('./app.ts', import.meta.url), 'utf8')
+  const m = src.match(/const SENSITIVE_CONTENT_TYPES\s*=\s*\/(.+)\/([a-z]*)\s*$/m)
+  if (!m) throw new Error('SENSITIVE_CONTENT_TYPES introuvable dans app.ts')
+  return new RegExp(m[1]!, m[2])
+}
+const SENSITIVE_CONTENT_TYPES = readSensitiveContentTypesFromAppSource()
 
 /**
  * Test minimal qui reproduit le hook security-headers de app.ts sans avoir
@@ -46,7 +60,8 @@ function buildAppWithHeadersHook(): FastifyInstance {
       reply.header('Content-Security-Policy', API_CSP)
     }
     const ct = String(reply.getHeader('content-type') ?? '')
-    if (SENSITIVE_CONTENT_TYPES.test(ct)) {
+    const cd = String(reply.getHeader('content-disposition') ?? '')
+    if (SENSITIVE_CONTENT_TYPES.test(ct) || /attachment/i.test(cd)) {
       reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
       reply.header('Pragma',         'no-cache')
     }
@@ -60,6 +75,19 @@ function buildAppWithHeadersHook(): FastifyInstance {
   app.get('/disa.csv', async (_req, reply) => {
     reply.type('text/csv; charset=utf-8')
     return reply.send('A;B;C')
+  })
+  // A05-2 — réplique exacte de GET /bank-transfer/file (IBAN + NNI déchiffrés).
+  app.get('/bank-transfer/file', async (_req, reply) => {
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    reply.header('Content-Disposition', 'attachment; filename="Virements_BNI_2026-07.xlsx"')
+    return reply.send(Buffer.from('FAKE_XLSX'))
+  })
+  // Type binaire quelconque servi en pièce jointe : couvert par le filet
+  // Content-Disposition même si le Content-Type n'est pas dans l'allowlist.
+  app.get('/export.bin', async (_req, reply) => {
+    reply.header('Content-Type', 'application/x-nexusrh-futur')
+    reply.header('Content-Disposition', 'attachment; filename="export.bin"')
+    return reply.send(Buffer.from('BIN'))
   })
   return app
 }
@@ -114,6 +142,32 @@ describe('Cache-Control no-store sur réponses sensibles (OWASP A02)', () => {
 
   it('export DISA CSV → Cache-Control no-store', async () => {
     const res = await app.inject({ method: 'GET', url: '/disa.csv' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['cache-control']).toContain('no-store')
+  })
+
+  // ── A05-2 (audit OWASP 2026-07-18) ──────────────────────────────────────────
+  it('xlsx virement bancaire (IBAN/NNI déchiffrés) → Cache-Control no-store', async () => {
+    const res = await app.inject({ method: 'GET', url: '/bank-transfer/file' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['cache-control']).toContain('no-store')
+    expect(res.headers['cache-control']).toContain('private')
+    expect(res.headers['pragma']).toBe('no-cache')
+  })
+
+  it('le regex de production couvre les types xlsx / ms-excel', () => {
+    expect(SENSITIVE_CONTENT_TYPES.test('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(true)
+    expect(SENSITIVE_CONTENT_TYPES.test('application/vnd.ms-excel')).toBe(true)
+    // Non-régression sur les types déjà couverts
+    expect(SENSITIVE_CONTENT_TYPES.test('application/pdf')).toBe(true)
+    expect(SENSITIVE_CONTENT_TYPES.test('text/csv; charset=utf-8')).toBe(true)
+    expect(SENSITIVE_CONTENT_TYPES.test('application/xml')).toBe(true)
+    // Le JSON reste hors allowlist (cache normal autorisé)
+    expect(SENSITIVE_CONTENT_TYPES.test('application/json; charset=utf-8')).toBe(false)
+  })
+
+  it('filet Content-Disposition: attachment → no-store même si le type est inconnu', async () => {
+    const res = await app.inject({ method: 'GET', url: '/export.bin' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['cache-control']).toContain('no-store')
   })

@@ -89,6 +89,91 @@ describe('Admin RBAC (/integrations)', () => {
   })
 })
 
+// ── A09-3 (audit OWASP 2026-07-18) ───────────────────────────────────────────
+// Les en-têtes de webhook portent typiquement `Authorization: Bearer <token>`
+// du système destinataire. Ils doivent être chiffrés au repos, absents des
+// réponses API, et réduits aux noms de clés dans l'audit.
+describe('A09-3 — en-têtes de webhook : chiffrés au repos, jamais exposés', () => {
+  const SECRET_HEADERS = { Authorization: 'Bearer super-token-destinataire', 'X-Tenant': 'acme' }
+
+  it('POST /webhooks : headers chiffrés dans headers_enc, jamais en clair en base', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'w1' }] })
+    const r = await app.inject({ method: 'POST', url: '/integrations/webhooks',
+      headers: { authorization: `Bearer ${tok('admin')}` },
+      payload: { name: 'Slack', target_url: 'https://hooks.example.com/x', events: ['employee.created'], headers: SECRET_HEADERS } })
+    expect(r.statusCode).toBe(201)
+
+    const insert = queryMock.mock.calls.find(c => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('integration_webhooks'))
+    expect(insert).toBeDefined()
+    expect(String(insert![0])).toContain('headers_enc')
+    // Le secret ne doit apparaître dans AUCUN paramètre de la requête SQL.
+    const serialized = JSON.stringify(insert![1])
+    expect(serialized).not.toContain('super-token-destinataire')
+    expect(serialized).not.toContain('Bearer')
+    // …et la valeur stockée doit être un cryptogramme AES-GCM (iv:tag:données).
+    const encParam = (insert![1] as unknown[]).find(v => typeof v === 'string' && /^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/.test(v))
+    expect(encParam).toBeDefined()
+  })
+
+  it('POST /webhooks : l\'audit ne consigne que les NOMS de clés d\'en-têtes', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'w1' }] })
+    await app.inject({ method: 'POST', url: '/integrations/webhooks',
+      headers: { authorization: `Bearer ${tok('admin')}` },
+      payload: { name: 'Slack', target_url: 'https://hooks.example.com/x', events: ['employee.created'], headers: SECRET_HEADERS } })
+    const audit = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log'))
+    expect(audit).toBeDefined()
+    const changes = JSON.stringify(audit![1])
+    expect(changes).not.toContain('super-token-destinataire')
+    expect(changes).toContain('header_keys')
+    expect(changes).toContain('Authorization') // le NOM reste tracé
+  })
+
+  it('PATCH /webhooks/:id : headers chiffrés + audit réduit aux noms de clés', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: '11111111-1111-1111-1111-111111111111' }] }) // UPDATE RETURNING
+    const r = await app.inject({ method: 'PATCH', url: '/integrations/webhooks/11111111-1111-1111-1111-111111111111',
+      headers: { authorization: `Bearer ${tok('admin')}` },
+      payload: { headers: SECRET_HEADERS } })
+    expect(r.statusCode).toBe(200)
+
+    const update = queryMock.mock.calls.find(c => String(c[0]).includes('UPDATE') && String(c[0]).includes('integration_webhooks'))
+    expect(String(update![0])).toContain('headers_enc')
+    // La colonne héritée en clair est purgée par la même requête.
+    expect(String(update![0])).toContain(`headers = '{}'::jsonb`)
+    expect(JSON.stringify(update![1])).not.toContain('super-token-destinataire')
+
+    const audit = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log'))
+    const changes = JSON.stringify(audit![1])
+    expect(changes).not.toContain('super-token-destinataire')
+    expect(changes).toContain('header_keys')
+  })
+
+  it('GET /webhooks : renvoie header_keys, jamais les valeurs', async () => {
+    // Ligne « moderne » (chiffrée) + ligne héritée (clair, pré-migration).
+    const { encrypt } = await import('../../utils/crypto.js')
+    queryMock.mockResolvedValueOnce({ rows: [
+      { id: 'w1', name: 'Moderne', target_url: 'https://a.example.com', events: [], is_active: true,
+        headers: null, headers_enc: encrypt(JSON.stringify(SECRET_HEADERS)),
+        last_delivery_at: null, last_status: null, created_at: new Date() },
+      { id: 'w2', name: 'Hérité', target_url: 'https://b.example.com', events: [], is_active: true,
+        headers: { 'X-Legacy-Key': 'valeur-heritee-en-clair' }, headers_enc: null,
+        last_delivery_at: null, last_status: null, created_at: new Date() },
+    ] })
+    const r = await app.inject({ method: 'GET', url: '/integrations/webhooks',
+      headers: { authorization: `Bearer ${tok('admin')}` } })
+    expect(r.statusCode).toBe(200)
+    const body = r.body
+    expect(body).not.toContain('super-token-destinataire')
+    expect(body).not.toContain('valeur-heritee-en-clair')
+
+    const rows = JSON.parse(body).data as Array<{ header_keys: string[]; headers?: unknown; headers_enc?: unknown }>
+    expect(rows[0]!.header_keys).toEqual(['Authorization', 'X-Tenant'])
+    expect(rows[1]!.header_keys).toEqual(['X-Legacy-Key']) // rétro-compatibilité
+    // Ni la valeur chiffrée ni l'ancien clair ne sortent de l'API.
+    expect(rows[0]).not.toHaveProperty('headers')
+    expect(rows[0]).not.toHaveProperty('headers_enc')
+  })
+})
+
 describe('API publique (clé API, scope-gated)', () => {
   it('sans clé → 401', async () => {
     expect((await app.inject({ method: 'GET', url: '/integrations/v1/employees' })).statusCode).toBe(401)
