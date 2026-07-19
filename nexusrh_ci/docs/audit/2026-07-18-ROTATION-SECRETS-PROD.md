@@ -6,9 +6,13 @@
 
 ---
 
-## 1. Rotation des mots de passe (script existant, paramétré)
+## 0. Le déploiement ne re-fuite PAS
 
-Le script `apps/api/src/db/reset-admin-passwords.ts` (bcrypt 12, idempotent) rejoue les hashes des comptes démo. Il lit les mots de passe depuis des variables d'env `SEED_*`. **Il suffit de le lancer avec des valeurs NEUVES** (jamais les défauts `Admin1234!`…).
+Le seed du pipeline (`node dist/db/seed.js`) utilise `ON CONFLICT DO NOTHING` : il **ne réécrit pas** les comptes existants (données préservées, cf. PR #196). Merger #203 ne ré-applique donc **pas** `Admin1234!`. La rotation ci-dessous est indépendante du déploiement et **doit** être faite (les hashes actuels = ceux qui ont fuité) — via le **workflow dédié** (`reset-admin-passwords.js` + `FORCE_RESET_PROD`), seul chemin qui écrase réellement les hashes.
+
+## 1. Rotation des mots de passe (workflow dédié `reset-demo-passwords`)
+
+Le script `apps/api/src/db/reset-admin-passwords.ts` (bcrypt 12) lit les nouveaux mots de passe depuis `SEED_*` (secret `nexusrh-app-secrets`, monté en `envFrom`). Le workflow GitHub **`Reset Demo Passwords — NexusRH CI`** (manuel) lance un Job K8s qui l'exécute avec `FORCE_RESET_PROD`.
 
 ### 1.1 Générer des mots de passe forts (poste local, hors repo)
 ```bash
@@ -18,17 +22,20 @@ done
 # → notez ces valeurs dans le coffre secrets de l'équipe (PAS dans le repo)
 ```
 
-### 1.2 Exécuter la rotation en prod
-Depuis un pod API du namespace `nexusrh-ci` (ou via `kubectl exec`), avec les nouvelles valeurs injectées **en variables d'env de la commande** (pas en clair dans un fichier versionné) :
+### 1.2 Injecter les valeurs neuves dans le secret prod
 ```bash
-kubectl -n nexusrh-ci exec deploy/nexusrh-api -- \
-  env SEED_SUPERADMIN_PASSWORD='<neuf>' \
-      SEED_DEMO_PASSWORD='<neuf>' \
-      SEED_OPENLAB_PASSWORD='<neuf>' \
-      SEED_WOYAA_PASSWORD='<neuf>' \
-  node dist/db/reset-admin-passwords.js
+kubectl -n nexusrh-ci patch secret nexusrh-app-secrets --type merge -p '{"stringData":{
+  "SEED_SUPERADMIN_PASSWORD":"<neuf>",
+  "SEED_DEMO_PASSWORD":"<neuf>",
+  "SEED_OPENLAB_PASSWORD":"<neuf>",
+  "SEED_WOYAA_PASSWORD":"<neuf>"
+}}'
 ```
-> Le script cible : `superadmin@nexusrh-ci.com` (platform) + tous les comptes SOTRA / Cabinet Expertise / OpenLab / WOYAA / cabinet Talents. Il est **idempotent** (relançable).
+
+### 1.3 Lancer la rotation
+GitHub → **Actions → « Reset Demo Passwords — NexusRH CI » → Run workflow** : cible `nexusrh-ci`, mode **apply**, confirmation **RESET**. Le Job exécute `reset-admin-passwords.js` (cible : `superadmin@nexusrh-ci.com` + tous les comptes SOTRA / Cabinet Expertise / OpenLab / WOYAA / cabinet Talents). Idempotent, relançable.
+
+_(Alternative directe si besoin, sans le workflow : `kubectl -n nexusrh-ci exec deploy/nexusrh-api -- env SEED_DEMO_PASSWORD='<neuf>' … node dist/db/reset-admin-passwords.js`.)_
 
 ---
 
