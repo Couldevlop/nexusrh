@@ -1,6 +1,8 @@
 # Audit de sécurité OWASP — NexusRH CI (application complète)
 
 > **Statut : TERMINÉ** (6 axes audités, constats consolidés)
+> **Remédiation :** P0 ✅ (`d86c7ea`) · P1 ✅ (`f3191fc`, `f9c0338`, `7549296`, `e9900da`, `60d3b73` — PR #203/#204) · **P2 ✅ — les 10 Medium sont traités (PR #205, commit `5f7bf94`)** · P3 ⏳ reste à faire.
+> **Depuis :** la **MFA est obligatoire en production** (super_admin + utilisateurs tenant) avec parcours d'enrôlement `/mfa-setup` — PR #206/#207 (`d6e7b77`, `0155aed`), cf. `docs/reference/specs-fonctionnelles.md` § Authentification.
 > **Date :** 2026-07-18
 > **Périmètre :** intégralité du code applicatif `nexusrh_ci/` (API Fastify, worker BullMQ, front React)
 > **Branche / révision :** `develop` @ `b27e6cd`
@@ -52,7 +54,7 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 |----------|--------|
 | **Critical** | **3** |
 | **High** | **6** |
-| **Medium** | **10** |
+| **Medium** | **10** (tous corrigés — PR #205) |
 | **Low / Info** | **~13** |
 
 ### Top priorités (P0 — à traiter immédiatement, prod exposée)
@@ -81,20 +83,24 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 - **Fichier :** `apps/api/src/modules/absences/absences.routes.ts:155-178` (`GET /absences/balances`). preHandler = `fastify.authenticate` seul ; `empId = employeeId ?? request.user.employeeId` fait confiance au paramètre pour tous les rôles.
 - **Exploit :** un `employee` appelle `GET /absences/balances?employeeId=<uuid d'un autre>` et obtient ses soldes (pris/en attente/restant). `/my-absences` est correct (ignore le param).
 - **Correctif :** pour les rôles non-RH, forcer `request.user.employeeId`, ignorer `query.employeeId`.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `?employeeId` n'est plus honoré hors RH ; le `manager` est limité à son équipe directe (403 sinon).
 
 #### [MEDIUM] A01-3 — Notes de frais : `readonly` peut créer/soumettre, non-RH peut imputer à autrui
 - **Fichier :** `apps/api/src/modules/expenses/expenses.routes.ts:230` (`POST /`), `:284` (`PATCH /:id/submit`). `fastify.authenticate` seul ; l'auto-restriction ne s'applique que si `role==='employee'`.
 - **Exploit :** (a) `readonly` (censé être lecture seule) crée et soumet des notes ; (b) un `manager`/`hr_officer` crée une note attribuée à **n'importe quel** employé (`body.employee_id`).
 - **Correctif :** `fastify.authorize(...)` excluant `readonly` ; contraindre `employee_id`/submit au périmètre own/team (réutiliser `managerCanActOnReport`).
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `readonly` exclu de la création/soumission ; `manager` limité à son périmètre.
 
 #### [MEDIUM] A01-4 — `hr_officer` lit tout l'historique Mobile Money
 - **Fichier :** `apps/api/src/modules/mobile-money/mobile-money.routes.ts:390` (`GET /mobile-money/payments`), gaté `authorize('admin','hr_manager','hr_officer','readonly')`. La matrice RBAC ne donne PAS accès à `hr_officer` (le jumeau `/payments/stats:424` l'exclut correctement). Expose téléphones, montants, provider, IDs de transaction, filtrable par employé.
 - **Correctif :** `authorize('admin','hr_manager','readonly')`.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `hr_officer` retiré de `GET /mobile-money/payments`.
 
 #### [MEDIUM] A01-5 — Un admin tenant peut wiper le référentiel légal partagé plateforme
 - **Fichier :** `apps/api/src/modules/referentiels/referentiels.routes.ts:143-173` (`POST /referentiels/seed`, `/reindex`), gaté `authorize('admin','super_admin')`. `admin` est tenant-scoped mais ces routes agissent sur une table légale **globale** (`droit-ci`) et un index ES **partagé**.
 - **Exploit :** `admin@<tenant>.ci` déclenche `/seed` (wipe-reseed) ou `/reindex` du référentiel utilisé par **tous** les tenants (atteinte dispo/intégrité ressource partagée). Pas de PII ; rate-limit 3/5min.
 - **Correctif :** retirer `'admin'`, garder `'super_admin'`.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `POST /referentiels/seed` et `/reindex` réservés à `super_admin`.
 
 #### [LOW]
 - **A01-6** `apps/api/src/modules/ai/ai-tools.ts:88,160-215` — outils IA agrégés tenant-wide pour `manager` sans filtre `manager_id` (mitigé : `includeNames=false` → comptes seuls, pas de PII). Filtrer par `manager_id`.
@@ -140,6 +146,7 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 - **Fichiers :** `attendance.fetch.ts:104` (`response.json()`), `attendance-poll.ts:257` (copie), `services/mobile-money-providers.ts:170` (`res.json()`), `services/integrations.service.ts:132` (`res.text()` lit tout avant `.slice(0,300)`).
 - **Exploit :** un admin tenant pointe une cible qu'il contrôle (IP publique — le guard bloque le privé ici) qui streame plusieurs Go → épuisement mémoire du process **partagé entre tenants**.
 - **Correctif :** compter les octets en flux et abort au-delà d'un cap (2-5 Mo) au lieu de bufferiser puis vérifier. _NB : `apps/worker/src/jobs/legal-watch.ts:35-55` a la même faiblesse (vérifie `MAX_BODY_BYTES` **après** `arrayBuffer()`) → même correctif._
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). Helper `readBodyCapped`/`readJsonCapped` (api **et** worker, copies mirrorées) : toutes les lectures sortantes sont bornées — 5 Mo par défaut, 64 Ko pour les réponses de webhook, 1 Mo pour la veille légale.
 
 #### [LOW/INFO] A10-4 — `legal-watch` worker sans guard SSRF (non atteignable aujourd'hui)
 - `apps/worker/src/jobs/legal-watch.ts:35-55` (`fetchText`) : `fetch` sans `assertSafeOutboundUrl`. `sourceUrl` vient uniquement de l'env `LEGAL_WATCH_SOURCES` au boot, pas d'une route tenant/super_admin (la route ne queue jamais ce job aujourd'hui). **Non exploitable** actuellement ; à guarder avant toute future API de déclenchement.
@@ -169,6 +176,7 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 - **Fichiers :** aucun `sign()` ne pose de `jti` ; `plugins/auth.ts:126` et `auth.routes.ts:784` retombent sur `jti ?? user.sub` → `blacklistTokenSafe` (`services/redis.ts:6-23`) blackliste par **user id** pour la TTL du token (jusqu'à 7 j).
 - **Exploit :** (a) logout d'un device tue toutes les sessions ; (b) un token neuf émis par un login suivant est **immédiatement rejeté** (« Token révoqué ») → l'utilisateur qui se déconnecte/reconnecte est lockout jusqu'à 7 j ; (c) un attaquant avec un token volé lock durablement la victime hors de son compte via `POST /auth/logout`.
 - **Correctif :** poser un `jti` aléatoire (`randomUUID()`) par token signé et blacklister par jti.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `jti` aléatoire posé sur les **11 sites de signature** ; la blacklist de logout porte désormais sur le `jti` (plus de self-lockout jusqu'à 7 j). La révocation « toutes sessions » de la **suspension d'un cabinet** est passée à `setTokenEpoch` (le bon outil pour ce cas).
 
 #### [LOW] A02-5 — Secrets infra à défauts faibles, pas fail-closed en prod
 - `apps/api/src/config.ts:53-54,60` — `S3_ACCESS_KEY`/`S3_SECRET_KEY` = `minioadmin`, `MEILISEARCH_MASTER_KEY` = `nexusrhci-dev-master-key` par défaut, sans rejet au boot prod (contrairement à `JWT_SECRET`/`ENCRYPTION_KEY` qui fail-closed, lignes 108-124).
@@ -191,10 +199,12 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 - **Fichiers :** `apps/api/src/app.ts:127-158` — `SENSITIVE_CONTENT_TYPES` ne matche pas `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, le Content-Type de `GET /bank-transfer/file` (`bank-transfer.routes.ts:126`) qui sert un `.xlsx` contenant **IBAN et NNI déchiffrés** de chaque employé payé par virement.
 - **Exploit :** sur un poste/navigateur RH partagé, le fichier est mis en cache et réouvrable par un autre utilisateur de la machine — exactement ce que le `no-store` devait empêcher.
 - **Correctif :** étendre le regex aux types xlsx/ms-excel (ou passer d'allowlist à denylist `text/html`/assets).
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). `no-store` étendu aux types xlsx **et** à toute réponse portant `Content-Disposition: attachment`.
 
 #### [MEDIUM] A09-3 — En-têtes de webhook stockés en clair + copiés dans l'audit
 - **Fichiers :** `apps/api/src/modules/integrations/integrations.routes.ts:150,158-182`. `integration_webhooks.headers` stocké **non chiffré** (`JSON.stringify`, pas de `_enc`, contrairement à `auth_secret_enc`) et renvoyé en clair par `GET /webhooks` ; sur `PATCH /webhooks/:id`, tout le body (dont `headers`) est spread dans `audit_log.changes` (`{ ...b }`, ligne 182). Or ces en-têtes portent souvent `Authorization: Bearer <token>`/clé API du système destinataire → credential du destinataire en clair dans **2 emplacements DB**.
 - **Correctif :** chiffrer `headers` au repos comme `auth_secret_enc` ; dans l'audit, réduire aux **noms de clés** (patron déjà utilisé pour mobile-money/SSO/SIEM).
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). Nouvelle colonne `integration_webhooks.headers_enc` (AES au repos) ; `GET /webhooks` ne renvoie plus que les **noms** de clés et l'audit ne contient plus aucune valeur d'en-tête.
 
 #### [LOW]
 - **A02-2 (rappel)** `mfa_secret` en clair sur toute l'app (racine qui rend A09-1 exploitable via secret statique) — cf. section A02.
@@ -217,15 +227,17 @@ Bonne nouvelle : **quelques correctifs centraux** ferment un grand nombre de con
 - **Fichiers :** `apps/api/src/modules/employees/employees.routes.ts:608-644` + `apps/api/src/modules/platform/brand.routes.ts:83-98`. Les photos de profil sont stockées dans `platform.brand_assets` (**global, non-auth, cross-tenant**, prévu pour les logos publics) et servies par `GET /public/brand/:id` **sans auth ni ownership ni scoping tenant**.
 - **Exploit :** toute fuite d'URL (Referer, historique, capture, log) = accès **permanent, non révocable, inter-tenant** à la photo. Mitigé : UUIDv4 aléatoires (non brute-forçables), mais viole l'« isolation tenant stricte » si une URL fuit.
 - **Correctif :** stocker les photos dans une table tenant-scopée (ou exiger un token par asset), servir via un endpoint authentifié tenant-scopé.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). Les photos quittent `platform.brand_assets` pour une **table tenant `employee_photos`**, servies par le nouvel endpoint **authentifié `GET /employees/:id/photo`** (RBAC aligné sur `GET /employees/:id`). `GET /public/brand/:id` reste réservé aux **logos publics**.
 
 #### [MEDIUM] A04-3 — `PATCH /platform/tenants/:id` sans schéma Zod (validation de valeurs absente)
 - **Fichier :** `apps/api/src/modules/platform/platform.routes.ts:355-446`. `request.body as Record<string,unknown>`, allowlist de clés (anti mass-assignment) mais **valeurs non validées** : `max_users`/`max_employees` (négatif/absurde/non-numérique), `status`/`plan_type` (chaîne libre hors enums), `logo_url` non validé. Atteignable **super_admin seul** → impact self-harm/opérationnel, pas d'escalade.
 - **Correctif :** Zod `.strict()` + enums `status`/`plan_type` + `z.number().int().nonnegative().max(...)`.
+- **Statut :** ✅ **Corrigé** — PR #205 (`5f7bf94`). Schéma Zod strict : enums `status`/`plan_type`, quotas bornés, `logo_url` restreint aux schémas `http(s)`.
 
 #### [LOW]
 - **A04-4** `contracts.routes.ts:168-190` — `PATCH /contracts/:id` (admin/hr_manager) : allowlist de clés mais `base_salary` négatif/énorme, `status`/`signature_status` chaînes libres. Rôle déjà de confiance ; ajouter Zod borné.
 - **A04-5** `recruitment.routes.ts:1332-1440` (apply public) — rate-limit 5/h par `request.ip` ; si `trustProxy` mal configuré, spoof `X-Forwarded-For` contournerait l'anti-spam. **À confirmer** contre la config Fastify (non vérifié).
-- **A08-6 [INFO]** `employees.routes.ts:630-637` — chaque re-upload de photo insère une ligne `brand_assets` sans supprimer l'ancienne (croissance stockage lente, bornée par rate-limit).
+- **A08-6 [INFO]** `employees.routes.ts:630-637` — chaque re-upload de photo insère une ligne `brand_assets` sans supprimer l'ancienne (croissance stockage lente, bornée par rate-limit). — ✅ **Corrigé** PR #205 (`5f7bf94`) : `UNIQUE(employee_id)` + UPSERT sur `employee_photos` (une seule photo par employé).
 
 **Vérifié sain :** CV upload auth (MIME allowlist, 10 Mo, blob DB, pas de path), CV download (UUID, tenant-scopé, RBAC, nosniff), apply public (5/h, MIME+5 Mo, Zod strict, anti-doublon, tenant/job re-vérifiés), reçus de frais (data URL base64, pas de disque), logo (MIME **exclut SVG**, nosniff), webhooks/connecteurs (SSRF guard + HMAC-SHA256 + secret AES + headers ne peuvent écraser la signature), clés API entrantes (secret 192-bit SHA-256, scope/expiry/statut), **prototype pollution** (`attendance.mapping.ts` `getByPath` bloque `__proto__`/`prototype`/`constructor`), self-service PATCH (`EMPLOYEE_SELF_FIELDS` strippe tout champ non-self après Zod).
 
@@ -260,29 +272,32 @@ Chaque correctif sera livré avec **test de non-régression** et **re-vérificat
 
 > Vérification : suite API complète **4166/4166 verte**, `tsc` 0 erreur, flux MFA (`auth-mfa.routes.test.ts`) confirmé.
 
-### P1 — Court terme (High) — _A10-2 corrigé ✅ (commit `f3191fc`)_
+### P1 — Court terme (High) — **LOT COMPLET LIVRÉ ✅**
 | ID | Correctif | Statut |
 |----|-----------|--------|
 | A10-2 | **Fix central** : épingler l'IP validée dans `ssrf-guard.ts` (undici `Agent`+`lookup`), 6 sorties + 2 copies | ✅ **Fait** — `tsc` 0, tests épinglage 50 verts, 4180 API |
-| A01-1 | `blacklistTokenSafe` sur `PATCH`/`DELETE /users/:id` + `/auth/refresh` re-vérifie statut/rôle en DB (comme `/auth/refresh-token`) | ⏳ à faire |
-| A03-1 | `encodeField` sur chaque champ de `GET /payroll/livre-de-paie/:year/export` | ⏳ à faire |
-| A04-1 | Restreindre `POST /settings/variable-elements` à admin/hr_manager + Zod `.strict()` borné | ⏳ à faire |
-| A02-2 | Chiffrer `mfa_secret` au repos (`encrypt`/`decrypt` existants) + migration des seeds existants | ⏳ à faire |
-| A02-3 | Blacklister le JWT présenté sur `change-password` **et** `reset-password` + `revokeAllRefreshTokensForUser` sur reset | ⏳ à faire |
+| A01-1 | `blacklistTokenSafe` sur `PATCH`/`DELETE /users/:id` + `/auth/refresh` re-vérifie statut/rôle en DB (comme `/auth/refresh-token`) | ✅ **Fait** — `f9c0338` (époque de token + revérif DB) |
+| A03-1 | `encodeField` sur chaque champ de `GET /payroll/livre-de-paie/:year/export` | ✅ **Fait** — `7549296` |
+| A04-1 | Restreindre `POST /settings/variable-elements` à admin/hr_manager + Zod `.strict()` borné | ✅ **Fait** — `e9900da` |
+| A02-2 | Chiffrer `mfa_secret` au repos (`encrypt`/`decrypt` existants) + migration des seeds existants | ✅ **Fait** — `60d3b73` (AES-256-GCM, compat legacy) |
+| A02-3 | Blacklister le JWT présenté sur `change-password` **et** `reset-password` + `revokeAllRefreshTokensForUser` sur reset | ✅ **Fait** — `f9c0338` (invalidation par époque de token) |
 
-### P2 — Moyen terme (Medium)
-| ID | Correctif | Effort |
-|----|-----------|--------|
-| A02-4 | `jti` aléatoire par token + blacklist par jti (corrige aussi le self-lockout) | M |
-| A01-2 | `GET /absences/balances` : forcer `request.user.employeeId` pour non-RH | S |
-| A01-3 | `expenses` POST/submit : exclure `readonly`, contraindre `employee_id` own/team | S |
-| A01-4 | `GET /mobile-money/payments` : `authorize('admin','hr_manager','readonly')` | S |
-| A01-5 | `referentiels/seed|reindex` : retirer `'admin'` (super_admin seul) | S |
-| A08-2 | Photos employés : table tenant-scopée + endpoint authentifié (hors bucket public logos) | M |
-| A04-3 | `PATCH /platform/tenants/:id` : Zod `.strict()` + enums + bornes numériques | S |
-| A05-2 | Étendre `SENSITIVE_CONTENT_TYPES` aux types xlsx (no-store sur IBAN/NNI) | S |
-| A09-3 | Chiffrer `integration_webhooks.headers` + audit = noms de clés seulement | S/M |
-| A10-3 | Cap d'octets en flux sur toutes les lectures de réponse sortante (badgeuse, MM, intégrations, legal-watch) | M |
+### P2 — Moyen terme (Medium) — **LOT COMPLET LIVRÉ ✅ (PR #205, commit `5f7bf94`)**
+| ID | Correctif | Effort | Statut |
+|----|-----------|--------|--------|
+| A07-4 | `jti` aléatoire par token (11 sites de signature) + blacklist de logout par jti ; suspension cabinet → `setTokenEpoch` | M | ✅ **Fait** — self-lockout jusqu'à 7 j fermé |
+| A01-2 | `GET /absences/balances` : forcer `request.user.employeeId` pour non-RH | S | ✅ **Fait** — `manager` limité à son équipe directe (403 sinon) |
+| A01-3 | `expenses` POST/submit : exclure `readonly`, contraindre `employee_id` own/team | S | ✅ **Fait** |
+| A01-4 | `GET /mobile-money/payments` : `authorize('admin','hr_manager','readonly')` | S | ✅ **Fait** |
+| A01-5 | `referentiels/seed|reindex` : retirer `'admin'` (super_admin seul) | S | ✅ **Fait** |
+| A08-2 | Photos employés : table tenant `employee_photos` + `GET /employees/:id/photo` authentifié | M | ✅ **Fait** — `/public/brand/:id` = logos publics uniquement |
+| A08-6 | `UNIQUE(employee_id)` + UPSERT (une seule photo par employé) | S | ✅ **Fait** |
+| A04-3 | `PATCH /platform/tenants/:id` : Zod `.strict()` + enums + bornes numériques | S | ✅ **Fait** — `logo_url` restreint à http(s) |
+| A05-2 | Étendre `SENSITIVE_CONTENT_TYPES` aux types xlsx (no-store sur IBAN/NNI) | S | ✅ **Fait** — + toute réponse `Content-Disposition: attachment` |
+| A09-3 | Chiffrer `integration_webhooks.headers` + audit = noms de clés seulement | S/M | ✅ **Fait** — colonne `headers_enc` |
+| A10-3 | Cap d'octets en flux sur toutes les lectures de réponse sortante (badgeuse, MM, intégrations, legal-watch) | M | ✅ **Fait** — `readBodyCapped`/`readJsonCapped` (api + worker), 5 Mo / 64 Ko webhooks / 1 Mo veille légale |
+
+> _Note : le constat « blacklist par `sub` faute de `jti` » est référencé **A02-4** dans la synthèse §2 et **A07-4** dans les constats détaillés §3 — même finding._
 
 ### P3 — Durcissement (Low/Info)
 A01-6/7 (filtre manager IA, UUID_RE), A03-3 (échappement HTML emails), A10-4 (guard legal-watch), A04-4/5 (Zod contrats, trustProxy apply), A02-5/A05-6 (fail-fast S3/Meili prod), A09-4/5 (messages d'erreur génériques security/bank-transfer), A07-6 (CSRF `jwt.verify`), A08-6 (cleanup photos), BADGE-1/2 (déjà couverts par A10-2/A10-3).
@@ -312,4 +327,4 @@ Le correctif code empêche **les futurs** dumps, mais les identifiants et le sec
 
 ---
 
-_Audit conduit en lecture seule. Les correctifs P0 (code) sont appliqués et vérifiés (commit `d86c7ea`). Les lots P1→P3 suivront en commits séparés avec tests de non-régression et re-vérification de chaque correctif._
+_Audit conduit en lecture seule. Les correctifs P0 (code) sont appliqués et vérifiés (commit `d86c7ea`), P1 livré (PR #203/#204), **P2 livré et déployé en prod (PR #205, commit `5f7bf94`) — les 10 Medium sont traités**. Reste P3 (durcissement Low/Info)._

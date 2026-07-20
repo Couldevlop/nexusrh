@@ -1,6 +1,53 @@
-# Specs fonctionnelles CI — Dashboards, Modules, Portail, Thématisation, Ordre de génération, Plans
+# Specs fonctionnelles CI — Authentification, Dashboards, Modules, Portail, Thématisation, Ordre de génération, Plans
 
 > Référence détaillée. Chargée à la demande depuis `nexusrh_ci/CLAUDE.md`.
+
+---
+
+## AUTHENTIFICATION — MFA OBLIGATOIRE & PARCOURS D'ENRÔLEMENT
+
+> Livré par les PR #206/#207 (`d6e7b77`, `0155aed`). **En production, la MFA est obligatoire pour tout le monde.**
+
+### Politique
+
+Deux drapeaux de `platform_settings`, tous deux à `true` en production :
+
+| Drapeau | Portée |
+|---|---|
+| `mfa_required_super_admin` | comptes plateforme (`super_admin`) |
+| `mfa_required_tenant_users` | **tous** les utilisateurs de tenant, quel que soit le rôle (admin → employee) |
+
+### Parcours de première connexion
+
+```
+/login  →  mot de passe OK, mais aucune MFA enrôlée
+        →  l'API délivre un token RESTREINT (claim `mfaPending`)
+        →  le front redirige vers /mfa-setup
+        →  QR code (+ secret manuel) à scanner dans l'app d'authentification
+        →  POST /auth/mfa/verify avec le premier code TOTP
+        →  10 codes de secours affichés UNE SEULE FOIS (à conserver par l'utilisateur)
+        →  déconnexion + reconnexion AUTOMATIQUES
+        →  /login  →  code TOTP  →  token de session complet  →  dashboard du rôle
+```
+
+**Points structurants :**
+
+- **Token restreint.** Un token portant `mfaPending` est refusé en **403** par **toutes** les routes métier. Seul `/auth/me` répond — juste de quoi afficher la page d'enrôlement.
+- **Le token ne se « débloque » pas en place.** Après `/auth/mfa/verify`, le token courant **reste** `mfaPending` : il faut se déconnecter et se reconnecter pour obtenir un token de session complet. Le parcours `/mfa-setup` enchaîne ces étapes automatiquement — c'est voulu, pas un bug.
+- **Route hors layouts gardés.** `/mfa-setup` est accessible à **tous les rôles** (y compris `employee` et `super_admin`) et ne dépend d'aucun layout protégé, sinon un compte non enrôlé ne pourrait jamais atteindre sa propre page d'enrôlement.
+- **Pas de contournement par URL.** Un **garde central** vérifie le claim `mfaPending` dans les **6 gardes** de `RoleGuard.tsx` **et** dans `RootRedirect` : taper `/dashboard` (ou toute autre route) directement renvoie sur `/mfa-setup`.
+
+### Codes de secours
+
+- **10 codes** de **10 caractères**, générés à l'enrôlement, **affichés une seule fois** (stockés hachés en base, usage unique).
+- Un code de secours se saisit **à la place du code TOTP, dans le même champ** du formulaire de connexion.
+- Il fonctionne **indépendamment de l'horloge** — c'est le recours quand le téléphone est perdu ou l'horloge désynchronisée.
+
+### Déblocage administrateur
+
+Un utilisateur qui a perdu son second facteur **et** ses codes de secours est bloqué. Un administrateur le débloque via l'**endpoint admin de reset MFA** (`23d0434`) : la MFA est remise à zéro et l'utilisateur repasse par `/mfa-setup` à sa prochaine connexion.
+
+> Identifiants de démo (mots de passe, secret TOTP, codes de secours) → **`nexusrh_ci/.credentials-local.md`**, fichier local non versionné. Aucune de ces valeurs ne doit apparaître dans `docs/`.
 
 ---
 
@@ -117,6 +164,18 @@ Routes supplémentaires :
   POST /training/fdfp/request     → demande de remboursement FDFP
   GET  /training/fdfp/eligible    → liste formations éligibles remboursement
 ```
+
+### Photos d'employés (PII — tenant-scopé)
+
+> Durci par la PR #205 (`5f7bf94`, finding A08-2). **Ne plus servir les photos depuis le bucket public.**
+
+```
+GET /employees/:id/photo   → photo de l'employé — AUTHENTIFIÉ, RBAC aligné sur GET /employees/:id
+```
+
+- Stockage : table **tenant** `employee_photos` (et non plus `platform.brand_assets`, qui est un bucket **public et cross-tenant**).
+- `UNIQUE(employee_id)` + UPSERT → **une seule photo par employé** (le re-upload remplace, il n'empile plus).
+- `GET /public/brand/:id` reste en accès public mais **uniquement pour les logos** de tenant/cabinet. Toute doc ou tout code qui y sert encore une photo d'employé est **périmé**.
 
 ---
 

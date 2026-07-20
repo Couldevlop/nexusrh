@@ -1,5 +1,10 @@
 # Runbook — Rotation des secrets démo exposés (prod) — A09-1
 
+> ## ✅ Rotation `super_admin` EXÉCUTÉE — 19-20/07/2026
+> Le mot de passe du compte `superadmin@nexusrh-ci.com` (ancienne valeur exposée dans l'arbre du README, cf. §3) a été **roté en production**. L'ancienne valeur est **invalide**.
+> **Nouvelles valeurs → `.credentials-local.md`** (fichier LOCAL, non versionné). Aucun mot de passe, secret TOTP ou code de secours ne doit être recopié dans `docs/`.
+> Reste à confirmer par l'équipe : rotation des **autres comptes démo** (§1) et du **secret TOTP `mfa@sotra.ci`** (§2).
+
 > **À exécuter par l'équipe** (touche la prod ; Claude n'exécute rien ici).
 > **Contexte :** les mots de passe démo et le secret TOTP `mfa@sotra.ci` ont fuité (logs CI + repo). Le correctif code (`d86c7ea`, `113f357`) empêche les *futures* fuites ; ce runbook **invalide ce qui a déjà fuité**.
 > **Cible :** cluster prod, namespace `nexusrh-ci` (API :4001).
@@ -60,7 +65,7 @@ kubectl -n nexusrh-ci exec deploy/nexusrh-api -- \
 - **Seed** : ne printe plus les identifiants en prod (`d86c7ea`, `NODE_ENV!=='production'`) ; les valeurs passent par `SEED_*` (`113f357`). ✅
 - **Logs GitHub Actions historiques** contenant l'ancien dump : ne peuvent pas être « dé-publiés » facilement → **la rotation ci-dessus est ce qui les rend inoffensifs**. (Option : supprimer les anciens runs concernés dans l'onglet Actions.)
 - Si un credential doit un jour transiter par la CI : secret GitHub + `::add-mask::`.
-- **Mot de passe prod `OpenLab2026#Nexus`** repéré (et retiré) dans l'arbre du README : confirmé **jamais committé dans l'historique git**, mais **à roter côté prod** par précaution (il a existé en clair sur disque).
+- **Mot de passe prod du `super_admin`** repéré (et retiré) dans l'arbre du README : confirmé **jamais committé dans l'historique git**, mais il a existé en clair sur disque → **roté en prod les 19-20/07/2026 ✅**. Nouvelle valeur dans `.credentials-local.md` (non versionné).
 
 ---
 
@@ -73,4 +78,14 @@ kubectl -n nexusrh-ci exec deploy/nexusrh-api -- \
 
 ---
 
-_Rotation opérationnelle — aucune modification de code. À archiver une fois exécutée (date + opérateur)._
+_Rotation opérationnelle — aucune modification de code._
+
+## Journal de rotation
+
+| Date | Périmètre | Statut |
+|---|---|---|
+| 19-20/07/2026 | Mot de passe `superadmin@nexusrh-ci.com` (valeur exposée via l'arbre du README) | ✅ **Roté** — nouvelle valeur dans `.credentials-local.md` |
+| — | Autres comptes démo (§1 : SOTRA, Cabinet Expertise, OpenLab, WOYAA, Talents) | ⏳ à confirmer par l'équipe |
+| — | Secret TOTP `mfa@sotra.ci` (§2) | ⏳ à confirmer par l'équipe |
+
+> ⚠️ Depuis les PR #206/#207, la **MFA est obligatoire en production** : après une rotation de mot de passe, un compte dont la MFA n'est pas enrôlée est redirigé vers `/mfa-setup` à la connexion suivante (cf. `docs/reference/specs-fonctionnelles.md` § Authentification). En cas de blocage, un admin peut réinitialiser la MFA d'un utilisateur via l'endpoint de reset MFA (`23d0434`).

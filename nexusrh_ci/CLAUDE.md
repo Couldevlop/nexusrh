@@ -64,7 +64,9 @@ schema "tenant_<slug>" ← toutes les tables RH d'un client (isolées), ex. tena
 
 **Tables `platform`** : `tenants` (slug, name, planType `trial|starter|business|enterprise|public_sector`, status, schemaName, maxUsers, maxEmployees, primaryColor, secondaryColor, logoUrl, sector, city, trialEndsAt…), `platform_users` (super_admin), `tenant_invitations`.
 
-**Tables par tenant** : `users, employees, departments, legal_entities, contracts, payroll_rules, pay_periods, pay_slips, variable_elements, absence_types, absence_balances, absences, recruitment_jobs, applications, trainings, training_sessions, training_enrollments, expense_reports, expense_lines, career_skills, employee_skills, evaluations, hr_events, employee_documents, notifications, audit_log, refresh_tokens, workflow_configs, mobile_money_payments, cnps_declarations, disa_records`.
+**Tables par tenant** : `users, employees, departments, legal_entities, contracts, payroll_rules, pay_periods, pay_slips, variable_elements, absence_types, absence_balances, absences, recruitment_jobs, applications, trainings, training_sessions, training_enrollments, expense_reports, expense_lines, career_skills, employee_skills, evaluations, hr_events, employee_documents, employee_photos, notifications, audit_log, refresh_tokens, workflow_configs, mobile_money_payments, cnps_declarations, disa_records`.
+
+> `employee_photos` (PII, `UNIQUE(employee_id)`) est servie par `GET /employees/:id/photo` **authentifié** — **jamais** par `/public/brand/:id`, qui reste réservé aux **logos publics**. Les en-têtes de webhook sont chiffrés au repos (`integration_webhooks.headers_enc`).
 
 ---
 
@@ -210,7 +212,9 @@ pnpm run dev
 
 ## COMPTES DE CONNEXION
 
-> **Identifiants de démo (mots de passe + secret TOTP) → `nexusrh_ci/.credentials-local.md`** (fichier LOCAL, non versionné).
+> ⚠️ **MFA OBLIGATOIRE EN PROD** (`mfa_required_super_admin` + `mfa_required_tenant_users` = `true`, PR #206/#207). Un compte sans MFA enrôlée reçoit au login un token restreint (`mfaPending`, 403 sur toute route métier) et est redirigé vers **`/mfa-setup`** : QR + 10 codes de secours affichés une seule fois, puis **reconnexion obligatoire**. Impossible à contourner par URL. Un code de secours s'utilise à la place du code TOTP dans le même champ. Détail → `docs/reference/specs-fonctionnelles.md` § Authentification.
+
+> **Identifiants de démo (mots de passe + secret TOTP) → `nexusrh_ci/.credentials-local.md`** (fichier LOCAL, non versionné). Mot de passe `super_admin` **roté les 19-20/07/2026** (l'ancien avait fuité).
 > Les valeurs sont pilotées par les variables d'env `SEED_SUPERADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` / `SEED_OPENLAB_PASSWORD` / `SEED_MFA_TOTP_SECRET` (défauts fonctionnels dans `apps/api/src/db/seed.ts`). Aucun mot de passe n'est plus écrit en clair dans le dépôt.
 
 **Plateforme** — `superadmin@nexusrh-ci.com` → `/platform/dashboard`
