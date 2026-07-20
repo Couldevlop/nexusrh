@@ -66,14 +66,55 @@ interface AuthState {
   isAuthenticated: () => boolean
 }
 
+/**
+ * Décode le payload d'un JWT (segment 2, base64url) sans vérifier la signature —
+ * le front ne fait QUE lire des claims d'affichage/routage ; l'autorité reste
+ * l'API, qui valide la signature à chaque requête.
+ *
+ * Robustesse : base64url (`-`/`_`) et padding absent (les émetteurs JWT
+ * tronquent les `=`), payload non-objet (`null`, scalaire) neutralisé. Renvoie
+ * toujours un objet — jamais d'exception, jamais `null`.
+ */
 function decodeJwt(token: string): Record<string, unknown> {
   try {
     const part = token.split('.')[1]
     if (!part) return {}
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(json) as Record<string, unknown>
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '=')
+    const json = atob(padded)
+    const parsed: unknown = JSON.parse(json)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return parsed as Record<string, unknown>
   } catch {
     return {}
+  }
+}
+
+/**
+ * MFA obligatoire — la session est-elle restreinte à l'enrôlement ?
+ *
+ * Quand un utilisateur sans MFA enrôlée se connecte, l'API délivre un token
+ * RESTREINT portant le claim `mfaPending: true` : il est refusé en 403 sur
+ * toutes les routes métier (seuls `/auth/me` et les endpoints d'enrôlement
+ * répondent). Sans blocage côté navigation, l'utilisateur qui saisit une URL
+ * directe (`/dashboard`, `/platform/dashboard`…) atterrit sur une coquille
+ * d'application entièrement en erreur.
+ *
+ * Source de vérité = LE CLAIM JWT, jamais un booléen stocké à part : un flag de
+ * store se désynchronise (refresh, re-scoping cabinet) et se modifie
+ * trivialement depuis la console. Le claim, lui, est scellé par la signature
+ * serveur — le trafiquer invalide le token auprès de l'API.
+ *
+ * Le claim doit être STRICTEMENT `true` : aucune coercition, pour qu'une valeur
+ * inattendue ne verrouille pas une session saine.
+ */
+export function isMfaPendingToken(token: string | null | undefined): boolean {
+  if (!token) return false
+  try {
+    return decodeJwt(token)['mfaPending'] === true
+  } catch {
+    // Défense en profondeur : un token illisible ne doit jamais casser le rendu.
+    return false
   }
 }
 
@@ -181,6 +222,14 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 )
+
+/**
+ * Sélecteur dérivé (aucun état supplémentaire à maintenir) : recalcule le statut
+ * MFA depuis le token courant du store à chaque changement de celui-ci.
+ */
+export function useMfaPending(): boolean {
+  return useAuthStore((s) => isMfaPendingToken(s.token))
+}
 
 function hexToHsl(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)

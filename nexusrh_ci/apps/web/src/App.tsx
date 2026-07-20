@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import { ChunkLoadErrorBoundary } from '@/components/ChunkLoadErrorBoundary'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore, useMfaPending } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard, RhDashboardGuard } from '@/guards/RoleGuard'
 import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
@@ -156,10 +156,14 @@ function PageLoader() {
 }
 
 // ── Redirect selon rôle ────────────────────────────────────────────────────────
-function RootRedirect() {
+export function RootRedirect() {
   const user = useAuthStore((s) => s.user)
   const activeTenant = useAuthStore((s) => s.activeTenant)
+  const mfaPending = useMfaPending()
   if (!user) return <Navigate to="/login" replace />
+  // MFA obligatoire : session restreinte (claim JWT mfaPending) → enrôlement,
+  // AVANT tout aiguillage par rôle (sinon rebond vers un espace 100 % en 403).
+  if (mfaPending) return <Navigate to="/mfa-setup" replace />
   if (user.role === 'super_admin') return <Navigate to="/platform/dashboard" replace />
   // Cabinet en contexte cabinet → portail cabinet ; en session scopée (admin
   // délégué sur un tenant) → app RH normale.
