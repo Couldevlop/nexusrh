@@ -18,6 +18,11 @@ nexusrh_ci/
 .env*
 **/values.secret.yaml
 
+# Config locale Claude Code : l'allowlist enregistre les commandes exécutées
+# verbatim, donc tout secret passé en ligne de commande y atterrit en clair.
+# Fichier strictement local, jamais versionné (incident du 2026-07-20).
+.claude/settings.local.json
+
 # Comptes de démo (local uniquement — jamais sur GitHub)
 COMPTES-DEMO.md
 .credentials-local.md
