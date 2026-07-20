@@ -166,20 +166,39 @@ const mfaLoginVerifySchema = z.object({
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
-  // Pre-handler : migration lazy des tables auth (password_reset_tokens,
-  // mfa_backup_codes) dans le schéma cible
-  fastify.addHook('preHandler', async (req) => {
-    const u = (req as FastifyRequest & { user?: { schemaName?: string } }).user
-    const schema = u?.schemaName
-    if (schema === 'platform') await ensurePlatformSchema()
-    else if (schema) await ensureTenantSchema(schema)
-    await ensurePlatformSchema()
-  })
+/**
+ * Migration lazy des tables auth (`password_reset_tokens`, `mfa_backup_codes`)
+ * dans le schéma CIBLE.
+ *
+ * ⚠️ Ne JAMAIS remettre ceci dans un hook d'instance (`fastify.addHook`) :
+ * les hooks d'instance s'exécutent AVANT les `preHandler` de route, or c'est
+ * `fastify.authenticate` (preHandler de route) qui renseigne `request.user`.
+ * Le schéma y vaut donc toujours `undefined` → `ensureTenantSchema` jamais
+ * appelé → 500 « relation "tenant_xxx.mfa_backup_codes" does not exist », et
+ * MFA obligatoire = utilisateurs définitivement bloqués (incident 19/07/2026).
+ * Le schéma doit être résolu APRÈS authentification (ou après décodage du
+ * challenge pour /mfa/login-verify, qui n'est pas authentifié).
+ */
+async function ensureAuthSchema(schemaName: string | undefined): Promise<void> {
+  if (!schemaName) return
+  if (schemaName === 'platform') { await ensurePlatformSchema(); return }
+  if (!SCHEMA_NAME_RE.test(schemaName)) return  // A03 — jamais d'identifiant non conforme
+  await ensureTenantSchema(schemaName)
+}
 
+/**
+ * preHandler de ROUTE, à placer APRÈS `fastify.authenticate` : migre le schéma
+ * porté par le token qui vient d'être vérifié.
+ */
+async function migrateSchemaOfAuthenticatedUser(req: FastifyRequest): Promise<void> {
+  const u = (req as FastifyRequest & { user?: { schemaName?: string } }).user
+  await ensureAuthSchema(u?.schemaName)
+}
+
+const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /auth/mfa/setup : génère secret + QR code + backup codes ──────────
   fastify.post('/mfa/setup', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
     schema: { tags: ['auth'], summary: 'Initialiser MFA TOTP (génère QR + backup codes)' },
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
     handler: async (request, reply) => {
@@ -231,7 +250,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /auth/mfa/verify : valide le 1er code TOTP et active mfa_enabled ──
   fastify.post('/mfa/verify', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
     schema: { tags: ['auth'], summary: 'Vérifier le 1er code TOTP et activer MFA' },
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
     handler: async (request, reply) => {
@@ -262,7 +281,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /auth/mfa/disable : désactive MFA (re-demande mot de passe) ───────
   fastify.post('/mfa/disable', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
     schema: { tags: ['auth'], summary: 'Désactiver MFA' },
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
     handler: async (request, reply) => {
@@ -314,6 +333,11 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       } catch {
         return reply.status(401).send({ error: 'Challenge invalide ou expiré' })
       }
+
+      // Route NON authentifiée : le schéma cible ne vient pas de `request.user`
+      // mais du challenge qu'on vient de décoder. La migration lazy doit donc se
+      // faire ICI, avant toute requête sur "<schema>".mfa_backup_codes.
+      await ensureAuthSchema(payload.schemaName)
 
       const scope = await findUserScope(payload.sub, payload.schemaName)
       if (!scope || !scope.mfaEnabled || !scope.mfaSecret) {
@@ -392,6 +416,10 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const { email } = parsed.data
 
+      // Route non authentifiée : on interroge d'abord platform.password_reset_tokens
+      // → garantir le schéma platform avant toute écriture.
+      await ensurePlatformSchema()
+
       // Cherche d'abord dans platform_users
       let found: { id: string; schemaName: string; firstName: string } | null = null
       const p = await pool.query<{ id: string; first_name: string }>(
@@ -418,6 +446,11 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       // Générer + stocker le token uniquement si user trouvé (mais répondre OK
       // dans tous les cas — anti-énumération)
       if (found) {
+        // Le compte a été localisé : son schéma est maintenant connu. Sans cette
+        // migration, l'INSERT ci-dessous plantait en 500 sur un tenant ancien
+        // dépourvu de password_reset_tokens (même trou que mfa_backup_codes).
+        await ensureAuthSchema(found.schemaName)
+
         const rawToken = generateResetTokenRaw()
         const tokenHash = hashResetToken(rawToken)
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000) // 15 min
@@ -467,6 +500,15 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const { token, newPassword } = parsed.data
       const tokenHash = hashResetToken(token)
+
+      // Route non authentifiée : le schéma n'est connu qu'APRÈS avoir retrouvé le
+      // token. On garantit platform ici ; côté tenants, la table a forcément été
+      // créée par /forgot-password (qui migre le schéma avant d'émettre le token),
+      // donc un tenant dépourvu de la table n'a par construction aucun token à
+      // trouver — le `.catch()` de la boucle le saute légitimement. On ne migre
+      // PAS tous les tenants ici : ce serait 170+ DDL × N tenants à chaque appel
+      // d'une route publique (surface de déni de service).
+      await ensurePlatformSchema()
 
       // Cherche le token dans platform puis dans tous les tenants actifs
       let match: { table: string; userTable: string; tokenId: string; userId: string; schemaName: string } | null = null
