@@ -73,7 +73,7 @@ La confidentialité entre vos clients est **garantie par conception** :
 - **Sessions de travail à durée limitée** : agir au nom d'une entreprise ouvre une session **expirant automatiquement (30 min)**, re-validée à chaque renouvellement.
 - **Traçabilité « on-behalf »** : chaque action menée par le cabinet pour le compte d'un client est **journalisée** (qui, pour quel client, quand) — auditabilité totale (conformité loi 2013-450 CI).
 - **Révocation immédiate** : si l'éditeur suspend un cabinet, toutes les sessions de ses membres sont **coupées sans délai**.
-- **Secrets protégés** : clés API hachées, secrets de connecteurs chiffrés (AES-256), mots de passe forts + MFA (TOTP) disponible.
+- **Secrets protégés** : clés API hachées, secrets de connecteurs chiffrés (AES-256), mots de passe forts + **MFA (TOTP) obligatoire** pour tous les comptes.
 - **Restriction Côte d'Ivoire** : un cabinet ne peut rattacher/créer que des entreprises **CI** (garde-fou serveur).
 
 > Conformité OWASP 2025 (A01 contrôle d'accès, A02 chiffrement, A03 validation, A09 journalisation, A10 anti-SSRF) — voir `docs/OWASP-2025-AUDIT.md`.
@@ -101,7 +101,7 @@ CNPS 2024 (retraite, prestations familiales, AT par secteur), ITS/DGI (barème +
 ## 8. Démarrage
 
 1. OpenLab Consulting crée votre **cabinet** et votre compte **Propriétaire** (vous recevez vos identifiants par e-mail).
-2. Connectez-vous → **changez votre mot de passe** → activez le **MFA** (recommandé).
+2. Connectez-vous → **changez votre mot de passe** → **enrôlez votre MFA** : elle est **obligatoire**. À la première connexion, vous êtes automatiquement conduit à la page `/mfa-setup` (QR à scanner + **10 codes de secours** affichés **une seule fois** — conservez-les). Vous devez ensuite vous **reconnecter** pour accéder à l'application.
 3. **Paramètres cabinet** : logo, couleur, **adresse d'expéditeur** des invitations.
 4. **Invitez vos recruteurs** (Membres).
 5. **Créez ou faites rattacher vos entreprises clientes**.

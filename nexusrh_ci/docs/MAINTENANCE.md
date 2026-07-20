@@ -93,6 +93,8 @@ kubectl exec -i -n nexusrh-ci nexusrh-ci-postgres-postgresql-0 \
 
 > **Mots de passe → `nexusrh_ci/.credentials-local.md`** (fichier LOCAL, non versionné) ;
 > valeurs pilotées par `SEED_SUPERADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` / `SEED_OPENLAB_PASSWORD` / `SEED_MFA_TOTP_SECRET`.
+>
+> ⚠️ **MFA obligatoire en prod** (PR #206/#207) : après un reset de mot de passe, un compte dont la MFA n'est pas enrôlée reçoit un token restreint (`mfaPending`) et est redirigé vers **`/mfa-setup`** — il ne peut atteindre aucune route métier avant d'avoir enrôlé sa MFA **et** s'être reconnecté. En cas de perte du second facteur **et** des codes de secours, utiliser l'**endpoint admin de reset MFA** (`23d0434`). Détail → `docs/reference/specs-fonctionnelles.md` § Authentification.
 
 | Email | Rôle |
 |---|---|

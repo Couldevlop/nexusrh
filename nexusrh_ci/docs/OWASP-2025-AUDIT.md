@@ -303,7 +303,9 @@ atomique. **À planifier dans un sprint d'hygiène.**
   tenant A ne peut pas activer/atteindre le tenant B.
 - **A04** : mots de passe owner/membres bcrypt(12) ; secrets jamais en clair.
 - **A07** : login cabinet réutilise lockout + MFA + rate-limit ; révocation
-  immédiate (blacklist des `sub`) à la suspension d'un cabinet.
+  immédiate à la suspension d'un cabinet via **`setTokenEpoch`** (PR #205 —
+  la blacklist Redis porte désormais sur le `jti` du token, donc un logout
+  ne révoque **que la session concernée**, pas toutes celles de l'utilisateur).
 - **A09** : `agency.session.activated` (on-behalf), `agency.activate.denied`,
   CRUD/attach/detach/suspend, `agency.client_tenant.created`.
 - **Garde-fou CI** : rattachement/onboarding refusés (422) hors Côte d'Ivoire.
@@ -313,7 +315,9 @@ atomique. **À planifier dans un sprint d'hygiène.**
   API à scopes** (`employees:read`…), scope insuffisant → 403.
 - **A02 (chiffrement)** : secrets de connecteurs **AES-256** ; clés API **hachées
   SHA-256** (jamais stockées en clair, préfixe non secret) ; webhooks **signés
-  HMAC SHA-256** (en-têtes NexusRH non écrasables par la config).
+  HMAC SHA-256** (en-têtes NexusRH non écrasables par la config) ; en-têtes de
+  webhook **chiffrés au repos** (`integration_webhooks.headers_enc`, PR #205) —
+  `GET /webhooks` ne renvoie que les **noms** de clés, l'audit aucune valeur.
 - **A05 (injection)** : Zod strict, whitelist d'événements et de scopes.
 - **A09** : `integration.webhook/apikey/connector.*`.
 - **A10 (SSRF)** : garde sur tout appel sortant (IP privées/loopback/metadata
