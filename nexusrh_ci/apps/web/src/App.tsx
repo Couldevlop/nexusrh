@@ -145,6 +145,7 @@ const MonProfil        = lazy(() => import('@/pages/mon-espace/MonProfil'))
 const MesOffresInternes = lazy(() => import('@/pages/mon-espace/MesOffresInternes'))
 const MesPointages      = lazy(() => import('@/pages/mon-espace/MesPointages'))
 const MesAvertissements = lazy(() => import('@/pages/mon-espace/MesAvertissements'))
+const MesSimulations    = lazy(() => import('@/pages/mon-espace/MesSimulations'))
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -515,6 +516,7 @@ export default function App() {
             <Route path="climat"       element={<MonClimat />} />
             <Route path="pointages"    element={<MesPointages />} />
             <Route path="avertissements" element={<MesAvertissements />} />
+            <Route path="simulations"  element={<MesSimulations />} />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 
