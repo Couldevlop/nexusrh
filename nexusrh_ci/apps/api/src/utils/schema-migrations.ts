@@ -920,6 +920,34 @@ export async function ensurePlatformSchema(): Promise<void> {
       bytes      bytea NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     )`,
+
+    // ── Simulations d'entretien : banque de questions GLOBALE partagée ────────
+    // Partagée par TOUS les tenants sans restriction (même patron que le
+    // référentiel légal). Clé par métier NORMALISÉ (role_key) — jamais par
+    // tenant/entreprise. Rôles : repli (dernier jeu si IA absente), nourrissage
+    // (questions passées injectées au prompt) et réutilisation inter-tenant.
+    // Garde-fou §4 : uniquement des questions génériques, aucune donnée perso.
+    `CREATE TABLE IF NOT EXISTS platform.interview_sim_question_banks (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key     varchar(120) NOT NULL,
+      secteur      varchar(120),
+      langue       varchar(2) NOT NULL DEFAULT 'fr',
+      questions    jsonb NOT NULL DEFAULT '[]',
+      source_model varchar(100),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_interview_bank_role_idx
+       ON platform.interview_sim_question_banks(role_key, langue, created_at DESC)`,
+    // Compteur d'usage ANONYME et agrégé (par métier × langue). Aucune identité,
+    // aucun transcript — juste un volume pour le pilotage (RGPD, §4/§8).
+    `CREATE TABLE IF NOT EXISTS platform.interview_sim_usage (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key       varchar(120) NOT NULL,
+      langue         varchar(2) NOT NULL DEFAULT 'fr',
+      attempts_count bigint NOT NULL DEFAULT 0,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (role_key, langue)
+    )`,
   ]
   for (const sql of alters) {
     await pool.query(sql).catch(() => undefined)

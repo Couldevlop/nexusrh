@@ -360,6 +360,31 @@ export async function createPlatformSchema(): Promise<void> {
       UNIQUE (schema_name, provider, model, period_month)
     )
   `)
+
+  // ── Simulations d'entretien : banque de questions GLOBALE partagée + usage ──
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.interview_sim_question_banks (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key     varchar(120) NOT NULL,
+      secteur      varchar(120),
+      langue       varchar(2) NOT NULL DEFAULT 'fr',
+      questions    jsonb NOT NULL DEFAULT '[]',
+      source_model varchar(100),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS platform_interview_bank_role_idx
+                    ON platform.interview_sim_question_banks(role_key, langue, created_at DESC)`)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.interview_sim_usage (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key       varchar(120) NOT NULL,
+      langue         varchar(2) NOT NULL DEFAULT 'fr',
+      attempts_count bigint NOT NULL DEFAULT 0,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (role_key, langue)
+    )
+  `)
 }
 
 /**
