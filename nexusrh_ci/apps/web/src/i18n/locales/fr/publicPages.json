@@ -64,5 +64,9 @@
   },
   "common": {
     "close": "Fermer"
+  },
+  "interviewSim": {
+    "trainButton": "S'entraîner à l'entretien",
+    "trainUnavailable": "L'entraînement n'est pas disponible pour cette offre."
   }
 }
