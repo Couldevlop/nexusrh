@@ -108,6 +108,14 @@ function verifyPublicToken(fastify: FastifyInstance, token: string): { ok: true;
   }
 }
 
+const CONFIG_ROLES = ['admin', 'hr_manager'] as const
+const configSchema = z.object({
+  defaultLangue: z.enum(['fr', 'en']),
+  questionsCount: z.number().int().min(1).max(15),
+  publicTokenTtlMinutes: z.number().int().min(5).max(1440),
+  consentText: z.string().max(2000),
+}).strict()
+
 const publicSubmitSchema = z.object({
   consentAccepted: z.literal(true),
   consentAt: z.string().datetime().optional(),
@@ -246,6 +254,41 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       )
       if (!r.rowCount) return reply.status(404).send({ error: 'Introuvable' })
       return reply.send({ data: { deleted: true } })
+    },
+  })
+
+  // ── GET /interview-sim/config : réglages tenant (admin/hr_manager) ──
+  fastify.get('/config', {
+    preHandler: [fastify.authorize(...CONFIG_ROLES), migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Configuration du module Simulations d’entretien' },
+    handler: async (request, reply) => {
+      const cfg = await loadTenantConfig(request.user.schemaName)
+      return reply.send({ data: cfg })
+    },
+  })
+
+  // ── PUT /interview-sim/config ──
+  fastify.put('/config', {
+    preHandler: [fastify.authorize(...CONFIG_ROLES), migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Mettre à jour la configuration' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = configSchema.safeParse(request.body)
+      if (!parsed.success) return badRequest(reply)
+      const b = parsed.data
+      await pool.query(
+        `INSERT INTO "${schema}".interview_sim_config
+           (id, default_langue, questions_count, public_token_ttl_minutes, consent_text, updated_at)
+         VALUES (1, $1, $2, $3, $4, now())
+         ON CONFLICT (id) DO UPDATE SET
+           default_langue = excluded.default_langue,
+           questions_count = excluded.questions_count,
+           public_token_ttl_minutes = excluded.public_token_ttl_minutes,
+           consent_text = excluded.consent_text,
+           updated_at = now()`,
+        [b.defaultLangue, b.questionsCount, b.publicTokenTtlMinutes, b.consentText || null],
+      )
+      return reply.send({ data: { ok: true } })
     },
   })
 }
