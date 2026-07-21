@@ -9,7 +9,7 @@
  * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
  * 19/07/2026 : hook d'instance avant authenticate → request.user indéfini).
  */
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -47,6 +47,69 @@ async function loadTenantConfig(schema: string): Promise<TenantCfg> {
 }
 
 function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
+
+const PUBLIC_AUD = 'interview-sim-public'
+
+interface PublicTokenClaims {
+  aud: string
+  schema: string
+  tenantSlug: string
+  jobId: string
+  title: string
+  secteur: string | null
+  langue: 'fr' | 'en'
+}
+
+/**
+ * Émet un jeton PUBLIC signé (HMAC via @fastify/jwt) à forte entropie et
+ * expiration (§8 A04). Il n'encode que le CONTEXTE POSTE — aucune donnée
+ * personnelle — et ne persiste rien (éphémère). aud dédié : ce jeton
+ * n'authentifie jamais une route applicative (rejeté par plugins/auth.ts).
+ */
+export function mintPublicInterviewToken(
+  fastify: FastifyInstance,
+  payload: { schema: string; tenantSlug: string; jobId: string; title: string; secteur: string | null; langue: 'fr' | 'en' },
+  ttlMinutes: number,
+): string {
+  // Le jeton PUBLIC a une forme volontairement différente du payload de
+  // session (JwtSignPayload, plugins/auth.ts) — aucune donnée personnelle,
+  // aucun `sub`/rôle/tenant applicatif. `fastify.jwt.sign` est typé contre ce
+  // seul payload de session (déclaration de module @fastify/jwt) : cast
+  // explicite, borné à ce jeton dédié (aud distinct, jamais accepté comme
+  // session par plugins/auth.ts).
+  const claims = {
+    aud: PUBLIC_AUD, schema: payload.schema, tenantSlug: payload.tenantSlug, jobId: payload.jobId,
+    title: payload.title, secteur: payload.secteur, langue: payload.langue,
+  } as unknown as Parameters<FastifyInstance['jwt']['sign']>[0]
+  if (ttlMinutes < 0) {
+    // Jeton VOLONTAIREMENT déjà expiré (simulation de test uniquement) : `exp`
+    // explicite dans le passé — fast-jwt (@fastify/jwt) rejette une valeur
+    // `expiresIn` négative, donc on ne peut pas passer par cette option ici.
+    const exp = Math.floor(Date.now() / 1000) + Math.round(ttlMinutes * 60)
+    return fastify.jwt.sign({ ...claims, exp } as unknown as Parameters<FastifyInstance['jwt']['sign']>[0])
+  }
+  // 0/NaN/absent → repli 60 min ; sinon plafond 24h (1440), plancher 1 min.
+  const ttl = Math.max(1, Math.min(ttlMinutes || 60, 1440))
+  return fastify.jwt.sign(claims, { expiresIn: `${ttl}m` })
+}
+
+function verifyPublicToken(fastify: FastifyInstance, token: string): { ok: true; claims: PublicTokenClaims } | { ok: false; expired: boolean } {
+  try {
+    const decoded = fastify.jwt.verify<PublicTokenClaims>(token)
+    if (decoded.aud !== PUBLIC_AUD || !SCHEMA_NAME_RE.test(decoded.schema)) return { ok: false, expired: false }
+    return { ok: true, claims: decoded }
+  } catch (err) {
+    const expired = err instanceof Error && /expired/i.test(err.message)
+    return { ok: false, expired }
+  }
+}
+
+const publicSubmitSchema = z.object({
+  consentAccepted: z.literal(true),
+  consentAt: z.string().datetime().optional(),
+  questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
+  answers: z.array(transcriptItemSchema).min(1).max(30),
+}).strict()
 
 const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
   // ── GET /interview-sim/start : contexte poste + questions (banque + génération) ──
@@ -179,6 +242,61 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       )
       if (!r.rowCount) return reply.status(404).send({ error: 'Introuvable' })
       return reply.send({ data: { deleted: true } })
+    },
+  })
+
+  // ── GET /public/interview-sim/:token : poste + questions + consentement ──
+  // Durci comme l'upload CV public : rate-limit IP, jeton à forte entropie +
+  // expiration. Aucune auth (le hook module global saute les requêtes non
+  // authentifiées → route publique préservée).
+  fastify.get('/public/:token', {
+    schema: { tags: ['interview-sim'], summary: 'Entretien public (jeton) : questions + consentement' },
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const { token } = request.params as { token: string }
+      const v = verifyPublicToken(fastify, token)
+      if (!v.ok) return reply.status(v.expired ? 410 : 401).send({ error: v.expired ? 'Lien expiré' : 'Lien invalide' })
+      const { claims } = v
+      await ensureTenantSchema(claims.schema)
+
+      const cfg = await loadTenantConfig(claims.schema)
+      const langue = claims.langue || cfg.default_langue
+      const roleKey = normalizeRoleKey(claims.title, claims.secteur)
+      const bank = await readBank(roleKey, langue)
+      const ctx: PosteContext = { title: claims.title, secteur: claims.secteur, langue }
+      const creds = await resolveAiCreds(claims.schema)
+      const gen = await genererQuestions(ctx, bank?.questions ?? [], cfg.questions_count, creds)
+      if (!gen.fromBank && gen.questions.length > 0) {
+        await feedBank(roleKey, claims.secteur, langue, gen.questions, gen.sourceModel)
+      }
+      return reply.send({
+        data: {
+          jobTitle: claims.title, langue, questions: gen.questions,
+          consentText: cfg.consent_text
+            ?? 'En démarrant, vous acceptez que vos réponses soient analysées le temps de la session. Aucune donnée personnelle n’est conservée.',
+        },
+      })
+    },
+  })
+
+  // ── POST /public/interview-sim/:token/submit : retour ÉPHÉMÈRE (rien stocké) ──
+  fastify.post('/public/:token/submit', {
+    schema: { tags: ['interview-sim'], summary: 'Entretien public : soumettre et recevoir le retour (éphémère)' },
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const { token } = request.params as { token: string }
+      const v = verifyPublicToken(fastify, token)
+      if (!v.ok) return reply.status(v.expired ? 410 : 401).send({ error: v.expired ? 'Lien expiré' : 'Lien invalide' })
+      const parsed = publicSubmitSchema.safeParse(request.body)
+      if (!parsed.success) return badRequest(reply, 'Consentement et réponses requis')
+      const { claims } = v
+      const body = parsed.data
+      const ctx: PosteContext = { title: claims.title, secteur: claims.secteur, langue: claims.langue }
+      const creds = await resolveAiCreds(claims.schema)
+      const retour: InterviewFeedback = await produireRetour(body.questions, body.answers as TranscriptItem[], ctx, creds)
+      // ÉPHÉMÈRE : rien de personnel écrit. Au plus le compteur ANONYME agrégé.
+      await incrementUsage(normalizeRoleKey(claims.title, claims.secteur), claims.langue)
+      return reply.send({ data: { retour } })
     },
   })
 }

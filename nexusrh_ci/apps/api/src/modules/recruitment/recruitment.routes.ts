@@ -13,6 +13,8 @@ import { resolveSourcingCountries } from '../../services/sourcing-countries.serv
 import { generateHRDocument, type HrDocumentType } from '../../services/hr-document-generator.service.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
+import { mintPublicInterviewToken } from '../interview-sim/interview-sim.routes.js'
+import { getModulesForSchema } from '../../services/tenant-modules.service.js'
 
 /**
  * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction
@@ -1316,6 +1318,27 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           LIMIT 1
       `, [jobId])
       if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+
+      // Simulations d'entretien : jeton public éphémère si le module est activé
+      // pour ce tenant (bouton « S'entraîner à l'entretien » côté carrières).
+      let interviewSim: { enabled: boolean; token: string | null } = { enabled: false, token: null }
+      try {
+        const modules = await getModulesForSchema(pool, t.schema_name)
+        if (modules.interview_sim) {
+          const cfgRes = await pool.query<{ default_langue: 'fr' | 'en'; public_token_ttl_minutes: number }>(
+            `SELECT default_langue, public_token_ttl_minutes FROM "${t.schema_name}".interview_sim_config WHERE id = 1`,
+          ).catch(() => ({ rows: [] as Array<{ default_langue: 'fr' | 'en'; public_token_ttl_minutes: number }> }))
+          const langue = cfgRes.rows[0]?.default_langue ?? 'fr'
+          const ttl = cfgRes.rows[0]?.public_token_ttl_minutes ?? 60
+          const token = mintPublicInterviewToken(
+            fastify,
+            { schema: t.schema_name, tenantSlug, jobId, title: job.rows[0].title, secteur: job.rows[0].sector ?? null, langue },
+            ttl,
+          )
+          interviewSim = { enabled: true, token }
+        }
+      } catch { /* non bloquant : l'offre reste servie sans le bouton entraînement */ }
+
       return reply.send({
         tenant: {
           name: t.name, slug: t.slug, city: t.city,
@@ -1323,7 +1346,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: t.secondary_color ?? '#F48C06',
           logoUrl: t.logo_url,
         },
-        data: job.rows[0],
+        data: { ...job.rows[0], interviewSim },
       })
     },
   })

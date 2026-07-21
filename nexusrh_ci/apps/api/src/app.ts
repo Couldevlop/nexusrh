@@ -88,6 +88,10 @@ export async function buildApp() {
         : {}),
     },
     trustProxy: true,
+    // Simulations d'entretien — jeton public HMAC porté en paramètre d'URL
+    // (/interview-sim/public/:token) : plus long que le défaut find-my-way
+    // (100 car.), qui ferait 404 systématiquement sur ces routes (§7).
+    maxParamLength: 1000,
   })
 
   // ── Plugins globaux ──────────────────────────────────────────────────────────
