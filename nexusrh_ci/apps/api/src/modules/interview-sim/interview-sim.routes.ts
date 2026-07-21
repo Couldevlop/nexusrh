@@ -3,7 +3,11 @@
  *
  * Bloc INTERNE (authentifié) : entraînement self-service du salarié + historique
  * PRIVÉ (visible du seul salarié, scoping employee_id dérivé du JWT — jamais du
- * body/query, OWASP A01/A03). Bloc PUBLIC à jeton : voir Task 7 (ajouté ensuite).
+ * body/query, OWASP A01/A03).
+ *
+ * Bloc PUBLIC à jeton : plugin SÉPARÉ `interviewSimPublicRoutes` (exporté plus
+ * bas dans ce fichier), enregistré par app.ts sous le préfixe DISTINCT
+ * `/public/interview-sim` (et non `/interview-sim/public`) — voir app.ts.
  *
  * Migration lazy : preHandler de ROUTE `migrateSchemaOfAuthenticatedUser` placé
  * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
@@ -244,12 +248,20 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ data: { deleted: true } })
     },
   })
+}
 
+export default interviewSimRoutes
+
+/**
+ * Bloc PUBLIC à jeton — plugin SÉPARÉ, enregistré par app.ts sous le préfixe
+ * DISTINCT `/public/interview-sim` (jamais `/interview-sim/public`). Durci
+ * comme l'upload CV public : rate-limit IP, jeton à forte entropie +
+ * expiration. Aucune auth (route publique par construction — pas de
+ * fastify.authenticate ici).
+ */
+export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
   // ── GET /public/interview-sim/:token : poste + questions + consentement ──
-  // Durci comme l'upload CV public : rate-limit IP, jeton à forte entropie +
-  // expiration. Aucune auth (le hook module global saute les requêtes non
-  // authentifiées → route publique préservée).
-  fastify.get('/public/:token', {
+  fastify.get('/:token', {
     schema: { tags: ['interview-sim'], summary: 'Entretien public (jeton) : questions + consentement' },
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
@@ -280,7 +292,7 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /public/interview-sim/:token/submit : retour ÉPHÉMÈRE (rien stocké) ──
-  fastify.post('/public/:token/submit', {
+  fastify.post('/:token/submit', {
     schema: { tags: ['interview-sim'], summary: 'Entretien public : soumettre et recevoir le retour (éphémère)' },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
@@ -300,5 +312,3 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 }
-
-export default interviewSimRoutes

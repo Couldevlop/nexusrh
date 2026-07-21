@@ -31,7 +31,7 @@ vi.mock('../../services/tenant-modules.service.js', () => ({
 }))
 
 import authPlugin from '../../plugins/auth.js'
-import interviewSimRoutes, { mintPublicInterviewToken } from './interview-sim.routes.js'
+import { interviewSimPublicRoutes, mintPublicInterviewToken } from './interview-sim.routes.js'
 
 const SCHEMA = 'tenant_sotra'
 let app: FastifyInstance
@@ -40,8 +40,11 @@ beforeAll(async () => {
   // maxParamLength : le jeton public (JWT) dépasse la limite par défaut de
   // find-my-way (100 car.) — cf. app.ts pour la même config en production.
   app = Fastify({ maxParamLength: 1000 })
+  // authPlugin décore `fastify.jwt` (utilisé par mintPublicInterviewToken) et
+  // `fastify.authenticate` — ce dernier n'est pas utilisé par le plugin
+  // public, mais le décorateur jwt reste nécessaire.
   await app.register(authPlugin)
-  await app.register(interviewSimRoutes, { prefix: '/interview-sim' })
+  await app.register(interviewSimPublicRoutes, { prefix: '/public/interview-sim' })
   await app.ready()
 })
 afterAll(async () => { await app.close() })
@@ -52,15 +55,15 @@ function validToken(ttl = 60) {
     { schema: SCHEMA, tenantSlug: 'sotra', jobId: 'job-1', title: 'Comptable', secteur: 'Finance', langue: 'fr' }, ttl)
 }
 
-describe('GET /interview-sim/public/:token', () => {
+describe('GET /public/interview-sim/:token', () => {
   it('401 si le jeton est invalide', async () => {
-    const res = await app.inject({ method: 'GET', url: '/interview-sim/public/not-a-token' })
+    const res = await app.inject({ method: 'GET', url: '/public/interview-sim/not-a-token' })
     expect(res.statusCode).toBe(401)
   })
   it('410 si le jeton est expiré', async () => {
     const expired = mintPublicInterviewToken(app as unknown as FastifyInstance,
       { schema: SCHEMA, tenantSlug: 'sotra', jobId: 'job-1', title: 'Comptable', secteur: 'Finance', langue: 'fr' }, -1)
-    const res = await app.inject({ method: 'GET', url: `/interview-sim/public/${expired}` })
+    const res = await app.inject({ method: 'GET', url: `/public/interview-sim/${expired}` })
     expect(res.statusCode).toBe(410)
   })
   it('200 : questions + texte de consentement', async () => {
@@ -70,7 +73,7 @@ describe('GET /interview-sim/public/:token', () => {
       if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: null }] })
       return Promise.resolve({ rows: [] })
     })
-    const res = await app.inject({ method: 'GET', url: `/interview-sim/public/${validToken()}` })
+    const res = await app.inject({ method: 'GET', url: `/public/interview-sim/${validToken()}` })
     expect(res.statusCode).toBe(200)
     const data = res.json().data
     expect(data.questions).toEqual(['Q1', 'Q2'])
@@ -79,10 +82,10 @@ describe('GET /interview-sim/public/:token', () => {
   })
 })
 
-describe('POST /interview-sim/public/:token/submit', () => {
+describe('POST /public/interview-sim/:token/submit', () => {
   it('400 sans consentement', async () => {
     const res = await app.inject({
-      method: 'POST', url: `/interview-sim/public/${validToken()}/submit`,
+      method: 'POST', url: `/public/interview-sim/${validToken()}/submit`,
       payload: { consentAccepted: false, answers: [{ index: 0, question: 'Q1', transcript: 'r' }], questions: ['Q1'] },
     })
     expect(res.statusCode).toBe(400)
@@ -90,7 +93,7 @@ describe('POST /interview-sim/public/:token/submit', () => {
   it('200 éphémère : retour rendu, AUCUNE écriture de donnée personnelle', async () => {
     queryMock.mockResolvedValue({ rows: [] })
     const res = await app.inject({
-      method: 'POST', url: `/interview-sim/public/${validToken()}/submit`,
+      method: 'POST', url: `/public/interview-sim/${validToken()}/submit`,
       payload: { consentAccepted: true, consentAt: new Date().toISOString(), answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }], questions: ['Q1'] },
     })
     expect(res.statusCode).toBe(200)
