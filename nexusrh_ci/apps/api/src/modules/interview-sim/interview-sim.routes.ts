@@ -1,0 +1,186 @@
+/**
+ * Simulations d'entretien — routes (prefix /interview-sim).
+ *
+ * Bloc INTERNE (authentifié) : entraînement self-service du salarié + historique
+ * PRIVÉ (visible du seul salarié, scoping employee_id dérivé du JWT — jamais du
+ * body/query, OWASP A01/A03). Bloc PUBLIC à jeton : voir Task 7 (ajouté ensuite).
+ *
+ * Migration lazy : preHandler de ROUTE `migrateSchemaOfAuthenticatedUser` placé
+ * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
+ * 19/07/2026 : hook d'instance avant authenticate → request.user indéfini).
+ */
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import { z } from 'zod'
+import { pool } from '../../db/pool.js'
+import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { normalizeRoleKey, readBank, feedBank, incrementUsage } from './interview-sim-bank.service.js'
+import {
+  genererQuestions, produireRetour,
+  type PosteContext, type TranscriptItem, type InterviewFeedback,
+} from './interview-sim-ai.service.js'
+
+const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
+
+async function migrateSchemaOfAuthenticatedUser(req: FastifyRequest): Promise<void> {
+  const u = (req as FastifyRequest & { user?: { schemaName?: string } }).user
+  if (u?.schemaName && SCHEMA_NAME_RE.test(u.schemaName)) await ensureTenantSchema(u.schemaName)
+}
+
+const transcriptItemSchema = z.object({
+  index: z.number().int().min(0).max(100),
+  question: z.string().min(1).max(2000),
+  transcript: z.string().max(5000),
+}).strict()
+
+const submitSchema = z.object({
+  roleKey: z.string().min(1).max(120),
+  langue: z.enum(['fr', 'en']),
+  questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
+  answers: z.array(transcriptItemSchema).min(1).max(30),
+}).strict()
+
+interface TenantCfg { default_langue: 'fr' | 'en'; questions_count: number; public_token_ttl_minutes: number; consent_text: string | null }
+async function loadTenantConfig(schema: string): Promise<TenantCfg> {
+  const r = await pool.query<TenantCfg>(`SELECT default_langue, questions_count, public_token_ttl_minutes, consent_text FROM "${schema}".interview_sim_config WHERE id = 1`)
+  return r.rows[0] ?? { default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null }
+}
+
+function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
+
+const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
+  // ── GET /interview-sim/start : contexte poste + questions (banque + génération) ──
+  fastify.get('/start', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Démarrer une simulation (poste du salarié)' },
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const user = request.user
+      const employeeId = user.employeeId
+      if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
+      const schema = user.schemaName
+
+      const emp = await pool.query<{ job_title: string | null; professional_category: string | null }>(
+        `SELECT job_title, professional_category FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+        [employeeId],
+      )
+      if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+      const title = emp.rows[0].job_title || emp.rows[0].professional_category || 'Poste'
+
+      const sec = await pool.query<{ sector: string | null }>(
+        `SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      )
+      const secteur = sec.rows[0]?.sector ?? null
+
+      const cfg = await loadTenantConfig(schema)
+      const langue = cfg.default_langue
+      const roleKey = normalizeRoleKey(title, secteur)
+
+      const bank = await readBank(roleKey, langue)
+      const banquePassee = bank?.questions ?? []
+      const ctx: PosteContext = { title, secteur, langue }
+      const creds = await resolveAiCreds(schema)
+      const gen = await genererQuestions(ctx, banquePassee, cfg.questions_count, creds)
+      if (!gen.fromBank && gen.questions.length > 0) {
+        await feedBank(roleKey, secteur, langue, gen.questions, gen.sourceModel)
+      }
+
+      return reply.send({
+        data: {
+          poste: { title, secteur, langue },
+          roleKey, langue, nbQuestions: cfg.questions_count,
+          questions: gen.questions,
+        },
+      })
+    },
+  })
+
+  // ── POST /interview-sim/attempts/submit : retour + enregistrement historique ──
+  fastify.post('/attempts/submit', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Soumettre les réponses et recevoir le retour' },
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const user = request.user
+      const employeeId = user.employeeId
+      if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
+      const schema = user.schemaName
+
+      const parsed = submitSchema.safeParse(request.body)
+      if (!parsed.success) return badRequest(reply)
+      const body = parsed.data
+
+      const emp = await pool.query<{ job_title: string | null }>(
+        `SELECT job_title FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
+      )
+      const title = emp.rows[0]?.job_title || 'Poste'
+      const ctx: PosteContext = { title, secteur: null, langue: body.langue }
+      const creds = await resolveAiCreds(schema)
+      const retour: InterviewFeedback = await produireRetour(body.questions, body.answers as TranscriptItem[], ctx, creds)
+
+      const ins = await pool.query<{ id: string }>(
+        `INSERT INTO "${schema}".interview_sim_attempts (employee_id, role_key, langue, questions, answers, retour)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
+        [employeeId, body.roleKey, body.langue,
+         JSON.stringify(body.questions), JSON.stringify(body.answers), JSON.stringify(retour)],
+      )
+      await incrementUsage(body.roleKey, body.langue)
+      return reply.status(201).send({ data: { id: ins.rows[0]!.id, retour } })
+    },
+  })
+
+  // ── GET /interview-sim/my-attempts : historique du salarié (le sien seul) ──
+  fastify.get('/my-attempts', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Mes simulations' },
+    handler: async (request, reply) => {
+      const user = request.user
+      if (!user.employeeId) return reply.send({ data: [] })
+      const r = await pool.query(
+        `SELECT id, role_key, langue, created_at
+           FROM "${user.schemaName}".interview_sim_attempts
+          WHERE employee_id = $1 ORDER BY created_at DESC LIMIT 100`,
+        [user.employeeId],
+      )
+      return reply.send({ data: r.rows })
+    },
+  })
+
+  // ── GET /interview-sim/my-attempts/:id : détail (IDOR-safe) ──
+  fastify.get('/my-attempts/:id', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Détail d’une simulation' },
+    handler: async (request, reply) => {
+      const user = request.user
+      const { id } = request.params as { id: string }
+      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
+      const r = await pool.query(
+        `SELECT id, role_key, langue, questions, answers, retour, created_at
+           FROM "${user.schemaName}".interview_sim_attempts
+          WHERE id = $1 AND employee_id = $2 LIMIT 1`,
+        [id, user.employeeId],
+      )
+      if (!r.rows[0]) return reply.status(404).send({ error: 'Introuvable' })
+      return reply.send({ data: r.rows[0] })
+    },
+  })
+
+  // ── DELETE /interview-sim/my-attempts/:id : droit à l'effacement ──
+  fastify.delete('/my-attempts/:id', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Effacer une de mes simulations' },
+    handler: async (request, reply) => {
+      const user = request.user
+      const { id } = request.params as { id: string }
+      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
+      const r = await pool.query(
+        `DELETE FROM "${user.schemaName}".interview_sim_attempts WHERE id = $1 AND employee_id = $2`,
+        [id, user.employeeId],
+      )
+      if (!r.rowCount) return reply.status(404).send({ error: 'Introuvable' })
+      return reply.send({ data: { deleted: true } })
+    },
+  })
+}
+
+export default interviewSimRoutes

@@ -70,6 +70,7 @@ import classificationRoutes from './modules/classification/classification.routes
 import signatureRoutes from './modules/signature/signature.routes.js'
 import securityRoutes from './modules/security/security.routes.js'
 import sageRoutes from './modules/sage/sage.routes.js'
+import interviewSimRoutes from './modules/interview-sim/interview-sim.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 
@@ -419,6 +420,7 @@ export async function buildApp() {
   await fastify.register(dgRoutes,           { prefix: '/dg' })
   // Badgeuse / Pointage — module opt-in (attendance), enforcement via le hook modules.
   await fastify.register(attendanceRoutes,   { prefix: '/attendance' })
+  await fastify.register(interviewSimRoutes, { prefix: '/interview-sim' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {
