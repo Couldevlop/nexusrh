@@ -19,6 +19,7 @@ const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
+const PublicInterviewSimPage = lazy(() => import('@/pages/public/PublicInterviewSimPage'))
 
 // ── Platform (super_admin) ────────────────────────────────────────────────────
 const PlatformDashboard   = lazy(() => import('@/pages/platform/PlatformDashboard'))
@@ -194,6 +195,8 @@ export default function App() {
 
           {/* ── Page carrières publique (sans auth) ───────────────── */}
           <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />
+          {/* ── Entraînement d'entretien public (sans auth, éphémère) ── */}
+          <Route path="/entrainement-entretien/:token" element={<PublicInterviewSimPage />} />
 
           {/* ── Portail super_admin ─────────────────────────────── */}
           <Route path="/platform" element={
