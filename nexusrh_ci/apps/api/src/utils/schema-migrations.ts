@@ -681,6 +681,32 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 
+    // ── Simulations d'entretien : historique PRIVÉ (interne seul) + config ────
+    // Cloisonné au schéma du tenant, lié à employee_id, visible du seul salarié
+    // (scoping employee_id dérivé du JWT). answers/retour en jsonb.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_attempts (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid NOT NULL,
+      role_key    varchar(120) NOT NULL,
+      langue      varchar(2) NOT NULL DEFAULT 'fr',
+      questions   jsonb NOT NULL DEFAULT '[]',
+      answers     jsonb NOT NULL DEFAULT '[]',
+      retour      jsonb,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_interview_attempts_emp_idx"
+       ON "${schemaName}".interview_sim_attempts(employee_id, created_at DESC)`,
+    // Config tenant (singleton) : langue par défaut, nb de questions, expiration
+    // des jetons publics (minutes), texte de consentement personnalisable.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_config (
+      id                      int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      default_langue          varchar(2) NOT NULL DEFAULT 'fr',
+      questions_count         int NOT NULL DEFAULT 5,
+      public_token_ttl_minutes int NOT NULL DEFAULT 60,
+      consent_text            text,
+      updated_at              timestamptz NOT NULL DEFAULT now()
+    )`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]
