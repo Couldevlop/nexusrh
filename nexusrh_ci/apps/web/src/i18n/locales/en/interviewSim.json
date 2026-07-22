@@ -21,5 +21,8 @@
   "linkInvalid": "This practice link is invalid or expired.",
   "submitError": "Submission failed. Please try again.",
   "loading": "Loading…",
-  "ephemeralNotice": "No personal data was kept: this feedback disappears when you close the page."
+  "ephemeralNotice": "No personal data was kept: this feedback disappears when you close the page.",
+  "globalScore": "Overall score",
+  "byCategory": "Score by category",
+  "modelAnswers": "Model answers"
 }

@@ -21,5 +21,8 @@
   "linkInvalid": "Ce lien d'entraînement est invalide ou expiré.",
   "submitError": "L'envoi a échoué. Réessayez.",
   "loading": "Chargement…",
-  "ephemeralNotice": "Aucune donnée personnelle n'a été conservée : ce retour disparaît à la fermeture."
+  "ephemeralNotice": "Aucune donnée personnelle n'a été conservée : ce retour disparaît à la fermeture.",
+  "globalScore": "Score global",
+  "byCategory": "Score par catégorie",
+  "modelAnswers": "Réponses repères"
 }
