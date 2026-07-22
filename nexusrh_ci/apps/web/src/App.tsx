@@ -519,7 +519,11 @@ export default function App() {
             <Route path="climat"       element={<MonClimat />} />
             <Route path="pointages"    element={<MesPointages />} />
             <Route path="avertissements" element={<MesAvertissements />} />
-            <Route path="simulations"  element={<MesSimulations />} />
+            <Route path="simulations"  element={
+              <ModuleGuard moduleKey="interview_sim">
+                <MesSimulations />
+              </ModuleGuard>
+            } />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 
