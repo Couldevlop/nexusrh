@@ -19,6 +19,7 @@ import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { normalizeRoleKey, readBank, feedBank, incrementUsage } from './interview-sim-bank.service.js'
+import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import {
   genererQuestions, produireRetour,
   type PosteContext, type TranscriptItem, type InterviewFeedback,
@@ -41,6 +42,7 @@ const submitSchema = z.object({
   roleKey: z.string().min(1).max(120),
   langue: z.enum(['fr', 'en']),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
+  categories: z.array(z.string().max(60)).max(30).optional(),  // Phase 2 — renvoyées par /start
   answers: z.array(transcriptItemSchema).min(1).max(30),
 }).strict()
 
@@ -120,6 +122,7 @@ const publicSubmitSchema = z.object({
   consentAccepted: z.literal(true),
   consentAt: z.string().datetime().optional(),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
+  categories: z.array(z.string().max(60)).max(30).optional(),  // Phase 2 — renvoyées par GET /:token
   answers: z.array(transcriptItemSchema).min(1).max(30),
 }).strict()
 
@@ -135,12 +138,13 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
 
-      const emp = await pool.query<{ job_title: string | null; professional_category: string | null }>(
-        `SELECT job_title, professional_category FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+      const emp = await pool.query<{ job_title: string | null; professional_category: string | null; interview_focus: unknown }>(
+        `SELECT job_title, professional_category, interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
         [employeeId],
       )
       if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
       const title = emp.rows[0].job_title || emp.rows[0].professional_category || 'Poste'
+      const focus = parseInterviewFocus(emp.rows[0].interview_focus)
 
       const sec = await pool.query<{ sector: string | null }>(
         `SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
@@ -153,7 +157,8 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
 
       const bank = await readBank(roleKey, langue)
       const banquePassee = bank?.questions ?? []
-      const ctx: PosteContext = { title, secteur, langue }
+      // Self-service : pas d'experience_level côté employé (spec §2) → profondeur standard.
+      const ctx: PosteContext = { title, secteur, langue, interviewFocus: focus }
       const creds = await resolveAiCreds(schema)
       const gen = await genererQuestions(ctx, banquePassee, cfg.questions_count, creds)
       if (!gen.fromBank && gen.questions.length > 0) {
@@ -165,6 +170,7 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
           poste: { title, secteur, langue },
           roleKey, langue, nbQuestions: cfg.questions_count,
           questions: gen.questions,
+          categories: gen.categories,   // Phase 2 — catégorie alignée par index
         },
       })
     },
@@ -191,7 +197,9 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       const title = emp.rows[0]?.job_title || 'Poste'
       const ctx: PosteContext = { title, secteur: null, langue: body.langue }
       const creds = await resolveAiCreds(schema)
-      const retour: InterviewFeedback = await produireRetour(body.questions, body.answers as TranscriptItem[], ctx, creds)
+      const retour: InterviewFeedback = await produireRetour(
+        body.questions, body.answers as TranscriptItem[], ctx, creds, body.categories ?? [],
+      )
 
       // OWASP A03/A08 — le roleKey du body est fourni par le client (le salarié
       // choisit toujours son poste cible, comportement inchangé) mais alimente
@@ -325,7 +333,16 @@ export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
       const langue = claims.langue || cfg.default_langue
       const roleKey = normalizeRoleKey(claims.title, claims.secteur)
       const bank = await readBank(roleKey, langue)
-      const ctx: PosteContext = { title: claims.title, secteur: claims.secteur, langue }
+      // Profil technique + séniorité de l'OFFRE (jobId porté par le jeton) → génération par catégorie.
+      const job = await pool.query<{ interview_focus: unknown; experience_level: string | null }>(
+        `SELECT interview_focus, experience_level FROM "${claims.schema}".recruitment_jobs WHERE id = $1 LIMIT 1`,
+        [claims.jobId],
+      ).catch(() => ({ rows: [] as { interview_focus: unknown; experience_level: string | null }[] }))
+      const ctx: PosteContext = {
+        title: claims.title, secteur: claims.secteur, langue,
+        interviewFocus: parseInterviewFocus(job.rows[0]?.interview_focus),
+        experienceLevel: job.rows[0]?.experience_level ?? null,
+      }
       const creds = await resolveAiCreds(claims.schema)
       const gen = await genererQuestions(ctx, bank?.questions ?? [], cfg.questions_count, creds)
       if (!gen.fromBank && gen.questions.length > 0) {
@@ -334,6 +351,7 @@ export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         data: {
           jobTitle: claims.title, langue, questions: gen.questions,
+          categories: gen.categories,   // Phase 2 — catégorie alignée par index
           consentText: cfg.consent_text
             ?? 'En démarrant, vous acceptez que vos réponses soient analysées le temps de la session. Aucune donnée personnelle n’est conservée.',
         },
@@ -355,7 +373,9 @@ export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
       const body = parsed.data
       const ctx: PosteContext = { title: claims.title, secteur: claims.secteur, langue: claims.langue }
       const creds = await resolveAiCreds(claims.schema)
-      const retour: InterviewFeedback = await produireRetour(body.questions, body.answers as TranscriptItem[], ctx, creds)
+      const retour: InterviewFeedback = await produireRetour(
+        body.questions, body.answers as TranscriptItem[], ctx, creds, body.categories ?? [],
+      )
       // ÉPHÉMÈRE : rien de personnel écrit. Au plus le compteur ANONYME agrégé.
       await incrementUsage(normalizeRoleKey(claims.title, claims.secteur), claims.langue)
       return reply.send({ data: { retour } })
