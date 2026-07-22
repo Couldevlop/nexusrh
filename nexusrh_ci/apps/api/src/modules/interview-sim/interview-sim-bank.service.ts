@@ -53,6 +53,10 @@ export async function readBank(roleKey: string, langue: string): Promise<BankEnt
   }
 }
 
+/** Nombre maximal de jeux de questions conservés par (role_key, langue) — évite
+ * une croissance illimitée de la banque partagée (tous tenants confondus). */
+const MAX_BANK_ENTRIES_PER_ROLE = 20
+
 /** Enrichit la banque avec un nouveau jeu généré. Non bloquant. */
 export async function feedBank(
   roleKey: string,
@@ -68,6 +72,20 @@ export async function feedBank(
      VALUES ($1, $2, $3, $4::jsonb, $5)`,
     [roleKey, secteur, langue, JSON.stringify(questions), sourceModel],
   ).catch(() => { /* enrichissement best-effort — jamais bloquant */ })
+  // Purge : ne garde que les MAX_BANK_ENTRIES_PER_ROLE jeux les plus récents
+  // pour ce (role_key, langue). Best-effort — ne doit jamais bloquer le
+  // nourrissage de la banque, même si la purge échoue.
+  await pool.query(
+    `DELETE FROM platform.interview_sim_question_banks
+      WHERE role_key = $1 AND langue = $2
+        AND id NOT IN (
+          SELECT id FROM platform.interview_sim_question_banks
+           WHERE role_key = $1 AND langue = $2
+           ORDER BY created_at DESC
+           LIMIT $3
+        )`,
+    [roleKey, langue, MAX_BANK_ENTRIES_PER_ROLE],
+  ).catch(() => { /* purge best-effort — jamais bloquant */ })
 }
 
 /** Incrémente le compteur d'usage ANONYME agrégé (aucune identité). Non bloquant. */
