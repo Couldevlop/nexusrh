@@ -105,4 +105,18 @@ describe('POST /public/interview-sim/:token/submit', () => {
     })
     expect(wrote).toBe(false)
   })
+
+  it('incrémente le compteur partagé avec un roleKey normalisé (titre de poste non trivial)', async () => {
+    queryMock.mockResolvedValue({ rows: [] })
+    const messyToken = mintPublicInterviewToken(app as unknown as FastifyInstance,
+      { schema: SCHEMA, tenantSlug: 'sotra', jobId: 'job-2', title: "  Chargé d'Exploitation !! ", secteur: 'Transport', langue: 'fr' }, 60)
+    const res = await app.inject({
+      method: 'POST', url: `/public/interview-sim/${messyToken}/submit`,
+      payload: { consentAccepted: true, consentAt: new Date().toISOString(), answers: [{ index: 0, question: 'Q1', transcript: 'r' }], questions: ['Q1'] },
+    })
+    expect(res.statusCode).toBe(200)
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeTruthy()
+    expect((usage![1] as unknown[])[0]).toBe('charge-d-exploitation-transport')
+  })
 })

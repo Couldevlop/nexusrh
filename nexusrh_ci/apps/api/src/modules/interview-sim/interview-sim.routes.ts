@@ -193,13 +193,20 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       const creds = await resolveAiCreds(schema)
       const retour: InterviewFeedback = await produireRetour(body.questions, body.answers as TranscriptItem[], ctx, creds)
 
+      // OWASP A03/A08 — le roleKey du body est fourni par le client (le salarié
+      // choisit toujours son poste cible, comportement inchangé) mais alimente
+      // ensuite une table PARTAGÉE tous tenants confondus (platform.interview_sim_usage) :
+      // normalisation SERVEUR obligatoire pour n'y laisser entrer que des clés
+      // canoniques (anti-pollution du compteur global).
+      const roleKey = normalizeRoleKey(body.roleKey)
+
       const ins = await pool.query<{ id: string }>(
         `INSERT INTO "${schema}".interview_sim_attempts (employee_id, role_key, langue, questions, answers, retour)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
-        [employeeId, body.roleKey, body.langue,
+        [employeeId, roleKey, body.langue,
          JSON.stringify(body.questions), JSON.stringify(body.answers), JSON.stringify(retour)],
       )
-      await incrementUsage(body.roleKey, body.langue)
+      await incrementUsage(roleKey, body.langue)
       return reply.status(201).send({ data: { id: ins.rows[0]!.id, retour } })
     },
   })

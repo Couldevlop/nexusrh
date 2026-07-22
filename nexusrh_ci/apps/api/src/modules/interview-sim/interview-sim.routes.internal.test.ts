@@ -99,6 +99,26 @@ describe('POST /interview-sim/attempts/submit', () => {
     expect(insert).toBeTruthy()
     expect((insert![1] as unknown[])[0]).toBe('emp-1') // employee_id = JWT, jamais body
   })
+
+  it('normalise le roleKey client (non normalisé) avant stockage ET incrémentation du compteur partagé', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('INSERT INTO "tenant_sotra".interview_sim_attempts')) return Promise.resolve({ rows: [{ id: 'att-2' }] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: '/interview-sim/attempts/submit',
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { roleKey: "  Comptable Épargne !! ", langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
+    })
+    expect(res.statusCode).toBe(201)
+    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO "tenant_sotra".interview_sim_attempts'))
+    expect(insert).toBeTruthy()
+    expect((insert![1] as unknown[])[1]).toBe('comptable-epargne') // role_key normalisé, pas la valeur brute du client
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeTruthy()
+    expect((usage![1] as unknown[])[0]).toBe('comptable-epargne')
+  })
 })
 
 describe('GET /interview-sim/my-attempts/:id — isolation (IDOR)', () => {
