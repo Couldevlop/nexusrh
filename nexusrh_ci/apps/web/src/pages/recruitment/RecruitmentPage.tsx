@@ -17,6 +17,7 @@ import {
   Link2, Share2, Copy, MoreHorizontal, UserPlus, Ban,
   FileSignature,
 } from 'lucide-react'
+import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
 
 interface Department { id: string; name: string }
 
@@ -640,6 +641,11 @@ export default function RecruitmentPage() {
               )}
               {/* Règles dures de pré-tri — paramétrables par l'admin du tenant */}
               <ScreeningCriteriaPanel jobId={selectedJob.id} />
+              {/* Profil technique structuré — calibre les simulations d'entretien */}
+              <InterviewFocusPanel
+                endpoint={`/recruitment/jobs/${selectedJob.id}/interview-focus`}
+                queryKeyId={selectedJob.id}
+              />
             </div>
           )}
           {!selectedJob && (
