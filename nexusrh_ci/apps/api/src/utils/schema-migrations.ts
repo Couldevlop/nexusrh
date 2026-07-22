@@ -706,6 +706,10 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       consent_text            text,
       updated_at              timestamptz NOT NULL DEFAULT now()
     )`,
+    // Profil technique structuré (technologies+années, outils, méthodologies,
+    // langues CECRL) pour calibrer la génération de questions d'entretien sur
+    // le poste de l'employé. Optionnel — NULL = non renseigné (repli générique).
+    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS interview_focus jsonb`,
 
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),

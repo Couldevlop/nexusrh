@@ -1454,6 +1454,10 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   // Critères de pré-tri paramétrables par offre (règles dures) — éditables depuis
   // l'interface admin du tenant. JSONB validé/borné applicativement (sanitizeCriteria).
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS screening_criteria jsonb`)
+  // Profil technique structuré (technologies+années, outils, méthodologies,
+  // langues CECRL) pour calibrer la génération de questions d'entretien sur
+  // cette offre. Isolé de screening_criteria. Optionnel — NULL = non renseigné.
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS interview_focus jsonb`)
   // ── Structure d'offre APEC (tous NULL-ables : zéro régression) ──────────────
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS reference varchar(60)`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS experience_level varchar(30)`)
