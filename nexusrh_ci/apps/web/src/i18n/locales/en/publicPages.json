@@ -64,5 +64,9 @@
   },
   "common": {
     "close": "Close"
+  },
+  "interviewSim": {
+    "trainButton": "Practise the interview",
+    "trainUnavailable": "Interview practice is not available for this offer."
   }
 }

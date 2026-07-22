@@ -681,6 +681,32 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 
+    // ── Simulations d'entretien : historique PRIVÉ (interne seul) + config ────
+    // Cloisonné au schéma du tenant, lié à employee_id, visible du seul salarié
+    // (scoping employee_id dérivé du JWT). answers/retour en jsonb.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_attempts (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id uuid NOT NULL,
+      role_key    varchar(120) NOT NULL,
+      langue      varchar(2) NOT NULL DEFAULT 'fr',
+      questions   jsonb NOT NULL DEFAULT '[]',
+      answers     jsonb NOT NULL DEFAULT '[]',
+      retour      jsonb,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "${schemaName}_interview_attempts_emp_idx"
+       ON "${schemaName}".interview_sim_attempts(employee_id, created_at DESC)`,
+    // Config tenant (singleton) : langue par défaut, nb de questions, expiration
+    // des jetons publics (minutes), texte de consentement personnalisable.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_config (
+      id                      int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      default_langue          varchar(2) NOT NULL DEFAULT 'fr',
+      questions_count         int NOT NULL DEFAULT 5,
+      public_token_ttl_minutes int NOT NULL DEFAULT 60,
+      consent_text            text,
+      updated_at              timestamptz NOT NULL DEFAULT now()
+    )`,
+
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
   ]
@@ -919,6 +945,34 @@ export async function ensurePlatformSchema(): Promise<void> {
       mime       varchar(100) NOT NULL,
       bytes      bytea NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+
+    // ── Simulations d'entretien : banque de questions GLOBALE partagée ────────
+    // Partagée par TOUS les tenants sans restriction (même patron que le
+    // référentiel légal). Clé par métier NORMALISÉ (role_key) — jamais par
+    // tenant/entreprise. Rôles : repli (dernier jeu si IA absente), nourrissage
+    // (questions passées injectées au prompt) et réutilisation inter-tenant.
+    // Garde-fou §4 : uniquement des questions génériques, aucune donnée perso.
+    `CREATE TABLE IF NOT EXISTS platform.interview_sim_question_banks (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key     varchar(120) NOT NULL,
+      secteur      varchar(120),
+      langue       varchar(2) NOT NULL DEFAULT 'fr',
+      questions    jsonb NOT NULL DEFAULT '[]',
+      source_model varchar(100),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_interview_bank_role_idx
+       ON platform.interview_sim_question_banks(role_key, langue, created_at DESC)`,
+    // Compteur d'usage ANONYME et agrégé (par métier × langue). Aucune identité,
+    // aucun transcript — juste un volume pour le pilotage (RGPD, §4/§8).
+    `CREATE TABLE IF NOT EXISTS platform.interview_sim_usage (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key       varchar(120) NOT NULL,
+      langue         varchar(2) NOT NULL DEFAULT 'fr',
+      attempts_count bigint NOT NULL DEFAULT 0,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (role_key, langue)
     )`,
   ]
   for (const sql of alters) {

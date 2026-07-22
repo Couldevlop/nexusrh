@@ -43,6 +43,7 @@ export const MODULE_KEYS = [
   'sage',
   'dg_view',
   'attendance',
+  'interview_sim',
 ] as const
 
 export type ModuleKey = (typeof MODULE_KEYS)[number]
@@ -77,6 +78,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, boolean> = {
   sage:         true,
   dg_view:      false,
   attendance:   false,
+  interview_sim: false,
 }
 
 /**
@@ -125,6 +127,7 @@ const URL_PREFIX_TO_MODULE: Array<[string, ModuleKey]> = [
   ['/sage',             'sage'],
   ['/dg',               'dg_view'],
   ['/attendance',       'attendance'],
+  ['/interview-sim',    'interview_sim'],
 ]
 
 export function moduleKeyForUrl(pathname: string): ModuleKey | null {

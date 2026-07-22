@@ -19,6 +19,7 @@ const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
+const PublicInterviewSimPage = lazy(() => import('@/pages/public/PublicInterviewSimPage'))
 
 // ── Platform (super_admin) ────────────────────────────────────────────────────
 const PlatformDashboard   = lazy(() => import('@/pages/platform/PlatformDashboard'))
@@ -145,6 +146,7 @@ const MonProfil        = lazy(() => import('@/pages/mon-espace/MonProfil'))
 const MesOffresInternes = lazy(() => import('@/pages/mon-espace/MesOffresInternes'))
 const MesPointages      = lazy(() => import('@/pages/mon-espace/MesPointages'))
 const MesAvertissements = lazy(() => import('@/pages/mon-espace/MesAvertissements'))
+const MesSimulations    = lazy(() => import('@/pages/mon-espace/MesSimulations'))
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -193,6 +195,8 @@ export default function App() {
 
           {/* ── Page carrières publique (sans auth) ───────────────── */}
           <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />
+          {/* ── Entraînement d'entretien public (sans auth, éphémère) ── */}
+          <Route path="/entrainement-entretien/:token" element={<PublicInterviewSimPage />} />
 
           {/* ── Portail super_admin ─────────────────────────────── */}
           <Route path="/platform" element={
@@ -515,6 +519,11 @@ export default function App() {
             <Route path="climat"       element={<MonClimat />} />
             <Route path="pointages"    element={<MesPointages />} />
             <Route path="avertissements" element={<MesAvertissements />} />
+            <Route path="simulations"  element={
+              <ModuleGuard moduleKey="interview_sim">
+                <MesSimulations />
+              </ModuleGuard>
+            } />
             <Route path="profil"       element={<MonProfil />} />
           </Route>
 

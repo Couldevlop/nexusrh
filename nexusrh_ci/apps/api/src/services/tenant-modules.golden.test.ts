@@ -43,9 +43,9 @@ const provisioning   = read('services', 'tenant-provisioning.service.ts')
 const modulesService = read('services', 'tenant-modules.service.ts')
 
 describe('GOLDEN modules tenant — service (défauts et résolution)', () => {
-  it('tous les modules sont actifs par défaut SAUF la vue DG 360° et la Badgeuse (opt-in)', () => {
+  it('tous les modules sont actifs par défaut SAUF la vue DG 360°, la Badgeuse et les Simulations d\'entretien (opt-in)', () => {
     for (const key of MODULE_KEYS) {
-      expect(MODULE_DEFAULTS[key]).toBe(key === 'dg_view' || key === 'attendance' ? false : true)
+      expect(MODULE_DEFAULTS[key]).toBe(key === 'dg_view' || key === 'attendance' || key === 'interview_sim' ? false : true)
     }
   })
 

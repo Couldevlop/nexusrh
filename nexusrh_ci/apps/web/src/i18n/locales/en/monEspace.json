@@ -12,6 +12,7 @@
     "climate": "Climate",
     "attendance": "My punches",
     "attendanceWarnings": "My warnings",
+    "interviewSim": "Interview simulations",
     "profile": "Profile",
     "titles": {
       "home": "My space",
@@ -25,6 +26,7 @@
       "climate": "Climate surveys",
       "attendance": "My punches",
       "attendanceWarnings": "My warnings",
+      "interviewSim": "My interview simulations",
       "profile": "My profile",
       "default": "My space"
     }

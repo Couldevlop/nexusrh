@@ -70,6 +70,7 @@ import classificationRoutes from './modules/classification/classification.routes
 import signatureRoutes from './modules/signature/signature.routes.js'
 import securityRoutes from './modules/security/security.routes.js'
 import sageRoutes from './modules/sage/sage.routes.js'
+import interviewSimRoutes, { interviewSimPublicRoutes } from './modules/interview-sim/interview-sim.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 
@@ -87,6 +88,10 @@ export async function buildApp() {
         : {}),
     },
     trustProxy: true,
+    // Simulations d'entretien — jeton public HMAC porté en paramètre d'URL
+    // (/public/interview-sim/:token) : plus long que le défaut find-my-way
+    // (100 car.), qui ferait 404 systématiquement sur ces routes (§7).
+    maxParamLength: 1000,
   })
 
   // ── Plugins globaux ──────────────────────────────────────────────────────────
@@ -419,6 +424,8 @@ export async function buildApp() {
   await fastify.register(dgRoutes,           { prefix: '/dg' })
   // Badgeuse / Pointage — module opt-in (attendance), enforcement via le hook modules.
   await fastify.register(attendanceRoutes,   { prefix: '/attendance' })
+  await fastify.register(interviewSimRoutes, { prefix: '/interview-sim' })
+  await fastify.register(interviewSimPublicRoutes, { prefix: '/public/interview-sim' })
 
   // ── 404 handler ───────────────────────────────────────────────────────────────
   fastify.setNotFoundHandler((_request, reply) => {

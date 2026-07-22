@@ -35,6 +35,9 @@ interface PublicJob {
   work_mode?: string | null
   start_date?: string | null
   recruitment_process?: string | null
+  // ── Simulation d'entretien (jeton public éphémère, absent de l'endpoint
+  //    liste — uniquement porté par le détail /jobs/:jobId) ──
+  interviewSim?: { enabled: boolean; token: string | null }
 }
 
 interface CareersResponse {
@@ -204,6 +207,7 @@ export default function PublicCareersPage() {
       {detailJob && (
         <JobDetailModal
           job={detailJob}
+          tenantSlug={tenantSlug!}
           primary={primary}
           onClose={() => setDetailJob(null)}
           onApply={() => { setApplyJob(detailJob); setDetailJob(null) }}
@@ -269,11 +273,33 @@ function JobPreviewCard({ job, primary, onView }: {
 }
 
 // ── Détail complet de l'offre (description + prérequis intégraux) ─────────────
-function JobDetailModal({ job, primary, onClose, onApply }: {
-  job: PublicJob; primary: string; onClose: () => void; onApply: () => void
+function JobDetailModal({ job, tenantSlug, primary, onClose, onApply }: {
+  job: PublicJob; tenantSlug: string; primary: string; onClose: () => void; onApply: () => void
 }) {
   const { t } = useTranslation('publicPages')
   const salary = formatSalary(job.salary_min, job.salary_max, job.currency)
+  // Simulation d'entretien : le jeton n'est porté que par le détail de l'offre
+  // (GET /recruitment/public/:tenantSlug/jobs/:jobId), pas par la liste — on va
+  // donc le chercher au clic plutôt que de le stocker à l'avance.
+  const [trainState, setTrainState] = useState<{ loading: boolean; unavailable: boolean }>({
+    loading: false, unavailable: false,
+  })
+
+  async function handleTrainClick() {
+    setTrainState({ loading: true, unavailable: false })
+    try {
+      const res = await api.get(`/recruitment/public/${tenantSlug}/jobs/${job.id}`)
+      const is = res.data?.data?.interviewSim as { enabled?: boolean; token?: string | null } | undefined
+      if (is?.enabled && is.token) {
+        window.open(`/entrainement-entretien/${is.token}`, '_blank', 'noopener')
+        setTrainState({ loading: false, unavailable: false })
+      } else {
+        setTrainState({ loading: false, unavailable: true })
+      }
+    } catch {
+      setTrainState({ loading: false, unavailable: true })
+    }
+  }
   return (
     <Dialog onClose={onClose}>
       <div className="flex items-start justify-between gap-4 border-b px-6 py-4">
@@ -338,17 +364,32 @@ function JobDetailModal({ job, primary, onClose, onApply }: {
         )}
       </div>
 
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-white px-6 py-4">
-        <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-          {t('common.close')}
-        </button>
-        <button
-          onClick={onApply}
-          className="inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
-          style={{ backgroundColor: primary }}
-        >
-          <Send className="h-4 w-4" /> {t('detail.apply')}
-        </button>
+      <div className="sticky bottom-0 border-t bg-white px-6 py-4">
+        {trainState.unavailable && (
+          <p className="mb-2 text-xs text-amber-600">{t('interviewSim.trainUnavailable')}</p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={handleTrainClick}
+            disabled={trainState.loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:bg-slate-50 disabled:opacity-60"
+            style={{ color: primary, borderColor: primary }}
+          >
+            {trainState.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {t('interviewSim.trainButton')}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            {t('common.close')}
+          </button>
+          <button
+            onClick={onApply}
+            className="inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+            style={{ backgroundColor: primary }}
+          >
+            <Send className="h-4 w-4" /> {t('detail.apply')}
+          </button>
+        </div>
       </div>
     </Dialog>
   )

@@ -62,6 +62,10 @@ const PREFIX: Record<string, string> = {
   'security/security.routes.ts': '/security',
   'sage/sage.routes.ts': '/sage',
   'dg/dg.routes.ts': '/dg',
+  // Simulations d'entretien : le fichier contient DEUX plugins — interne
+  // (interviewSimRoutes @ /interview-sim) et public (interviewSimPublicRoutes @
+  // /public/interview-sim, déclaré dans EXTRA_PUBLIC_ROUTES ci-dessous).
+  'interview-sim/interview-sim.routes.ts': '/interview-sim',
 }
 
 function walk(dir: string, exts: RegExp): string[] {
@@ -102,6 +106,11 @@ function backendRoutes(): Route[] {
 const EXTRA_PUBLIC_ROUTES: { method: string; path: string }[] = [
   { method: 'GET', path: '/public/brand/:id' },
   { method: 'GET', path: '/public/brand/by-slug/:slug' },
+  // Entraînement d'entretien public (plugin interviewSimPublicRoutes monté sous
+  // /public/interview-sim ; les handlers sont définis en '/:token' dans le fichier
+  // interview-sim.routes.ts, donc non résolus par la carte PREFIX par fichier).
+  { method: 'GET', path: '/public/interview-sim/:token' },
+  { method: 'POST', path: '/public/interview-sim/:token/submit' },
 ]
 
 // Résout un chemin d'appel frontend en segments, ou null si non résoluble.

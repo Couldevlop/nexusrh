@@ -393,6 +393,48 @@ async function runSeed(): Promise<void> {
       updated_at    = now()
   `)
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Simulations d'entretien — banque de questions de DÉMO (2-3 métiers courants)
+  // pour que la banque ne soit pas vide au premier lancement, même hors IA.
+  // Idempotent : on n'insère que si le métier/langue n'a pas encore de jeu.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const demoBanks: Array<{ roleKey: string; secteur: string; questions: string[] }> = [
+    { roleKey: 'chauffeur-transport', secteur: 'Transport', questions: [
+      'Comment planifiez-vous un itinéraire pour respecter les délais tout en assurant la sécurité ?',
+      'Décrivez une situation où vous avez géré une panne ou un imprévu sur la route.',
+      'Comment entretenez-vous votre véhicule au quotidien ?',
+      'Comment réagissez-vous face à un client mécontent d’un retard ?',
+      'Que faites-vous pour respecter le code de la route et limiter les risques ?',
+    ] },
+    { roleKey: 'comptable-finance', secteur: 'Finance', questions: [
+      'Comment garantissez-vous la fiabilité d’un rapprochement bancaire ?',
+      'Décrivez votre expérience avec les déclarations fiscales et sociales (CNPS, ITS).',
+      'Comment priorisez-vous vos tâches en période de clôture ?',
+      'Comment détectez-vous et corrigez-vous une erreur d’imputation comptable ?',
+      'Quels outils comptables maîtrisez-vous et comment les avez-vous utilisés ?',
+    ] },
+    { roleKey: 'agent-d-exploitation-logistique', secteur: 'Logistique', questions: [
+      'Comment organisez-vous une journée d’exploitation pour optimiser les ressources ?',
+      'Décrivez une situation où vous avez résolu un incident opérationnel urgent.',
+      'Comment suivez-vous les indicateurs de performance d’exploitation ?',
+      'Comment coordonnez-vous les équipes de terrain et les plannings ?',
+      'Comment gérez-vous les priorités quand plusieurs urgences surviennent ?',
+    ] },
+  ]
+  for (const b of demoBanks) {
+    const exists = await pool.query(
+      `SELECT 1 FROM platform.interview_sim_question_banks WHERE role_key = $1 AND langue = 'fr' LIMIT 1`,
+      [b.roleKey],
+    )
+    if (exists.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO platform.interview_sim_question_banks (role_key, secteur, langue, questions, source_model)
+         VALUES ($1, $2, 'fr', $3::jsonb, 'seed')`,
+        [b.roleKey, b.secteur, JSON.stringify(b.questions)],
+      )
+    }
+  }
+
   // Settings clé/valeur — valeurs initiales (slider, budget, pondérations)
   const sourcingSettings: Array<[string, unknown, string]> = [
     ['max_profiles_min',          { value: 1 },   'Slider min de profils par requête'],
