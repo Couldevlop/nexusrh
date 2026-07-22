@@ -135,10 +135,13 @@ export default fp(async (fastify) => {
       reply.status(401).send({ error: 'Token invalide (schéma non conforme)' })
       return
     }
-    // OWASP A07 — un token de challenge MFA ou CSRF n'est PAS un token de session :
-    // il ne doit jamais authentifier une route applicative (sinon bypass MFA).
+    // OWASP A07 — un token de challenge MFA, CSRF ou le jeton PUBLIC de
+    // simulation d'entretien (aud='interview-sim-public', cf.
+    // mintPublicInterviewToken dans modules/interview-sim/interview-sim.routes.ts)
+    // n'est PAS un token de session : il ne doit jamais authentifier une route
+    // applicative (sinon bypass MFA / usurpation via un jeton éphémère public).
     const aud = (request.user as { aud?: string }).aud
-    if (aud === 'mfa-challenge' || aud === 'csrf') {
+    if (aud === 'mfa-challenge' || aud === 'csrf' || aud === 'interview-sim-public') {
       return reply.code(401).send({ error: 'Token non autorisé pour cette ressource' })
     }
     // OWASP A07 — MFA obligatoire super_admin : un token "mfaPending" (super_admin
