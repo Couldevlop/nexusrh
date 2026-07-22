@@ -439,6 +439,10 @@
       "attendance": {
         "label": "Time & Attendance",
         "desc": "Employee clock-in/clock-out tracking (fixed schedule). Disabled by default (opt-in) — must be explicitly enabled by the super admin."
+      },
+      "interview_sim": {
+        "label": "Interview Simulations",
+        "desc": "Private interview practice for external candidates (via a job offer) and internal employees (self-service), with AI-generated questions and instant feedback. Disabled by default (opt-in) — must be explicitly enabled by the super admin."
       }
     },
     "bulk": {
