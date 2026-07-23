@@ -49,4 +49,14 @@ describe('OfferInterviewRunner', () => {
     fireEvent.click(await screen.findByText('offers.backToOffer'))
     expect(onBack).toHaveBeenCalled()
   })
+
+  it('affiche une erreur (et pas un spinner infini) si le start échoue', async () => {
+    const onBack = vi.fn()
+    getMock.mockRejectedValue(new Error('404'))
+    renderRunner(onBack)
+    expect(await screen.findByText('startError')).toBeTruthy()
+    expect(screen.queryByText('answerPlaceholder')).toBeNull()
+    fireEvent.click(screen.getByText('offers.backToOffer'))
+    expect(onBack).toHaveBeenCalled()
+  })
 })

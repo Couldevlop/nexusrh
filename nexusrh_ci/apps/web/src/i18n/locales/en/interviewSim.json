@@ -20,6 +20,7 @@
   "consentAccept": "I agree and start",
   "linkInvalid": "This practice link is invalid or expired.",
   "submitError": "Submission failed. Please try again.",
+  "startError": "Could not start the interview for this offer. It may no longer be available.",
   "loading": "Loading…",
   "ephemeralNotice": "No personal data was kept: this feedback disappears when you close the page.",
   "globalScore": "Overall score",

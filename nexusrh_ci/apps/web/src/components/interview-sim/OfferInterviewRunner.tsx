@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
@@ -17,7 +17,12 @@ type Answer = { index: number; question: string; transcript: string }
  * offre (MesOffresInternes). Éphémère : rien n'est stocké — la restitution
  * s'affiche puis disparaît à la fermeture. Miroir authentifié du flux public.
  */
-export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: string; jobTitle: string; onBack: () => void }) {
+export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
+  jobId: string
+  /** Non consommé directement ici : conservé pour parité d'interface avec la modale appelante (Task 4). */
+  jobTitle: string
+  onBack: () => void
+}) {
   const { t } = useTranslation('interviewSim')
   const { t: tOffers } = useTranslation('monEspace')
   const speech = useSpeech()
@@ -29,11 +34,7 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: strin
 
   const start = useQuery<StartData>({
     queryKey: ['interview-sim', 'internal-job', jobId],
-    queryFn: async () => {
-      const data = (await api.get(`/interview-sim/internal-jobs/${jobId}/start`)).data.data as StartData
-      if (speech.supported && data.questions[0]) speech.speak(data.questions[0], data.langue === 'en' ? 'en-US' : 'fr-FR')
-      return data
-    },
+    queryFn: async () => (await api.get(`/interview-sim/internal-jobs/${jobId}/start`)).data.data as StartData,
     refetchOnWindowFocus: false,
   })
 
@@ -44,6 +45,13 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: strin
   })
 
   const session = start.data
+  const currentQuestion = session?.questions[current]
+
+  // Prononce la question courante dès qu'elle apparaît/change (montage + navigation),
+  // qu'elle vienne du premier chargement ou d'un passage à la question suivante.
+  useEffect(() => {
+    if (speech.supported && currentQuestion) speech.speak(currentQuestion, session?.langue === 'en' ? 'en-US' : 'fr-FR')
+  }, [currentQuestion, session?.langue, speech.supported, speech.speak])
 
   function nextQuestion() {
     if (!session) return
@@ -51,8 +59,7 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: strin
     const nextAnswers = [...answers, item]
     setAnswers(nextAnswers); setDraft('')
     if (current + 1 < session.questions.length) {
-      const n = current + 1; setCurrent(n)
-      if (speech.supported) speech.speak(session.questions[n]!, session.langue === 'en' ? 'en-US' : 'fr-FR')
+      setCurrent(current + 1)
     } else {
       submit.mutate({ langue: session.langue, questions: session.questions, categories: session.categories ?? [], answers: nextAnswers })
     }
@@ -63,6 +70,15 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: strin
       <ArrowLeft className="h-4 w-4" /> {tOffers('offers.backToOffer')}
     </button>
   )
+
+  if (start.isError) {
+    return (
+      <div className="space-y-4">
+        {backBtn}
+        <p className="text-sm text-red-600">{t('startError')}</p>
+      </div>
+    )
+  }
 
   if (start.isLoading || !session) {
     return (
@@ -109,6 +125,7 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: { jobId: strin
           {current + 1 < session.questions.length ? t('nextButton') : t('finishButton')}
         </button>
       </div>
+      {submit.isError && <p className="text-sm text-red-600">{t('submitError')}</p>}
       {!speech.supported && <p className="text-sm text-amber-600">{t('voiceUnsupported')}</p>}
     </div>
   )
