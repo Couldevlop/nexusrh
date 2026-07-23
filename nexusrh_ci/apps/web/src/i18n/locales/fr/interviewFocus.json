@@ -1,0 +1,43 @@
+{
+  "panel": {
+    "configure": "+ Profil technique de l'entretien",
+    "hide": "− Masquer le profil technique",
+    "intro": "Ces caractéristiques calibrent les simulations d'entretien (technologies, outils, méthodologie, langues). Entièrement optionnel.",
+    "saveButton": "Enregistrer le profil",
+    "saved": "Enregistré",
+    "saveError": "Échec de l'enregistrement"
+  },
+  "technologies": {
+    "title": "Technologies (de la plus prioritaire à la moins prioritaire)",
+    "namePlaceholder": "Ex : Java, Spring Boot, Docker",
+    "yearsLabel": "Années d'expérience exigées",
+    "add": "+ Ajouter une technologie",
+    "remove": "Retirer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre"
+  },
+  "tools": {
+    "title": "Outils (séparés par des virgules)",
+    "placeholder": "Ex : Git, Jenkins, Jira"
+  },
+  "methodologies": {
+    "title": "Méthodologie de travail",
+    "other": "Autre (précisez, séparé par des virgules)",
+    "otherPlaceholder": "Ex : Kanban, Waterfall"
+  },
+  "languages": {
+    "title": "Langues parlées",
+    "languagePlaceholder": "Ex : Anglais",
+    "levelLabel": "Niveau CECRL",
+    "add": "+ Ajouter une langue",
+    "remove": "Retirer",
+    "level": {
+      "A1": "A1 — Débutant",
+      "A2": "A2 — Élémentaire",
+      "B1": "B1 — Intermédiaire",
+      "B2": "B2 — Courant",
+      "C1": "C1 — Avancé",
+      "C2": "C2 — Bilingue"
+    }
+  }
+}

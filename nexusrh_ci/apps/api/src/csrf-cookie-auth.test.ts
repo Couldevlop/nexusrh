@@ -255,6 +255,24 @@ describe('Anti-bypass MFA — un token de challenge n\'est pas un token de sessi
     })
     expect(res.statusCode).toBe(200)
   })
+
+  // Défense en profondeur — le jeton PUBLIC de simulation d'entretien
+  // (aud='interview-sim-public', cf. mintPublicInterviewToken dans
+  // modules/interview-sim/interview-sim.routes.ts) n'authentifie aucune route
+  // applicative. schemaName volontairement VALIDE ici pour isoler le rejet
+  // par aud (sinon il serait rejeté par effet de bord via isValidSchemaName).
+  it('GET protégé refuse un token aud=interview-sim-public (jeton public entretien) → 401', async () => {
+    const publicToken = app.jwt.sign(
+      { sub: 'anon', schemaName: 'tenant_sotra', tenantId: 't1', aud: 'interview-sim-public' } as unknown as Parameters<typeof app.jwt.sign>[0],
+      { expiresIn: '60m' },
+    )
+    const res = await app.inject({
+      method: 'GET', url: '/protected',
+      headers: { authorization: `Bearer ${publicToken}` },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(JSON.parse(res.body).error).toBe('Token non autorisé pour cette ressource')
+  })
 })
 
 describe('Époque d\'invalidation de session — token-epoch (OWASP A01/A02)', () => {

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { ArrowLeft, Camera, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
 
 interface EmployeeDetails {
   id: string; first_name: string; last_name: string; email: string
@@ -213,6 +214,13 @@ export default function EmployeeDetail() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <InterviewFocusPanel
+          endpoint={`/employees/${emp.id}/interview-focus`}
+          queryKeyId={emp.id}
+        />
       </div>
     </div>
   )

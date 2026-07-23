@@ -8,11 +8,14 @@ import {
   type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
 import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
+import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
 import { generateHRDocument, type HrDocumentType } from '../../services/hr-document-generator.service.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
+import { mintPublicInterviewToken } from '../interview-sim/interview-sim.routes.js'
+import { getModulesForSchema } from '../../services/tenant-modules.service.js'
 
 /**
  * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction
@@ -360,6 +363,64 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
         return reply.send({ data: { criteria: clean } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /recruitment/jobs/:id/interview-focus — profil technique structuré de
+  // l'offre (technologies+années, outils, méthodologies, langues), utilisé
+  // (phase suivante) pour calibrer la génération de questions d'entretien.
+  fastify.get('/jobs/:id/interview-focus', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      try {
+        const res = await pool.query<{ interview_focus: unknown }>(
+          `SELECT interview_focus FROM "${schema}".recruitment_jobs WHERE id = $1 LIMIT 1`,
+          [id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
+        const focus = parseInterviewFocus(res.rows[0].interview_focus)
+        return reply.send({ data: { focus: focus ?? { technologies: [], tools: [], methodologies: [], languages: [] } } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // PUT /recruitment/jobs/:id/interview-focus — enregistre le profil technique.
+  // OWASP A03 : parseInterviewFocus borne/valide intégralement avant persistance.
+  fastify.put('/jobs/:id/interview-focus', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureRecruitmentSchemaMigrated(schema)
+      const { id } = request.params as { id: string }
+      const body = (request.body ?? {}) as { focus?: unknown }
+      const focus = parseInterviewFocus(body.focus)
+      if (focus === null) return reply.status(400).send({ error: 'Profil technique invalide' })
+      try {
+        const res = await pool.query<{ id: string }>(
+          `UPDATE "${schema}".recruitment_jobs SET interview_focus = $1, updated_at = now()
+           WHERE id = $2 RETURNING id`,
+          [JSON.stringify(focus), id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
+        // OWASP A09 — audit non bloquant. Action nommée pour matcher
+        // categorizeAction() (security.service.ts) → catégorie 'config',
+        // exportable SIEM sans plomberie supplémentaire.
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'recruitment.job.interview_focus_updated', 'recruitment_job', $2, $3, $4)`,
+          [request.user.sub, id, JSON.stringify({ focus }), request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        return reply.send({ data: { focus } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1316,6 +1377,27 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           LIMIT 1
       `, [jobId])
       if (!job.rows[0]) return reply.status(404).send({ error: 'Offre introuvable ou fermée' })
+
+      // Simulations d'entretien : jeton public éphémère si le module est activé
+      // pour ce tenant (bouton « S'entraîner à l'entretien » côté carrières).
+      let interviewSim: { enabled: boolean; token: string | null } = { enabled: false, token: null }
+      try {
+        const modules = await getModulesForSchema(pool, t.schema_name)
+        if (modules.interview_sim) {
+          const cfgRes = await pool.query<{ default_langue: 'fr' | 'en'; public_token_ttl_minutes: number }>(
+            `SELECT default_langue, public_token_ttl_minutes FROM "${t.schema_name}".interview_sim_config WHERE id = 1`,
+          ).catch(() => ({ rows: [] as Array<{ default_langue: 'fr' | 'en'; public_token_ttl_minutes: number }> }))
+          const langue = cfgRes.rows[0]?.default_langue ?? 'fr'
+          const ttl = cfgRes.rows[0]?.public_token_ttl_minutes ?? 60
+          const token = mintPublicInterviewToken(
+            fastify,
+            { schema: t.schema_name, tenantSlug, jobId, title: job.rows[0].title, secteur: job.rows[0].sector ?? null, langue },
+            ttl,
+          )
+          interviewSim = { enabled: true, token }
+        }
+      } catch { /* non bloquant : l'offre reste servie sans le bouton entraînement */ }
+
       return reply.send({
         tenant: {
           name: t.name, slug: t.slug, city: t.city,
@@ -1323,7 +1405,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: t.secondary_color ?? '#F48C06',
           logoUrl: t.logo_url,
         },
-        data: job.rows[0],
+        data: { ...job.rows[0], interviewSim },
       })
     },
   })

@@ -360,6 +360,31 @@ export async function createPlatformSchema(): Promise<void> {
       UNIQUE (schema_name, provider, model, period_month)
     )
   `)
+
+  // ── Simulations d'entretien : banque de questions GLOBALE partagée + usage ──
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.interview_sim_question_banks (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key     varchar(120) NOT NULL,
+      secteur      varchar(120),
+      langue       varchar(2) NOT NULL DEFAULT 'fr',
+      questions    jsonb NOT NULL DEFAULT '[]',
+      source_model varchar(100),
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS platform_interview_bank_role_idx
+                    ON platform.interview_sim_question_banks(role_key, langue, created_at DESC)`)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform.interview_sim_usage (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_key       varchar(120) NOT NULL,
+      langue         varchar(2) NOT NULL DEFAULT 'fr',
+      attempts_count bigint NOT NULL DEFAULT 0,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (role_key, langue)
+    )
+  `)
 }
 
 /**
@@ -1102,6 +1127,28 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     await q(stmt)
   }
 
+  // Simulations d'entretien : historique PRIVÉ (interne seul) + config tenant
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.interview_sim_attempts (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id uuid NOT NULL,
+    role_key    varchar(120) NOT NULL,
+    langue      varchar(2) NOT NULL DEFAULT 'fr',
+    questions   jsonb NOT NULL DEFAULT '[]',
+    answers     jsonb NOT NULL DEFAULT '[]',
+    retour      jsonb,
+    created_at  timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_interview_attempts_emp_idx"
+           ON ${s}.interview_sim_attempts(employee_id, created_at DESC)`)
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.interview_sim_config (
+    id                      int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    default_langue          varchar(2) NOT NULL DEFAULT 'fr',
+    questions_count         int NOT NULL DEFAULT 5,
+    public_token_ttl_minutes int NOT NULL DEFAULT 60,
+    consent_text            text,
+    updated_at              timestamptz NOT NULL DEFAULT now()
+  )`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,
@@ -1407,6 +1454,10 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   // Critères de pré-tri paramétrables par offre (règles dures) — éditables depuis
   // l'interface admin du tenant. JSONB validé/borné applicativement (sanitizeCriteria).
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS screening_criteria jsonb`)
+  // Profil technique structuré (technologies+années, outils, méthodologies,
+  // langues CECRL) pour calibrer la génération de questions d'entretien sur
+  // cette offre. Isolé de screening_criteria. Optionnel — NULL = non renseigné.
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS interview_focus jsonb`)
   // ── Structure d'offre APEC (tous NULL-ables : zéro régression) ──────────────
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS reference varchar(60)`)
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS experience_level varchar(30)`)

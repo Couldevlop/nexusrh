@@ -439,6 +439,10 @@
       "attendance": {
         "label": "Badgeuse / Pointage",
         "desc": "Suivi des horaires et pointages des employés (badgeuse, horaire fixe). Désactivé par défaut (opt-in) — à activer explicitement par le super admin."
+      },
+      "interview_sim": {
+        "label": "Simulations d'entretien",
+        "desc": "Entraînement privé à l'entretien pour candidats externes (via une offre) et salariés internes (self-service), avec questions IA et retour immédiat. Désactivé par défaut (opt-in) — à activer explicitement par le super admin."
       }
     },
     "bulk": {
