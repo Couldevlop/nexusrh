@@ -3,9 +3,10 @@ import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useSpeech } from '@/hooks/useSpeech'
+import { InterviewRestitution, type InterviewFeedback } from '@/components/interview-sim/InterviewRestitution'
 
-interface StartData { jobTitle: string; langue: 'fr' | 'en'; questions: string[]; consentText: string }
-interface Feedback { disponible: boolean; message: string | null; pointsForts: string[]; axesProgres: string[]; reponsesReperes: Array<{ index: number; question: string; reponseRepere: string }> }
+interface StartData { jobTitle: string; langue: 'fr' | 'en'; questions: string[]; categories: string[]; consentText: string }
+type Feedback = InterviewFeedback
 
 export default function PublicInterviewSimPage() {
   const { token } = useParams<{ token: string }>()
@@ -46,7 +47,7 @@ export default function PublicInterviewSimPage() {
       try {
         const res = await api.post(`/public/interview-sim/${token}/submit`, {
           consentAccepted: true, consentAt: new Date().toISOString(),
-          questions: data.questions, answers: nextAnswers,
+          questions: data.questions, categories: data.categories ?? [], answers: nextAnswers,
         })
         setFeedback(res.data.data.retour as Feedback)
       } catch { setError(t('submitError')) } finally { setSubmitting(false) }
@@ -70,7 +71,15 @@ export default function PublicInterviewSimPage() {
 
       {consented && !feedback && (
         <div className="rounded-lg border p-4 space-y-4">
-          <div className="text-sm text-muted-foreground">{t('questionProgress', { current: current + 1, total: data.questions.length })}</div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">{t('questionProgress', { current: current + 1, total: data.questions.length })}</span>
+            {data.categories?.[current] && data.categories[current] !== 'Général' && (
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{data.categories[current]}</span>
+            )}
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(current / data.questions.length) * 100}%` }} />
+          </div>
           <p className="text-lg font-medium">{data.questions[current]}</p>
           <textarea className="w-full rounded border p-2" rows={4} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('answerPlaceholder')} />
           <div className="flex gap-2">
@@ -87,15 +96,9 @@ export default function PublicInterviewSimPage() {
       )}
 
       {feedback && (
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="rounded-lg border p-4 space-y-4">
           <h2 className="text-xl font-semibold">{t('feedbackTitle')}</h2>
-          {!feedback.disponible && <p className="text-amber-600">{feedback.message}</p>}
-          {feedback.disponible && (
-            <>
-              <div><h3 className="font-medium">{t('strengths')}</h3><ul className="list-disc pl-5">{feedback.pointsForts.map((p, i) => <li key={i}>{p}</li>)}</ul></div>
-              <div><h3 className="font-medium">{t('improvements')}</h3><ul className="list-disc pl-5">{feedback.axesProgres.map((p, i) => <li key={i}>{p}</li>)}</ul></div>
-            </>
-          )}
+          <InterviewRestitution feedback={feedback} />
           <p className="text-xs text-muted-foreground">{t('ephemeralNotice')}</p>
         </div>
       )}

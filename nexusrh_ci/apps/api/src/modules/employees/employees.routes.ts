@@ -8,6 +8,7 @@ import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { autoStartOnboarding } from '../../services/onboarding.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import { encodeField } from '../sage/sage.service.js'
+import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -456,6 +457,62 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       }, request.ip ?? null)
 
       return reply.send({ data: res.rows[0] })
+    },
+  })
+
+  // GET /employees/:id/interview-focus — profil technique structuré (RH only,
+  // PAS de self-service — contrairement à PATCH /:id, l'employé n'a jamais
+  // accès à sa propre fiche ici).
+  fastify.get('/:id/interview-focus', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureTenantSchema(schema)
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      try {
+        const res = await pool.query<{ interview_focus: unknown }>(
+          `SELECT interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+          [id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+        const focus = parseInterviewFocus(res.rows[0].interview_focus)
+        return reply.send({ data: { focus: focus ?? { technologies: [], tools: [], methodologies: [], languages: [] } } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // PUT /employees/:id/interview-focus — enregistre le profil technique.
+  fastify.put('/:id/interview-focus', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      await ensureTenantSchema(schema)
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      const body = (request.body ?? {}) as { focus?: unknown }
+      const focus = parseInterviewFocus(body.focus)
+      if (focus === null) return reply.status(400).send({ error: 'Profil technique invalide' })
+      try {
+        const res = await pool.query<{ id: string }>(
+          `UPDATE "${schema}".employees SET interview_focus = $1, updated_at = now()
+           WHERE id = $2 RETURNING id`,
+          [JSON.stringify(focus), id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+        pool.query(
+          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+           VALUES ($1, 'employees.interview_focus_updated', 'employee', $2, $3, $4)`,
+          [request.user.sub, id, JSON.stringify({ focus }), request.ip ?? null],
+        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        return reply.send({ data: { focus } })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
     },
   })
 

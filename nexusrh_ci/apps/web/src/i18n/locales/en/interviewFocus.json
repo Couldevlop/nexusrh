@@ -1,0 +1,43 @@
+{
+  "panel": {
+    "configure": "+ Interview technical profile",
+    "hide": "− Hide technical profile",
+    "intro": "These characteristics calibrate interview simulations (technologies, tools, methodology, languages). Entirely optional.",
+    "saveButton": "Save profile",
+    "saved": "Saved",
+    "saveError": "Failed to save"
+  },
+  "technologies": {
+    "title": "Technologies (from most to least prioritized)",
+    "namePlaceholder": "E.g.: Java, Spring Boot, Docker",
+    "yearsLabel": "Years of experience required",
+    "add": "+ Add a technology",
+    "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
+  },
+  "tools": {
+    "title": "Tools (comma-separated)",
+    "placeholder": "E.g.: Git, Jenkins, Jira"
+  },
+  "methodologies": {
+    "title": "Working methodology",
+    "other": "Other (specify, comma-separated)",
+    "otherPlaceholder": "E.g.: Kanban, Waterfall"
+  },
+  "languages": {
+    "title": "Spoken languages",
+    "languagePlaceholder": "E.g.: English",
+    "levelLabel": "CEFR level",
+    "add": "+ Add a language",
+    "remove": "Remove",
+    "level": {
+      "A1": "A1 — Beginner",
+      "A2": "A2 — Elementary",
+      "B1": "B1 — Intermediate",
+      "B2": "B2 — Upper intermediate",
+      "C1": "C1 — Advanced",
+      "C2": "C2 — Bilingual"
+    }
+  }
+}
