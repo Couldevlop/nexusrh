@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { apecMetaPairs } from '@/lib/apec'
 import { Briefcase, MapPin, Send, CheckCircle, Lock } from 'lucide-react'
+import { OfferInterviewRunner } from '@/components/interview-sim/OfferInterviewRunner'
 
 interface InternalJob {
   id: string
@@ -37,6 +38,7 @@ export default function MesOffresInternes() {
     t(`offers.contractTypes.${type}`, { defaultValue: type.toUpperCase() })
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<InternalJob | null>(null)
+  const [mode, setMode] = useState<'detail' | 'interview'>('detail')
   const [coverLetter, setCoverLetter] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -144,7 +146,7 @@ export default function MesOffresInternes() {
               )}
 
               <div className="mt-4 flex justify-end">
-                <button onClick={() => { setSelected(job); setError(null); setSuccess(null) }}
+                <button onClick={() => { setSelected(job); setMode('detail'); setError(null); setSuccess(null) }}
                   className="flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5">
                   {t('offers.viewOffer')} <Send className="h-3.5 w-3.5" />
                 </button>
@@ -155,7 +157,7 @@ export default function MesOffresInternes() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSelected(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { setSelected(null); setMode('detail') }}>
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-semibold">{selected.title}</h3>
             {(selected.location || selected.department_name) && (
@@ -164,83 +166,95 @@ export default function MesOffresInternes() {
               </p>
             )}
 
-            {/* Grille méta APEC (référence, statut, expérience, secteur…) */}
-            {apecMetaPairs(selected).length > 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-3">
-                {apecMetaPairs(selected).map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-                    <p className="text-xs font-medium text-foreground">{value}</p>
+            {mode === 'interview' ? (
+              <div className="mt-4">
+                <OfferInterviewRunner jobId={selected.id} jobTitle={selected.title} onBack={() => setMode('detail')} />
+              </div>
+            ) : (
+              <>
+                {/* Grille méta APEC (référence, statut, expérience, secteur…) */}
+                {apecMetaPairs(selected).length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-3">
+                    {apecMetaPairs(selected).map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                        <p className="text-xs font-medium text-foreground">{value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* Intégralité de l'offre (aperçu → détail complet, façon APEC) */}
+                <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+                  {selected.description && (
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.jobDescription')}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.description}</p>
+                    </div>
+                  )}
+                  {selected.requirements && (
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.candidateProfile')}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.requirements}</p>
+                    </div>
+                  )}
+                  {selected.benefits && (
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.benefits')}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.benefits}</p>
+                    </div>
+                  )}
+                  {selected.recruitment_process && (
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.recruitmentProcess')}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.recruitment_process}</p>
+                    </div>
+                  )}
+                  {!selected.description && !selected.requirements && (
+                    <p className="text-sm text-muted-foreground">{t('offers.noDetails')}</p>
+                  )}
+                </div>
+
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {t('offers.profileNote')}
+                </p>
+
+                {error && (
+                  <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>
+                )}
+
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">{t('offers.phoneOptional')}</label>
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                      placeholder={t('offers.phonePlaceholder')}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">{t('offers.coverLetter')}</label>
+                    <textarea value={coverLetter} onChange={e => setCoverLetter(e.target.value)}
+                      rows={6} placeholder={t('offers.coverLetterPlaceholder')}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+                  <button onClick={() => setMode('interview')}
+                    className="mr-auto inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
+                    {t('offers.trainInterview')}
+                  </button>
+                  <button onClick={() => setSelected(null)}
+                    className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+                    {t('common.cancel')}
+                  </button>
+                  <button onClick={() => apply.mutate({ id: selected.id, cover_letter: coverLetter, phone })}
+                    disabled={apply.isPending || coverLetter.trim().length < 10}
+                    className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    {apply.isPending ? t('offers.sending') : t('offers.sendApplication')}
+                  </button>
+                </div>
+              </>
             )}
-
-            {/* Intégralité de l'offre (aperçu → détail complet, façon APEC) */}
-            <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-3">
-              {selected.description && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.jobDescription')}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.description}</p>
-                </div>
-              )}
-              {selected.requirements && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.candidateProfile')}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.requirements}</p>
-                </div>
-              )}
-              {selected.benefits && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.benefits')}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.benefits}</p>
-                </div>
-              )}
-              {selected.recruitment_process && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('offers.recruitmentProcess')}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-foreground">{selected.recruitment_process}</p>
-                </div>
-              )}
-              {!selected.description && !selected.requirements && (
-                <p className="text-sm text-muted-foreground">{t('offers.noDetails')}</p>
-              )}
-            </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">
-              {t('offers.profileNote')}
-            </p>
-
-            {error && (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>
-            )}
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">{t('offers.phoneOptional')}</label>
-                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                  placeholder={t('offers.phonePlaceholder')}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">{t('offers.coverLetter')}</label>
-                <textarea value={coverLetter} onChange={e => setCoverLetter(e.target.value)}
-                  rows={6} placeholder={t('offers.coverLetterPlaceholder')}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none" />
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setSelected(null)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
-                {t('common.cancel')}
-              </button>
-              <button onClick={() => apply.mutate({ id: selected.id, cover_letter: coverLetter, phone })}
-                disabled={apply.isPending || coverLetter.trim().length < 10}
-                className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {apply.isPending ? t('offers.sending') : t('offers.sendApplication')}
-              </button>
-            </div>
           </div>
         </div>
       )}

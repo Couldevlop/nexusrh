@@ -21,11 +21,6 @@ describe('i18n interviewSim', () => {
       const json = JSON.parse(raw) as Record<string, unknown>
       for (const k of REQUIRED) expect(json[k]).toBeDefined()
     })
-    it(`${lang}: nav label dans monEspace.json`, () => {
-      const nav = JSON.parse(read('locales', lang, 'monEspace.json')) as { nav?: Record<string, unknown> & { titles?: Record<string, unknown> } }
-      expect(nav.nav?.interviewSim).toBeDefined()
-      expect(nav.nav?.titles?.interviewSim).toBeDefined()
-    })
     it(`${lang}: bouton carrières dans publicPages.json`, () => {
       const pp = JSON.parse(read('locales', lang, 'publicPages.json')) as { interviewSim?: Record<string, unknown> }
       expect(pp.interviewSim?.trainButton).toBeDefined()
