@@ -38,11 +38,10 @@ const transcriptItemSchema = z.object({
   transcript: z.string().max(5000),
 }).strict()
 
-const submitSchema = z.object({
-  roleKey: z.string().min(1).max(120),
+const internalJobSubmitSchema = z.object({
   langue: z.enum(['fr', 'en']),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
-  categories: z.array(z.string().max(60)).max(30).optional(),  // Phase 2 — renvoyées par /start
+  categories: z.array(z.string().max(60)).max(30).optional(),
   answers: z.array(transcriptItemSchema).min(1).max(30),
 }).strict()
 
@@ -127,148 +126,107 @@ const publicSubmitSchema = z.object({
 }).strict()
 
 const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
-  // ── GET /interview-sim/start : contexte poste + questions (banque + génération) ──
-  fastify.get('/start', {
+  // ── GET /interview-sim/internal-jobs/:jobId/start : entretien calibré sur une OFFRE INTERNE ──
+  // Miroir AUTHENTIFIÉ du flux public : la source de calibrage est l'offre
+  // (interview_focus + experience_level), plus jamais le poste de l'employé.
+  fastify.get('/internal-jobs/:jobId/start', {
     preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Démarrer une simulation (poste du salarié)' },
+    schema: { tags: ['interview-sim'], summary: 'Démarrer une simulation calibrée sur une offre interne' },
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const user = request.user
       const employeeId = user.employeeId
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
+      const { jobId } = request.params as { jobId: string }
 
-      const emp = await pool.query<{ job_title: string | null; professional_category: string | null; interview_focus: unknown }>(
-        `SELECT job_title, professional_category, interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+      const empRes = await pool.query<{ id: string; department_id: string | null; job_level: string | null; hire_date: string | null; legal_entity_id: string | null }>(
+        `SELECT id, department_id, job_level, hire_date, legal_entity_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
         [employeeId],
       )
-      if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
-      const title = emp.rows[0].job_title || emp.rows[0].professional_category || 'Poste'
-      const focus = parseInterviewFocus(emp.rows[0].interview_focus)
+      const emp = empRes.rows[0]
+      if (!emp) return reply.status(404).send({ error: 'Offre introuvable' })
+      const seniorityMonths = emp.hire_date
+        ? Math.max(0, Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)))
+        : 0
 
-      const sec = await pool.query<{ sector: string | null }>(
-        `SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      // L'offre doit exister, être interne-visible, ouverte ET éligible pour cet
+      // employé (mêmes filtres de ciblage que GET /recruitment/internal-jobs).
+      // Sinon 404 neutre — OWASP A01 : ne jamais révéler une offre hors périmètre.
+      const jobRes = await pool.query<{ title: string; interview_focus: unknown; experience_level: string | null }>(
+        `SELECT rj.title, rj.interview_focus, rj.experience_level
+           FROM "${schema}".recruitment_jobs rj
+          WHERE rj.id = $1
+            AND rj.visibility IN ('internal','both')
+            AND rj.status = 'open'
+            AND (COALESCE(cardinality(rj.target_departments), 0) = 0
+                 OR ($2::uuid IS NOT NULL AND $2::uuid = ANY(rj.target_departments)))
+            AND (COALESCE(cardinality(rj.target_job_levels), 0) = 0
+                 OR ($3::varchar IS NOT NULL AND $3::varchar = ANY(rj.target_job_levels)))
+            AND (rj.target_min_seniority_months IS NULL OR rj.target_min_seniority_months <= $4::int)
+            AND (rj.target_legal_entity_id IS NULL OR rj.target_legal_entity_id = $5::uuid)
+          LIMIT 1`,
+        [jobId, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id],
       )
-      const secteur = sec.rows[0]?.sector ?? null
+      const job = jobRes.rows[0]
+      if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
+      const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
+      const secteur = sec.rows[0]?.sector ?? null
       const cfg = await loadTenantConfig(schema)
       const langue = cfg.default_langue
-      const roleKey = normalizeRoleKey(title, secteur)
-
+      const roleKey = normalizeRoleKey(job.title, secteur)
       const bank = await readBank(roleKey, langue)
-      const banquePassee = bank?.questions ?? []
-      // Self-service : pas d'experience_level côté employé (spec §2) → profondeur standard.
-      const ctx: PosteContext = { title, secteur, langue, interviewFocus: focus }
+      const ctx: PosteContext = {
+        title: job.title, secteur, langue,
+        interviewFocus: parseInterviewFocus(job.interview_focus),
+        experienceLevel: job.experience_level ?? null,
+      }
       const creds = await resolveAiCreds(schema)
-      const gen = await genererQuestions(ctx, banquePassee, cfg.questions_count, creds)
+      const gen = await genererQuestions(ctx, bank?.questions ?? [], cfg.questions_count, creds)
       if (!gen.fromBank && gen.questions.length > 0) {
         await feedBank(roleKey, secteur, langue, gen.questions, gen.sourceModel)
       }
-
       return reply.send({
         data: {
-          poste: { title, secteur, langue },
-          roleKey, langue, nbQuestions: cfg.questions_count,
-          questions: gen.questions,
-          categories: gen.categories,   // Phase 2 — catégorie alignée par index
+          jobId, jobTitle: job.title, langue, roleKey, nbQuestions: cfg.questions_count,
+          questions: gen.questions, categories: gen.categories,
         },
       })
     },
   })
 
-  // ── POST /interview-sim/attempts/submit : retour + enregistrement historique ──
-  fastify.post('/attempts/submit', {
+  // ── POST /interview-sim/internal-jobs/:jobId/submit : retour ÉPHÉMÈRE (rien stocké) ──
+  fastify.post('/internal-jobs/:jobId/submit', {
     preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Soumettre les réponses et recevoir le retour' },
+    schema: { tags: ['interview-sim'], summary: 'Soumettre l’entretien d’une offre interne (retour éphémère)' },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const user = request.user
-      const employeeId = user.employeeId
-      if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
+      if (!user.employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
-
-      const parsed = submitSchema.safeParse(request.body)
+      const { jobId } = request.params as { jobId: string }
+      const parsed = internalJobSubmitSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const body = parsed.data
 
-      const emp = await pool.query<{ job_title: string | null }>(
-        `SELECT job_title FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
+      const jobRes = await pool.query<{ title: string }>(
+        `SELECT title FROM "${schema}".recruitment_jobs WHERE id = $1 AND visibility IN ('internal','both') LIMIT 1`,
+        [jobId],
       )
-      const title = emp.rows[0]?.job_title || 'Poste'
-      const ctx: PosteContext = { title, secteur: null, langue: body.langue }
+      if (!jobRes.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
+      const title = jobRes.rows[0].title
+      const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
+      const secteur = sec.rows[0]?.sector ?? null
+
+      const ctx: PosteContext = { title, secteur, langue: body.langue }
       const creds = await resolveAiCreds(schema)
       const retour: InterviewFeedback = await produireRetour(
         body.questions, body.answers as TranscriptItem[], ctx, creds, body.categories ?? [],
       )
-
-      // OWASP A03/A08 — le roleKey du body est fourni par le client (le salarié
-      // choisit toujours son poste cible, comportement inchangé) mais alimente
-      // ensuite une table PARTAGÉE tous tenants confondus (platform.interview_sim_usage) :
-      // normalisation SERVEUR obligatoire pour n'y laisser entrer que des clés
-      // canoniques (anti-pollution du compteur global).
-      const roleKey = normalizeRoleKey(body.roleKey)
-
-      const ins = await pool.query<{ id: string }>(
-        `INSERT INTO "${schema}".interview_sim_attempts (employee_id, role_key, langue, questions, answers, retour)
-         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
-        [employeeId, roleKey, body.langue,
-         JSON.stringify(body.questions), JSON.stringify(body.answers), JSON.stringify(retour)],
-      )
-      await incrementUsage(roleKey, body.langue)
-      return reply.status(201).send({ data: { id: ins.rows[0]!.id, retour } })
-    },
-  })
-
-  // ── GET /interview-sim/my-attempts : historique du salarié (le sien seul) ──
-  fastify.get('/my-attempts', {
-    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Mes simulations' },
-    handler: async (request, reply) => {
-      const user = request.user
-      if (!user.employeeId) return reply.send({ data: [] })
-      const r = await pool.query(
-        `SELECT id, role_key, langue, created_at
-           FROM "${user.schemaName}".interview_sim_attempts
-          WHERE employee_id = $1 ORDER BY created_at DESC LIMIT 100`,
-        [user.employeeId],
-      )
-      return reply.send({ data: r.rows })
-    },
-  })
-
-  // ── GET /interview-sim/my-attempts/:id : détail (IDOR-safe) ──
-  fastify.get('/my-attempts/:id', {
-    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Détail d’une simulation' },
-    handler: async (request, reply) => {
-      const user = request.user
-      const { id } = request.params as { id: string }
-      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
-      const r = await pool.query(
-        `SELECT id, role_key, langue, questions, answers, retour, created_at
-           FROM "${user.schemaName}".interview_sim_attempts
-          WHERE id = $1 AND employee_id = $2 LIMIT 1`,
-        [id, user.employeeId],
-      )
-      if (!r.rows[0]) return reply.status(404).send({ error: 'Introuvable' })
-      return reply.send({ data: r.rows[0] })
-    },
-  })
-
-  // ── DELETE /interview-sim/my-attempts/:id : droit à l'effacement ──
-  fastify.delete('/my-attempts/:id', {
-    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Effacer une de mes simulations' },
-    handler: async (request, reply) => {
-      const user = request.user
-      const { id } = request.params as { id: string }
-      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
-      const r = await pool.query(
-        `DELETE FROM "${user.schemaName}".interview_sim_attempts WHERE id = $1 AND employee_id = $2`,
-        [id, user.employeeId],
-      )
-      if (!r.rowCount) return reply.status(404).send({ error: 'Introuvable' })
-      return reply.send({ data: { deleted: true } })
+      // ÉPHÉMÈRE : rien de personnel écrit. Au plus le compteur ANONYME agrégé.
+      await incrementUsage(normalizeRoleKey(title, secteur), body.langue)
+      return reply.send({ data: { retour } })
     },
   })
 
