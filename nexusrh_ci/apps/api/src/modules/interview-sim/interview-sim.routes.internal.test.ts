@@ -104,7 +104,8 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
   it('200 + retour, SANS écrire dans interview_sim_attempts', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
-      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur' }] })
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
       if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       return Promise.resolve({ rows: [] })
     })
@@ -142,5 +143,25 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
       payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('404 si l’offre n’est pas ÉLIGIBLE pour l’employé (même filtre que start), sans écriture ni compteur', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [] }) // hors périmètre (ciblage/status/visibility)
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_attempts'))
+    expect(insert).toBeFalsy()
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeFalsy()
   })
 })

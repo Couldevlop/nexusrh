@@ -53,6 +53,44 @@ async function loadTenantConfig(schema: string): Promise<TenantCfg> {
 
 function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
 
+interface EligibleInternalJob { title: string; interview_focus: unknown; experience_level: string | null }
+
+/**
+ * Charge l'offre interne SI ET SEULEMENT SI elle est éligible pour cet employé :
+ * visible interne, ouverte, ET dans le périmètre de ciblage (département / niveau
+ * de poste / ancienneté minimale / entité juridique). Utilisé identiquement par
+ * `start` et `submit` — l'un ne doit jamais être moins strict que l'autre
+ * (OWASP A01 : ne jamais révéler/traiter une offre hors périmètre).
+ */
+async function loadEligibleInternalJob(schema: string, employeeId: string, jobId: string): Promise<EligibleInternalJob | null> {
+  const empRes = await pool.query<{ id: string; department_id: string | null; job_level: string | null; hire_date: string | null; legal_entity_id: string | null }>(
+    `SELECT id, department_id, job_level, hire_date, legal_entity_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+    [employeeId],
+  )
+  const emp = empRes.rows[0]
+  if (!emp) return null
+  const seniorityMonths = emp.hire_date
+    ? Math.max(0, Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)))
+    : 0
+
+  const jobRes = await pool.query<EligibleInternalJob>(
+    `SELECT rj.title, rj.interview_focus, rj.experience_level
+       FROM "${schema}".recruitment_jobs rj
+      WHERE rj.id = $1
+        AND rj.visibility IN ('internal','both')
+        AND rj.status = 'open'
+        AND (COALESCE(cardinality(rj.target_departments), 0) = 0
+             OR ($2::uuid IS NOT NULL AND $2::uuid = ANY(rj.target_departments)))
+        AND (COALESCE(cardinality(rj.target_job_levels), 0) = 0
+             OR ($3::varchar IS NOT NULL AND $3::varchar = ANY(rj.target_job_levels)))
+        AND (rj.target_min_seniority_months IS NULL OR rj.target_min_seniority_months <= $4::int)
+        AND (rj.target_legal_entity_id IS NULL OR rj.target_legal_entity_id = $5::uuid)
+      LIMIT 1`,
+    [jobId, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id],
+  )
+  return jobRes.rows[0] ?? null
+}
+
 const PUBLIC_AUD = 'interview-sim-public'
 
 interface PublicTokenClaims {
@@ -140,35 +178,10 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = user.schemaName
       const { jobId } = request.params as { jobId: string }
 
-      const empRes = await pool.query<{ id: string; department_id: string | null; job_level: string | null; hire_date: string | null; legal_entity_id: string | null }>(
-        `SELECT id, department_id, job_level, hire_date, legal_entity_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
-        [employeeId],
-      )
-      const emp = empRes.rows[0]
-      if (!emp) return reply.status(404).send({ error: 'Offre introuvable' })
-      const seniorityMonths = emp.hire_date
-        ? Math.max(0, Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)))
-        : 0
-
       // L'offre doit exister, être interne-visible, ouverte ET éligible pour cet
       // employé (mêmes filtres de ciblage que GET /recruitment/internal-jobs).
       // Sinon 404 neutre — OWASP A01 : ne jamais révéler une offre hors périmètre.
-      const jobRes = await pool.query<{ title: string; interview_focus: unknown; experience_level: string | null }>(
-        `SELECT rj.title, rj.interview_focus, rj.experience_level
-           FROM "${schema}".recruitment_jobs rj
-          WHERE rj.id = $1
-            AND rj.visibility IN ('internal','both')
-            AND rj.status = 'open'
-            AND (COALESCE(cardinality(rj.target_departments), 0) = 0
-                 OR ($2::uuid IS NOT NULL AND $2::uuid = ANY(rj.target_departments)))
-            AND (COALESCE(cardinality(rj.target_job_levels), 0) = 0
-                 OR ($3::varchar IS NOT NULL AND $3::varchar = ANY(rj.target_job_levels)))
-            AND (rj.target_min_seniority_months IS NULL OR rj.target_min_seniority_months <= $4::int)
-            AND (rj.target_legal_entity_id IS NULL OR rj.target_legal_entity_id = $5::uuid)
-          LIMIT 1`,
-        [jobId, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id],
-      )
-      const job = jobRes.rows[0]
+      const job = await loadEligibleInternalJob(schema, employeeId, jobId)
       if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
       const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
@@ -203,19 +216,19 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const user = request.user
-      if (!user.employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
+      const employeeId = user.employeeId
+      if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
       const { jobId } = request.params as { jobId: string }
       const parsed = internalJobSubmitSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const body = parsed.data
 
-      const jobRes = await pool.query<{ title: string }>(
-        `SELECT title FROM "${schema}".recruitment_jobs WHERE id = $1 AND visibility IN ('internal','both') LIMIT 1`,
-        [jobId],
-      )
-      if (!jobRes.rows[0]) return reply.status(404).send({ error: 'Offre introuvable' })
-      const title = jobRes.rows[0].title
+      // Même filtre d'éligibilité que GET .../start (OWASP A01 : ne jamais
+      // traiter une offre hors périmètre — un 404 ici doit refléter le 404 de start).
+      const job = await loadEligibleInternalJob(schema, employeeId, jobId)
+      if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+      const title = job.title
       const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
       const secteur = sec.rows[0]?.sector ?? null
 
