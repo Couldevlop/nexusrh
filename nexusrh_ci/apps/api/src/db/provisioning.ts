@@ -1141,6 +1141,31 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at              timestamptz NOT NULL DEFAULT now()
   )`)
 
+  // ── Preuve de consentement RGPD (art. 7-1) avant simulation d'entretien ────
+  // Le responsable de traitement doit pouvoir DÉMONTRER le consentement.
+  // consent_text est un SNAPSHOT EXACT du texte affiché/accepté au moment du
+  // consentement (jamais une référence à un texte modifiable a posteriori).
+  // scope='internal' : employee_id renseigné (personne identifiée).
+  // scope='public'   : trace STRICTEMENT ANONYME — employee_id NULL, aucune
+  // adresse IP ni autre donnée personnelle collectée (décision produit).
+  // Les réponses d'entretien elles-mêmes restent ÉPHÉMÈRES (jamais persistées) ;
+  // seule la preuve de consentement est conservée, pour une durée paramétrable
+  // (cf. interview_sim_config.consent_retention_months) purgée périodiquement.
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.interview_sim_consents (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope         varchar(10) NOT NULL CHECK (scope IN ('internal','public')),
+    employee_id   uuid,
+    job_id        uuid NOT NULL,
+    session_id    varchar(64) NOT NULL,
+    consent_text  text NOT NULL,
+    accepted_at   timestamptz NOT NULL DEFAULT now()
+  )`)
+  // Sert la purge périodique par rétention (consent_retention_months).
+  await q(`CREATE INDEX IF NOT EXISTS idx_interview_sim_consents_accepted_at ON ${s}.interview_sim_consents (accepted_at)`)
+  // Durée de conservation de la preuve de consentement, paramétrable par tenant
+  // (RGPD — limitation de la conservation). 36 mois par défaut.
+  await q(`ALTER TABLE ${s}.interview_sim_config ADD COLUMN IF NOT EXISTS consent_retention_months int NOT NULL DEFAULT 36`)
+
   await q(`CREATE TABLE IF NOT EXISTS ${s}.audit_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid,
