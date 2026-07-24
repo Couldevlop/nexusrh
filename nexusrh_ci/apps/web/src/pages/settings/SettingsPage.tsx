@@ -8,7 +8,7 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
@@ -81,6 +81,7 @@ const TABS = [
   { id: 'ai',            labelKey: 'tabs.ai',            icon: Bot },
   { id: 'connectivity',  labelKey: 'tabs.connectivity',  icon: Plug },
   { id: 'mobile-money',  labelKey: 'tabs.mobileMoney',    icon: Smartphone },
+  { id: 'interview-sim', labelKey: 'tabs.interviewSim',  icon: Mic },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -130,6 +131,7 @@ export default function SettingsPage() {
       {tab === 'ai'            && <AiTab qc={qc} />}
       {tab === 'connectivity'  && <ConnectivityTab />}
       {tab === 'mobile-money'  && <MobileMoneyTab qc={qc} />}
+      {tab === 'interview-sim' && <InterviewSimTab qc={qc} />}
     </div>
   )
 }
@@ -404,6 +406,114 @@ function AiTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         </button>
       </div>
       {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('ai.saveError')}</p>}
+    </div>
+  )
+}
+
+// ── Tab: Simulations d'entretien (interview_sim) ────────────────────────────────
+// Réglages module : langue par défaut des questions, nb de questions générées,
+// expiration des liens publics, texte de consentement RGPD (snapshot exact
+// affiché au candidat/employé) et durée de conservation de la preuve de
+// consentement (interview_sim_consents), purgée quotidiennement côté worker.
+interface InterviewSimConfig {
+  default_langue: 'fr' | 'en'; questions_count: number
+  public_token_ttl_minutes: number; consent_text: string | null
+  consent_retention_months: number
+}
+
+function InterviewSimTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { t } = useTranslation('settings')
+  const { data, isLoading } = useQuery<{ data: InterviewSimConfig }>({
+    queryKey: ['settings-interview-sim'],
+    queryFn: () => api.get('/interview-sim/config').then(r => r.data),
+  })
+  const cfg = data?.data
+  const [form, setForm] = useState<Partial<{
+    defaultLangue: 'fr' | 'en'; questionsCount: number
+    publicTokenTtlMinutes: number; consentText: string; consentRetentionMonths: number
+  }>>({})
+  const [saved, setSaved] = useState(false)
+
+  const save = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => api.put('/interview-sim/config', payload),
+    onSuccess: () => {
+      setSaved(true); setForm({})
+      qc.invalidateQueries({ queryKey: ['settings-interview-sim'] })
+      setTimeout(() => setSaved(false), 2500)
+    },
+  })
+
+  if (isLoading || !cfg) return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>
+
+  const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring'
+
+  const v = {
+    defaultLangue: form.defaultLangue ?? cfg.default_langue,
+    questionsCount: form.questionsCount ?? cfg.questions_count,
+    publicTokenTtlMinutes: form.publicTokenTtlMinutes ?? cfg.public_token_ttl_minutes,
+    consentText: form.consentText ?? cfg.consent_text ?? '',
+    consentRetentionMonths: form.consentRetentionMonths ?? cfg.consent_retention_months,
+  }
+
+  const submit = () => {
+    save.mutate({
+      defaultLangue: v.defaultLangue,
+      questionsCount: v.questionsCount,
+      publicTokenTtlMinutes: v.publicTokenTtlMinutes,
+      consentText: v.consentText,
+      consentRetentionMonths: v.consentRetentionMonths,
+    })
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <p className="text-sm text-muted-foreground">{t('interviewSim.intro')}</p>
+
+      <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('interviewSim.defaultLangue')}</label>
+            <select className={inputCls} value={v.defaultLangue}
+              onChange={e => setForm(p => ({ ...p, defaultLangue: e.target.value as 'fr' | 'en' }))}>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('interviewSim.questionsCount')}</label>
+            <input type="number" min={1} max={15} className={inputCls} value={v.questionsCount}
+              onChange={e => setForm(p => ({ ...p, questionsCount: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('interviewSim.publicTokenTtlMinutes')}</label>
+            <input type="number" min={5} max={1440} className={inputCls} value={v.publicTokenTtlMinutes}
+              onChange={e => setForm(p => ({ ...p, publicTokenTtlMinutes: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{t('interviewSim.consentRetentionMonths')}</label>
+            <input type="number" min={1} max={120} className={inputCls} value={v.consentRetentionMonths}
+              onChange={e => setForm(p => ({ ...p, consentRetentionMonths: Number(e.target.value) }))} />
+            <p className="mt-1 text-xs text-muted-foreground">{t('interviewSim.consentRetentionMonthsHint')}</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">{t('interviewSim.consentText')}</label>
+          <textarea rows={3} className={inputCls} value={v.consentText} maxLength={2000}
+            onChange={e => setForm(p => ({ ...p, consentText: e.target.value }))} />
+          <p className="mt-1 text-xs text-muted-foreground">{t('interviewSim.consentTextHint')}</p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+          {saved && <span className="text-xs text-green-600">{t('interviewSim.saved')}</span>}
+          <button onClick={submit}
+            disabled={Object.keys(form).length === 0 || save.isPending}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+            <Save className="h-4 w-4" />{save.isPending ? t('interviewSim.saving') : t('interviewSim.save')}
+          </button>
+        </div>
+        {save.isError && <p className="text-xs text-red-600 text-right">{(save.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('interviewSim.saveError')}</p>}
+      </div>
     </div>
   )
 }

@@ -43,10 +43,11 @@ describe('config RBAC', () => {
     expect(res.statusCode).toBe(403)
   })
   it('200 pour admin', async () => {
-    queryMock.mockResolvedValue({ rows: [{ default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null }] })
+    queryMock.mockResolvedValue({ rows: [{ default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null, consent_retention_months: 36 }] })
     const res = await app.inject({ method: 'GET', url: '/interview-sim/config', headers: { authorization: `Bearer ${token('admin')}` } })
     expect(res.statusCode).toBe(200)
     expect(res.json().data.questions_count).toBe(5)
+    expect(res.json().data.consent_retention_months).toBe(36)
   })
 })
 
@@ -56,18 +57,54 @@ describe('PUT config', () => {
     const res = await app.inject({
       method: 'PUT', url: '/interview-sim/config',
       headers: { authorization: `Bearer ${token('hr_manager')}` },
-      payload: { defaultLangue: 'en', questionsCount: 8, publicTokenTtlMinutes: 120, consentText: 'Consent EN' },
+      payload: { defaultLangue: 'en', questionsCount: 8, publicTokenTtlMinutes: 120, consentText: 'Consent EN', consentRetentionMonths: 24 },
     })
     expect(res.statusCode).toBe(200)
     const up = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_config') && String(c[0]).includes('ON CONFLICT'))
     expect(up).toBeTruthy()
+    expect(up?.[1]).toContain(24)
   })
   it('400 si questionsCount hors bornes', async () => {
     const res = await app.inject({
       method: 'PUT', url: '/interview-sim/config',
       headers: { authorization: `Bearer ${token('admin')}` },
-      payload: { defaultLangue: 'fr', questionsCount: 99, publicTokenTtlMinutes: 60, consentText: '' },
+      payload: { defaultLangue: 'fr', questionsCount: 99, publicTokenTtlMinutes: 60, consentText: '', consentRetentionMonths: 36 },
     })
     expect(res.statusCode).toBe(400)
+  })
+  it('400 si consentRetentionMonths = 0 (sous la borne min)', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/interview-sim/config',
+      headers: { authorization: `Bearer ${token('admin')}` },
+      payload: { defaultLangue: 'fr', questionsCount: 5, publicTokenTtlMinutes: 60, consentText: '', consentRetentionMonths: 0 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+  it('400 si consentRetentionMonths = 121 (au-dessus de la borne max)', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/interview-sim/config',
+      headers: { authorization: `Bearer ${token('admin')}` },
+      payload: { defaultLangue: 'fr', questionsCount: 5, publicTokenTtlMinutes: 60, consentText: '', consentRetentionMonths: 121 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+  it('400 si consentRetentionMonths non entier', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/interview-sim/config',
+      headers: { authorization: `Bearer ${token('admin')}` },
+      payload: { defaultLangue: 'fr', questionsCount: 5, publicTokenTtlMinutes: 60, consentText: '', consentRetentionMonths: 12.5 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+  it('accepte les bornes 1 et 120', async () => {
+    queryMock.mockResolvedValue({ rows: [] })
+    for (const months of [1, 120]) {
+      const res = await app.inject({
+        method: 'PUT', url: '/interview-sim/config',
+        headers: { authorization: `Bearer ${token('admin')}` },
+        payload: { defaultLangue: 'fr', questionsCount: 5, publicTokenTtlMinutes: 60, consentText: '', consentRetentionMonths: months },
+      })
+      expect(res.statusCode).toBe(200)
+    }
   })
 })

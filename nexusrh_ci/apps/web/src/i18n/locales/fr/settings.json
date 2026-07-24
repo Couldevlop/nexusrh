@@ -16,7 +16,8 @@
     "mfa": "Sécurité (MFA)",
     "ai": "IA (clé & modèle)",
     "connectivity": "Connectivité",
-    "mobileMoney": "Mobile Money"
+    "mobileMoney": "Mobile Money",
+    "interviewSim": "Simulations d'entretien"
   },
   "roles": {
     "admin": "Administrateur",
@@ -593,6 +594,20 @@
       "deleteTitle": "Supprimer",
       "empty": "Aucun connecteur."
     }
+  },
+  "interviewSim": {
+    "intro": "Réglages du module Simulations d'entretien : génération des questions et durée de conservation de la preuve de consentement RGPD (interview_sim_consents), purgée automatiquement chaque jour au-delà de cette durée.",
+    "defaultLangue": "Langue par défaut",
+    "questionsCount": "Nombre de questions générées",
+    "publicTokenTtlMinutes": "Expiration des liens publics (minutes)",
+    "consentText": "Texte de consentement RGPD",
+    "consentTextHint": "Affiché avant chaque simulation (interne et publique). Laisser vide pour utiliser le texte par défaut.",
+    "consentRetentionMonths": "Durée de conservation du consentement (mois)",
+    "consentRetentionMonthsHint": "Durée pendant laquelle la preuve de consentement (RGPD art. 7-1) est conservée avant purge automatique quotidienne. Entre 1 et 120 mois.",
+    "save": "Enregistrer",
+    "saving": "Enregistrement...",
+    "saved": "Configuration enregistrée.",
+    "saveError": "Erreur lors de l'enregistrement."
   },
   "mfa": {
     "title": "Authentification à deux facteurs",

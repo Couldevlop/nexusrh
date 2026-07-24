@@ -16,7 +16,8 @@
     "mfa": "Security (MFA)",
     "ai": "AI (key & model)",
     "connectivity": "Connectivity",
-    "mobileMoney": "Mobile Money"
+    "mobileMoney": "Mobile Money",
+    "interviewSim": "Interview simulations"
   },
   "roles": {
     "admin": "Administrator",
@@ -593,6 +594,20 @@
       "deleteTitle": "Delete",
       "empty": "No connector."
     }
+  },
+  "interviewSim": {
+    "intro": "Settings for the Interview Simulations module: question generation and how long the GDPR consent proof (interview_sim_consents) is kept before being automatically purged every day past that duration.",
+    "defaultLangue": "Default language",
+    "questionsCount": "Number of questions generated",
+    "publicTokenTtlMinutes": "Public link expiry (minutes)",
+    "consentText": "GDPR consent text",
+    "consentTextHint": "Shown before every simulation (internal and public). Leave empty to use the default text.",
+    "consentRetentionMonths": "Consent retention period (months)",
+    "consentRetentionMonthsHint": "How long the consent proof (GDPR art. 7-1) is kept before the daily automatic purge. Between 1 and 120 months.",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Configuration saved.",
+    "saveError": "Failed to save."
   },
   "mfa": {
     "title": "Two-factor authentication",

@@ -64,6 +64,18 @@ async function loadTenantConfig(schema: string): Promise<TenantCfg> {
   return r.rows[0] ?? { default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null }
 }
 
+// Config COMPLÈTE (GET/PUT /config) — inclut consent_retention_months, absente de
+// loadTenantConfig ci-dessus (utilisée par start/submit/consent, pas besoin de la
+// durée de rétention). Repli 36 mois si la colonne/ligne est absente.
+interface TenantCfgFull extends TenantCfg { consent_retention_months: number }
+async function loadFullTenantConfig(schema: string): Promise<TenantCfgFull> {
+  const r = await pool.query<TenantCfgFull>(
+    `SELECT default_langue, questions_count, public_token_ttl_minutes, consent_text, consent_retention_months
+       FROM "${schema}".interview_sim_config WHERE id = 1`,
+  )
+  return r.rows[0] ?? { default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null, consent_retention_months: 36 }
+}
+
 // Texte de consentement RGPD par défaut — utilisé quand le tenant n'a pas
 // personnalisé `interview_sim_config.consent_text`. Une SEULE source de
 // vérité (DRY) pour les 2 flux (interne/public) + l'endpoint dédié employé.
@@ -200,6 +212,10 @@ const configSchema = z.object({
   questionsCount: z.number().int().min(1).max(15),
   publicTokenTtlMinutes: z.number().int().min(5).max(1440),
   consentText: z.string().max(2000),
+  // Durée de conservation (mois) de la preuve de consentement RGPD
+  // (interview_sim_consents) — bornée [1, 120], purgée par le job quotidien
+  // du worker (apps/worker/src/jobs/interview-sim-consent-purge.ts).
+  consentRetentionMonths: z.number().int().min(1).max(120),
 }).strict()
 
 const publicSubmitSchema = z.object({
@@ -366,7 +382,7 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...CONFIG_ROLES), migrateSchemaOfAuthenticatedUser],
     schema: { tags: ['interview-sim'], summary: 'Configuration du module Simulations d’entretien' },
     handler: async (request, reply) => {
-      const cfg = await loadTenantConfig(request.user.schemaName)
+      const cfg = await loadFullTenantConfig(request.user.schemaName)
       return reply.send({ data: cfg })
     },
   })
@@ -382,15 +398,16 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       const b = parsed.data
       await pool.query(
         `INSERT INTO "${schema}".interview_sim_config
-           (id, default_langue, questions_count, public_token_ttl_minutes, consent_text, updated_at)
-         VALUES (1, $1, $2, $3, $4, now())
+           (id, default_langue, questions_count, public_token_ttl_minutes, consent_text, consent_retention_months, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, now())
          ON CONFLICT (id) DO UPDATE SET
            default_langue = excluded.default_langue,
            questions_count = excluded.questions_count,
            public_token_ttl_minutes = excluded.public_token_ttl_minutes,
            consent_text = excluded.consent_text,
+           consent_retention_months = excluded.consent_retention_months,
            updated_at = now()`,
-        [b.defaultLangue, b.questionsCount, b.publicTokenTtlMinutes, b.consentText || null],
+        [b.defaultLangue, b.questionsCount, b.publicTokenTtlMinutes, b.consentText || null, b.consentRetentionMonths],
       )
       return reply.send({ data: { ok: true } })
     },
