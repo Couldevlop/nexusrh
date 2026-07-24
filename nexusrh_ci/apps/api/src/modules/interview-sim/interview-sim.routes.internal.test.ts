@@ -40,6 +40,7 @@ import { genererQuestions } from './interview-sim-ai.service.js'
 
 const SCHEMA = 'tenant_sotra'
 const JOB_ID = '22222222-2222-2222-2222-222222222222'
+const SESSION_ID = '44444444-4444-4444-4444-444444444444'
 let app: FastifyInstance
 
 function tokenFor(employeeId: string | null, role = 'employee') {
@@ -140,13 +141,14 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
       const s = String(sql)
       if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
       if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
       if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
       method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
-      payload: { langue: 'fr', questions: ['Q1'], categories: ['Java'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], categories: ['Java'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().data.retour).toBeTruthy()
@@ -165,6 +167,57 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
     expect(res.statusCode).toBe(400)
   })
 
+  it('400 si sessionId absent du body (contournement du consentement impossible même à tenter)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('403 avec un sessionId inconnu (aucune trace correspondante) — pas d’appel IA ni de compteur', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeFalsy()
+  })
+
+  it('403 avec un sessionId de consentement appartenant à UN AUTRE employé', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      // La requête filtre employee_id = $3 (JWT) : un consentement d'un AUTRE
+      // employé ne doit jamais matcher, donc le mock reflète bien 0 ligne ici.
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+    const check = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_consents') && String(c[0]).toLowerCase().includes('select'))
+    expect(check).toBeTruthy()
+    const [, params] = check as [string, unknown[]]
+    expect(params).toContain('emp-1') // employee_id lié au JWT, jamais au body
+  })
+
   it('404 si l’offre n’est pas interne-visible', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
@@ -174,7 +227,7 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
     const res = await app.inject({
       method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
-      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
     })
     expect(res.statusCode).toBe(404)
   })
@@ -189,7 +242,7 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
     const res = await app.inject({
       method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
-      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
     })
     expect(res.statusCode).toBe(404)
     expect(res.json()).toEqual({ error: 'Offre introuvable' })

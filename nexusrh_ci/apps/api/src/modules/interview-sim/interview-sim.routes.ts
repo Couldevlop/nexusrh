@@ -48,6 +48,11 @@ const transcriptItemSchema = z.object({
 
 const internalJobSubmitSchema = z.object({
   langue: z.enum(['fr', 'en']),
+  // Trace de consentement (POST .../consent) exigée AVANT la soumission —
+  // vérifiée contre interview_sim_consents (scope='internal') dans le handler.
+  // Sans ce champ, un employé authentifié pourrait appeler /submit DIRECTEMENT
+  // sans jamais passer par /consent ni /start (contournement RGPD art. 7-1).
+  sessionId: z.string().uuid(),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
   categories: z.array(z.string().max(60)).max(30).optional(),
   answers: z.array(transcriptItemSchema).min(1).max(30),
@@ -113,6 +118,24 @@ async function loadEligibleInternalJob(schema: string, employeeId: string, jobId
     [jobId, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id],
   )
   return jobRes.rows[0] ?? null
+}
+
+/**
+ * Vérifie qu'une trace de consentement RGPD (art. 7-1) existe pour CET
+ * employé, CETTE offre et CE sessionId précisément (`scope = 'internal'`).
+ * Utilisée identiquement par `start` (query) et `submit` (body) — l'un ne
+ * doit jamais être moins strict que l'autre : sans ce garde sur `submit`, un
+ * employé authentifié pourrait appeler l'endpoint directement et recevoir un
+ * retour IA complet sans jamais prouver son consentement.
+ */
+async function hasInternalConsent(schema: string, sessionId: string, jobId: string, employeeId: string): Promise<boolean> {
+  const consent = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".interview_sim_consents
+      WHERE session_id = $1 AND job_id = $2 AND scope = 'internal' AND employee_id = $3
+      LIMIT 1`,
+    [sessionId, jobId, employeeId],
+  )
+  return !!consent.rows[0]
 }
 
 const PUBLIC_AUD = 'interview-sim-public'
@@ -220,13 +243,7 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       // POST .../consent, pour CET employé ET cette offre précisément.
       const { sessionId } = request.query as { sessionId?: string }
       if (!sessionId || !UUID_RE.test(sessionId)) return reply.status(403).send({ error: 'Consentement requis' })
-      const consent = await pool.query<{ id: string }>(
-        `SELECT id FROM "${schema}".interview_sim_consents
-          WHERE session_id = $1 AND job_id = $2 AND scope = 'internal' AND employee_id = $3
-          LIMIT 1`,
-        [sessionId, jobId, employeeId],
-      )
-      if (!consent.rows[0]) return reply.status(403).send({ error: 'Consentement requis' })
+      if (!(await hasInternalConsent(schema, sessionId, jobId, employeeId))) return reply.status(403).send({ error: 'Consentement requis' })
 
       const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
       const secteur = sec.rows[0]?.sector ?? null
@@ -274,6 +291,13 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       // traiter une offre hors périmètre — un 404 ici doit refléter le 404 de start).
       const job = await loadEligibleInternalJob(schema, employeeId, jobId)
       if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+      // Consentement RGPD OBLIGATOIRE avant toute génération de retour IA —
+      // même garde que GET .../start (voir hasInternalConsent). Sans elle, un
+      // employé authentifié pouvait appeler /submit directement sans jamais
+      // passer par /consent ni /start.
+      if (!(await hasInternalConsent(schema, body.sessionId, jobId, employeeId))) return reply.status(403).send({ error: 'Consentement requis' })
+
       const title = job.title
       const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
       const secteur = sec.rows[0]?.sector ?? null

@@ -289,6 +289,88 @@ describe('GET /interview-sim/internal-jobs/:jobId/start — blocage sans consent
   })
 })
 
+describe('POST /interview-sim/internal-jobs/:jobId/submit — blocage sans consentement', () => {
+  const payloadSansSessionId = {
+    langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }],
+  }
+  const payloadAvecSessionId = { ...payloadSansSessionId, sessionId: SESSION_ID }
+
+  it('400 sans sessionId (le schéma refuse — impossible même de tenter le contournement)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: payloadSansSessionId,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('403 avec un sessionId inconnu (aucune trace correspondante) — pas de retour IA, pas de compteur', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const found = eligibleJobRows(sql)
+      if (found) return Promise.resolve(found)
+      const s = String(sql)
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: payloadAvecSessionId,
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' }) // aucun champ `retour` : produireRetour jamais atteint
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeFalsy()
+  })
+
+  it('200 avec un sessionId valide (trace correspondante trouvée) : retour IA renvoyé', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const found = eligibleJobRows(sql)
+      if (found) return Promise.resolve(found)
+      const s = String(sql)
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
+      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: payloadAvecSessionId,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.retour).toBeTruthy()
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeTruthy()
+  })
+
+  it('la vérification du consentement lie employee_id AU JWT — un consentement d’un AUTRE employé ne satisfait jamais la garde', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const found = eligibleJobRows(sql)
+      if (found) return Promise.resolve(found)
+      const s = String(sql)
+      // La trace de consentement existe mais appartient à 'emp-AUTRE' : la
+      // requête SQL filtre employee_id = $3 (JWT) ⇒ 0 ligne pour 'emp-1' ici.
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: payloadAvecSessionId,
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+
+    const check = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_consents') && String(c[0]).toLowerCase().includes('select'))
+    expect(check).toBeTruthy()
+    const [sql, params] = check as [string, unknown[]]
+    expect(sql).toContain('employee_id = $3') // la garde filtre bien sur l'employé du JWT
+    expect(params).toContain('emp-1')
+    expect(params).toContain(SESSION_ID)
+    expect(params).toContain(JOB_ID)
+  })
+})
+
 describe('POST /public/interview-sim/:token/submit — blocage sans consentement', () => {
   it('403 avec un sessionId inconnu (aucune trace correspondante)', async () => {
     queryMock.mockImplementation((sql: string) => {
