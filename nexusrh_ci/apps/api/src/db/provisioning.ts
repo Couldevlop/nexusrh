@@ -1127,19 +1127,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     await q(stmt)
   }
 
-  // Simulations d'entretien : historique PRIVÉ (interne seul) + config tenant
-  await q(`CREATE TABLE IF NOT EXISTS ${s}.interview_sim_attempts (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    employee_id uuid NOT NULL,
-    role_key    varchar(120) NOT NULL,
-    langue      varchar(2) NOT NULL DEFAULT 'fr',
-    questions   jsonb NOT NULL DEFAULT '[]',
-    answers     jsonb NOT NULL DEFAULT '[]',
-    retour      jsonb,
-    created_at  timestamptz NOT NULL DEFAULT now()
-  )`)
-  await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_interview_attempts_emp_idx"
-           ON ${s}.interview_sim_attempts(employee_id, created_at DESC)`)
+  // Simulations d'entretien : config tenant (singleton). L'historique privé
+  // interview_sim_attempts n'est plus provisionné : le flux est désormais
+  // offre-scopé et ÉPHÉMÈRE (rien n'est persisté par salarié) ; la table
+  // (transcriptions + évaluation IA, sans chemin d'effacement) est purgée
+  // par la migration lazy au titre de la limitation de conservation (RGPD).
   await q(`CREATE TABLE IF NOT EXISTS ${s}.interview_sim_config (
     id                      int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     default_langue          varchar(2) NOT NULL DEFAULT 'fr',

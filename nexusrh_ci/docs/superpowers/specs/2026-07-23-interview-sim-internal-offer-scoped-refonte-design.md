@@ -32,7 +32,7 @@ refonte esthétique réelle, menée avec le **skill frontend-design**.
 | Menu self-service générique | **Supprimé entièrement** : entrée sidebar + route `/mon-espace/simulations` + page `MesSimulations.tsx` (+ test). L'entretien ne se lance QUE depuis une offre interne. |
 | Source de calibrage | L'**offre interne** (`recruitment_jobs`) : `interview_focus` + `experience_level`, comme le flux public. Plus jamais le poste de l'employé. |
 | Lancement | **En place** dans la fiche offre (modale de détail de `MesOffresInternes`) : bascule vers l'entretien puis la restitution, sans nouvel onglet, sans quitter la page. Retour = revient au détail de l'offre. |
-| Rétention | **Éphémère, comme l'externe** : restitution affichée sur place, **rien de personnel stocké** (au plus le compteur anonyme agrégé `platform.interview_sim_usage`). Évite des données `interview_sim_attempts` sans UI pour les consulter/effacer (piège RGPD). |
+| Rétention | **Éphémère, comme l'externe** : restitution affichée sur place, **rien de personnel stocké** (au plus le compteur anonyme agrégé `platform.interview_sim_usage`). **Correctif du 2026-07-24** : la table `interview_sim_attempts` (historique de l'ancien flux self-service supprimé) n'a plus aucun chemin de lecture ni d'écriture et aucun chemin d'effacement (pas de FK/CASCADE, suppression employé en soft delete) → décision revue, la table est **supprimée** (plus provisionnée, `DROP TABLE IF EXISTS` en migration lazy pour purger les schémas existants), au titre de la limitation de conservation RGPD. |
 | Authentification | Routes **authentifiées** (salarié connecté) — pas de jeton éphémère (réservé au candidat externe anonyme). Scoping tenant via `schemaName` du JWT, jamais du body/params (OWASP A01/A03). |
 | Restitution | Refonte visuelle de `InterviewRestitution` via **frontend-design**. Composant **partagé** → l'externe (`PublicInterviewSimPage`) en bénéficie automatiquement. |
 
@@ -74,9 +74,12 @@ Deviennent inutiles et sont **retirées** de `interview-sim.routes.ts` :
 Conservés intacts : `GET/PUT /interview-sim/config` (réglages tenant) et **tout le
 bloc public** (`interviewSimPublicRoutes`).
 
-La table `interview_sim_attempts` reste en place (inerte) — aucune migration
-supprimée, zéro risque sur les tenants existants. Le `mintPublicInterviewToken` et
-le flux public sont inchangés.
+**Correctif du 2026-07-24 (RGPD)** : la table `interview_sim_attempts` n'est plus
+provisionnée (`provisioning.ts`) et une migration lazy idempotente
+(`DROP TABLE IF EXISTS`, `schema-migrations.ts`) supprime les schémas déjà créés —
+sa finalité a disparu avec l'ancien flux self-service et il n'existait aucun chemin
+d'effacement des données personnelles qu'elle contenait (transcriptions + évaluation
+IA). Le `mintPublicInterviewToken` et le flux public sont inchangés.
 
 ### 3.3 Frontend — bouton + entretien en place dans `MesOffresInternes`
 
@@ -154,4 +157,7 @@ la nouvelle vue interne consomment le même rendu.
 - Pas de calibrage sur la séniorité du salarié (on prend celle de l'offre).
 - Pas de refonte du déroulé public (`PublicInterviewSimPage`) au-delà du composant
   partagé de restitution.
-- Pas de suppression de la table `interview_sim_attempts` ni de sa migration.
+- ~~Pas de suppression de la table `interview_sim_attempts` ni de sa migration.~~
+  **Revu le 2026-07-24** : la table est supprimée (voir §2 « Rétention » et §3.2)
+  au titre de la limitation de conservation RGPD — sa finalité avait disparu et
+  aucun chemin d'effacement n'existait.

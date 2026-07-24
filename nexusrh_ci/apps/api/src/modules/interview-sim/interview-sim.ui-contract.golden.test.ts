@@ -93,11 +93,11 @@ describe('GOLDEN interview_sim — i18n FR/EN', () => {
 })
 
 describe('GOLDEN interview_sim — persistance provisionnée + migrée + seedée', () => {
-  it('banque platform + historique tenant + config', () => {
+  it('banque platform + config tenant provisionnées ; historique attempts SUPPRIMÉ (RGPD)', () => {
     expect(provisioning).toContain('platform.interview_sim_question_banks')
-    expect(provisioning).toContain('interview_sim_attempts')
+    expect(provisioning).not.toMatch(/CREATE TABLE[\s\S]{0,20}interview_sim_attempts/)
     expect(migrations).toContain('platform.interview_sim_question_banks')
-    expect(migrations).toContain('interview_sim_attempts')
+    expect(migrations).toContain('DROP TABLE IF EXISTS "${schemaName}".interview_sim_attempts')
     expect(migrations).toContain('interview_sim_config')
   })
   it('banque de démo amorcée', () => {
