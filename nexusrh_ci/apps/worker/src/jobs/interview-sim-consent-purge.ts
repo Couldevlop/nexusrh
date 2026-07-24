@@ -50,6 +50,13 @@ export async function processInterviewSimConsentPurgeJob(_job: Job): Promise<voi
   let tenantCount = 0
   let totalDeleted = 0
   try {
+    // Choix ASSUMÉ (décision 2026-07-24) : les tenants suspendus/rejetés/annulés
+    // sont exclus du balayage — leur schéma est gelé (aucune activité), leurs
+    // données ne sont pas altérées tant que le compte n'est pas réactivé ou
+    // définitivement supprimé. Conséquence : les traces de consentement d'un
+    // tenant suspendu survivent à la fenêtre de rétention le temps de la
+    // suspension ; leur purge reprend à la réactivation. Cohérent avec
+    // attendance-cron.ts.
     const tenants = await pool.query<{ schema_name: string }>(
       `SELECT schema_name FROM platform.tenants
         WHERE status NOT IN ('rejected', 'suspended', 'cancelled')
