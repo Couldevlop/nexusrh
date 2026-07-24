@@ -14,8 +14,8 @@ describe('module interview_sim — déclaration', () => {
 
   it('mappe les URL internes /interview-sim → interview_sim', () => {
     expect(moduleKeyForUrl('/interview-sim')).toBe('interview_sim')
-    expect(moduleKeyForUrl('/interview-sim/start')).toBe('interview_sim')
-    expect(moduleKeyForUrl('/interview-sim/my-attempts/abc')).toBe('interview_sim')
+    expect(moduleKeyForUrl('/interview-sim/internal-jobs/22222222-2222-2222-2222-222222222222/start')).toBe('interview_sim')
+    expect(moduleKeyForUrl('/interview-sim/config')).toBe('interview_sim')
   })
 
   it('les surcharges tenant peuvent activer le module', () => {

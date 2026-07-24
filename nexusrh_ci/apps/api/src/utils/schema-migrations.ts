@@ -681,21 +681,17 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // ── Classification des données à 4 niveaux (réf. + règles d'accès) ────────
     ...classificationTableStatements(schemaName),
 
-    // ── Simulations d'entretien : historique PRIVÉ (interne seul) + config ────
-    // Cloisonné au schéma du tenant, lié à employee_id, visible du seul salarié
-    // (scoping employee_id dérivé du JWT). answers/retour en jsonb.
-    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_attempts (
-      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      employee_id uuid NOT NULL,
-      role_key    varchar(120) NOT NULL,
-      langue      varchar(2) NOT NULL DEFAULT 'fr',
-      questions   jsonb NOT NULL DEFAULT '[]',
-      answers     jsonb NOT NULL DEFAULT '[]',
-      retour      jsonb,
-      created_at  timestamptz NOT NULL DEFAULT now()
-    )`,
-    `CREATE INDEX IF NOT EXISTS "${schemaName}_interview_attempts_emp_idx"
-       ON "${schemaName}".interview_sim_attempts(employee_id, created_at DESC)`,
+    // ── Simulations d'entretien : historique privé SUPPRIMÉ (RGPD) ────────────
+    // L'ancien flux self-service (qui écrivait ici) a été retiré : le flux
+    // actuel est désormais offre-scopé et ÉPHÉMÈRE (rien n'est persisté par
+    // salarié). Cette table contenait des données personnelles sensibles
+    // (transcriptions d'entretien verbatim + évaluation IA du salarié) dont
+    // la finalité a disparu et pour lesquelles il n'existait aucun chemin
+    // d'effacement (pas de FK/CASCADE sur employees, suppression employé en
+    // soft delete) → suppression au titre du principe de limitation de la
+    // conservation (RGPD). Statement idempotent, conservé pour purger les
+    // schémas déjà provisionnés avant ce correctif.
+    `DROP TABLE IF EXISTS "${schemaName}".interview_sim_attempts`,
     // Config tenant (singleton) : langue par défaut, nb de questions, expiration
     // des jetons publics (minutes), texte de consentement personnalisable.
     `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_config (
@@ -710,6 +706,31 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // langues CECRL) pour calibrer la génération de questions d'entretien sur
     // le poste de l'employé. Optionnel — NULL = non renseigné (repli générique).
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS interview_focus jsonb`,
+
+    // ── Preuve de consentement RGPD (art. 7-1) avant simulation d'entretien ────
+    // Le responsable de traitement doit pouvoir DÉMONTRER le consentement.
+    // consent_text est un SNAPSHOT EXACT du texte affiché/accepté au moment du
+    // consentement (jamais une référence à un texte modifiable a posteriori).
+    // scope='internal' : employee_id renseigné (personne identifiée).
+    // scope='public'   : trace STRICTEMENT ANONYME — employee_id NULL, aucune
+    // adresse IP ni autre donnée personnelle collectée (décision produit).
+    // Les réponses d'entretien elles-mêmes restent ÉPHÉMÈRES (jamais persistées) ;
+    // seule la preuve de consentement est conservée, pour une durée paramétrable
+    // (cf. interview_sim_config.consent_retention_months) purgée périodiquement.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".interview_sim_consents (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      scope         varchar(10) NOT NULL CHECK (scope IN ('internal','public')),
+      employee_id   uuid,
+      job_id        uuid NOT NULL,
+      session_id    varchar(64) NOT NULL,
+      consent_text  text NOT NULL,
+      accepted_at   timestamptz NOT NULL DEFAULT now()
+    )`,
+    // Sert la purge périodique par rétention (consent_retention_months).
+    `CREATE INDEX IF NOT EXISTS idx_interview_sim_consents_accepted_at ON "${schemaName}".interview_sim_consents (accepted_at)`,
+    // Durée de conservation de la preuve de consentement, paramétrable par tenant
+    // (RGPD — limitation de la conservation). 36 mois par défaut.
+    `ALTER TABLE "${schemaName}".interview_sim_config ADD COLUMN IF NOT EXISTS consent_retention_months int NOT NULL DEFAULT 36`,
 
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),

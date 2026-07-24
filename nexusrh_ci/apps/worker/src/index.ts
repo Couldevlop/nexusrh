@@ -10,6 +10,7 @@ import { processLegislationWatchJob } from './jobs/legislation-watch.js'
 import { processAttendancePollJob } from './jobs/attendance-poll.js'
 import { processAttendanceEvaluateJob } from './jobs/attendance-evaluate.js'
 import { processAttendanceCronJob } from './jobs/attendance-cron.js'
+import { processInterviewSimConsentPurgeJob } from './jobs/interview-sim-consent-purge.js'
 
 type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
@@ -122,6 +123,21 @@ async function scheduleAttendanceCron(): Promise<void> {
   logger.info({ pattern }, 'attendance: cron quotidien programmé')
 }
 
+// Simulations d'entretien : purge quotidienne des preuves de consentement RGPD
+// (interview_sim_consents) au-delà de la durée de conservation par tenant
+// (par défaut 03h30 Africa/Abidjan — obligatoire, une conservation illimitée
+// recréerait le problème de limitation de la conservation corrigé le 24/07/2026).
+async function scheduleInterviewSimConsentPurgeCron(): Promise<void> {
+  const pattern = process.env['INTERVIEW_SIM_PURGE_CRON'] ?? '30 3 * * *'
+  const q = new Queue('interview-sim-consent-purge', { connection })
+  await q.upsertJobScheduler(
+    'interview-sim-consent-purge-daily',
+    { pattern, tz: 'Africa/Abidjan' },
+    { name: 'interview-sim-consent-purge-daily', data: {} },
+  )
+  logger.info({ pattern }, 'interview-sim-consent-purge: cron quotidien programmé')
+}
+
 async function start(): Promise<void> {
   logger.info('NexusRH CI Worker starting...')
 
@@ -134,16 +150,19 @@ async function start(): Promise<void> {
   workers.push(createWorker('attendance-poll', processAttendancePollJob as JobHandler))
   workers.push(createWorker('attendance-evaluate', processAttendanceEvaluateJob as JobHandler))
   workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
+  workers.push(createWorker('interview-sim-consent-purge', processInterviewSimConsentPurgeJob as JobHandler))
 
   await scheduleLegalWatchCron()
   await scheduleLegislationWatchCron()
   await scheduleAttendanceCron()
+  await scheduleInterviewSimConsentPurgeCron()
 
   logger.info(
     {
       queues: [
         'email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci',
         'legal-watch', 'legislation-watch', 'attendance-poll', 'attendance-evaluate',
+        'attendance-cron', 'interview-sim-consent-purge',
       ],
     },
     'Workers started',

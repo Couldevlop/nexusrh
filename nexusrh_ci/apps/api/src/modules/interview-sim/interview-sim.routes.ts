@@ -1,13 +1,18 @@
 /**
  * Simulations d'entretien — routes (prefix /interview-sim).
  *
- * Bloc INTERNE (authentifié) : entraînement self-service du salarié + historique
- * PRIVÉ (visible du seul salarié, scoping employee_id dérivé du JWT — jamais du
- * body/query, OWASP A01/A03).
+ * Bloc INTERNE (authentifié) : entraînement OFFRE-SCOPÉ, déclenché depuis la
+ * fiche d'une offre interne (MesOffresInternes → OfferInterviewRunner) et
+ * calibré sur le profil de CETTE offre (interview_focus + experience_level),
+ * jamais sur le poste actuel de l'employé. ÉPHÉMÈRE : aucune persistance —
+ * ni tentative ni réponse ni retour ne sont écrits, au plus un compteur
+ * ANONYME agrégé (`incrementUsage`, sans employee_id). Il n'existe donc plus
+ * d'historique privé consultable a posteriori.
  *
  * Bloc PUBLIC à jeton : plugin SÉPARÉ `interviewSimPublicRoutes` (exporté plus
  * bas dans ce fichier), enregistré par app.ts sous le préfixe DISTINCT
  * `/public/interview-sim` (et non `/interview-sim/public`) — voir app.ts.
+ * Comportement inchangé par la refonte ci-dessus.
  *
  * Migration lazy : preHandler de ROUTE `migrateSchemaOfAuthenticatedUser` placé
  * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
@@ -15,8 +20,10 @@
  */
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { normalizeRoleKey, readBank, feedBank, incrementUsage } from './interview-sim-bank.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
@@ -26,6 +33,7 @@ import {
 } from './interview-sim-ai.service.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function migrateSchemaOfAuthenticatedUser(req: FastifyRequest): Promise<void> {
   const u = (req as FastifyRequest & { user?: { schemaName?: string } }).user
@@ -38,11 +46,15 @@ const transcriptItemSchema = z.object({
   transcript: z.string().max(5000),
 }).strict()
 
-const submitSchema = z.object({
-  roleKey: z.string().min(1).max(120),
+const internalJobSubmitSchema = z.object({
   langue: z.enum(['fr', 'en']),
+  // Trace de consentement (POST .../consent) exigée AVANT la soumission —
+  // vérifiée contre interview_sim_consents (scope='internal') dans le handler.
+  // Sans ce champ, un employé authentifié pourrait appeler /submit DIRECTEMENT
+  // sans jamais passer par /consent ni /start (contournement RGPD art. 7-1).
+  sessionId: z.string().uuid(),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
-  categories: z.array(z.string().max(60)).max(30).optional(),  // Phase 2 — renvoyées par /start
+  categories: z.array(z.string().max(60)).max(30).optional(),
   answers: z.array(transcriptItemSchema).min(1).max(30),
 }).strict()
 
@@ -52,7 +64,91 @@ async function loadTenantConfig(schema: string): Promise<TenantCfg> {
   return r.rows[0] ?? { default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null }
 }
 
+// Config COMPLÈTE (GET/PUT /config) — inclut consent_retention_months, absente de
+// loadTenantConfig ci-dessus (utilisée par start/submit/consent, pas besoin de la
+// durée de rétention). Repli 36 mois si la colonne/ligne est absente.
+interface TenantCfgFull extends TenantCfg { consent_retention_months: number }
+async function loadFullTenantConfig(schema: string): Promise<TenantCfgFull> {
+  const r = await pool.query<TenantCfgFull>(
+    `SELECT default_langue, questions_count, public_token_ttl_minutes, consent_text, consent_retention_months
+       FROM "${schema}".interview_sim_config WHERE id = 1`,
+  )
+  return r.rows[0] ?? { default_langue: 'fr', questions_count: 5, public_token_ttl_minutes: 60, consent_text: null, consent_retention_months: 36 }
+}
+
+// Texte de consentement RGPD par défaut — utilisé quand le tenant n'a pas
+// personnalisé `interview_sim_config.consent_text`. Une SEULE source de
+// vérité (DRY) pour les 2 flux (interne/public) + l'endpoint dédié employé.
+const DEFAULT_CONSENT_TEXT = 'En démarrant, vous acceptez que vos réponses soient analysées le temps de la session. Aucune donnée personnelle n’est conservée.'
+
+/**
+ * Consentement RGPD (art. 7-1) — validé avant toute simulation, dans les
+ * DEUX flux. `.strict()` : seule la case à cocher est acceptée, jamais de
+ * donnée d'identité dans le body (l'identité vient du JWT ou reste absente).
+ */
+const consentSchema = z.object({ consentAccepted: z.literal(true) }).strict()
+
 function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
+
+interface EligibleInternalJob { title: string; interview_focus: unknown; experience_level: string | null }
+
+/**
+ * Charge l'offre interne SI ET SEULEMENT SI elle est éligible pour cet employé :
+ * visible interne, ouverte, ET dans le périmètre de ciblage (département / niveau
+ * de poste / ancienneté minimale / entité juridique). Utilisé identiquement par
+ * `start` et `submit` — l'un ne doit jamais être moins strict que l'autre
+ * (OWASP A01 : ne jamais révéler/traiter une offre hors périmètre).
+ */
+async function loadEligibleInternalJob(schema: string, employeeId: string, jobId: string): Promise<EligibleInternalJob | null> {
+  // `recruitment_jobs` (visibility, target_*, interview_focus, experience_level)
+  // n'est garanti que par cette migration lazy — les routes interview-sim
+  // n'appellent que ensureTenantSchema, donc self-suffisance requise ici.
+  await ensureRecruitmentSchemaMigrated(schema)
+  const empRes = await pool.query<{ id: string; department_id: string | null; job_level: string | null; hire_date: string | null; legal_entity_id: string | null }>(
+    `SELECT id, department_id, job_level, hire_date, legal_entity_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+    [employeeId],
+  )
+  const emp = empRes.rows[0]
+  if (!emp) return null
+  const seniorityMonths = emp.hire_date
+    ? Math.max(0, Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)))
+    : 0
+
+  const jobRes = await pool.query<EligibleInternalJob>(
+    `SELECT rj.title, rj.interview_focus, rj.experience_level
+       FROM "${schema}".recruitment_jobs rj
+      WHERE rj.id = $1
+        AND rj.visibility IN ('internal','both')
+        AND rj.status = 'open'
+        AND (COALESCE(cardinality(rj.target_departments), 0) = 0
+             OR ($2::uuid IS NOT NULL AND $2::uuid = ANY(rj.target_departments)))
+        AND (COALESCE(cardinality(rj.target_job_levels), 0) = 0
+             OR ($3::varchar IS NOT NULL AND $3::varchar = ANY(rj.target_job_levels)))
+        AND (rj.target_min_seniority_months IS NULL OR rj.target_min_seniority_months <= $4::int)
+        AND (rj.target_legal_entity_id IS NULL OR rj.target_legal_entity_id = $5::uuid)
+      LIMIT 1`,
+    [jobId, emp.department_id, emp.job_level, seniorityMonths, emp.legal_entity_id],
+  )
+  return jobRes.rows[0] ?? null
+}
+
+/**
+ * Vérifie qu'une trace de consentement RGPD (art. 7-1) existe pour CET
+ * employé, CETTE offre et CE sessionId précisément (`scope = 'internal'`).
+ * Utilisée identiquement par `start` (query) et `submit` (body) — l'un ne
+ * doit jamais être moins strict que l'autre : sans ce garde sur `submit`, un
+ * employé authentifié pourrait appeler l'endpoint directement et recevoir un
+ * retour IA complet sans jamais prouver son consentement.
+ */
+async function hasInternalConsent(schema: string, sessionId: string, jobId: string, employeeId: string): Promise<boolean> {
+  const consent = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".interview_sim_consents
+      WHERE session_id = $1 AND job_id = $2 AND scope = 'internal' AND employee_id = $3
+      LIMIT 1`,
+    [sessionId, jobId, employeeId],
+  )
+  return !!consent.rows[0]
+}
 
 const PUBLIC_AUD = 'interview-sim-public'
 
@@ -116,159 +212,168 @@ const configSchema = z.object({
   questionsCount: z.number().int().min(1).max(15),
   publicTokenTtlMinutes: z.number().int().min(5).max(1440),
   consentText: z.string().max(2000),
+  // Durée de conservation (mois) de la preuve de consentement RGPD
+  // (interview_sim_consents) — bornée [1, 120], purgée par le job quotidien
+  // du worker (apps/worker/src/jobs/interview-sim-consent-purge.ts).
+  consentRetentionMonths: z.number().int().min(1).max(120),
 }).strict()
 
 const publicSubmitSchema = z.object({
   consentAccepted: z.literal(true),
   consentAt: z.string().datetime().optional(),
+  // Trace de consentement (POST .../consent) exigée AVANT la soumission —
+  // vérifiée contre interview_sim_consents (scope='public') dans le handler.
+  sessionId: z.string().regex(UUID_RE, 'sessionId invalide'),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
   categories: z.array(z.string().max(60)).max(30).optional(),  // Phase 2 — renvoyées par GET /:token
   answers: z.array(transcriptItemSchema).min(1).max(30),
 }).strict()
 
 const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
-  // ── GET /interview-sim/start : contexte poste + questions (banque + génération) ──
-  fastify.get('/start', {
+  // ── GET /interview-sim/internal-jobs/:jobId/start : entretien calibré sur une OFFRE INTERNE ──
+  // Miroir AUTHENTIFIÉ du flux public : la source de calibrage est l'offre
+  // (interview_focus + experience_level), plus jamais le poste de l'employé.
+  fastify.get('/internal-jobs/:jobId/start', {
     preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Démarrer une simulation (poste du salarié)' },
+    schema: { tags: ['interview-sim'], summary: 'Démarrer une simulation calibrée sur une offre interne' },
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const user = request.user
       const employeeId = user.employeeId
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
+      const { jobId } = request.params as { jobId: string }
+      // jobId malformé → même 404 neutre que « offre hors périmètre » (évite un
+      // aller-retour PostgreSQL inutile et une erreur 400 « format invalide »
+      // qui distinguerait ce cas d'un vrai 404, OWASP A01).
+      if (!UUID_RE.test(jobId)) return reply.status(404).send({ error: 'Offre introuvable' })
 
-      const emp = await pool.query<{ job_title: string | null; professional_category: string | null; interview_focus: unknown }>(
-        `SELECT job_title, professional_category, interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
-        [employeeId],
-      )
-      if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
-      const title = emp.rows[0].job_title || emp.rows[0].professional_category || 'Poste'
-      const focus = parseInterviewFocus(emp.rows[0].interview_focus)
+      // L'offre doit exister, être interne-visible, ouverte ET éligible pour cet
+      // employé (mêmes filtres de ciblage que GET /recruitment/internal-jobs).
+      // Sinon 404 neutre — OWASP A01 : ne jamais révéler une offre hors périmètre.
+      const job = await loadEligibleInternalJob(schema, employeeId, jobId)
+      if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
-      const sec = await pool.query<{ sector: string | null }>(
-        `SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
-      )
+      // Consentement RGPD OBLIGATOIRE avant toute génération de questions :
+      // exige un sessionId (query) référençant une trace enregistrée via
+      // POST .../consent, pour CET employé ET cette offre précisément.
+      const { sessionId } = request.query as { sessionId?: string }
+      if (!sessionId || !UUID_RE.test(sessionId)) return reply.status(403).send({ error: 'Consentement requis' })
+      if (!(await hasInternalConsent(schema, sessionId, jobId, employeeId))) return reply.status(403).send({ error: 'Consentement requis' })
+
+      const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
       const secteur = sec.rows[0]?.sector ?? null
-
       const cfg = await loadTenantConfig(schema)
       const langue = cfg.default_langue
-      const roleKey = normalizeRoleKey(title, secteur)
-
+      const roleKey = normalizeRoleKey(job.title, secteur)
       const bank = await readBank(roleKey, langue)
-      const banquePassee = bank?.questions ?? []
-      // Self-service : pas d'experience_level côté employé (spec §2) → profondeur standard.
-      const ctx: PosteContext = { title, secteur, langue, interviewFocus: focus }
+      const ctx: PosteContext = {
+        title: job.title, secteur, langue,
+        interviewFocus: parseInterviewFocus(job.interview_focus),
+        experienceLevel: job.experience_level ?? null,
+      }
       const creds = await resolveAiCreds(schema)
-      const gen = await genererQuestions(ctx, banquePassee, cfg.questions_count, creds)
+      const gen = await genererQuestions(ctx, bank?.questions ?? [], cfg.questions_count, creds)
       if (!gen.fromBank && gen.questions.length > 0) {
         await feedBank(roleKey, secteur, langue, gen.questions, gen.sourceModel)
       }
-
       return reply.send({
         data: {
-          poste: { title, secteur, langue },
-          roleKey, langue, nbQuestions: cfg.questions_count,
-          questions: gen.questions,
-          categories: gen.categories,   // Phase 2 — catégorie alignée par index
+          jobId, jobTitle: job.title, langue, roleKey, nbQuestions: cfg.questions_count,
+          questions: gen.questions, categories: gen.categories,
         },
       })
     },
   })
 
-  // ── POST /interview-sim/attempts/submit : retour + enregistrement historique ──
-  fastify.post('/attempts/submit', {
+  // ── POST /interview-sim/internal-jobs/:jobId/submit : retour ÉPHÉMÈRE (rien stocké) ──
+  fastify.post('/internal-jobs/:jobId/submit', {
     preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Soumettre les réponses et recevoir le retour' },
+    schema: { tags: ['interview-sim'], summary: 'Soumettre l’entretien d’une offre interne (retour éphémère)' },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async (request, reply) => {
       const user = request.user
       const employeeId = user.employeeId
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
-
-      const parsed = submitSchema.safeParse(request.body)
+      const { jobId } = request.params as { jobId: string }
+      // jobId malformé → même 404 neutre que start (voir commentaire jumeau ci-dessus).
+      if (!UUID_RE.test(jobId)) return reply.status(404).send({ error: 'Offre introuvable' })
+      const parsed = internalJobSubmitSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const body = parsed.data
 
-      const emp = await pool.query<{ job_title: string | null }>(
-        `SELECT job_title FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId],
-      )
-      const title = emp.rows[0]?.job_title || 'Poste'
-      const ctx: PosteContext = { title, secteur: null, langue: body.langue }
+      // Même filtre d'éligibilité que GET .../start (OWASP A01 : ne jamais
+      // traiter une offre hors périmètre — un 404 ici doit refléter le 404 de start).
+      const job = await loadEligibleInternalJob(schema, employeeId, jobId)
+      if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+      // Consentement RGPD OBLIGATOIRE avant toute génération de retour IA —
+      // même garde que GET .../start (voir hasInternalConsent). Sans elle, un
+      // employé authentifié pouvait appeler /submit directement sans jamais
+      // passer par /consent ni /start.
+      if (!(await hasInternalConsent(schema, body.sessionId, jobId, employeeId))) return reply.status(403).send({ error: 'Consentement requis' })
+
+      const title = job.title
+      const sec = await pool.query<{ sector: string | null }>(`SELECT sector FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
+      const secteur = sec.rows[0]?.sector ?? null
+
+      const ctx: PosteContext = { title, secteur, langue: body.langue }
       const creds = await resolveAiCreds(schema)
       const retour: InterviewFeedback = await produireRetour(
         body.questions, body.answers as TranscriptItem[], ctx, creds, body.categories ?? [],
       )
+      // ÉPHÉMÈRE : rien de personnel écrit. Au plus le compteur ANONYME agrégé.
+      await incrementUsage(normalizeRoleKey(title, secteur), body.langue)
+      return reply.send({ data: { retour } })
+    },
+  })
 
-      // OWASP A03/A08 — le roleKey du body est fourni par le client (le salarié
-      // choisit toujours son poste cible, comportement inchangé) mais alimente
-      // ensuite une table PARTAGÉE tous tenants confondus (platform.interview_sim_usage) :
-      // normalisation SERVEUR obligatoire pour n'y laisser entrer que des clés
-      // canoniques (anti-pollution du compteur global).
-      const roleKey = normalizeRoleKey(body.roleKey)
+  // ── POST /interview-sim/internal-jobs/:jobId/consent : preuve RGPD (interne) ──
+  fastify.post('/internal-jobs/:jobId/consent', {
+    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
+    schema: { tags: ['interview-sim'], summary: 'Enregistrer le consentement RGPD avant simulation (offre interne)' },
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const user = request.user
+      const employeeId = user.employeeId
+      if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
+      const schema = user.schemaName
+      const { jobId } = request.params as { jobId: string }
+      if (!UUID_RE.test(jobId)) return reply.status(404).send({ error: 'Offre introuvable' })
+      const parsed = consentSchema.safeParse(request.body)
+      if (!parsed.success) return badRequest(reply)
 
+      // Même filtre d'éligibilité que start/submit (OWASP A01) : on ne trace
+      // jamais un consentement pour une offre hors périmètre de l'employé.
+      const job = await loadEligibleInternalJob(schema, employeeId, jobId)
+      if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
+
+      const cfg = await loadTenantConfig(schema)
+      const consentText = cfg.consent_text ?? DEFAULT_CONSENT_TEXT
+      const sessionId = randomUUID()
+      // employee_id = JWT (jamais le body) ; consent_text = SNAPSHOT exact du
+      // texte accepté (preuve RGPD art. 7-1, indépendante d'un texte modifiable a posteriori).
       const ins = await pool.query<{ id: string }>(
-        `INSERT INTO "${schema}".interview_sim_attempts (employee_id, role_key, langue, questions, answers, retour)
-         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
-        [employeeId, roleKey, body.langue,
-         JSON.stringify(body.questions), JSON.stringify(body.answers), JSON.stringify(retour)],
+        `INSERT INTO "${schema}".interview_sim_consents (scope, employee_id, job_id, session_id, consent_text)
+         VALUES ('internal', $1, $2, $3, $4) RETURNING id`,
+        [employeeId, jobId, sessionId, consentText],
       )
-      await incrementUsage(roleKey, body.langue)
-      return reply.status(201).send({ data: { id: ins.rows[0]!.id, retour } })
+      if (!ins.rows[0]) return reply.status(500).send({ error: 'Échec de l’enregistrement du consentement' })
+      return reply.send({ data: { consentId: ins.rows[0].id, sessionId } })
     },
   })
 
-  // ── GET /interview-sim/my-attempts : historique du salarié (le sien seul) ──
-  fastify.get('/my-attempts', {
+  // ── GET /interview-sim/consent-text : texte de consentement tenant (tout rôle) ──
+  // Ouvert à TOUT employé authentifié (contrairement à /config, réservé
+  // admin/hr_manager) : c'est ce que l'écran de consentement doit afficher
+  // avant d'accepter — l'employé n'a pas accès à /config.
+  fastify.get('/consent-text', {
     preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Mes simulations' },
+    schema: { tags: ['interview-sim'], summary: 'Texte de consentement RGPD du tenant' },
     handler: async (request, reply) => {
-      const user = request.user
-      if (!user.employeeId) return reply.send({ data: [] })
-      const r = await pool.query(
-        `SELECT id, role_key, langue, created_at
-           FROM "${user.schemaName}".interview_sim_attempts
-          WHERE employee_id = $1 ORDER BY created_at DESC LIMIT 100`,
-        [user.employeeId],
-      )
-      return reply.send({ data: r.rows })
-    },
-  })
-
-  // ── GET /interview-sim/my-attempts/:id : détail (IDOR-safe) ──
-  fastify.get('/my-attempts/:id', {
-    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Détail d’une simulation' },
-    handler: async (request, reply) => {
-      const user = request.user
-      const { id } = request.params as { id: string }
-      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
-      const r = await pool.query(
-        `SELECT id, role_key, langue, questions, answers, retour, created_at
-           FROM "${user.schemaName}".interview_sim_attempts
-          WHERE id = $1 AND employee_id = $2 LIMIT 1`,
-        [id, user.employeeId],
-      )
-      if (!r.rows[0]) return reply.status(404).send({ error: 'Introuvable' })
-      return reply.send({ data: r.rows[0] })
-    },
-  })
-
-  // ── DELETE /interview-sim/my-attempts/:id : droit à l'effacement ──
-  fastify.delete('/my-attempts/:id', {
-    preHandler: [fastify.authenticate, migrateSchemaOfAuthenticatedUser],
-    schema: { tags: ['interview-sim'], summary: 'Effacer une de mes simulations' },
-    handler: async (request, reply) => {
-      const user = request.user
-      const { id } = request.params as { id: string }
-      if (!user.employeeId) return reply.status(404).send({ error: 'Introuvable' })
-      const r = await pool.query(
-        `DELETE FROM "${user.schemaName}".interview_sim_attempts WHERE id = $1 AND employee_id = $2`,
-        [id, user.employeeId],
-      )
-      if (!r.rowCount) return reply.status(404).send({ error: 'Introuvable' })
-      return reply.send({ data: { deleted: true } })
+      const cfg = await loadTenantConfig(request.user.schemaName)
+      return reply.send({ data: { consentText: cfg.consent_text ?? DEFAULT_CONSENT_TEXT } })
     },
   })
 
@@ -277,7 +382,7 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...CONFIG_ROLES), migrateSchemaOfAuthenticatedUser],
     schema: { tags: ['interview-sim'], summary: 'Configuration du module Simulations d’entretien' },
     handler: async (request, reply) => {
-      const cfg = await loadTenantConfig(request.user.schemaName)
+      const cfg = await loadFullTenantConfig(request.user.schemaName)
       return reply.send({ data: cfg })
     },
   })
@@ -293,15 +398,16 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       const b = parsed.data
       await pool.query(
         `INSERT INTO "${schema}".interview_sim_config
-           (id, default_langue, questions_count, public_token_ttl_minutes, consent_text, updated_at)
-         VALUES (1, $1, $2, $3, $4, now())
+           (id, default_langue, questions_count, public_token_ttl_minutes, consent_text, consent_retention_months, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, now())
          ON CONFLICT (id) DO UPDATE SET
            default_langue = excluded.default_langue,
            questions_count = excluded.questions_count,
            public_token_ttl_minutes = excluded.public_token_ttl_minutes,
            consent_text = excluded.consent_text,
+           consent_retention_months = excluded.consent_retention_months,
            updated_at = now()`,
-        [b.defaultLangue, b.questionsCount, b.publicTokenTtlMinutes, b.consentText || null],
+        [b.defaultLangue, b.questionsCount, b.publicTokenTtlMinutes, b.consentText || null, b.consentRetentionMonths],
       )
       return reply.send({ data: { ok: true } })
     },
@@ -352,10 +458,38 @@ export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           jobTitle: claims.title, langue, questions: gen.questions,
           categories: gen.categories,   // Phase 2 — catégorie alignée par index
-          consentText: cfg.consent_text
-            ?? 'En démarrant, vous acceptez que vos réponses soient analysées le temps de la session. Aucune donnée personnelle n’est conservée.',
+          consentText: cfg.consent_text ?? DEFAULT_CONSENT_TEXT,
         },
       })
+    },
+  })
+
+  // ── POST /public/interview-sim/:token/consent : preuve RGPD, trace STRICTEMENT ANONYME ──
+  fastify.post('/:token/consent', {
+    schema: { tags: ['interview-sim'], summary: 'Entretien public : enregistrer le consentement RGPD (trace anonyme)' },
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    handler: async (request, reply) => {
+      const { token } = request.params as { token: string }
+      const v = verifyPublicToken(fastify, token)
+      if (!v.ok) return reply.status(v.expired ? 410 : 401).send({ error: v.expired ? 'Lien expiré' : 'Lien invalide' })
+      const parsed = consentSchema.safeParse(request.body)
+      if (!parsed.success) return badRequest(reply)
+      const { claims } = v
+      await ensureTenantSchema(claims.schema)
+
+      const cfg = await loadTenantConfig(claims.schema)
+      const consentText = cfg.consent_text ?? DEFAULT_CONSENT_TEXT
+      const sessionId = randomUUID()
+      // Trace STRICTEMENT ANONYME (décision produit) : employee_id NULL EN DUR
+      // (jamais paramétré, jamais déduit du body) — AUCUNE adresse IP ni autre
+      // donnée personnelle du candidat n'est lue depuis la requête.
+      const ins = await pool.query<{ id: string }>(
+        `INSERT INTO "${claims.schema}".interview_sim_consents (scope, employee_id, job_id, session_id, consent_text)
+         VALUES ('public', NULL, $1, $2, $3) RETURNING id`,
+        [claims.jobId, sessionId, consentText],
+      )
+      if (!ins.rows[0]) return reply.status(500).send({ error: 'Échec de l’enregistrement du consentement' })
+      return reply.send({ data: { consentId: ins.rows[0].id, sessionId } })
     },
   })
 
@@ -371,6 +505,17 @@ export const interviewSimPublicRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return badRequest(reply, 'Consentement et réponses requis')
       const { claims } = v
       const body = parsed.data
+
+      // Consentement RGPD OBLIGATOIRE : le sessionId fourni doit référencer
+      // une trace enregistrée via POST .../consent pour CETTE offre précisément.
+      const consent = await pool.query<{ id: string }>(
+        `SELECT id FROM "${claims.schema}".interview_sim_consents
+          WHERE session_id = $1 AND job_id = $2 AND scope = 'public'
+          LIMIT 1`,
+        [body.sessionId, claims.jobId],
+      )
+      if (!consent.rows[0]) return reply.status(403).send({ error: 'Consentement requis' })
+
       const ctx: PosteContext = { title: claims.title, secteur: claims.secteur, langue: claims.langue }
       const creds = await resolveAiCreds(claims.schema)
       const retour: InterviewFeedback = await produireRetour(
