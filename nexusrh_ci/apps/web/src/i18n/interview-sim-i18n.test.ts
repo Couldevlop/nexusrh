@@ -11,6 +11,7 @@ const REQUIRED = [
   'speakButton', 'listening', 'nextButton', 'finishButton', 'feedbackTitle', 'strengths',
   'improvements', 'restart', 'publicTitle',
   'consentAccept', 'linkInvalid', 'submitError', 'loading', 'ephemeralNotice',
+  'consentTitle', 'consentError',
 ]
 
 describe('i18n interviewSim', () => {

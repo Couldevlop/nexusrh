@@ -31,15 +31,33 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
   const [answers, setAnswers] = useState<Answer[]>([])
   const [draft, setDraft] = useState('')
   const [feedback, setFeedback] = useState<InterviewFeedback | null>(null)
+  // Consentement RGPD (art. 7-1) OBLIGATOIRE avant toute génération de
+  // questions : tant que sessionId est vide, `start` reste désactivée — voir
+  // `enabled` ci-dessous. Réutilisé tel quel par « Recommencer » (le
+  // consentement porte sur l'offre/la session, pas sur chaque tentative).
+  const [sessionId, setSessionId] = useState<string | null>(null)
+
+  const consentText = useQuery<string>({
+    queryKey: ['interview-sim', 'consent-text'],
+    queryFn: async () => (await api.get('/interview-sim/consent-text')).data.data.consentText as string,
+    refetchOnWindowFocus: false,
+  })
+
+  const consent = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/interview-sim/internal-jobs/${jobId}/consent`, { consentAccepted: true })).data.data as { consentId: string; sessionId: string },
+    onSuccess: (data) => setSessionId(data.sessionId),
+  })
 
   const start = useQuery<StartData>({
-    queryKey: ['interview-sim', 'internal-job', jobId],
-    queryFn: async () => (await api.get(`/interview-sim/internal-jobs/${jobId}/start`)).data.data as StartData,
+    queryKey: ['interview-sim', 'internal-job', jobId, sessionId],
+    queryFn: async () => (await api.get(`/interview-sim/internal-jobs/${jobId}/start?sessionId=${sessionId}`)).data.data as StartData,
+    enabled: !!sessionId,
     refetchOnWindowFocus: false,
   })
 
   const submit = useMutation({
-    mutationFn: async (payload: { langue: string; questions: string[]; categories: string[]; answers: Answer[] }) =>
+    mutationFn: async (payload: { langue: string; questions: string[]; categories: string[]; answers: Answer[]; sessionId: string }) =>
       (await api.post(`/interview-sim/internal-jobs/${jobId}/submit`, payload)).data.data as { retour: InterviewFeedback },
     onSuccess: (data) => setFeedback(data.retour),
   })
@@ -58,7 +76,7 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
   useEffect(() => () => { speech.stopSpeaking() }, [speech.stopSpeaking])
 
   function nextQuestion() {
-    if (!session) return
+    if (!session || !sessionId) return
     if (current + 1 < session.questions.length) {
       const item: Answer = { index: current, question: session.questions[current]!, transcript: draft.trim() }
       setAnswers([...answers, item]); setDraft('')
@@ -71,9 +89,11 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
     // on renvoie simplement le payload déjà construit et mémorisé.
     const finalAnswers = submit.isError ? answers : [...answers, { index: current, question: session.questions[current]!, transcript: draft.trim() }]
     if (!submit.isError) { setAnswers(finalAnswers); setDraft('') }
-    submit.mutate({ langue: session.langue, questions: session.questions, categories: session.categories ?? [], answers: finalAnswers })
+    submit.mutate({ langue: session.langue, questions: session.questions, categories: session.categories ?? [], answers: finalAnswers, sessionId })
   }
 
+  // Réutilise le sessionId déjà obtenu (le consentement porte sur cette
+  // offre/session, pas sur chaque tentative) : pas de second POST /consent.
   function restart() {
     setFeedback(null)
     setAnswers([])
@@ -87,6 +107,35 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
       <ArrowLeft className="h-4 w-4" /> {tOffers('offers.backToOffer')}
     </button>
   )
+
+  // Étape de consentement RGPD — affichée AVANT toute question, tant qu'aucun
+  // sessionId n'a été obtenu via POST .../consent. `start` reste désactivée
+  // (enabled: !!sessionId) : aucune génération de questions avant acceptation.
+  if (!sessionId) {
+    return (
+      <div className="space-y-4">
+        {backBtn}
+        {consentText.isLoading && (
+          <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
+        )}
+        {consentText.isError && <p className="text-sm text-red-600">{t('startError')}</p>}
+        {consentText.data !== undefined && (
+          <div className="space-y-3 rounded-lg border p-4">
+            <h3 className="text-lg font-semibold">{t('consentTitle')}</h3>
+            <p className="text-sm text-muted-foreground">{consentText.data}</p>
+            <button
+              className="rounded bg-primary px-4 py-2 text-white disabled:opacity-60"
+              onClick={() => consent.mutate()}
+              disabled={consent.isPending}
+            >
+              {t('consentAccept')}
+            </button>
+            {consent.isError && <p className="text-sm text-red-600">{t('consentError')}</p>}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   if (start.isError) {
     return (

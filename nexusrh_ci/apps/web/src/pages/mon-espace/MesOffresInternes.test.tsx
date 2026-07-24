@@ -36,16 +36,24 @@ describe('MesOffresInternes — entretien par offre', () => {
     expect(await screen.findByText('offers.trainInterview')).toBeTruthy()
   })
 
-  it('clic « s’entraîner » → bascule en entretien (start appelé)', async () => {
+  it('clic « s’entraîner » → écran de consentement, puis start (après acceptation)', async () => {
     getMock.mockImplementation((url: string) => {
       if (url === '/recruitment/internal-jobs') return Promise.resolve({ data: { data: [JOB] } })
-      if (url === '/interview-sim/internal-jobs/job-1/start') return Promise.resolve({ data: { data: { jobId: 'job-1', jobTitle: 'Développeur', langue: 'fr', roleKey: 'dev', nbQuestions: 1, questions: ['Q1'], categories: ['Java'] } } })
+      if (url === '/interview-sim/consent-text') return Promise.resolve({ data: { data: { consentText: 'Texte de consentement.' } } })
+      if (url === '/interview-sim/internal-jobs/job-1/start?sessionId=sess-1') return Promise.resolve({ data: { data: { jobId: 'job-1', jobTitle: 'Développeur', langue: 'fr', roleKey: 'dev', nbQuestions: 1, questions: ['Q1'], categories: ['Java'] } } })
+      return Promise.resolve({ data: { data: {} } })
+    })
+    postMock.mockImplementation((url: string) => {
+      if (url === '/interview-sim/internal-jobs/job-1/consent') return Promise.resolve({ data: { data: { consentId: 'c-1', sessionId: 'sess-1' } } })
       return Promise.resolve({ data: { data: {} } })
     })
     renderPage()
     fireEvent.click(await screen.findByText('offers.viewOffer'))
     fireEvent.click(await screen.findByText('offers.trainInterview'))
-    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/interview-sim/internal-jobs/job-1/start'))
+    expect(await screen.findByText('Texte de consentement.')).toBeTruthy()
+    expect(getMock).not.toHaveBeenCalledWith('/interview-sim/internal-jobs/job-1/start?sessionId=sess-1')
+    fireEvent.click(screen.getByText('consentAccept'))
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/interview-sim/internal-jobs/job-1/start?sessionId=sess-1'))
     expect(await screen.findByText('Q1')).toBeTruthy()
   })
 })
