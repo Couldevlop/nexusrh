@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { api } from '@/lib/api'
 import { useAuthStore, type TenantConfig } from '@/stores/authStore'
+import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
@@ -85,18 +86,37 @@ const TABS = [
 ] as const
 type TabId = typeof TABS[number]['id']
 
+// Onglets adossés à un module activable par tenant. Le hook global de l'API
+// (app.ts) renvoie 403 { moduleDisabled: true } sur les routes d'un module
+// désactivé : afficher l'onglet quand même laissait l'admin sur un
+// « Chargement… » perpétuel (cas vécu avec interview_sim, opt-in par défaut).
+// La vérité reste côté API — ici on masque seulement (OWASP A01, defense in depth).
+const TAB_MODULE: Partial<Record<TabId, ModuleKey>> = {
+  'mobile-money':  'mobile_money',
+  'interview-sim': 'interview_sim',
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const { tenantConfig } = useAuthStore()
+  // Onglets réellement accessibles à ce tenant (modules désactivés retirés).
+  const visibleTabs = TABS.filter(({ id }) => {
+    const moduleKey = TAB_MODULE[id]
+    return !moduleKey || isModuleEnabled(tenantConfig, moduleKey)
+  })
   // Onglet initial sélectionnable par URL (?tab=mfa) — utilisé notamment par la
-  // redirection « MFA obligatoire » du login (OWASP A07).
+  // redirection « MFA obligatoire » du login (OWASP A07). Un ?tab=… pointant sur
+  // un module désactivé retombe sur « general » (pas d'appel API voué au 403).
   const initialTab = ((): TabId => {
     const t = new URLSearchParams(window.location.search).get('tab')
-    return (TABS as readonly { id: string }[]).some(x => x.id === t) ? (t as TabId) : 'general'
+    return visibleTabs.some(x => x.id === t) ? (t as TabId) : 'general'
   })()
-  const [tab, setTab] = useState<TabId>(initialTab)
+  const [tabState, setTab] = useState<TabId>(initialTab)
+  // Un module peut être désactivé pendant la session (rafraîchissement du
+  // tenantConfig) alors que son onglet est ouvert → repli immédiat.
+  const tab = visibleTabs.some(x => x.id === tabState) ? tabState : 'general'
 
   return (
     <div className="p-6 space-y-6">
@@ -107,7 +127,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/30 p-1">
-        {TABS.map(({ id, labelKey, icon: Icon }) => (
+        {visibleTabs.map(({ id, labelKey, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               tab === id ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
