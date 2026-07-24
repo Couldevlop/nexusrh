@@ -16,6 +16,11 @@ export default function PublicInterviewSimPage() {
   const [data, setData] = useState<StartData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [consented, setConsented] = useState(false)
+  const [consenting, setConsenting] = useState(false)
+  const [consentError, setConsentError] = useState(false)
+  // Trace de consentement RGPD (POST .../consent) — le sessionId reçu doit
+  // être transmis au submit final ; sans lui le backend renvoie 403.
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Array<{ index: number; question: string; transcript: string }>>([])
   const [draft, setDraft] = useState('')
@@ -29,13 +34,26 @@ export default function PublicInterviewSimPage() {
       .catch(() => setError(t('linkInvalid')))
   }, [token, t])
 
-  function begin() {
-    setConsented(true)
-    if (speech.supported && data?.questions[0]) speech.speak(data.questions[0], data.langue === 'en' ? 'en-US' : 'fr-FR')
+  // Consentement RGPD OBLIGATOIRE : trace enregistrée AVANT de passer aux
+  // questions. Un échec bloque explicitement la suite (pas de démarrage silencieux).
+  async function begin() {
+    if (!token) return
+    setConsenting(true)
+    setConsentError(false)
+    try {
+      const res = await api.post(`/public/interview-sim/${token}/consent`, { consentAccepted: true })
+      setSessionId(res.data.data.sessionId as string)
+      setConsented(true)
+      if (speech.supported && data?.questions[0]) speech.speak(data.questions[0], data.langue === 'en' ? 'en-US' : 'fr-FR')
+    } catch {
+      setConsentError(true)
+    } finally {
+      setConsenting(false)
+    }
   }
 
   async function next() {
-    if (!data) return
+    if (!data || !sessionId) return
     const item = { index: current, question: data.questions[current]!, transcript: draft.trim() }
     const nextAnswers = [...answers, item]
     setAnswers(nextAnswers); setDraft('')
@@ -46,7 +64,7 @@ export default function PublicInterviewSimPage() {
       setSubmitting(true)
       try {
         const res = await api.post(`/public/interview-sim/${token}/submit`, {
-          consentAccepted: true, consentAt: new Date().toISOString(),
+          consentAccepted: true, consentAt: new Date().toISOString(), sessionId,
           questions: data.questions, categories: data.categories ?? [], answers: nextAnswers,
         })
         setFeedback(res.data.data.retour as Feedback)
@@ -63,9 +81,13 @@ export default function PublicInterviewSimPage() {
 
       {!consented && !feedback && (
         <div className="rounded-lg border p-4 space-y-3">
+          <h2 className="text-lg font-semibold">{t('consentTitle')}</h2>
           <p className="text-sm text-muted-foreground">{data.consentText}</p>
           {!speech.supported && <p className="text-sm text-amber-600">{t('voiceUnsupported')}</p>}
-          <button className="rounded bg-primary px-4 py-2 text-white" onClick={begin}>{t('consentAccept')}</button>
+          <button className="rounded bg-primary px-4 py-2 text-white disabled:opacity-60" onClick={begin} disabled={consenting}>
+            {t('consentAccept')}
+          </button>
+          {consentError && <p className="text-sm text-red-600">{t('consentError')}</p>}
         </div>
       )}
 

@@ -12,7 +12,6 @@
     "climate": "Climat",
     "attendance": "Mes pointages",
     "attendanceWarnings": "Mes avertissements",
-    "interviewSim": "Simulations d'entretien",
     "profile": "Profil",
     "titles": {
       "home": "Mon espace",
@@ -26,7 +25,6 @@
       "climate": "Enquêtes climat",
       "attendance": "Mes pointages",
       "attendanceWarnings": "Mes avertissements",
-      "interviewSim": "Mes simulations d'entretien",
       "profile": "Mon profil",
       "default": "Mon espace"
     }
@@ -225,6 +223,8 @@
     "applied": "Candidature envoyée",
     "minSeniority": "Ancienneté min : {{count}} mois",
     "viewOffer": "Voir l'offre",
+    "trainInterview": "S'entraîner à l'entretien",
+    "backToOffer": "Retour à l'offre",
     "jobDescription": "Description du poste",
     "candidateProfile": "Profil recherché",
     "benefits": "Avantages",

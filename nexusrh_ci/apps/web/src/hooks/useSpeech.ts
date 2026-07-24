@@ -49,7 +49,17 @@ export function useSpeech() {
     recognitionRef.current?.stop(); setListening(false)
   }, [])
 
-  useEffect(() => () => { recognitionRef.current?.stop() }, [])
+  /** Coupe toute lecture vocale en cours (fermeture de modale, retour, changement de question). */
+  const stopSpeaking = useCallback(() => {
+    if (!synthAvailable) return
+    window.speechSynthesis.cancel()
+    setSpeaking(false)
+  }, [synthAvailable])
 
-  return { supported, speaking, listening, speak, startListening, stopListening }
+  useEffect(() => () => {
+    recognitionRef.current?.stop()
+    if (synthAvailable) window.speechSynthesis.cancel()
+  }, [synthAvailable])
+
+  return { supported, speaking, listening, speak, startListening, stopListening, stopSpeaking }
 }

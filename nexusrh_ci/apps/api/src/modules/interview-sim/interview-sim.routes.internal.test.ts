@@ -26,11 +26,21 @@ vi.mock('../../services/ai-credentials.service.js', () => ({
     preferredProvider: 'claude',
   }),
 }))
+// Espionne genererQuestions SANS changer son comportement (implémentation
+// réelle conservée : aucune clé IA mockée ci-dessus → repli banque, comme
+// avant — seul point 9(b) exige d'observer le PosteContext transmis).
+vi.mock('./interview-sim-ai.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./interview-sim-ai.service.js')>()
+  return { ...actual, genererQuestions: vi.fn(actual.genererQuestions) }
+})
 
 import authPlugin from '../../plugins/auth.js'
 import interviewSimRoutes from './interview-sim.routes.js'
+import { genererQuestions } from './interview-sim-ai.service.js'
 
 const SCHEMA = 'tenant_sotra'
+const JOB_ID = '22222222-2222-2222-2222-222222222222'
+const SESSION_ID = '44444444-4444-4444-4444-444444444444'
 let app: FastifyInstance
 
 function tokenFor(employeeId: string | null, role = 'employee') {
@@ -47,107 +57,256 @@ beforeAll(async () => {
   await app.ready()
 })
 afterAll(async () => { await app.close() })
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => { queryMock.mockReset(); vi.mocked(genererQuestions).mockClear() })
 
-describe('GET /interview-sim/start', () => {
+describe('GET /interview-sim/internal-jobs/:jobId/start', () => {
   it('401 sans token', async () => {
-    const res = await app.inject({ method: 'GET', url: '/interview-sim/start' })
+    const res = await app.inject({ method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start` })
     expect(res.statusCode).toBe(401)
   })
+
   it('400 si le compte n’est pas lié à un employé', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/interview-sim/start',
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
       headers: { authorization: `Bearer ${tokenFor(null)}` },
     })
     expect(res.statusCode).toBe(400)
   })
-  it('200 : contexte poste + questions (repli banque, IA absente)', async () => {
+
+  it('404 si l’offre n’est pas interne-visible / éligible', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
-      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ job_title: 'Comptable', professional_category: 'Cadre' }] })
-      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'Finance' }] })
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('200 : questions + catégories calibrées sur l’offre (repli banque)', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: { technologies: [{ name: 'Java', yearsRequired: 5 }], tools: [], methodologies: [], languages: [] }, experience_level: '3_7_ans' }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
+      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       if (s.includes('interview_sim_config')) return Promise.resolve({ rows: [{ default_langue: 'fr', questions_count: 4, public_token_ttl_minutes: 60, consent_text: null }] })
       if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
-      method: 'GET', url: '/interview-sim/start',
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start?sessionId=44444444-4444-4444-4444-444444444444`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
     })
     expect(res.statusCode).toBe(200)
     const data = res.json().data
-    expect(data.questions).toEqual(['Q1', 'Q2'])
-    expect(data.roleKey).toBe('comptable-finance')
+    expect(data.jobTitle).toBe('Développeur')
+    expect(Array.isArray(data.questions)).toBe(true)
     expect(data.langue).toBe('fr')
   })
 })
 
-describe('POST /interview-sim/attempts/submit', () => {
-  it('enregistre dans l’historique du salarié (employee_id du JWT)', async () => {
+describe('GET /interview-sim/internal-jobs/:jobId/start — consentement RGPD requis', () => {
+  it('403 sans sessionId (consentement non prouvé)', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
-      if (s.includes('INSERT INTO "tenant_sotra".interview_sim_attempts')) return Promise.resolve({ rows: [{ id: 'att-1' }] })
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
-      method: 'POST', url: '/interview-sim/attempts/submit',
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
-      payload: { roleKey: 'comptable', langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
     })
-    expect(res.statusCode).toBe(201)
-    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO "tenant_sotra".interview_sim_attempts'))
-    expect(insert).toBeTruthy()
-    expect((insert![1] as unknown[])[0]).toBe('emp-1') // employee_id = JWT, jamais body
-  })
-
-  it('normalise le roleKey client (non normalisé) avant stockage ET incrémentation du compteur partagé', async () => {
-    queryMock.mockImplementation((sql: string) => {
-      const s = String(sql)
-      if (s.includes('INSERT INTO "tenant_sotra".interview_sim_attempts')) return Promise.resolve({ rows: [{ id: 'att-2' }] })
-      return Promise.resolve({ rows: [] })
-    })
-    const res = await app.inject({
-      method: 'POST', url: '/interview-sim/attempts/submit',
-      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
-      payload: { roleKey: "  Comptable Épargne !! ", langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
-    })
-    expect(res.statusCode).toBe(201)
-    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO "tenant_sotra".interview_sim_attempts'))
-    expect(insert).toBeTruthy()
-    expect((insert![1] as unknown[])[1]).toBe('comptable-epargne') // role_key normalisé, pas la valeur brute du client
-    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
-    expect(usage).toBeTruthy()
-    expect((usage![1] as unknown[])[0]).toBe('comptable-epargne')
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
   })
 })
 
-describe('GET /interview-sim/my-attempts/:id — isolation (IDOR)', () => {
-  it('ne lit que les tentatives du salarié : WHERE employee_id du JWT', async () => {
+describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () => {
+  it('401 sans token', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('200 + retour, SANS écrire dans interview_sim_attempts', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
-      if (s.includes('FROM "tenant_sotra".interview_sim_attempts') && s.includes('WHERE')) return Promise.resolve({ rows: [] })
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
+      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
-      method: 'GET', url: '/interview-sim/my-attempts/att-999',
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], categories: ['Java'], answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }] },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.retour).toBeTruthy()
+    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_attempts'))
+    expect(insert).toBeFalsy() // ÉPHÉMÈRE : rien de personnel stocké
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeTruthy() // compteur anonyme agrégé
+  })
+
+  it('400 si body invalide', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: [], answers: [] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('400 si sessionId absent du body (contournement du consentement impossible même à tenter)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('403 avec un sessionId inconnu (aucune trace correspondante) — pas d’appel IA ni de compteur', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeFalsy()
+  })
+
+  it('403 avec un sessionId de consentement appartenant à UN AUTRE employé', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      // La requête filtre employee_id = $3 (JWT) : un consentement d'un AUTRE
+      // employé ne doit jamais matcher, donc le mock reflète bien 0 ligne ici.
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+    const check = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_consents') && String(c[0]).toLowerCase().includes('select'))
+    expect(check).toBeTruthy()
+    const [, params] = check as [string, unknown[]]
+    expect(params).toContain('emp-1') // employee_id lié au JWT, jamais au body
+  })
+
+  it('404 si l’offre n’est pas interne-visible', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('404 si l’offre n’est pas ÉLIGIBLE pour l’employé (même filtre que start), sans écriture ni compteur', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [] }) // hors périmètre (ciblage/status/visibility)
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', sessionId: SESSION_ID, questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    const insert = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_attempts'))
+    expect(insert).toBeFalsy()
+    const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
+    expect(usage).toBeFalsy()
+  })
+})
+
+describe('jobId malformé → 404 neutre (jamais de 400 « format invalide »)', () => {
+  const BAD_ID = 'pas-un-uuid'
+
+  it('GET .../start : 404 sans toucher PostgreSQL', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/interview-sim/internal-jobs/${BAD_ID}/start`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
     })
     expect(res.statusCode).toBe(404)
-    const sel = queryMock.mock.calls.find((c) => String(c[0]).includes('interview_sim_attempts') && String(c[0]).includes('WHERE'))
-    expect(String(sel![0])).toContain('employee_id = $2')
-    expect((sel![1] as unknown[])[1]).toBe('emp-1')
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('POST .../submit : 404 sans toucher PostgreSQL', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${BAD_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    expect(queryMock).not.toHaveBeenCalled()
   })
 })
 
-describe('DELETE /interview-sim/my-attempts/:id — droit à l’effacement', () => {
-  it('supprime en scoping employee_id du JWT', async () => {
-    queryMock.mockResolvedValue({ rowCount: 1, rows: [] })
+describe('GET /interview-sim/internal-jobs/:jobId/start — calibrage IA sur l’offre (Phase 2)', () => {
+  it('transmet interview_focus ET experience_level DE L’OFFRE au PosteContext (genererQuestions)', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: { technologies: [{ name: 'Java', yearsRequired: 5 }], tools: [], methodologies: [], languages: [] }, experience_level: '3_7_ans' }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
+      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
+      if (s.includes('interview_sim_config')) return Promise.resolve({ rows: [{ default_langue: 'fr', questions_count: 4, public_token_ttl_minutes: 60, consent_text: null }] })
+      if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
+      return Promise.resolve({ rows: [] })
+    })
     const res = await app.inject({
-      method: 'DELETE', url: '/interview-sim/my-attempts/att-1',
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start?sessionId=44444444-4444-4444-4444-444444444444`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
     })
     expect(res.statusCode).toBe(200)
-    const del = queryMock.mock.calls.find((c) => String(c[0]).includes('DELETE FROM "tenant_sotra".interview_sim_attempts'))
-    expect(String(del![0])).toContain('employee_id = $2')
+    expect(genererQuestions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Développeur',
+        experienceLevel: '3_7_ans',
+        interviewFocus: expect.objectContaining({
+          technologies: [{ name: 'Java', yearsRequired: 5 }],
+          tools: [], methodologies: [], languages: [],
+        }),
+      }),
+      expect.any(Array),
+      expect.any(Number),
+      expect.anything(),
+    )
   })
 })

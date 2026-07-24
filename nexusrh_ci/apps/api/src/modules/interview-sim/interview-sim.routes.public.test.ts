@@ -90,11 +90,37 @@ describe('POST /public/interview-sim/:token/submit', () => {
     })
     expect(res.statusCode).toBe(400)
   })
-  it('200 éphémère : retour rendu, AUCUNE écriture de donnée personnelle', async () => {
-    queryMock.mockResolvedValue({ rows: [] })
+  it('403 si le sessionId ne correspond à aucune trace de consentement', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [] })
+      return Promise.resolve({ rows: [] })
+    })
     const res = await app.inject({
       method: 'POST', url: `/public/interview-sim/${validToken()}/submit`,
-      payload: { consentAccepted: true, consentAt: new Date().toISOString(), answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }], questions: ['Q1'] },
+      payload: {
+        consentAccepted: true, consentAt: new Date().toISOString(),
+        sessionId: '55555555-5555-5555-5555-555555555555',
+        answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }], questions: ['Q1'],
+      },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
+  })
+
+  it('200 éphémère : retour rendu, AUCUNE écriture de donnée personnelle', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'POST', url: `/public/interview-sim/${validToken()}/submit`,
+      payload: {
+        consentAccepted: true, consentAt: new Date().toISOString(),
+        sessionId: '55555555-5555-5555-5555-555555555555',
+        answers: [{ index: 0, question: 'Q1', transcript: 'ma réponse' }], questions: ['Q1'],
+      },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().data.retour).toBeTruthy()
@@ -107,12 +133,20 @@ describe('POST /public/interview-sim/:token/submit', () => {
   })
 
   it('incrémente le compteur partagé avec un roleKey normalisé (titre de poste non trivial)', async () => {
-    queryMock.mockResolvedValue({ rows: [] })
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-2' }] })
+      return Promise.resolve({ rows: [] })
+    })
     const messyToken = mintPublicInterviewToken(app as unknown as FastifyInstance,
       { schema: SCHEMA, tenantSlug: 'sotra', jobId: 'job-2', title: "  Chargé d'Exploitation !! ", secteur: 'Transport', langue: 'fr' }, 60)
     const res = await app.inject({
       method: 'POST', url: `/public/interview-sim/${messyToken}/submit`,
-      payload: { consentAccepted: true, consentAt: new Date().toISOString(), answers: [{ index: 0, question: 'Q1', transcript: 'r' }], questions: ['Q1'] },
+      payload: {
+        consentAccepted: true, consentAt: new Date().toISOString(),
+        sessionId: '66666666-6666-6666-6666-666666666666',
+        answers: [{ index: 0, question: 'Q1', transcript: 'r' }], questions: ['Q1'],
+      },
     })
     expect(res.statusCode).toBe(200)
     const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))

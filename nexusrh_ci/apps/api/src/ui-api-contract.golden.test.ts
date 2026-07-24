@@ -110,6 +110,7 @@ const EXTRA_PUBLIC_ROUTES: { method: string; path: string }[] = [
   // /public/interview-sim ; les handlers sont définis en '/:token' dans le fichier
   // interview-sim.routes.ts, donc non résolus par la carte PREFIX par fichier).
   { method: 'GET', path: '/public/interview-sim/:token' },
+  { method: 'POST', path: '/public/interview-sim/:token/consent' },
   { method: 'POST', path: '/public/interview-sim/:token/submit' },
 ]
 
