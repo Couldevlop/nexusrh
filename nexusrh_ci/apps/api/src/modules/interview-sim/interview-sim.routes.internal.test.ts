@@ -91,13 +91,14 @@ describe('GET /interview-sim/internal-jobs/:jobId/start', () => {
       const s = String(sql)
       if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
       if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: { technologies: [{ name: 'Java', yearsRequired: 5 }], tools: [], methodologies: [], languages: [] }, experience_level: '3_7_ans' }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
       if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       if (s.includes('interview_sim_config')) return Promise.resolve({ rows: [{ default_langue: 'fr', questions_count: 4, public_token_ttl_minutes: 60, consent_text: null }] })
       if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
-      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start?sessionId=44444444-4444-4444-4444-444444444444`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
     })
     expect(res.statusCode).toBe(200)
@@ -105,6 +106,23 @@ describe('GET /interview-sim/internal-jobs/:jobId/start', () => {
     expect(data.jobTitle).toBe('Développeur')
     expect(Array.isArray(data.questions)).toBe(true)
     expect(data.langue).toBe('fr')
+  })
+})
+
+describe('GET /interview-sim/internal-jobs/:jobId/start — consentement RGPD requis', () => {
+  it('403 sans sessionId (consentement non prouvé)', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: null, experience_level: null }] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ error: 'Consentement requis' })
   })
 })
 
@@ -213,13 +231,14 @@ describe('GET /interview-sim/internal-jobs/:jobId/start — calibrage IA sur l�
       const s = String(sql)
       if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
       if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: { technologies: [{ name: 'Java', yearsRequired: 5 }], tools: [], methodologies: [], languages: [] }, experience_level: '3_7_ans' }] })
+      if (s.includes('interview_sim_consents')) return Promise.resolve({ rows: [{ id: 'consent-1' }] })
       if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
       if (s.includes('interview_sim_config')) return Promise.resolve({ rows: [{ default_langue: 'fr', questions_count: 4, public_token_ttl_minutes: 60, consent_text: null }] })
       if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
       return Promise.resolve({ rows: [] })
     })
     const res = await app.inject({
-      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start?sessionId=44444444-4444-4444-4444-444444444444`,
       headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
     })
     expect(res.statusCode).toBe(200)
