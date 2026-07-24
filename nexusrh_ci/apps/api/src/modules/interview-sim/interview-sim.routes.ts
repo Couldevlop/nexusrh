@@ -1,13 +1,18 @@
 /**
  * Simulations d'entretien — routes (prefix /interview-sim).
  *
- * Bloc INTERNE (authentifié) : entraînement self-service du salarié + historique
- * PRIVÉ (visible du seul salarié, scoping employee_id dérivé du JWT — jamais du
- * body/query, OWASP A01/A03).
+ * Bloc INTERNE (authentifié) : entraînement OFFRE-SCOPÉ, déclenché depuis la
+ * fiche d'une offre interne (MesOffresInternes → OfferInterviewRunner) et
+ * calibré sur le profil de CETTE offre (interview_focus + experience_level),
+ * jamais sur le poste actuel de l'employé. ÉPHÉMÈRE : aucune persistance —
+ * ni tentative ni réponse ni retour ne sont écrits, au plus un compteur
+ * ANONYME agrégé (`incrementUsage`, sans employee_id). Il n'existe donc plus
+ * d'historique privé consultable a posteriori.
  *
  * Bloc PUBLIC à jeton : plugin SÉPARÉ `interviewSimPublicRoutes` (exporté plus
  * bas dans ce fichier), enregistré par app.ts sous le préfixe DISTINCT
  * `/public/interview-sim` (et non `/interview-sim/public`) — voir app.ts.
+ * Comportement inchangé par la refonte ci-dessus.
  *
  * Migration lazy : preHandler de ROUTE `migrateSchemaOfAuthenticatedUser` placé
  * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
@@ -17,6 +22,7 @@ import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest 
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { normalizeRoleKey, readBank, feedBank, incrementUsage } from './interview-sim-bank.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
@@ -26,6 +32,7 @@ import {
 } from './interview-sim-ai.service.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function migrateSchemaOfAuthenticatedUser(req: FastifyRequest): Promise<void> {
   const u = (req as FastifyRequest & { user?: { schemaName?: string } }).user
@@ -63,6 +70,10 @@ interface EligibleInternalJob { title: string; interview_focus: unknown; experie
  * (OWASP A01 : ne jamais révéler/traiter une offre hors périmètre).
  */
 async function loadEligibleInternalJob(schema: string, employeeId: string, jobId: string): Promise<EligibleInternalJob | null> {
+  // `recruitment_jobs` (visibility, target_*, interview_focus, experience_level)
+  // n'est garanti que par cette migration lazy — les routes interview-sim
+  // n'appellent que ensureTenantSchema, donc self-suffisance requise ici.
+  await ensureRecruitmentSchemaMigrated(schema)
   const empRes = await pool.query<{ id: string; department_id: string | null; job_level: string | null; hire_date: string | null; legal_entity_id: string | null }>(
     `SELECT id, department_id, job_level, hire_date, legal_entity_id FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
     [employeeId],
@@ -177,6 +188,10 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
       const { jobId } = request.params as { jobId: string }
+      // jobId malformé → même 404 neutre que « offre hors périmètre » (évite un
+      // aller-retour PostgreSQL inutile et une erreur 400 « format invalide »
+      // qui distinguerait ce cas d'un vrai 404, OWASP A01).
+      if (!UUID_RE.test(jobId)) return reply.status(404).send({ error: 'Offre introuvable' })
 
       // L'offre doit exister, être interne-visible, ouverte ET éligible pour cet
       // employé (mêmes filtres de ciblage que GET /recruitment/internal-jobs).
@@ -220,6 +235,8 @@ const interviewSimRoutes: FastifyPluginAsync = async (fastify) => {
       if (!employeeId) return badRequest(reply, 'Votre compte n’est pas lié à un employé.')
       const schema = user.schemaName
       const { jobId } = request.params as { jobId: string }
+      // jobId malformé → même 404 neutre que start (voir commentaire jumeau ci-dessus).
+      if (!UUID_RE.test(jobId)) return reply.status(404).send({ error: 'Offre introuvable' })
       const parsed = internalJobSubmitSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const body = parsed.data

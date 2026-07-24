@@ -53,16 +53,33 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
     if (speech.supported && currentQuestion) speech.speak(currentQuestion, session?.langue === 'en' ? 'en-US' : 'fr-FR')
   }, [currentQuestion, session?.langue, speech.supported, speech.speak])
 
+  // Coupe toute lecture vocale en cours au démontage (fermeture de la modale
+  // ou clic « Retour à l'offre », qui démonte ce composant dans le parent).
+  useEffect(() => () => { speech.stopSpeaking() }, [speech.stopSpeaking])
+
   function nextQuestion() {
     if (!session) return
-    const item: Answer = { index: current, question: session.questions[current]!, transcript: draft.trim() }
-    const nextAnswers = [...answers, item]
-    setAnswers(nextAnswers); setDraft('')
     if (current + 1 < session.questions.length) {
+      const item: Answer = { index: current, question: session.questions[current]!, transcript: draft.trim() }
+      setAnswers([...answers, item]); setDraft('')
       setCurrent(current + 1)
-    } else {
-      submit.mutate({ langue: session.langue, questions: session.questions, categories: session.categories ?? [], answers: nextAnswers })
+      return
     }
+    // Dernière question : on ne construit/ajoute la réponse finale qu'UNE
+    // SEULE FOIS. En cas d'échec d'envoi (submit.isError), un nouveau clic
+    // sur « Terminer » ne doit ni perdre la réponse tapée ni la dupliquer :
+    // on renvoie simplement le payload déjà construit et mémorisé.
+    const finalAnswers = submit.isError ? answers : [...answers, { index: current, question: session.questions[current]!, transcript: draft.trim() }]
+    if (!submit.isError) { setAnswers(finalAnswers); setDraft('') }
+    submit.mutate({ langue: session.langue, questions: session.questions, categories: session.categories ?? [], answers: finalAnswers })
+  }
+
+  function restart() {
+    setFeedback(null)
+    setAnswers([])
+    setDraft('')
+    setCurrent(0)
+    start.refetch()
   }
 
   const backBtn = (
@@ -92,7 +109,12 @@ export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
   if (feedback) {
     return (
       <div className="space-y-4">
-        {backBtn}
+        <div className="flex items-center justify-between">
+          {backBtn}
+          <button onClick={restart} className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5">
+            {t('restart')}
+          </button>
+        </div>
         <h3 className="text-lg font-semibold">{t('feedbackTitle')}</h3>
         <InterviewRestitution feedback={feedback} />
         <p className="text-xs text-muted-foreground">{t('ephemeralNotice')}</p>

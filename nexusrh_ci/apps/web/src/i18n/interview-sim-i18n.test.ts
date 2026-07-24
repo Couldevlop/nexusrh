@@ -7,9 +7,9 @@ const I18N = dirname(fileURLToPath(import.meta.url))
 const read = (...p: string[]) => readFileSync(join(I18N, ...p), 'utf8')
 
 const REQUIRED = [
-  'title', 'intro', 'startButton', 'voiceUnsupported', 'questionProgress', 'answerPlaceholder',
+  'voiceUnsupported', 'questionProgress', 'answerPlaceholder',
   'speakButton', 'listening', 'nextButton', 'finishButton', 'feedbackTitle', 'strengths',
-  'improvements', 'restart', 'historyTitle', 'historyEmpty', 'delete', 'publicTitle',
+  'improvements', 'restart', 'publicTitle',
   'consentAccept', 'linkInvalid', 'submitError', 'loading', 'ephemeralNotice',
 ]
 

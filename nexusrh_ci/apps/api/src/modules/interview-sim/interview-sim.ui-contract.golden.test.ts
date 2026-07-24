@@ -63,6 +63,10 @@ describe('GOLDEN interview_sim — web (self-service /mon-espace + page publique
     const offres = readWeb('pages', 'mon-espace', 'MesOffresInternes.tsx')
     expect(offres).toContain('OfferInterviewRunner')
     expect(offres).toContain(`t('offers.trainInterview')`)
+    // Module opt-in (défaut désactivé) : le bouton doit rester gardé côté web
+    // — c'était l'unique garde front avant la refonte (menu self-service retiré).
+    expect(offres).toContain('isModuleEnabled')
+    expect(offres).toContain("'interview_sim'")
     expect(employeeLayout).not.toContain(`to: '/mon-espace/simulations'`)
     expect(appTsx).not.toContain('MesSimulations')
   })

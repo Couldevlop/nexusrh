@@ -26,9 +26,17 @@ vi.mock('../../services/ai-credentials.service.js', () => ({
     preferredProvider: 'claude',
   }),
 }))
+// Espionne genererQuestions SANS changer son comportement (implémentation
+// réelle conservée : aucune clé IA mockée ci-dessus → repli banque, comme
+// avant — seul point 9(b) exige d'observer le PosteContext transmis).
+vi.mock('./interview-sim-ai.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./interview-sim-ai.service.js')>()
+  return { ...actual, genererQuestions: vi.fn(actual.genererQuestions) }
+})
 
 import authPlugin from '../../plugins/auth.js'
 import interviewSimRoutes from './interview-sim.routes.js'
+import { genererQuestions } from './interview-sim-ai.service.js'
 
 const SCHEMA = 'tenant_sotra'
 const JOB_ID = '22222222-2222-2222-2222-222222222222'
@@ -48,7 +56,7 @@ beforeAll(async () => {
   await app.ready()
 })
 afterAll(async () => { await app.close() })
-beforeEach(() => { queryMock.mockReset() })
+beforeEach(() => { queryMock.mockReset(); vi.mocked(genererQuestions).mockClear() })
 
 describe('GET /interview-sim/internal-jobs/:jobId/start', () => {
   it('401 sans token', async () => {
@@ -101,6 +109,14 @@ describe('GET /interview-sim/internal-jobs/:jobId/start', () => {
 })
 
 describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () => {
+  it('401 sans token', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${JOB_ID}/submit`,
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
   it('200 + retour, SANS écrire dans interview_sim_attempts', async () => {
     queryMock.mockImplementation((sql: string) => {
       const s = String(sql)
@@ -163,5 +179,62 @@ describe('POST /interview-sim/internal-jobs/:jobId/submit — éphémère', () =
     expect(insert).toBeFalsy()
     const usage = queryMock.mock.calls.find((c) => String(c[0]).includes('platform.interview_sim_usage'))
     expect(usage).toBeFalsy()
+  })
+})
+
+describe('jobId malformé → 404 neutre (jamais de 400 « format invalide »)', () => {
+  const BAD_ID = 'pas-un-uuid'
+
+  it('GET .../start : 404 sans toucher PostgreSQL', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/interview-sim/internal-jobs/${BAD_ID}/start`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+
+  it('POST .../submit : 404 sans toucher PostgreSQL', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/interview-sim/internal-jobs/${BAD_ID}/submit`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+      payload: { langue: 'fr', questions: ['Q1'], answers: [{ index: 0, question: 'Q1', transcript: 'r' }] },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'Offre introuvable' })
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /interview-sim/internal-jobs/:jobId/start — calibrage IA sur l’offre (Phase 2)', () => {
+  it('transmet interview_focus ET experience_level DE L’OFFRE au PosteContext (genererQuestions)', async () => {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('FROM "tenant_sotra".employees')) return Promise.resolve({ rows: [{ id: 'emp-1', department_id: null, job_level: null, hire_date: null, legal_entity_id: null }] })
+      if (s.includes('FROM "tenant_sotra".recruitment_jobs')) return Promise.resolve({ rows: [{ title: 'Développeur', interview_focus: { technologies: [{ name: 'Java', yearsRequired: 5 }], tools: [], methodologies: [], languages: [] }, experience_level: '3_7_ans' }] })
+      if (s.includes('FROM platform.tenants')) return Promise.resolve({ rows: [{ sector: 'IT' }] })
+      if (s.includes('interview_sim_config')) return Promise.resolve({ rows: [{ default_langue: 'fr', questions_count: 4, public_token_ttl_minutes: 60, consent_text: null }] })
+      if (s.includes('interview_sim_question_banks')) return Promise.resolve({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
+      return Promise.resolve({ rows: [] })
+    })
+    const res = await app.inject({
+      method: 'GET', url: `/interview-sim/internal-jobs/${JOB_ID}/start`,
+      headers: { authorization: `Bearer ${tokenFor('emp-1')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(genererQuestions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Développeur',
+        experienceLevel: '3_7_ans',
+        interviewFocus: expect.objectContaining({
+          technologies: [{ name: 'Java', yearsRequired: 5 }],
+          tools: [], methodologies: [], languages: [],
+        }),
+      }),
+      expect.any(Array),
+      expect.any(Number),
+      expect.anything(),
+    )
   })
 })

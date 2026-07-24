@@ -1,7 +1,4 @@
 {
-  "title": "Mes simulations d'entretien",
-  "intro": "Entraînez-vous à un entretien pour votre poste. Le retour est privé, visible de vous seul.",
-  "startButton": "Démarrer une simulation",
   "voiceUnsupported": "La reconnaissance vocale n'est pas disponible sur ce navigateur : saisissez vos réponses au clavier.",
   "questionProgress": "Question {{current}} / {{total}}",
   "answerPlaceholder": "Votre réponse…",
@@ -13,9 +10,6 @@
   "strengths": "Points forts",
   "improvements": "Axes de progrès",
   "restart": "Recommencer",
-  "historyTitle": "Historique",
-  "historyEmpty": "Aucune simulation pour le moment.",
-  "delete": "Supprimer",
   "publicTitle": "Entraînement à l'entretien : {{job}}",
   "consentAccept": "J'accepte et je commence",
   "linkInvalid": "Ce lien d'entraînement est invalide ou expiré.",

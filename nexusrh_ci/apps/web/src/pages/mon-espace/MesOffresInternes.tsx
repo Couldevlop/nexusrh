@@ -5,6 +5,8 @@ import { api, formatFCFA } from '@/lib/api'
 import { apecMetaPairs } from '@/lib/apec'
 import { Briefcase, MapPin, Send, CheckCircle, Lock } from 'lucide-react'
 import { OfferInterviewRunner } from '@/components/interview-sim/OfferInterviewRunner'
+import { useAuthStore } from '@/stores/authStore'
+import { isModuleEnabled } from '@/lib/modules'
 
 interface InternalJob {
   id: string
@@ -36,6 +38,11 @@ export default function MesOffresInternes() {
   const { t } = useTranslation('monEspace')
   const contractLabel = (type: string) =>
     t(`offers.contractTypes.${type}`, { defaultValue: type.toUpperCase() })
+  const { tenantConfig } = useAuthStore()
+  // Module opt-in (défaut désactivé) : le bouton ne doit s'afficher que si le
+  // tenant a activé interview_sim, sinon l'API 403 (hook global) et l'écran
+  // affiche une erreur trompeuse « offre plus disponible ».
+  const interviewSimEnabled = isModuleEnabled(tenantConfig, 'interview_sim')
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<InternalJob | null>(null)
   const [mode, setMode] = useState<'detail' | 'interview'>('detail')
@@ -239,10 +246,12 @@ export default function MesOffresInternes() {
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-                  <button onClick={() => setMode('interview')}
-                    className="mr-auto inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
-                    {t('offers.trainInterview')}
-                  </button>
+                  {interviewSimEnabled && (
+                    <button onClick={() => setMode('interview')}
+                      className="mr-auto inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
+                      {t('offers.trainInterview')}
+                    </button>
+                  )}
                   <button onClick={() => setSelected(null)}
                     className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
                     {t('common.cancel')}
