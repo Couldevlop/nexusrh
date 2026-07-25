@@ -15,6 +15,7 @@ import {
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
 import { seedWoyaa } from '../scripts/scenario-woyaa.js'
 import { captureExistingCredentials, restorePreservedCredentials } from './seed-credentials.js'
+import { jobLevelForSalary } from './seed-job-level.js'
 import {
   monthOffsetStr,
   lastClosedMonths,
@@ -629,25 +630,32 @@ async function runSeed(): Promise<void> {
       const childrenCount = maritalStatus === 'single' ? 0 : randInt(0, 4)
       const baseSalary   = roundFCFA(randInt(dept.baseSalaryRange[0], dept.baseSalaryRange[1]))
       const jobTitle     = randItem(jobs)
-      const hireDate     = pastDate(randInt(6, 84))
       const contractType = baseSalary < 100_000 ? 'cdd' : 'cdi'
+      // Niveau de poste : indispensable au ciblage des offres internes
+      // (target_job_levels) — sans lui, « Mes offres internes » est vide.
+      const jobLevel     = jobLevelForSalary(baseSalary)
 
       const isKouassi = empIdx === 0 // Lier le premier employé au compte employe@sotra.ci
       const empEmail  = isKouassi ? 'employe@sotra.ci' : email
+      // Ancienneté FIXE pour le compte de démo : les offres internes exigent
+      // jusqu'à 36 mois d'ancienneté. Avec un tirage aléatoire 6–84, l'écran
+      // « Mes offres internes » de employe@sotra.ci serait vide une fois sur
+      // trois (règle projet : zéro écran vide au premier lancement).
+      const hireDate     = isKouassi ? pastDate(48) : pastDate(randInt(6, 84))
 
       const res = await pool.query<{ id: string }>(`
         INSERT INTO "${sotraSchema}".employees
           (first_name, last_name, email, gender, nni, cnps_number,
            mobile_money_provider, mobile_money_phone,
-           department_id, job_title, contract_type,
+           department_id, job_title, job_level, contract_type,
            hire_date, base_salary, city, marital_status, children_count, is_active)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true)
         ON CONFLICT (email) DO NOTHING
         RETURNING id
       `, [
         firstName, lastName, empEmail, isFemale ? 'F' : 'M',
         nni(), cnpsNum(), provider, phone,
-        deptId, jobTitle, contractType,
+        deptId, jobTitle, jobLevel, contractType,
         hireDate, baseSalary, 'Abidjan', maritalStatus, childrenCount,
       ])
 
@@ -673,15 +681,20 @@ async function runSeed(): Promise<void> {
   // (chef de dépôt Exploitation) et TOUTE l'Exploitation devient son équipe :
   // le dashboard manager (équipe, demandes à valider) n'est jamais vide.
   // Le scoping API passe par employees.manager_id + users.email (cf. absences.routes).
+  // job_level forcé à 'agent_maitrise' (et non déduit des 380 000 FCFA, qui
+  // donneraient 'cadre') : un chef de dépôt est un agent de maîtrise, et cela
+  // rend le compte manager@sotra.ci destinataire des offres de mobilité interne
+  // Exploitation — le parcours « offre interne → entraînement » est ainsi
+  // démontrable depuis un compte manager comme depuis un compte employé.
   const managerPhone = ciPhone('wave')
   const managerEmpRes = await pool.query<{ id: string }>(`
     INSERT INTO "${sotraSchema}".employees
       (first_name, last_name, email, gender, nni, cnps_number,
        mobile_money_provider, mobile_money_phone,
-       department_id, job_title, contract_type,
+       department_id, job_title, job_level, contract_type,
        hire_date, base_salary, city, marital_status, children_count, is_active)
     VALUES ('Chef','Dépôt','manager@sotra.ci','M',$1,$2,'wave',$3,$4,
-            'Chef de dépôt','cdi',$5,380000,'Abidjan','married',2,true)
+            'Chef de dépôt','agent_maitrise','cdi',$5,380000,'Abidjan','married',2,true)
     ON CONFLICT (email) DO NOTHING
     RETURNING id
   `, [nni(), cnpsNum(), managerPhone, sotraDeptIds['EXP'] ?? null, pastDate(60)])
@@ -1489,14 +1502,15 @@ async function runSeed(): Promise<void> {
         INSERT INTO "${cabinetSchema}".employees
           (first_name, last_name, email, gender, nni, cnps_number,
            mobile_money_provider, mobile_money_phone,
-           department_id, contract_type, hire_date, base_salary,
+           department_id, job_level, contract_type, hire_date, base_salary,
            city, marital_status, children_count, is_active)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'cdi',$10,$11,'Abidjan',$12,$13,true)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'cdi',$11,$12,'Abidjan',$13,$14,true)
         ON CONFLICT (email) DO NOTHING
         RETURNING id
       `, [
         firstName, lastName, email, isFemale ? 'F' : 'M',
         nni(), cnpsNum(), provider, phone, deptId,
+        jobLevelForSalary(baseSalary),
         pastDate(randInt(6, 48)), baseSalary, maritalStatus, childrenCount,
       ])
 
@@ -1823,9 +1837,9 @@ async function runSeed(): Promise<void> {
         INSERT INTO "${openlabSchema}".employees
           (first_name, last_name, email, gender, nni, cnps_number,
            mobile_money_provider, mobile_money_phone,
-           department_id, job_title, contract_type, hire_date, base_salary,
+           department_id, job_title, job_level, contract_type, hire_date, base_salary,
            city, marital_status, children_count, is_active)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'cdi',$11,$12,'Abidjan',$13,$14,true)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'cdi',$12,$13,'Abidjan',$14,$15,true)
         ON CONFLICT (email) DO NOTHING RETURNING id
       `, [
         firstName, lastName,
@@ -1833,6 +1847,7 @@ async function runSeed(): Promise<void> {
         isFemale ? 'F' : 'M', nni(), cnpsNum(), provider, ciPhone(provider),
         openlabDeptIds[di] ?? null,
         di === 0 ? 'Consultant' : di === 1 ? 'Ingénieur' : 'Assistant administratif',
+        jobLevelForSalary(baseSalary),
         pastDate(randInt(4, 36)), baseSalary, maritalStatus, childrenCount,
       ])
       if (res.rows[0]) {
