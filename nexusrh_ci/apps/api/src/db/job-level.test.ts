@@ -9,7 +9,9 @@
  * « S'entraîner à l'entretien » (interview_sim) inatteignable.
  */
 import { describe, it, expect } from 'vitest'
-import { JOB_LEVELS, jobLevelForSalary, type JobLevel } from './seed-job-level.js'
+import {
+  JOB_LEVELS, JOB_LEVEL_THRESHOLDS, jobLevelForSalary, jobLevelBackfillSql, type JobLevel,
+} from './job-level.js'
 
 // Grilles de salaire des départements SOTRA (seed.ts — SOTRA_DEPTS).
 const SOTRA_RANGES: Record<string, [number, number]> = {
@@ -60,6 +62,51 @@ describe('jobLevelForSalary', () => {
     expect(jobLevelForSalary(150_000)).toBe('agent_maitrise')
     expect(jobLevelForSalary(299_999)).toBe('agent_maitrise')
     expect(jobLevelForSalary(300_000)).toBe('cadre')
+  })
+})
+
+describe('jobLevelBackfillSql — rattrapage des employés déjà en base', () => {
+  const sql = jobLevelBackfillSql('tenant_sotra')
+
+  it('ne touche que les lignes sans niveau', () => {
+    expect(sql).toContain(`WHERE (job_level IS NULL OR job_level = '')`)
+  })
+
+  it('s’abstient dès qu’un seul niveau existe — jamais par-dessus une saisie RH', () => {
+    // Sans ce garde-fou, le statement étant rejoué à chaque démarrage de pod,
+    // il réécrirait indéfiniment les employés qu'un RH laisse volontairement
+    // sans niveau dans un tenant déjà renseigné.
+    expect(sql).toContain('AND NOT EXISTS (')
+    expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM "tenant_sotra"\.employees\s*WHERE job_level IS NOT NULL AND job_level <> ''/)
+  })
+
+  it('cible le schéma demandé', () => {
+    expect(sql).toContain('"tenant_sotra".employees')
+  })
+
+  it('énumère les seuils par ordre DÉCROISSANT — un CASE prend la première branche vraie', () => {
+    const mins = [...sql.matchAll(/base_salary >= (\d+)/g)].map((m) => Number(m[1]))
+    expect(mins.length).toBeGreaterThan(0)
+    expect(mins).toEqual([...mins].sort((a, b) => b - a))
+  })
+
+  it('reste aligné sur jobLevelForSalary à chaque frontière de seuil', () => {
+    const branches = [...sql.matchAll(/base_salary >= (\d+) THEN '(\w+)'/g)]
+      .map((m) => ({ min: Number(m[1]), level: m[2] as JobLevel }))
+    for (const { min, level } of branches) {
+      expect(jobLevelForSalary(min), `seuil ${min}`).toBe(level)
+      expect(jobLevelForSalary(min - 1), `sous le seuil ${min}`).not.toBe(level)
+    }
+    // La branche ELSE couvre tout ce qui passe sous le plus petit seuil.
+    const lowest = JOB_LEVEL_THRESHOLDS[JOB_LEVEL_THRESHOLDS.length - 1]!.level
+    expect(sql).toContain(`ELSE '${lowest}'`)
+    expect(jobLevelForSalary(0)).toBe(lowest)
+  })
+
+  it('n’émet que des niveaux canoniques', () => {
+    for (const [, level] of sql.matchAll(/THEN '(\w+)'/g)) {
+      expect(JOB_LEVELS).toContain(level as JobLevel)
+    }
   })
 })
 

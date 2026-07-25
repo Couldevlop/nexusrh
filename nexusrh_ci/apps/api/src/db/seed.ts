@@ -15,7 +15,7 @@ import {
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
 import { seedWoyaa } from '../scripts/scenario-woyaa.js'
 import { captureExistingCredentials, restorePreservedCredentials } from './seed-credentials.js'
-import { jobLevelForSalary } from './seed-job-level.js'
+import { jobLevelForSalary } from './job-level.js'
 import {
   monthOffsetStr,
   lastClosedMonths,
