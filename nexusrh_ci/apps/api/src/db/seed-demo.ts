@@ -6,6 +6,7 @@ import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
 import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
+import { jobLevelForSalary } from './seed-job-level.js'
 
 const EMPLOYEES = [
   { firstName: 'Kouassi',  lastName: 'Coulibaly', gender: 'M', job: 'Directeur',       dept: 'Direction',    salary: 450_000 },
@@ -56,12 +57,16 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
     const hireDate = pastMonth(randInt(12, 36))
     const r = await pool.query(
       `INSERT INTO "${s}".employees
-         (first_name, last_name, gender, job_title, department_id,
+         (first_name, last_name, gender, job_title, job_level, department_id,
           base_salary, hire_date, is_active, marital_status, children_count,
           mobile_money_provider, mobile_money_phone, cnps_number, nni)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$13) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14) RETURNING id`,
       [
-        e.firstName, e.lastName, e.gender, e.job, deptIds[e.dept],
+        e.firstName, e.lastName, e.gender, e.job,
+        // Sans niveau de poste, toute offre interne ciblée par niveau serait
+        // invisible pour l'ensemble de l'effectif (cf. seed-job-level.ts).
+        jobLevelForSalary(e.salary),
+        deptIds[e.dept],
         e.salary, `${hireDate.year}-${String(hireDate.month).padStart(2,'0')}-01`,
         'married', randInt(0, 3),
         ['wave','mtn_momo','orange_money'][randInt(0,2)],
