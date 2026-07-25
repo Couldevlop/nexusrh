@@ -1,5 +1,6 @@
 import { assertValidSchemaName } from './schema-name.js'
 import { onboardingTableStatements } from '../db/onboarding-tables.js'
+import { jobLevelBackfillSql } from '../db/job-level.js'
 import { classificationTableStatements } from '../db/classification-defaults.js'
 import { pool } from '../db/pool.js'
 
@@ -734,6 +735,14 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
 
     // ── Parcours d'intégration (onboarding) — DDL partagé avec provisioning ──
     ...onboardingTableStatements(schemaName),
+    // ── Reprise de données : niveau de poste des employés ────────────────────
+    // Seul statement DML de cette liste. Les offres internes se ciblent par
+    // `target_job_levels` et `job_level = ANY(...)` ne matche jamais NULL : un
+    // tenant dont l'effectif n'a aucun niveau ne voit AUCUNE offre interne
+    // ciblée (donc pas non plus l'entraînement à l'entretien). Le seed ne peut
+    // pas réparer ces tenants — il s'arrête en mode préservation. Portée bornée
+    // aux tenants dont personne n'a de niveau ; no-op définitif ensuite.
+    jobLevelBackfillSql(schemaName),
   ]
 
   for (const sql of alters) {
