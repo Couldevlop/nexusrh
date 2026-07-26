@@ -61,6 +61,12 @@ export interface SourcingSettings {
   claudeSystemPrompt:    string  // override du prompt Claude
   mistralSystemPrompt:   string  // override du prompt Mistral
   richnessWeights:       RichnessWeights
+  // Plafond de tokens de SORTIE, dimensionné à la demande (cf. sourcingMaxTokens).
+  // Il était codé en dur à 4000 : au-delà d'une poignée de profils, le modèle
+  // était coupé en plein JSON, le parse échouait et l'écran restait vide.
+  tokensBase:            number  // enveloppe fixe (stratégie, mots-clés, benchmark)
+  tokensPerProfile:      number  // coût observé d'un profil généré
+  tokensCeiling:         number  // garde-fou absolu (coût / limites fournisseur)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,6 +114,31 @@ const DEFAULT_SETTINGS: SourcingSettings = {
   claudeSystemPrompt:   '',  // vide = utiliser le prompt par défaut codé
   mistralSystemPrompt:  '',
   richnessWeights:      DEFAULT_RICHNESS_WEIGHTS,
+  // Calibré sur des mesures réelles (mistral, prod 26/07/2026) : 3 profils =
+  // 1527 tokens de sortie, soit ~400/profil une fois l'enveloppe fixe déduite.
+  // 20 profils → 1200 + 8000 = 9200, très au-dessus des 4000 qui tronquaient.
+  tokensBase:           1200,
+  tokensPerProfile:     400,
+  tokensCeiling:        16_000,
+}
+
+/**
+ * Plafond de tokens de sortie pour UNE requête de sourcing.
+ *
+ * Le plafond était figé à 4000 quel que soit le nombre de profils demandés.
+ * Symptôme constaté en prod le 26/07/2026 : « une plateforme » (3 profils,
+ * 1527 tokens) fonctionnait, « toutes les plateformes » (20 profils) sortait
+ * à EXACTEMENT 4000 tokens — réponse coupée au milieu du JSON, parse en échec,
+ * `data: null`, écran vide et aucun message d'erreur.
+ *
+ * Le résultat reste borné par `tokensCeiling` : un `max_profiles` extravagant
+ * ne peut pas déclencher une requête au coût non maîtrisé.
+ */
+export function sourcingMaxTokens(maxProfiles: number, settings?: SourcingSettings | null): number {
+  const s = settings ?? DEFAULT_SETTINGS
+  const profiles = Number.isFinite(maxProfiles) ? Math.max(0, maxProfiles) : 0
+  const needed = s.tokensBase + s.tokensPerProfile * profiles
+  return Math.max(s.tokensBase, Math.min(needed, s.tokensCeiling))
 }
 
 // Plateformes panafricaines + locales par pays (fallback identique à l'ancienne
@@ -209,6 +240,9 @@ export async function loadSourcingSettings(): Promise<SourcingSettings> {
       claudeSystemPrompt:   str(map.get('claude_system_prompt'),  DEFAULT_SETTINGS.claudeSystemPrompt),
       mistralSystemPrompt:  str(map.get('mistral_system_prompt'), DEFAULT_SETTINGS.mistralSystemPrompt),
       richnessWeights:      mergeWeights(map.get('richness_weights')),
+      tokensBase:           num(map.get('tokens_base'),        DEFAULT_SETTINGS.tokensBase),
+      tokensPerProfile:     num(map.get('tokens_per_profile'), DEFAULT_SETTINGS.tokensPerProfile),
+      tokensCeiling:        num(map.get('tokens_ceiling'),     DEFAULT_SETTINGS.tokensCeiling),
     }
     settingsCache = { value: merged, expiresAt: Date.now() + CACHE_TTL_MS }
     return merged

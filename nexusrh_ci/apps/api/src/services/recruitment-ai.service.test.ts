@@ -38,6 +38,10 @@ vi.mock('./sourcing-config.service.js', () => ({
     firstProfileLinkedin: 5, firstProfileApproach: 5, firstProfileSkills: 5,
   }),
   invalidateSourcingConfigCache: vi.fn(),
+  // Plafond de tokens de sortie dimensionné à la demande — sourceWithProvider
+  // l'appelle avant chaque requête au fournisseur.
+  sourcingMaxTokens: (n: number) =>
+    Math.max(1200, Math.min(1200 + 400 * (Number.isFinite(n) ? Math.max(0, n) : 0), 16_000)),
 }))
 
 import {
