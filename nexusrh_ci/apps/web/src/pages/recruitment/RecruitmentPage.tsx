@@ -12,7 +12,7 @@ import {
   Briefcase, Plus, Users, MapPin, ChevronRight, Eye,
   CheckCircle, XCircle, ArrowRight, Sparkles, Upload, Globe, Lock,
   Wand2, Mail, Linkedin, Loader2, FileText,
-  Target, Layers, Zap, TrendingUp, Quote, ShieldCheck,
+  Target, Layers, Zap, TrendingUp, Quote, ShieldCheck, AlertTriangle,
   Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
   Link2, Share2, Copy, MoreHorizontal, UserPlus, Ban,
   FileSignature,
@@ -2365,6 +2365,17 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
               {tenantHasSubsidiaries ? t('sourcing.introMulti') : t('sourcing.introMono')}
             </p>
+            {/* Les « profils » sont des personas générés par le modèle : aucune
+                plateforme n'est interrogée, aucun CV n'est lu. Sans cet
+                avertissement, un recruteur peut les prendre pour de vrais
+                candidats — ils portent des noms et des employeurs plausibles. */}
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 max-w-2xl">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <div className="text-xs text-amber-900">
+                <span className="font-semibold">{t('sourcing.syntheticTitle')}</span>
+                <p className="mt-0.5 text-amber-800">{t('sourcing.syntheticText')}</p>
+              </div>
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               {tenantHasSubsidiaries ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 font-medium text-indigo-700 border border-indigo-200">
@@ -2608,6 +2619,11 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
                         ? <Trans i18nKey="sourcing.pendingTransfer" t={t} values={{ pending: pendingCount, done: sourcedRows.length - pendingCount }} components={{ strong: <strong /> }} />
                         : t('sourcing.allTransferred')}
                     </p>
+                    {/* Le transfert crée une candidature avec un email fabriqué
+                        en @example.com : à dire AVANT le clic, pas après. */}
+                    {pendingCount > 0 && (
+                      <p className="mt-1 text-xs text-amber-800">{t('sourcing.syntheticTransferWarning')}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2865,6 +2881,13 @@ function ProfileCard({ profile, onContact, transferable }: {
       ${isTransferred
         ? 'border-emerald-300 bg-gradient-to-br from-emerald-50/40 to-teal-50/30 shadow-emerald-100'
         : 'border-border hover:border-indigo-300'}`}>
+      {/* Rappel au niveau de la carte : nom et employeur sont plausibles, donc
+          rien ne distingue visuellement un persona d'un candidat réel. */}
+      {!isTransferred && (
+        <div className="absolute top-0 right-0 z-10 rounded-bl-lg bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border-l border-b border-amber-300">
+          {t('sourcing.syntheticBadge')}
+        </div>
+      )}
       {/* Bandeau "Dans le pipeline" si transféré */}
       {isTransferred && (
         <div className="absolute top-0 right-0 z-10 rounded-bl-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-md">
