@@ -2,6 +2,7 @@ import { config } from '../config.js'
 import {
   loadAiModels,
   loadSourcingSettings,
+  sourcingMaxTokens,
   defaultRichnessWeights,
   type RichnessWeights,
 } from './sourcing-config.service.js'
@@ -432,6 +433,8 @@ export interface SourcingProviderResult {
   inputTokens:      number
   outputTokens:     number
   estimatedCostEur: number
+  /** Budget de tokens épuisé → réponse coupée en plein JSON (donc `data` null). */
+  truncated:        boolean
   error:            string | null
 }
 
@@ -772,18 +775,29 @@ async function sourceWithProvider(
   const prompt = buildSourcingPrompt(ctx, platforms, maxProfiles, countries)
   const settings = await loadSourcingSettings().catch(() => null)
   const label = opts?.label ?? (provider === 'claude' ? 'Claude' : 'Mistral')
+  // Dimensionné au nombre de profils demandés : un plafond fixe coupait la
+  // réponse en plein JSON dès qu'on demandait beaucoup de profils.
+  const maxTokens = sourcingMaxTokens(maxProfiles, settings)
   try {
     const raw = provider === 'claude'
-      ? await callClaudeRaw(prompt, 4000, creds, opts?.modelOverride)
-      : await callMistralRaw(prompt, 4000, creds, opts?.modelOverride)
+      ? await callClaudeRaw(prompt, maxTokens, creds, opts?.modelOverride)
+      : await callMistralRaw(prompt, maxTokens, creds, opts?.modelOverride)
 
     let data: SourcingResult | null = null
+    let parseError: string | null = null
     try {
       const parsed = extractJson(raw.text)
       data = normalizeSourcing(parsed, resolveDefaultCurrency(ctx, countries))
-    } catch {
+      // normalizeSourcing renvoie null si la charge utile est inexploitable
+      // (ex. clé `strategy` absente) : sans ce message, l'échec resterait muet.
+      if (data === null) parseError = 'Réponse du modèle inexploitable (structure inattendue).'
+    } catch (err) {
       data = null
+      parseError = err instanceof Error ? err.message : String(err)
     }
+    // Le modèle a consommé tout son budget : la réponse est presque sûrement
+    // coupée. On le dit explicitement plutôt que de renvoyer un écran vide.
+    const truncated = data === null && raw.outputTokens >= maxTokens
     const cost = await costEur(provider, raw.inputTokens, raw.outputTokens)
 
     // Budget max par requête (configurable) — log warning si dépassé.
@@ -806,7 +820,10 @@ async function sourceWithProvider(
       inputTokens:      raw.inputTokens,
       outputTokens:     raw.outputTokens,
       estimatedCostEur: cost,
-      error:            null,
+      truncated,
+      error:            truncated
+        ? `Réponse tronquée : le modèle a atteint sa limite de ${maxTokens} tokens. Demandez moins de profils.`
+        : parseError,
     }
   } catch (err) {
     return {
@@ -821,6 +838,7 @@ async function sourceWithProvider(
       inputTokens:      0,
       outputTokens:     0,
       estimatedCostEur: 0,
+      truncated:        false,
       error:            err instanceof Error ? err.message : String(err),
     }
   }

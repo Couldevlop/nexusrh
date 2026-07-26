@@ -415,7 +415,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
       },
       jsonValid: true, richnessScore: 60, profilesGenerated: 1,
       latencyMs: 1500, inputTokens: 1000, outputTokens: 2000,
-      estimatedCostEur: 0.034, error: null,
+      estimatedCostEur: 0.034, truncated: false, error: null,
     })
 
     const token = tokenFor(app, 'hr_manager')
@@ -436,6 +436,62 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
     expect(body.data.profiles[0].firstName).toBe('A')
   })
 
+  // Régression prod 26/07/2026 : « j'ai lancé la recherche sur une plateforme
+  // puis sur toutes, mais rien ». sourceProfiles NE LÈVE PAS quand le modèle
+  // échoue ou que sa réponse est coupée : il renvoie data=null + error. La
+  // route répondait alors 200 avec data:null → écran entièrement vide, sans
+  // message ni état « aucun résultat ». Le silence est le bug.
+  it('réponse tronquée → 502 explicite (jamais un 200 muet)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Lead Dev' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(sourceProfiles).mockResolvedValueOnce({
+      provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral',
+      data: null, jsonValid: false, richnessScore: 0, profilesGenerated: 0,
+      latencyMs: 19_800, inputTokens: 900, outputTokens: 4000,
+      estimatedCostEur: 0.03, truncated: true,
+      error: 'Réponse tronquée : le modèle a atteint sa limite de 4000 tokens.',
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { model: 'mistral', max_profiles: 20 },
+    })
+
+    expect(res.statusCode).toBe(502)
+    const body = JSON.parse(res.body)
+    // Message actionnable : l'utilisateur doit savoir QUOI faire pour réussir.
+    expect(body.error).toMatch(/moins de profils/i)
+    expect(body.meta.truncated).toBe(true)
+    expect(body.meta.outputTokens).toBe(4000)
+  })
+
+  it('échec fournisseur sans troncature → 502 portant la cause', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ title: 'Lead Dev' }] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    vi.mocked(sourceProfiles).mockResolvedValueOnce({
+      provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral',
+      data: null, jsonValid: false, richnessScore: 0, profilesGenerated: 0,
+      latencyMs: 0, inputTokens: 0, outputTokens: 0, estimatedCostEur: 0,
+      truncated: false, error: '401 Unauthorized',
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/jobs/job-1/source',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { model: 'mistral' },
+    })
+
+    expect(res.statusCode).toBe(502)
+    expect(JSON.parse(res.body).error).toContain('401 Unauthorized')
+  })
+
   it('cappe max_profiles à 20', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ title: 'X' }] })
@@ -444,7 +500,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
     vi.mocked(sourceProfiles).mockResolvedValueOnce({
       provider: 'claude', model: 'm', label: 'Claude', data: null, jsonValid: false,
       richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
-      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
+      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, truncated: false, error: null,
     })
 
     const token = tokenFor(app, 'hr_manager')
@@ -466,7 +522,7 @@ describe('POST /recruitment/jobs/:id/source — Sourcing IA', () => {
     vi.mocked(sourceProfiles).mockResolvedValueOnce({
       provider: 'claude', model: 'm', label: 'Claude', data: null, jsonValid: false,
       richnessScore: 0, profilesGenerated: 0, latencyMs: 0,
-      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, error: null,
+      inputTokens: 0, outputTokens: 0, estimatedCostEur: 0, truncated: false, error: null,
     })
 
     const token = tokenFor(app, 'hr_manager')
@@ -561,8 +617,8 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
       .mockResolvedValueOnce({ rows: [] }) // audit_log
     vi.mocked(sourceProfilesCompare).mockResolvedValueOnce({
       winner: 'mistral',
-      claude:  { provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral Small', data: null, jsonValid: true, richnessScore: 55, profilesGenerated: 3, latencyMs: 900, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.004, error: null },
-      mistral: { provider: 'mistral', model: 'mistral-large-latest', label: 'Mistral Large', data: null, jsonValid: true, richnessScore: 78, profilesGenerated: 3, latencyMs: 1600, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.012, error: null },
+      claude:  { provider: 'mistral', model: 'mistral-small-latest', label: 'Mistral Small', data: null, jsonValid: true, richnessScore: 55, profilesGenerated: 3, latencyMs: 900, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.004, truncated: false, error: null },
+      mistral: { provider: 'mistral', model: 'mistral-large-latest', label: 'Mistral Large', data: null, jsonValid: true, richnessScore: 78, profilesGenerated: 3, latencyMs: 1600, inputTokens: 400, outputTokens: 1200, estimatedCostEur: 0.012, truncated: false, error: null },
       ratios: { latency: 'l', cost: 'c', richness: 'r' },
       recommendation: 'Mistral Large recommandé',
     })
@@ -591,12 +647,12 @@ describe('POST /recruitment/jobs/:id/source/compare — Claude vs Mistral', () =
       claude: {
         provider: 'claude', model: 'c', label: 'Claude', data: null, jsonValid: true,
         richnessScore: 75, profilesGenerated: 3, latencyMs: 2000,
-        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.025, error: null,
+        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.025, truncated: false, error: null,
       },
       mistral: {
         provider: 'mistral', model: 'm', label: 'Mistral', data: null, jsonValid: true,
         richnessScore: 60, profilesGenerated: 3, latencyMs: 1500,
-        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.011, error: null,
+        inputTokens: 500, outputTokens: 1500, estimatedCostEur: 0.011, truncated: false, error: null,
       },
       ratios: { latency: 'l', cost: 'c', richness: 'r' },
       recommendation: 'Claude recommandé',
