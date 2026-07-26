@@ -2016,6 +2016,10 @@ interface SourcingResponse {
     provider: 'claude' | 'mistral'
     model: string; latencyMs: number
     estimatedCostEur: number; richnessScore: number; jsonValid: boolean
+    // Renseignés quand l'IA n'a rien produit d'exploitable (réponse coupée,
+    // structure inattendue, panne fournisseur) — l'API répond alors 502.
+    truncated?: boolean
+    error?: string | null
   }
 }
 
@@ -2669,7 +2673,10 @@ function SourcingTab({ jobs, aiCaps, onTransferred, onGoToKanban }: {
           )}
 
           {/* Empty states */}
-          {!single && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
+          {/* `!single?.data` et non `!single` : une réponse sans profils laissait
+              `single` défini mais `single.data` à null — l'état « aucun résultat »
+              était alors bloqué et l'écran restait entièrement vide. */}
+          {!single?.data && !compare && !loading && sourcedRows.length === 0 && jobId && !sourcedQuery.isLoading && (
             <EmptyState
               icon={Target}
               title={t('sourcing.noProfilesTitle')}

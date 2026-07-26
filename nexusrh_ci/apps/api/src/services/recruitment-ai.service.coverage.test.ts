@@ -50,6 +50,10 @@ vi.mock('./sourcing-config.service.js', () => ({
   loadSourcingSettings: (...a: unknown[]) => loadSourcingSettingsMock(...a),
   defaultRichnessWeights: () => ({ ...DEFAULT_WEIGHTS }),
   invalidateSourcingConfigCache: vi.fn(),
+  // Reproduit le dimensionnement réel (enveloppe fixe + coût par profil, borné) :
+  // sourceWithProvider l'appelle pour fixer le plafond de tokens de sortie.
+  sourcingMaxTokens: (n: number) =>
+    Math.max(1200, Math.min(1200 + 400 * (Number.isFinite(n) ? Math.max(0, n) : 0), 16_000)),
 }))
 
 import {
@@ -438,7 +442,7 @@ describe('buildSourcingRecommendation — toutes les branches comparatives', () 
     const base = {
       provider: 'claude' as const, model: 'm', data: RICH, jsonValid: true,
       richnessScore: 50, profilesGenerated: 1, latencyMs: 1000,
-      inputTokens: 100, outputTokens: 100, estimatedCostEur: 0.01, error: null,
+      inputTokens: 100, outputTokens: 100, estimatedCostEur: 0.01, truncated: false, error: null,
       ...over,
     }
     // Le libellé suit le fournisseur (buildSourcingRecommendation raisonne sur label).

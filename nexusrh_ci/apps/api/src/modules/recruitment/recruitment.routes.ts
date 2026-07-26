@@ -1657,20 +1657,34 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
            request.ip ?? null],
         ).catch(() => { /* tenant sans audit_log : non bloquant */ })
 
-        return reply.send({
-          data: result.data,
-          meta: {
-            provider:         result.provider,
-            model:            result.model,
-            latencyMs:        result.latencyMs,
-            inputTokens:      result.inputTokens,
-            outputTokens:     result.outputTokens,
-            estimatedCostEur: result.estimatedCostEur,
-            richnessScore:    result.richnessScore,
-            jsonValid:        result.jsonValid,
-          },
-          jobId: id,
-        })
+        const meta = {
+          provider:         result.provider,
+          model:            result.model,
+          latencyMs:        result.latencyMs,
+          inputTokens:      result.inputTokens,
+          outputTokens:     result.outputTokens,
+          estimatedCostEur: result.estimatedCostEur,
+          richnessScore:    result.richnessScore,
+          jsonValid:        result.jsonValid,
+          truncated:        result.truncated,
+          error:            result.error,
+        }
+
+        // Échec du fournisseur ou réponse inexploitable : `sourceWithProvider`
+        // ne lève PAS, il renvoie data=null + error. Répondre 200 ici affichait
+        // un écran totalement vide, sans message ni état « aucun résultat » —
+        // c'est le bug remonté le 26/07/2026 (« j'ai lancé la recherche… rien »).
+        if (!result.data) {
+          return reply.status(502).send({
+            error: result.truncated
+              ? `Le modèle a été coupé avant la fin de sa réponse (limite de tokens atteinte). Relancez en demandant moins de profils, ou moins de plateformes à la fois.`
+              : `Le sourcing IA n’a rien pu produire${result.error ? ` : ${result.error}` : '.'}`,
+            meta,
+            jobId: id,
+          })
+        }
+
+        return reply.send({ data: result.data, meta, jobId: id })
       } catch (err) {
         const raw = err instanceof Error ? err.message : ''
         fastify.log.error({ err }, 'recruitment.source failed')
