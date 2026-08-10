@@ -2,6 +2,8 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
+import BankFormatsSection from './BankFormatsSection'
 import { Smartphone, Loader2, Send, ArrowLeftRight, Landmark, Download, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PaymentRecord {
@@ -37,9 +39,10 @@ const PROVIDER_COLOR: Record<string, string> = {
 
 export default function MobileMoneyPage() {
   const { t } = useTranslation('mobileMoney')
+  const role = useAuthStore((s) => s.user?.role)
   const [month, setMonth] = useState('')
   const [campaignResult, setCampaignResult] = useState<CampaignResult | null>(null)
-  const [paymentTab, setPaymentTab] = useState<'mobile_money' | 'bank_transfer'>('mobile_money')
+  const [paymentTab, setPaymentTab] = useState<'mobile_money' | 'bank_transfer' | 'bank_formats'>('mobile_money')
   const { data: paymentsData, isLoading, refetch } = useQuery<{ data: PaymentRecord[] }>({
     queryKey: ['mm-payments', month],
     queryFn: () => api.get(`/mobile-money/payments${month ? `?month=${month}` : ''}`).then(r => r.data),
@@ -78,9 +81,17 @@ export default function MobileMoneyPage() {
           className={`rounded-md px-4 py-1.5 text-sm font-medium ${paymentTab === 'bank_transfer' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
           {t('tabs.bankTransfer', 'Virement bancaire')}
         </button>
+        {/* Paramétrage tenant — réservé à l'admin (matrice RBAC). */}
+        {role === 'admin' && (
+          <button onClick={() => setPaymentTab('bank_formats')}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium ${paymentTab === 'bank_formats' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+            {t('tabs.bankFormats', 'Formats bancaires')}
+          </button>
+        )}
       </div>
 
       {paymentTab === 'bank_transfer' && <BankTransferSection />}
+      {paymentTab === 'bank_formats' && role === 'admin' && <BankFormatsSection />}
 
       {paymentTab === 'mobile_money' && (<>
       {/* Créer une campagne */}

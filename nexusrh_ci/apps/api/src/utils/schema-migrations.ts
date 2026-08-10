@@ -85,6 +85,40 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       email varchar(255),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // Coordonnées du DONNEUR D'ORDRE, exigées par la plupart des formats
+    // bancaires (en-tête de l'ordre de virement). Le compte est un RIB
+    // d'entreprise : chiffré au repos, comme les IBAN salariés.
+    `ALTER TABLE "${schemaName}".bank_directory ADD COLUMN IF NOT EXISTS ordering_account varchar(255)`,
+    `ALTER TABLE "${schemaName}".bank_directory ADD COLUMN IF NOT EXISTS ordering_label varchar(140)`,
+    // ── Formats de fichier bancaire PARAMÉTRABLES PAR TENANT ─────────────────
+    // Chaque banque impose son propre gabarit (tableur à colonnes variables ou
+    // texte à positions fixes). Le format est une DONNÉE propre au tenant, pas
+    // une migration : cette table est créée une fois, chaque changement de
+    // format de la banque devient une VERSION de plus.
+    // Statuts : draft (en préparation) · active (utilisée pour les envois) ·
+    // archived (conservée pour savoir quel format a produit les fichiers passés).
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".bank_file_templates (
+      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      bank_name     varchar(100) NOT NULL,
+      version       integer NOT NULL,
+      status        varchar(10) NOT NULL DEFAULT 'draft',
+      label         varchar(140),
+      output_kind   varchar(10) NOT NULL DEFAULT 'csv',
+      spec          jsonb NOT NULL,
+      sample_filename   varchar(160),
+      sample_structure  jsonb,
+      created_by    uuid,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      activated_at  timestamptz,
+      archived_at   timestamptz
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_bank_tpl_version_idx"
+       ON "${schemaName}".bank_file_templates(bank_name, version)`,
+    // Une seule version active par banque : c'est l'invariant du module
+    // (la résolution du format à l'envoi doit être sans ambiguïté).
+    `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_bank_tpl_active_idx"
+       ON "${schemaName}".bank_file_templates(bank_name) WHERE status = 'active'`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS retention_score numeric(3,2)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS burnout_risk varchar(10)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS ai_score_factors jsonb DEFAULT '[]'`,
