@@ -158,8 +158,10 @@ describe('feuille ne démarrant pas en colonne A (modèle BNI réel)', () => {
     expect(JSON.parse(JSON.stringify(a.columns)).some((c: unknown) => c === null)).toBe(false)
     expect(a.columns).toHaveLength(7)
     expect(a.columns[0]!.label).toBe('NUMERO CLIENT')
+    // Le fichier éclate le RIB : « COMPTE » y désigne le NUMÉRO de compte, et
+    // « CODE BANQUE » le code à 5 caractères, pas le libellé de la banque.
     expect(a.columns.map((c) => c.source)).toEqual([
-      'unmapped', 'employee.full_name', 'employee.iban', 'employee.bank_name',
+      'unmapped', 'employee.full_name', 'employee.account_number', 'employee.bank_code',
       'payslip.net_payable', 'computed.value_date', 'literal',
     ])
   })

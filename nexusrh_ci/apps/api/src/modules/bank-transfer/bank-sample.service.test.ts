@@ -214,3 +214,28 @@ describe('analyzeSample — durcissement', () => {
     expect(res.linesRead).toBeLessThanOrEqual(MAX_SAMPLE_LINES)
   })
 })
+
+describe('RIB éclaté en colonnes (formats bancaires ivoiriens)', () => {
+  it('reconnaît code banque et code guichet sans les confondre avec le libellé de la banque', () => {
+    expect(suggestSourceForHeader('CODE BANQUE         (5 positions)')).toBe('employee.bank_code')
+    expect(suggestSourceForHeader('CODE GUICHET (5 positions)')).toBe('employee.branch_code')
+    expect(suggestSourceForHeader('CODE AGENCE')).toBe('employee.branch_code')
+    expect(suggestSourceForHeader('CLE RIB')).toBe('employee.rib_key')
+    // Le libellé de la banque reste distinct des codes.
+    expect(suggestSourceForHeader('BANQUE')).toBe('employee.bank_name')
+  })
+
+  it('lit « COMPTE » comme le NUMÉRO de compte quand le fichier éclate le RIB', async () => {
+    const csv = ['COMPTE;CODE BANQUE;CODE GUICHET;MONTANT', '1;2;3;4', ''].join('\r\n')
+    const a = await analyzeSample('m.csv', Buffer.from(csv, 'utf8'))
+    expect(a.columns.map(c => c.source)).toEqual([
+      'employee.account_number', 'employee.bank_code', 'employee.branch_code', 'payslip.net_payable',
+    ])
+  })
+
+  it('mais comme le RIB ENTIER quand il est seul', async () => {
+    const csv = ['COMPTE;NOM;MONTANT', '1;2;3', ''].join('\r\n')
+    const a = await analyzeSample('m.csv', Buffer.from(csv, 'utf8'))
+    expect(a.columns[0]!.source).toBe('employee.iban')
+  })
+})
