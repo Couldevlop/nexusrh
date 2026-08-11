@@ -46,6 +46,12 @@ function normalizeHeader(header: string): string {
  * L'ordre compte — « COMPTE_BENEF » désigne le compte, pas le bénéficiaire.
  */
 const HEADER_RULES: Array<{ source: string; patterns: string[] }> = [
+  // Les parties du RIB AVANT le RIB entier : « CODE BANQUE » contient
+  // « BANQUE » et « CLE RIB » contient « RIB » — sans cet ordre, ils seraient
+  // pris pour le libellé de la banque ou pour le RIB complet.
+  { source: 'employee.bank_code', patterns: ['CODE BANQUE', 'CODE ETABLISSEMENT', 'BANK CODE'] },
+  { source: 'employee.branch_code', patterns: ['CODE GUICHET', 'CODE AGENCE', 'GUICHET', 'AGENCE'] },
+  { source: 'employee.rib_key', patterns: ['CLE RIB', 'CLE'] },
   { source: 'employee.iban', patterns: ['IBAN', 'RIB', 'COMPTE', 'CPTE', 'NUM COMPTE'] },
   { source: 'payslip.net_payable', patterns: ['MONTANT', 'NET A PAYER', 'NET PAYABLE', 'NET', 'SOMME', 'MNT'] },
   { source: 'employee.nni', patterns: ['NNI', 'CNI', 'IDENTITE NATIONALE'] },
@@ -162,6 +168,20 @@ function fillerSegment(width: number): BankFileSegment {
   return { label: '', source: 'literal', literal: ' ', pad: { width, align: 'left', char: ' ' } }
 }
 
+/**
+ * Affine le mapping à la lumière des AUTRES colonnes du même fichier.
+ *
+ * « COMPTE » seul désigne le RIB entier ; mais dans un fichier qui porte aussi
+ * un code banque et un code guichet, il ne désigne que le numéro de compte à
+ * 12 chiffres. Sans cette lecture d'ensemble, le fichier partirait avec le RIB
+ * complet dans une colonne dimensionnée pour 12 caractères.
+ */
+function affinerSelonContexte(columns: BankFileSegment[]): BankFileSegment[] {
+  const ribEclate = columns.some((c) => c.source === 'employee.bank_code' || c.source === 'employee.branch_code')
+  if (!ribEclate) return columns
+  return columns.map((c) => (c.source === 'employee.iban' ? { ...c, source: 'employee.account_number' } : c))
+}
+
 /** Une ligne d'en-tête porte au moins DEUX libellés distincts (cf. analyzeXlsx). */
 function estLigneEntete(champs: string[]): boolean {
   const remplis = champs.map((c) => c.trim()).filter((c) => c.length > 0)
@@ -187,9 +207,12 @@ function analyzeDelimited(text: string, output: OutputKind, encoding: FileEncodi
     if (source === 'literal') seg.literal = 'SALAIRE {mois}'
     return seg
   })
+  // Un fichier qui porte code banque ET code guichet parle du NUMERO de
+  // compte, pas du RIB entier : on relit l'ensemble avant de conclure.
+  const affinees = affinerSelonContexte(columns)
   return {
-    filename, output, encoding, delimiter, columns,
-    unmappedCount: columns.filter((c) => c.source === 'unmapped').length,
+    filename, output, encoding, delimiter, columns: affinees,
+    unmappedCount: affinees.filter((c) => c.source === 'unmapped').length,
     linesRead: lines.length, truncated,
   }
 }
@@ -306,9 +329,12 @@ async function analyzeXlsx(buffer: Buffer, filename: string): Promise<SampleAnal
     if (source === 'literal') seg.literal = 'SALAIRE {mois}'
     return seg
   })
+  // Un fichier qui porte code banque ET code guichet parle du NUMERO de
+  // compte, pas du RIB entier : on relit l'ensemble avant de conclure.
+  const affinees = affinerSelonContexte(columns)
   return {
-    filename, output: 'xlsx', encoding: 'utf8', columns,
-    unmappedCount: columns.filter((c) => c.source === 'unmapped').length,
+    filename, output: 'xlsx', encoding: 'utf8', columns: affinees,
+    unmappedCount: affinees.filter((c) => c.source === 'unmapped').length,
     linesRead, truncated,
   }
 }
