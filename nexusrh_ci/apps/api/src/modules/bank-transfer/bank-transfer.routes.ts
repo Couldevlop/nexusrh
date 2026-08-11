@@ -168,6 +168,49 @@ function maskAccount(value: string | null): string | null {
 
 // ── Validation du profil (Zod strict, bornes dures) ─────────────────────────
 
+/**
+ * Traduit un échec de validation en phrase ACTIONNABLE. Un « Validation » sec
+ * laissait l'utilisateur devant une impasse : il voyait un 400 sans savoir
+ * quelle colonne corriger. Les erreurs identiques sont regroupées — un modèle
+ * bancaire mal détecté en produit une par colonne.
+ */
+function messageDeValidation(err: z.ZodError): string {
+  const nom = (path: Array<string | number>): string => {
+    const i = path.indexOf('columns')
+    const champ = String(path[path.length - 1] ?? '')
+    const libelle: Record<string, string> = {
+      label: 'un intitulé', source: 'une donnée NexusRH', literal: 'un texte fixe',
+      width: 'une largeur', truncate: 'une troncature', dateFormat: 'un format de date',
+      amountScale: 'une échelle de montant', filename: 'le nom de fichier',
+      delimiter: 'le séparateur', encoding: 'l\'encodage', output: 'le format de sortie',
+      bank: 'le nom de la banque', mode: 'le mode d\'en-tête',
+    }
+    const quoi = libelle[champ] ?? `le champ « ${champ} »`
+    return i >= 0 ? `${quoi} de colonne` : quoi
+  }
+  const raison = (issue: z.ZodIssue): string => {
+    if (issue.code === 'too_big' && issue.type === 'string') return `trop long (maximum ${issue.maximum} caractères)`
+    if (issue.code === 'too_small' && issue.type === 'string') return 'vide ou trop court'
+    if (issue.code === 'too_big') return `au-delà du maximum autorisé (${issue.maximum})`
+    if (issue.code === 'too_small') return `en deçà du minimum autorisé (${issue.minimum})`
+    if (issue.code === 'invalid_enum_value') return 'avec une valeur non autorisée'
+    if (issue.code === 'unrecognized_keys') return 'inattendu'
+    if (issue.code === 'invalid_type') return 'du mauvais type'
+    return issue.message
+  }
+
+  const groupes = new Map<string, number>()
+  for (const issue of err.issues) {
+    const cle = `${nom(issue.path)}|${raison(issue)}`
+    groupes.set(cle, (groupes.get(cle) ?? 0) + 1)
+  }
+  const phrases = [...groupes.entries()].slice(0, 3).map(([cle, n]) => {
+    const [quoi, pourquoi] = cle.split('|')
+    return n > 1 ? `${n} colonnes ont ${quoi?.replace(' de colonne', '')} ${pourquoi}` : `${quoi} est ${pourquoi}`
+  })
+  return `Le profil n'est pas valide : ${phrases.join(' ; ')}.`
+}
+
 const padSchema = z.object({
   width: z.number().int().min(1).max(4000),
   align: z.enum(['left', 'right']),
@@ -272,7 +315,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
           email: z.string().email('Email banque invalide').max(255),
         })).min(1).max(50),
       }).strict().safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const { month, banks } = parsed.data
       const schema = request.user.schemaName
 
@@ -330,7 +373,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
         orderingAccount: z.string().max(60).optional(),
         orderingLabel: z.string().max(140).optional(),
       }).strict().safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const { bank, email, orderingAccount, orderingLabel } = parsed.data
       const schema = request.user.schemaName
       await rawPool.query(
@@ -455,7 +498,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
         spec: specSchema.optional(),
         sampleFilename: z.string().max(160).optional(),
       }).strict().safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const { bank, label, presetKey, spec, sampleFilename } = parsed.data
 
       const preset = presetKey ? STARTER_PRESETS.find((p) => p.key === presetKey) : undefined
@@ -490,7 +533,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
       const parsed = z.object({ label: z.string().max(140).optional(), spec: specSchema }).strict().safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const { label, spec } = parsed.data
       const schema = request.user.schemaName
 
@@ -535,7 +578,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
       const parsed = z.object({ month: z.string().regex(MONTH_RE, 'Format YYYY-MM requis') }).strict().safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+      if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const schema = request.user.schemaName
 
       const cur = await rawPool.query<{ bank_name: string; spec: BankFileSpec; version: number }>(

@@ -22,6 +22,8 @@ import {
 export const MAX_SAMPLE_BYTES = 1024 * 1024 // 1 Mo
 export const MAX_SAMPLE_LINES = 200
 export const ALLOWED_SAMPLE_EXTENSIONS = ['xlsx', 'csv', 'txt'] as const
+/** Longueur maximale d'un intitulé de colonne (alignée sur la validation des routes). */
+export const MAX_LABEL_LENGTH = 120
 
 /** Refus explicite d'un fichier exemple (→ 400, jamais 500). */
 export class SampleRejectedError extends Error {
@@ -160,16 +162,28 @@ function fillerSegment(width: number): BankFileSegment {
   return { label: '', source: 'literal', literal: ' ', pad: { width, align: 'left', char: ' ' } }
 }
 
+/** Une ligne d'en-tête porte au moins DEUX libellés distincts (cf. analyzeXlsx). */
+function estLigneEntete(champs: string[]): boolean {
+  const remplis = champs.map((c) => c.trim()).filter((c) => c.length > 0)
+  return remplis.length >= 2 && new Set(remplis).size >= 2
+}
+
 function analyzeDelimited(text: string, output: OutputKind, encoding: FileEncoding, filename: string): SampleAnalysis {
   const lines = text.split(/\r?\n/).slice(0, MAX_SAMPLE_LINES)
   const delimiter = detectDelimiter(text)
-  const headerLine = lines.find((l) => l.trim().length > 0) ?? ''
-  const rawHeaders = headerLine.split(delimiter).map((h) => h.replace(/^"|"$/g, '').trim())
+  const decoupe = (l: string): string[] => l.split(delimiter).map((h) => h.replace(/^"|"$/g, '').trim())
+  // Un modèle bancaire peut commencer par une ligne de titre (« Ordre de
+  // virement — SGCI — mai 2026 ») : elle ne produit qu'un seul champ rempli et
+  // ne doit pas être prise pour les en-têtes.
+  const headerLine = lines.find((l) => l.trim().length > 0 && estLigneEntete(decoupe(l)))
+    ?? lines.find((l) => l.trim().length > 0)
+    ?? ''
+  const rawHeaders = decoupe(headerLine)
   const truncated = rawHeaders.length > MAX_COLUMNS
   const headers = rawHeaders.slice(0, MAX_COLUMNS)
   const columns: BankFileSegment[] = headers.map((h) => {
     const source = suggestSourceForHeader(h)
-    const seg: BankFileSegment = { label: h, source }
+    const seg: BankFileSegment = { label: h.slice(0, MAX_LABEL_LENGTH), source }
     if (source === 'literal') seg.literal = 'SALAIRE {mois}'
     return seg
   })
@@ -221,21 +235,38 @@ async function analyzeXlsx(buffer: Buffer, filename: string): Promise<SampleAnal
   const ws = wb.worksheets[0]
   if (!ws) throw new SampleRejectedError('Le classeur ne contient aucune feuille.')
 
-  // Première ligne non vide = ligne d'en-tête.
+  // Les modèles bancaires commencent presque toujours par une ligne de TITRE
+  // (« Ordre de virement — Banque — Période… »), souvent dans une cellule
+  // fusionnée. ExcelJS restitue alors la même valeur dans TOUTES les cellules
+  // de la fusion : prendre la première ligne non vide fabriquerait autant de
+  // colonnes que la fusion en couvre, toutes intitulées avec le titre entier.
+  // Une vraie ligne d'en-tête porte au moins DEUX libellés DISTINCTS.
+  const estLigneEntete = (cells: string[]): boolean => {
+    const remplies = cells.map((c) => c.trim()).filter((c) => c.length > 0)
+    return remplies.length >= 2 && new Set(remplies).size >= 2
+  }
+  const lireLigne = (r: number): string[] => {
+    const values = ws.getRow(r).values
+    return Array.isArray(values) ? values.slice(1).map((v) => (v === null || v === undefined ? '' : String(v))) : []
+  }
+
   let headers: string[] = []
+  let repli: string[] = []
   let linesRead = 0
   for (let r = 1; r <= Math.min(ws.rowCount, MAX_SAMPLE_LINES); r++) {
     linesRead++
-    const values = ws.getRow(r).values
-    const cells = Array.isArray(values) ? values.slice(1).map((v) => (v === null || v === undefined ? '' : String(v))) : []
-    if (cells.some((c) => c.trim().length > 0)) { headers = cells; break }
+    const cells = lireLigne(r)
+    if (repli.length === 0 && cells.some((c) => c.trim().length > 0)) repli = cells
+    if (estLigneEntete(cells)) { headers = cells; break }
   }
+  // Repli : classeur à une seule colonne, ou en-tête atypique.
+  if (headers.length === 0) headers = repli
   if (headers.length === 0) throw new SampleRejectedError('Aucune ligne d\'en-tête trouvée dans le classeur.')
 
   const truncated = headers.length > MAX_COLUMNS
   const columns: BankFileSegment[] = headers.slice(0, MAX_COLUMNS).map((h) => {
     const source = suggestSourceForHeader(h)
-    const seg: BankFileSegment = { label: h.trim(), source }
+    const seg: BankFileSegment = { label: h.trim().slice(0, MAX_LABEL_LENGTH), source }
     if (source === 'literal') seg.literal = 'SALAIRE {mois}'
     return seg
   })
