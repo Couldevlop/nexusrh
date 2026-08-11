@@ -176,68 +176,42 @@ jobs:
     needs: [ build ]
     environment: ${{ github.event.inputs.target || 'preprod' }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: azure/setup-helm@v4
-
-    - name: Configure kubectl
+    # L'API Kubernetes (6443) est FERMÉE à Internet par une règle nftables
+    # (durcissement délibéré : une API k8s exposée est une cible de premier
+    # ordre). Un runner GitHub ne peut donc pas piloter le cluster à distance —
+    # c'est ce qui faisait échouer ce job en `dial tcp 6443: i/o timeout`.
+    # Le runner ouvre désormais une session SSH ; tout le déploiement (helm,
+    # rollout, seed) s'exécute SUR le serveur, via /usr/local/bin/nexusrh-deploy.sh.
+    #
+    # La clé de déploiement est verrouillée par une commande forcée dans
+    # authorized_keys : elle ne peut RIEN faire d'autre que lancer ce script,
+    # et seul l'argument « deploy <sha40> » est accepté. Le script refuse par
+    # ailleurs de déployer un chart qui ne viserait pas le namespace nexusrh-ci
+    # ou dont l'exception WAF aurait disparu.
+    - name: Configurer l'accès SSH
       env:
-        KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_PREPROD }}
+        DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
       run: |
-        if [ -z "$KUBECONFIG_DATA" ]; then
-          echo "❌ KUBECONFIG_PREPROD secret is empty"
-          exit 1
-        fi
-        mkdir -p ~/.kube
-        echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-        echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
-        echo "── Server URL dans le kubeconfig ──"
-        grep "server:" ~/.kube/config
-        kubectl cluster-info
+        if [ -z "$DEPLOY_SSH_KEY" ]; then echo "❌ secret DEPLOY_SSH_KEY vide"; exit 1; fi
+        if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then echo "❌ secret DEPLOY_KNOWN_HOSTS vide"; exit 1; fi
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        # Clé d'hôte épinglée (et non ssh-keyscan à chaque exécution, qui
+        # accepterait n'importe quel serveur se présentant à cette adresse).
+        echo "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
 
-    - name: Helm upgrade
+    - name: Déployer sur le serveur (helm + rollout + seed)
       env:
-        OWNER: ${{ needs.build.outputs.owner }}
-        SHA: ${{ needs.build.outputs.short-sha }}
+        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        SHA: ${{ github.sha }}
       run: |
-        helm dependency update nexusrh_ci/k8s/charts/nexusrh
-        kubectl delete deployment nexusrh-ci-infra-redis -n nexusrh-ci --ignore-not-found=true
+        if [ -z "$DEPLOY_HOST" ]; then echo "❌ secret DEPLOY_HOST vide"; exit 1; fi
+        echo "▶ Déploiement du commit $SHA sur $DEPLOY_HOST"
+        ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 root@"$DEPLOY_HOST" "deploy $SHA"
 
-        # values.prod.yaml utilise tag: latest + imagePullPolicy: Always
-        # Le build pousse toujours :latest en plus du sha — pas besoin de --set
-        helm upgrade --install nexusrh-ci nexusrh_ci/k8s/charts/nexusrh \
-          --namespace nexusrh-ci --create-namespace \
-          -f nexusrh_ci/k8s/charts/nexusrh/values.yaml \
-          -f nexusrh_ci/k8s/charts/nexusrh/values.prod.yaml \
-          --force --wait
-
-        # Forcer le redémarrage pour que imagePullPolicy:Always tire la nouvelle image :latest
-        kubectl rollout restart deployment/nexusrh-api -n nexusrh-ci
-        kubectl rollout restart deployment/nexusrh-web -n nexusrh-ci
-        kubectl rollout status deployment/nexusrh-api -n nexusrh-ci --timeout=180s
-        kubectl rollout status deployment/nexusrh-web -n nexusrh-ci --timeout=180s
-
-    - name: Seed database (idempotent)
-      run: |
-        echo "⏳ Rollout API en cours..."
-        kubectl rollout status deployment/nexusrh-api -n nexusrh-ci --timeout=180s
-
-        # Sélection robuste du dernier pod API démarré
-        API_POD=$(kubectl get pods -n nexusrh-ci \
-          -l app.kubernetes.io/component=api \
-          --field-selector=status.phase=Running \
-          --sort-by=.metadata.creationTimestamp \
-          -o jsonpath='{.items[-1].metadata.name}')
-
-        if [ -z "$API_POD" ]; then
-          echo "❌ Impossible de trouver un pod API valide pour le seed"
-          exit 1
-        fi
-
-        echo "🌱 Seed sur pod: $API_POD"
-        for i in 1 2 3; do
-          kubectl exec -n nexusrh-ci "$API_POD" -- node dist/db/seed.js && break
-          echo "⚠️  Tentative $i échouée (tls transient), nouvelle tentative dans 10s..."
-          sleep 10
-        done
-        echo "✅ Seed terminé"
+    - name: Nettoyer la clé
+      if: always()
+      run: rm -f ~/.ssh/deploy_key
