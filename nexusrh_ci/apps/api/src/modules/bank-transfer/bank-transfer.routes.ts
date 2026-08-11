@@ -514,8 +514,8 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const r = await rawPool.query<{ id: string; version: number }>(
         `INSERT INTO "${schema}".bank_file_templates (bank_name, version, status, label, output_kind, spec, sample_filename, created_by)
-         SELECT $1, COALESCE(max(version), 0) + 1, 'draft', $2, $3, $4::jsonb, $5, $6
-           FROM "${schema}".bank_file_templates WHERE bank_name = $1
+         SELECT $1::varchar, COALESCE(max(version), 0) + 1, 'draft', $2, $3, $4::jsonb, $5, $6
+           FROM "${schema}".bank_file_templates WHERE bank_name = $1::varchar
          RETURNING id, version`,
         [bank, label ?? preset?.label ?? null, finalSpec.output, JSON.stringify(finalSpec), sampleFilename ?? null, request.user.sub],
       )
@@ -548,8 +548,8 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       if (row.status === 'active') {
         const r = await rawPool.query<{ id: string; version: number }>(
           `INSERT INTO "${schema}".bank_file_templates (bank_name, version, status, label, output_kind, spec, created_by)
-           SELECT $1, COALESCE(max(version), 0) + 1, 'draft', $2, $3, $4::jsonb, $5
-             FROM "${schema}".bank_file_templates WHERE bank_name = $1
+           SELECT $1::varchar, COALESCE(max(version), 0) + 1, 'draft', $2, $3, $4::jsonb, $5
+             FROM "${schema}".bank_file_templates WHERE bank_name = $1::varchar
            RETURNING id, version`,
           [row.bank_name, label ?? null, spec.output, JSON.stringify(spec), request.user.sub],
         )
