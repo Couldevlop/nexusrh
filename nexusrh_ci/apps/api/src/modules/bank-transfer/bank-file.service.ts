@@ -56,8 +56,15 @@ export const SOURCE_CATALOG: SourceEntry[] = [
   { value: 'employee.full_name', group: 'employee', label: 'Nom complet' },
   { value: 'employee.employee_number', group: 'employee', label: 'Matricule' },
   { value: 'employee.nni', group: 'employee', label: 'NNI' },
-  { value: 'employee.iban', group: 'employee', label: 'IBAN / RIB' },
-  { value: 'employee.bank_name', group: 'employee', label: 'Banque' },
+  { value: 'employee.iban', group: 'employee', label: 'IBAN / RIB (entier)' },
+  // La plupart des formats bancaires ivoiriens ÉCLATENT le RIB en colonnes
+  // distinctes. Ces quatre données sont DÉDUITES du RIB saisi sur la fiche du
+  // salarié : rien à ressaisir, et aucune incohérence possible avec lui.
+  { value: 'employee.bank_code', group: 'employee', label: 'Code banque (5)' },
+  { value: 'employee.branch_code', group: 'employee', label: 'Code guichet (5)' },
+  { value: 'employee.account_number', group: 'employee', label: 'N° de compte (12)' },
+  { value: 'employee.rib_key', group: 'employee', label: 'Clé RIB (2)' },
+  { value: 'employee.bank_name', group: 'employee', label: 'Banque (libellé)' },
   { value: 'employee.department', group: 'employee', label: 'Département' },
   { value: 'employee.job_title', group: 'employee', label: 'Poste' },
   { value: 'payslip.net_payable', group: 'payslip', label: 'Net à payer' },
@@ -138,6 +145,37 @@ export interface BankFileContext {
 
 // ── Rendu d'un segment ───────────────────────────────────────────────────────
 
+/**
+ * Décompose un RIB ivoirien en ses quatre parties.
+ *
+ * IBAN CI = « CI » + 2 chiffres de contrôle + BBAN de 24 caractères, le BBAN
+ * étant lui-même code banque (5) + code guichet (5) + n° de compte (12) +
+ * clé RIB (2). Vérifié sur un ordre de virement réel : le « CI008 » de la
+ * colonne CODE BANQUE d'une banque correspond bien aux 5 premiers du BBAN.
+ *
+ * Un RIB de longueur inattendue renvoie des chaînes VIDES plutôt qu'une
+ * découpe arbitraire : un compte tronqué enverrait l'argent au mauvais endroit,
+ * alors qu'une colonne vide se voit immédiatement dans l'aperçu.
+ */
+export function decomposeRib(raw: string | null | undefined): {
+  bankCode: string; branchCode: string; accountNumber: string; key: string
+} {
+  const vide = { bankCode: '', branchCode: '', accountNumber: '', key: '' }
+  const s = (raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  // On tranche par la LONGUEUR, pas par le préfixe : un code banque ivoirien
+  // commence lui aussi par « CI » suivi de chiffres (CI008, CI032), si bien
+  // qu'un BBAN nu serait pris pour un IBAN et amputé de ses 4 premiers
+  // caractères — donc d'une partie du code banque.
+  const bban = s.length === 28 ? s.slice(4) : s
+  if (bban.length !== 24) return vide
+  return {
+    bankCode: bban.slice(0, 5),
+    branchCode: bban.slice(5, 10),
+    accountNumber: bban.slice(10, 22),
+    key: bban.slice(22, 24),
+  }
+}
+
 function rawValue(seg: BankFileSegment, row: BankFileRow | null, ctx: BankFileContext, index: number): string | number | null {
   switch (seg.source) {
     case 'employee.last_name': return row?.lastName ?? null
@@ -146,6 +184,10 @@ function rawValue(seg: BankFileSegment, row: BankFileRow | null, ctx: BankFileCo
     case 'employee.employee_number': return row?.employeeNumber ?? null
     case 'employee.nni': return row?.nni ?? null
     case 'employee.iban': return row?.iban ?? null
+    case 'employee.bank_code': return row ? decomposeRib(row.iban).bankCode : null
+    case 'employee.branch_code': return row ? decomposeRib(row.iban).branchCode : null
+    case 'employee.account_number': return row ? decomposeRib(row.iban).accountNumber : null
+    case 'employee.rib_key': return row ? decomposeRib(row.iban).key : null
     case 'employee.bank_name': return row?.bankName ?? ctx.bank
     case 'employee.department': return row?.department ?? null
     case 'employee.job_title': return row?.jobTitle ?? null

@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   SOURCE_CATALOG, OUTPUT_KINDS, STARTER_PRESETS,
-  renderSegment, buildBankFile, buildBankFileAsync, resolveFilename, specIssues, isSourceKey, previewTable,
+  renderSegment, buildBankFile, buildBankFileAsync, resolveFilename, specIssues, isSourceKey, previewTable, decomposeRib,
   type BankFileSpec, type BankFileRow, type BankFileContext, type BankFileSegment,
 } from './bank-file.service.js'
 
@@ -322,5 +322,38 @@ describe('modèles de départ', () => {
       const built = await buildBankFileAsync(preset.spec, [row], ctx)
       expect(built.buffer.byteLength).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('découpe du RIB ivoirien', () => {
+  // Structure vérifiée sur un ordre de virement BNI réel : le « CI008 » de la
+  // colonne CODE BANQUE correspond aux 5 premiers caractères du BBAN.
+  it('sépare code banque, code guichet, numéro de compte et clé', () => {
+    expect(decomposeRib('CI93CI0080109400945293281189')).toEqual({
+      bankCode: 'CI008', branchCode: '01094', accountNumber: '009452932811', key: '89',
+    })
+  })
+
+  it('tolère espaces, minuscules et absence du préfixe pays', () => {
+    expect(decomposeRib('ci93 CI008 01094 009452932811 89').bankCode).toBe('CI008')
+    expect(decomposeRib('CI00801094009452932811' + '89').branchCode).toBe('01094')
+  })
+
+  it('renvoie du VIDE sur un RIB de longueur inattendue — jamais une découpe arbitraire', () => {
+    // Un compte tronqué enverrait l'argent au mauvais endroit ; une colonne
+    // vide se voit immédiatement dans l'aperçu.
+    for (const mauvais of ['', 'CI93CI008', 'nimportequoi', 'CI93CI00801094009452932811890000']) {
+      expect(decomposeRib(mauvais)).toEqual({ bankCode: '', branchCode: '', accountNumber: '', key: '' })
+    }
+  })
+
+  it('alimente les quatre sources du catalogue', () => {
+    const r = { ...row, iban: 'CI93CI0080109400945293281189' }
+    const s2 = (source: string) => renderSegment(seg({ source }), r, ctx, 0)
+    expect(s2('employee.bank_code')).toBe('CI008')
+    expect(s2('employee.branch_code')).toBe('01094')
+    expect(s2('employee.account_number')).toBe('009452932811')
+    expect(s2('employee.rib_key')).toBe('89')
+    expect(s2('employee.iban')).toBe('CI93CI0080109400945293281189')
   })
 })
