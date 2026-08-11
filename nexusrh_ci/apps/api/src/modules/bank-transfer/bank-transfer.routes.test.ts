@@ -221,6 +221,10 @@ describe('POST /bank-transfer/templates', () => {
     const res = await app.inject({ method: 'POST', url: '/bank-transfer/templates', headers: auth('admin'), payload: { bank: 'SGCI', presetKey: 'txt_fixe' } })
     expect(res.statusCode).toBe(201)
     expect(JSON.parse(res.body).data).toMatchObject({ id: TPL_ID, bank: 'SGCI', version: 1, status: 'draft', issues: [] })
+    // 42P08 vécu en prod : $1 servait de valeur insérée ET de terme de
+    // comparaison, avec des types déduits différents. Le cast lève l'ambiguïté.
+    // Les tests simulent pg et ne verraient pas l'erreur — d'où ce garde-fou.
+    expect(String(queryMock.mock.calls[1]![0])).toContain('$1::varchar')
   })
 
   it('refuse un modèle de départ inconnu (400)', async () => {
@@ -260,6 +264,7 @@ describe('PUT /bank-transfer/templates/:id', () => {
     const res = await app.inject({ method: 'PUT', url: `/bank-transfer/templates/${TPL_ID}`, headers: auth('admin'), payload: { spec: CSV_SPEC } })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data).toMatchObject({ version: 3, status: 'draft', createdNewVersion: true })
+    expect(String(queryMock.mock.calls[1]![0])).toContain('$1::varchar')
   })
 
   it('refuse de modifier une version archivée (400)', async () => {
