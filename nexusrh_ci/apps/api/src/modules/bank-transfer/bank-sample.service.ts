@@ -220,6 +220,33 @@ function analyzeFixed(text: string, encoding: FileEncoding, filename: string): S
   }
 }
 
+/**
+ * Texte d'une cellule ExcelJS. Une cellule n'est pas toujours une chaîne :
+ * texte enrichi, formule (avec son résultat), lien hypertexte ou date sortent
+ * sous forme d'objet, dont `String()` ferait « [object Object] ».
+ */
+function celluleEnTexte(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  if (typeof v === 'object') {
+    const o = v as { richText?: Array<{ text?: string }>; result?: unknown; text?: unknown; hyperlink?: unknown }
+    if (Array.isArray(o.richText)) return o.richText.map((p) => p.text ?? '').join('')
+    if (o.result !== undefined) return celluleEnTexte(o.result)
+    if (o.text !== undefined) return celluleEnTexte(o.text)
+    return ''
+  }
+  return String(v)
+}
+
+/** Retire les colonnes vides en tête et en fin (feuille démarrant en B, marge à droite). */
+function rognerColonnesVides(cells: string[]): string[] {
+  let debut = 0
+  let fin = cells.length
+  while (debut < fin && cells[debut]!.trim() === '') debut++
+  while (fin > debut && cells[fin - 1]!.trim() === '') fin--
+  return cells.slice(debut, fin)
+}
+
 async function analyzeXlsx(buffer: Buffer, filename: string): Promise<SampleAnalysis> {
   // Signature ZIP ("PK\x03\x04") : un .xlsx qui n'en est pas un est refusé avant
   // d'atteindre le parseur.
@@ -247,7 +274,13 @@ async function analyzeXlsx(buffer: Buffer, filename: string): Promise<SampleAnal
   }
   const lireLigne = (r: number): string[] => {
     const values = ws.getRow(r).values
-    return Array.isArray(values) ? values.slice(1).map((v) => (v === null || v === undefined ? '' : String(v))) : []
+    const brut = Array.isArray(values) ? values.slice(1) : []
+    // Array.from() DENSIFIE : quand la feuille ne commence pas en colonne A
+    // (cas courant, le modèle BNI démarre en B3), ExcelJS renvoie un tableau
+    // CREUX. `.map()` saute les trous — ils traversaient alors tout le
+    // traitement et ressortaient en `null` dans le profil envoyé au serveur,
+    // qui rejetait « Expected object, received null ».
+    return Array.from({ length: brut.length }, (_, i) => celluleEnTexte(brut[i]))
   }
 
   let headers: string[] = []
@@ -261,6 +294,9 @@ async function analyzeXlsx(buffer: Buffer, filename: string): Promise<SampleAnal
   }
   // Repli : classeur à une seule colonne, ou en-tête atypique.
   if (headers.length === 0) headers = repli
+  // Une feuille démarrant en B (ou avec une marge à droite) porterait sinon des
+  // colonnes vides parasites, que l'admin devrait supprimer une à une.
+  headers = rognerColonnesVides(headers)
   if (headers.length === 0) throw new SampleRejectedError('Aucune ligne d\'en-tête trouvée dans le classeur.')
 
   const truncated = headers.length > MAX_COLUMNS

@@ -131,3 +131,67 @@ describe('message d\'erreur de validation', () => {
     expect(body.error).toContain('120')
   })
 })
+
+describe('feuille ne démarrant pas en colonne A (modèle BNI réel)', () => {
+  /**
+   * Le modèle « DISQUETTE » de la BNI place ses en-têtes en B3 : la colonne A
+   * et les deux premières lignes sont vides. ExcelJS renvoie alors un tableau
+   * CREUX, et `.map()` saute les trous — la colonne A traversait tout le
+   * traitement sans jamais devenir une chaîne, puis JSON.stringify la
+   * sérialisait en `null`. Le serveur répondait 400 « Expected object,
+   * received null », sans que rien ne soit visiblement anormal à l'écran.
+   */
+  async function classeurDemarrantEnB(): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('BNI')
+    const entetes = ['NUMERO CLIENT', 'NOM ET PRENOMS', 'COMPTE', 'CODE BANQUE', 'MONTANT', 'DATE', 'LIBELLE']
+    entetes.forEach((h, i) => { ws.getCell(3, i + 2).value = h })   // colonne 2 = B, ligne 3
+    ws.getCell(4, 3).value = 'TRAORE SIAKA'
+    ws.getCell(4, 4).value = '009452932811'
+    ws.getCell(4, 6).value = 1113959
+    return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer)
+  }
+
+  it('ne produit aucune colonne nulle et rogne la colonne vide de gauche', async () => {
+    const a = await analyzeSample('DISQUETTE EXEMPLE.XLSX', await classeurDemarrantEnB())
+    // Le trou de la colonne A ressortait en null après sérialisation.
+    expect(JSON.parse(JSON.stringify(a.columns)).some((c: unknown) => c === null)).toBe(false)
+    expect(a.columns).toHaveLength(7)
+    expect(a.columns[0]!.label).toBe('NUMERO CLIENT')
+    expect(a.columns.map((c) => c.source)).toEqual([
+      'unmapped', 'employee.full_name', 'employee.iban', 'employee.bank_name',
+      'payslip.net_payable', 'computed.value_date', 'literal',
+    ])
+  })
+
+  it('crée le brouillon (201) au lieu de « Expected object, received null »', async () => {
+    const a = await analyzeSample('DISQUETTE EXEMPLE.XLSX', await classeurDemarrantEnB())
+    const spec = {
+      output: a.output, encoding: a.encoding, delimiter: a.delimiter ?? ';', lineEnding: 'crlf',
+      filename: 'VIR_{banque}_{mois}.xlsx',
+      header: { mode: 'labels', lines: [] }, columns: a.columns, footer: { enabled: false, lines: [] },
+    }
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ n: '0' }] })
+      .mockResolvedValueOnce({ rows: [{ id: '11111111-1111-4111-8111-111111111111', version: 1 }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/bank-transfer/templates',
+      headers: { authorization: `Bearer ${token()}` },
+      payload: { bank: 'BNI', spec, sampleFilename: a.filename, label: `BNI — ${a.filename}` },
+    })
+    expect(res.statusCode).toBe(201)
+    // Les deux colonnes non reconnues restent à mapper, comme attendu.
+    expect(JSON.parse(res.body).data.issues).toContain('columns.unmapped[0]')
+  })
+
+  it('lit le texte enrichi et les formules sans produire « [object Object] »', async () => {
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('F')
+    ws.getCell('A1').value = { richText: [{ text: 'CODE ' }, { text: 'BANQUE' }] } as never
+    ws.getCell('B1').value = { formula: 'CONCATENATE("MON","TANT")', result: 'MONTANT' } as never
+    ws.getCell('A2').value = 'x'
+    const a = await analyzeSample('f.xlsx', Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer))
+    expect(a.columns.map((c) => c.label)).toEqual(['CODE BANQUE', 'MONTANT'])
+  })
+})
