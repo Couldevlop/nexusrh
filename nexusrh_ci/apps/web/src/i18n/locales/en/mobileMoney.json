@@ -60,6 +60,8 @@
     "open": "Open",
     "close": "Close",
     "bank": "Bank",
+    "bankUnknown": "No employee paid by transfer uses this bank — the format will apply to no one. Known banks: {{list}}",
+    "bankLockedActive": "An active format stays tied to its bank — the name can only be corrected on a draft.",
     "bankPlaceholder": "Exact name as it appears on employee records",
     "fromPreset": "Start from a template",
     "fromSample": "Upload the bank's sample file",

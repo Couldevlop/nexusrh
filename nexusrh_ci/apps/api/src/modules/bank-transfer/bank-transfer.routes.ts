@@ -409,6 +409,14 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const dirs = await rawPool.query<{ bank_name: string; email: string | null; ordering_account: string | null; ordering_label: string | null }>(
         `SELECT bank_name, email, ordering_account, ordering_label FROM "${schema}".bank_directory ORDER BY bank_name`,
       ).catch(() => ({ rows: [] as Array<{ bank_name: string; email: string | null; ordering_account: string | null; ordering_label: string | null }> }))
+      // Banques réellement portées par des fiches salariés : un profil rattaché à
+      // un nom absent d'ici ne s'appliquera à personne. On le signale plutôt que
+      // de laisser croire que le format est en place.
+      const emp = await rawPool.query<{ bank_name: string }>(
+        `SELECT DISTINCT bank_name FROM "${schema}".employees
+          WHERE payment_method = 'bank_transfer' AND bank_name IS NOT NULL AND bank_name <> ''
+          ORDER BY bank_name`,
+      ).catch(() => ({ rows: [] as Array<{ bank_name: string }> }))
       return reply.send({
         data: r.rows.map((x) => ({
           id: x.id, bank: x.bank_name, version: x.version, status: x.status, label: x.label,
@@ -419,6 +427,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
           bank: d.bank_name, email: d.email,
           orderingAccount: maskAccount(d.ordering_account), orderingLabel: d.ordering_label,
         })),
+        employeeBanks: emp.rows.map((x) => x.bank_name),
         referential: {
           sources: SOURCE_CATALOG,
           transforms: TRANSFORMS,
@@ -532,7 +541,11 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      const parsed = z.object({ label: z.string().max(140).optional(), spec: specSchema }).strict().safeParse(request.body)
+      const parsed = z.object({
+        bank: z.string().min(1).max(100).optional(),
+        label: z.string().max(140).optional(),
+        spec: specSchema,
+      }).strict().safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
       const { label, spec } = parsed.data
       const schema = request.user.schemaName
@@ -542,6 +555,21 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const row = cur.rows[0]
       if (!row) return reply.status(404).send({ error: 'Profil introuvable' })
       if (row.status === 'archived') return reply.status(400).send({ error: 'Une version archivée ne se modifie pas — repartez de la version active.' })
+
+      const targetBank = parsed.data.bank?.trim() || row.bank_name
+      const bankChanged = targetBank !== row.bank_name
+      if (bankChanged && row.status !== 'draft') {
+        return reply.status(400).send({
+          error: 'Le nom de la banque ne se corrige que sur un brouillon — un format actif reste attaché à sa banque.',
+        })
+      }
+      if (bankChanged) {
+        const n = await rawPool.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM "${schema}".bank_file_templates WHERE bank_name = $1`, [targetBank])
+        if (parseInt(n.rows[0]?.n ?? '0', 10) >= MAX_VERSIONS_PER_BANK) {
+          return reply.status(400).send({ error: `Limite atteinte : ${MAX_VERSIONS_PER_BANK} versions par banque.` })
+        }
+      }
 
       // Modifier un profil ACTIF ne le modifie pas : on prépare la version
       // suivante en brouillon, pour que l'envoi en cours reste sur un format éprouvé.
@@ -558,14 +586,27 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ data: { id: created.id, bank: row.bank_name, version: created.version, status: 'draft', createdNewVersion: true, issues: specIssues(spec as BankFileSpec) } })
       }
 
-      await rawPool.query(
+      // Le numéro de version est unique PAR BANQUE : déplacer un brouillon vers une
+      // autre banque impose de le renuméroter, sinon l'index unique le rejette.
+      // Le paramètre de banque sert de valeur ET de comparaison : cast explicite
+      // obligatoire (sans lui, PostgreSQL répond 42P08).
+      const upd = await rawPool.query<{ version: number }>(
         `UPDATE "${schema}".bank_file_templates
-            SET label = $2, output_kind = $3, spec = $4::jsonb, updated_at = now()
-          WHERE id = $1`,
-        [id, label ?? null, spec.output, JSON.stringify(spec)],
+            SET bank_name = $5::varchar,
+                version = CASE WHEN bank_name = $5::varchar THEN version ELSE COALESCE(
+                  (SELECT max(t.version) FROM "${schema}".bank_file_templates t
+                    WHERE t.bank_name = $5::varchar AND t.id <> $1), 0) + 1 END,
+                label = $2, output_kind = $3, spec = $4::jsonb, updated_at = now()
+          WHERE id = $1
+      RETURNING version`,
+        [id, label ?? null, spec.output, JSON.stringify(spec), targetBank],
       )
-      auditBank(schema, request.user.sub, 'bank_transfer.template_updated', { bank: row.bank_name, version: row.version }, request.ip ?? null)
-      return reply.send({ data: { id, bank: row.bank_name, version: row.version, status: 'draft', createdNewVersion: false, issues: specIssues(spec as BankFileSpec) } })
+      const version = upd.rows[0]?.version ?? row.version
+      if (bankChanged) {
+        auditBank(schema, request.user.sub, 'bank_transfer.template_rebanked', { from: row.bank_name, to: targetBank, version }, request.ip ?? null)
+      }
+      auditBank(schema, request.user.sub, 'bank_transfer.template_updated', { bank: targetBank, version }, request.ip ?? null)
+      return reply.send({ data: { id, bank: targetBank, version, status: 'draft', createdNewVersion: false, issues: specIssues(spec as BankFileSpec) } })
     },
   })
 

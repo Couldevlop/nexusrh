@@ -60,6 +60,8 @@
     "open": "Ouvrir",
     "close": "Fermer",
     "bank": "Banque",
+    "bankUnknown": "Aucun salarié payé par virement n’a cette banque — le format ne s’appliquera à personne. Banques connues : {{list}}",
+    "bankLockedActive": "Un format actif reste attaché à sa banque — le nom ne se corrige que sur un brouillon.",
     "bankPlaceholder": "Nom exact tel qu'il figure sur les fiches salariés",
     "fromPreset": "Partir d'un modèle",
     "fromSample": "Déposer le fichier exemple de la banque",

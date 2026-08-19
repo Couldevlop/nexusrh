@@ -47,7 +47,7 @@ interface Referential {
   presets: Array<{ key: string; label: string; description: string; output: string }>
   maxColumns: number; maxSampleBytes: number
 }
-interface TemplatesResponse { data: TemplateRow[]; directory: DirectoryRow[]; referential: Referential }
+interface TemplatesResponse { data: TemplateRow[]; directory: DirectoryRow[]; employeeBanks?: string[]; referential: Referential }
 interface TemplateDetail { id: string; bank: string; version: number; status: string; label: string | null; spec: Spec; issues: string[] }
 interface PreviewResult {
   bank: string; version: number; issues: string[]; filename: string; outputKind: string
@@ -107,7 +107,7 @@ export default function BankFormatsSection() {
       </div>
 
       {creating && data && (
-        <CreateTemplate referential={data.referential} knownBanks={banks}
+        <CreateTemplate referential={data.referential} knownBanks={banks} employeeBanks={data.employeeBanks ?? []}
           onDone={(id) => { setCreating(false); setOpenId(id); void refetch() }} />
       )}
 
@@ -141,6 +141,7 @@ export default function BankFormatsSection() {
           </div>
           {openId && templates.some(x => x.id === openId && x.bank === bank) && data && (
             <TemplateEditor id={openId} referential={data.referential}
+              knownBanks={banks} employeeBanks={data.employeeBanks ?? []}
               onChanged={(newId) => { if (newId) setOpenId(newId); void refetch() }} />
           )}
         </div>
@@ -150,7 +151,9 @@ export default function BankFormatsSection() {
 }
 
 /** Création : modèle de départ, ou dépôt du fichier exemple de la banque. */
-function CreateTemplate({ referential, knownBanks, onDone }: { referential: Referential; knownBanks: string[]; onDone: (id: string) => void }) {
+function CreateTemplate({ referential, knownBanks, employeeBanks, onDone }: {
+  referential: Referential; knownBanks: string[]; employeeBanks: string[]; onDone: (id: string) => void
+}) {
   const { t } = useTranslation('mobileMoney')
   const [bank, setBank] = useState('')
   const [presetKey, setPresetKey] = useState(referential.presets[0]?.key ?? '')
@@ -202,6 +205,11 @@ function CreateTemplate({ referential, knownBanks, onDone }: { referential: Refe
           placeholder={t('bankFormats.bankPlaceholder', 'Nom exact tel qu\'il figure sur les fiches salariés')}
           className="w-full max-w-md rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
         <datalist id="known-banks">{knownBanks.map(b => <option key={b} value={b} />)}</datalist>
+        {bank.trim().length > 0 && employeeBanks.length > 0 && !employeeBanks.includes(bank.trim()) && (
+          <p className="mt-1 text-xs text-amber-700">
+            {t('bankFormats.bankUnknown', 'Aucun salarié payé par virement n’a cette banque — le format ne s’appliquera à personne. Banques connues : {{list}}', { list: employeeBanks.join(', ') })}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -248,14 +256,19 @@ function CreateTemplate({ referential, knownBanks, onDone }: { referential: Refe
 }
 
 /** Éditeur de mapping + aperçu + activation. */
-function TemplateEditor({ id, referential, onChanged }: { id: string; referential: Referential; onChanged: (newId?: string) => void }) {
+function TemplateEditor({ id, referential, knownBanks, employeeBanks, onChanged }: {
+  id: string; referential: Referential; knownBanks: string[]; employeeBanks: string[]
+  onChanged: (newId?: string) => void
+}) {
   const { t } = useTranslation('mobileMoney')
   const [spec, setSpec] = useState<Spec | null>(null)
+  // Nom de banque en cours d'édition ; null tant qu'il n'a pas été touché.
+  const [bankDraft, setBankDraft] = useState<string | null>(null)
   const [month, setMonth] = useState('')
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
-  const { data: detail } = useQuery<{ data: TemplateDetail }>({
+  const { data: detail, refetch: refetchDetail } = useQuery<{ data: TemplateDetail }>({
     queryKey: ['bank-template', id],
     queryFn: () => api.get(`/bank-transfer/templates/${id}`).then(r => r.data),
   })
@@ -265,12 +278,19 @@ function TemplateEditor({ id, referential, onChanged }: { id: string; referentia
 
   const saveMut = useMutation({
     mutationFn: () => api.put<{ data: { id: string; createdNewVersion: boolean; issues: string[] } }>(
-      `/bank-transfer/templates/${id}`, { label: current?.label ?? undefined, spec: working }).then(r => r.data.data),
-    onSuccess: (res) => {
+      `/bank-transfer/templates/${id}`,
+      { bank: bankDraft?.trim() || undefined, label: current?.label ?? undefined, spec: working },
+    ).then(r => r.data.data),
+    onSuccess: async (res) => {
       setMessage({ kind: 'ok', text: res.createdNewVersion
         ? t('bankFormats.savedNewVersion', 'Nouvelle version en brouillon — le format actif n\'a pas bougé.')
         : t('bankFormats.saved', 'Brouillon enregistré.') })
+      // Relire AVANT d'abandonner l'état local : `working` retombe sur la
+      // réponse du serveur, et une réponse périmée réafficherait l’ancien
+      // mapping sous un message « Brouillon enregistré ».
+      if (!res.createdNewVersion) await refetchDetail()
       setSpec(null)
+      setBankDraft(null)
       onChanged(res.createdNewVersion ? res.id : undefined)
     },
     onError: (e: { response?: { data?: { error?: string } } }) =>
@@ -286,7 +306,11 @@ function TemplateEditor({ id, referential, onChanged }: { id: string; referentia
 
   const activateMut = useMutation({
     mutationFn: () => api.post(`/bank-transfer/templates/${id}/activate`),
-    onSuccess: () => { setMessage({ kind: 'ok', text: t('bankFormats.activated', 'Format activé — la version précédente est archivée.') }); onChanged() },
+    onSuccess: async () => {
+      setMessage({ kind: 'ok', text: t('bankFormats.activated', 'Format activé — la version précédente est archivée.') })
+      await refetchDetail()   // sinon le bandeau « Brouillon » reste sur un profil actif
+      onChanged()
+    },
     onError: (e: { response?: { data?: { error?: string } } }) =>
       setMessage({ kind: 'error', text: e.response?.data?.error ?? t('bankFormats.activateError', 'Activation impossible.') }),
   })
@@ -321,6 +345,12 @@ function TemplateEditor({ id, referential, onChanged }: { id: string; referentia
 
   const unmapped = working.columns.filter(c => c.source === 'unmapped').length
   const isFixed = working.output === 'fixed'
+  const bank = bankDraft ?? current.bank
+  // Un profil rattaché à un nom de banque que personne ne porte ne servira
+  // jamais : le fichier est résolu par le nom exact de la banque de la fiche
+  // salarié. On l'annonce sans bloquer — un format peut se préparer avant que
+  // les fiches soient renseignées.
+  const bankUnknown = employeeBanks.length > 0 && !employeeBanks.includes(bank.trim())
 
   return (
     <div className="mt-4 space-y-4 rounded-lg border border-border bg-muted/20 p-4">
@@ -334,6 +364,25 @@ function TemplateEditor({ id, referential, onChanged }: { id: string; referentia
           {t('bankFormats.archivedBanner', 'Version archivée, conservée pour retrouver le format des fichiers déjà transmis.')}
         </div>
       )}
+
+      {/* Banque de rattachement : c'est elle qui décide à quels salariés le format s'applique. */}
+      <div>
+        <label className="text-sm font-medium mb-1 block">{t('bankFormats.bank', 'Banque')}</label>
+        <input list="known-banks" value={bank} maxLength={100}
+          disabled={readOnly || current.status === 'active'}
+          onChange={e => setBankDraft(e.target.value)}
+          className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-60" />
+        <datalist id="known-banks">{knownBanks.map(b => <option key={b} value={b} />)}</datalist>
+        {current.status === 'active' ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t('bankFormats.bankLockedActive', 'Un format actif reste attaché à sa banque — le nom ne se corrige que sur un brouillon.')}
+          </p>
+        ) : bankUnknown && (
+          <p className="mt-1 text-xs text-amber-700">
+            {t('bankFormats.bankUnknown', 'Aucun salarié payé par virement n’a cette banque — le format ne s’appliquera à personne. Banques connues : {{list}}', { list: employeeBanks.join(', ') })}
+          </p>
+        )}
+      </div>
 
       {/* Enveloppe */}
       <div className="grid gap-3 md:grid-cols-5">
