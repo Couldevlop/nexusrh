@@ -61,6 +61,7 @@ interface SampleAnalysis {
 
 const GROUP_LABEL: Record<string, string> = {
   employee: 'Salarié', payslip: 'Paie', orderer: 'Donneur d\'ordre', computed: 'Calculé', literal: 'Texte fixe',
+  blank: 'Sans donnée NexusRH',
 }
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700',
@@ -405,6 +406,11 @@ function TemplateEditor({ id, referential, onChanged }: { id: string; referentia
                     <input disabled={readOnly} value={col.literal ?? ''} maxLength={200}
                       placeholder="SALAIRE {mois}" onChange={e => setColumn(i, { ...col, literal: e.target.value })}
                       className={`${cellCls} mt-1`} />
+                  )}
+                  {col.source === 'blank' && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t('bankFormats.blankHint', 'Colonne présente dans le fichier mais vide — à compléter à la main après l’export.')}
+                    </p>
                   )}
                 </td>
                 <td className="p-2">

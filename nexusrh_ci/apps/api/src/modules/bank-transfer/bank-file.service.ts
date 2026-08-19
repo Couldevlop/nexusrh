@@ -78,6 +78,12 @@ export const SOURCE_CATALOG: SourceEntry[] = [
   { value: 'computed.total_amount', group: 'computed', label: 'Montant total' },
   { value: 'computed.value_date', group: 'computed', label: 'Date de valeur' },
   { value: 'literal', group: 'literal', label: 'Texte fixe' },
+  // Colonne que la banque attend dans le fichier mais dont NexusRH n'a pas la
+  // donnée (identifiant interne à la banque, zone remplie par le chargé de
+  // compte). Choix EXPLICITE de l'admin : la colonne sort vide, à la bonne
+  // largeur, et le profil peut être activé. À ne pas confondre avec
+  // 'unmapped', qui signifie « pas encore décidé » et reste bloquant.
+  { value: 'blank', group: 'blank', label: 'Colonne vide (à compléter à la main)' },
 ]
 
 const SOURCE_KEYS = new Set(SOURCE_CATALOG.map((s) => s.value))
@@ -202,6 +208,8 @@ function rawValue(seg: BankFileSegment, row: BankFileRow | null, ctx: BankFileCo
     case 'computed.total_amount': return ctx.totalAmount
     case 'computed.value_date': return ctx.valueDate ?? null
     case 'literal': return substituteTokens(seg.literal ?? '', ctx)
+    // Chaine vide et non null : la colonne existe, elle est juste sans valeur.
+    case 'blank': return ''
     default: return null // 'unmapped' et toute source inconnue
   }
 }
