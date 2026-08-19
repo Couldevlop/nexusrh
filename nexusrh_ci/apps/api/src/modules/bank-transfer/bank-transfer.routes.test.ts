@@ -202,6 +202,7 @@ describe('GET /bank-transfer/templates', () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: TPL_ID, bank_name: 'SGCI', version: 1, status: 'active', label: 'SGCI v1', output_kind: 'csv', sample_filename: 'modele.csv', created_at: null, updated_at: null, activated_at: null }] })
       .mockResolvedValueOnce({ rows: [{ bank_name: 'SGCI', email: 'paie@sgci.ci', ordering_account: 'enc:CI0080100000009999', ordering_label: 'SALAIRES' }] })
+      .mockResolvedValueOnce({ rows: [{ bank_name: 'SGCI' }] })
     const res = await app.inject({ method: 'GET', url: '/bank-transfer/templates', headers: auth('admin') })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
@@ -209,6 +210,9 @@ describe('GET /bank-transfer/templates', () => {
     expect(body.directory[0].orderingAccount).toBe('****9999')
     expect(body.referential.sources.length).toBeGreaterThan(10)
     expect(body.referential.presets.map((p: { key: string }) => p.key)).toContain('txt_fixe')
+    // Les banques réellement portées par des fiches salariés : sans cette liste,
+    // rien ne signale un profil rattaché à une banque que personne n'a.
+    expect(body.employeeBanks).toEqual(['SGCI'])
   })
 })
 
@@ -276,6 +280,51 @@ describe('PUT /bank-transfer/templates/:id', () => {
   it('refuse un id qui n\'est pas un UUID (400)', async () => {
     const res = await app.inject({ method: 'PUT', url: '/bank-transfer/templates/pas-un-uuid', headers: auth('admin'), payload: { spec: CSV_SPEC } })
     expect(res.statusCode).toBe(400)
+  })
+
+  // Le nom de la banque est saisi à la main à la création et décide seul à quels
+  // salariés le format s'applique : une faute de frappe rendait le profil
+  // définitivement inutilisable. Elle se corrige désormais sur un brouillon.
+  it('corrige la banque d un brouillon et le renumérote sur la banque cible', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ bank_name: 'DISQUETTE EXEMPLE', status: 'draft', version: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ n: '2' }] })
+      .mockResolvedValueOnce({ rows: [{ version: 3 }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'PUT', url: `/bank-transfer/templates/${TPL_ID}`, headers: auth('admin'),
+      payload: { bank: 'BNI', spec: CSV_SPEC },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data).toMatchObject({ bank: 'BNI', version: 3, createdNewVersion: false })
+    // Le numéro de version est unique PAR banque : sans renumérotation, l'index
+    // unique rejetterait le déplacement. Et le paramètre sert de valeur ET de
+    // comparaison — sans cast explicite, PostgreSQL répond 42P08.
+    const sql = String(queryMock.mock.calls[2]![0])
+    expect(sql).toContain('$5::varchar')
+    expect(sql).toContain('max(t.version)')
+  })
+
+  it('refuse de changer la banque d un format ACTIF (400)', async () => {
+    // Rebasculer un format actif d'une banque à une autre enverrait à la banque
+    // cible un fichier bâti pour la structure d'une autre.
+    queryMock.mockResolvedValueOnce({ rows: [{ bank_name: 'SGCI', status: 'active', version: 2 }] })
+    const res = await app.inject({
+      method: 'PUT', url: `/bank-transfer/templates/${TPL_ID}`, headers: auth('admin'),
+      payload: { bank: 'BNI', spec: CSV_SPEC },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('brouillon')
+  })
+
+  it('laisse la banque inchangée quand elle n est pas fournie', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ bank_name: 'SGCI', status: 'draft', version: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ version: 2 }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({ method: 'PUT', url: `/bank-transfer/templates/${TPL_ID}`, headers: auth('admin'), payload: { spec: CSV_SPEC } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data).toMatchObject({ bank: 'SGCI', version: 2 })
   })
 })
 
