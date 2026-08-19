@@ -351,6 +351,12 @@ function TemplateEditor({ id, referential, knownBanks, employeeBanks, onChanged 
   // salarié. On l'annonce sans bloquer — un format peut se préparer avant que
   // les fiches soient renseignées.
   const bankUnknown = employeeBanks.length > 0 && !employeeBanks.includes(bank.trim())
+  // État « modifié » : il couvre le mapping ET le nom de la banque. Gardé sur le
+  // seul mapping, une correction de banque restait non enregistrable — et pire,
+  // l'activation restait ouverte, ce qui aurait activé l'ANCIENNE banque.
+  const bankDirty = bank.trim() !== current.bank
+  const dirty = Boolean(spec) || bankDirty
+  const canSave = dirty && bank.trim().length > 0
 
   return (
     <div className="mt-4 space-y-4 rounded-lg border border-border bg-muted/20 p-4">
@@ -567,11 +573,11 @@ function TemplateEditor({ id, referential, knownBanks, employeeBanks, onChanged 
         )}
         {!readOnly && (
           <>
-            <button type="button" disabled={saveMut.isPending || !spec} onClick={() => saveMut.mutate()}
+            <button type="button" disabled={saveMut.isPending || !canSave} onClick={() => saveMut.mutate()}
               className="rounded-lg border border-input px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">
               {t('bankFormats.save', 'Enregistrer le brouillon')}
             </button>
-            <button type="button" disabled={activateMut.isPending || current.status === 'active' || unmapped > 0 || Boolean(spec)}
+            <button type="button" disabled={activateMut.isPending || current.status === 'active' || unmapped > 0 || dirty}
               onClick={() => activateMut.mutate()}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
               {activateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
