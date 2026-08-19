@@ -84,6 +84,7 @@
     "colWidth": "Width",
     "colOptions": "Options",
     "toMap": "to map",
+    "blankHint": "Column present in the file but left empty — fill it in by hand after export.",
     "addColumn": "Add a column",
     "alignLeft": "left",
     "alignRight": "right",

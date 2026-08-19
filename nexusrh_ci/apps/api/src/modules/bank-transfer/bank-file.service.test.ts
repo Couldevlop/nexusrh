@@ -357,3 +357,42 @@ describe('découpe du RIB ivoirien', () => {
     expect(s2('employee.iban')).toBe('CI93CI0080109400945293281189')
   })
 })
+
+describe('colonne déclarée vide', () => {
+  // Les modèles bancaires portent des colonnes que NexusRH n'alimente pas
+  // (NUMERO CLIENT du modèle BNI, zones remplies par le chargé de compte).
+  // Elles doivent sortir vides ET ne pas bloquer l'activation du profil.
+  it('rend une chaîne vide sans toucher aux autres colonnes', () => {
+    expect(renderSegment(seg({ source: 'blank' }), row, ctx, 0)).toBe('')
+    expect(renderSegment(seg({ source: 'blank' }), null, ctx, 0)).toBe('')
+  })
+
+  it('respecte la largeur exacte en format fixe', () => {
+    // Sans cela, toutes les positions de la ligne seraient décalées.
+    const rendu = renderSegment(
+      seg({ source: 'blank', pad: { width: 8, align: 'left', char: ' ' } }), row, ctx, 0,
+    )
+    expect(rendu).toBe(' '.repeat(8))
+  })
+
+  it("n'empêche pas l'activation, contrairement à « à mapper »", () => {
+    const avecVide = baseSpec({
+      columns: [seg({ label: 'MONTANT', source: 'payslip.net_payable' }), seg({ label: 'NUMERO CLIENT', source: 'blank' })],
+    })
+    expect(specIssues(avecVide)).toEqual([])
+
+    const aMapper = baseSpec({
+      columns: [seg({ label: 'MONTANT', source: 'payslip.net_payable' }), seg({ label: 'NUMERO CLIENT', source: 'unmapped' })],
+    })
+    expect(specIssues(aMapper)).toContain('columns.unmapped[1]')
+  })
+
+  it('sort une cellule vide dans le fichier, la colonne restant présente', () => {
+    const spec = baseSpec({
+      columns: [seg({ label: 'NOM', source: 'employee.full_name' }), seg({ label: 'NUMERO CLIENT', source: 'blank' })],
+    })
+    const csv = buildBankFile(spec, [row], ctx).buffer.toString('utf8')
+    expect(csv).toContain('NOM;NUMERO CLIENT')
+    expect(csv).toContain('KOUAMÉ Awa;')
+  })
+})
