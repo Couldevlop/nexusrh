@@ -54,3 +54,65 @@ describe('onglet Formats bancaires', () => {
     expect(screen.getByText('Nouveau format')).toBeTruthy()
   })
 })
+
+/**
+ * Correction du nom de la banque — c'est lui, et lui seul, qui décide à quels
+ * salariés le format s'applique. Gardé hors de l'état « modifié », il rendait la
+ * correction inenregistrable, et laissait l'activation ouverte : on activait
+ * alors l'ANCIENNE banque en croyant avoir corrigé.
+ */
+describe("correction de la banque d'un brouillon", () => {
+  const SPEC = {
+    output: 'xlsx', encoding: 'utf8', delimiter: ';', lineEnding: 'crlf', filename: 'VIR.xlsx',
+    header: { mode: 'labels', lines: [] },
+    columns: [{ label: 'MONTANT', source: 'payslip.net_payable' }],
+    footer: { enabled: false, lines: [] },
+  }
+
+  beforeEach(() => {
+    getMock.mockImplementation((url: string) => {
+      if (url === '/bank-transfer/templates') {
+        return Promise.resolve({ data: {
+          data: [{ id: 't1', bank: 'DISQUETTE EXEMPLE', version: 1, status: 'draft', label: 'x', outputKind: 'xlsx', sampleFilename: null }],
+          directory: [], employeeBanks: ['SGCI'],
+          referential: {
+            sources: [{ value: 'payslip.net_payable', group: 'payslip', label: 'Net à payer' }],
+            transforms: [], dateFormats: [], outputs: ['xlsx'], encodings: ['utf8'], delimiters: [';'],
+            presets: [], maxColumns: 200, maxSampleBytes: 1048576,
+          },
+        } })
+      }
+      return Promise.resolve({ data: { data: { id: 't1', bank: 'DISQUETTE EXEMPLE', version: 1, status: 'draft', label: 'x', spec: SPEC, issues: [] } } })
+    })
+  })
+
+  async function ouvrirEditeur() {
+    renderFor('admin')
+    fireEvent.click(screen.getByText('Formats bancaires'))
+    fireEvent.click(await screen.findByText('Ouvrir'))
+    return await screen.findByDisplayValue('DISQUETTE EXEMPLE')
+  }
+
+  it("rend la correction enregistrable et bloque l'activation tant qu'elle ne l'est pas", async () => {
+    const champ = await ouvrirEditeur()
+    // Avant toute modification : rien à enregistrer, activation possible.
+    expect((screen.getByText('Enregistrer le brouillon') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByText('Activer ce format') as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(champ, { target: { value: 'BNI' } })
+
+    expect((screen.getByText('Enregistrer le brouillon') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByText('Activer ce format') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("refuse d'enregistrer un nom de banque vide", async () => {
+    const champ = await ouvrirEditeur()
+    fireEvent.change(champ, { target: { value: '   ' } })
+    expect((screen.getByText('Enregistrer le brouillon') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("avertit quand aucun salarié n'a cette banque", async () => {
+    await ouvrirEditeur()
+    expect(screen.getByText(/ne s’appliquera à personne/)).toBeTruthy()
+  })
+})
