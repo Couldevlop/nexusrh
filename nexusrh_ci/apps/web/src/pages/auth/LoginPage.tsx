@@ -260,9 +260,17 @@ export default function LoginPage() {
       // est affiché tel quel (le serveur ne le renvoie qu'après vérification du
       // mot de passe — pas de risque d'énumération).
       const isOffline = e.response?.status === 503 && e.response?.data?.offline === true;
+      // OWASP A07 — compte verrouille (423) : le serveur renvoie un message
+      // explicite AVEC le delai restant. L'ecraser par « identifiants
+      // invalides » laissait l'utilisateur croire a une faute de frappe et
+      // reessayer, chaque tentative prolongeant le verrou. Aucune fuite : le
+      // verrou ne dit pas si le mot de passe etait correct.
+      const isLocked = e.response?.status === 423;
       setError(
         isOffline
           ? (e.response?.data?.error ?? t("errors.offlineFallback"))
+          : isLocked
+          ? (e.response?.data?.error ?? t("errors.accountLocked"))
           : isValidation
           ? (e.response?.data?.error ?? t("errors.invalidFormat"))
           : t("errors.invalidCredentials"),
