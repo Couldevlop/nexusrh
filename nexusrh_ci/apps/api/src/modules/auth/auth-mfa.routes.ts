@@ -118,22 +118,27 @@ function auditMfa(
 // Identifie la table users (platform_users vs tenant.users) selon le scope
 async function findUserScope(
   userId: string, schemaName: string,
-): Promise<{ table: string; mfaEnabled: boolean; mfaSecret: string | null; email: string } | null> {
+): Promise<{
+  table: string; mfaEnabled: boolean; mfaSecret: string | null; email: string
+  /** `false` = compte désactivé (OWASP A01). `undefined` seulement hors BD réelle. */
+  isActive?: boolean
+} | null> {
+  type Row = { email: string; mfa_enabled: boolean; mfa_secret: string | null; is_active?: boolean }
   if (schemaName === 'platform') {
-    const r = await pool.query<{ email: string; mfa_enabled: boolean; mfa_secret: string | null }>(
-      `SELECT email, mfa_enabled, mfa_secret FROM platform.platform_users WHERE id = $1 LIMIT 1`,
+    const r = await pool.query<Row>(
+      `SELECT email, mfa_enabled, mfa_secret, is_active FROM platform.platform_users WHERE id = $1 LIMIT 1`,
       [userId],
     )
     if (!r.rows[0]) return null
-    return { table: 'platform.platform_users', mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email }
+    return { table: 'platform.platform_users', mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email, isActive: r.rows[0].is_active }
   }
   if (!SCHEMA_NAME_RE.test(schemaName)) return null
-  const r = await pool.query<{ email: string; mfa_enabled: boolean; mfa_secret: string | null }>(
-    `SELECT email, mfa_enabled, mfa_secret FROM "${schemaName}".users WHERE id = $1 LIMIT 1`,
+  const r = await pool.query<Row>(
+    `SELECT email, mfa_enabled, mfa_secret, is_active FROM "${schemaName}".users WHERE id = $1 LIMIT 1`,
     [userId],
   )
   if (!r.rows[0]) return null
-  return { table: `"${schemaName}".users`, mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email }
+  return { table: `"${schemaName}".users`, mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email, isActive: r.rows[0].is_active }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,7 +330,10 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       const { challenge, code } = parsed.data
 
       // Vérifier le challenge JWT
-      let payload: { sub: string; schemaName: string; aud?: string; userId: string; tenantId: string | null }
+      let payload: {
+        sub: string; schemaName: string; aud?: string; userId: string; tenantId: string | null
+        pwdResetRequired?: boolean; pwdBreached?: boolean
+      }
       try {
         const decoded = fastify.jwt.verify<typeof payload>(challenge)
         if (decoded.aud !== 'mfa-challenge') throw new Error('Wrong audience')
@@ -342,6 +350,15 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       const scope = await findUserScope(payload.sub, payload.schemaName)
       if (!scope || !scope.mfaEnabled || !scope.mfaSecret) {
         return reply.status(409).send({ error: 'MFA non actif sur ce compte' })
+      }
+
+      // OWASP A01 — compte désactivé entre l'étape 1 et l'étape 2 : le code MFA
+      // ne doit pas rouvrir un accès révoqué (l'archivage d'un employé passe
+      // `users.is_active = false`). Message générique : pas de fuite de motif.
+      if (scope.isActive === false) {
+        auditMfa(payload.schemaName, payload.sub, 'mfa.login_failed',
+          { reason: 'user_inactive' }, request.ip ?? null)
+        return reply.status(401).send({ error: 'Email ou mot de passe incorrect' })
       }
 
       // Vérifie TOTP en priorité ; sinon essaye backup codes
@@ -377,14 +394,23 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       const userInfo = await loadUserForToken(payload.sub, payload.schemaName, payload.tenantId)
       if (!userInfo) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
+      // OWASP A07 — mot de passe expiré ou compromis constaté à l'étape 1 : le
+      // JWT final reste RESTREINT à /auth/change-password (cf. plugins/auth.ts),
+      // exactement comme sur le chemin sans MFA. Sans cela, activer le MFA
+      // dispensait de la politique de mot de passe.
+      const pwdResetRequired = payload.pwdResetRequired === true
+
       // Cast contrôlé : userInfo.tokenPayload est typé { sub, tenantId, schemaName,
       // role, email, firstName, lastName, employeeId } — compatible JwtSignPayload
       // mais TS ne le reconnait pas via le type object.
       // OWASP A07 — `jti` unique (révocation par token, cf. plugins/auth.ts).
       const finalToken = fastify.jwt.sign(
-        withJti(userInfo.tokenPayload) as Parameters<typeof fastify.jwt.sign>[0])
+        withJti({
+          ...userInfo.tokenPayload,
+          ...(pwdResetRequired ? { pwdResetRequired: true } : {}),
+        }) as Parameters<typeof fastify.jwt.sign>[0])
       auditMfa(payload.schemaName, payload.sub, 'mfa.login_success',
-        { usedBackupCode: !!usedBackupCode }, request.ip ?? null)
+        { usedBackupCode: !!usedBackupCode, pwdResetRequired }, request.ip ?? null)
 
       // OWASP A02 — pose le JWT en cookie httpOnly aussi (parité avec /auth/login)
       reply.setCookie(AUTH_COOKIE_NAME, finalToken, {
@@ -399,7 +425,12 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         token: finalToken,
         user: userInfo.userPublic,
         tenantConfig: userInfo.tenantConfig,
-        redirectTo: userInfo.redirectTo,
+        // Parité avec /auth/login : le front bascule sur le formulaire de
+        // changement de mot de passe au lieu d'entrer dans l'application.
+        must_change_password: pwdResetRequired,
+        passwordBreached: pwdResetRequired && payload.pwdBreached === true,
+        passwordExpired:  pwdResetRequired && payload.pwdBreached !== true,
+        redirectTo: pwdResetRequired ? '/change-password' : userInfo.redirectTo,
       })
     },
   })
@@ -635,14 +666,28 @@ type FastifyJwtLike = { jwt: { sign: (p: Record<string, unknown>, opts?: Record<
 
 export function buildMfaChallenge(
   fastify: unknown,
-  payload: { sub: string; schemaName: string; tenantId: string | null },
+  payload: {
+    sub: string; schemaName: string; tenantId: string | null
+    /**
+     * OWASP A07 — état du mot de passe évalué à l'étape 1 (expiré ou présent
+     * dans une fuite). Transporté DANS le challenge signé car le mot de passe
+     * en clair n'existe plus à l'étape 2 : `login-verify` ne pourrait pas
+     * refaire la vérification HIBP. Le challenge est signé par le serveur et
+     * vit 3 min : le client ne peut pas retirer le drapeau.
+     */
+    pwdResetRequired?: boolean
+    /** Motif : mot de passe présent dans une fuite (sinon = expiration). */
+    pwdBreached?: boolean
+  },
 ): string {
   const f = fastify as FastifyJwtLike
   // OWASP A07 — un `jti` même sur ce token court (3 min) : il doit rester
   // révocable individuellement pendant sa fenêtre de validité.
   return f.jwt.sign(
     withJti({ sub: payload.sub, schemaName: payload.schemaName, tenantId: payload.tenantId,
-      aud: 'mfa-challenge', userId: payload.sub }),
+      aud: 'mfa-challenge', userId: payload.sub,
+      ...(payload.pwdResetRequired ? { pwdResetRequired: true } : {}),
+      ...(payload.pwdBreached ? { pwdBreached: true } : {}) }),
     { expiresIn: '3m' },
   )
 }
