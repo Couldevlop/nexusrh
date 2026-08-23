@@ -5,6 +5,7 @@ import { pool } from '../../db/pool.js'
 import { blacklistTokenSafe, setTokenEpoch } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
 import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME, withJti, tokenBlacklistKey } from '../../plugins/auth.js'
+import type { SecurityPolicy } from '../../services/security-policy.service.js'
 import {
   getSecurityPolicy,
   isPasswordExpired,
@@ -120,6 +121,29 @@ interface TenantCandidate {
     is_active: boolean; last_login_at: string | null
     password_changed_at: string | null
   }
+}
+
+/**
+ * OWASP A07 — le mot de passe doit-il être changé sur-le-champ ? Expiration
+ * (durée de vie de la politique) OU présence dans une fuite connue (HIBP,
+ * si la vérification est activée).
+ *
+ * Extrait ici pour que le chemin MFA applique EXACTEMENT la même règle que le
+ * chemin sans MFA : sur le parcours MFA, le contrôle doit être fait à l'étape 1
+ * (le mot de passe en clair n'existe plus à l'étape `login-verify`), puis
+ * transporté dans le challenge signé.
+ */
+async function evaluatePasswordState(
+  policy: SecurityPolicy,
+  passwordChangedAt: string | null,
+  plainPassword: string,
+  now: Date,
+): Promise<{ expired: boolean; breached: boolean; required: boolean }> {
+  const expired = isPasswordExpired(passwordChangedAt, policy.passwordMaxAgeDays, now)
+  const breached = policy.breachCheckEnabled
+    ? (await isPasswordBreached(plainPassword)) === true
+    : false
+  return { expired, breached, required: expired || breached }
 }
 
 async function findTenantAndUser(
@@ -320,8 +344,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // Le client doit ensuite appeler POST /auth/mfa/login-verify avec
             // le code TOTP (ou backup) pour obtenir le vrai token.
             if (platformUser.mfa_enabled) {
+              // OWASP A07 — l'état du mot de passe est évalué ICI, pendant qu'on
+              // dispose encore du mot de passe en clair (HIBP), et transporté
+              // dans le challenge signé. Sans cela, le parcours MFA sortait
+              // avant les contrôles ci-dessous et dispensait de la politique.
+              const pwdState = await evaluatePasswordState(
+                policy, platformUser.password_changed_at, password, now)
               const challenge = buildMfaChallenge(fastify, {
                 sub: platformUser.id, schemaName: 'platform', tenantId: null,
+                pwdResetRequired: pwdState.required, pwdBreached: pwdState.breached,
               })
               auditLogAuth('platform', platformUser.id, 'auth.login.mfa_required', { scope: 'platform' }, ip, ua)
               return reply.status(202).send({
@@ -550,8 +581,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // code TOTP (ou backup) pour obtenir le vrai token. last_login_at
         // n'est PAS mis à jour ici (login non finalisé).
         if (user.mfa_enabled) {
+          // OWASP A07 — cf. branche plateforme : l'expiration / la compromission
+          // du mot de passe est évaluée avant le 202 et transportée dans le
+          // challenge signé, sinon le MFA contourne la politique.
+          const pwdState = await evaluatePasswordState(
+            policy, user.password_changed_at, password, now)
           const challenge = buildMfaChallenge(fastify, {
             sub: user.id, schemaName: tenant.schema_name, tenantId: tenant.id,
+            pwdResetRequired: pwdState.required, pwdBreached: pwdState.breached,
           })
           auditLogAuth(
             tenant.schema_name, user.id, 'auth.login.mfa_required',
