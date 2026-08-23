@@ -281,10 +281,33 @@ export default function LoginPage() {
         user: AuthUser;
         tenantConfig: TenantConfig | null;
         redirectTo: string;
+        must_change_password?: boolean;
+        passwordExpired?: boolean;
+        passwordBreached?: boolean;
       }>("/auth/mfa/login-verify", {
         challenge: mfaChallenge,
         code: mfaCode.trim().toUpperCase(),
       });
+
+      // Mot de passe expiré / compromis : le MFA est validé mais le token remis
+      // est RESTREINT (pwdResetRequired) — il ne débloque que le changement de
+      // mot de passe. On bascule donc sur le même formulaire que le parcours
+      // sans MFA, au lieu d'entrer dans l'application (403 partout sinon).
+      if (res.data.must_change_password === true) {
+        setMfaChallenge(null);
+        setMfaCode("");
+        setPendingAuth({
+          token: res.data.token,
+          refreshToken: "",
+          user: res.data.user,
+          tenantConfig: res.data.tenantConfig,
+          redirectTo: res.data.redirectTo,
+        });
+        setForcedReason(res.data.passwordBreached ? "breached" : "expired");
+        setMustChange(true);
+        return;
+      }
+
       setAuth(res.data.user, res.data.token, "", res.data.tenantConfig);
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
