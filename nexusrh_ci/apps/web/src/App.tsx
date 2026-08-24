@@ -19,6 +19,7 @@ const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const HomePage           = lazy(() => import('@/pages/public/HomePage'))
+const LegalPage          = lazy(() => import('@/pages/public/LegalPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
 const PublicInterviewSimPage = lazy(() => import('@/pages/public/PublicInterviewSimPage'))
 
@@ -195,6 +196,9 @@ export default function App() {
           <Route path="/mfa-setup" element={<MfaEnrollmentPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+          {/* ── Pages légales publiques (sans auth) ────────────────── */}
+          <Route path="/legal/:doc" element={<LegalPage />} />
 
           {/* ── Page carrières publique (sans auth) ───────────────── */}
           <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />

@@ -1,0 +1,120 @@
+{
+  "backHome": "Retour à l'accueil",
+  "updated": "Dernière mise à jour",
+  "updatedValue": "24 août 2026",
+  "disclaimer": "Ce document constitue la base contractuelle et informative du service. Il est destiné à être revu par le conseil juridique de l'éditeur avant toute évolution majeure de la plateforme.",
+  "docs": {
+    "notice": {
+      "title": "Mentions légales",
+      "lead": "Informations relatives à l'éditeur du service NexusRH CI et à ses conditions de publication.",
+      "s1": {
+        "h": "Éditeur",
+        "p": "NexusRH CI est édité par OpenLab Consulting, société de conseil et d'ingénierie logicielle établie à Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact : waopron@openlabconsulting.com, +225 07 09 32 05 94."
+      },
+      "s2": {
+        "h": "Directeur de la publication",
+        "p": "La direction d'OpenLab Consulting assure la direction de la publication du site et du service. Toute demande relative au contenu publié peut être adressée à l'adresse de contact ci-dessus."
+      },
+      "s3": {
+        "h": "Hébergement",
+        "p": "Le service est hébergé sur une infrastructure sous contrôle de l'éditeur, avec chiffrement des échanges en HTTPS. Les clients qui l'exigent — établissements publics, banques, opérateurs sensibles — peuvent obtenir un hébergement de leurs fichiers en Côte d'Ivoire, prévu contractuellement."
+      },
+      "s4": {
+        "h": "Propriété intellectuelle",
+        "p": "Le logiciel NexusRH CI, sa documentation, ses marques, ses interfaces et ses éléments graphiques sont la propriété d'OpenLab Consulting. Toute reproduction, extraction, décompilation ou réutilisation, totale ou partielle, sans autorisation écrite, est interdite. Les données saisies par un client restent la propriété de ce client."
+      },
+      "s5": {
+        "h": "Responsabilité",
+        "p": "L'éditeur met en œuvre les moyens raisonnables pour assurer l'exactitude des informations publiées sur ce site. Elles sont fournies à titre d'information générale et ne constituent ni un conseil juridique, ni un conseil en paie. Les obligations contractuelles de l'éditeur envers ses clients sont définies dans le contrat de service, qui prévaut sur cette page."
+      },
+      "s6": {
+        "h": "Droit applicable",
+        "p": "Les présentes mentions sont régies par le droit ivoirien. En cas de litige, et à défaut de résolution amiable, compétence est attribuée aux juridictions compétentes d'Abidjan."
+      }
+    },
+    "privacy": {
+      "title": "Politique de confidentialité",
+      "lead": "Comment nous traitons les données à caractère personnel, pour les visiteurs de ce site comme pour les utilisateurs du service.",
+      "s1": {
+        "h": "Responsable du traitement",
+        "p": "Pour les données collectées sur ce site (formulaire de demande de démonstration), le responsable du traitement est OpenLab Consulting. Pour les données traitées à l'intérieur de la plateforme, le responsable du traitement est l'entreprise cliente ; OpenLab Consulting intervient comme sous-traitant, dans les limites fixées par le contrat de service."
+      },
+      "s2": {
+        "h": "Données collectées sur ce site",
+        "p": "Le formulaire de demande de démonstration collecte : nom et prénom, société, adresse électronique professionnelle, téléphone et effectif si vous les renseignez, ainsi que votre message. Sont également enregistrés l'adresse IP et le navigateur ayant émis la demande, à seule fin de détecter les envois automatisés abusifs. Aucune autre donnée n'est collectée à la simple consultation des pages publiques."
+      },
+      "s3": {
+        "h": "Finalités et bases légales",
+        "p": "Ces données servent exclusivement à répondre à votre demande commerciale et à organiser la démonstration : la base est votre démarche préalable et l'intérêt légitime de l'éditeur à y donner suite. Elles ne sont ni revendues, ni cédées, ni utilisées à des fins publicitaires, ni transmises à des tiers en dehors des prestataires techniques strictement nécessaires à l'acheminement du courriel."
+      },
+      "s4": {
+        "h": "Durées de conservation",
+        "p": "Une demande de démonstration restée sans suite est conservée vingt-quatre mois au plus, puis supprimée. Les données traitées dans la plateforme pour le compte d'un client sont conservées pendant la durée du contrat, puis restituées ou supprimées selon les modalités convenues. Les journaux d'audit sont conservés conformément aux exigences de traçabilité applicables."
+      },
+      "s5": {
+        "h": "Sécurité",
+        "p": "Les échanges sont chiffrés en HTTPS. Les données de chaque entreprise cliente sont isolées dans un schéma de base de données distinct. Les informations les plus sensibles — identifiants nationaux, coordonnées bancaires, secrets de connexion — sont chiffrées au repos. L'accès est soumis à une authentification renforcée et à un contrôle des droits vérifié côté serveur. Chaque consultation, modification et export est journalisé."
+      },
+      "s6": {
+        "h": "Vos droits",
+        "p": "Conformément à la loi ivoirienne n° 2013-450 du 19 juin 2013 relative à la protection des données à caractère personnel, et au Règlement général sur la protection des données lorsqu'il s'applique, vous disposez d'un droit d'accès, de rectification, d'effacement, d'opposition, de limitation et de portabilité. Écrivez à waopron@openlabconsulting.com : nous répondons dans un délai d'un mois. Si vous êtes utilisateur d'une plateforme cliente, adressez d'abord votre demande à votre employeur, responsable du traitement."
+      },
+      "s7": {
+        "h": "Réclamation",
+        "p": "Vous pouvez introduire une réclamation auprès de l'Autorité de régulation des télécommunications de Côte d'Ivoire (ARTCI), autorité de protection des données à caractère personnel, ou auprès de l'autorité compétente de votre pays de résidence."
+      }
+    },
+    "terms": {
+      "title": "Conditions générales d'utilisation",
+      "lead": "Règles d'accès et d'usage du service NexusRH CI. Elles complètent, sans le remplacer, le contrat conclu avec chaque entreprise cliente.",
+      "s1": {
+        "h": "Objet",
+        "p": "NexusRH CI est un service en ligne de gestion des ressources humaines et de la paie, destiné aux entreprises et organisations. L'accès est réservé aux personnes autorisées par l'entreprise cliente. La consultation des pages publiques n'ouvre aucun droit d'usage du service."
+      },
+      "s2": {
+        "h": "Comptes et sécurité",
+        "p": "Chaque utilisateur dispose d'identifiants personnels, qu'il ne doit ni partager ni confier à un tiers. L'authentification à deux facteurs peut être rendue obligatoire par l'entreprise cliente ou par l'éditeur. L'utilisateur informe sans délai son administrateur de toute utilisation suspecte de son compte. Les actions réalisées sous un compte sont réputées effectuées par son titulaire."
+      },
+      "s3": {
+        "h": "Usages interdits",
+        "p": "Sont notamment interdits : toute tentative d'accès à des données ne relevant pas de vos droits, toute recherche de vulnérabilité non autorisée, tout test de charge ou d'intrusion sans accord écrit préalable, l'extraction massive de données, la rétro-ingénierie du service, ainsi que tout usage contraire au droit applicable. Ces tentatives sont journalisées et peuvent entraîner la suspension immédiate du compte et des poursuites."
+      },
+      "s4": {
+        "h": "Divulgation responsable",
+        "p": "Si vous découvrez une faille de sécurité, écrivez à waopron@openlabconsulting.com en décrivant précisément le problème, sans l'exploiter ni le divulguer publiquement. Toute signalisation faite de bonne foi et sans dégradation du service recevra une réponse et un traitement diligents."
+      },
+      "s5": {
+        "h": "Disponibilité et évolutions",
+        "p": "L'éditeur s'efforce d'assurer la continuité du service et procède à des mises à jour régulières, notamment pour suivre les évolutions légales applicables à la paie. Des interruptions de maintenance peuvent survenir ; les engagements de disponibilité figurent, le cas échéant, dans le contrat de service."
+      },
+      "s6": {
+        "h": "Données des clients",
+        "p": "Les données saisies dans la plateforme appartiennent à l'entreprise cliente. L'éditeur ne les exploite pas à d'autres fins que la fourniture du service et son support, et n'y accède que dans le cadre d'une intervention nécessaire et tracée."
+      },
+      "s7": {
+        "h": "Droit applicable",
+        "p": "Les présentes conditions sont régies par le droit ivoirien. Tout litige relève, à défaut d'accord amiable, des juridictions compétentes d'Abidjan."
+      }
+    },
+    "cookies": {
+      "title": "Politique cookies",
+      "lead": "Ce que nous déposons sur votre appareil, pourquoi, et comment le refuser.",
+      "s1": {
+        "h": "Aucun traceur publicitaire",
+        "p": "Ce site ne dépose aucun cookie publicitaire, aucun cookie de réseau social et aucun outil de mesure d'audience tiers. Les pages publiques ne chargent aucun script provenant d'un autre domaine : la politique de sécurité du site l'interdit techniquement."
+      },
+      "s2": {
+        "h": "Cookie de session",
+        "p": "À la connexion, un cookie strictement nécessaire est déposé pour maintenir votre session. Il est inaccessible au code JavaScript, transmis uniquement en HTTPS, et limité aux requêtes provenant du site. Il expire automatiquement et disparaît à la déconnexion."
+      },
+      "s3": {
+        "h": "Stockage local",
+        "p": "Votre choix de langue et l'état d'affichage de certains menus sont conservés dans le stockage local de votre navigateur, sur votre appareil uniquement. Ces informations ne sont jamais transmises à nos serveurs et ne permettent pas de vous identifier."
+      },
+      "s4": {
+        "h": "Refus et suppression",
+        "p": "Vous pouvez à tout moment effacer ces éléments depuis les réglages de votre navigateur. Le refus du cookie de session empêche la connexion au service : il est indispensable à son fonctionnement, ce qui le dispense de recueil de consentement préalable."
+      }
+    }
+  }
+}

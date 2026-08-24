@@ -807,6 +807,22 @@ export async function ensurePlatformSchema(): Promise<void> {
     )`,
     `CREATE INDEX IF NOT EXISTS platform_prt_user_idx ON platform.password_reset_tokens(user_id)`,
     `CREATE INDEX IF NOT EXISTS platform_prt_expires_idx ON platform.password_reset_tokens(expires_at)`,
+    // Demandes de démonstration venues de la page publique. Données à
+    // caractère personnel : purge à prévoir (rétention commerciale), d'où
+    // l'horodatage systématique.
+    `CREATE TABLE IF NOT EXISTS platform.demo_requests (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      full_name   varchar(120) NOT NULL,
+      company     varchar(160) NOT NULL,
+      email       varchar(254) NOT NULL,
+      phone       varchar(40),
+      headcount   varchar(20),
+      message     text,
+      ip_address  varchar(45),
+      user_agent  varchar(500),
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS platform_demo_requests_created_idx ON platform.demo_requests(created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS platform.mfa_backup_codes (
       id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id     uuid NOT NULL,
