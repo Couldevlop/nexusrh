@@ -468,8 +468,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             // MFA actif : challenge TOTP (contexte plateforme).
             if (agencyUser.mfa_enabled) {
+              // OWASP A07 — même garde que les autres chemins : l'état du mot
+              // de passe est évalué ici (dernier moment où il est en clair) et
+              // transporté dans le challenge signé.
+              const agencyPwdState = await evaluatePasswordState(
+                policy, agencyUser.password_changed_at, password, now)
               const challenge = buildMfaChallenge(fastify, {
                 sub: agencyUser.id, schemaName: 'platform', tenantId: null,
+                pwdResetRequired: agencyPwdState.required,
+                pwdBreached: agencyPwdState.breached,
               })
               auditLogAuth('platform', agencyUser.id, 'auth.login.mfa_required', { scope: 'agency' }, ip, ua)
               return reply.status(202).send({
