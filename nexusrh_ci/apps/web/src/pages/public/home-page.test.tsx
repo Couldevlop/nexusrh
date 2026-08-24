@@ -86,7 +86,11 @@ describe('HomePage — vidéo servie depuis notre domaine', () => {
     const video = container.querySelector('video')
     expect(video, 'aucun élément <video> dans la page').toBeTruthy()
     const src = video?.querySelector('source')?.getAttribute('src') ?? video?.getAttribute('src') ?? ''
-    expect(src).toBe('/nexusrh.mp4')
+    // Chemin relatif = même origine. L'URL porte une empreinte de contenu
+    // (émise par le build), ce qui interdit à un cache de servir une version
+    // précédente après remplacement du fichier.
+    expect(src).toMatch(/^\/[^/].*\.mp4$/)
+    expect(src).not.toMatch(/^https?:/)
     // Aucune iframe : un lecteur YouTube/Vimeo exigerait d'ouvrir la CSP.
     expect(container.querySelector('iframe')).toBeNull()
   })
