@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { authenticator } from 'otplib'
+import bcrypt from 'bcryptjs'
 
 vi.hoisted(() => { process.env['ENCRYPTION_KEY'] = 'a'.repeat(64) })
 
@@ -30,6 +31,16 @@ vi.mock('../../services/redis.js', () => ({
   consumeTotpStep:    vi.fn().mockResolvedValue(true),
   setTokenEpoch:      vi.fn().mockResolvedValue(undefined),
   redisLockoutStore:  {},
+}))
+
+vi.mock('../../services/breach-check.service.js', () => ({
+  isPasswordBreached: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('../../services/account-lockout.service.js', () => ({
+  checkLockout:    vi.fn().mockResolvedValue({ locked: false, retryAfterSec: 0 }),
+  registerFailure: vi.fn().mockResolvedValue({ locked: false, attempts: 1, retryAfterSec: 0 }),
+  clearFailures:   vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../services/email.js', () => ({
@@ -56,6 +67,7 @@ vi.mock('../../config.js', () => ({
 import { encrypt } from '../../utils/crypto.js'
 import authPlugin from '../../plugins/auth.js'
 import authMfaRoutes from './auth-mfa.routes.js'
+import authRoutes from './auth.routes.js'
 
 const AGENCY_USER = '040af228-5cf7-4bdc-a305-3d39082968f7'
 const AGENCY_ID   = '567a9eac-2eaf-4539-86e8-10cebd087909'
@@ -68,6 +80,7 @@ beforeAll(async () => {
   app = Fastify()
   await app.register(authPlugin)
   await app.register(authMfaRoutes, { prefix: '/auth' })
+  await app.register(authRoutes, { prefix: '/auth' })
   await app.ready()
 })
 afterAll(async () => { await app.close() })
@@ -150,5 +163,26 @@ describe('POST /auth/mfa/login-verify — compte de cabinet', () => {
     expect(token.agencyId).toBe(AGENCY_ID)
     expect(body.agencyConfig?.name).toBe('Cabinet Talents CI')
     expect(body.redirectTo).toBe('/agency/dashboard')
+  })
+})
+
+describe('POST /auth/change-password — compte de cabinet', () => {
+  it('change le mot de passe dans agency_users au lieu de repondre 404', async () => {
+    const OLD = 'AncienMotDePasse123!'
+    queryMock
+      .mockResolvedValueOnce({ rows: [{}] })                                   // getSecurityPolicy
+      .mockResolvedValueOnce({ rows: [] })                                     // platform_users : absent
+      .mockResolvedValueOnce({ rows: [{ password_hash: bcrypt.hashSync(OLD, 4) }] }) // agency_users
+      .mockResolvedValue({ rows: [] })                                         // historique, UPDATE, audits
+
+    const res = await app.inject({
+      method: 'POST', url: '/auth/change-password',
+      headers: { authorization: `Bearer ${agencyToken()}` },
+      payload: { oldPassword: OLD, newPassword: 'NouveauMotDePasse456!' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const update = queryMock.mock.calls.find(c => String(c[0]).includes('SET password_hash'))
+    expect(String(update?.[0])).toContain('agency_users')
   })
 })
