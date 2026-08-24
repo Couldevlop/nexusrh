@@ -121,6 +121,7 @@ function mockLoginVerify(opts: { isActive?: boolean } = {}): void {
       id: 't1', name: 'Sotra', slug: 'sotra', primary_color: '#E85D04', secondary_color: '#111',
       logo_url: null, city: 'Abidjan', has_subsidiaries: false,
       payroll_mode: 'monthly', default_country_code: 'CIV',
+      enabled_modules: { dg_view: true },
     }] })
     .mockResolvedValue({ rows: [] })                             // employees + audits
 }
@@ -203,5 +204,22 @@ describe('POST /auth/mfa/login-verify — memes gardes que /auth/login', () => {
 
     const { status } = await loginVerify(loginBody['challenge'] as string)
     expect(status).toBe(401)
+  })
+})
+
+describe('POST /auth/mfa/login-verify — tenantConfig complet (parite avec /auth/login)', () => {
+  it('renvoie enabledModules, sinon le menu du DG est vide apres une connexion MFA', async () => {
+    // `dg_view` vaut false par defaut cote front : si l'API omet enabledModules,
+    // les deux seules entrees de menu du role dg sont masquees -> ecran sans menu.
+    mockLogin({ passwordChangedAt: DAYS(2) })
+    const { body: loginBody } = await login()
+    queryMock.mockReset()
+    mockLoginVerify()
+
+    const { status, body } = await loginVerify(loginBody['challenge'] as string)
+    expect(status).toBe(200)
+    const cfg = body['tenantConfig'] as Record<string, unknown>
+    expect(cfg['enabledModules']).toBeDefined()
+    expect((cfg['enabledModules'] as Record<string, boolean>)['dg_view']).toBe(true)
   })
 })
