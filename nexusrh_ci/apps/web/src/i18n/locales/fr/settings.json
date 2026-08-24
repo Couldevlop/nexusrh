@@ -206,6 +206,13 @@
       "create": "Créer",
       "creating": "Création...",
       "error": "La création a échoué. Si le problème persiste, actualisez la liste : le compte a pu être créé malgré l'erreur."
+    },
+    "confirmResetMfa": "Réinitialiser la double authentification de {{name}} ? Son authenticator et ses codes de secours actuels cesseront de fonctionner ; un nouveau QR code lui sera présenté à sa prochaine connexion.",
+    "resetMfaTitle": "Réinitialiser la double authentification (MFA)",
+    "resetMfaResult": {
+      "title": "Double authentification réinitialisée",
+      "description": "<0>{{name}}</0> recevra un nouveau QR code et de nouveaux codes de secours à sa prochaine connexion.",
+      "error": "La réinitialisation de la double authentification a échoué."
     }
   },
   "departments": {
