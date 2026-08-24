@@ -206,6 +206,13 @@
       "create": "Create",
       "creating": "Creating...",
       "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error."
+    },
+    "confirmResetMfa": "Reset two-factor authentication for {{name}}? Their current authenticator and backup codes will stop working; a new QR code will be shown at their next sign-in.",
+    "resetMfaTitle": "Reset two-factor authentication (MFA)",
+    "resetMfaResult": {
+      "title": "Two-factor authentication reset",
+      "description": "<0>{{name}}</0> will get a new QR code and new backup codes at their next sign-in.",
+      "error": "Resetting two-factor authentication failed."
     }
   },
   "departments": {

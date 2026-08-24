@@ -127,3 +127,49 @@ describe('UsersTab — création d\'utilisateur : retour visuel + liste à jour 
     await waitFor(() => expect(listCalls()).toBeGreaterThan(callsBefore))
   })
 })
+
+describe('UsersTab — réinitialisation MFA (recours quand authenticator ET codes de secours sont perdus)', () => {
+  const USER = {
+    id: 'u9', email: 'employe@sotra.ci', first_name: 'Kouassi', last_name: 'Coulibaly',
+    role: 'employee', job_title: null, last_login_at: null, is_active: true,
+  }
+
+  beforeEach(() => {
+    getMock.mockReset().mockImplementation((url: string) =>
+      Promise.resolve({ data: { data: url === '/settings/users' ? [USER] : [] } }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  it('appelle POST /settings/users/:id/reset-mfa et confirme à l\'écran', async () => {
+    postMock.mockResolvedValue({ data: { data: { id: USER.id, mfaReset: true } } })
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('employe@sotra.ci')).toBeTruthy())
+
+    fireEvent.click(screen.getByTitle('users.resetMfaTitle'))
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith(`/settings/users/${USER.id}/reset-mfa`, {}))
+    await waitFor(() => expect(screen.getByText('users.resetMfaResult.title')).toBeTruthy())
+  })
+
+  it('sans confirmation → aucun appel (action destructrice)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('employe@sotra.ci')).toBeTruthy())
+
+    fireEvent.click(screen.getByTitle('users.resetMfaTitle'))
+
+    expect(postMock).not.toHaveBeenCalled()
+  })
+
+  it('échec serveur → message d\'erreur, jamais un silence', async () => {
+    postMock.mockRejectedValue({ response: { data: { error: 'Utilisateur introuvable' } } })
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('employe@sotra.ci')).toBeTruthy())
+
+    fireEvent.click(screen.getByTitle('users.resetMfaTitle'))
+
+    await waitFor(() => expect(screen.getByText('Utilisateur introuvable')).toBeTruthy())
+    expect(screen.queryByText('users.resetMfaResult.title')).toBeNull()
+  })
+})

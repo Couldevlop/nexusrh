@@ -6,7 +6,7 @@ import { api } from '@/lib/api'
 import { useAuthStore, type TenantConfig } from '@/stores/authStore'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 import {
-  Settings, Users, Building2, Save, Plus, ShieldCheck, Trash2,
+  Settings, Users, Building2, Save, Plus, ShieldCheck, ShieldOff, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
   Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic,
@@ -819,6 +819,8 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
   const [resetResult, setResetResult] = useState<{ name: string; pwd: string; emailSent: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [mfaResetName, setMfaResetName] = useState<string | null>(null)
+  const [mfaResetError, setMfaResetError] = useState<string | null>(null)
 
   const create = useMutation({
     mutationFn: (d: typeof form) => api.post('/settings/users', { ...d, department_id: d.department_id || undefined }),
@@ -843,6 +845,27 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       const u = users.find(x => x.id === vars.id)
       setResetResult({ name: u ? `${u.first_name} ${u.last_name}` : '?', pwd: res.data.tempPassword, emailSent: res.data.emailSent })
     },
+  })
+
+  // Recours quand un utilisateur a perdu SON authenticator ET ses codes de
+  // secours : sans cela il est définitivement bloqué à l'écran du code (les
+  // codes de secours sont propres à chaque compte). L'endpoint existe déjà côté
+  // API (admin uniquement, audité) — il n'était appelé nulle part.
+  // La MFA repasse à « non enrôlée » : au login suivant, l'utilisateur reçoit
+  // un nouveau QR code et de nouveaux codes de secours.
+  const resetMfa = useMutation({
+    mutationFn: ({ id }: { id: string }) => api.post(`/settings/users/${id}/reset-mfa`, {}),
+    onSuccess: (_res, vars) => {
+      const u = users.find(x => x.id === vars.id)
+      setMfaResetName(u ? `${u.first_name} ${u.last_name}` : '?')
+      setMfaResetError(null)
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: string } } }
+      setMfaResetName(null)
+      setMfaResetError(e.response?.data?.error ?? t('users.resetMfaResult.error'))
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
   })
 
   return (
@@ -900,6 +923,13 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       className="text-blue-500 hover:text-blue-700 disabled:opacity-40">
                       <RefreshCw className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      onClick={() => { if (confirm(t('users.confirmResetMfa', { name: `${u.first_name} ${u.last_name}` }))) resetMfa.mutate({ id: u.id }) }}
+                      disabled={resetMfa.isPending}
+                      title={t('users.resetMfaTitle')}
+                      className="text-amber-600 hover:text-amber-700 disabled:opacity-40">
+                      <ShieldOff className="h-3.5 w-3.5" />
+                    </button>
                     <button onClick={() => { if (confirm(t('users.confirmDelete'))) remove.mutate(u.id) }}
                       className="text-red-500 hover:text-red-700"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
@@ -914,6 +944,20 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           </tbody>
         </table>
       </div>
+
+      {/* Résultat de la réinitialisation MFA */}
+      {mfaResetName && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <p className="font-medium">{t('users.resetMfaResult.title')}</p>
+          <p className="text-xs">
+            <Trans i18nKey="users.resetMfaResult.description" ns="settings"
+              values={{ name: mfaResetName }} components={[<strong />]} />
+          </p>
+        </div>
+      )}
+      {mfaResetError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{mfaResetError}</div>
+      )}
 
       {/* Popup résultat reset mot de passe */}
       {resetResult && (
