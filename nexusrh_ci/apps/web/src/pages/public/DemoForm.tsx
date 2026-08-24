@@ -81,24 +81,24 @@ export default function DemoForm() {
 
   if (status === 'sent') {
     return (
-      <div className="rounded-2xl border border-[#22D3EE]/30 bg-[#0E1A20] p-8 text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#22D3EE]/15 text-2xl text-[#22D3EE]" aria-hidden>✓</div>
+      <div className="rounded-2xl border-2 border-[#0F1214] bg-white p-8 text-center shadow-[8px_8px_0_0_#F04E10]">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#FFF3EE] text-2xl text-[#F04E10]" aria-hidden>✓</div>
         <h3 className="text-xl font-semibold">{t('form.successTitle')}</h3>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[#93A4B1]">{t('form.successText')}</p>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[#5A6672]">{t('form.successText')}</p>
         <button type="button" onClick={() => { setStatus('idle'); asked.current = false }}
-          className="mt-6 text-sm font-medium text-[#22D3EE] underline-offset-4 hover:underline">
+          className="mt-6 text-sm font-bold text-[#F04E10] underline-offset-4 hover:underline">
           {t('form.again')}
         </button>
       </div>
     )
   }
 
-  const field = 'w-full rounded-lg border border-white/12 bg-[#0B1014] px-4 py-3 text-[15px] text-[#E6EDF3] outline-none transition-colors placeholder:text-[#5D6E7B] focus:border-[#22D3EE] focus:ring-1 focus:ring-[#22D3EE]'
-  const label = 'mb-1.5 block text-xs font-medium uppercase tracking-[0.1em] text-[#93A4B1]'
+  const field = 'w-full rounded-lg border border-[#D7DDE2] bg-white px-4 py-3 text-[15px] text-[#0F1214] outline-none transition-colors placeholder:text-[#A9B4BD] focus:border-[#F04E10] focus:ring-1 focus:ring-[#F04E10]'
+  const label = 'mb-1.5 block text-xs font-bold uppercase tracking-[0.1em] text-[#5A6672]'
 
   return (
     <form onSubmit={onSubmit} onFocusCapture={onFirstTouch} noValidate
-      className="rounded-2xl border border-white/10 bg-[#111A21] p-6 sm:p-8">
+      className="rounded-2xl border-2 border-[#0F1214] bg-white p-6 shadow-[8px_8px_0_0_#F04E10] sm:p-8">
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label className={label} htmlFor="df-name">{t('form.fullName')}</label>
@@ -130,7 +130,7 @@ export default function DemoForm() {
         <div>
           <label className={label} htmlFor="df-captcha">{t('form.captcha')}</label>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 rounded-lg border border-white/12 bg-[#0B1014] px-3 py-3 font-mono text-[15px] text-[#22D3EE]">
+            <span className="shrink-0 rounded-lg border border-[#D7DDE2] bg-[#FFF3EE] px-3 py-3 font-mono text-[15px] font-bold text-[#C43C08]">
               {captcha?.question ?? '…'}
             </span>
             <input id="df-captcha" className={field} value={form.captchaAnswer} onChange={set('captchaAnswer')}
@@ -138,9 +138,9 @@ export default function DemoForm() {
               aria-describedby="df-captcha-hint" />
           </div>
           <div className="mt-1.5 flex items-center justify-between">
-            <span id="df-captcha-hint" className="text-[11px] text-[#7C8B98]">{t('form.captchaHint')}</span>
+            <span id="df-captcha-hint" className="text-[11px] text-[#8A97A3]">{t('form.captchaHint')}</span>
             <button type="button" onClick={() => void loadCaptcha()}
-              className="text-[11px] text-[#93A4B1] underline-offset-2 hover:underline">
+              className="text-[11px] text-[#5A6672] underline-offset-2 hover:underline">
               {t('form.captchaReload')}
             </button>
           </div>
@@ -160,17 +160,17 @@ export default function DemoForm() {
       </div>
 
       {error && (
-        <p role="alert" className="mt-5 rounded-lg border border-[#F04E10]/40 bg-[#F04E10]/10 px-4 py-3 text-sm text-[#FFB59B]">
+        <p role="alert" className="mt-5 rounded-lg border border-[#F04E10] bg-[#FFF3EE] px-4 py-3 text-sm font-medium text-[#C43C08]">
           {error}
         </p>
       )}
 
       <div className="mt-7 flex flex-wrap items-center gap-4">
         <button type="submit" disabled={status === 'sending'}
-          className="rounded-lg bg-[#F04E10] px-7 py-3.5 text-sm font-semibold text-white transition-all hover:shadow-[0_0_28px_-6px_#F04E10] disabled:opacity-60">
+          className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08] disabled:opacity-60">
           {status === 'sending' ? t('form.submitting') : t('form.submit')}
         </button>
-        <p className="max-w-sm text-xs leading-relaxed text-[#7C8B98]">{t('form.privacy')}</p>
+        <p className="max-w-sm text-xs leading-relaxed text-[#8A97A3]">{t('form.privacy')}</p>
       </div>
     </form>
   )
