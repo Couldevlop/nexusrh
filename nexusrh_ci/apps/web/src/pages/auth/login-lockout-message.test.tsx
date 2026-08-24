@@ -61,3 +61,40 @@ describe('LoginPage — compte verrouille (423)', () => {
     await waitFor(() => expect(screen.getByText('errors.invalidCredentials')).toBeTruthy())
   })
 })
+
+describe('LoginPage — etape MFA : trop de tentatives (429)', () => {
+  it('affiche un message clair au lieu du « Too Many Requests » de Fastify', async () => {
+    postMock
+      .mockResolvedValueOnce({ status: 202, data: { mfaRequired: true, challenge: 'chal.jwt.x' } })
+      // Corps par defaut de @fastify/rate-limit : error = 'Too Many Requests'
+      .mockRejectedValueOnce({
+        response: {
+          status: 429,
+          data: { statusCode: 429, error: 'Too Many Requests', message: 'Rate limit exceeded, retry in 15 minutes' },
+        },
+      })
+    render(<LoginPage />)
+    await submitLogin()
+    await waitFor(() => expect(screen.getByPlaceholderText('mfa.codePlaceholder')).toBeTruthy())
+
+    fireEvent.change(screen.getByPlaceholderText('mfa.codePlaceholder'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByText('mfa.submit'))
+
+    await waitFor(() => expect(screen.getByText('mfa.tooManyAttempts')).toBeTruthy())
+    expect(screen.queryByText('Too Many Requests')).toBeNull()
+  })
+
+  it('un code MFA faux garde le message du serveur', async () => {
+    postMock
+      .mockResolvedValueOnce({ status: 202, data: { mfaRequired: true, challenge: 'chal.jwt.x' } })
+      .mockRejectedValueOnce({ response: { status: 401, data: { error: 'Code MFA invalide' } } })
+    render(<LoginPage />)
+    await submitLogin()
+    await waitFor(() => expect(screen.getByPlaceholderText('mfa.codePlaceholder')).toBeTruthy())
+
+    fireEvent.change(screen.getByPlaceholderText('mfa.codePlaceholder'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByText('mfa.submit'))
+
+    await waitFor(() => expect(screen.getByText('Code MFA invalide')).toBeTruthy())
+  })
+})
