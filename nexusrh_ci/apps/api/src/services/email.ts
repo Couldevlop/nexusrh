@@ -712,3 +712,65 @@ export async function sendBankTransferEmail(params: {
     attachments: [{ filename: attachment.filename, content: attachment.content }],
   })
 }
+
+/**
+ * Échappe une valeur avant insertion dans le HTML d'un courriel. Le contenu
+ * vient d'un formulaire PUBLIC : sans cela, un `<script>` ou une balise
+ * `<img onerror>` se retrouverait tel quel dans la boîte du destinataire.
+ */
+export function escapeHtml(v: string | null | undefined): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+/**
+ * Demande de démonstration venue de la page publique. Expéditeur = plateforme,
+ * `replyTo` = le prospect, pour répondre d'un clic. Le nom de l'expéditeur
+ * affiché n'est PAS le nom saisi : un nom hostile ne doit pas pouvoir se
+ * déguiser en en-tête.
+ */
+export async function sendDemoRequestEmail(params: {
+  to: string; fullName: string; company: string; email: string
+  phone?: string | null; headcount?: string | null; message?: string | null
+}): Promise<void> {
+  const { to, fullName, company, email, phone, headcount, message } = params
+  const row = (label: string, value: string | null | undefined): string =>
+    value ? `<tr><td style="padding:6px 0;color:#6b7280;">${escapeHtml(label)}</td><td style="padding:6px 0;font-weight:600;">${escapeHtml(value)}</td></tr>` : ''
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0B3B2E;color:#fff;padding:20px 40px;font-size:18px;font-weight:700;">Nouvelle demande de démonstration</td></tr>
+      <tr><td style="padding:28px 40px;color:#1f2937;">
+        <table style="width:100%;border-collapse:collapse;">
+          ${row('Société', company)}
+          ${row('Contact', fullName)}
+          ${row('Email', email)}
+          ${row('Téléphone', phone)}
+          ${row('Effectif', headcount)}
+        </table>
+        ${message ? `<p style="margin-top:18px;color:#6b7280;">Message</p><p style="white-space:pre-wrap;border-left:3px solid #E85D04;padding-left:12px;">${escapeHtml(message)}</p>` : ''}
+        <p style="margin-top:22px;color:#6b7280;font-size:13px;">Répondez directement à ce courriel : il est adressé au prospect.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  const text = [
+    'Nouvelle demande de démonstration',
+    `Société : ${company}`, `Contact : ${fullName}`, `Email : ${email}`,
+    phone ? `Téléphone : ${phone}` : '', headcount ? `Effectif : ${headcount}` : '',
+    message ? `
+Message :
+${message}` : '',
+  ].filter(Boolean).join(String.fromCharCode(10))
+
+  await transporterFor(null).sendMail({
+    from: config.smtp.from,
+    to,
+    replyTo: email,
+    subject: `Demande de démo — ${company}`,
+    html,
+    text,
+  })
+}

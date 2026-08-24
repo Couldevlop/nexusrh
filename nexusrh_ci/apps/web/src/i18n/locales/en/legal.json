@@ -1,0 +1,120 @@
+{
+  "backHome": "Back to home",
+  "updated": "Last updated",
+  "updatedValue": "24 August 2026",
+  "disclaimer": "This document forms the contractual and informational basis of the service. It is intended to be reviewed by the publisher's legal counsel before any major change to the platform.",
+  "docs": {
+    "notice": {
+      "title": "Legal notice",
+      "lead": "Information about the publisher of NexusRH CI and the conditions under which it is published.",
+      "s1": {
+        "h": "Publisher",
+        "p": "NexusRH CI is published by OpenLab Consulting, a consulting and software engineering company based in Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact: waopron@openlabconsulting.com, +225 07 09 32 05 94."
+      },
+      "s2": {
+        "h": "Publication director",
+        "p": "The management of OpenLab Consulting acts as publication director for the site and the service. Any request about published content may be sent to the contact address above."
+      },
+      "s3": {
+        "h": "Hosting",
+        "p": "The service is hosted on infrastructure under the publisher's control, with all traffic encrypted over HTTPS. Clients who require it — public bodies, banks, sensitive operators — can have their files hosted in Côte d'Ivoire, as provided for in their contract."
+      },
+      "s4": {
+        "h": "Intellectual property",
+        "p": "The NexusRH CI software, its documentation, trademarks, interfaces and graphical elements are the property of OpenLab Consulting. Any reproduction, extraction, decompilation or reuse, in whole or in part, without written permission is prohibited. Data entered by a client remains the property of that client."
+      },
+      "s5": {
+        "h": "Liability",
+        "p": "The publisher takes reasonable care to ensure the accuracy of the information on this site. It is provided for general information and constitutes neither legal nor payroll advice. The publisher's contractual obligations towards its clients are set out in the service agreement, which prevails over this page."
+      },
+      "s6": {
+        "h": "Governing law",
+        "p": "This notice is governed by Ivorian law. In the event of a dispute, and failing an amicable settlement, jurisdiction lies with the competent courts of Abidjan."
+      }
+    },
+    "privacy": {
+      "title": "Privacy policy",
+      "lead": "How we handle personal data, both for visitors to this site and for users of the service.",
+      "s1": {
+        "h": "Data controller",
+        "p": "For data collected on this site (the demo request form), the data controller is OpenLab Consulting. For data processed inside the platform, the controller is the client company; OpenLab Consulting acts as a processor, within the limits set by the service agreement."
+      },
+      "s2": {
+        "h": "Data collected on this site",
+        "p": "The demo request form collects: full name, company, work email address, phone and headcount if you provide them, and your message. The IP address and browser that submitted the request are also recorded, for the sole purpose of detecting abusive automated submissions. No other data is collected when you simply browse the public pages."
+      },
+      "s3": {
+        "h": "Purposes and legal basis",
+        "p": "This data is used solely to answer your commercial enquiry and arrange the demonstration: the basis is your own approach and the publisher's legitimate interest in following it up. It is never sold, transferred, used for advertising, or passed to third parties beyond the technical providers strictly required to deliver the email."
+      },
+      "s4": {
+        "h": "Retention",
+        "p": "A demo request left without follow-up is kept for at most twenty-four months, then deleted. Data processed in the platform on behalf of a client is kept for the duration of the contract, then returned or deleted as agreed. Audit logs are kept in line with applicable traceability requirements."
+      },
+      "s5": {
+        "h": "Security",
+        "p": "All traffic is encrypted over HTTPS. Each client company's data is isolated in its own database schema. The most sensitive information — national identifiers, bank details, connection secrets — is encrypted at rest. Access requires strong authentication and rights enforced on the server. Every view, change and export is logged."
+      },
+      "s6": {
+        "h": "Your rights",
+        "p": "Under Ivorian law no. 2013-450 of 19 June 2013 on the protection of personal data, and under the General Data Protection Regulation where it applies, you have the right to access, rectification, erasure, objection, restriction and portability. Write to waopron@openlabconsulting.com: we reply within one month. If you are a user of a client platform, address your request first to your employer, who is the controller."
+      },
+      "s7": {
+        "h": "Complaints",
+        "p": "You may lodge a complaint with the Telecommunications Regulatory Authority of Côte d'Ivoire (ARTCI), the personal data protection authority, or with the competent authority in your country of residence."
+      }
+    },
+    "terms": {
+      "title": "Terms of use",
+      "lead": "Rules for accessing and using NexusRH CI. They supplement, without replacing, the agreement signed with each client company.",
+      "s1": {
+        "h": "Purpose",
+        "p": "NexusRH CI is an online HR and payroll service for companies and organisations. Access is restricted to people authorised by the client company. Browsing the public pages grants no right to use the service."
+      },
+      "s2": {
+        "h": "Accounts and security",
+        "p": "Each user has personal credentials, which must not be shared or handed to anyone else. Two-factor authentication may be made mandatory by the client company or by the publisher. Users must inform their administrator without delay of any suspicious use of their account. Actions taken under an account are deemed to be those of its holder."
+      },
+      "s3": {
+        "h": "Prohibited use",
+        "p": "The following are prohibited: any attempt to reach data outside your rights, any unauthorised vulnerability research, any load or penetration testing without prior written agreement, mass data extraction, reverse engineering of the service, and any use contrary to applicable law. Such attempts are logged and may lead to immediate suspension of the account and to legal action."
+      },
+      "s4": {
+        "h": "Responsible disclosure",
+        "p": "If you find a security flaw, write to waopron@openlabconsulting.com describing the problem precisely, without exploiting it or disclosing it publicly. Any report made in good faith and without degrading the service will receive a prompt response and diligent handling."
+      },
+      "s5": {
+        "h": "Availability and changes",
+        "p": "The publisher works to keep the service running and applies regular updates, in particular to follow the legal changes that affect payroll. Maintenance interruptions may occur; availability commitments, where they exist, are set out in the service agreement."
+      },
+      "s6": {
+        "h": "Client data",
+        "p": "Data entered into the platform belongs to the client company. The publisher does not use it for any purpose other than delivering and supporting the service, and only accesses it as part of a necessary and logged intervention."
+      },
+      "s7": {
+        "h": "Governing law",
+        "p": "These terms are governed by Ivorian law. Any dispute falls, failing an amicable settlement, to the competent courts of Abidjan."
+      }
+    },
+    "cookies": {
+      "title": "Cookie policy",
+      "lead": "What we store on your device, why, and how to refuse it.",
+      "s1": {
+        "h": "No advertising trackers",
+        "p": "This site sets no advertising cookie, no social network cookie and no third-party analytics. The public pages load no script from another domain: the site's security policy technically forbids it."
+      },
+      "s2": {
+        "h": "Session cookie",
+        "p": "When you sign in, a strictly necessary cookie is set to keep your session. It cannot be read by JavaScript, travels only over HTTPS, and is limited to requests coming from the site. It expires automatically and is cleared on sign-out."
+      },
+      "s3": {
+        "h": "Local storage",
+        "p": "Your language choice and the open or closed state of some menus are kept in your browser's local storage, on your device only. This information is never sent to our servers and cannot identify you."
+      },
+      "s4": {
+        "h": "Refusing and deleting",
+        "p": "You can clear these items at any time from your browser settings. Refusing the session cookie prevents signing in: it is essential to the service, which is why it does not require prior consent."
+      }
+    }
+  }
+}

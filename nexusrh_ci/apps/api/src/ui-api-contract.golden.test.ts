@@ -112,6 +112,9 @@ const EXTRA_PUBLIC_ROUTES: { method: string; path: string }[] = [
   { method: 'GET', path: '/public/interview-sim/:token' },
   { method: 'POST', path: '/public/interview-sim/:token/consent' },
   { method: 'POST', path: '/public/interview-sim/:token/submit' },
+  // Formulaire public « Demander une démo » (demoRoutes monté sous /public/demo).
+  { method: 'GET', path: '/public/demo/captcha' },
+  { method: 'POST', path: '/public/demo/request' },
 ]
 
 // Résout un chemin d'appel frontend en segments, ou null si non résoluble.

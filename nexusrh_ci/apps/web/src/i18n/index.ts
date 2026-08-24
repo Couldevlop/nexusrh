@@ -10,6 +10,7 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
 // ── Français ──────────────────────────────────────────────────────────────────
+import frLegal from './locales/fr/legal.json'
 import frHome from './locales/fr/home.json'
 import frCommon from './locales/fr/common.json'
 import frNav from './locales/fr/nav.json'
@@ -52,6 +53,7 @@ import frInterviewSim from './locales/fr/interviewSim.json'
 import frInterviewFocus from './locales/fr/interviewFocus.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
+import enLegal from './locales/en/legal.json'
 import enHome from './locales/en/home.json'
 import enCommon from './locales/en/common.json'
 import enNav from './locales/en/nav.json'
@@ -98,7 +100,7 @@ export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
 const NAMESPACES = [
-  'home', 'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
+  'home', 'legal', 'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
   'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification', 'signature', 'security', 'sage', 'attendance', 'interviewSim', 'interviewFocus',
@@ -106,7 +108,7 @@ const NAMESPACES = [
 
 const resources = {
   fr: {
-    home: frHome, common: frCommon, nav: frNav, auth: frAuth, dashboard: frDashboard,
+    home: frHome, legal: frLegal, common: frCommon, nav: frNav, auth: frAuth, dashboard: frDashboard,
     employees: frEmployees, contracts: frContracts, careers: frCareers,
     payroll: frPayroll, cnps: frCnps, mobileMoney: frMobileMoney,
     absences: frAbsences, expenses: frExpenses, training: frTraining,
@@ -120,7 +122,7 @@ const resources = {
     attendance: frAttendance, interviewSim: frInterviewSim, interviewFocus: frInterviewFocus,
   },
   en: {
-    home: enHome, common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
+    home: enHome, legal: enLegal, common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
     employees: enEmployees, contracts: enContracts, careers: enCareers,
     payroll: enPayroll, cnps: enCnps, mobileMoney: enMobileMoney,
     absences: enAbsences, expenses: enExpenses, training: enTraining,

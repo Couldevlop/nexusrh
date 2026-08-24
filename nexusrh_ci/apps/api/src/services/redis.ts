@@ -47,6 +47,21 @@ export async function consumeTotpStep(
   }
 }
 
+/**
+ * Consomme une clé une seule fois (anti-rejeu générique). `true` = première
+ * utilisation, `false` = déjà consommée. Redis indisponible → `true` :
+ * l'appelant doit avoir une autre borne (limitation de débit), un cache
+ * absent ne doit pas fermer une fonctionnalité publique.
+ */
+export async function consumeOnce(key: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const set = await redis.set(key, '1', 'EX', Math.max(1, ttlSeconds), 'NX')
+    return set === 'OK'
+  } catch {
+    return true // fail-open assumé
+  }
+}
+
 // ── Époque d'invalidation de session par utilisateur (OWASP A01/A02) ─────────
 // Un changement de privilège (rôle, désactivation) ou de mot de passe doit
 // invalider IMMÉDIATEMENT tout JWT déjà émis pour cet utilisateur — sans
