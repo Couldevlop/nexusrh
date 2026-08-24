@@ -320,7 +320,15 @@ export default function LoginPage() {
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: string } } };
-      setError(e.response?.data?.error ?? t("mfa.invalidCode"));
+      // OWASP A07 — le limiteur de /auth/mfa/login-verify (10 essais / 15 min)
+      // renvoie le corps par defaut de Fastify, dont `error` vaut littéralement
+      // « Too Many Requests » : affiché tel quel, c'est de l'anglais brut sans
+      // délai, que l'utilisateur lit comme une panne.
+      setError(
+        e.response?.status === 429
+          ? t("mfa.tooManyAttempts")
+          : (e.response?.data?.error ?? t("mfa.invalidCode")),
+      );
     } finally {
       setMfaSubmitting(false);
     }
