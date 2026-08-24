@@ -8,10 +8,11 @@
  *     police Google, pas de lecteur vidéo tiers, pas de traceur ;
  *   - palette autonome : la page ne dépend d'aucun thème de tenant.
  *
- * Direction visuelle, tirée des deux marques : graphite et chrome du signe
- * NexusRH, halo cyan, orange OpenLab réservé à l'action. Le bulletin de paie
- * reste la grammaire — filets, colonne de codes, chiffres tabulaires — parce
- * que c'est l'objet que le produit doit rendre juste.
+ * Direction visuelle : la palette vient du logo OpenLab lui-même — orange,
+ * noir, blanc — avec le cyan NexusRH réservé aux chiffres. Page claire, mais
+ * tenue par des aplats francs, une typographie large et une bande orange
+ * pleine largeur pour la sécurité. La grammaire du bulletin de paie structure
+ * la démonstration : filets, colonne de codes, chiffres tabulaires.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +51,7 @@ function Reveal({ children, delay = 0, className = '' }: { children: React.React
 }
 
 /** Compteur qui s'anime une fois, à la première apparition. */
-function Counter({ to, suffix = '', decimals = 0 }: { to: number; suffix?: string; decimals?: number }) {
+function Counter({ to, decimals = 0 }: { to: number; decimals?: number }) {
   const { ref, shown } = useReveal<HTMLSpanElement>()
   const [v, setV] = useState(0)
   useEffect(() => {
@@ -67,28 +68,36 @@ function Counter({ to, suffix = '', decimals = 0 }: { to: number; suffix?: strin
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [shown, to])
-  const shown2 = decimals ? v.toFixed(decimals).replace('.', ',') : Math.round(v).toLocaleString('fr-FR').replace(/ |,/g, ' ')
-  return <span ref={ref} className="nx-fig">{shown2}{suffix}</span>
+  const out = decimals
+    ? v.toFixed(decimals).replace('.', ',')
+    : Math.round(v).toLocaleString('fr-FR').replace(/ |,/g, ' ')
+  return <span ref={ref} className="nx-fig">{out}</span>
 }
 
-function SectionHead({ eyebrow, title, lead, id }: { eyebrow: string; title: string; lead?: string; id?: string }) {
+function SectionHead({ eyebrow, title, lead, id, invert = false }: {
+  eyebrow: string; title: string; lead?: string; id?: string; invert?: boolean
+}) {
   return (
     <header id={id} className="mb-12 scroll-mt-24">
-      <p className="mb-4 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] text-[#22D3EE]">
-        <span className="h-px w-8 bg-gradient-to-r from-[#22D3EE] to-transparent" />{eyebrow}
+      <p className={`mb-4 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] ${invert ? 'text-white' : 'text-[#F04E10]'}`}>
+        <span className={`h-[3px] w-8 ${invert ? 'bg-white' : 'bg-[#F04E10]'}`} />{eyebrow}
       </p>
-      <h2 className="max-w-3xl text-3xl font-semibold leading-[1.1] tracking-tight sm:text-[2.6rem]">{title}</h2>
-      {lead && <p className="mt-5 max-w-2xl text-base leading-relaxed text-[#93A4B1]">{lead}</p>}
+      <h2 className={`max-w-3xl text-3xl font-bold leading-[1.08] tracking-[-0.02em] sm:text-[2.7rem] ${invert ? 'text-white' : 'text-[#0F1214]'}`}>
+        {title}
+      </h2>
+      {lead && <p className={`mt-5 max-w-2xl text-base leading-relaxed ${invert ? 'text-white/85' : 'text-[#5A6672]'}`}>{lead}</p>}
     </header>
   )
 }
 
-function Card({ title, text, i = 0 }: { title: string; text: string; i?: number }) {
+function Card({ title, text, i = 0, invert = false }: { title: string; text: string; i?: number; invert?: boolean }) {
   return (
     <Reveal delay={i * 60}>
-      <div className="group h-full rounded-xl border border-white/10 bg-[#111A21] p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#22D3EE]/40 hover:shadow-[0_18px_40px_-24px_#22D3EE]">
-        <h3 className="text-[15px] font-semibold tracking-tight">{title}</h3>
-        <p className="mt-2.5 text-sm leading-relaxed text-[#93A4B1]">{text}</p>
+      <div className={invert
+        ? 'h-full rounded-xl border border-white/25 bg-white/10 p-6 transition-all duration-300 hover:-translate-y-1 hover:bg-white/15'
+        : 'h-full rounded-xl border border-[#E4E8EB] bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#F04E10] hover:shadow-[0_18px_40px_-26px_#F04E10]'}>
+        <h3 className={`text-[15px] font-bold tracking-tight ${invert ? 'text-white' : 'text-[#0F1214]'}`}>{title}</h3>
+        <p className={`mt-2.5 text-sm leading-relaxed ${invert ? 'text-white/80' : 'text-[#5A6672]'}`}>{text}</p>
       </div>
     </Reveal>
   )
@@ -113,18 +122,14 @@ export default function HomePage() {
   const marquee = families.map(k => t(`modules.${k}.items`)).join(' · ')
 
   return (
-    <div className="min-h-screen bg-[#0B1014] text-[#E6EDF3] antialiased">
+    <div className="min-h-screen bg-white text-[#0F1214] antialiased">
       <style>{`
         .nx-fig { font-variant-numeric: tabular-nums }
         .nx-rv { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1) }
         .nx-in { opacity: 1; transform: none }
-        .nx-glow { background:
-          radial-gradient(58% 48% at 22% 12%, rgba(34,211,238,.16), transparent 62%),
-          radial-gradient(46% 40% at 88% 4%, rgba(14,165,233,.13), transparent 60%),
-          radial-gradient(40% 36% at 68% 92%, rgba(240,78,16,.08), transparent 62%) }
-        .nx-chrome { position: relative }
-        .nx-chrome::before { content:''; position:absolute; inset:0 0 auto; height:1px;
-          background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent) }
+        .nx-hero { background:
+          radial-gradient(52% 46% at 88% 6%, rgba(240,78,16,.10), transparent 62%),
+          radial-gradient(40% 40% at 4% 96%, rgba(8,145,178,.08), transparent 64%) }
         .nx-marquee { display:flex; width:max-content; animation: nx-slide 68s linear infinite }
         @keyframes nx-slide { from { transform: none } to { transform: translateX(-50%) } }
         .nx-marquee:hover { animation-play-state: paused }
@@ -134,29 +139,31 @@ export default function HomePage() {
         }
       `}</style>
 
-      <a href="#contenu" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-black">
+      <a href="#contenu" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-[#0F1214] focus:px-4 focus:py-2 focus:text-white">
         {t('meta.skipToContent')}
       </a>
 
       {/* ── Barre ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B1014]/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-3.5">
-          <a href="#contenu" className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="" className="h-7 w-7" />
-            <span className="text-[15px] font-semibold tracking-tight">NexusRH <span className="text-[#22D3EE]">CI</span></span>
+      <header className="sticky top-0 z-40 border-b border-[#E4E8EB] bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-3">
+          {/* Le logo de l'éditeur ouvre l'en-tête, en pleine taille. */}
+          <a href="#contenu" className="flex items-center gap-3 sm:gap-4">
+            <img src="/openlab.png" alt="OpenLab Consulting" className="h-9 w-auto sm:h-11" />
+            <span className="h-8 w-px bg-[#E4E8EB]" />
+            <span className="text-[15px] font-bold tracking-tight sm:text-[17px]">NexusRH <span className="text-[#F04E10]">CI</span></span>
           </a>
-          <nav className="hidden items-center gap-7 text-sm text-[#93A4B1] lg:flex">
-            <a href="#produit" className="transition-colors hover:text-white">{t('nav.product')}</a>
-            <a href="#conformite" className="transition-colors hover:text-white">{t('nav.compliance')}</a>
-            <a href="#modules" className="transition-colors hover:text-white">{t('nav.modules')}</a>
-            <a href="#securite" className="transition-colors hover:text-white">{t('nav.security')}</a>
+          <nav className="hidden items-center gap-7 text-sm font-medium text-[#5A6672] lg:flex">
+            <a href="#produit" className="transition-colors hover:text-[#0F1214]">{t('nav.product')}</a>
+            <a href="#conformite" className="transition-colors hover:text-[#0F1214]">{t('nav.compliance')}</a>
+            <a href="#modules" className="transition-colors hover:text-[#0F1214]">{t('nav.modules')}</a>
+            <a href="#securite" className="transition-colors hover:text-[#0F1214]">{t('nav.security')}</a>
           </nav>
           <div className="flex items-center gap-3">
             <LanguageSwitcher />
-            <Link to="/login" className="hidden rounded-lg border border-white/15 px-4 py-2 text-sm font-medium transition-colors hover:border-white/40 sm:inline-block">
+            <Link to="/login" className="hidden rounded-lg border-2 border-[#0F1214] px-4 py-1.5 text-sm font-bold transition-colors hover:bg-[#0F1214] hover:text-white sm:inline-block">
               {t('hero.ctaApp')}
             </Link>
-            <a href="#demo" className="rounded-lg bg-[#F04E10] px-4 py-2 text-sm font-semibold text-white transition-all hover:shadow-[0_0_22px_-4px_#F04E10]">
+            <a href="#demo" className="rounded-lg bg-[#F04E10] px-4 py-2 text-sm font-bold text-white transition-all hover:bg-[#C43C08]">
               {t('nav.demo')}
             </a>
           </div>
@@ -165,53 +172,57 @@ export default function HomePage() {
 
       <main id="contenu">
         {/* ── Accroche ────────────────────────────────────────────────── */}
-        <section className="nx-glow border-b border-white/10">
+        <section className="nx-hero border-b border-[#E4E8EB]">
           <div className="mx-auto grid max-w-6xl gap-14 px-6 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-center lg:py-24">
             <Reveal>
-              <img src="/nexusrh-mark.png" alt="NexusRH" className="mb-8 w-64 rounded-lg border border-white/10 shadow-[0_20px_60px_-30px_#22D3EE]" />
-              <p className="mb-5 font-mono text-[11px] uppercase tracking-[0.24em] text-[#22D3EE]">{t('hero.eyebrow')}</p>
-              <h1 className="text-[2.7rem] font-semibold leading-[1.02] tracking-[-0.025em] sm:text-6xl">
+              <p className="mb-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] text-[#F04E10]">
+                <span className="h-[3px] w-8 bg-[#F04E10]" />{t('hero.eyebrow')}
+              </p>
+              <h1 className="text-[2.8rem] font-bold leading-[1] tracking-[-0.035em] sm:text-[4.2rem]">
                 {t('hero.title')}
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#93A4B1]">{t('hero.lead')}</p>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5A6672]">{t('hero.lead')}</p>
               <div className="mt-9 flex flex-wrap gap-3">
-                <a href="#demo" className="rounded-lg bg-[#F04E10] px-7 py-3.5 text-sm font-semibold text-white transition-all hover:shadow-[0_0_30px_-6px_#F04E10]">
+                <a href="#demo" className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08] hover:shadow-[0_14px_30px_-12px_#F04E10]">
                   {t('hero.ctaDemo')}
                 </a>
-                <Link to="/login" className="rounded-lg border border-white/20 px-7 py-3.5 text-sm font-semibold transition-colors hover:border-[#22D3EE] hover:text-[#22D3EE]">
+                <Link to="/login" className="rounded-lg border-2 border-[#0F1214] px-7 py-4 text-sm font-bold transition-colors hover:bg-[#0F1214] hover:text-white">
                   {t('hero.ctaApp')}
                 </Link>
               </div>
-              <p className="mt-7 font-mono text-[11px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('hero.editor')}</p>
+              <div className="mt-10 flex items-center gap-4 border-t border-[#E4E8EB] pt-6">
+                <img src="/openlab.png" alt="OpenLab Consulting" className="h-10 w-auto" />
+                <p className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-[#8A97A3]">{t('hero.editor')}</p>
+              </div>
             </Reveal>
 
             <Reveal delay={120}>
-              <figure id="produit" className="nx-chrome scroll-mt-24 overflow-hidden rounded-xl border border-white/12 bg-[#111A21]">
-                <figcaption className="flex items-center justify-between border-b border-white/10 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em]">
-                  <span className="text-[#22D3EE]">{t('video.label')}</span>
-                  <span className="text-[#5D6E7B]">NEXUSRH-CI</span>
+              <figure id="produit" className="scroll-mt-24 overflow-hidden rounded-xl border-2 border-[#0F1214] bg-white shadow-[10px_10px_0_0_#F04E10]">
+                <figcaption className="flex items-center justify-between border-b border-[#E4E8EB] px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  <span className="font-bold text-[#F04E10]">{t('video.label')}</span>
+                  <span className="text-[#8A97A3]">NEXUSRH-CI</span>
                 </figcaption>
                 <video controls preload="metadata" playsInline className="block aspect-video w-full bg-black" title={t('video.docTitle')}>
                   <source src="/nexusrh.mp4" type="video/mp4" />
                   {t('video.unsupported')}
                 </video>
-                <p className="border-t border-white/10 px-4 py-3 text-xs leading-relaxed text-[#7C8B98]">{t('video.caption')}</p>
+                <p className="border-t border-[#E4E8EB] px-4 py-3 text-xs leading-relaxed text-[#5A6672]">{t('video.caption')}</p>
               </figure>
             </Reveal>
           </div>
 
           {/* Quatre chiffres qui disent le produit mieux qu'un argumentaire. */}
-          <div className="mx-auto grid max-w-6xl gap-px overflow-hidden border-t border-white/10 bg-white/10 px-0 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mx-auto grid max-w-6xl gap-px overflow-hidden border-t border-[#E4E8EB] bg-[#E4E8EB] sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { v: <Counter to={2} />,        l: t('compliance.cnps.title'),   s: t('proof.title') },
-              { v: <><Counter to={6.3} decimals={1} />%</>, l: 'CNPS', s: t('proof.rows.retirement') },
-              { v: <Counter to={1647315} />,  l: 'FCFA',                       s: t('proof.rows.retirementNote') },
-              { v: <><Counter to={22} />+</>, l: t('modules.eyebrow'),         s: t('modules.title') },
+              { v: <Counter to={2} />,                        l: t('compliance.cnps.title'), s: t('proof.title') },
+              { v: <><Counter to={6.3} decimals={1} /> %</>,  l: 'CNPS',                     s: t('proof.rows.retirement') },
+              { v: <Counter to={1647315} />,                  l: 'FCFA',                     s: t('proof.rows.retirementNote') },
+              { v: <><Counter to={22} />+</>,                 l: t('modules.eyebrow'),       s: t('modules.title') },
             ].map((k, i) => (
-              <div key={i} className="bg-[#0B1014] px-6 py-7">
-                <p className="font-mono text-2xl font-semibold text-white sm:text-3xl">{k.v}</p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#22D3EE]">{k.l}</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-[#7C8B98]">{k.s}</p>
+              <div key={i} className="bg-white px-6 py-7">
+                <p className="font-mono text-2xl font-bold text-[#0891B2] sm:text-3xl">{k.v}</p>
+                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#F04E10]">{k.l}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-[#8A97A3]">{k.s}</p>
               </div>
             ))}
           </div>
@@ -221,14 +232,14 @@ export default function HomePage() {
         <section className="mx-auto max-w-6xl px-6 py-20">
           <SectionHead eyebrow={t('proof.eyebrow')} title={t('proof.title')} lead={t('proof.lead')} />
           <Reveal>
-            <div className="nx-chrome overflow-hidden rounded-xl border border-white/12 bg-[#111A21]">
-              <p className="border-b border-white/10 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[#22D3EE]">
+            <div className="overflow-hidden rounded-xl border-2 border-[#0F1214] bg-white">
+              <p className="border-b border-[#E4E8EB] bg-[#FFF3EE] px-5 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#C43C08]">
                 {t('proof.case')}
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[44rem] text-sm">
                   <thead>
-                    <tr className="border-b border-white/10 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-[#5D6E7B]">
+                    <tr className="border-b border-[#E4E8EB] text-left font-mono text-[10px] uppercase tracking-[0.14em] text-[#8A97A3]">
                       <th scope="col" className="px-5 py-3 font-normal">{t('proof.table.code')}</th>
                       <th scope="col" className="px-5 py-3 font-normal">{t('proof.table.label')}</th>
                       <th scope="col" className="px-5 py-3 text-right font-normal">{t('proof.table.base')}</th>
@@ -238,22 +249,22 @@ export default function HomePage() {
                   </thead>
                   <tbody>
                     {payslipRows.map(r => (
-                      <tr key={r.code} className="border-b border-white/[.06] align-top transition-colors last:border-0 hover:bg-white/[.03]">
-                        <td className="nx-fig px-5 py-4 font-mono text-xs text-[#F04E10]">{r.code}</td>
+                      <tr key={r.code} className="border-b border-[#EDF0F2] align-top transition-colors last:border-0 hover:bg-[#FAFBFC]">
+                        <td className="nx-fig px-5 py-4 font-mono text-xs font-bold text-[#F04E10]">{r.code}</td>
                         <td className="px-5 py-4">
-                          <span className="font-medium">{r.label}</span>
-                          {r.note && <span className="mt-1 block font-mono text-[11px] text-[#7C8B98]">{r.note}</span>}
+                          <span className="font-semibold">{r.label}</span>
+                          {r.note && <span className="mt-1 block font-mono text-[11px] text-[#8A97A3]">{r.note}</span>}
                         </td>
-                        <td className="nx-fig px-5 py-4 text-right font-mono text-[#22D3EE]">{r.base}</td>
-                        <td className="nx-fig px-5 py-4 text-right font-mono text-[#93A4B1]">{r.rate}</td>
-                        <td className="nx-fig px-5 py-4 text-right font-mono font-semibold">{r.amount}</td>
+                        <td className="nx-fig px-5 py-4 text-right font-mono font-semibold text-[#0891B2]">{r.base}</td>
+                        <td className="nx-fig px-5 py-4 text-right font-mono text-[#5A6672]">{r.rate}</td>
+                        <td className="nx-fig px-5 py-4 text-right font-mono font-bold">{r.amount}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-            <p className="mt-6 max-w-2xl border-l-2 border-[#F04E10] pl-5 text-sm leading-relaxed text-[#B7C4CE]">{t('proof.note')}</p>
+            <p className="mt-6 max-w-2xl border-l-4 border-[#F04E10] pl-5 text-sm leading-relaxed text-[#5A6672]">{t('proof.note')}</p>
           </Reveal>
         </section>
 
@@ -266,7 +277,7 @@ export default function HomePage() {
         </section>
 
         {/* ── Conformité ──────────────────────────────────────────────── */}
-        <section className="border-y border-white/10 bg-[#0E141A]">
+        <section className="border-y border-[#E4E8EB] bg-[#F7F8F9]">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <SectionHead id="conformite" eyebrow={t('compliance.eyebrow')} title={t('compliance.title')} lead={t('compliance.lead')} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -276,8 +287,8 @@ export default function HomePage() {
         </section>
 
         {/* ── Bandeau défilant : l'ampleur de la couverture ───────────── */}
-        <div className="overflow-hidden border-b border-white/10 py-4" aria-hidden>
-          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#3D4C58]">
+        <div className="overflow-hidden border-b border-[#E4E8EB] py-4" aria-hidden>
+          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#C9D1D7]">
             <span>{marquee}</span><span>{marquee}</span>
           </div>
         </div>
@@ -285,15 +296,15 @@ export default function HomePage() {
         {/* ── Modules ─────────────────────────────────────────────────── */}
         <section className="mx-auto max-w-6xl px-6 py-20">
           <SectionHead id="modules" eyebrow={t('modules.eyebrow')} title={t('modules.title')} lead={t('modules.lead')} />
-          <div className="border-t border-white/10">
+          <div className="border-t-2 border-[#0F1214]">
             {families.map((k, i) => (
               <Reveal key={k} delay={i * 50}>
-                <div className="grid gap-2 border-b border-white/10 py-6 transition-colors hover:bg-white/[.02] sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-8">
-                  <h3 className="flex items-baseline gap-3 text-[15px] font-semibold tracking-tight">
-                    <span className="font-mono text-[11px] text-[#22D3EE]">{String(i + 1).padStart(2, '0')}</span>
+                <div className="grid gap-2 border-b border-[#E4E8EB] py-6 transition-colors hover:bg-[#FAFBFC] sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-8">
+                  <h3 className="flex items-baseline gap-3 text-[15px] font-bold tracking-tight">
+                    <span className="font-mono text-[11px] text-[#F04E10]">{String(i + 1).padStart(2, '0')}</span>
                     {t(`modules.${k}.title`)}
                   </h3>
-                  <p className="text-sm leading-relaxed text-[#93A4B1]">{t(`modules.${k}.items`)}</p>
+                  <p className="text-sm leading-relaxed text-[#5A6672]">{t(`modules.${k}.items`)}</p>
                 </div>
               </Reveal>
             ))}
@@ -326,12 +337,12 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Sécurité ────────────────────────────────────────────────── */}
-        <section className="nx-glow border-y border-white/10 bg-[#0E141A]">
+        {/* ── Sécurité : le seul renversement de la page ──────────────── */}
+        <section className="bg-[#F04E10]">
           <div className="mx-auto max-w-6xl px-6 py-20">
-            <SectionHead id="securite" eyebrow={t('security.eyebrow')} title={t('security.title')} lead={t('security.lead')} />
+            <SectionHead invert id="securite" eyebrow={t('security.eyebrow')} title={t('security.title')} lead={t('security.lead')} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {security.map((k, i) => <Card key={k} i={i} title={t(`security.${k}.title`)} text={t(`security.${k}.text`)} />)}
+              {security.map((k, i) => <Card invert key={k} i={i} title={t(`security.${k}.title`)} text={t(`security.${k}.text`)} />)}
             </div>
           </div>
         </section>
@@ -341,26 +352,26 @@ export default function HomePage() {
           <div className="grid gap-12 lg:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)]">
             <div>
               <SectionHead eyebrow={t('contact.eyebrow')} title={t('form.title')} lead={t('form.lead')} />
-              <dl className="space-y-5 border-t border-white/10 pt-6">
+              <dl className="space-y-5 border-t-2 border-[#0F1214] pt-6">
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('contact.emailLabel')}</dt>
-                  <dd><a href={`mailto:${EMAIL}`} className="text-[15px] font-semibold text-[#22D3EE] underline-offset-4 hover:underline">{EMAIL}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.emailLabel')}</dt>
+                  <dd><a href={`mailto:${EMAIL}`} className="text-[15px] font-bold text-[#F04E10] underline-offset-4 hover:underline">{EMAIL}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('contact.whatsappLabel')}</dt>
-                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[15px] font-semibold underline-offset-4 hover:underline">{PHONE_CI}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.whatsappLabel')}</dt>
+                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{PHONE_CI}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('contact.phoneFrLabel')}</dt>
-                  <dd><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig text-[15px] font-semibold underline-offset-4 hover:underline">{PHONE_FR}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.phoneFrLabel')}</dt>
+                  <dd><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{PHONE_FR}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('contact.addressLabel')}</dt>
-                  <dd className="text-sm leading-relaxed text-[#93A4B1]">{t('contact.address')}</dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.addressLabel')}</dt>
+                  <dd className="text-sm leading-relaxed text-[#5A6672]">{t('contact.address')}</dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#5D6E7B]">{t('contact.hoursLabel')}</dt>
-                  <dd className="text-sm leading-relaxed text-[#93A4B1]">{t('contact.hours')}</dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.hoursLabel')}</dt>
+                  <dd className="text-sm leading-relaxed text-[#5A6672]">{t('contact.hours')}</dd>
                 </div>
               </dl>
             </div>
@@ -370,51 +381,51 @@ export default function HomePage() {
       </main>
 
       {/* ── Pied de page ────────────────────────────────────────────── */}
-      <footer className="border-t border-white/10 bg-[#080C0F]">
+      <footer className="border-t-2 border-[#0F1214] bg-[#F7F8F9]">
         <div className="mx-auto max-w-6xl px-6 py-14">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="flex items-center gap-2.5">
                 <img src="/logo.svg" alt="" className="h-7 w-7" />
-                <span className="text-[15px] font-semibold tracking-tight">NexusRH <span className="text-[#22D3EE]">CI</span></span>
+                <span className="text-[15px] font-bold tracking-tight">NexusRH <span className="text-[#F04E10]">CI</span></span>
               </div>
-              <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#7C8B98]">{t('footer.tagline')}</p>
-              <img src="/openlab.png" alt="OpenLab Consulting" className="mt-6 h-9 w-auto opacity-80" />
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#5A6672]">{t('footer.tagline')}</p>
+              <img src="/openlab.png" alt="OpenLab Consulting" className="mt-6 h-10 w-auto" />
             </div>
 
             <nav aria-label={t('footerNav.product')}>
-              <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[#5D6E7B]">{t('footerNav.product')}</p>
-              <ul className="space-y-2.5 text-sm text-[#93A4B1]">
-                <li><a href="#produit" className="transition-colors hover:text-white">{t('footerNav.overview')}</a></li>
-                <li><a href="#modules" className="transition-colors hover:text-white">{t('footerNav.modulesLink')}</a></li>
-                <li><a href="#conformite" className="transition-colors hover:text-white">{t('footerNav.complianceLink')}</a></li>
-                <li><a href="#securite" className="transition-colors hover:text-white">{t('footerNav.securityLink')}</a></li>
-                <li><Link to="/login" className="transition-colors hover:text-white">{t('footerNav.signIn')}</Link></li>
+              <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.product')}</p>
+              <ul className="space-y-2.5 text-sm text-[#5A6672]">
+                <li><a href="#produit" className="transition-colors hover:text-[#F04E10]">{t('footerNav.overview')}</a></li>
+                <li><a href="#modules" className="transition-colors hover:text-[#F04E10]">{t('footerNav.modulesLink')}</a></li>
+                <li><a href="#conformite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.complianceLink')}</a></li>
+                <li><a href="#securite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.securityLink')}</a></li>
+                <li><Link to="/login" className="transition-colors hover:text-[#F04E10]">{t('footerNav.signIn')}</Link></li>
               </ul>
             </nav>
 
             <nav aria-label={t('footerNav.legal')}>
-              <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[#5D6E7B]">{t('footerNav.legal')}</p>
-              <ul className="space-y-2.5 text-sm text-[#93A4B1]">
-                <li><Link to="/legal/mentions-legales" className="transition-colors hover:text-white">{t('footerNav.legalNotice')}</Link></li>
-                <li><Link to="/legal/confidentialite" className="transition-colors hover:text-white">{t('footerNav.privacy')}</Link></li>
-                <li><Link to="/legal/conditions" className="transition-colors hover:text-white">{t('footerNav.terms')}</Link></li>
-                <li><Link to="/legal/cookies" className="transition-colors hover:text-white">{t('footerNav.cookies')}</Link></li>
+              <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.legal')}</p>
+              <ul className="space-y-2.5 text-sm text-[#5A6672]">
+                <li><Link to="/legal/mentions-legales" className="transition-colors hover:text-[#F04E10]">{t('footerNav.legalNotice')}</Link></li>
+                <li><Link to="/legal/confidentialite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.privacy')}</Link></li>
+                <li><Link to="/legal/conditions" className="transition-colors hover:text-[#F04E10]">{t('footerNav.terms')}</Link></li>
+                <li><Link to="/legal/cookies" className="transition-colors hover:text-[#F04E10]">{t('footerNav.cookies')}</Link></li>
               </ul>
             </nav>
 
             <div>
-              <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.18em] text-[#5D6E7B]">{t('footerNav.contact')}</p>
-              <ul className="space-y-2.5 text-sm text-[#93A4B1]">
-                <li><a href={`mailto:${EMAIL}`} className="break-all transition-colors hover:text-white">{EMAIL}</a></li>
-                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-white">{PHONE_CI}</a></li>
-                <li><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig transition-colors hover:text-white">{PHONE_FR}</a></li>
-                <li className="pt-1 text-xs leading-relaxed text-[#5D6E7B]">{t('contact.address')}</li>
+              <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.contact')}</p>
+              <ul className="space-y-2.5 text-sm text-[#5A6672]">
+                <li><a href={`mailto:${EMAIL}`} className="break-all transition-colors hover:text-[#F04E10]">{EMAIL}</a></li>
+                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-[#F04E10]">{PHONE_CI}</a></li>
+                <li><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig transition-colors hover:text-[#F04E10]">{PHONE_FR}</a></li>
+                <li className="pt-1 text-xs leading-relaxed text-[#8A97A3]">{t('contact.address')}</li>
               </ul>
             </div>
           </div>
 
-          <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-[#5D6E7B]">
+          <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-[#E4E8EB] pt-6 text-xs text-[#8A97A3]">
             <p>© {new Date().getFullYear()} {t('footer.editor')} — {t('footer.rights')}</p>
             <p className="font-mono uppercase tracking-[0.16em]">Abidjan · Côte d'Ivoire</p>
           </div>
