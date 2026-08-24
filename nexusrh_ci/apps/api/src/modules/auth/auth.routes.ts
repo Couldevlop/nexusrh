@@ -972,7 +972,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       if (user.schemaName !== 'platform' && !SCHEMA_NAME_RE.test(user.schemaName)) {
         return reply.status(400).send({ error: 'Schema invalide' })
       }
-      const table = user.schemaName === 'platform'
+      // Contexte plateforme : deux populations distinctes partagent
+      // `schemaName: 'platform'` — les super_admin (platform.platform_users) et
+      // les utilisateurs de CABINET (platform.agency_users). Sans ce repli, un
+      // compte de cabinet recevait 404 « Utilisateur introuvable » en tentant
+      // de changer son mot de passe — y compris quand le changement lui était
+      // IMPOSÉ (mot de passe expiré), donc sans aucune issue.
+      let table = user.schemaName === 'platform'
         ? 'platform.platform_users'
         : `"${user.schemaName}".users`
       const historyTable = user.schemaName === 'platform'
@@ -987,7 +993,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT password_hash FROM ${table} WHERE id = $1 LIMIT 1`,
         [user.sub],
       )
-      const record = res.rows[0]
+      let record = res.rows[0]
+      if (!record && user.schemaName === 'platform') {
+        const agencyRes = await pool.query<{ password_hash: string }>(
+          `SELECT password_hash FROM platform.agency_users WHERE id = $1 LIMIT 1`,
+          [user.sub],
+        ).catch(() => ({ rows: [] as Array<{ password_hash: string }> }))
+        if (agencyRes.rows[0]) {
+          record = agencyRes.rows[0]
+          table = 'platform.agency_users'   // l'UPDATE plus bas vise la bonne table
+        }
+      }
       if (!record) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
       const valid = await bcrypt.compare(oldPassword, record.password_hash)
