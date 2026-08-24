@@ -19,6 +19,10 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import DemoForm from './DemoForm'
+// La vidéo passe par le build : son URL porte une empreinte de contenu, donc
+// une nouvelle version change d'adresse et AUCUN cache ne peut servir
+// l'ancienne. C'est ce qui permet le cache long côté nginx.
+import videoUrl from '@/assets/nexusrh.mp4'
 
 const EMAIL    = 'waopron@openlabconsulting.com'
 const PHONE_CI = '+225 07 09 32 05 94'
@@ -203,7 +207,7 @@ export default function HomePage() {
                   <span className="text-[#8A97A3]">NEXUSRH-CI</span>
                 </figcaption>
                 <video controls preload="metadata" playsInline className="block aspect-video w-full bg-black" title={t('video.docTitle')}>
-                  <source src="/nexusrh.mp4" type="video/mp4" />
+                  <source src={videoUrl} type="video/mp4" />
                   {t('video.unsupported')}
                 </video>
                 <p className="border-t border-[#E4E8EB] px-4 py-3 text-xs leading-relaxed text-[#5A6672]">{t('video.caption')}</p>
