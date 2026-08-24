@@ -18,6 +18,7 @@ const RafPeriodsPage     = lazy(() => import('@/pages/raf/RafPeriodsPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
+const HomePage           = lazy(() => import('@/pages/public/HomePage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
 const PublicInterviewSimPage = lazy(() => import('@/pages/public/PublicInterviewSimPage'))
 
@@ -161,7 +162,10 @@ export function RootRedirect() {
   const user = useAuthStore((s) => s.user)
   const activeTenant = useAuthStore((s) => s.activeTenant)
   const mfaPending = useMfaPending()
-  if (!user) return <Navigate to="/login" replace />
+  // Visiteur non connecté : la racine du domaine sert la page de présentation
+  // publique (aucun appel API, aucune donnée de tenant). L'accès à
+  // l'application reste sur /login, atteignable depuis les deux boutons.
+  if (!user) return <HomePage />
   // MFA obligatoire : session restreinte (claim JWT mfaPending) → enrôlement,
   // AVANT tout aiguillage par rôle (sinon rebond vers un espace 100 % en 403).
   if (mfaPending) return <Navigate to="/mfa-setup" replace />
