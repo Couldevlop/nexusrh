@@ -25,6 +25,7 @@ import { consumeTotpStep, setTokenEpoch } from '../../services/redis.js'
 import { pool } from '../../db/pool.js'
 import { encrypt, decrypt, isEncryptionConfigured } from '../../utils/crypto.js'
 import { revokeAllRefreshTokensForUser } from '../../services/refresh-token.service.js'
+import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -633,8 +634,10 @@ async function loadUserForToken(
     id: string; name: string; slug: string; primary_color: string; secondary_color: string
     logo_url: string | null; city: string | null
     has_subsidiaries: boolean; payroll_mode: string; default_country_code: string
+    enabled_modules: unknown
   }>(`SELECT id, name, slug, primary_color, secondary_color, logo_url, city,
-         has_subsidiaries, payroll_mode, default_country_code
+         has_subsidiaries, payroll_mode, default_country_code,
+         COALESCE(enabled_modules, '{}'::jsonb) AS enabled_modules
        FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schemaName])
   const t = tenantR.rows[0]
   if (!t) return null
@@ -654,6 +657,10 @@ async function loadUserForToken(
       logoUrl: t.logo_url, city: t.city,
       hasSubsidiaries: t.has_subsidiaries,
       payrollMode: t.payroll_mode, defaultCountryCode: t.default_country_code,
+      // Parité avec /auth/login : sans les modules, le front retombe sur les
+      // défauts — et `dg_view` vaut false par défaut, donc un DG connecté avec
+      // MFA se retrouvait avec un menu entièrement vide.
+      enabledModules: resolveEnabledModules(t.enabled_modules),
     },
     redirectTo: u.role === 'employee' ? '/mon-espace' : '/dashboard',
   }
