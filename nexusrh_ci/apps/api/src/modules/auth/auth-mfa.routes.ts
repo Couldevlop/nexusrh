@@ -130,8 +130,25 @@ async function findUserScope(
       `SELECT email, mfa_enabled, mfa_secret, is_active FROM platform.platform_users WHERE id = $1 LIMIT 1`,
       [userId],
     )
-    if (!r.rows[0]) return null
-    return { table: 'platform.platform_users', mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email, isActive: r.rows[0].is_active }
+    if (r.rows[0]) {
+      return { table: 'platform.platform_users', mfaEnabled: r.rows[0].mfa_enabled, mfaSecret: r.rows[0].mfa_secret, email: r.rows[0].email, isActive: r.rows[0].is_active }
+    }
+    // Un utilisateur de CABINET porte lui aussi `schemaName: 'platform'` dans
+    // son token, mais il vit dans `platform.agency_users`. Sans ce repli,
+    // l'enrôlement MFA répondait 404 et la vérification du code 409 : aucun
+    // compte de cabinet ne pouvait entrer dès que la MFA était obligatoire.
+    // Les identifiants sont des UUID propres à chaque table : aucun risque de
+    // confondre un compte plateforme avec un compte cabinet.
+    try {
+      const a = await pool.query<Row>(
+        `SELECT email, mfa_enabled, mfa_secret, is_active FROM platform.agency_users WHERE id = $1 LIMIT 1`,
+        [userId],
+      )
+      if (!a.rows[0]) return null
+      return { table: 'platform.agency_users', mfaEnabled: a.rows[0].mfa_enabled, mfaSecret: a.rows[0].mfa_secret, email: a.rows[0].email, isActive: a.rows[0].is_active }
+    } catch {
+      return null   // table absente (base pré-migration cabinet)
+    }
   }
   if (!SCHEMA_NAME_RE.test(schemaName)) return null
   const r = await pool.query<Row>(
@@ -426,6 +443,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         token: finalToken,
         user: userInfo.userPublic,
         tenantConfig: userInfo.tenantConfig,
+        ...(userInfo.agencyConfig ? { agencyConfig: userInfo.agencyConfig } : {}),
         // Parité avec /auth/login : le front bascule sur le formulaire de
         // changement de mot de passe au lieu d'entrer dans l'application.
         must_change_password: pwdResetRequired,
@@ -600,19 +618,64 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
   })
 }
 
+/**
+ * Recharge un utilisateur de CABINET (`platform.agency_users`) pour le JWT
+ * final post-MFA. Le payload reproduit exactement celui de /auth/login côté
+ * agence : `actorType: 'agency'` + `agencyId`, jamais un rôle plateforme —
+ * sans quoi un compte de cabinet ressortirait du parcours MFA en super_admin.
+ */
+async function loadAgencyUserForToken(
+  userId: string,
+): Promise<{ tokenPayload: object; userPublic: object; tenantConfig: object | null; agencyConfig: object; redirectTo: string } | null> {
+  try {
+    const r = await pool.query<{
+      id: string; email: string; role: string; first_name: string; last_name: string
+      agency_id: string; agency_name: string
+      primary_color: string | null; logo_url: string | null; city: string | null
+    }>(
+      `SELECT au.id, au.email, au.role, au.first_name, au.last_name,
+              a.id AS agency_id, a.name AS agency_name,
+              a.primary_color, a.logo_url, a.city
+         FROM platform.agency_users au
+         JOIN platform.agencies a ON a.id = au.agency_id
+        WHERE au.id = $1 LIMIT 1`,
+      [userId],
+    )
+    const u = r.rows[0]
+    if (!u) return null
+    const base = {
+      sub: u.id, tenantId: null, schemaName: 'platform', role: u.role,
+      email: u.email, firstName: u.first_name, lastName: u.last_name,
+      employeeId: null, actorType: 'agency', agencyId: u.agency_id,
+    }
+    return {
+      tokenPayload: base,
+      userPublic: base,
+      tenantConfig: null,
+      agencyConfig: {
+        id: u.agency_id, name: u.agency_name,
+        primaryColor: u.primary_color, logoUrl: u.logo_url, city: u.city,
+      },
+      redirectTo: '/agency/dashboard',
+    }
+  } catch {
+    return null   // tables cabinet absentes (base pré-migration)
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper : recharge un utilisateur complet pour générer le JWT final post-MFA
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadUserForToken(
   userId: string, schemaName: string, _tenantId: string | null,
-): Promise<{ tokenPayload: object; userPublic: object; tenantConfig: object | null; redirectTo: string } | null> {
+): Promise<{ tokenPayload: object; userPublic: object; tenantConfig: object | null; agencyConfig?: object; redirectTo: string } | null> {
   if (schemaName === 'platform') {
     const r = await pool.query<{
       id: string; email: string; first_name: string; last_name: string
     }>(
       `SELECT id, email, first_name, last_name FROM platform.platform_users WHERE id = $1 LIMIT 1`,
       [userId])
-    if (!r.rows[0]) return null
+    if (!r.rows[0]) return loadAgencyUserForToken(userId)
     const u = r.rows[0]
     return {
       tokenPayload: { sub: u.id, tenantId: null, schemaName: 'platform', role: 'super_admin',
