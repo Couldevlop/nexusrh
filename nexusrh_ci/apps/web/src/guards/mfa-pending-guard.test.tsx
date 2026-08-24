@@ -19,7 +19,8 @@
  * La source de vérité est le CLAIM JWT, jamais un booléen stocké à part : un flag
  * de store se désynchronise et se trafique trivialement depuis la console.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Suspense } from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -71,6 +72,10 @@ function signIn(user: AuthUser, token: string) {
  * cible de redirection possible — on vérifie ainsi non seulement qu'on arrive
  * sur /mfa-setup, mais aussi qu'on n'a pas rebondi ailleurs.
  */
+// La page d'accueil publique est doublée ici : ce fichier vérifie
+// l'aiguillage, son contenu est couvert par home-page.test.tsx.
+vi.mock('@/pages/public/HomePage', () => ({ default: () => <div>ECRAN_ACCUEIL</div> }))
+
 function renderGuard(guard: React.ReactNode) {
   return render(
     <MemoryRouter initialEntries={['/protegee']}>
@@ -312,9 +317,13 @@ describe('RootRedirect — aiguillage racine', () => {
     expect(screen.getByText('ECRAN_MON_ESPACE')).toBeTruthy()
   })
 
-  it('renvoie vers /login sans session', () => {
-    renderGuard(<RootRedirect />)
-    expect(screen.getByText('ECRAN_LOGIN')).toBeTruthy()
+  // La racine du domaine sert désormais la page de présentation publique :
+  // un visiteur n'est plus jeté sur le formulaire de connexion, il découvre
+  // le produit et choisit d'entrer. L'accès reste sur /login.
+  it("sans session, sert la page d'accueil publique (plus de renvoi vers /login)", async () => {
+    renderGuard(<Suspense fallback={null}><RootRedirect /></Suspense>)
+    expect(await screen.findByText('ECRAN_ACCUEIL')).toBeTruthy()
+    expect(screen.queryByText('ECRAN_LOGIN')).toBeNull()
   })
 })
 
