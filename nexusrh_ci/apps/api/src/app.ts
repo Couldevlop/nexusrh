@@ -56,6 +56,7 @@ import aiRoutes           from './modules/ai/ai.routes.js'
 import { referentielsRoutes } from './modules/referentiels/referentiels.routes.js'
 import agencyRoutes       from './modules/agency/agency.routes.js'
 import { brandRoutes, publicBrandRoutes } from './modules/platform/brand.routes.js'
+import demoRoutes from './modules/public/demo.routes.js'
 import integrationsRoutes from './modules/integrations/integrations.routes.js'
 import onboardingRoutes from './modules/onboarding/onboarding.routes.js'
 import orgChartRoutes from './modules/org-chart/org-chart.routes.js'
@@ -393,6 +394,7 @@ export async function buildApp() {
   await fastify.register(agencyRoutes,       { prefix: '/agency' })
   await fastify.register(brandRoutes,        { prefix: '/platform/brand' })
   await fastify.register(publicBrandRoutes,  { prefix: '/public/brand' })
+  await fastify.register(demoRoutes,          { prefix: '/public/demo' })
   await fastify.register(integrationsRoutes, { prefix: '/integrations' })
   await fastify.register(onboardingRoutes,   { prefix: '/onboarding' })
   // Organigramme dynamique — lecture seule dérivée de departments/employees.

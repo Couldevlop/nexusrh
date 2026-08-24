@@ -50,22 +50,33 @@ describe('HomePage — appels à l\'action', () => {
     for (const l of links) expect(l.getAttribute('href')).toBe('/login')
   })
 
-  it("propose « Demander une démo » : le bouton d'accroche mène au bloc contact", () => {
+  it('propose « Demander une démo » vers le formulaire', () => {
     render(<HomePage />)
-    const links = screen.getAllByRole('link', { name: /Demander une d[ée]mo/i })
-    const targets = links.map(l => l.getAttribute('href'))
-    // Le premier appel à l'action fait défiler vers le bloc contact ; celui du
-    // bas, déjà dans ce bloc, ouvre directement le courriel.
-    expect(targets).toContain('#contact')
-    for (const href of targets) {
-      expect(href === '#contact' || href === 'mailto:waopron@openlabconsulting.com').toBe(true)
-    }
+    const links = screen.getAllByRole('link', { name: /Demander une d[ée]mo|^D[ée]mo$/i })
+    expect(links.length).toBeGreaterThan(0)
+    for (const l of links) expect(l.getAttribute('href')).toBe('#demo')
   })
 
-  it('affiche l\'adresse de contact', () => {
+  it('affiche le formulaire de demande de démo', () => {
     render(<HomePage />)
-    const mail = screen.getByRole('link', { name: /waopron@openlabconsulting\.com/i })
-    expect(mail.getAttribute('href')).toBe('mailto:waopron@openlabconsulting.com')
+    expect(screen.getByLabelText(/Nom et prénom/i)).toBeTruthy()
+    expect(screen.getByLabelText(/Test anti-robot/i)).toBeTruthy()
+    expect(screen.getByText(/Envoyer la demande/i)).toBeTruthy()
+  })
+
+  it("affiche l'adresse de contact", () => {
+    render(<HomePage />)
+    // Elle apparaît dans le bloc contact ET dans le pied de page.
+    const mails = screen.getAllByRole('link', { name: /waopron@openlabconsulting/i })
+    expect(mails.length).toBeGreaterThan(0)
+    for (const m of mails) expect(m.getAttribute('href')).toBe('mailto:waopron@openlabconsulting.com')
+  })
+
+  it('expose les quatre pages légales dans le pied de page', () => {
+    render(<HomePage />)
+    for (const slug of ['mentions-legales', 'confidentialite', 'conditions', 'cookies']) {
+      expect(document.querySelector('a[href="/legal/' + slug + '"]'), slug).toBeTruthy()
+    }
   })
 })
 
