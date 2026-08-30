@@ -479,6 +479,10 @@ describe('Branchement du moteur de pré-tri', () => {
     expect(src).toMatch(/evaluateScreening/)
     expect(src).toMatch(/combineVerdicts/)
     expect(src).toMatch(/screening_verdict\s*=/)
+    // L'extraction structurée doit être PERSISTÉE : sans elle, le recalcul des
+    // compteurs (screening/preview) n'aurait aucune donnée à évaluer.
+    expect(src).toMatch(/ai_years_experience\s*=/)
+    expect(src).toMatch(/ai_skills\s*=/)
   })
 
   it('le moteur reste pur et exploitable tel quel', () => {
@@ -515,16 +519,15 @@ Dans `preselect`, le bloc `UPDATE … SET ai_score = $1, …` devient (colonnes 
 ajoutées à la fin de la liste `SET`, avant `updated_at`) :
 
 ```ts
-            // Le résultat IA est confronté aux RÈGLES DURES de l'offre. L'IA
-            // extrait (flou) ; les règles décident (objectif, reproductible).
+            // `CvAnalysisResult.extracted` (CvExtractedData) a exactement la
+            // forme de CandidateExtracted, au champ `expectedSalary` près —
+            // lequel vient de la candidature, pas de l'IA.
+            const ex = result.extracted ?? null
             const extracted: CandidateExtracted = {
-              yearsExperience: result.yearsExperience ?? null,
-              skills:          result.skills ?? [],
-              highestDiploma:  result.diploma ?? null,
-              location:        result.location ?? null,
-              languages:       result.languages ?? [],
-              expectedSalary:  c.expected_salary ?? null,
+              ...(ex ?? {}),
+              expectedSalary: c.expected_salary ?? null,
             }
+            // L'IA extrait (flou) ; les règles décident (objectif, reproductible).
             const cvVerdict = evaluateScreening(criteria, extracted, result.score)
             const combined  = combineVerdicts({ failedRules: [] }, cvVerdict)
 
@@ -542,17 +545,33 @@ ajoutées à la fin de la liste `SET`, avant `updated_at`) :
                   ai_signals_used = $10,
                   ai_demographic_risk_note = $11,
                   ai_analyzed_at = now(),
-                  screening_verdict = $13,
-                  screening_failed_rules = $14,
+                  ai_years_experience = $13,
+                  ai_skills = $14,
+                  ai_diploma = $15,
+                  ai_location = $16,
+                  ai_languages = $17,
+                  screening_verdict = $18,
+                  screening_failed_rules = $19,
                   screened_at = now(),
                   updated_at = now()
               WHERE id = $12
             `, [
               /* … paramètres 1 à 12 inchangés … */
+              ex?.yearsExperience ?? null,
+              JSON.stringify(ex?.skills ?? []),
+              ex?.highestDiploma ?? null,
+              ex?.location ?? null,
+              JSON.stringify(ex?.languages ?? []),
               combined.verdict,
               JSON.stringify(combined.failedRules),
             ])
 ```
+
+**Persister l'extraction est indispensable, pas cosmétique.** Les colonnes
+`ai_years_experience`, `ai_skills`, `ai_diploma`, `ai_location`, `ai_languages` existent
+depuis longtemps et ne sont écrites par aucun code : l'IA extrait ces données, puis elles
+sont jetées. Sans elles, `screening/preview` (Task 5) n'aurait aucune donnée à évaluer et
+déclarerait tout le monde conforme — le curseur de critères serait un leurre.
 
 `criteria` provient des critères de l'offre, déjà chargés dans ce handler ; s'ils ne le sont
 pas encore, les lire une fois avant la boucle :
