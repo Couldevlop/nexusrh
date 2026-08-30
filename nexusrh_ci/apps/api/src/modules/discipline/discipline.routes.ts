@@ -15,13 +15,14 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   DISCIPLINE_TYPES,
   DISCIPLINE_STATUSES,
   canTransition,
   type DisciplineStatus,
 } from './discipline.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
 const DELETE_ROLES = ['admin', 'hr_manager'] as const
@@ -50,20 +51,11 @@ function audit(
   changes: Record<string, unknown>,
   ip: string | null,
 ): void {
-  rawPool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, 'disciplinary_action', $3, $4, $5)`,
-      [userId ?? null, action, id, JSON.stringify(changes), ip],
-    )
-    .catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: 'disciplinary_action', entityId: id, changes: changes, ip: ip })
 }
 
 const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /discipline — liste (filtres employeeId, status, type)
   fastify.get('/', {

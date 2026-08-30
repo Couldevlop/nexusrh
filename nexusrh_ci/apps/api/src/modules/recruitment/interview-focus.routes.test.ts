@@ -117,7 +117,7 @@ describe('PUT /recruitment/jobs/:id/interview-focus', () => {
     // patron que recruitment.source_profiles déjà en place.
     const audit = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(audit).toBeTruthy()
-    expect(String(audit![0])).toContain('recruitment.job.interview_focus_updated')
+    expect(audit![1]?.[1]).toBe('recruitment.job.interview_focus_updated')
   })
 
   it('404 si offre introuvable', async () => {

@@ -30,6 +30,8 @@ import {
   type BankFileSpec, type BankFileRow, type BankFileContext,
 } from './bank-file.service.js'
 import { analyzeSample, SampleRejectedError, MAX_SAMPLE_BYTES } from './bank-sample.service.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const UUID_RE = /^[0-9a-fA-F-]{36}$/
@@ -152,11 +154,7 @@ async function generateFile(schema: string, bank: string, month: string, rows: B
 }
 
 function auditBank(schema: string, userId: string, action: string, changes: Record<string, unknown>, ip: string | null): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'bank_transfer', NULL, $3, $4)`,
-    [userId, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'bank_transfer', entityId: null, changes: changes, ip: ip })
 }
 
 /** Masque un compte bancaire en lecture — il ne ressort jamais en clair. */
@@ -479,6 +477,9 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const file = await request.file()
       if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
       const buf = await file.toBuffer()
+      // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+      const av = await scanBuffer(buf)
+      if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
       try {
         // Le fichier n'est JAMAIS conservé : on en extrait la structure, on jette les octets.
         const analysis = await analyzeSample(file.filename ?? '', buf)

@@ -20,7 +20,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   ONBOARDING_PHASES,
   ONBOARDING_OWNERS,
@@ -32,6 +31,8 @@ import {
   refreshJourneyStatus,
 } from '../../services/onboarding.service.js'
 import { generateOnboardingPlan } from '../../services/onboarding-ai.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -88,11 +89,7 @@ function auditLogOnboarding(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'onboarding', $3, $4, $5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'onboarding', entityId: entityId, changes: changes, ip: ip })
 }
 
 /** Id employé du user courant (claim JWT, repli par email). */
@@ -123,10 +120,7 @@ async function managerOwnsJourney(schema: string, managerEmail: string, journeyI
 }
 
 const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // ─── MODÈLES ───────────────────────────────────────────────────────────────
 

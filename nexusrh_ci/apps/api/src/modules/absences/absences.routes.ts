@@ -1,13 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
 import { joursFeriesCI } from '../../utils/ci-holidays.js'
 import { sendAbsenceRequestEmail } from '../../services/email.js'
 import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -94,18 +95,11 @@ function auditLogAbsence(
   schema: string, userId: string, action: string,
   absenceId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'absence', $3, $4, $5)`,
-    [userId, action, absenceId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'absence', entityId: absenceId, changes: changes, ip: ip })
 }
 
 const absencesRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /absences
   fastify.get('/', {

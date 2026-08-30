@@ -1,4 +1,4 @@
-import Fastify from 'fastify'
+import Fastify, { type FastifyError } from 'fastify'
 import { config } from './config.js'
 import { maintenanceCache } from './cache.js'
 import { pool as maintenancePool } from './db/pool.js'
@@ -88,11 +88,18 @@ export async function buildApp() {
           }
         : {}),
     },
-    trustProxy: true,
+    // OWASP A07 — plages de proxys de confiance (défaut : adresses privées,
+    // soit l'ingress du cluster). `true` faisait confiance à TOUS les
+    // intermédiaires : `request.ip` suivait alors le `X-Forwarded-For` fourni
+    // par le client, qui réinitialisait ainsi le limiteur de débit à chaque
+    // requête. Cf. config.TRUST_PROXY pour le détail et les topologies à CDN.
+    trustProxy: config.trustProxy,
     // Simulations d'entretien — jeton public HMAC porté en paramètre d'URL
     // (/public/interview-sim/:token) : plus long que le défaut find-my-way
     // (100 car.), qui ferait 404 systématiquement sur ces routes (§7).
-    maxParamLength: 1000,
+    // Sous `routerOptions` : l'emplacement racine est déprécié depuis Fastify 5
+    // et disparaît en Fastify 6.
+    routerOptions: { maxParamLength: 1000 },
   })
 
   // ── Plugins globaux ──────────────────────────────────────────────────────────
@@ -437,7 +444,10 @@ export async function buildApp() {
   // ── Error handler ─────────────────────────────────────────────────────────────
   // OWASP A05 : pas de stack trace exposée en production.
   // OWASP A09 : log complet côté serveur pour audit.
-  fastify.setErrorHandler((error, _request, reply) => {
+  // Fastify 5 type le premier paramètre en `unknown` (le handler peut recevoir
+  // n'importe quel throw). On l'annote explicitement : la logique ci-dessous
+  // était déjà écrite pour une FastifyError et reste inchangée.
+  fastify.setErrorHandler((error: FastifyError, _request, reply) => {
     const statusCode = error.statusCode ?? 500
     fastify.log.error({ err: error, statusCode }, error.message)
 

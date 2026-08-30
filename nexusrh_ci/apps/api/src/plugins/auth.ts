@@ -111,7 +111,14 @@ export default fp(async (fastify) => {
 
   await fastify.register(fastifyJwt, {
     secret: config.jwt.secret,
-    sign:   { expiresIn: config.jwt.expiresIn },
+    sign:   { algorithm: 'HS256', expiresIn: config.jwt.expiresIn },
+    // OWASP A02 — algorithme ÉPINGLÉ à la vérification. Sans cette option,
+    // l'ensemble autorisé est *déduit* du type de la clé par fast-jwt (une clé
+    // symétrique restreint de fait à HS256/384/512). La protection existe donc
+    // déjà, mais par effet de bord : la déclarer explicitement la rend
+    // indépendante de la détection du paquet et de ses évolutions, et ferme la
+    // porte à `alg: none` comme à toute confusion d'algorithme.
+    verify: { algorithms: ['HS256'] },
     // OWASP A02 — accepte le JWT depuis un cookie httpOnly (mode SPA) en plus
     // du header Authorization (mode API client). Le cookie est résolu par
     // @fastify/cookie et @fastify/jwt l'extrait automatiquement si présent.

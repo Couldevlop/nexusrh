@@ -9,6 +9,9 @@ import { autoStartOnboarding } from '../../services/onboarding.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import { encodeField } from '../sage/sage.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -120,18 +123,11 @@ function auditLogEmployee(
   schema: string, userId: string, action: string,
   employeeId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'employee', $3, $4, $5)`,
-    [userId, action, employeeId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'employee', entityId: employeeId, changes: changes, ip: ip })
 }
 
 const employeesRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /employees
   fastify.get('/', {
@@ -503,11 +499,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           [JSON.stringify(focus), id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'employees.interview_focus_updated', 'employee', $2, $3, $4)`,
-          [request.user.sub, id, JSON.stringify({ focus }), request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'employees.interview_focus_updated', entity: 'employee', entityId: id, changes: { focus }, ip: request.ip ?? null })
         return reply.send({ data: { focus } })
       } catch (err) {
         fastify.log.error(err)
@@ -694,6 +686,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (buf.byteLength > 2 * 1024 * 1024) {
         return reply.status(400).send({ error: 'Image trop volumineuse (max 2 MB).' })
       }
+      // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+      const av = await scanBuffer(buf)
+      if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
       try {
         // URL RELATIVE vers l'endpoint authentifié (jamais une URL publique
         // absolue : une URL publique qui fuit reste accessible à vie).

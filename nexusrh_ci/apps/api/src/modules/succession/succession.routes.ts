@@ -10,13 +10,15 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   CRITICALITY_LEVELS,
   PLAN_STATUSES,
   READINESS_LEVELS,
   summarizeCoverage,
 } from './succession.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { badRequest } from '../../utils/http-errors.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -45,28 +47,15 @@ const candidateUpdateSchema = z.object({
   notes: z.string().max(2000).optional(),
 })
 
-function badRequest(reply: FastifyReply, msg = 'Validation échouée') {
-  return reply.status(400).send({ error: msg })
-}
-
 function audit(
   schema: string, userId: string | undefined, action: string, entity: string,
   id: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId ?? null, action, entity, id, JSON.stringify(changes), ip],
-    )
-    .catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: entity, entityId: id, changes: changes, ip: ip })
 }
 
 const successionRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /succession/plans — liste + synthèse de couverture
   fastify.get('/plans', {

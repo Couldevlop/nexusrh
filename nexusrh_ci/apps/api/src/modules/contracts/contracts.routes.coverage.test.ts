@@ -492,7 +492,7 @@ describe('DELETE /contracts/:id — branches restantes', () => {
     })
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.employeeId).toBeNull()
   })
 

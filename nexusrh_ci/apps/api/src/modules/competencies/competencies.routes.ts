@@ -11,8 +11,10 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { BLOOM_MIN, BLOOM_MAX, clampBloom, compareRequirements, type RequirementItem } from './competencies.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { badRequest } from '../../utils/http-errors.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -37,20 +39,11 @@ const attachSchema = z.object({
   requiredLevel: z.number().int().min(BLOOM_MIN).max(BLOOM_MAX).optional(),
 })
 
-function badRequest(reply: FastifyReply, msg = 'Validation échouée') {
-  return reply.status(400).send({ error: msg })
-}
 function audit(
   schema: string, userId: string | undefined, action: string, entity: string,
   id: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId ?? null, action, entity, id, JSON.stringify(changes), ip],
-    )
-    .catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: entity, entityId: id, changes: changes, ip: ip })
 }
 
 async function requirementsOf(schema: string, jobProfileId: string): Promise<RequirementItem[]> {
@@ -65,10 +58,7 @@ async function requirementsOf(schema: string, jobProfileId: string): Promise<Req
 }
 
 const competenciesRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // ── Catalogue de compétences (référentiel Bloom) ──────────────────────────
   fastify.get('/catalog', {

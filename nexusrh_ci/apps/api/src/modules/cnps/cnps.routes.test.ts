@@ -133,7 +133,7 @@ describe('POST /cnps/declarations/generate — audit_log (OWASP A09)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     // params: [userId, action, entityId, changes_json, ip]
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.legalEntityId).toBe(UUID_A)
   })
 

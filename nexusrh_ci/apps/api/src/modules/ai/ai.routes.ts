@@ -10,6 +10,7 @@ import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
 // renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
 import type AnthropicTypes from '@anthropic-ai/sdk'
+import { auditTenant } from '../../utils/audit-log.js'
 
 // OWASP A04 — bornes anti-token-burn sur les prompts Claude.
 // Plafonds calibrés pour conversations RH normales (>= 99e percentile) tout
@@ -86,11 +87,7 @@ function auditLogAi(
   schema: string, userId: string, action: string,
   changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'ai', NULL, $3, $4)`,
-    [userId, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'ai', entityId: null, changes: changes, ip: ip })
 }
 
 // Tracking de conso IA SUR LA CLÉ PLATEFORME uniquement (key_source='platform').

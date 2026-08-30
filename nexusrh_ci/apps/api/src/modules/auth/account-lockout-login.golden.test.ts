@@ -99,7 +99,7 @@ describe('POST /auth/login — verrouillage de compte (OWASP A07)', () => {
       payload: { email: 'ghost@nowhere.ci', password: 'whatever123' } })
     expect(res.statusCode).toBe(401)
     expect(registerMock).toHaveBeenCalledTimes(1)
-    expect(registerMock.mock.calls[0][1]).toBe('ghost@nowhere.ci')
+    expect(registerMock.mock.calls[0]![1]).toBe('ghost@nowhere.ci')
     expect(clearMock).not.toHaveBeenCalled()
   })
 
@@ -137,7 +137,7 @@ describe('POST /auth/login — verrouillage de compte (OWASP A07)', () => {
       payload: { email: 'admin@sotra.ci', password: 'Admin1234!' } })
     expect(res.statusCode).toBe(200)
     expect(clearMock).toHaveBeenCalledTimes(1)
-    expect(clearMock.mock.calls[0][1]).toBe('admin@sotra.ci')
+    expect(clearMock.mock.calls[0]![1]).toBe('admin@sotra.ci')
     expect(registerMock).not.toHaveBeenCalled()
   })
 })

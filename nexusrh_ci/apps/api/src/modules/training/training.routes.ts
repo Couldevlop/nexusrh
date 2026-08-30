@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { renderAttestationPdf } from './training-attestation-pdf.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const rawPool = pool
 
@@ -70,11 +71,7 @@ function auditLogTraining(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'training', $3, $4, $5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'training', entityId: entityId, changes: changes, ip: ip })
 }
 
 interface BulkEnrollResult {
@@ -180,10 +177,7 @@ async function runEnroll(
 const trainingRoutes: FastifyPluginAsync = async (fastify) => {
   // Migrations lazy idempotentes du schéma tenant (ex. hr_events.employee_id
   // nullable pour les demandes FDFP niveau entreprise). Mis en cache par schéma.
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /training/catalog
   fastify.get('/catalog', {

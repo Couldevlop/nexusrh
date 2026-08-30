@@ -21,6 +21,44 @@ const envSchema = z.object({
   JWT_SECRET:            z.string().min(32),
   // Swagger /docs : exposé uniquement hors production, sauf override explicite.
   ENABLE_DOCS:           z.string().transform(v => v === 'true').default('false'),
+  /**
+   * OWASP A07 — nombre de proxys de confiance DEVANT l'API, ou liste de CIDR.
+   *
+   * `trustProxy: true` (ancienne valeur) signifie « faire confiance à TOUS les
+   * intermédiaires » : `request.ip` devient alors l'entrée la plus à gauche de
+   * `X-Forwarded-For`, entièrement contrôlée par le client. Le limiteur de débit
+   * comptant par `request.ip`, un attaquant remettait son compteur à zéro à
+   * chaque requête en faisant tourner l'en-tête — neutralisant les protections
+   * anti-force-brute du login et du mot de passe oublié.
+   *
+   * Défaut `loopback, uniquelocal` : seules les adresses PRIVÉES (l'ingress, qui
+   * vit dans le CIDR de pods du cluster) sont des intermédiaires de confiance.
+   * Deux propriétés en découlent :
+   *   - derrière l'ingress, l'IP retenue est celle qu'il a constatée, et toute
+   *     entrée injectée par le client reste hors de la fenêtre de confiance ;
+   *   - en exposition directe, une connexion venue d'Internet est publique donc
+   *     NON digne de confiance : son `X-Forwarded-For` est ignoré en bloc et
+   *     l'IP réelle de la socket est utilisée.
+   *
+   * Un simple nombre de sauts (`1`) n'offre PAS la seconde propriété : le saut
+   * de confiance serait consommé par l'attaquant lui-même. Fastify 5 tire la
+   * même conclusion et fait ÉCHOUER-FERMÉ tout `trustProxy` numérique (« hop
+   * count only trust cannot validate the immediate peer »). On n'accepte donc
+   * que des plages : noms proxy-addr (`loopback`, `linklocal`, `uniquelocal`),
+   * adresses ou CIDR, séparés par des virgules. Pour un CDN devant l'ingress,
+   * ajouter ses plages ici.
+   */
+  TRUST_PROXY:           z.string().default('loopback, uniquelocal'),
+
+  /**
+   * OWASP A08 — analyse antivirale des fichiers deposes (clamd).
+   * CLAMAV_HOST absent = analyse desactivee (defaut dev/test, comportement
+   * historique inchange). Renseigne = tout depot est analyse, et un fichier
+   * qui n'a PAS pu etre analyse est refuse (echec ferme).
+   */
+  CLAMAV_HOST:       z.string().optional(),
+  CLAMAV_PORT:       z.coerce.number().default(3310),
+  CLAMAV_TIMEOUT_MS: z.coerce.number().default(15_000),
   JWT_EXPIRES_IN:        z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   MFA_ISSUER:            z.string().default('NexusRH CI'),
@@ -135,6 +173,20 @@ export const config = {
   timezone: env.TIMEZONE,
   // Swagger /docs : activé hors prod, ou via ENABLE_DOCS=true en prod (protégé).
   enableDocs: env.ENABLE_DOCS || env.NODE_ENV !== 'production',
+
+  /** Liste de plages de confiance passée à l'option Fastify `trustProxy`
+   *  (cf. TRUST_PROXY). Toujours une chaîne : un nombre serait interprété par
+   *  Fastify 5 comme « ne faire confiance à personne ». */
+  trustProxy: env.TRUST_PROXY,
+
+  /** Analyse antivirale des depots de fichiers (cf. services/antivirus.service.ts). */
+  antivirus: {
+    host:      env.CLAMAV_HOST ?? null,
+    port:      env.CLAMAV_PORT,
+    timeoutMs: env.CLAMAV_TIMEOUT_MS,
+    /** Taille des blocs INSTREAM ; sous la limite clamd StreamMaxLength. */
+    chunkSize: 64 * 1024,
+  },
 
   database: {
     url:     env.DATABASE_URL,

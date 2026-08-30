@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -102,21 +103,14 @@ function auditLogCareer(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'career', $3, $4, $5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'career', entityId: entityId, changes: changes, ip: ip })
 }
 
 const careersRoutes: FastifyPluginAsync = async (fastify) => {
   // Migration lazy (idempotente) : garantit les colonnes ajoutées tardivement
   // (evaluations.manager_comments/employee_comments, employee_skills.target_level…)
   // pour ne pas renvoyer de 500 sur un tenant provisionné avant ces colonnes.
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /careers/skills
   fastify.get('/skills', {

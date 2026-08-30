@@ -12,7 +12,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import {
   DEPARTURE_TYPES,
@@ -23,6 +22,8 @@ import {
   type OffboardingStatus,
   type DepartureType,
 } from './offboarding.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -62,13 +63,7 @@ function audit(
   schema: string, userId: string | undefined, action: string,
   id: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, 'offboarding_case', $3, $4, $5)`,
-      [userId ?? null, action, id, JSON.stringify(changes), ip],
-    )
-    .catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: 'offboarding_case', entityId: id, changes: changes, ip: ip })
 }
 
 /** Ancienneté en mois entre l'embauche et la date de départ (>= 0). */
@@ -81,10 +76,7 @@ function seniorityMonthsBetween(hireDate: string | Date, departureDate: string |
 }
 
 const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /offboarding — liste
   fastify.get('/', {

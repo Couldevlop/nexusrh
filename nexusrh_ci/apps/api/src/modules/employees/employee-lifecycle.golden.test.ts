@@ -92,7 +92,7 @@ describe('Cycle de vie collaborateur — recrutement → sortie', () => {
     expect(res.statusCode).toBe(201)
     // Génération automatique du parcours d'intégration déclenchée à l'embauche.
     expect(autoStartMock).toHaveBeenCalledTimes(1)
-    expect(autoStartMock.mock.calls[0][2]).toMatchObject({ id: EMP, job_title: 'Comptable' })
+    expect(autoStartMock.mock.calls[0]![2]).toMatchObject({ id: EMP, job_title: 'Comptable' })
   })
 
   it('2. CONTRAT : création d\'un CDI OHADA → 201', async () => {

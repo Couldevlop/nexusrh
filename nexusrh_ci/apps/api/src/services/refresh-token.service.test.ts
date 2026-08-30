@@ -19,11 +19,11 @@ describe('issueRefreshToken', () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     const tok = await issueRefreshToken(pool, CLAIMS)
     expect(tok).toMatch(/^[0-9a-f]{64}$/)
-    const sql = String(queryMock.mock.calls[0][0])
+    const sql = String(queryMock.mock.calls[0]![0])
     expect(sql).toContain('INSERT INTO platform.refresh_tokens')
     // le token EN CLAIR n'est jamais stocké : seul son hash (≠ token)
-    expect(queryMock.mock.calls[0][1][0]).not.toBe(tok)
-    expect(queryMock.mock.calls[0][1][0]).toMatch(/^[0-9a-f]{64}$/)
+    expect(queryMock.mock.calls[0]![1][0]).not.toBe(tok)
+    expect(queryMock.mock.calls[0]![1][0]).toMatch(/^[0-9a-f]{64}$/)
   })
   it('erreur DB → null (non bloquant)', async () => {
     queryMock.mockRejectedValueOnce(new Error('db down'))
@@ -36,7 +36,7 @@ describe('consumeRefreshToken (rotation)', () => {
     queryMock.mockResolvedValueOnce({ rows: [{ claims: CLAIMS }] })
     const c = await consumeRefreshToken(pool, 'a'.repeat(64))
     expect(c).toEqual(CLAIMS)
-    expect(String(queryMock.mock.calls[0][0])).toContain('SET revoked_at = now()')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('SET revoked_at = now()')
   })
   it('token inconnu/expiré/révoqué → null', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
@@ -53,7 +53,7 @@ describe('revokeRefreshToken', () => {
   it('révoque (UPDATE) ; non bloquant si erreur', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     await revokeRefreshToken(pool, 'c'.repeat(64))
-    expect(String(queryMock.mock.calls[0][0])).toContain('SET revoked_at = now()')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('SET revoked_at = now()')
     queryMock.mockRejectedValueOnce(new Error('x'))
     await expect(revokeRefreshToken(pool, 'd'.repeat(64))).resolves.toBeUndefined()
   })
@@ -64,8 +64,8 @@ describe('verifyAccountActive', () => {
     const pca = new Date('2026-01-01')
     queryMock.mockResolvedValueOnce({ rows: [{ role: 'super_admin', is_active: true, password_changed_at: pca }] })
     expect(await verifyAccountActive(pool, 'platform', 'u-1')).toEqual({ role: 'super_admin', passwordChangedAt: pca })
-    expect(String(queryMock.mock.calls[0][0])).toContain('platform.platform_users')
-    expect(String(queryMock.mock.calls[0][0])).toContain('password_changed_at')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('platform.platform_users')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('password_changed_at')
   })
   it('compte désactivé → null', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: false }] })
@@ -78,7 +78,7 @@ describe('verifyAccountActive', () => {
   it('tenant : requête le schéma de l\'utilisateur', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ role: 'admin', is_active: true, password_changed_at: null }] })
     expect(await verifyAccountActive(pool, 'tenant_sotra', 'u-1')).toEqual({ role: 'admin', passwordChangedAt: null })
-    expect(String(queryMock.mock.calls[0][0])).toContain('"tenant_sotra".users')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('"tenant_sotra".users')
   })
   it('nom de schéma invalide → null sans requête (anti-injection)', async () => {
     expect(await verifyAccountActive(pool, 'bad schema!', 'u-1')).toBeNull()

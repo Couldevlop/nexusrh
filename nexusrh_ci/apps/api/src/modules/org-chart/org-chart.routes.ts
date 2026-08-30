@@ -21,7 +21,6 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   buildDepartmentTree,
   buildReportingTree,
@@ -35,6 +34,8 @@ import {
   type EmpNode,
 } from './org-chart.service.js'
 import { renderOrgChartPdf } from './org-chart-pdf.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'readonly'] as const
 
@@ -59,13 +60,7 @@ function auditExport(
   type: string,
   ip: string | null,
 ): void {
-  rawPool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, 'orgchart.export', 'org_chart', NULL, $2, $3)`,
-      [userId ?? null, JSON.stringify({ format, type }), ip],
-    )
-    .catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: 'orgchart.export', entity: 'org_chart', entityId: null, changes: { format, type }, ip: ip })
 }
 
 async function fetchData(schema: string): Promise<{ depts: DeptRow[]; emps: EmpRow[] }> {
@@ -84,10 +79,7 @@ function deptNameMap(depts: DeptRow[]): Map<string, string> {
 
 const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
   // Migration lazy idempotente (cohérent avec les autres modules).
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /org-chart/departments — organigramme par direction / service.
   fastify.get('/departments', {
