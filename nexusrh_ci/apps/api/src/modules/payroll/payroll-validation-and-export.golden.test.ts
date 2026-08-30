@@ -64,9 +64,10 @@ function tokenFor(app: FastifyInstance, role: string, sub?: string) {
 }
 
 function auditCallFor(action: string) {
-  // L'action est inline dans le SQL (VALUES ($1, 'payroll.closed', ...)), pas un param.
+  // Depuis la mutualisation de la piste d'audit (utils/audit-log.ts), l'action
+  // est un PARAMÈTRE LIÉ ($2) et non plus un littéral dans le texte SQL.
   return queryMock.mock.calls.find(
-    (c) => String(c[0]).includes('.audit_log') && String(c[0]).includes(`'${action}'`),
+    (c) => String(c[0]).includes('.audit_log') && (c[1] as unknown[] | undefined)?.[1] === action,
   )
 }
 
@@ -170,8 +171,9 @@ describe('Validation 2-yeux — Segregation of Duties (OWASP A04)', () => {
     expect(body.data.level).toBe(2)
     const audit = auditCallFor('payroll.closed')
     expect(audit, 'audit_log payroll.closed attendu').toBeDefined()
-    // params audit_log = [user_id, period_id($2), changes($3), ip($4)]
-    expect((audit![1] as unknown[])[1]).toBe(PERIOD_ID)
+    // Forme normalisée (utils/audit-log.ts) :
+    // [user_id, action, entity, entity_id, changes, ip_address]
+    expect((audit![1] as unknown[])[3]).toBe(PERIOD_ID)
   })
 
   it('approve sur période non pending_validation → 409', async () => {

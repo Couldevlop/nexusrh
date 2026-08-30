@@ -156,7 +156,7 @@ describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () 
     expect(auditCall).toBeDefined()
     expect(auditCall?.[1]?.[1]).toBe('contract.terminated')
     // Le payload de changes contient la raison et la date
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.reason).toBe('resignation')
     expect(changes.terminationDate).toBe('2026-06-30')
     // Régression : l'INSERT hr_events doit cibler la colonne RÉELLE « date »
@@ -207,7 +207,7 @@ describe('DELETE /contracts/:id — audit log critique (OWASP A09)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('contract.deleted')
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.employeeId).toBe('emp-1')
     expect(changes.statusBeforeDelete).toBe('active')
   })

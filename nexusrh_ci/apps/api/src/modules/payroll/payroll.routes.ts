@@ -5,8 +5,9 @@ import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { getPackByCountry } from '../../services/legislation-packs.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encodeField } from '../sage/sage.service.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -152,10 +153,7 @@ async function resolveAbsenceForPayroll(
 }
 
 const payrollRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // POST /payroll/calculate — calcul d'un bulletin CI (avec absences)
   fastify.post('/calculate', {
@@ -745,11 +743,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           [request.user.sub, p.id],
         )
         // Audit log (non bloquant)
-        rawPool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'payroll.closed', 'pay_period', $2, $3, $4)`,
-          [request.user.sub, p.id, JSON.stringify({ month, finalLevel: nextLevel, requiredLevels }), request.ip ?? null],
-        ).catch(() => {})
+        auditTenant(schema, { userId: request.user.sub, action: 'payroll.closed', entity: 'pay_period', entityId: p.id, changes: { month, finalLevel: nextLevel, requiredLevels }, ip: request.ip ?? null })
         return reply.send({
           data: { status: 'closed', level: nextLevel, requiredLevels },
           message: `Paie ${month} validée à tous les niveaux requis et clôturée.`,
@@ -797,11 +791,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
            WHERE id = $2`,
         [reason, p.id],
       )
-      rawPool.query(
-        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-         VALUES ($1, 'payroll.rejected', 'pay_period', $2, $3, $4)`,
-        [request.user.sub, p.id, JSON.stringify({ month, reason }), request.ip ?? null],
-      ).catch(() => {})
+      auditTenant(schema, { userId: request.user.sub, action: 'payroll.rejected', entity: 'pay_period', entityId: p.id, changes: { month, reason }, ip: request.ip ?? null })
       return reply.send({ data: { status: 'open' }, message: 'Paie rejetée — retour à open. Re-calculer la paie après corrections.' })
     },
   })
@@ -1390,20 +1380,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       // OWASP A09 : trace de la simulation (action sensible — préparation
       // d'offre, négociation). Non bloquant si audit_log absent.
-      rawPool.query(
-        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-         VALUES ($1, $2, 'payroll_simulation', $3, $4, $5)`,
-        [request.user.sub, 'payroll.simulated', body.employee_id ?? null,
-         JSON.stringify({
+      auditTenant(schema, { userId: request.user.sub, action: 'payroll.simulated', entity: 'payroll_simulation', entityId: body.employee_id ?? null, changes: {
            baseSalary: body.baseSalary,
            hasAbsence: !!body.absence,
            variableElementsCount: Object.keys(body.variableElements ?? {}).length,
            grossSalary: result.grossSalary,
            netPayable: result.netPayable,
            employerCost: result.employerCost,
-         }),
-         request.ip ?? null],
-      ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+         }, ip: request.ip ?? null })
 
       return reply.send({
         data: { ...result, lines: explained },

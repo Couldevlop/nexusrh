@@ -8,15 +8,12 @@ import {
   emitIntegrationEvent, deliverWebhook, testConnector,
 } from '../../services/integrations.service.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function auditLog(schema: string, userId: string, action: string, entityId: string | null, changes: Record<string, unknown>, ip: string | null): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1,$2,'integration',$3,$4,$5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => undefined)
+  auditTenant(schema, { userId: userId, action: action, entity: 'integration', entityId: entityId, changes: changes, ip: ip })
 }
 
 // ── En-têtes de webhook : chiffrés au repos (OWASP A09-3) ────────────────────

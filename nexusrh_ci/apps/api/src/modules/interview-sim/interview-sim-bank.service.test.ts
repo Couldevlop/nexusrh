@@ -30,8 +30,8 @@ describe('readBank', () => {
     queryMock.mockResolvedValueOnce({ rows: [{ questions: ['Q1', 'Q2'], source_model: 'claude' }] })
     const entry = await readBank('comptable', 'fr')
     expect(entry).toEqual({ questions: ['Q1', 'Q2'], sourceModel: 'claude' })
-    expect(String(queryMock.mock.calls[0][0])).toContain('platform.interview_sim_question_banks')
-    expect(String(queryMock.mock.calls[0][0])).toContain('ORDER BY created_at DESC')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('platform.interview_sim_question_banks')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('ORDER BY created_at DESC')
   })
   it('renvoie null si banque vide', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
@@ -43,11 +43,11 @@ describe('feedBank', () => {
   it('insère un nouveau jeu (enrichit la banque) puis purge les jeux excédentaires', async () => {
     queryMock.mockResolvedValue({ rows: [] })
     await feedBank('comptable', 'Finance', 'fr', ['Q1', 'Q2'], 'mistral')
-    const [sql, params] = queryMock.mock.calls[0]
+    const [sql, params] = queryMock.mock.calls[0]!
     expect(String(sql)).toContain('INSERT INTO platform.interview_sim_question_banks')
     expect(params[0]).toBe('comptable')
     expect(params[3]).toBe(JSON.stringify(['Q1', 'Q2']))
-    const [purgeSql, purgeParams] = queryMock.mock.calls[1]
+    const [purgeSql, purgeParams] = queryMock.mock.calls[1]!
     expect(String(purgeSql)).toContain('DELETE FROM platform.interview_sim_question_banks')
     expect(purgeParams).toEqual(['comptable', 'fr', 20])
   })
@@ -126,7 +126,7 @@ describe('incrementUsage', () => {
   it('upsert le compteur anonyme', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     await incrementUsage('comptable', 'fr')
-    expect(String(queryMock.mock.calls[0][0])).toContain('platform.interview_sim_usage')
-    expect(String(queryMock.mock.calls[0][0])).toContain('ON CONFLICT')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('platform.interview_sim_usage')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('ON CONFLICT')
   })
 })

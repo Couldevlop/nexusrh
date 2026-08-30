@@ -177,6 +177,8 @@ describe('GET /org-chart/export.pdf', () => {
     })
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall).toBeDefined()
-    expect(String(auditCall?.[0])).toContain('orgchart.export')
+    // L'action était auparavant écrite en dur DANS le texte SQL de la copie
+    // locale ; elle est désormais un paramètre lié, comme partout ailleurs.
+    expect(auditCall?.[1]?.[1]).toBe('orgchart.export')
   })
 })

@@ -25,7 +25,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
 import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
 import { fetchDevicePunches } from './attendance.fetch.js'
@@ -35,6 +34,8 @@ import { computeDay } from './attendance.compute.js'
 import { resolveSchedule } from './attendance.schedule.js'
 import { joursFeriesCI } from '../../utils/ci-holidays.js'
 import type { AttendanceConfig, EffectiveSchedule, FieldMapping, NormalizedPunch } from './attendance.types.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -91,13 +92,7 @@ function audit(
   ip: string | null,
   entity = 'attendance_config',
 ): void {
-  pool
-    .query(
-      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId ?? null, action, entity, id, JSON.stringify(changes), ip],
-    )
-    .catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: entity, entityId: id, changes: changes, ip: ip })
 }
 
 // ── Notifications (calqué sur absences.routes.ts) ──────────────────────────
@@ -389,10 +384,7 @@ const warningRespondBody = z.object({
 }).strict()
 
 export async function attendanceRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /attendance/config — configuration du moteur d'escalade (singleton).
   fastify.get('/config', {

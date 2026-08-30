@@ -124,6 +124,78 @@ function getCreditImpot(
  * rubriques (`payroll_rules.formula`), utilisé par les seeds/provisioning et
  * destiné au moteur de paie générique piloté par règles.
  */
+/**
+ * Évalue une expression arithmétique purement numérique (`+ - * / ( )`, unaire
+ * inclus) par descente récursive. Lève sur toute entrée non conforme.
+ *
+ * Remplace un `new Function()` : cet évaluateur ne peut construire QUE des
+ * nombres. Aucune entrée, même si la liste blanche de caractères venait à être
+ * élargie, ne peut atteindre un identifiant, un appel de fonction ou une
+ * portée JavaScript — la classe de vulnérabilité disparaît au lieu d'être
+ * simplement rendue improbable (OWASP A03).
+ */
+function evalArithmetic(src: string): number {
+  let i = 0
+  const skip = (): void => { while (i < src.length && /\s/.test(src[i] as string)) i++ }
+  const peek = (): string | undefined => { skip(); return src[i] }
+
+  // primary := NUMBER | '(' expr ')'
+  const primary = (): number => {
+    skip()
+    if (src[i] === '(') {
+      i++
+      const v = expr()
+      skip()
+      if (src[i] !== ')') throw new Error('parenthèse fermante attendue')
+      i++
+      return v
+    }
+    const start = i
+    while (i < src.length && /[0-9.]/.test(src[i] as string)) i++
+    if (i === start) throw new Error(`nombre attendu en position ${i}`)
+    const raw = src.slice(start, i)
+    // Rejette `1.2.3` (Number le rendrait NaN, on préfère l'erreur explicite).
+    const n = Number(raw)
+    if (!Number.isFinite(n)) throw new Error(`nombre invalide : ${raw}`)
+    return n
+  }
+
+  // factor := ('-' | '+')* primary
+  const factor = (): number => {
+    const op = peek()
+    if (op === '-') { i++; return -factor() }
+    if (op === '+') { i++; return factor() }
+    return primary()
+  }
+
+  // term := factor (('*' | '/') factor)*
+  const term = (): number => {
+    let v = factor()
+    for (;;) {
+      const op = peek()
+      if (op === '*')      { i++; v *= factor() }
+      else if (op === '/') { i++; v /= factor() }
+      else return v
+    }
+  }
+
+  // expr := term (('+' | '-') term)*
+  function expr(): number {
+    let v = term()
+    for (;;) {
+      const op = peek()
+      if (op === '+')      { i++; v += term() }
+      else if (op === '-') { i++; v -= term() }
+      else return v
+    }
+  }
+
+  const result = expr()
+  skip()
+  if (i < src.length) throw new Error(`caractère inattendu : ${src[i]}`)
+  return result
+}
+
 export function evalFormule(formula: string, vars: Record<string, number>): number {
   // Si formule commence par VAR: → lire directement une variable
   if (formula.startsWith('VAR:')) {
@@ -143,8 +215,11 @@ export function evalFormule(formula: string, vars: Record<string, number>): numb
   }
 
   try {
-    // eslint-disable-next-line no-new-func
-    const result = new Function(`return (${expr})`)() as number
+    // Analyse arithmétique dédiée : aucune évaluation de code JavaScript.
+    // Une variable non substituée (identifiant restant) ou toute syntaxe
+    // invalide lève ici et retombe sur 0, comme le faisait le try/catch autour
+    // du `new Function()` d'origine.
+    const result = evalArithmetic(expr)
     return Math.floor(isFinite(result) ? Math.max(0, result) : 0)
   } catch {
     return 0

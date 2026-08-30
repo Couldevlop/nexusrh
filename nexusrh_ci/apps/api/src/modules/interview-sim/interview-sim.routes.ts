@@ -31,6 +31,7 @@ import {
   genererQuestions, produireRetour,
   type PosteContext, type TranscriptItem, type InterviewFeedback,
 } from './interview-sim-ai.service.js'
+import { badRequest } from '../../utils/http-errors.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -87,8 +88,6 @@ const DEFAULT_CONSENT_TEXT = 'En démarrant, vous acceptez que vos réponses soi
  * donnée d'identité dans le body (l'identité vient du JWT ou reste absente).
  */
 const consentSchema = z.object({ consentAccepted: z.literal(true) }).strict()
-
-function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
 
 interface EligibleInternalJob { title: string; interview_focus: unknown; experience_level: string | null }
 
@@ -187,8 +186,16 @@ export function mintPublicInterviewToken(
     // Jeton VOLONTAIREMENT déjà expiré (simulation de test uniquement) : `exp`
     // explicite dans le passé — fast-jwt (@fastify/jwt) rejette une valeur
     // `expiresIn` négative, donc on ne peut pas passer par cette option ici.
+    //
+    // `expiresIn: 0` neutralise l'option héritée du plugin : depuis fast-jwt 6,
+    // l'`expiresIn` du signeur PRIME sur un `exp` présent dans la charge utile
+    // (l'inverse de la version 4). Sans cette neutralisation, ce jeton sortirait
+    // valide 7 jours et le chemin « lien expiré » deviendrait intestable.
     const exp = Math.floor(Date.now() / 1000) + Math.round(ttlMinutes * 60)
-    return fastify.jwt.sign({ ...claims, exp } as unknown as Parameters<FastifyInstance['jwt']['sign']>[0])
+    return fastify.jwt.sign(
+      { ...claims, exp } as unknown as Parameters<FastifyInstance['jwt']['sign']>[0],
+      { expiresIn: 0 },
+    )
   }
   // 0/NaN/absent → repli 60 min ; sinon plafond 24h (1440), plancher 1 min.
   const ttl = Math.max(1, Math.min(ttlMinutes || 60, 1440))
@@ -201,7 +208,12 @@ function verifyPublicToken(fastify: FastifyInstance, token: string): { ok: true;
     if (decoded.aud !== PUBLIC_AUD || !SCHEMA_NAME_RE.test(decoded.schema)) return { ok: false, expired: false }
     return { ok: true, claims: decoded }
   } catch (err) {
-    const expired = err instanceof Error && /expired/i.test(err.message)
+    // Détection par CODE d'erreur (fast-jwt) plutôt que par message : le libellé
+    // change d'une version à l'autre, le code non. Le test sur le message reste
+    // en repli pour les erreurs qui n'en portent pas.
+    const code = (err as { code?: string })?.code
+    const expired = code === 'FAST_JWT_EXPIRED'
+      || (err instanceof Error && /expired/i.test(err.message))
     return { ok: false, expired }
   }
 }

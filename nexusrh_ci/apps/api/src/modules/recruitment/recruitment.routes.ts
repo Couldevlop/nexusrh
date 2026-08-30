@@ -16,31 +16,15 @@ import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
 import { mintPublicInterviewToken } from '../interview-sim/interview-sim.routes.js'
 import { getModulesForSchema } from '../../services/tenant-modules.service.js'
+import { extractCvText, isMagicByteConsistent } from '../../services/cv-extraction.service.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
-/**
- * Extrait le texte d'un CV uploadé. Pour les PDF, utilise unpdf (extraction
- * native, sans dépendance binaire externe). Pour les .txt, décode en UTF-8.
- * Les .doc/.docx tombent en fallback UTF-8 — extraction native via mammoth
- * dans un sprint suivant. En cas d'échec d'extraction (PDF corrompu, etc.),
- * fallback UTF-8 pour ne pas bloquer l'upload.
- */
-async function extractCvText(buf: Buffer, mimetype: string): Promise<string> {
-  const MAX = 50_000
-  if (mimetype === 'application/pdf') {
-    try {
-      const { getDocumentProxy, extractText } = await import('unpdf')
-      const pdf = await getDocumentProxy(new Uint8Array(buf))
-      const result = await extractText(pdf, { mergePages: true })
-      const text = Array.isArray(result.text) ? result.text.join('\n') : (result.text ?? '')
-      const cleaned = text.replace(/\s+/g, ' ').trim()
-      if (cleaned.length > 0) return cleaned.slice(0, MAX)
-    } catch {
-      // PDF illisible : fallback UTF-8 (texte garbage probable mais l'IA
-      // détectera la non-cohérence et retournera un CV trop court)
-    }
-  }
-  return buf.toString('utf-8').slice(0, MAX)
-}
+// `extractCvText` et `isMagicByteConsistent` viennent de
+// services/cv-extraction.service.ts. Ce fichier en hébergeait une COPIE locale
+// d'extractCvText, ce qui laissait le service — et avec lui le contrôle de
+// signature isMagicByteConsistent — non importé, donc jamais exécuté malgré ses
+// tests verts. Une seule implémentation désormais (OWASP A03).
 
 // Schéma Zod pour la candidature publique — OWASP A03 (Injection) + A04
 // (Insecure Design). Limites stricts pour éviter spam et XSS.
@@ -415,11 +399,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A09 — audit non bloquant. Action nommée pour matcher
         // categorizeAction() (security.service.ts) → catégorie 'config',
         // exportable SIEM sans plomberie supplémentaire.
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.job.interview_focus_updated', 'recruitment_job', $2, $3, $4)`,
-          [request.user.sub, id, JSON.stringify({ focus }), request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.job.interview_focus_updated', entity: 'recruitment_job', entityId: id, changes: { focus }, ip: request.ip ?? null })
         return reply.send({ data: { focus } })
       } catch (err) {
         fastify.log.error(err)
@@ -676,21 +656,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           // OWASP A09 : trace explicite de la décision (qui, sur qui, quand,
           // avec quel score IA prior). Hire/reject est un événement de sécurité
           // significatif au sens RGPD (décision impactant un candidat).
-          pool.query(
-            `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-             VALUES ($1, $2, 'application', $3, $4, $5)`,
-            [
-              request.user.sub,
-              stage === 'hired' ? 'recruitment.hired' : 'recruitment.rejected',
-              app.id,
-              JSON.stringify({
+          auditTenant(schema, { userId: request.user.sub, action: stage === 'hired' ? 'recruitment.hired' : 'recruitment.rejected', entity: 'application', entityId: app.id, changes: {
                 jobId: app.job_id,
                 priorAiScore: app.ai_score ?? null,
                 priorAiRecommendation: app.ai_recommendation ?? null,
-              }),
-              request.ip ?? null,
-            ],
-          ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+              }, ip: request.ip ?? null })
         }
 
         return reply.send({ data: app })
@@ -786,11 +756,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const pdf = await renderHrDocumentPdf(markdown)
 
         // OWASP A09 : trace la génération du contrat (acte RH significatif)
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.contract_generated', 'application', $2, $3, $4)`,
-          [request.user.sub, app.id, JSON.stringify({ type: body.type, title }), request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.contract_generated', entity: 'application', entityId: app.id, changes: { type: body.type, title }, ip: request.ip ?? null })
 
         const fileBase = `${body.type}_${(app.last_name || 'contrat').replace(/[^a-zA-Z0-9]/g, '')}`
         return reply
@@ -840,6 +806,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             error: `Fichier trop volumineux (max ${CV_MAX_BYTES / (1024 * 1024)} MB).`,
           })
         }
+        // OWASP A03 — le MIME est DÉCLARÉ par le client : on vérifie que le
+        // contenu réel porte bien la signature du format annoncé (un exécutable
+        // renommé en .pdf est rejeté ici, pas stocké puis servi à un RH).
+        if (!isMagicByteConsistent(buf, mimetype)) {
+          return reply.status(400).send({
+            error: 'Le contenu du fichier ne correspond pas au format annoncé.',
+          })
+        }
+        // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+        const av = await scanBuffer(buf)
+        if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
         // Extraction texte : PDF natif via unpdf, sinon UTF-8 (TXT direct,
         // DOC/DOCX partiel — extraction native dans un sprint suivant).
         const cvText = await extractCvText(buf, mimetype)
@@ -992,13 +969,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
         // OWASP A09 : trace de l'usage IA (qui, sur qui, avec quel modèle,
         // quel score). Non-bloquant si audit_log absent.
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.analyze_cv', 'application', $2, $3, $4)`,
-          [request.user.sub, id,
-           JSON.stringify({ model: result.modelUsed, score: result.score, recommendation: result.recommendation }),
-           request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.analyze_cv', entity: 'application', entityId: id, changes: { model: result.modelUsed, score: result.score, recommendation: result.recommendation }, ip: request.ip ?? null })
 
         return reply.send({ data: upd.rows[0], analysis: result })
       } catch (err) {
@@ -1200,19 +1171,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.preselect_batch', 'recruitment_job', $2, $3, $4)`,
-          [request.user.sub, jobId,
-           JSON.stringify({
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.preselect_batch', entity: 'recruitment_job', entityId: jobId, changes: {
              model, stages: requestedStages, force,
              analyzed, skipped, failed,
              effectiveFocus,
              focusSource: criteriaFocus !== null ? 'request' : (job.ai_focus_text ? 'job-stored' : null),
              learningExamples: decisionExamples.length,
-           }),
-           request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+           }, ip: request.ip ?? null })
 
         const top = results.sort((a, b) => b.score - a.score).slice(0, 10)
 
@@ -1438,6 +1403,16 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                 if (buf.byteLength > PUBLIC_CV_MAX_BYTES) {
                   return reply.status(400).send({ error: 'CV trop volumineux (max 5 Mo).' })
                 }
+                // OWASP A03 — dépôt ANONYME : le MIME déclaré ne prouve rien.
+                // On exige que la signature du contenu corresponde au format.
+                if (!isMagicByteConsistent(buf, mime)) {
+                  return reply.status(400).send({
+                    error: 'Le contenu du fichier ne correspond pas au format annoncé.',
+                  })
+                }
+                // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+                const av = await scanBuffer(buf)
+                if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
                 cvPart = { buf, mime, filename: part.filename || 'cv.bin' }
               } else {
                 part.file.resume() // ignorer tout autre fichier
@@ -1535,14 +1510,17 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         cvBlob, cvMime, cvFilename, cvSize, cvUrl, expectedSalary,
       ])
 
-      // Audit log non-bloquant (OWASP A09)
-      pool.query(
-        `INSERT INTO "${schema}".audit_log (action, entity, entity_id, changes, ip_address)
-         VALUES ('public.application_submitted', 'application', $1, $2, $3)`,
-        [res.rows[0]!.id,
-         JSON.stringify({ jobId, jobTitle: job.rows[0].title, source: 'careers_page', hasCv: !!cvPart }),
-         request.ip ?? null],
-      ).catch(() => { /* table absente → ignore */ })
+      // Audit log non-bloquant (OWASP A09). Candidature ANONYME : pas d'auteur
+      // authentifié, d'où `userId: null` (la colonne était simplement omise
+      // avant la mutualisation — même donnée écrite).
+      auditTenant(schema, {
+        userId: null,
+        action: 'public.application_submitted',
+        entity: 'application',
+        entityId: res.rows[0]!.id,
+        changes: { jobId, jobTitle: job.rows[0].title, source: 'careers_page', hasCv: !!cvPart },
+        ip: request.ip ?? null,
+      })
 
       return reply.status(201).send({
         data: { id: res.rows[0]!.id, jobTitle: job.rows[0].title, companyName: tenant.rows[0].name },
@@ -1642,20 +1620,14 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // OWASP A09 : trace de l'usage IA (qui, sur quelle offre, modèle, profils)
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.source_profiles', 'recruitment_job', $2, $3, $4)`,
-          [request.user.sub, id,
-           JSON.stringify({
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.source_profiles', entity: 'recruitment_job', entityId: id, changes: {
              model:    result.model,
              provider: result.provider,
              profiles: result.profilesGenerated,
              cost:     result.estimatedCostEur,
              countries,
              platforms,
-           }),
-           request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+           }, ip: request.ip ?? null })
 
         const meta = {
           provider:         result.provider,
@@ -1805,13 +1777,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         await client.query('COMMIT')
 
         // Audit log (non bloquant)
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.sourced_transfer', 'application', $2, $3, $4)`,
-          [request.user.sub, applicationId,
-           JSON.stringify({ profileId, jobId: id, match: profile.match_score }),
-           request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.sourced_transfer', entity: 'application', entityId: applicationId, changes: { profileId, jobId: id, match: profile.match_score }, ip: request.ip ?? null })
 
         return reply.status(201).send({ data: { applicationId, profileId } })
       } catch (err) {
@@ -1889,13 +1855,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
         await client.query('COMMIT')
 
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.sourced_transfer_all', 'recruitment_job', $2, $3, $4)`,
-          [request.user.sub, id,
-           JSON.stringify({ count: transferred.length }),
-           request.ip ?? null],
-        ).catch(() => { /* non bloquant */ })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.sourced_transfer_all', entity: 'recruitment_job', entityId: id, changes: { count: transferred.length }, ip: request.ip ?? null })
 
         return reply.send({
           data: { transferred: transferred.length, items: transferred },
@@ -1960,11 +1920,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
         const result = await sourceProfilesCompare(job, platforms, maxProfiles, countries, creds)
 
-        pool.query(
-          `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-           VALUES ($1, 'recruitment.source_compare', 'recruitment_job', $2, $3, $4)`,
-          [request.user.sub, id,
-           JSON.stringify({
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.source_compare', entity: 'recruitment_job', entityId: id, changes: {
              winner:         result.winner,
              claudeCost:     result.claude.estimatedCostEur,
              mistralCost:    result.mistral.estimatedCostEur,
@@ -1972,9 +1928,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
              mistralRichness: result.mistral.richnessScore,
              countries,
              platforms,
-           }),
-           request.ip ?? null],
-        ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+           }, ip: request.ip ?? null })
 
         return reply.send({
           comparison: {

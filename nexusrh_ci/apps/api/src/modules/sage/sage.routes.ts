@@ -11,10 +11,12 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import {
   SEPARATOR_KEYS, SAGE_COLUMNS, buildSageCsv, exportFilename, resolveSeparator,
 } from './sage.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { badRequest } from '../../utils/http-errors.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const CONFIG_ROLES = ['admin', 'hr_manager'] as const
 const PERIOD_RE = /^\d{4}-\d{2}$/
@@ -26,13 +28,8 @@ const configSchema = z.object({
   matriculeSource: z.enum(['employee_number', 'id']),
 }).strict()
 
-function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
 function audit(schema: string, userId: string | undefined, action: string, changes: Record<string, unknown>, ip: string | null): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'sage', NULL, $3, $4)`,
-    [userId ?? null, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: 'sage', entityId: null, changes: changes, ip: ip })
 }
 
 interface SageCfg { enabled: boolean; separator: string; include_header: boolean; matricule_source: string }
@@ -45,10 +42,7 @@ async function loadConfig(schema: string): Promise<SageCfg> {
 const PAYMENT_MODE = `CASE WHEN e.mobile_money_provider IS NOT NULL THEN e.mobile_money_provider WHEN e.iban IS NOT NULL THEN 'virement' ELSE 'especes' END`
 
 const sageRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /sage/config
   fastify.get('/config', {

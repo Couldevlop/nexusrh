@@ -4,6 +4,8 @@ import { pool } from '../../db/pool.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '../../utils/crypto.js'
 import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-money-providers.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -139,11 +141,7 @@ function auditLogExpense(
   schema: string, userId: string, action: string,
   reportId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'expense_report', $3, $4, $5)`,
-    [userId, action, reportId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'expense_report', entityId: reportId, changes: changes, ip: ip })
 }
 
 const expensesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -673,6 +671,9 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
             error: `Fichier trop volumineux (max ${RECEIPT_MAX_BYTES / (1024 * 1024)} Mo).`,
           })
         }
+        // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+        const av = await scanBuffer(buf)
+        if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
 
         const receiptUrl = `data:${mimetype};base64,${buf.toString('base64')}`
         return reply.send({

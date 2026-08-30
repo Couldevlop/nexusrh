@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 /**
  * Vue DG 360° — tableau de bord Direction Générale, AU-DESSUS du périmètre DRH.
@@ -28,11 +29,7 @@ function auditLogDg(
   schema: string, userId: string, action: string,
   changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'dg', NULL, $3, $4)`,
-    [userId, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'dg', entityId: null, changes: changes, ip: ip })
 }
 
 /** Bornes temporelles d'une période relative (jour / semaine / mois). */

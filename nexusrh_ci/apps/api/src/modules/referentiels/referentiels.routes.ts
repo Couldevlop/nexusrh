@@ -6,6 +6,7 @@ import {
   seedReferentiel, reindexFromDb, getReferentielStats,
 } from './referentiels.service.js'
 import { ensureIndex } from '../../services/elasticsearch.js'
+import { activityPlatform } from '../../utils/audit-log.js'
 
 export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   await ensureIndex().catch(err => app.log.warn('[ES] index non dispo:', err.message))
@@ -132,12 +133,8 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   function auditLogReferentiels(
     userId: string, action: string, changes: Record<string, unknown>, ip: string | null,
   ): void {
-    pool.query(
-      `INSERT INTO platform.activity_log (actor_user_id, action, payload, ip_address)
-       VALUES ($1, $2, $3, $4)`,
-      [userId, action, JSON.stringify(changes), ip],
-    ).catch(() => { /* table absente sur ancien env : non bloquant */ })
-  }
+  activityPlatform({ userId: userId, action: action, changes: changes, ip: ip })
+}
 
   // ── Seed : data file → PostgreSQL → Elasticsearch (super_admin UNIQUEMENT) ───
   // OWASP A01 — le référentiel légal (table `droit-ci`) et l'index ES sont des

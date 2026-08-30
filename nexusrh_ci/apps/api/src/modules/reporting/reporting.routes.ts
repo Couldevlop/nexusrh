@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 // OWASP A03 — validation des paramètres query (year, month). Année comprise
 // entre 2000 et l'année courante + 1 (limite la fenêtre d'agrégation possible).
@@ -17,11 +18,7 @@ function auditLogReporting(
   schema: string, userId: string, action: string,
   scope: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'reporting', NULL, $3, $4)`,
-    [userId, action, JSON.stringify(scope), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'reporting', entityId: null, changes: scope, ip: ip })
 }
 
 // OWASP A07 — rate-limit anti-DoS sur les agrégations coûteuses. Les routes

@@ -133,7 +133,7 @@ describe('PATCH /settings/tenant — Zod + audit (OWASP A03 + A09)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('settings.tenant_updated')
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.modifiedFields).toEqual(expect.arrayContaining(['name', 'at_rate', 'primary_color']))
   })
 
@@ -980,8 +980,8 @@ describe('POST /settings/users/:id/reset-mfa — admin only (OWASP A07 + A01, d�
     expect(body.data).toEqual({ id: targetId, mfaReset: true })
 
     // Vérifie le texte SQL + les paramètres de l'UPDATE de désactivation MFA.
-    const updateCall = queryMock.mock.calls.find(([sql]: [string]) =>
-      /UPDATE .*\.users SET mfa_enabled = false, mfa_secret = NULL/.test(sql))
+    const updateCall = queryMock.mock.calls.find((call) =>
+      /UPDATE .*\.users SET mfa_enabled = false, mfa_secret = NULL/.test(String(call[0])))
     expect(updateCall).toBeTruthy()
     expect(updateCall![1]).toEqual([targetId])
 

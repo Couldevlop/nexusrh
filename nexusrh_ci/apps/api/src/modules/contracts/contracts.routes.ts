@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { describeDbError } from '../../utils/db-error.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -27,11 +28,7 @@ function auditLogContract(
   schema: string, userId: string, action: string,
   contractId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'contract', $3, $4, $5)`,
-    [userId, action, contractId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'contract', entityId: contractId, changes: changes, ip: ip })
 }
 
 const contractsRoutes: FastifyPluginAsync = async (fastify) => {

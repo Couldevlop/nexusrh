@@ -15,13 +15,15 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { createHmac } from 'crypto'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
 import { resolveSafeOutbound } from '../../services/ssrf-guard.js'
 import {
   SSO_PROVIDERS, TENANT_ROLES, SIEM_TRANSPORTS, SIEM_FORMATS, EVENT_CATEGORIES,
   isValidTenantRole, categorizeAction, shouldForward, formatEvent, type SecurityEvent, type SiemFormat,
 } from './security.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { badRequest } from '../../utils/http-errors.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const ADMIN = ['admin'] as const
 const tuple = (a: readonly string[]) => a as unknown as [string, ...string[]]
@@ -47,13 +49,8 @@ const siemSchema = z.object({
   categories: z.array(z.enum(tuple(EVENT_CATEGORIES))).max(EVENT_CATEGORIES.length).optional(),
 }).strict()
 
-function badRequest(reply: FastifyReply, msg = 'Validation échouée') { return reply.status(400).send({ error: msg }) }
 function audit(schema: string, userId: string | undefined, action: string, changes: Record<string, unknown>, ip: string | null): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'security', NULL, $3, $4)`,
-    [userId ?? null, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* non bloquant */ })
+  auditTenant(schema, { userId: userId ?? null, action: action, entity: 'security', entityId: null, changes: changes, ip: ip })
 }
 
 interface SiemCfg { enabled: boolean; transport: string; endpoint: string | null; format: string; secret_enc: string | null; categories: string[] }
@@ -88,10 +85,7 @@ async function sendToSiem(cfg: SiemCfg, events: SecurityEvent[]): Promise<{ stat
 }
 
 const securityRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // ── SSO / AD ────────────────────────────────────────────────────────────
   fastify.get('/sso-config', {

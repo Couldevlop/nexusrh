@@ -22,6 +22,7 @@ import {
 } from '../../services/tenant-modules.service.js'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { auditPlatform } from '../../utils/audit-log.js'
 
 // ─── Schémas Zod (OWASP A03 Injection + A05 Misconfiguration) ───────────────
 // Validation systématique des bodies. Le error handler global mappe ZodError
@@ -121,11 +122,7 @@ function auditLogPlatform(
   userId: string, action: string, entity: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO platform.audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [userId, action, entity, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* table audit_log absente : non bloquant */ })
+  auditPlatform({ userId: userId, action: action, entity: entity, entityId: entityId, changes: changes, ip: ip })
 }
 
 const platformRoutes: FastifyPluginAsync = async (fastify) => {

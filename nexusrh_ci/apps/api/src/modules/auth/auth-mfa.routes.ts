@@ -26,6 +26,7 @@ import { pool } from '../../db/pool.js'
 import { encrypt, decrypt, isEncryptionConfigured } from '../../utils/crypto.js'
 import { revokeAllRefreshTokensForUser } from '../../services/refresh-token.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -109,11 +110,7 @@ function auditMfa(
     return
   }
   if (!SCHEMA_NAME_RE.test(schemaOrPlatform)) return
-  pool.query(
-    `INSERT INTO "${schemaOrPlatform}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'auth', NULL, $3, $4)`,
-    [userId, action, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schemaOrPlatform, { userId: userId, action: action, entity: 'auth', entityId: null, changes: changes, ip: ip })
 }
 
 // Identifie la table users (platform_users vs tenant.users) selon le scope

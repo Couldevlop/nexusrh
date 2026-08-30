@@ -197,7 +197,7 @@ describe('PATCH /expenses/:id/reject — RBAC manager + audit', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('expense.rejected')
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.reason).toContain('Pièces')
   })
 })
@@ -216,7 +216,7 @@ describe('PATCH /expenses/:id/pay — audit log financier (OWASP A09)', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('expense.paid')
-    const changes = JSON.parse(auditCall?.[1]?.[3] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.totalAmount).toBe(25000)
   })
 

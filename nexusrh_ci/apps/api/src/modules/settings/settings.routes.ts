@@ -16,6 +16,8 @@ import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
 import { isSupportedCountry } from '../../services/legislation-packs.js'
 import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '../../services/ssrf-guard.js'
 import { describeDbError } from '../../utils/db-error.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -46,11 +48,7 @@ function auditLogSettings(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  pool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'settings', $3, $4, $5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'settings', entityId: entityId, changes: changes, ip: ip })
 }
 
 // OWASP A03 — schémas Zod stricts
@@ -636,6 +634,9 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const buf = await file.toBuffer()
       if (buf.length > 1_000_000) return reply.status(400).send({ error: 'Logo trop volumineux (max 1 Mo).' })
+      // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+      const av = await scanBuffer(buf)
+      if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
       // Stocke l'image et renvoie l'id : le constructeur l'affecte au modèle
       // (groupe ou pays) puis l'enregistre via PUT — pas d'écriture config ici.
       const ins = await pool.query<{ id: string }>(

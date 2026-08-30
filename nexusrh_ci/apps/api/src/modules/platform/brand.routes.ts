@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { config } from '../../config.js'
 import { pool } from '../../db/pool.js'
+import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -35,6 +36,9 @@ export const brandRoutes: FastifyPluginAsync = async (fastify) => {
         if (buf.byteLength > LOGO_MAX_BYTES) {
           return reply.status(400).send({ error: `Image trop volumineuse (max ${LOGO_MAX_BYTES / (1024 * 1024)} MB).` })
         }
+        // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+        const av = await scanBuffer(buf)
+        if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
         const res = await pool.query<{ id: string }>(
           `INSERT INTO platform.brand_assets (mime, bytes) VALUES ($1, $2) RETURNING id`,
           [mimetype, buf])

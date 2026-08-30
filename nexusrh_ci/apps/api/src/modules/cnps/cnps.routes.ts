@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encodeField } from '../sage/sage.service.js'
+import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // CNP-002 — anti-injection CSV (OWASP A03) : neutralise +/-/=/@ et quote.
@@ -52,11 +53,7 @@ function auditLogCnps(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
-  rawPool.query(
-    `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
-     VALUES ($1, $2, 'cnps', $3, $4, $5)`,
-    [userId, action, entityId, JSON.stringify(changes), ip],
-  ).catch(() => { /* tenant sans audit_log : non bloquant */ })
+  auditTenant(schema, { userId: userId, action: action, entity: 'cnps', entityId: entityId, changes: changes, ip: ip })
 }
 
 // OWASP A07 — rate-limit anti-DoS sur les exports lourds (PDF/XML/CSV générés
@@ -69,10 +66,7 @@ const HEAVY_EXPORT_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: '1 minute' }
 const DISA_MAX_EMPLOYEES = 2_000
 
 const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /cnps/declarations — liste des déclarations CNPS
   fastify.get('/declarations', {

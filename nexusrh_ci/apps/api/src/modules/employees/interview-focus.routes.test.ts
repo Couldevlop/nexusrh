@@ -114,6 +114,6 @@ describe('PUT /employees/:id/interview-focus', () => {
     // L'action est un littéral dans le texte SQL (pas un paramètre).
     const audit = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(audit).toBeTruthy()
-    expect(String(audit![0])).toContain('employees.interview_focus_updated')
+    expect(audit![1]?.[1]).toBe('employees.interview_focus_updated')
   })
 })

@@ -126,7 +126,7 @@ describe('GET /reporting/* — RBAC + audit log (OWASP A01 + A09)', () => {
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('reporting.cnps_analytics')
     // entity_id est NULL hardcodé dans le SQL reporting → changes = params[2]
-    const changes = JSON.parse(auditCall?.[1]?.[2] as string)
+    const changes = JSON.parse(auditCall?.[1]?.[4] as string)
     expect(changes.year).toBe(2026)
   })
 

@@ -20,7 +20,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
-import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { auditTenant } from '../../utils/audit-log.js'
 
 /**
  * OWASP A09 — Trace structurée pour chaque transition d'état du workflow
@@ -33,16 +34,7 @@ async function auditWorkflow(opts: {
   ipAddress?: string
 }): Promise<void> {
   try {
-    await pool.query(
-      `INSERT INTO "${opts.schema}".audit_log
-         (user_id, action, entity, entity_id, changes, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        opts.userId, opts.action, opts.entity, opts.entityId,
-        JSON.stringify(opts.changes ?? {}),
-        opts.ipAddress ?? null,
-      ],
-    )
+    auditTenant(opts.schema, { userId: opts.userId, action: opts.action, entity: opts.entity, entityId: opts.entityId, changes: opts.changes ?? {}, ip: opts.ipAddress ?? null })
   } catch {
     // Non-bloquant : tenant pré-migration peut ne pas avoir audit_log
   }
@@ -127,10 +119,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
   // opération (idempotent). Filet pour un tenant basculé en multi-pays par une
   // voie qui n'aurait pas re-provisionné le schéma. OWASP A04 : pas de calcul
   // sur un schéma incohérent.
-  fastify.addHook('preHandler', async (request) => {
-    const schema = request.user?.schemaName
-    if (schema) await ensureTenantSchema(schema)
-  })
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // ── GET /payroll-workflow/periods ─────────────────────────────────────────
   // Liste les périodes parentes + leurs déclinaisons site.
