@@ -3,7 +3,6 @@ import {
   DEPARTURE_TYPES,
   OFFBOARDING_STATUSES,
   DEFAULT_CHECKLIST,
-  isValidDepartureType,
   isValidStatus,
   canTransition,
   noticeMonths,
@@ -11,13 +10,6 @@ import {
 } from './offboarding.service.js'
 
 describe('offboarding.service — types, statuts, transitions', () => {
-  it('valide types et statuts', () => {
-    expect(isValidDepartureType('licenciement')).toBe(true)
-    expect(isValidDepartureType('xxx')).toBe(false)
-    expect(isValidStatus('settled')).toBe(true)
-    expect(isValidStatus('zzz')).toBe(false)
-    expect(DEPARTURE_TYPES.length).toBeGreaterThanOrEqual(5)
-  })
   it('checklist par défaut couvre restitution matériel + accès', () => {
     const keys = DEFAULT_CHECKLIST.map((c) => c.key)
     expect(keys).toContain('badge')

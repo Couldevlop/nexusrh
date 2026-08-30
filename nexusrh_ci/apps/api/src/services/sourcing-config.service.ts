@@ -292,20 +292,9 @@ function mergeWeights(v: unknown): RichnessWeights {
 // Helpers : convertir modèles en tarifs (utilisés par costClaude/Mistral)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getCostRatesForProvider(provider: 'claude' | 'mistral'): Promise<{ inputEur: number; outputEur: number } | null> {
-  const models = await loadAiModels()
-  const m = models.find(x => x.provider === provider && x.is_active)
-  if (!m) return null
-  return { inputEur: m.input_cost_per_1m_eur, outputEur: m.output_cost_per_1m_eur }
-}
-
 // Pour rester compatible avec les tests existants qui appellent
 // computeSourcingRichness avec une signature sans config DB, on expose
 // aussi les pondérations par défaut.
 export function defaultRichnessWeights(): RichnessWeights {
   return { ...DEFAULT_RICHNESS_WEIGHTS }
-}
-
-export function defaultSettings(): SourcingSettings {
-  return { ...DEFAULT_SETTINGS, richnessWeights: { ...DEFAULT_RICHNESS_WEIGHTS } }
 }

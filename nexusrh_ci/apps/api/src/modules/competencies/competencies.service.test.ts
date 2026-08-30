@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  BLOOM_LEVELS, BLOOM_KEYS, isValidBloom, clampBloom, compareRequirements,
+  BLOOM_LEVELS,
+  BLOOM_KEYS,
+  clampBloom,
+  compareRequirements,
   type RequirementItem,
 } from './competencies.service.js'
 
@@ -9,14 +12,6 @@ describe('competencies.service — Bloom', () => {
     expect(BLOOM_LEVELS).toEqual([1, 2, 3, 4, 5, 6])
     expect(BLOOM_KEYS[1]).toBe('remember')
     expect(BLOOM_KEYS[6]).toBe('create')
-  })
-  it('isValidBloom', () => {
-    expect(isValidBloom(1)).toBe(true)
-    expect(isValidBloom(6)).toBe(true)
-    expect(isValidBloom(0)).toBe(false)
-    expect(isValidBloom(7)).toBe(false)
-    expect(isValidBloom(2.5)).toBe(false)
-    expect(isValidBloom('3')).toBe(false)
   })
   it('clampBloom borne dans [1,6]', () => {
     expect(clampBloom(0)).toBe(1)

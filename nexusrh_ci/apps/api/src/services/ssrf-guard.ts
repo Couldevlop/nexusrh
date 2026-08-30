@@ -231,12 +231,6 @@ export async function assertSafeSmtpHost(host: string): Promise<void> {
   }
 }
 
-/** Variante non-levante (booléen) de `assertSafeSmtpHost`. */
-export async function isSafeSmtpHost(host: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  try { await assertSafeSmtpHost(host); return { ok: true } }
-  catch (e) { return { ok: false, reason: (e as Error).message } }
-}
-
 /**
  * Alias générique : valider un hôte:port sortant (hors URL http) revient à la
  * même politique que pour le SMTP. Conservé pour les appelants qui raisonnent en

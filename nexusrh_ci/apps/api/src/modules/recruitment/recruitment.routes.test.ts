@@ -55,6 +55,17 @@ vi.mock('../../services/sourcing-countries.service.js', () => ({
   })),
 }))
 
+// Plateformes de sourcing : administrées en base (platform.sourcing_platforms)
+// et lues via ce service. Mockées ici pour que les séquences de `queryMock`
+// des tests restent lisibles — la lecture réelle est couverte par
+// sourcing-config.service.test.ts.
+vi.mock('../../services/sourcing-config.service.js', () => ({
+  loadSourcingPlatforms: vi.fn(async () => [
+    { name: 'LinkedIn' }, { name: 'Africawork' },
+    { name: 'Emploi.ci' }, { name: 'Jobberman' },
+  ]),
+}))
+
 import authPlugin from '../../plugins/auth.js'
 import recruitmentRoutes from './recruitment.routes.js'
 import {

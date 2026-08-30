@@ -45,25 +45,12 @@ const STATUS_TRANSITIONS: Record<DisciplineStatus, DisciplineStatus[]> = {
   cancelled: [],
 }
 
-export function isValidType(t: unknown): t is DisciplineType {
-  return typeof t === 'string' && (DISCIPLINE_TYPES as readonly string[]).includes(t)
-}
-
 export function isValidStatus(s: unknown): s is DisciplineStatus {
   return typeof s === 'string' && (DISCIPLINE_STATUSES as readonly string[]).includes(s)
-}
-
-export function severityOf(t: DisciplineType): number {
-  return SEVERITY[t]
 }
 
 /** Vrai si la transition de statut est autorisée (idempotent : from===to OK). */
 export function canTransition(from: DisciplineStatus, to: DisciplineStatus): boolean {
   if (from === to) return true
   return STATUS_TRANSITIONS[from].includes(to)
-}
-
-/** États terminaux : aucune modification de statut possible. */
-export function isTerminal(s: DisciplineStatus): boolean {
-  return STATUS_TRANSITIONS[s].length === 0
 }

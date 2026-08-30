@@ -15,6 +15,7 @@ import {
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
+import { loadSourcingPlatforms } from '../../services/sourcing-config.service.js'
 import { generateHRDocument, type HrDocumentType } from '../../services/hr-document-generator.service.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
@@ -1634,9 +1635,6 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         max_profiles?: number
       }
       const model: AiModelChoice = body.model === 'mistral' ? 'mistral' : 'claude'
-      const platforms = Array.isArray(body.platforms) && body.platforms.length
-        ? body.platforms
-        : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
       // OWASP A01 — pays imposés côté serveur : un tenant mono-pays ne peut
       // sourcer que dans SON pays (le `countries` du client est ignoré). Multi-
       // pays : sélection client validée.
@@ -1655,6 +1653,16 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
+        // Plateformes de sourcing : la liste administrée par le super_admin
+        // (platform.sourcing_platforms, filtrée sur is_active, mise en cache)
+        // fait foi. Elle remplace un tableau écrit EN DUR qui contredisait la
+        // règle du produit — « sourcing 100 % paramétrable, aucune valeur en
+        // dur ». Le chargeur porte son propre repli si la table est vide.
+        // Résolue APRÈS la garde 404 : inutile d'interroger la base pour une
+        // offre qui n'existe pas.
+        const platforms = Array.isArray(body.platforms) && body.platforms.length
+          ? body.platforms
+          : (await loadSourcingPlatforms()).map((p) => p.name)
         const result = await sourceProfiles(model, job, platforms, maxProfiles, countries, await resolveAiCreds(schema))
 
         // Persistance des profils générés dans le cache `sourced_profiles` afin que
@@ -1972,9 +1980,6 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         countries?:    string[]
         max_profiles?: number
       }
-      const platforms = Array.isArray(body.platforms) && body.platforms.length
-        ? body.platforms
-        : ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
       // OWASP A01 — pays imposés côté serveur : un tenant mono-pays ne peut
       // sourcer que dans SON pays (le `countries` du client est ignoré). Multi-
       // pays : sélection client validée.
@@ -2005,6 +2010,16 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const job = jobRes.rows[0]
         if (!job) return reply.status(404).send({ error: 'Offre introuvable' })
 
+        // Plateformes de sourcing : la liste administrée par le super_admin
+        // (platform.sourcing_platforms, filtrée sur is_active, mise en cache)
+        // fait foi. Elle remplace un tableau écrit EN DUR qui contredisait la
+        // règle du produit — « sourcing 100 % paramétrable, aucune valeur en
+        // dur ». Le chargeur porte son propre repli si la table est vide.
+        // Résolue APRÈS la garde 404 : inutile d'interroger la base pour une
+        // offre qui n'existe pas.
+        const platforms = Array.isArray(body.platforms) && body.platforms.length
+          ? body.platforms
+          : (await loadSourcingPlatforms()).map((p) => p.name)
         const result = await sourceProfilesCompare(job, platforms, maxProfiles, countries, creds)
 
         auditTenant(schema, { userId: request.user.sub, action: 'recruitment.source_compare', entity: 'recruitment_job', entityId: id, changes: {

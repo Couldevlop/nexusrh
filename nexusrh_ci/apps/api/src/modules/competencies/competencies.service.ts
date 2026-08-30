@@ -18,10 +18,6 @@ export const BLOOM_KEYS: Record<number, string> = {
   1: 'remember', 2: 'understand', 3: 'apply', 4: 'analyze', 5: 'evaluate', 6: 'create',
 }
 
-export function isValidBloom(n: unknown): n is BloomLevel {
-  return typeof n === 'number' && Number.isInteger(n) && n >= BLOOM_MIN && n <= BLOOM_MAX
-}
-
 /** Borne une valeur dans [1,6] (sécurise les entrées avant écriture). */
 export function clampBloom(n: number): BloomLevel {
   return Math.min(BLOOM_MAX, Math.max(BLOOM_MIN, Math.round(n))) as BloomLevel

@@ -49,9 +49,6 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: 'documents_rh', label: 'Remise des documents RH (certificat, solde)', done: false },
 ]
 
-export function isValidDepartureType(t: unknown): t is DepartureType {
-  return typeof t === 'string' && (DEPARTURE_TYPES as readonly string[]).includes(t)
-}
 export function isValidStatus(s: unknown): s is OffboardingStatus {
   return typeof s === 'string' && (OFFBOARDING_STATUSES as readonly string[]).includes(s)
 }

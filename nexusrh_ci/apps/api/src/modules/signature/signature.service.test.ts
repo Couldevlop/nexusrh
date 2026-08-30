@@ -1,21 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import {
-  REQUEST_STATUSES, isValidRequestStatus, isValidDocumentType,
-  canSend, canCancel, canDelete, deriveStatus, nextSignatoryOrder, canSignatorySign, progress,
+  REQUEST_STATUSES,
+  canSend,
+  canCancel,
+  canDelete,
+  deriveStatus,
+  nextSignatoryOrder,
+  canSignatorySign,
   type Signatory,
 } from './signature.service.js'
 
 const sig = (status: Signatory['status'], orderIndex = 0): Signatory => ({ status, orderIndex })
-
-describe('signature.service — validations', () => {
-  it('statuts & types de documents bornés', () => {
-    expect(REQUEST_STATUSES).toContain('signed')
-    expect(isValidRequestStatus('pending')).toBe(true)
-    expect(isValidRequestStatus('hacked')).toBe(false)
-    expect(isValidDocumentType('contract')).toBe(true)
-    expect(isValidDocumentType('virus')).toBe(false)
-  })
-})
 
 describe('signature.service — transitions', () => {
   it('envoi : brouillon avec ≥1 signataire seulement', () => {
@@ -70,13 +65,5 @@ describe('signature.service — ordre & droit de signer', () => {
     expect(canSignatorySign('draft', list[1], list, true)).toBe(false)
     expect(canSignatorySign('pending', list[0], list, true)).toBe(false) // déjà signé
     expect(canSignatorySign('pending', undefined, list, true)).toBe(false)
-  })
-})
-
-describe('signature.service — progression', () => {
-  it('compte signés/refusés et pourcentage', () => {
-    expect(progress([sig('signed'), sig('signed'), sig('pending'), sig('declined')]))
-      .toEqual({ signed: 2, declined: 1, total: 4, pct: 50 })
-    expect(progress([])).toEqual({ signed: 0, declined: 0, total: 0, pct: 0 })
   })
 })

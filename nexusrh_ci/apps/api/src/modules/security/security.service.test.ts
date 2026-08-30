@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
-  TENANT_ROLES, isValidTenantRole, SSO_PROVIDERS, isValidSsoProvider,
-  emailDomain, isSsoManagedEmail, resolveRoleFromGroups, canJitProvision,
-  isValidSiemTransport, isValidSiemFormat, categorizeAction, shouldForward, formatEvent,
-  type GroupRoleMapping, type SecurityEvent,
+  TENANT_ROLES,
+  isValidTenantRole,
+  SSO_PROVIDERS,
+  categorizeAction,
+  shouldForward,
+  formatEvent,
+  type GroupRoleMapping,
+  type SecurityEvent,
 } from './security.service.js'
 
 describe('security.service — validations bornées (A03)', () => {
@@ -11,47 +15,6 @@ describe('security.service — validations bornées (A03)', () => {
     expect(isValidTenantRole('admin')).toBe(true)
     expect(isValidTenantRole('super_admin')).toBe(false)
     expect(TENANT_ROLES).toContain('dg')
-  })
-  it('fournisseurs SSO + transports/formats SIEM', () => {
-    expect(SSO_PROVIDERS).toEqual(['oidc', 'saml', 'ldap'])
-    expect(isValidSsoProvider('oidc')).toBe(true)
-    expect(isValidSsoProvider('telnet')).toBe(false)
-    expect(isValidSiemTransport('webhook')).toBe(true)
-    expect(isValidSiemTransport('ftp')).toBe(false)
-    expect(isValidSiemFormat('cef')).toBe(true)
-    expect(isValidSiemFormat('xml')).toBe(false)
-  })
-})
-
-describe('security.service — SSO domaine & rôle', () => {
-  it('extraction du domaine e-mail', () => {
-    expect(emailDomain('jean.kouassi@SOTRA.CI')).toBe('sotra.ci')
-    expect(emailDomain('invalide')).toBeNull()
-    expect(emailDomain('@x.com')).toBeNull()
-    expect(emailDomain('a@')).toBeNull()
-  })
-  it('domaine géré par le SSO', () => {
-    expect(isSsoManagedEmail(['sotra.ci'], 'a@sotra.ci')).toBe(true)
-    expect(isSsoManagedEmail(['sotra.ci'], 'a@gmail.com')).toBe(false)
-    expect(isSsoManagedEmail([], 'a@sotra.ci')).toBe(false)
-  })
-  it('mapping groupes → rôle : premier match gagne, sinon défaut', () => {
-    const maps: GroupRoleMapping[] = [
-      { group: 'RH-Admins', role: 'admin' },
-      { group: 'Managers', role: 'manager' },
-    ]
-    expect(resolveRoleFromGroups(maps, ['managers'], 'employee')).toBe('manager')
-    expect(resolveRoleFromGroups(maps, ['RH-Admins', 'Managers'], 'employee')).toBe('admin')
-    expect(resolveRoleFromGroups(maps, ['autre'], 'readonly')).toBe('readonly')
-  })
-  it('mapping vers un rôle invalide est ignoré (A01)', () => {
-    const maps = [{ group: 'g', role: 'super_admin' as unknown as GroupRoleMapping['role'] }]
-    expect(resolveRoleFromGroups(maps, ['g'], 'employee')).toBe('employee')
-  })
-  it('JIT : seulement si activé ET domaine géré', () => {
-    expect(canJitProvision({ jitEnabled: true, domains: ['sotra.ci'], email: 'x@sotra.ci' })).toBe(true)
-    expect(canJitProvision({ jitEnabled: false, domains: ['sotra.ci'], email: 'x@sotra.ci' })).toBe(false)
-    expect(canJitProvision({ jitEnabled: true, domains: ['sotra.ci'], email: 'x@autre.com' })).toBe(false)
   })
 })
 

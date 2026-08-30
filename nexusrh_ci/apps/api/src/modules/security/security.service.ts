@@ -20,64 +20,13 @@ export function isValidTenantRole(r: unknown): r is TenantRole {
 // ── SSO ──────────────────────────────────────────────────────────────────────
 export const SSO_PROVIDERS = ['oidc', 'saml', 'ldap'] as const
 export type SsoProvider = (typeof SSO_PROVIDERS)[number]
-export function isValidSsoProvider(p: unknown): p is SsoProvider {
-  return typeof p === 'string' && (SSO_PROVIDERS as readonly string[]).includes(p)
-}
-
-/** Extrait le domaine (minuscule) d'une adresse e-mail, ou null si invalide. */
-export function emailDomain(email: string): string | null {
-  const at = email.lastIndexOf('@')
-  if (at <= 0 || at === email.length - 1) return null
-  return email.slice(at + 1).trim().toLowerCase()
-}
-
-/** L'adresse relève-t-elle d'un domaine géré par le SSO du tenant ? */
-export function isSsoManagedEmail(domains: string[], email: string): boolean {
-  const d = emailDomain(email)
-  if (!d) return false
-  return domains.map((x) => x.trim().toLowerCase()).filter(Boolean).includes(d)
-}
-
 export interface GroupRoleMapping { group: string; role: TenantRole }
-
-/**
- * Détermine le rôle NexusRH à partir des groupes renvoyés par l'IdP.
- * Le PREMIER mapping correspondant gagne (ordre = priorité) ; à défaut, le rôle
- * par défaut. Un rôle de mapping invalide est ignoré (OWASP A03/A01).
- */
-export function resolveRoleFromGroups(
-  mappings: GroupRoleMapping[],
-  idpGroups: string[],
-  defaultRole: TenantRole,
-): TenantRole {
-  const groups = new Set(idpGroups.map((g) => g.trim().toLowerCase()).filter(Boolean))
-  for (const m of mappings) {
-    if (isValidTenantRole(m.role) && groups.has(m.group.trim().toLowerCase())) return m.role
-  }
-  return defaultRole
-}
-
-/**
- * Un utilisateur inconnu peut-il être créé automatiquement (JIT) ? Uniquement si
- * le provisionnement à la volée est activé ET que l'e-mail relève d'un domaine géré.
- */
-export function canJitProvision(opts: { jitEnabled: boolean; domains: string[]; email: string }): boolean {
-  return opts.jitEnabled && isSsoManagedEmail(opts.domains, opts.email)
-}
 
 // ── SIEM ──────────────────────────────────────────────────────────────────────
 export const SIEM_TRANSPORTS = ['webhook', 'syslog_http'] as const
 export type SiemTransport = (typeof SIEM_TRANSPORTS)[number]
-export function isValidSiemTransport(t: unknown): t is SiemTransport {
-  return typeof t === 'string' && (SIEM_TRANSPORTS as readonly string[]).includes(t)
-}
-
 export const SIEM_FORMATS = ['json', 'cef'] as const
 export type SiemFormat = (typeof SIEM_FORMATS)[number]
-export function isValidSiemFormat(f: unknown): f is SiemFormat {
-  return typeof f === 'string' && (SIEM_FORMATS as readonly string[]).includes(f)
-}
-
 // Catégories d'événements de sécurité transmissibles à un SIEM.
 export const EVENT_CATEGORIES = ['auth', 'rbac', 'data_access', 'config', 'export', 'admin'] as const
 export type EventCategory = (typeof EVENT_CATEGORIES)[number]

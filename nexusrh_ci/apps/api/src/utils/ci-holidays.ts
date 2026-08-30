@@ -51,8 +51,3 @@ export function joursFeriesCI(year: number): Set<string> {
   addOffset(50) // Lundi de Pentecôte
   return set
 }
-
-/** Le jour donné (Date) est-il férié en CI ? */
-export function estJourFerieCI(d: Date): boolean {
-  return joursFeriesCI(d.getFullYear()).has(ymd(d))
-}

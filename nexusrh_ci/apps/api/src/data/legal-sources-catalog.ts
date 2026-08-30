@@ -211,8 +211,3 @@ export const LEGAL_SOURCES_CATALOG: OfficialLegalSource[] = [
     lastVerified: '2026-05-16',
   },
 ]
-
-/** Liste les sources par pays — utilitaire frontend */
-export function getSourcesByCountry(countryCode: string): OfficialLegalSource[] {
-  return LEGAL_SOURCES_CATALOG.filter(s => s.countryCode === countryCode.toUpperCase())
-}

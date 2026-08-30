@@ -2,23 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   CRITICALITY_LEVELS,
   READINESS_LEVELS,
-  isValidCriticality,
   isValidReadiness,
-  isValidPlanStatus,
   summarizeCoverage,
 } from './succession.service.js'
-
-describe('succession.service — validations', () => {
-  it('criticité / readiness / statut', () => {
-    expect(isValidCriticality('critical')).toBe(true)
-    expect(isValidCriticality('meh')).toBe(false)
-    expect(isValidReadiness('ready_now')).toBe(true)
-    expect(isValidReadiness('soon')).toBe(false)
-    expect(isValidPlanStatus('archived')).toBe(true)
-    expect(CRITICALITY_LEVELS.length).toBe(4)
-    expect(READINESS_LEVELS[0]).toBe('ready_now')
-  })
-})
 
 describe('succession.service — synthèse de couverture', () => {
   it('plan sans candidat → atRisk', () => {

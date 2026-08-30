@@ -158,37 +158,14 @@ describe('Invariants d’architecture — pas de recopie des primitives partagé
  * problème se corrige à moindre coût.
  */
 const DEAD_EXPORTS_BASELINE = new Set<string>([
-  // Prédicats de validation exportés pour test ; la route valide via Zod.
-  'modules/competencies/competencies.service.ts::isValidBloom',
-  'modules/discipline/discipline.service.ts::isValidType',
-  'modules/discipline/discipline.service.ts::severityOf',
-  'modules/discipline/discipline.service.ts::isTerminal',
-  'modules/offboarding/offboarding.service.ts::isValidDepartureType',
-  'modules/sage/sage.service.ts::isValidExportKind',
-  'modules/signature/signature.service.ts::isValidRequestStatus',
-  'modules/signature/signature.service.ts::isValidDocumentType',
-  'modules/signature/signature.service.ts::progress',
-  'modules/succession/succession.service.ts::isValidCriticality',
-  'modules/succession/succession.service.ts::isValidPlanStatus',
-  // Module SSO : la configuration existe, le login fédéré n'est pas câblé.
-  'modules/security/security.service.ts::isValidSsoProvider',
-  'modules/security/security.service.ts::resolveRoleFromGroups',
-  'modules/security/security.service.ts::canJitProvision',
-  'modules/security/security.service.ts::isValidSiemTransport',
-  'modules/security/security.service.ts::isValidSiemFormat',
-  // Évaluateur de rubriques, documenté comme pas encore branché au moteur.
+  // SEULE exception conservée, et pour une raison précise : `payroll_rules.formula`
+  // est provisionnée en base (16 rubriques préconfigurées). Supprimer son unique
+  // évaluateur laisserait ces données sans lecteur — exactement le motif « écrit,
+  // jamais lu » que cet invariant combat. La fonction est par ailleurs le
+  // remplaçant durci d'un `new Function()` (constat S-06 de l'audit du 30/08) :
+  // la retirer déferait un correctif de sécurité livré en production.
+  // À câbler le jour où le moteur de paie devient piloté par les règles.
   'services/payroll-engine-ci.ts::evalFormule',
-  // Variante non-levante d'un contrôle SSRF réellement appliqué ailleurs :
-  // assertSafeSmtpHost / assertSafeOutboundHost sont bien utilisés.
-  'services/ssrf-guard.ts::isSafeSmtpHost',
-  // Configuration du sourcing : la lecture passe par d'autres chemins.
-  'services/sourcing-config.service.ts::loadSourcingPlatforms',
-  'services/sourcing-config.service.ts::getCostRatesForProvider',
-  'services/sourcing-config.service.ts::defaultSettings',
-  'utils/ci-holidays.ts::estJourFerieCI',
-  // Utilisées nulle part, pas même en test.
-  'data/legal-sources-catalog.ts::getSourcesByCountry',
-  'modules/bank-transfer/bank-file.service.ts::isSpecComplete',
 ])
 
 /**
