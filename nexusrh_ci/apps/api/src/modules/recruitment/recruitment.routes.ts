@@ -19,6 +19,7 @@ import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
 import { mintPublicInterviewToken } from '../interview-sim/interview-sim.routes.js'
 import { getModulesForSchema } from '../../services/tenant-modules.service.js'
+import screeningRoutes from './screening.routes.js'
 import { extractCvText, isMagicByteConsistent } from '../../services/cv-extraction.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
@@ -2026,6 +2027,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       }
     },
   })
+
+  // Pré-tri des candidatures — fichier séparé (ce module dépasse 2 000 lignes).
+  // Le préfixe /recruitment est déjà appliqué par app.ts au plugin parent.
+  await fastify.register(screeningRoutes)
 }
 
 export default recruitmentRoutes
