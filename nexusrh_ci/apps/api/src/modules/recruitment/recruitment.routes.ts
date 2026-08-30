@@ -7,7 +7,11 @@ import {
   type AiModelChoice, type JobContext, type SourcingContext,
   type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
-import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
+import {
+  sanitizeCriteria, evaluateScreening, combineVerdicts,
+  sanitizeQuestions, evaluateQuestions,
+  type CandidateExtracted,
+} from '../../services/recruitment-screening.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
@@ -16,6 +20,7 @@ import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { pool } from '../../db/pool.js'
 import { mintPublicInterviewToken } from '../interview-sim/interview-sim.routes.js'
 import { getModulesForSchema } from '../../services/tenant-modules.service.js'
+import screeningRoutes from './screening.routes.js'
 import { extractCvText, isMagicByteConsistent } from '../../services/cv-extraction.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
@@ -35,6 +40,8 @@ const publicApplySchema = z.object({
   phone:        z.string().max(30).optional(),
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
+  /** Réponses aux questions éliminatoires de l'offre, indexées par id de question. */
+  answers:      z.record(z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
 })
 
 // Limite de taille du CV déposé via la page carrières publique (5 Mo) — plus
@@ -542,7 +549,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
-      const { job_id, stage } = request.query as Record<string, string>
+      const { job_id, stage, pending } = request.query as Record<string, string>
       let sql = `SELECT a.*, rj.title AS job_title
                  FROM "${schema}".applications a
                  JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
@@ -551,6 +558,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       let idx = 1
       if (job_id) { sql += ` AND a.job_id = $${idx++}`; params.push(job_id) }
       if (stage)  { sql += ` AND a.stage = $${idx++}`; params.push(stage) }
+      // ── Barrière du pré-tri (RGPD art. 22) ────────────────────────────────
+      // Le pipeline n'affiche que des dossiers tranchés par un HUMAIN. Un
+      // verdict machine ne fait entrer personne : `screening_decision` est la
+      // seule porte. `?pending=true` sert la file de revue, qui montre l'inverse.
+      sql += pending === 'true'
+        ? ` AND a.screening_decision IS NULL`
+        : ` AND a.screening_decision IS NOT NULL`
       sql += ` ORDER BY a.created_at DESC`
       try {
         const res = await pool.query(sql, params)
@@ -1021,11 +1035,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const criteriaFocus = body.criteria?.focus?.trim() || null
 
       try {
-        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null }>(
+        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null; screening_criteria: unknown }>(
           `SELECT title, description, requirements, contract_type, location,
                   salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
                   contract_type AS "contractType",
-                  ai_focus_text
+                  ai_focus_text, screening_criteria
              FROM "${schema}".recruitment_jobs WHERE id = $1`,
           [jobId],
         )
@@ -1052,8 +1066,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           cv_mime_type: string | null
           first_name: string
           last_name: string
+          expected_salary: number | null
         }>(
-          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name
+          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name,
+                  expected_salary
              FROM "${schema}".applications
             WHERE job_id = $1
               AND stage = ANY($2::text[])
@@ -1120,6 +1136,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // Credentials IA résolus une seule fois pour tout le batch (clé tenant ou
         // repli plateforme) — évite une lecture ai_settings par candidat.
         const creds = await resolveAiCreds(schema)
+
+        // Critères de pré-tri de l'offre, lus UNE FOIS pour tout le lot.
+        // Jusqu'ici ils étaient enregistrés par l'interface puis jamais relus :
+        // `evaluateScreening` n'était appelé par aucun code de production.
+        const criteria = sanitizeCriteria(job.screening_criteria ?? {})
+
         for (const c of candidates) {
           const cvText = c.cv_text ?? c.cover_letter ?? ''
           if (!cvText || cvText.trim().length < 50) {
@@ -1129,6 +1151,22 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           try {
             const pdfFallback = c.cv_mime_type === 'application/pdf' ? c.cv_blob : null
             const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback, creds)
+
+            // L'IA EXTRAIT (flou, subjectif) ; les règles DÉCIDENT (objectif,
+            // reproductible, explicable). `CvExtractedData` a exactement la forme
+            // de `CandidateExtracted`, au champ `expectedSalary` près — lequel
+            // vient de la candidature, pas du modèle.
+            const ex = result.extracted ?? null
+            const extracted: CandidateExtracted = {
+              ...(ex ?? {}),
+              expectedSalary: c.expected_salary ?? null,
+            }
+            const cvVerdict = evaluateScreening(criteria, extracted, result.score)
+            // Pas de questions ici : elles sont évaluées au dépôt. Le verdict
+            // reste une PROPOSITION — aucune candidature n'est rejetée sans
+            // décision humaine (cf. screening_decision).
+            const combined = combineVerdicts({ failedRules: [] }, cvVerdict)
+
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
@@ -1143,6 +1181,14 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                   ai_signals_used = $10,
                   ai_demographic_risk_note = $11,
                   ai_analyzed_at = now(),
+                  ai_years_experience = $13,
+                  ai_skills = $14,
+                  ai_diploma = $15,
+                  ai_location = $16,
+                  ai_languages = $17,
+                  screening_verdict = $18,
+                  screening_failed_rules = $19,
+                  screened_at = now(),
                   updated_at = now()
               WHERE id = $12
             `, [
@@ -1156,6 +1202,18 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               JSON.stringify(result.signalsUsed ?? []),
               result.demographicRiskNote ?? null,
               c.id,
+              // Extraction structurée PERSISTÉE : ces colonnes existaient depuis
+              // longtemps et n'étaient écrites par aucun code — l'IA extrayait
+              // ces données puis on les jetait. Sans elles, le recalcul des
+              // compteurs (screening/preview) n'aurait rien à évaluer et
+              // déclarerait tout le monde conforme.
+              ex?.yearsExperience ?? null,
+              JSON.stringify(ex?.skills ?? []),
+              ex?.highestDiploma ?? null,
+              ex?.location ?? null,
+              JSON.stringify(ex?.languages ?? []),
+              combined.verdict,
+              JSON.stringify(combined.failedRules),
             ])
             analyzed++
             results.push({
@@ -1336,7 +1394,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                currency, description, requirements,
                reference, experience_level, job_level, sector, required_education,
                benefits, work_mode, start_date, recruitment_process,
-               created_at, published_at
+               created_at, published_at, screening_questions
           FROM "${t.schema_name}".recruitment_jobs
           WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')
           LIMIT 1
@@ -1363,6 +1421,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
       } catch { /* non bloquant : l'offre reste servie sans le bouton entraînement */ }
 
+      // Le candidat voit les LIBELLÉS des questions, jamais les seuils : lire
+      // `{ op: 'min', value: 5 }` lui dirait quoi répondre. On retire donc
+      // `rule` et `knockout` de la projection publique.
+      const { screening_questions: rawQuestions, ...jobPublic } = job.rows[0] as Record<string, unknown>
+      const screeningQuestions = sanitizeQuestions(rawQuestions ?? [])
+        .map(({ id, label, type, options, required }) => ({ id, label, type, options, required }))
+
       return reply.send({
         tenant: {
           name: t.name, slug: t.slug, city: t.city,
@@ -1370,7 +1435,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: t.secondary_color ?? '#F48C06',
           logoUrl: t.logo_url,
         },
-        data: { ...job.rows[0], interviewSim },
+        data: { ...jobPublic, screeningQuestions, interviewSim },
       })
     },
   })
@@ -1457,7 +1522,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureRecruitmentSchemaMigrated(schema)
 
       const job = await pool.query(
-        `SELECT id, title FROM "${schema}".recruitment_jobs
+        `SELECT id, title, screening_questions FROM "${schema}".recruitment_jobs
           WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')`,
         [jobId],
       )
@@ -1497,17 +1562,39 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // ── Questions éliminatoires : évaluées DÈS le dépôt ─────────────────────
+      // Déterministe, instantané, sans aucun appel IA. C'est le filtre principal ;
+      // les règles sur CV ne feront que le compléter, après analyse.
+      const questions = sanitizeQuestions(job.rows[0].screening_questions ?? [])
+      const answers = (body.answers ?? {}) as Record<string, unknown>
+      const manquantes = questions.filter((q) => q.required
+        && (answers[q.id] === undefined || answers[q.id] === null || answers[q.id] === ''))
+      if (manquantes.length > 0) {
+        return reply.status(400).send({
+          error: 'Réponses obligatoires manquantes',
+          details: manquantes.map((q) => ({ path: q.id, message: q.label })),
+        })
+      }
+      // Le verdict est une PROPOSITION : le dossier part en file de revue
+      // (stage 'new', screening_decision NULL). Il n'est jamais auto-rejeté.
+      const screening = combineVerdicts(evaluateQuestions(questions, answers), null)
+
       const res = await pool.query<{ id: string }>(`
         INSERT INTO "${schema}".applications
           (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
            cv_blob, cv_mime_type, cv_filename, cv_size_bytes, cv_url, expected_salary,
-           stage, source)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page')
+           stage, source,
+           screening_answers, screening_verdict, screening_failed_rules, screened_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page',
+                $14,$15,$16,now())
         RETURNING id
       `, [
         jobId, body.first_name, body.last_name, body.email,
         body.phone ?? null, body.cover_letter ?? null, cvText,
         cvBlob, cvMime, cvFilename, cvSize, cvUrl, expectedSalary,
+        JSON.stringify(answers),
+        screening.verdict,
+        JSON.stringify(screening.failedRules),
       ])
 
       // Audit log non-bloquant (OWASP A09). Candidature ANONYME : pas d'auteur
@@ -1979,6 +2066,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       }
     },
   })
+
+  // Pré-tri des candidatures — fichier séparé (ce module dépasse 2 000 lignes).
+  // Le préfixe /recruitment est déjà appliqué par app.ts au plugin parent.
+  await fastify.register(screeningRoutes)
 }
 
 export default recruitmentRoutes

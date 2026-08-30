@@ -398,6 +398,36 @@
     "knockoutEnabled": "Activer les règles éliminatoires (décocher = critères indicatifs, seul le seuil de score reste actif)",
     "saved": "Enregistré ✓",
     "saveError": "Erreur d'enregistrement",
-    "saveCriteria": "Enregistrer les critères"
+    "saveCriteria": "Enregistrer les critères",
+    "tab": "Pré-tri",
+    "loading": "Chargement de la file…",
+    "countersTitle": "Vivier après pré-tri",
+    "counters": {
+      "total": "Reçues",
+      "pass": "Conformes",
+      "flagged": "Signalées"
+    },
+    "byRule": "Critères les plus filtrants",
+    "discriminationWarning": "Ne fondez aucune question sur l’âge, le sexe, l’origine, la situation de famille, l’état de santé, les convictions religieuses ou l’appartenance syndicale. Ces critères sont interdits à l’embauche.",
+    "verdict": {
+      "pass": "Conforme",
+      "flagged": "Signalé"
+    },
+    "failedRules": "Critères non remplis",
+    "answers": "Réponses au questionnaire",
+    "noAnswer": "non renseigné",
+    "yes": "Oui",
+    "no": "Non",
+    "hasCv": "CV joint",
+    "keep": "Retenir",
+    "dismiss": "Écarter",
+    "reason": "Motif de la décision",
+    "reasonPlaceholder": "Expliquez pourquoi vous vous écartez du résultat du pré-tri…",
+    "reasonRequired": "Un motif d’au moins 10 caractères est requis : votre décision contredit le résultat du pré-tri. Il sera conservé dans la piste d’audit.",
+    "errorDecision": "La décision n’a pas pu être enregistrée.",
+    "previous": "Dossier précédent",
+    "next": "Dossier suivant",
+    "empty": "Aucun dossier en attente",
+    "emptyHint": "Toutes les candidatures de cette offre ont été tranchées. Les candidats retenus sont dans le pipeline."
   }
 }

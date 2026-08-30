@@ -307,3 +307,144 @@ export function sanitizeCriteria(input: unknown): ScreeningCriteria {
     knockoutEnabled:    o['knockoutEnabled'] !== false,
   }
 }
+
+// ── Questions éliminatoires (posées au dépôt) ────────────────────────────────
+//
+// Pratique n°1 des grands ATS (Greenhouse, Lever, Workable, SmartRecruiters) :
+// le filtre dur porte sur ce que le candidat DÉCLARE de façon structurée, jamais
+// sur ce qu'un modèle a inféré d'un PDF. Trois bénéfices cumulés : pas d'erreur
+// d'extraction, aucun appel IA (donc gratuit et instantané), et une exclusion
+// justifiable — on écarte sur une déclaration du candidat, pas sur une lecture
+// automatique de son CV.
+
+export type QuestionRule =
+  | { op: 'is';  value: boolean }
+  | { op: 'min'; value: number }
+  | { op: 'max'; value: number }
+  | { op: 'in';  value: string[] }
+
+export interface ScreeningQuestion {
+  /** Identifiant stable — sert de clé dans `applications.screening_answers`. */
+  id:       string
+  label:    string
+  type:     'boolean' | 'number' | 'choice'
+  /** Valeurs proposées (type 'choice' uniquement). */
+  options?: string[]
+  /** Réponse obligatoire au dépôt. */
+  required: boolean
+  /** false = question informative : n'exclut jamais. */
+  knockout: boolean
+  rule?:    QuestionRule
+}
+
+const MAX_QUESTIONS = 15
+const MAX_LABEL     = 300
+const MAX_OPTIONS   = 20
+
+/** Une règle est-elle applicable au type de la question ? */
+function ruleMatchesType(
+  type: ScreeningQuestion['type'],
+  rule: QuestionRule | undefined,
+): boolean {
+  if (!rule) return false
+  if (type === 'boolean') return rule.op === 'is'  && typeof rule.value === 'boolean'
+  if (type === 'number')  return (rule.op === 'min' || rule.op === 'max') && typeof rule.value === 'number'
+  return rule.op === 'in' && Array.isArray(rule.value)
+}
+
+/**
+ * Normalise et borne une définition de questions venue du client (jsonb libre).
+ * Même rôle que `sanitizeCriteria` pour les règles sur CV.
+ */
+export function sanitizeQuestions(input: unknown): ScreeningQuestion[] {
+  if (!Array.isArray(input)) return []
+  const out: ScreeningQuestion[] = []
+  for (const raw of input.slice(0, MAX_QUESTIONS)) {
+    if (!raw || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+
+    const type = r['type']
+    if (type !== 'boolean' && type !== 'number' && type !== 'choice') continue
+
+    const idRaw = typeof r['id'] === 'string' ? r['id'].trim() : ''
+    const label = typeof r['label'] === 'string' ? r['label'].trim().slice(0, MAX_LABEL) : ''
+    if (!idRaw || !label) continue
+
+    const rule = r['rule'] as QuestionRule | undefined
+    // Un knockout sans règle APPLICABLE ne peut rien exclure. Plutôt que de
+    // laisser un critère inopérant se croire actif — et donner au recruteur
+    // l'illusion d'un filtre — on le dégrade en question informative.
+    const knockout = r['knockout'] === true && ruleMatchesType(type, rule)
+
+    const options = type === 'choice' && Array.isArray(r['options'])
+      ? r['options'].filter((o): o is string => typeof o === 'string').slice(0, MAX_OPTIONS)
+      : undefined
+
+    out.push({
+      id: idRaw.slice(0, 64),
+      label,
+      type,
+      required: r['required'] === true,
+      knockout,
+      ...(options ? { options } : {}),
+      ...(knockout && rule ? { rule } : {}),
+    })
+  }
+  return out
+}
+
+/**
+ * Évalue les réponses du candidat contre les questions éliminatoires.
+ *
+ * OWASP A04 — même règle de prudence que `evaluateScreening` : une réponse
+ * ABSENTE ne provoque jamais d'exclusion, elle bascule le dossier en revue
+ * humaine. Mieux vaut un dossier de plus à relire qu'un candidat valable écarté
+ * sur une donnée qu'il n'a simplement pas renseignée.
+ */
+export function evaluateQuestions(
+  questions: ScreeningQuestion[],
+  answers: Record<string, unknown>,
+): { failedRules: string[] } {
+  const failedRules: string[] = []
+
+  for (const q of questions) {
+    if (!q.knockout || !q.rule || !ruleMatchesType(q.type, q.rule)) continue
+
+    const a = answers[q.id]
+    if (a === undefined || a === null || a === '') continue   // donnée absente → revue
+
+    const rule = q.rule
+    if (rule.op === 'is' && typeof a === 'boolean' && a !== rule.value) {
+      failedRules.push(`${q.label} — réponse attendue : ${rule.value ? 'oui' : 'non'}`)
+    } else if (rule.op === 'min' && typeof a === 'number' && a < rule.value) {
+      failedRules.push(`${q.label} — minimum requis : ${rule.value} (déclaré : ${a})`)
+    } else if (rule.op === 'max' && typeof a === 'number' && a > rule.value) {
+      failedRules.push(`${q.label} — maximum accepté : ${rule.value} (déclaré : ${a})`)
+    } else if (rule.op === 'in' && typeof a === 'string' && !rule.value.includes(a)) {
+      failedRules.push(`${q.label} — réponse hors des valeurs acceptées`)
+    }
+  }
+
+  return { failedRules }
+}
+
+/**
+ * Combine le verdict des questions et celui des règles sur CV en un verdict
+ * MACHINE unique.
+ *
+ * `cv` vaut null tant que le CV n'a pas été analysé par l'IA : les questions
+ * suffisent alors à trancher — c'est précisément ce qui rend le pré-tri utile
+ * AVANT toute dépense d'analyse.
+ *
+ * Le résultat reste une PROPOSITION : `flagged` ne rejette personne, il place le
+ * dossier en tête de file de revue. Seule une décision humaine
+ * (`applications.screening_decision`) fait entrer ou sortir du pipeline.
+ */
+export function combineVerdicts(
+  questions: { failedRules: string[] },
+  cv: ScreeningVerdict | null,
+): { verdict: 'pass' | 'flagged'; failedRules: string[] } {
+  const failedRules = [...questions.failedRules, ...(cv?.failedRules ?? [])]
+  const flagged = questions.failedRules.length > 0 || cv?.decision === 'auto_reject'
+  return { verdict: flagged ? 'flagged' : 'pass', failedRules }
+}

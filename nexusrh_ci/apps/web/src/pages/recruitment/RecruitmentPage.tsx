@@ -18,6 +18,7 @@ import {
   FileSignature,
 } from 'lucide-react'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
+import ScreeningReview from './ScreeningReview'
 
 interface Department { id: string; name: string }
 
@@ -152,7 +153,7 @@ const EMPTY_FORM: NewJobForm = {
 export default function RecruitmentPage() {
   const { t } = useTranslation('recruitment')
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<'jobs' | 'pipeline' | 'ai-sourcing'>('jobs')
+  const [tab, setTab] = useState<'jobs' | 'screening' | 'pipeline' | 'ai-sourcing'>('jobs')
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [showNewJob, setShowNewJob] = useState(false)
   const [selectedApp, setSelectedApp] = useState<Application | null>(null)
@@ -376,14 +377,25 @@ export default function RecruitmentPage() {
       </div>
 
       <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 w-fit">
-        {(['jobs', 'pipeline', 'ai-sourcing'] as const).map(tabKey => (
+        {(['jobs', 'screening', 'pipeline', 'ai-sourcing'] as const).map(tabKey => (
           <button key={tabKey} onClick={() => setTab(tabKey)}
             className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${tab === tabKey ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             {tabKey === 'ai-sourcing' && <Sparkles className="h-3.5 w-3.5" />}
-            {tabKey === 'jobs' ? t('tabs.jobs') : tabKey === 'pipeline' ? t('tabs.pipeline') : t('tabs.aiSourcing')}
+            {tabKey === 'screening' && <ShieldCheck className="h-3.5 w-3.5" />}
+            {tabKey === 'jobs' ? t('tabs.jobs')
+              : tabKey === 'screening' ? t('screening.tab')
+              : tabKey === 'pipeline' ? t('tabs.pipeline') : t('tabs.aiSourcing')}
           </button>
         ))}
       </div>
+
+      {tab === 'screening' && (
+        selectedJob
+          ? <ScreeningReview jobId={selectedJob.id} />
+          : <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
+              {t('pipeline.selectJob')}
+            </p>
+      )}
 
       {tab === 'jobs' && (() => {
         // ── Filtres style Greenhouse/Lever ────────────────────────────
