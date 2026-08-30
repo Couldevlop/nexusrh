@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit de sécurité NexusRH CI — 29-30 août 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFF; --surface-alt:#EDF1F0;
+    --ink:#141D1B; --ink-soft:#475653; --ink-faint:#788784;
+    --rule:#D3DBD9; --rule-strong:#A8B5B2; --accent:#0D5A52;
+    --crit:#8C1D1D; --crit-bg:#F6E4E4; --high:#A3501A; --high-bg:#F8EADD;
+    --med:#7A5E0E; --med-bg:#F6EFD8; --info:#2F5F80; --info-bg:#E2EDF4;
+    --ok:#1B6144; --ok-bg:#DFEDE7;
+    --measure:70ch;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1413; --surface:#151E1C; --surface-alt:#1C2725;
+      --ink:#E4ECEA; --ink-soft:#A3B2AF; --ink-faint:#75837F;
+      --rule:#293634; --rule-strong:#3D4E4B; --accent:#4FBFAE;
+      --crit:#E88C8C; --crit-bg:#331717; --high:#E5A56E; --high-bg:#33220F;
+      --med:#D8BE6A; --med-bg:#2C2510; --info:#86B6D6; --info-bg:#14242F;
+      --ok:#6FC49E; --ok-bg:#12281F;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1413; --surface:#151E1C; --surface-alt:#1C2725;
+    --ink:#E4ECEA; --ink-soft:#A3B2AF; --ink-faint:#75837F;
+    --rule:#293634; --rule-strong:#3D4E4B; --accent:#4FBFAE;
+    --crit:#E88C8C; --crit-bg:#331717; --high:#E5A56E; --high-bg:#33220F;
+    --med:#D8BE6A; --med-bg:#2C2510; --info:#86B6D6; --info-bg:#14242F;
+    --ok:#6FC49E; --ok-bg:#12281F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  img{max-width:100%}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 28px 96px}
+
+  .masthead{border-bottom:2px solid var(--ink);padding:56px 0 24px}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 18px}
+  h1{font-family:'Newsreader',Georgia,serif;font-weight:500;
+    font-size:clamp(2.3rem,6vw,3.9rem);line-height:1.03;letter-spacing:-.02em;
+    margin:0 0 20px;text-wrap:balance}
+  .standfirst{font-family:'Newsreader',Georgia,serif;font-size:1.26rem;line-height:1.5;
+    color:var(--ink-soft);max-width:var(--measure);margin:0 0 28px}
+  .meta{display:flex;flex-wrap:wrap;gap:28px;font-size:12px;padding-bottom:4px}
+  .meta div{display:flex;flex-direction:column;gap:3px}
+  .meta dt{font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:10px;
+    color:var(--ink-faint);margin:0}
+  .meta dd{margin:0;color:var(--ink);font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace}
+
+  section{margin-top:68px}
+  h2{font-family:'Newsreader',Georgia,serif;font-weight:500;font-size:1.95rem;
+    letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+  .sec-note{color:var(--ink-soft);max-width:var(--measure);margin:0 0 28px;font-size:15px}
+  h3{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);margin:40px 0 14px}
+  p{max-width:var(--measure)}
+  a{color:var(--accent)}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .tile{background:var(--surface);padding:18px 18px 16px}
+  .tile .n{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:1.7rem;
+    font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums;display:block}
+  .tile .n.good{color:var(--ok)} .tile .n.warn{color:var(--high)}
+  .tile .was{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.95rem;
+    color:var(--ink-faint);text-decoration:line-through;margin-right:8px}
+  .tile .l{font-size:11.5px;color:var(--ink-soft);line-height:1.35;margin-top:7px;display:block}
+
+  .ledger{border-top:1px solid var(--ink)}
+  .entry{display:grid;grid-template-columns:78px 1fr;gap:0 24px;
+    border-bottom:1px solid var(--rule);padding:26px 0;align-items:start}
+  .entry-id{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;
+    font-weight:500;color:var(--ink-faint);padding-top:4px;font-variant-numeric:tabular-nums}
+  .chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;padding:3px 8px;margin:0 6px 10px 0;border:1px solid currentColor}
+  .chip.crit{color:var(--crit);background:var(--crit-bg)}
+  .chip.high{color:var(--high);background:var(--high-bg)}
+  .chip.med{color:var(--med);background:var(--med-bg)}
+  .chip.info{color:var(--info);background:var(--info-bg)}
+  .chip.ok{color:var(--ok);background:var(--ok-bg)}
+  .entry h4{font-family:'Newsreader',Georgia,serif;font-size:1.4rem;font-weight:500;
+    line-height:1.24;margin:0 0 12px;letter-spacing:-.005em;text-wrap:balance}
+  .entry p{margin:0 0 12px;font-size:15px;color:var(--ink-soft)}
+  .entry p strong{color:var(--ink);font-weight:600}
+  .entry p:last-child{margin-bottom:0}
+
+  .proof{background:var(--surface-alt);border-left:2px solid var(--accent);
+    padding:13px 16px;margin:0 0 14px;font-family:'JetBrains Mono',ui-monospace,monospace;
+    font-size:12.5px;line-height:1.65;color:var(--ink);overflow-x:auto;white-space:pre}
+  .fixline{font-size:14px;color:var(--ink);border-top:1px dotted var(--rule-strong);
+    padding-top:11px;margin-top:4px}
+  .fixline b{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+    display:block;margin-bottom:4px;font-weight:700}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.87em;
+    background:var(--surface-alt);padding:1px 5px;color:var(--ink)}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule)}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:600px}
+  th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);padding:11px 16px;border-bottom:1px solid var(--rule-strong);
+    background:var(--surface-alt);white-space:nowrap}
+  td{padding:12px 16px;border-bottom:1px solid var(--rule);background:var(--surface);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px}
+  .was-cell{color:var(--ink-faint);text-decoration:line-through}
+  .now-cell{color:var(--ok);font-weight:600}
+
+  .held{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .held div{background:var(--surface);padding:16px 18px}
+  .held dt{font-size:14px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;gap:8px}
+  .held dt::before{content:'✓';color:var(--ok);font-size:13px;flex:none}
+  .held dd{margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+
+  .callout{border:1px solid var(--rule-strong);background:var(--surface);
+    padding:26px 30px;margin-top:32px}
+  .callout p{font-family:'Newsreader',Georgia,serif;font-size:1.14rem;line-height:1.55;
+    margin:0 0 14px;color:var(--ink)}
+  .callout p:last-child{margin-bottom:0}
+
+  footer{margin-top:72px;padding-top:22px;border-top:1px solid var(--rule);
+    font-size:12.5px;color:var(--ink-faint)}
+
+  @media (max-width:640px){
+    .wrap{padding:0 18px 64px}
+    .entry{grid-template-columns:1fr;gap:8px}
+    .entry-id{padding-top:0}
+  }
+  @media print{
+    body{background:#fff;color:#000}
+    .entry{break-inside:avoid} section{break-inside:auto}
+    .tile,.held div{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Audit d’intrusion · Remédiation · Revue d’architecture</p>
+  <h1>Audit de sécurité NexusRH&nbsp;CI</h1>
+  <p class="standfirst">
+    450 endpoints attaqués sans jeton, avec un jeton forgé, avec un jeton de salarié,
+    puis fuzzés sur six familles de charges malveillantes. La surface d’authentification
+    a tenu. Ce qui a cédé était ailleurs&nbsp;: un contrôle de sécurité qui existait sans
+    jamais s’exécuter, et un compteur anti-force-brute qu’un en-tête HTTP suffisait à
+    remettre à zéro. Ce document décrit les sept constats, leurs correctifs, et ce qui a
+    été délibérément laissé de côté.
+  </p>
+  <div class="meta">
+    <div><dt>Périmètre</dt><dd>nexusrh_ci · branche develop</dd></div>
+    <div><dt>Dates</dt><dd>29–30 août 2026</dd></div>
+    <div><dt>Endpoints</dt><dd>450</dd></div>
+    <div><dt>Constats</dt><dd>7 sécurité · 5 architecture</dd></div>
+    <div><dt>Registre</dt><dd>2026-08-30-registre-vulnerabilites.xlsx</dd></div>
+  </div>
+</header>
+
+<section>
+  <h2>Résultat</h2>
+  <p class="sec-note">
+    Cinq constats corrigés dans le code, deux qualifiés non applicables preuves à l’appui.
+    Aucun test n’a été affaibli pour faire passer un correctif.
+  </p>
+  <div class="tiles">
+    <div class="tile"><span class="n good"><span class="was">4</span>0</span><span class="l">vulnérabilités critiques de dépendances</span></div>
+    <div class="tile"><span class="n good"><span class="was">50</span>0</span><span class="l">vulnérabilités élevées</span></div>
+    <div class="tile"><span class="n good"><span class="was">118</span>2</span><span class="l">avis au total — les 2 restantes prouvées non applicables</span></div>
+    <div class="tile"><span class="n good"><span class="was">1</span>0</span><span class="l">contrôle de sécurité non exécuté</span></div>
+    <div class="tile"><span class="n good"><span class="was">1</span>0</span><span class="l">évaluateur de code dynamique côté serveur</span></div>
+    <div class="tile"><span class="n good"><span class="was">47</span>1</span><span class="l">implémentations de la piste d’audit</span></div>
+    <div class="tile"><span class="n">4 835</span><span class="l">tests verts (API 4626 · web 132 · worker 77)</span></div>
+    <div class="tile"><span class="n good">3/3</span><span class="l">typecheck et build de production</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Méthode</h2>
+  <p>
+    Aucun constat de ce rapport ne repose sur une lecture de code seule. L’API a été montée
+    en mémoire via <code>buildApp()</code> et attaquée requête par requête&nbsp;:
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Passe</th><th>Volume</th><th>Résultat</th></tr></thead>
+      <tbody>
+        <tr><td>Appel de chaque route sans jeton</td><td class="num">450</td><td>0 atteignable, hors 16 routes publiques assumées</td></tr>
+        <tr><td>Appel avec un JWT signé d’une autre clé</td><td class="num">450</td><td>0 acceptée</td></tr>
+        <tr><td>Appel avec un jeton <code>employee</code> valide</td><td class="num">&gt;50 routes réservées</td><td>0 franchie</td></tr>
+        <tr><td>Fuzz des corps de requête (6 familles)</td><td class="num">≈2 700</td><td>0 erreur 500 exploitable, 0 pollution de prototype</td></tr>
+        <tr><td>Analyse des dépendances</td><td class="num">1 289 paquets</td><td>118 avis, triés par exploitabilité réelle</td></tr>
+        <tr><td>Mesure structurelle du dépôt</td><td class="num">40 fichiers de routes</td><td>5 constats d’architecture</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:20px">
+    Les charges de fuzz couvraient&nbsp;: corps vide, <code>null</code>, tableau, types faux,
+    XSS et injection SQL, pollution de prototype. Chaque passe a été convertie en test
+    permanent&nbsp;: elles ne sont pas un instantané, elles s’exécutent désormais à chaque CI.
+  </p>
+</section>
+
+<section>
+  <h2>Les sept constats</h2>
+  <p class="sec-note">
+    Classés par risque réel dans <em>cette</em> configuration, pas par gravité théorique.
+    Chaque entrée porte la preuve qui l’établit et le correctif qui la clôt.
+  </p>
+
+  <div class="ledger">
+
+    <article class="entry">
+      <div class="entry-id">S-01</div>
+      <div>
+        <span class="chip high">Élevée</span><span class="chip ok">Corrigé</span>
+        <h4>Un contrôle anti-usurpation de fichier écrit, documenté, testé — et jamais appelé</h4>
+        <p>
+          <code>services/cv-extraction.service.ts</code> exporte <code>isMagicByteConsistent()</code>,
+          présenté en commentaire comme la protection OWASP A03 contre l’usurpation de type de
+          contenu, et couvert par 21 tests unitaires qui passent. Ce service n’était
+          <strong>importé nulle part</strong>&nbsp;: le fichier de routes recrutement hébergeait une
+          copie locale de la seule fonction d’extraction de texte, laissant le contrôle de
+          signature hors du chemin d’exécution.
+        </p>
+        <p>
+          Conséquence sur le dépôt de CV <strong>public et anonyme</strong>&nbsp;: seul le type MIME
+          <em>déclaré par le client</em> était vérifié. N’importe quel binaire annoncé
+          <code>application/pdf</code> était stocké en base, puis servi à un poste RH par
+          <code>GET /recruitment/applications/:id/cv-file</code> en
+          <code>Content-Disposition: inline</code>.
+        </p>
+        <div class="proof">$ grep -rn "cv-extraction" --include=*.ts .
+services/cv-extraction.service.ts:39: export function isMagicByteConsistent(…)
+→ aucun import. Service entièrement mort.</div>
+        <p class="fixline">
+          <b>Correctif</b>
+          Copie locale supprimée, service importé, <code>isMagicByteConsistent()</code> câblé sur
+          les <em>deux</em> points de dépôt (public anonyme et RH authentifié). Quatre tests
+          attaquent l’endpoint public réel avec un exécutable Windows, du HTML et une archive ZIP
+          déguisés en PDF, et vérifient qu’un vrai PDF passe toujours.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-02</div>
+      <div>
+        <span class="chip high">Élevée</span><span class="chip ok">Corrigé</span>
+        <h4>Le rate limiting se remettait à zéro avec un en-tête <code>X-Forwarded-For</code></h4>
+        <p>
+          Fastify était monté avec <code>trustProxy: true</code> — «&nbsp;faire confiance à
+          <em>tous</em> les intermédiaires&nbsp;» — pendant que le limiteur comptait par
+          <code>req.ip</code>. Or <code>req.ip</code> devient alors la valeur la plus à gauche de
+          <code>X-Forwarded-For</code>, entièrement fournie par le client.
+        </p>
+        <div class="proof">Avant correctif, sur l’application montée :
+XFF="1.2.3.4"           → req.ip = 1.2.3.4
+XFF="9.9.9.9, 10.0.0.1" → req.ip = 9.9.9.9
+
+260 requêtes, XFF tournant →   0 bloquée (429)
+260 requêtes, XFF fixe    →  60 bloquées (429)</div>
+        <p>
+          Cela neutralisait les trois garde-fous anti-force-brute&nbsp;: la limite globale
+          (200/min), celle du login (10&nbsp;/&nbsp;5&nbsp;min) et celle de la demande de
+          réinitialisation de mot de passe (3&nbsp;/&nbsp;15&nbsp;min).
+        </p>
+        <p>
+          <strong>Portée réelle, qualifiée honnêtement.</strong> En production, l’API est derrière
+          ingress-nginx dont le défaut réécrit l’en-tête&nbsp;: l’attaque était donc probablement
+          bloquée <em>en pratique</em>, par une configuration amont. Elle redevenait vivante au
+          premier changement de topologie. Un contrôle anti-force-brute ne doit pas dépendre du
+          défaut d’un composant tiers.
+        </p>
+        <p class="fixline">
+          <b>Correctif</b>
+          <code>trustProxy</code> borné aux plages <strong>privées</strong>
+          (<code>loopback, uniquelocal</code>), paramétrable par <code>TRUST_PROXY</code>. Deux
+          propriétés en découlent&nbsp;: derrière l’ingress, l’IP retenue est celle qu’il a
+          constatée&nbsp;; en exposition directe, une connexion venue d’Internet n’est pas un
+          intermédiaire de confiance et son en-tête est ignoré <em>en bloc</em>. Un simple nombre
+          de sauts n’offrirait pas la seconde propriété — Fastify&nbsp;5 tire la même conclusion et
+          fait échouer-fermé tout <code>trustProxy</code> numérique.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-03</div>
+      <div>
+        <span class="chip high">Élevée</span><span class="chip ok">Corrigé</span>
+        <h4>Fastify 4.29.1&nbsp;: branche en fin de vie, contournement de validation sans correctif</h4>
+        <p>
+          <code>4.29.1</code> est la <strong>dernière version 4.x publiée</strong>. La faille
+          «&nbsp;caractère tabulation dans <code>Content-Type</code> permettant de contourner la
+          validation du corps de requête&nbsp;» n’est corrigée qu’en <code>5.7.2</code>. La
+          validation Zod et les schémas de route étant la première ligne de défense des 450
+          endpoints, un contournement les court-circuite.
+        </p>
+        <p class="fixline">
+          <b>Correctif</b>
+          Migration Fastify 4&nbsp;→&nbsp;5.12.1 avec les dix plugins associés
+          (<code>jwt</code> 8→10, <code>cors</code> 9→11, <code>cookie</code> 9→11,
+          <code>multipart</code> 8→9, <code>oauth2</code> 7→8, <code>rate-limit</code> 9→10,
+          <code>swagger</code> 8→9, <code>swagger-ui</code> 4→6, <code>websocket</code> 8→11,
+          <code>fastify-plugin</code> 4→5). Aucune API retirée n’était utilisée&nbsp;; trois
+          adaptations seulement&nbsp;: typage du gestionnaire d’erreurs, <code>maxParamLength</code>
+          déplacé sous <code>routerOptions</code>, et un helper de test qui forgeait un jeton
+          expiré — fast-jwt&nbsp;6 fait désormais primer <code>expiresIn</code> du signeur sur un
+          <code>exp</code> explicite. Le comportement produit (jeton réellement expiré →
+          <code>410</code>) a été vérifié inchangé, et sa détection s’appuie désormais sur le
+          <em>code</em> d’erreur plutôt que sur le libellé du message.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-04</div>
+      <div>
+        <span class="chip high">Élevée</span><span class="chip ok">Corrigé</span>
+        <h4>118 vulnérabilités de dépendances, dont quatre qui comptaient vraiment</h4>
+        <p>
+          Le volume brut était trompeur&nbsp;: l’essentiel relevait du bruit transitif. Quatre
+          paquets méritaient une action, et se corrigeaient par une montée de version.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Paquet</th><th>Avant</th><th>Après</th><th>Pourquoi il comptait</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">axios</td><td class="num was-cell">1.15.0</td><td class="num now-cell">1.20.0</td>
+                <td>Front, exécuté chez chaque utilisateur. Sept avis dont vol d’identifiants et MITM complet par gadgets de pollution de prototype.</td></tr>
+              <tr><td class="mono">undici</td><td class="num was-cell">7.25.0</td><td class="num now-cell">7.29.0</td>
+                <td>Dépendance directe, et moteur du garde SSRF. Contournement de validation de certificat TLS et routage inter-origines.</td></tr>
+              <tr><td class="mono">nodemailer</td><td class="num was-cell">6.10.1</td><td class="num now-cell">9.0.6</td>
+                <td>Déni de service par récursion de l’analyseur d’adresses, alimenté par des adresses saisies par les tenants.</td></tr>
+              <tr><td class="mono">drizzle-orm</td><td class="num was-cell">0.31.4</td><td class="num now-cell">0.45.2</td>
+                <td>Injection SQL par identifiants mal échappés.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fixline" style="margin-top:16px">
+          <b>Correctif</b>
+          Ces quatre paquets, plus <code>vitest</code> 1→3, <code>turbo</code> 1→2,
+          <code>drizzle-kit</code> 0.22→0.31 et <code>tsx</code>. <strong>mjml a été
+          supprimé</strong>&nbsp;: déclaré en dépendance mais importé nulle part, il portait à lui
+          seul un avis élevé (<code>html-minifier</code>) pour lequel <em>aucun correctif n’existe</em>.
+          Les vulnérabilités transitives restantes ont été closes par douze <code>overrides</code>
+          pnpm, chacun commenté avec sa raison. Le détail complet figure dans la feuille
+          «&nbsp;Dépendances&nbsp;» du registre.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-05</div>
+      <div>
+        <span class="chip med">Moyenne</span><span class="chip ok">Corrigé</span>
+        <h4>Aucune analyse antivirale sur les dépôts de fichiers</h4>
+        <p>
+          Sept points de dépôt acceptent des fichiers&nbsp;; le plus exposé est anonyme
+          (candidature publique, 5&nbsp;Mo). Taille, type MIME et — depuis S-01 — signature de
+          contenu étaient vérifiés&nbsp;; la <em>charge</em> ne l’était pas. Un PDF authentique
+          porteur d’un exploit de lecteur, ou un document bureautique macro-armé, atteignait le
+          poste RH qui le télécharge.
+        </p>
+        <p class="fixline">
+          <b>Correctif</b>
+          <code>services/antivirus.service.ts</code> — protocole clamd <code>INSTREAM</code> natif,
+          <strong>sans nouvelle dépendance</strong> (un client tiers apporterait sa propre surface
+          de vulnérabilités pour 80 lignes de protocole trivial). Câblé sur les sept dépôts.
+          Désactivé par défaut&nbsp;; une fois <code>CLAMAV_HOST</code> renseigné, un fichier qui
+          n’a <em>pas pu</em> être analysé est <strong>refusé</strong> — échec fermé délibéré&nbsp;:
+          accepter au bénéfice du doute rouvrirait le trou dès qu’on sature le service. Neuf tests
+          contre un faux clamd en mémoire couvrent le cas propre, infecté, injoignable et le délai
+          dépassé.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-06</div>
+      <div>
+        <span class="chip med">Moyenne</span><span class="chip ok">Corrigé</span>
+        <h4>Un évaluateur <code>new Function()</code> dormait dans le moteur de paie</h4>
+        <p>
+          <code>evalFormule()</code> construisait une fonction JavaScript à partir d’une chaîne
+          issue de <code>payroll_rules.formula</code>.
+          <strong>Non exploitable en l’état</strong>, et il faut le dire précisément&nbsp;: la liste
+          blanche interdisait guillemets, virgules et crochets, ce qui rendait la construction d’un
+          appel impossible, et la fonction n’était pas encore appelée par le moteur. Le risque était
+          <em>temporel</em>&nbsp;: un évaluateur non cloisonné en attente d’être branché sur une
+          donnée modifiable par un administrateur de tenant, avec une liste blanche pour seule
+          barrière.
+        </p>
+        <p class="fixline">
+          <b>Correctif</b>
+          Remplacé par <code>evalArithmetic()</code>, un analyseur par descente récursive
+          (<code>+ - * /</code>, parenthèses, unaire). Il ne peut construire <em>que</em> des
+          nombres&nbsp;: aucun identifiant, appel de fonction ou portée JavaScript n’est atteignable,
+          quelle que soit l’entrée. La classe de vulnérabilité disparaît au lieu d’être rendue
+          improbable. Un invariant golden interdit désormais <code>new Function()</code> et
+          <code>eval()</code> côté serveur.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-id">S-07</div>
+      <div>
+        <span class="chip info">Information</span><span class="chip ok">Durci</span>
+        <h4>Les trois CVE critiques de <code>fast-jwt</code> ne s’appliquaient pas ici</h4>
+        <p>
+          <code>pnpm audit</code> remontait trois vulnérabilités critiques sur la brique JWT.
+          Vérification faite dans le code du paquet,
+          <strong>aucune n’était exploitable dans cette configuration</strong> — l’information vaut
+          d’être consignée pour éviter une remédiation d’urgence mal ciblée&nbsp;:
+        </p>
+        <div class="proof">confusion d’algorithme  → exige une vérification par clé publique.
+                          Le secret est une chaîne symétrique : fast-jwt
+                          restreint alors à HS256/384/512. Sans objet.
+confusion de cache      → exige l’option `cache`. Non activée.
+secret HMAC vide        → exige un fournisseur de clé asynchrone.
+                          Secret statique, ≥ 32 car. imposés. Sans objet.</div>
+        <p class="fixline">
+          <b>Durcissement</b>
+          L’algorithme est désormais <strong>épinglé explicitement</strong>
+          (<code>sign: { algorithm: 'HS256' }</code>, <code>verify: { algorithms: ['HS256'] }</code>)&nbsp;:
+          la protection est affirmée par la configuration au lieu d’être déduite du type de la clé.
+          Trois tests le verrouillent, dont le rejet d’un jeton <code>alg: none</code> et celui d’un
+          jeton HS512 signé avec le <em>vrai</em> secret. Le paquet a par ailleurs été monté
+          (<code>@fastify/jwt</code> 8→10) avec la migration Fastify 5.
+        </p>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section>
+  <h2>Ce qui a tenu sous l’attaque</h2>
+  <p class="sec-note">
+    Les résultats négatifs sont la moitié utile d’un audit. Chacun de ces points a été
+    attaqué, pas seulement relu — et chacun est désormais couvert par un test permanent.
+  </p>
+  <dl class="held">
+    <div><dt>Authentification, 450 / 450</dt>
+      <dd>Aucun endpoint n’a répondu autre chose que 401/403 sans jeton. Les 16 routes publiques sont légitimes et désormais listées explicitement&nbsp;: en ouvrir une nouvelle devient un acte revu.</dd></div>
+    <div><dt>Signature des jetons</dt>
+      <dd>Un JWT forgé avec une autre clé est rejeté sur l’intégralité de la surface. Blocage par <code>jti</code>, époque de session et liste noire cumulés.</dd></div>
+    <div><dt>RBAC vertical</dt>
+      <dd>Un jeton <code>employee</code> valide n’a franchi aucune des routes déclarant <code>authorize()</code> sans ce rôle.</dd></div>
+    <div><dt>Isolation multi-tenant</dt>
+      <dd>853 requêtes sur 853 portent le schéma du tenant, dont le nom est validé au point de passage central de l’authentification.</dd></div>
+    <div><dt>Robustesse aux charges hostiles</dt>
+      <dd>Corps vides, nuls, tableaux, types faux, XSS, injections SQL, pollution de prototype&nbsp;: aucune erreur 500 exploitable, aucune pollution effective.</dd></div>
+    <div><dt>Garde SSRF</dt>
+      <dd>Résolution DNS puis <em>épinglage de l’IP validée</em> dans le dispatcher undici, avec <code>redirect: 'error'</code>. Ferme la fenêtre de DNS rebinding — c’est fait correctement, ce qui est rare.</dd></div>
+    <div><dt>Aucun cul-de-sac d’API</dt>
+      <dd>Aucune route ne renvoie 404 par mauvais montage, et le golden test de contrat UI↔API confirme que chaque appel du front vise un endpoint réel.</dd></div>
+    <div><dt>Cryptographie</dt>
+      <dd>AES-256-GCM avec IV aléatoire pour les données au repos, bcrypt coût 12 pour les mots de passe.</dd></div>
+    <div><dt>En-têtes et CSRF</dt>
+      <dd>CSP, HSTS, <code>nosniff</code>, <code>frame-ancestors 'none'</code>, <code>no-store</code> sur les exports sensibles. Double-submit CSRF ciblé sur l’authentification par cookie.</dd></div>
+    <div><dt>Assainissement XSS</dt>
+      <dd>Le seul <code>dangerouslySetInnerHTML</code> du front échappe tout puis restaure une liste blanche stricte (<code>&lt;em&gt;</code>).</dd></div>
+    <div><dt>Secrets</dt>
+      <dd>Aucun secret en dur dans le code versionné. <code>values.secret.yaml</code> est ignoré par git et absent de l’historique.</dd></div>
+    <div><dt>CORS</dt>
+      <dd>Liste d’origines explicite, jamais de joker, y compris avec <code>credentials: true</code>.</dd></div>
+  </dl>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <p class="sec-note">
+    La sécurité applicative de ce dépôt est nettement au-dessus de la moyenne. La structure
+    ne suivait pas — et c’est précisément ce décalage qui a produit S-01.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Constat</th><th>Avant</th><th>Après</th><th>Correctif</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>A-01</strong> — Piste d’audit recopiée</td>
+          <td class="num was-cell">47 sites</td><td class="num now-cell">1 + 4 exceptions</td>
+          <td><code>utils/audit-log.ts</code>. Les fonctions locales subsistent en adaptateurs d’une ligne&nbsp;: tous les appelants restent inchangés. Les 4 exceptions ont un jeu de colonnes réellement différent, chacune justifiée dans le test.</td>
+        </tr>
+        <tr>
+          <td><strong>A-02</strong> — <code>badRequest()</code> redéfini</td>
+          <td class="num was-cell">11 fois</td><td class="num now-cell">1 + 1 variante</td>
+          <td><code>utils/http-errors.ts</code>. La variante d’offboarding est conservée&nbsp;: sa réponse a un autre contrat, consommé tel quel par le front.</td>
+        </tr>
+        <tr>
+          <td><strong>A-03</strong> — Hook de migration recopié</td>
+          <td class="num was-cell">22 fois</td><td class="num now-cell">1</td>
+          <td><code>utils/tenant-schema-hook.ts</code>. Ce hook doit s’exécuter <em>après</em> <code>authenticate</code>, sinon la migration ne se fait jamais — incident déjà survenu ici le 19/07/2026. La contrainte est désormais énoncée en un seul endroit.</td>
+        </tr>
+        <tr>
+          <td><strong>A-04</strong> — Service orphelin</td>
+          <td class="num was-cell">1</td><td class="num now-cell">0</td>
+          <td>Le service mort portait un contrôle de sécurité (cf. S-01). Un invariant détecte désormais tout service jamais importé, en tenant compte des points d’entrée déclarés dans <code>package.json</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>A-05</strong> — Persistance dans la couche HTTP</td>
+          <td class="num was-cell">872 requêtes</td><td class="num">inchangé</td>
+          <td><strong>Non traité, délibérément.</strong> Voir ci-dessous.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ce que S-01 révélait vraiment</h3>
+  <p>
+    Le service d’extraction de CV était mort parce que sa fonction utile avait été recopiée
+    dans le fichier de routes. La duplication n’a pas seulement créé de la dette&nbsp;:
+    <strong>elle a débranché un contrôle de sécurité, tout en laissant ses tests au vert et la
+    couverture de code intacte</strong>. C’est le mode de défaillance à retenir de cet audit, et
+    la raison pour laquelle A-01 à A-04 ont été traités plutôt que consignés.
+  </p>
+  <p>
+    Les correctifs d’architecture ne reposent donc pas sur la discipline&nbsp;: cinq invariants
+    golden échouent dès qu’un module recopie une primitive partagée, laisse un service orphelin
+    ou réintroduit un évaluateur de code. Le rappel arrive à la revue, pas six mois plus tard.
+  </p>
+
+  <h3>A-05 — pourquoi ce chantier reste ouvert</h3>
+  <p>
+    872&nbsp;requêtes SQL vivent dans les handlers HTTP&nbsp;; 25&nbsp;086 lignes de routes contre
+    7&nbsp;268 de services&nbsp;; un seul <em>repository</em> dans tout le dépôt. Les routes
+    dépendent du <code>Pool</code> <code>pg</code> concret et non d’une abstraction&nbsp;: toute
+    évolution transverse de la persistance — Row Level Security PostgreSQL, cache, traçabilité
+    systématique — se paierait en 872 modifications.
+  </p>
+  <p>
+    L’isolation multi-tenant, l’invariant le plus critique du produit, est réaffirmée à la main
+    853 fois. Elle est correcte à 100&nbsp;%, et le nom de schéma est validé centralement dans
+    <code>plugins/auth.ts</code>&nbsp;: <strong>l’invariant n’est pas troué, il est fragile</strong>.
+    Un dépôt qui prend le schéma en paramètre de construction rendrait l’oubli <em>impossible</em>
+    au lieu de le rendre <em>improbable</em>.
+  </p>
+  <p>
+    Migrer ces 872 sites ne peut pas se faire sans risque de régression dans le cadre d’une
+    remédiation. La direction recommandée est incrémentale&nbsp;: introduire
+    <code>&lt;module&gt;.repository.ts</code> sur les <em>nouveaux</em> modules et sur ceux qu’on
+    ouvre déjà, sans réécriture de masse. Le chantier est consigné comme tel, pas silencieusement
+    abandonné.
+  </p>
+</section>
+
+<section>
+  <h2>Ce qui n’a pas été corrigé, et pourquoi</h2>
+  <p class="sec-note">
+    Deux avis restent ouverts après remédiation. Aucun n’est un renoncement&nbsp;: chacun est
+    accompagné de la preuve de sa non-applicabilité.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Avis</th><th>Statut</th><th>Justification</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>react-router</code> — injection de constructeur via <code>deserializeErrors()</code> en hydratation SSR</td>
+          <td><span class="chip info" style="margin:0">Non applicable</span></td>
+          <td>L’application est une SPA Vite sans aucune hydratation SSR&nbsp;: <code>createBrowserRouter</code>, <code>RouterProvider</code>, <code>hydrateRoot</code> et <code>StaticRouter</code> sont tous absents du dépôt. Le chemin vulnérable n’existe pas.</td>
+        </tr>
+        <tr>
+          <td><code>react-router</code> — redirection ouverte via antislash dans <code>&lt;Link&gt;</code> / <code>useNavigate</code></td>
+          <td><span class="chip info" style="margin:0">Non applicable</span></td>
+          <td>Les deux seules navigations dynamiques du front ont un chemin en dur (<code>/referentiels?q=…</code> avec <code>encodeURIComponent</code>, <code>/platform/tenants/:id</code>), et aucun <code>&lt;Link to={variable}&gt;</code> n’existe. Aucune destination n’est contrôlée par l’utilisateur.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:20px">
+    Le correctif de ces deux avis exige <code>react-router&nbsp;7</code>, soit une migration
+    front avec un risque de régression réel — pour une réduction de risque nulle dans cette
+    application. Le compromis est explicite&nbsp;: si l’application introduit un jour du rendu
+    serveur ou une navigation pilotée par une entrée utilisateur, la migration redevient
+    prioritaire.
+  </p>
+</section>
+
+<section>
+  <h2>Vérification</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Contrôle</th><th>Résultat</th><th>Détail</th></tr></thead>
+      <tbody>
+        <tr><td>Tests API</td><td class="num now-cell">4 626 / 4 626</td><td>211 fichiers, 0 échec</td></tr>
+        <tr><td>Tests web</td><td class="num now-cell">132 / 132</td><td>23 fichiers</td></tr>
+        <tr><td>Tests worker</td><td class="num now-cell">77 / 77</td><td>9 fichiers</td></tr>
+        <tr><td>Typecheck</td><td class="num now-cell">3 / 3</td><td><code>tsc --noEmit</code> sur api, web, worker</td></tr>
+        <tr><td>Build de production</td><td class="num now-cell">3 / 3</td><td><code>turbo build</code></td></tr>
+        <tr><td>Audit des dépendances</td><td class="num now-cell">118 → 2</td><td>0 critique, 0 élevée</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tests ajoutés</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Fichier</th><th>Tests</th><th>Ce qu’il verrouille</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">security-authz-sweep.golden.test.ts</td><td class="num">5</td>
+          <td>Les 450 routes sans jeton, avec un JWT forgé, avec un jeton <code>employee</code>. Toute nouvelle route publique doit être ajoutée à une liste explicite.</td></tr>
+        <tr><td class="mono">recruitment/cv-upload-signature.golden.test.ts</td><td class="num">4</td>
+          <td>Attaque l’endpoint public réel avec un exécutable, du HTML et un ZIP déguisés&nbsp;; vérifie qu’un vrai PDF passe.</td></tr>
+        <tr><td class="mono">security-hardening-2026-08.golden.test.ts</td><td class="num">9</td>
+          <td>Rejoue S-02, S-06 et S-07 plutôt que d’inspecter la configuration&nbsp;: remettre <code>trustProxy: true</code> fait échouer la suite.</td></tr>
+        <tr><td class="mono">services/antivirus.service.test.ts</td><td class="num">9</td>
+          <td>Un faux clamd en mémoire parle le protocole INSTREAM&nbsp;: le client réel est testé, pas un mock de lui-même.</td></tr>
+        <tr><td class="mono">architecture-invariants.golden.test.ts</td><td class="num">5</td>
+          <td>Échoue quand un module recopie une primitive partagée, laisse un service orphelin ou réintroduit <code>new Function()</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p>
+      <strong>Aucun test n’a été affaibli pour faire passer un correctif.</strong> Les seuls tests
+      modifiés sont ceux qui vérifiaient la <em>position</em> d’un paramètre SQL&nbsp;: la
+      mutualisation de la piste d’audit a normalisé la forme de la requête, l’action passant d’un
+      littéral inline à un paramètre lié. La donnée écrite est identique&nbsp;; les assertions ont
+      été mises à jour, et chacune porte un commentaire expliquant pourquoi.
+    </p>
+    <p>
+      Les fichiers de scan exploratoires (fuzz, sonde <code>X-Forwarded-For</code>) ont servi à
+      établir les preuves de ce rapport puis ont été supprimés&nbsp;: seules les passes converties
+      en tests permanents subsistent.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Configuration à prévoir au déploiement</h2>
+  <p class="sec-note">
+    Les correctifs fonctionnent avec leurs valeurs par défaut. Deux variables méritent
+    néanmoins une décision d’exploitation.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Variable</th><th>Défaut</th><th>À faire</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">TRUST_PROXY</td><td class="mono">loopback, uniquelocal</td>
+          <td>Correct tel quel derrière l’ingress du cluster. À compléter avec les plages du CDN si un intermédiaire est ajouté devant.</td></tr>
+        <tr><td class="mono">CLAMAV_HOST</td><td class="mono">(vide)</td>
+          <td>Analyse antivirale <strong>désactivée</strong> tant que la variable est vide. La renseigner active la protection sur les sept dépôts — en gardant à l’esprit que l’échec est alors fermé&nbsp;: si clamd est indisponible, les dépôts de fichiers sont refusés.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Audit réalisé sur la branche <code>develop</code> les 29 et 30 août 2026.
+    Méthode&nbsp;: énumération statique des routes depuis les sources, montage réel de
+    l’application en mémoire, attaque de chaque endpoint, fuzz des corps de requête, analyse
+    des dépendances et mesure structurelle du dépôt. Les constats S-02, S-06 et S-07 sont
+    accompagnés de leur condition d’exploitabilité exacte&nbsp;: aucun n’est présenté comme
+    plus grave qu’il ne l’est, ni comme réglé s’il ne l’est pas.
+  </p>
+  <p>
+    Registre détaillé&nbsp;: <code>audit/2026-08-30-registre-vulnerabilites.xlsx</code>
+    (5 feuilles — Synthèse, Vulnérabilités, Dépendances, Architecture, Tests ajoutés),
+    regénérable par <code>node audit/generate-registre.mjs</code>.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
