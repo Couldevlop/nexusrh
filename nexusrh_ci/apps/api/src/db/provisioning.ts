@@ -1364,6 +1364,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screened_at timestamptz`)
   // Prétention salariale candidat (entrée du critère maxExpectedSalary)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS expected_salary bigint`)
+  await applyScreeningColumns(s, q)
 
   // Index utiles pour le filtrage interne et la consultation pipeline
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_jobs_visibility ON ${s}.recruitment_jobs(visibility, status)`)
@@ -1457,6 +1458,61 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
  * À appeler en début de handler pour les tenants seedés avant l'ajout
  * de la visibilité interne/externe et du scoring IA enrichi.
  */
+/**
+ * Colonnes de pré-tri : verdict MACHINE et décision HUMAINE, séparés.
+ *
+ * `screening_decision` portait le verdict machine ('auto_reject' | 'review') dans
+ * l'intention d'origine, mais n'a JAMAIS été écrite (le moteur de règles n'était
+ * pas branché : aucune ligne en production). Elle est donc redéfinie ici en
+ * DÉCISION HUMAINE — 'kept' | 'dismissed' | NULL — et le verdict machine migre
+ * vers `screening_verdict`, colonne neuve.
+ *
+ * Cette séparation n'est pas cosmétique : elle traduit en schéma l'article 22 du
+ * RGPD (aucune décision individuelle purement automatisée) et le contrôle humain
+ * qu'exige l'AI Act pour le recrutement, classé à haut risque.
+ *
+ * Partagé par `provisionTenantSchema` et `ensureRecruitmentSchemaMigrated` : une
+ * seule définition, pour que les deux chemins ne puissent pas diverger.
+ */
+async function applyScreeningColumns(
+  s: string,
+  q: (sql: string) => Promise<unknown>,
+): Promise<void> {
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_answers    jsonb DEFAULT '{}'`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_verdict    varchar(10)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_decided_by uuid`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_decided_at timestamptz`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screening_reason     text`)
+  await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS screening_questions jsonb DEFAULT '[]'`)
+
+  // Rattrapage : une candidature SANS verdict est nécessairement antérieure à
+  // cette migration. Sans elle, la règle « rien n'entre dans le pipeline sans
+  // décision humaine » ferait disparaître tout l'historique des candidatures.
+  // Les COALESCE garantissent qu'une décision déjà prise n'est jamais écrasée.
+  await q(`
+    UPDATE ${s}.applications
+       SET screening_decision = COALESCE(screening_decision, 'kept'),
+           screening_verdict  = 'pass',
+           screening_reason   = COALESCE(screening_reason,
+             'Antériorité : candidature reçue avant la mise en place du pré-tri')
+     WHERE screening_verdict IS NULL`)
+
+  // ATTENTION — ces deux instructions sont ce qui rend le rattrapage ci-dessus
+  // NON REJOUABLE. `ensureRecruitmentSchemaMigrated` n'est pas mémoïsée et le
+  // dépôt n'a aucune table de suivi des migrations : elle rejoue tout à chaque
+  // appel. Une fois `screening_verdict` en NOT NULL, plus aucune ligne ne peut
+  // satisfaire `WHERE screening_verdict IS NULL` — l'UPDATE devient
+  // définitivement inopérant. Sans cela, chaque requête trancherait
+  // automatiquement les dossiers en attente de revue.
+  //
+  // Le DEFAULT 'pass' joue un second rôle : si un chemin d'insertion oubliait de
+  // poser le verdict, la candidature serait marquée conforme et partirait TOUT DE
+  // MÊME en file de revue (screening_decision restant NULL). L'oubli est donc
+  // permissif et visible, jamais silencieusement décidé.
+  await q(`ALTER TABLE ${s}.applications ALTER COLUMN screening_verdict SET DEFAULT 'pass'`)
+  await q(`ALTER TABLE ${s}.applications ALTER COLUMN screening_verdict SET NOT NULL`)
+}
+
 export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promise<void> {
   const s = `"${schemaName}"`
   const q = (sql: string) => pool.query(sql)
@@ -1516,6 +1572,7 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS screened_at timestamptz`)
   // Prétention salariale candidat (entrée du critère maxExpectedSalary)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS expected_salary bigint`)
+  await applyScreeningColumns(s, q)
 
   // Sourcing IA — table cache des profils générés (migration lazy idempotente)
   await q(`CREATE TABLE IF NOT EXISTS ${s}.sourced_profiles (

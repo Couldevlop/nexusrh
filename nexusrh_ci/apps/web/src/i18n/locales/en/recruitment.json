@@ -398,6 +398,36 @@
     "knockoutEnabled": "Enable knockout rules (uncheck = indicative criteria, only the score threshold stays active)",
     "saved": "Saved ✓",
     "saveError": "Save error",
-    "saveCriteria": "Save criteria"
+    "saveCriteria": "Save criteria",
+    "tab": "Screening",
+    "loading": "Loading the queue…",
+    "countersTitle": "Pool after screening",
+    "counters": {
+      "total": "Received",
+      "pass": "Matching",
+      "flagged": "Flagged"
+    },
+    "byRule": "Most filtering criteria",
+    "discriminationWarning": "Do not base any question on age, sex, origin, family situation, health, religious beliefs or union membership. These criteria are unlawful in hiring.",
+    "verdict": {
+      "pass": "Matching",
+      "flagged": "Flagged"
+    },
+    "failedRules": "Unmet criteria",
+    "answers": "Questionnaire answers",
+    "noAnswer": "not provided",
+    "yes": "Yes",
+    "no": "No",
+    "hasCv": "CV attached",
+    "keep": "Keep",
+    "dismiss": "Dismiss",
+    "reason": "Reason for the decision",
+    "reasonPlaceholder": "Explain why you are departing from the screening result…",
+    "reasonRequired": "A reason of at least 10 characters is required: your decision contradicts the screening result. It will be kept in the audit trail.",
+    "errorDecision": "The decision could not be saved.",
+    "previous": "Previous application",
+    "next": "Next application",
+    "empty": "No application pending",
+    "emptyHint": "Every application for this job has been decided. Kept candidates are in the pipeline."
   }
 }
