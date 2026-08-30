@@ -549,7 +549,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
-      const { job_id, stage } = request.query as Record<string, string>
+      const { job_id, stage, pending } = request.query as Record<string, string>
       let sql = `SELECT a.*, rj.title AS job_title
                  FROM "${schema}".applications a
                  JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
@@ -558,6 +558,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       let idx = 1
       if (job_id) { sql += ` AND a.job_id = $${idx++}`; params.push(job_id) }
       if (stage)  { sql += ` AND a.stage = $${idx++}`; params.push(stage) }
+      // ── Barrière du pré-tri (RGPD art. 22) ────────────────────────────────
+      // Le pipeline n'affiche que des dossiers tranchés par un HUMAIN. Un
+      // verdict machine ne fait entrer personne : `screening_decision` est la
+      // seule porte. `?pending=true` sert la file de revue, qui montre l'inverse.
+      sql += pending === 'true'
+        ? ` AND a.screening_decision IS NULL`
+        : ` AND a.screening_decision IS NOT NULL`
       sql += ` ORDER BY a.created_at DESC`
       try {
         const res = await pool.query(sql, params)
