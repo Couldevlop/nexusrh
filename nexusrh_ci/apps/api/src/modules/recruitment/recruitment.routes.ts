@@ -7,7 +7,10 @@ import {
   type AiModelChoice, type JobContext, type SourcingContext,
   type RecruiterDecisionExample,
 } from '../../services/recruitment-ai.service.js'
-import { sanitizeCriteria } from '../../services/recruitment-screening.service.js'
+import {
+  sanitizeCriteria, evaluateScreening, combineVerdicts,
+  type CandidateExtracted,
+} from '../../services/recruitment-screening.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { resolveSourcingCountries } from '../../services/sourcing-countries.service.js'
@@ -1021,11 +1024,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const criteriaFocus = body.criteria?.focus?.trim() || null
 
       try {
-        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null }>(
+        const jobRes = await pool.query<JobContext & { ai_focus_text: string | null; screening_criteria: unknown }>(
           `SELECT title, description, requirements, contract_type, location,
                   salary_min::float AS "salaryMin", salary_max::float AS "salaryMax",
                   contract_type AS "contractType",
-                  ai_focus_text
+                  ai_focus_text, screening_criteria
              FROM "${schema}".recruitment_jobs WHERE id = $1`,
           [jobId],
         )
@@ -1052,8 +1055,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           cv_mime_type: string | null
           first_name: string
           last_name: string
+          expected_salary: number | null
         }>(
-          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name
+          `SELECT id, cv_text, cover_letter, cv_blob, cv_mime_type, first_name, last_name,
+                  expected_salary
              FROM "${schema}".applications
             WHERE job_id = $1
               AND stage = ANY($2::text[])
@@ -1120,6 +1125,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // Credentials IA résolus une seule fois pour tout le batch (clé tenant ou
         // repli plateforme) — évite une lecture ai_settings par candidat.
         const creds = await resolveAiCreds(schema)
+
+        // Critères de pré-tri de l'offre, lus UNE FOIS pour tout le lot.
+        // Jusqu'ici ils étaient enregistrés par l'interface puis jamais relus :
+        // `evaluateScreening` n'était appelé par aucun code de production.
+        const criteria = sanitizeCriteria(job.screening_criteria ?? {})
+
         for (const c of candidates) {
           const cvText = c.cv_text ?? c.cover_letter ?? ''
           if (!cvText || cvText.trim().length < 50) {
@@ -1129,6 +1140,22 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           try {
             const pdfFallback = c.cv_mime_type === 'application/pdf' ? c.cv_blob : null
             const result = await analyzeCV(model, enrichedJob, cvText, decisionExamples, pdfFallback, creds)
+
+            // L'IA EXTRAIT (flou, subjectif) ; les règles DÉCIDENT (objectif,
+            // reproductible, explicable). `CvExtractedData` a exactement la forme
+            // de `CandidateExtracted`, au champ `expectedSalary` près — lequel
+            // vient de la candidature, pas du modèle.
+            const ex = result.extracted ?? null
+            const extracted: CandidateExtracted = {
+              ...(ex ?? {}),
+              expectedSalary: c.expected_salary ?? null,
+            }
+            const cvVerdict = evaluateScreening(criteria, extracted, result.score)
+            // Pas de questions ici : elles sont évaluées au dépôt. Le verdict
+            // reste une PROPOSITION — aucune candidature n'est rejetée sans
+            // décision humaine (cf. screening_decision).
+            const combined = combineVerdicts({ failedRules: [] }, cvVerdict)
+
             await pool.query(`
               UPDATE "${schema}".applications
               SET ai_score = $1,
@@ -1143,6 +1170,14 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                   ai_signals_used = $10,
                   ai_demographic_risk_note = $11,
                   ai_analyzed_at = now(),
+                  ai_years_experience = $13,
+                  ai_skills = $14,
+                  ai_diploma = $15,
+                  ai_location = $16,
+                  ai_languages = $17,
+                  screening_verdict = $18,
+                  screening_failed_rules = $19,
+                  screened_at = now(),
                   updated_at = now()
               WHERE id = $12
             `, [
@@ -1156,6 +1191,18 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               JSON.stringify(result.signalsUsed ?? []),
               result.demographicRiskNote ?? null,
               c.id,
+              // Extraction structurée PERSISTÉE : ces colonnes existaient depuis
+              // longtemps et n'étaient écrites par aucun code — l'IA extrayait
+              // ces données puis on les jetait. Sans elles, le recalcul des
+              // compteurs (screening/preview) n'aurait rien à évaluer et
+              // déclarerait tout le monde conforme.
+              ex?.yearsExperience ?? null,
+              JSON.stringify(ex?.skills ?? []),
+              ex?.highestDiploma ?? null,
+              ex?.location ?? null,
+              JSON.stringify(ex?.languages ?? []),
+              combined.verdict,
+              JSON.stringify(combined.failedRules),
             ])
             analyzed++
             results.push({
