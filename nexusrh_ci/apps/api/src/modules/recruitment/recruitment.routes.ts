@@ -9,6 +9,7 @@ import {
 } from '../../services/recruitment-ai.service.js'
 import {
   sanitizeCriteria, evaluateScreening, combineVerdicts,
+  sanitizeQuestions, evaluateQuestions,
   type CandidateExtracted,
 } from '../../services/recruitment-screening.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
@@ -39,6 +40,8 @@ const publicApplySchema = z.object({
   phone:        z.string().max(30).optional(),
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
+  /** Réponses aux questions éliminatoires de l'offre, indexées par id de question. */
+  answers:      z.record(z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
 })
 
 // Limite de taille du CV déposé via la page carrières publique (5 Mo) — plus
@@ -1384,7 +1387,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                currency, description, requirements,
                reference, experience_level, job_level, sector, required_education,
                benefits, work_mode, start_date, recruitment_process,
-               created_at, published_at
+               created_at, published_at, screening_questions
           FROM "${t.schema_name}".recruitment_jobs
           WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')
           LIMIT 1
@@ -1411,6 +1414,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
       } catch { /* non bloquant : l'offre reste servie sans le bouton entraînement */ }
 
+      // Le candidat voit les LIBELLÉS des questions, jamais les seuils : lire
+      // `{ op: 'min', value: 5 }` lui dirait quoi répondre. On retire donc
+      // `rule` et `knockout` de la projection publique.
+      const { screening_questions: rawQuestions, ...jobPublic } = job.rows[0] as Record<string, unknown>
+      const screeningQuestions = sanitizeQuestions(rawQuestions ?? [])
+        .map(({ id, label, type, options, required }) => ({ id, label, type, options, required }))
+
       return reply.send({
         tenant: {
           name: t.name, slug: t.slug, city: t.city,
@@ -1418,7 +1428,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           secondaryColor: t.secondary_color ?? '#F48C06',
           logoUrl: t.logo_url,
         },
-        data: { ...job.rows[0], interviewSim },
+        data: { ...jobPublic, screeningQuestions, interviewSim },
       })
     },
   })
@@ -1505,7 +1515,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureRecruitmentSchemaMigrated(schema)
 
       const job = await pool.query(
-        `SELECT id, title FROM "${schema}".recruitment_jobs
+        `SELECT id, title, screening_questions FROM "${schema}".recruitment_jobs
           WHERE id = $1 AND status = 'open' AND visibility IN ('external','both')`,
         [jobId],
       )
@@ -1545,17 +1555,39 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // ── Questions éliminatoires : évaluées DÈS le dépôt ─────────────────────
+      // Déterministe, instantané, sans aucun appel IA. C'est le filtre principal ;
+      // les règles sur CV ne feront que le compléter, après analyse.
+      const questions = sanitizeQuestions(job.rows[0].screening_questions ?? [])
+      const answers = (body.answers ?? {}) as Record<string, unknown>
+      const manquantes = questions.filter((q) => q.required
+        && (answers[q.id] === undefined || answers[q.id] === null || answers[q.id] === ''))
+      if (manquantes.length > 0) {
+        return reply.status(400).send({
+          error: 'Réponses obligatoires manquantes',
+          details: manquantes.map((q) => ({ path: q.id, message: q.label })),
+        })
+      }
+      // Le verdict est une PROPOSITION : le dossier part en file de revue
+      // (stage 'new', screening_decision NULL). Il n'est jamais auto-rejeté.
+      const screening = combineVerdicts(evaluateQuestions(questions, answers), null)
+
       const res = await pool.query<{ id: string }>(`
         INSERT INTO "${schema}".applications
           (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
            cv_blob, cv_mime_type, cv_filename, cv_size_bytes, cv_url, expected_salary,
-           stage, source)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page')
+           stage, source,
+           screening_answers, screening_verdict, screening_failed_rules, screened_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page',
+                $14,$15,$16,now())
         RETURNING id
       `, [
         jobId, body.first_name, body.last_name, body.email,
         body.phone ?? null, body.cover_letter ?? null, cvText,
         cvBlob, cvMime, cvFilename, cvSize, cvUrl, expectedSalary,
+        JSON.stringify(answers),
+        screening.verdict,
+        JSON.stringify(screening.failedRules),
       ])
 
       // Audit log non-bloquant (OWASP A09). Candidature ANONYME : pas d'auteur
