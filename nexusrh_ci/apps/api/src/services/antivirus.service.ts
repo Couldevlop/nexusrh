@@ -58,11 +58,6 @@ function settings(): typeof DISABLED {
   return (config as { antivirus?: typeof DISABLED }).antivirus ?? DISABLED
 }
 
-/** L'analyse antivirale est-elle configurée ? */
-export function isAntivirusEnabled(): boolean {
-  return !!settings().host
-}
-
 /**
  * Encode un buffer au format INSTREAM de clamd : une suite de blocs
  * `<longueur uint32 big-endian><données>`, terminée par une longueur nulle.
