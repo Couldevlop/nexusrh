@@ -20,13 +20,6 @@ export type SignatoryStatus = (typeof SIGNATORY_STATUSES)[number]
 export const DOCUMENT_TYPES = ['contract', 'amendment', 'certificate', 'disciplinary', 'offer', 'policy', 'other'] as const
 export type DocumentType = (typeof DOCUMENT_TYPES)[number]
 
-export function isValidRequestStatus(s: unknown): s is RequestStatus {
-  return typeof s === 'string' && (REQUEST_STATUSES as readonly string[]).includes(s)
-}
-export function isValidDocumentType(s: unknown): s is DocumentType {
-  return typeof s === 'string' && (DOCUMENT_TYPES as readonly string[]).includes(s)
-}
-
 export interface Signatory {
   status: SignatoryStatus
   orderIndex: number
@@ -83,13 +76,4 @@ export function canSignatorySign(
   if (!signatory || signatory.status !== 'pending') return false
   const next = nextSignatoryOrder(allSignatories, sequential)
   return next === null || signatory.orderIndex === next
-}
-
-/** Avancement d'une demande (pour la barre de progression / KPIs). */
-export function progress(signatories: Signatory[]): { signed: number; declined: number; total: number; pct: number } {
-  const total = signatories.length
-  const signed = signatories.filter((s) => s.status === 'signed').length
-  const declined = signatories.filter((s) => s.status === 'declined').length
-  const pct = total === 0 ? 0 : Math.round((signed / total) * 100)
-  return { signed, declined, total, pct }
 }

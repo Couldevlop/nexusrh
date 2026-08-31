@@ -13,10 +13,6 @@
 
 export const EXPORT_KINDS = ['employees', 'variable_elements', 'payroll'] as const
 export type ExportKind = (typeof EXPORT_KINDS)[number]
-export function isValidExportKind(k: unknown): k is ExportKind {
-  return typeof k === 'string' && (EXPORT_KINDS as readonly string[]).includes(k)
-}
-
 // Séparateurs autorisés (SAGE FR/CI : point-virgule par défaut).
 export const SEPARATORS: Record<string, string> = { semicolon: ';', comma: ',', tab: '\t', pipe: '|' }
 export const SEPARATOR_KEYS = Object.keys(SEPARATORS)

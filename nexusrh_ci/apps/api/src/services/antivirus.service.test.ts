@@ -74,8 +74,7 @@ describe('parseClamdReply', () => {
 
 describe('scanBuffer — antivirus désactivé (défaut)', () => {
   it('laisse passer sans analyser : aucun changement de comportement', async () => {
-    const { scanBuffer, isAntivirusEnabled } = await loadService({ CLAMAV_HOST: undefined })
-    expect(isAntivirusEnabled()).toBe(false)
+    const { scanBuffer } = await loadService({ CLAMAV_HOST: undefined })
     expect(await scanBuffer(Buffer.from('nimporte quoi'))).toEqual({ clean: true, scanned: false })
   })
 })

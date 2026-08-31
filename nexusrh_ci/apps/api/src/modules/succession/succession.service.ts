@@ -16,16 +16,9 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number]
 export const READINESS_LEVELS = ['ready_now', 'short_term', 'medium_term', 'long_term'] as const
 export type Readiness = (typeof READINESS_LEVELS)[number]
 
-export function isValidCriticality(v: unknown): v is Criticality {
-  return typeof v === 'string' && (CRITICALITY_LEVELS as readonly string[]).includes(v)
-}
 export function isValidReadiness(v: unknown): v is Readiness {
   return typeof v === 'string' && (READINESS_LEVELS as readonly string[]).includes(v)
 }
-export function isValidPlanStatus(v: unknown): v is PlanStatus {
-  return typeof v === 'string' && (PLAN_STATUSES as readonly string[]).includes(v)
-}
-
 export interface CoverageSummary {
   candidateCount: number
   readyNow: number

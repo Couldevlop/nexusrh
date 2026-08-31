@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import {
-  EXPORT_KINDS, isValidExportKind, SEPARATORS, resolveSeparator, SAGE_COLUMNS,
-  sanitizeCsvField, encodeField, buildSageCsv, exportFilename,
+  EXPORT_KINDS,
+  SEPARATORS,
+  resolveSeparator,
+  SAGE_COLUMNS,
+  sanitizeCsvField,
+  encodeField,
+  buildSageCsv,
+  exportFilename,
 } from './sage.service.js'
 
 describe('sage.service — validations', () => {
-  it('types d\'export bornés', () => {
-    expect(EXPORT_KINDS).toEqual(['employees', 'variable_elements', 'payroll'])
-    expect(isValidExportKind('payroll')).toBe(true)
-    expect(isValidExportKind('secret')).toBe(false)
-  })
   it('séparateur : point-virgule par défaut', () => {
     expect(SEPARATORS.semicolon).toBe(';')
     expect(resolveSeparator('comma')).toBe(',')

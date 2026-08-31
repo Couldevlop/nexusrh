@@ -367,10 +367,6 @@ export function specIssues(spec: BankFileSpec): string[] {
   return issues
 }
 
-export function isSpecComplete(spec: BankFileSpec): boolean {
-  return specIssues(spec).length === 0
-}
-
 // ── Génération ───────────────────────────────────────────────────────────────
 
 export interface BuiltBankFile { buffer: Buffer; filename: string; mime: string }

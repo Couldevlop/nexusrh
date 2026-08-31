@@ -3,7 +3,7 @@
  * cibler le réseau interne. Tests sur IP littérales (pas de DNS réseau).
  */
 import { describe, it, expect } from 'vitest'
-import { isSafeOutboundUrl, assertSafeOutboundUrl, assertSafeSmtpHost, isSafeSmtpHost, assertSafeOutboundHost, SsrfBlockedError } from './ssrf-guard.js'
+import { isSafeOutboundUrl, assertSafeOutboundUrl, assertSafeSmtpHost, assertSafeOutboundHost, SsrfBlockedError } from './ssrf-guard.js'
 
 describe('ssrf-guard — adresses internes bloquées', () => {
   const blocked = [
@@ -75,10 +75,6 @@ describe('ssrf-guard — assertSafeSmtpHost (SMTP tenant, OWASP A10)', () => {
     await expect(assertSafeSmtpHost('1.1.1.1')).resolves.toBeUndefined()
   })
 
-  it('isSafeSmtpHost — variante non-levante ({ok})', async () => {
-    expect((await isSafeSmtpHost('169.254.169.254')).ok).toBe(false)
-    expect((await isSafeSmtpHost('8.8.8.8')).ok).toBe(true)
-  })
 })
 
 describe('ssrf-guard — assertSafeOutboundHost (SMTP tenant, OWASP A10 — utilisé par /settings/email)', () => {

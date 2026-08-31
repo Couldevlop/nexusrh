@@ -83,6 +83,21 @@ vi.mock('../../services/sourcing-countries.service.js', () => ({
   })),
 }))
 
+// Plateformes de sourcing : administrées en base (platform.sourcing_platforms)
+// et lues via ce service. Mockées ici pour que les séquences de `queryMock`
+// des tests restent lisibles — la lecture réelle est couverte par
+// sourcing-config.service.test.ts.
+const SOURCING_PLATFORMS = ['LinkedIn', 'Africawork', 'Emploi.ci', 'Jobberman']
+vi.mock('../../services/sourcing-config.service.js', () => ({
+  // Même contrat que l'implémentation : la sélection du client est filtrée sur
+  // le référentiel, une sélection vide ou hors référentiel rend tout.
+  resolveSourcingPlatformNames: vi.fn(async (requested?: unknown) => {
+    if (!Array.isArray(requested) || requested.length === 0) return SOURCING_PLATFORMS
+    const kept = SOURCING_PLATFORMS.filter((n) => requested.includes(n))
+    return kept.length > 0 ? kept : SOURCING_PLATFORMS
+  }),
+}))
+
 // unpdf mocké pour couvrir le chemin PDF de extractCvText interne aux routes.
 const { getDocumentProxyMock, extractTextMock } = vi.hoisted(() => ({
   getDocumentProxyMock: vi.fn(),
