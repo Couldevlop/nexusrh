@@ -36,7 +36,7 @@ vi.mock('../../services/email.js', () => ({
 
 // crypto : on contrôle encrypt/encryptIfPresent pour rester déterministe et
 // éviter la dépendance à ENCRYPTION_KEY.
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   encrypt:          (v: string) => `enc(${v})`,
   encryptIfPresent: (v: string | null | undefined) => (v ? `enc(${v})` : null),
   decryptIfPresent: (v: string | null | undefined) => (v ? `dec(${v})` : null),

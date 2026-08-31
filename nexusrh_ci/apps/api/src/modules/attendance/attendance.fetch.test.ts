@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resolveSafeOutboundResult } from '../../services/ssrf-guard.js'
+import { resolveSafeOutboundResult } from '@nexusrhci/shared/ssrf-guard'
 import { fetchDevicePunches } from './attendance.fetch.js'
 import type { FieldMapping } from './attendance.types.js'
 
-vi.mock('../../services/ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   resolveSafeOutboundResult: vi.fn(),
 }))
 

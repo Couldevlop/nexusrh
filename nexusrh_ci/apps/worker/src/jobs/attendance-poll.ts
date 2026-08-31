@@ -16,12 +16,13 @@
  * worker (legal-watch.ts, cnps.ts, payroll.ts…) n'importe depuis l'API — ils
  * sont tous auto-suffisants. La logique de `attendance.fetch.ts` /
  * `attendance.mapping.ts` / `ssrf-guard.ts` / `utils/crypto.ts` (apps/api)
- * est donc RÉIMPLÉMENTÉE ICI À L'IDENTIQUE plutôt qu'importée, avec les
- * MÊMES garanties de sécurité :
- *  - garde SSRF (`../utils/ssrf-guard.js`, copie de `services/ssrf-guard.ts`)
- *    exécutée AVANT tout `fetch`, résultat `.ok` vérifié explicitement ;
- *  - secret déchiffré AES-256-GCM (`../utils/crypto.js`, copie de
- *    `utils/crypto.ts`) juste avant l'appel HTTP, jamais loggé ;
+ * est réimplémentée ici, avec les MÊMES garanties de sécurité. Les PRIMITIVES,
+ * elles, ne sont plus recopiées : depuis le 31/08/2026 elles vivent une seule
+ * fois dans `@nexusrhci/shared`, que le worker déclare en dépendance.
+ *  - garde SSRF (`@nexusrhci/shared/ssrf-guard`) exécutée AVANT tout `fetch`,
+ *    résultat `.ok` vérifié explicitement ;
+ *  - secret déchiffré AES-256-GCM (`@nexusrhci/shared/crypto`) juste avant
+ *    l'appel HTTP, jamais loggé ;
  *  - timeout borné (`AbortSignal.timeout(15000)`), `redirect: 'manual'` ;
  *  - auth par `auth_type` (bearer/basic/api_key/none) ;
  *  - mapping des champs bruts → pointages normalisés via `field_mapping`
@@ -52,9 +53,9 @@ import { Queue } from 'bullmq'
 import { createClient } from '../redis.js'
 import { logger } from '../logger.js'
 import { parseAttendancePollPayload, JobValidationError } from '../schemas.js'
-import { resolveSafeOutboundResult } from '../utils/ssrf-guard.js'
-import { readJsonCapped, BodyTooLargeError } from '../utils/http-body-limit.js'
-import { decryptIfPresent } from '../utils/crypto.js'
+import { resolveSafeOutboundResult } from '@nexusrhci/shared/ssrf-guard'
+import { readJsonCapped, BodyTooLargeError } from '@nexusrhci/shared/http-body-limit'
+import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 
 // OWASP A04 — cap connexions PG (chaque poll fait quelques requêtes courtes ;
 // 5 connexions suffisent et évitent de saturer le pool DB partagé).

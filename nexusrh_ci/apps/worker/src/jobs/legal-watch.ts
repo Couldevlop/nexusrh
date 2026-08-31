@@ -23,8 +23,8 @@ import { Pool } from 'pg'
 import { createHash } from 'crypto'
 import { logger } from '../logger.js'
 import { parseLegalWatchPayload, JobValidationError, type LegalWatchPayload } from '../schemas.js'
-import { readBodyCapped, BodyTooLargeError } from '../utils/http-body-limit.js'
-import { resolveSafeOutboundResult } from '../utils/ssrf-guard.js'
+import { readBodyCapped, BodyTooLargeError } from '@nexusrhci/shared/http-body-limit'
+import { resolveSafeOutboundResult } from '@nexusrhci/shared/ssrf-guard'
 
 // OWASP A04 — cap connexions PG (le worker peut traiter plusieurs sources en
 // parallèle, chacune fait 2-3 queries — 5 connexions suffisent et empêchent

@@ -16,12 +16,12 @@ vi.mock('../../config.js', () => ({
   },
 }))
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   encrypt: (s: string) => `enc(${s})`,
   decryptIfPresent: (s: string | null | undefined) => (s ? s.replace(/^enc\(|\)$/g, '') : null),
 }))
 // Évite toute résolution DNS réelle (le vrai guard fait un lookup).
-vi.mock('../../services/ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   assertSafeOutboundUrl: vi.fn(async (raw: string) => new URL(raw)),
   resolveSafeOutbound: vi.fn(async (raw: string) => ({
     url: new URL(raw),

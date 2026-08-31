@@ -15,7 +15,7 @@ vi.mock('../../config.js', () => ({
   config: { env: 'test', jwt: { secret: 'test-secret-minimum-32-characters-ok!', expiresIn: '1h' }, database: { url: 'postgresql://test' }, redis: { url: 'redis://x' } },
 }))
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../services/ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   isSafeOutboundUrl: vi.fn().mockResolvedValue({ ok: true }),
   assertSafeOutboundUrl: vi.fn().mockResolvedValue(new URL('https://ok.example.com')),
 }))
@@ -149,7 +149,7 @@ describe('A09-3 — en-têtes de webhook : chiffrés au repos, jamais exposés',
 
   it('GET /webhooks : renvoie header_keys, jamais les valeurs', async () => {
     // Ligne « moderne » (chiffrée) + ligne héritée (clair, pré-migration).
-    const { encrypt } = await import('../../utils/crypto.js')
+    const { encrypt } = await import('@nexusrhci/shared/crypto')
     queryMock.mockResolvedValueOnce({ rows: [
       { id: 'w1', name: 'Moderne', target_url: 'https://a.example.com', events: [], is_active: true,
         headers: null, headers_enc: encrypt(JSON.stringify(SECRET_HEADERS)),

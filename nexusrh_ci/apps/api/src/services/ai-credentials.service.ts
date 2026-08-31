@@ -14,7 +14,7 @@
  */
 import { config } from '../config.js'
 import { pool } from '../db/pool.js'
-import { decryptIfPresent } from '../utils/crypto.js'
+import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
 export type AiProvider = 'claude' | 'mistral'

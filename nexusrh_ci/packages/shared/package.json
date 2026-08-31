@@ -1,0 +1,25 @@
+{
+  "name": "@nexusrhci/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ci-holidays":     { "types": "./dist/ci-holidays.d.ts",     "default": "./dist/ci-holidays.js" },
+    "./crypto":          { "types": "./dist/crypto.d.ts",          "default": "./dist/crypto.js" },
+    "./http-body-limit": { "types": "./dist/http-body-limit.d.ts", "default": "./dist/http-body-limit.js" },
+    "./ssrf-guard":      { "types": "./dist/ssrf-guard.d.ts",      "default": "./dist/ssrf-guard.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "undici": "^7.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "typescript": "^5.4.5",
+    "vitest": "^3.2.7"
+  }
+}

@@ -21,7 +21,7 @@ const { loggerMock } = vi.hoisted(() => ({
 
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
-vi.mock('../utils/ssrf-guard.js', () => ({ resolveSafeOutboundResult: resolveSafeMock }))
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({ resolveSafeOutboundResult: resolveSafeMock }))
 
 import { processLegalWatchJob } from './legal-watch.js'
 

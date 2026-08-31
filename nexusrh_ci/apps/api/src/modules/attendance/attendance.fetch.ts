@@ -1,5 +1,5 @@
-import { resolveSafeOutboundResult } from '../../services/ssrf-guard.js'
-import { readJsonCapped, BodyTooLargeError } from '../../services/http-body-limit.js'
+import { resolveSafeOutboundResult } from '@nexusrhci/shared/ssrf-guard'
+import { readJsonCapped, BodyTooLargeError } from '@nexusrhci/shared/http-body-limit'
 import { mapDeviceResponse } from './attendance.mapping.js'
 import type { FieldMapping, NormalizedPunch } from './attendance.types.js'
 

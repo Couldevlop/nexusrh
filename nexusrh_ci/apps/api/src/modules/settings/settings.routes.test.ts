@@ -30,7 +30,7 @@ vi.mock('../../services/email.js', () => ({
 
 // Par défaut : hôte sortant/SMTP considéré sûr (pass-through). Les tests SSRF
 // dédiés surchargent avec mockRejectedValueOnce(new SsrfBlockedError(...)).
-vi.mock('../../services/ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   isSafeOutboundUrl:      vi.fn(async () => ({ ok: true as const })),
   assertSafeOutboundUrl:  vi.fn(async (raw: string) => new URL(raw)),
   assertSafeOutboundHost: vi.fn(async () => undefined),
@@ -49,7 +49,7 @@ vi.mock('../../config.js', () => ({
 import authPlugin from '../../plugins/auth.js'
 import settingsRoutes from './settings.routes.js'
 import { sendTestEmail, sendEmployeeWelcomeEmail } from '../../services/email.js'
-import { assertSafeOutboundHost, SsrfBlockedError } from '../../services/ssrf-guard.js'
+import { assertSafeOutboundHost, SsrfBlockedError } from '@nexusrhci/shared/ssrf-guard'
 
 const TENANT = 'tenant_sotra'
 const UUID_A = '11111111-1111-1111-1111-111111111111'

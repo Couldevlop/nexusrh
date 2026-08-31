@@ -16,9 +16,9 @@
  */
 import { config } from '../config.js'
 import { pool as rawPool } from '../db/pool.js'
-import { decryptIfPresent } from '../utils/crypto.js'
-import { resolveSafeOutbound } from './ssrf-guard.js'
-import { readJsonCapped } from './http-body-limit.js'
+import { decryptIfPresent } from '@nexusrhci/shared/crypto'
+import { resolveSafeOutbound } from '@nexusrhci/shared/ssrf-guard'
+import { readJsonCapped } from '@nexusrhci/shared/http-body-limit'
 
 export const MM_PROVIDERS = ['wave', 'mtn_momo', 'orange_money'] as const
 export type MmProvider = typeof MM_PROVIDERS[number]

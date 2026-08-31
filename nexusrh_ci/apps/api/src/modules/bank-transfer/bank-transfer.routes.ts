@@ -20,7 +20,7 @@ import { z } from 'zod'
 import ExcelJS from 'exceljs'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { decryptIfPresent, encryptIfPresent } from '../../utils/crypto.js'
+import { decryptIfPresent, encryptIfPresent } from '@nexusrhci/shared/crypto'
 import { sendBankTransferEmail } from '../../services/email.js'
 import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import {

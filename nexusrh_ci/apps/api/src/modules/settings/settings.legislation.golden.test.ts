@@ -23,7 +23,7 @@ vi.mock('../../services/email.js', () => ({
   sendEmployeeWelcomeEmail: vi.fn().mockResolvedValue({ sent: true }),
   sendTestEmail:            vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   encrypt: (v: string) => `enc(${v})`,
   encryptIfPresent: (v: string | null | undefined) => (v ? `enc(${v})` : null),
   decryptIfPresent: (v: string | null | undefined) => (v ? `dec(${v})` : null),

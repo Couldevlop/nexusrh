@@ -15,7 +15,7 @@ vi.mock('../config.js', () => ({
 }))
 
 import { resolveAiCreds, envCreds, maskKey, isEncryptionAvailable } from './ai-credentials.service.js'
-import { encrypt } from '../utils/crypto.js'
+import { encrypt } from '@nexusrhci/shared/crypto'
 
 beforeEach(() => queryMock.mockReset())
 

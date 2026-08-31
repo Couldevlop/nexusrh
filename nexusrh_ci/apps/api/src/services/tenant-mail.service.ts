@@ -9,7 +9,7 @@
  * jamais renvoyé au client.
  */
 import { pool } from '../db/pool.js'
-import { decryptIfPresent } from '../utils/crypto.js'
+import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import type { TenantSmtp } from './email.js'
 
 export interface TenantMailConfig {

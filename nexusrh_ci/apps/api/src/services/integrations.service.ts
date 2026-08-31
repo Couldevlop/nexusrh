@@ -1,7 +1,7 @@
 import type { Pool } from 'pg'
 import { createHmac, createHash, randomBytes } from 'crypto'
-import { resolveSafeOutbound } from './ssrf-guard.js'
-import { readBodyCapped } from './http-body-limit.js'
+import { resolveSafeOutbound } from '@nexusrhci/shared/ssrf-guard'
+import { readBodyCapped } from '@nexusrhci/shared/http-body-limit'
 import { ensureTenantSchema } from '../utils/schema-migrations.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
 

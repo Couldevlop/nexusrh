@@ -32,7 +32,7 @@ vi.mock('../../config.js', () => ({
   },
 }))
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   decryptIfPresent: (v: string | null) => v, encryptIfPresent: (v: string | null) => v,
 }))
 vi.mock('../../services/email.js', () => ({ sendBankTransferEmail: vi.fn() }))

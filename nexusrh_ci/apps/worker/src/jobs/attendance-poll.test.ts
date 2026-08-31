@@ -21,8 +21,8 @@ const { loggerMock } = vi.hoisted(() => ({
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
 vi.mock('../redis.js', () => ({ createClient: vi.fn(() => ({})) }))
-vi.mock('../utils/ssrf-guard.js', () => ({ resolveSafeOutboundResult: resolveMock }))
-vi.mock('../utils/crypto.js', () => ({ decryptIfPresent: decryptIfPresentMock }))
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({ resolveSafeOutboundResult: resolveMock }))
+vi.mock('@nexusrhci/shared/crypto', () => ({ decryptIfPresent: decryptIfPresentMock }))
 vi.mock('bullmq', () => ({ Queue: vi.fn(() => ({ add: queueAddMock })) }))
 
 import { processAttendancePollJob } from './attendance-poll.js'
