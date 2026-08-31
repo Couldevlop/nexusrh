@@ -134,15 +134,20 @@ web:
 
 # ── Worker ────────────────────────────────────────────────────────────────────
 worker:
-  # Reactive le 31/08/2026. Il avait ete desactive parce que la livenessProbe
-  # executait `require('./dist/health-check.js')` alors que le fichier n'existait
-  # pas : le pod ne devenait jamais ready et `helm upgrade --wait` partait en
-  # timeout, bloquant TOUT le deploiement. Les deux conditions de reactivation
-  # posees a l'epoque sont remplies : health-check.ts existe et est commite, et
-  # le worker est construit/scanne/pousse par ci-build.yml. La sonde a ete
-  # rejouee telle quelle dans l'image du jour, contre un vrai Redis : exit 0 en
-  # ~0,31 s.
-  enabled: true
+  # Reactive puis IMMEDIATEMENT redesactive le 31/08/2026, apres constat en
+  # production. Le blocage n'etait pas celui documente jusqu'ici (health-check
+  # manquant, corrige depuis) : `apps/worker/src/redis.ts` REFUSE toute URL
+  # Redis en clair quand NODE_ENV=production et exige `rediss://` (TLS), sans
+  # echappatoire. Le chart fournit `redis://` et le Redis du cluster ne fait pas
+  # de TLS -> le conteneur leve au demarrage et boucle en CrashLoopBackOff.
+  #
+  # A noter : l'API n'a AUCUNE garde equivalente et parle au MEME Redis en
+  # clair. L'incoherence doit etre tranchee avant toute nouvelle tentative :
+  # soit on active TLS sur le Redis du cluster (et l'API suit), soit on assume
+  # le trafic pod-a-pod en clair sur un noeud unique et on assouplit la garde
+  # du worker de facon explicite. Tant que ce n'est pas tranche, le worker
+  # reste eteint plutot que de redemarrer en boucle.
+  enabled: false
   replicas: 1
   resources:
     requests:
