@@ -51,7 +51,7 @@ postgresql://nexusrh:$(POSTGRES_PASSWORD)@{{ .Release.Name }}-postgres-postgresq
 
 {{/* URL interne Redis */}}
 {{- define "nexusrh.redisUrl" -}}
-redis://:$(REDIS_PASSWORD)@{{ .Release.Name }}-redis-master.{{ include "nexusrh.namespace" . }}.svc.cluster.local:6379
+rediss://:$(REDIS_PASSWORD)@{{ .Release.Name }}-redis-master.{{ include "nexusrh.namespace" . }}.svc.cluster.local:6379
 {{- end }}
 
 {{/* URL interne MinIO */}}

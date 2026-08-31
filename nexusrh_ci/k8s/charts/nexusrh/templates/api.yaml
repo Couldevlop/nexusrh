@@ -89,6 +89,13 @@ spec:
                   key: redis-password
             - name: REDIS_URL
               value: "{{ include "nexusrh.redisUrl" . }}"
+            # Redis parle TLS avec un certificat emis par une autorite interne au
+            # cluster (cert-manager). Node ne la connait pas : on l'ajoute a son
+            # magasin de confiance. Sans cela, `rediss://` echouerait a la
+            # verification — et la contourner (rejectUnauthorized: false)
+            # chiffrerait sans authentifier, donc sans fermer le MITM.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/redis-tls/ca.crt
             # MinIO / S3
             - name: S3_ACCESS_KEY
               value: nexusrh-minio
@@ -155,6 +162,9 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: redis-ca
+              mountPath: /etc/redis-tls
+              readOnly: true
             - name: uploads
               mountPath: /app/uploads
           livenessProbe:
@@ -180,6 +190,14 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: redis-ca
+          secret:
+            secretName: nexusrh-redis-tls
+            # Uniquement l'autorite : la cle privee du serveur Redis n'a rien a
+            # faire dans les pods applicatifs.
+            items:
+              - key: ca.crt
+                path: ca.crt
         - name: uploads
           emptyDir: {}
 ---
