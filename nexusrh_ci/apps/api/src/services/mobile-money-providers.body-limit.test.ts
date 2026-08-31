@@ -12,7 +12,7 @@ const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }))
 
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
-vi.mock('./ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   resolveSafeOutbound: resolveMock,
   SsrfBlockedError: class SsrfBlockedError extends Error {},
 }))
@@ -28,7 +28,7 @@ vi.mock('../config.js', () => ({
     },
   },
 }))
-vi.mock('../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   decryptIfPresent: (v: string | null | undefined) => (v ? v.replace('enc:', '') : null),
 }))
 

@@ -61,7 +61,7 @@ vi.mock('../../config.js', () => ({
   },
 }))
 
-import { encrypt } from '../../utils/crypto.js'
+import { encrypt } from '@nexusrhci/shared/crypto'
 import authPlugin from '../../plugins/auth.js'
 import authRoutes from './auth.routes.js'
 import authMfaRoutes from './auth-mfa.routes.js'

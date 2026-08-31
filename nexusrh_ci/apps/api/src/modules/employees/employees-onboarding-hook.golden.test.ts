@@ -26,7 +26,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
   ensurePlatformSchema: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   encryptIfPresent: vi.fn((v: string | null | undefined) => v ?? null),
   decryptIfPresent: vi.fn((v: string | null | undefined) => v ?? null),
 }))

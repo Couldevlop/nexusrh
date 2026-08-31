@@ -80,6 +80,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.0
         version: 11.3.0
+      '@nexusrhci/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -352,6 +355,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@nexusrhci/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bullmq:
         specifier: ^5.8.4
         version: 5.73.4
@@ -392,6 +398,22 @@ importers:
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.39)(jiti@1.21.7)(jsdom@29.1.1)(tsx@4.23.12)(yaml@2.8.3)
+
+  packages/shared:
+    dependencies:
+      undici:
+        specifier: ^7.29.0
+        version: 7.29.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.2
+        version: 20.19.39
       typescript:
         specifier: ^5.4.5
         version: 5.9.3

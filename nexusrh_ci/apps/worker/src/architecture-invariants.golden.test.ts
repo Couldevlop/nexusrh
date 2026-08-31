@@ -1,13 +1,12 @@
 /**
  * Golden — invariants d'architecture du worker.
  *
- * Le worker vit à côté de l'API sans partager son code : `utils/ssrf-guard.ts`,
- * `utils/crypto.ts`, `utils/http-body-limit.ts` et `utils/ci-holidays.ts` sont
- * des COPIES de leurs équivalents API, assumées comme telles (paquets
- * distincts, pas de build partagé). C'est précisément la configuration qui a
- * produit le constat central de l'audit du 29/08/2026 : une primitive de
- * sécurité recopiée finit par diverger, et personne ne le voit — les tests des
- * deux côtés restent verts.
+ * Le worker partageait autrefois avec l'API des COPIES de `ssrf-guard`,
+ * `crypto`, `http-body-limit` et `ci-holidays` : exactement la configuration qui
+ * a produit le constat central de l'audit du 29/08/2026 — une primitive de
+ * sécurité recopiée finit par diverger, et personne ne le voit, les tests des
+ * deux côtés restant verts. Depuis le 31/08/2026 ces quatre modules vivent une
+ * seule fois dans `@nexusrhci/shared` : la divergence n'est plus possible.
  *
  * Les invariants de l'API (`apps/api/src/architecture-invariants.golden.test.ts`)
  * ne balaient que `apps/api`. Ce fichier fait le même travail ici, sur les deux
@@ -52,11 +51,10 @@ describe('Invariants d’architecture — appels sortants du worker', () => {
   it('tout fetch sortant passe par la garde SSRF', () => {
     const offenders: string[] = []
     for (const { f, src } of workerSources().prod) {
-      if (f === 'utils/ssrf-guard.ts') continue
       const calls = [...src.matchAll(/(?<![.\w])fetch\s*\(\s*([^,)\n]*)/g)]
       if (calls.length === 0) continue
-      if (!/from '\.{1,2}\/(?:\.\.\/)*utils\/ssrf-guard\.js'/.test(src)) {
-        offenders.push(`${f} : appelle fetch() sans importer la garde SSRF`)
+      if (!/from '@nexusrhci\/shared\/ssrf-guard'/.test(src)) {
+        offenders.push(`${f} : appelle fetch() sans importer la garde SSRF partagée`)
         continue
       }
       for (const c of calls) {
@@ -82,7 +80,6 @@ describe('Invariants d’architecture — appels sortants du worker', () => {
     // Une source légitime qui redirige vers `http://10.0.0.5/` contournerait la
     // validation : elle porte sur l'URL de départ, pas sur la destination.
     const offenders = workerSources().prod
-      .filter(({ f }) => f !== 'utils/ssrf-guard.ts')
       .filter(({ src }) => /(?<![.\w])fetch\s*\(/.test(src))
       .filter(({ src }) => !/redirect:\s*'manual'/.test(src))
       .map(({ f }) => f)

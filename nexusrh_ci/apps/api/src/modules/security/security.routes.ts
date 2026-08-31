@@ -15,8 +15,8 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { createHmac } from 'crypto'
 import { pool as rawPool } from '../../db/pool.js'
-import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
-import { resolveSafeOutbound } from '../../services/ssrf-guard.js'
+import { encrypt, decryptIfPresent } from '@nexusrhci/shared/crypto'
+import { resolveSafeOutbound } from '@nexusrhci/shared/ssrf-guard'
 import {
   SSO_PROVIDERS, TENANT_ROLES, SIEM_TRANSPORTS, SIEM_FORMATS, EVENT_CATEGORIES,
   isValidTenantRole, categorizeAction, shouldForward, formatEvent, type SecurityEvent, type SiemFormat,

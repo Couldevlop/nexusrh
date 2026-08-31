@@ -24,7 +24,7 @@ vi.mock('nodemailer', () => ({
 // Garde SSRF sur l'hôte SMTP tenant : pass-through en test (les hôtes fictifs
 // « smtp.acme.ci » ne doivent pas déclencher de résolution DNS réseau). La
 // logique de blocage réelle est testée dans ssrf-guard.test.ts.
-vi.mock('./ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   assertSafeSmtpHost: vi.fn(async () => undefined),
 }))
 

@@ -29,7 +29,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
 
 // Chiffrement traçable : permet d'asserter que NNI et IBAN passent par
 // encryptIfPresent avant l'écriture SQL (RGPD AES-256).
-vi.mock('../../utils/crypto.js', () => ({
+vi.mock('@nexusrhci/shared/crypto', () => ({
   encryptIfPresent: vi.fn((v: string | null | undefined) => (v ? `enc:${v}` : null)),
   decryptIfPresent: vi.fn((v: string | null | undefined) => (v?.startsWith('enc:') ? v.slice(4) : v ?? null)),
 }))

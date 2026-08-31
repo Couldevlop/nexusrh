@@ -2,12 +2,12 @@ import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { encrypt, decryptIfPresent } from '../../utils/crypto.js'
+import { encrypt, decryptIfPresent } from '@nexusrhci/shared/crypto'
 import {
   EVENT_CATALOG, EVENT_KEYS, API_SCOPES, generateApiKey, resolveApiKey,
   emitIntegrationEvent, deliverWebhook, testConnector,
 } from '../../services/integrations.service.js'
-import { isSafeOutboundUrl } from '../../services/ssrf-guard.js'
+import { isSafeOutboundUrl } from '@nexusrhci/shared/ssrf-guard'
 import { auditTenant } from '../../utils/audit-log.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

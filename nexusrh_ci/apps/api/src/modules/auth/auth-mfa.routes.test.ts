@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { authenticator } from 'otplib'
-import { encrypt, decrypt } from '../../utils/crypto.js'
+import { encrypt, decrypt } from '@nexusrhci/shared/crypto'
 
 // ENCRYPTION_KEY (64 hex) AVANT les imports — crypto.ts la lit au chargement du
 // module (A02 — chiffrement du secret TOTP mfa_secret au repos).

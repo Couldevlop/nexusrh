@@ -11,6 +11,9 @@ FROM base AS prod-deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
+# @nexusrhci/shared est une dépendance workspace : son manifeste doit être
+# présent pour que pnpm résolve le lien, sinon --frozen-lockfile échoue.
+COPY packages/shared/package.json ./packages/shared/
 RUN --mount=from=pnpmstore,target=/mnt/store \
     mkdir -p /pnpm/store/v3 \
  && ([ -d /mnt/store/files ] && cp -a /mnt/store/. /pnpm/store/v3/ || true)
@@ -26,6 +29,13 @@ COPY --chown=1001:1001 apps/api/dist           ./dist
 COPY --chown=1001:1001 apps/api/src/assets     ./dist/assets
 COPY --from=prod-deps --chown=1001:1001 /app/node_modules ./node_modules
 COPY --chown=1001:1001 apps/api/package.json   ./package.json
+# @nexusrhci/shared : pnpm le pose en lien symbolique dans
+# apps/api/node_modules, que cette image APLATIE (dist + node_modules à la
+# racine) ne consulte jamais. On copie donc le paquet RÉEL là où Node le
+# cherche. Sans ces deux lignes, l'API démarre puis meurt sur le premier
+# import du paquet partagé.
+COPY --chown=1001:1001 packages/shared/package.json ./node_modules/@nexusrhci/shared/package.json
+COPY --chown=1001:1001 packages/shared/dist         ./node_modules/@nexusrhci/shared/dist
 USER 1001
 EXPOSE 4001
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \

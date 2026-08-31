@@ -1,6 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 import { config } from '../config.js'
-import { assertSafeSmtpHost } from './ssrf-guard.js'
+import { assertSafeSmtpHost } from '@nexusrhci/shared/ssrf-guard'
 
 // Création PARESSEUSE du transporter : on ne lit `config.smtp` qu'au premier
 // envoi réel, jamais à l'import du module. Évite tout effet de bord à

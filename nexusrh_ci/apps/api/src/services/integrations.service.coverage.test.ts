@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const { assertMock, resolveMock } = vi.hoisted(() => ({ assertMock: vi.fn(), resolveMock: vi.fn() }))
-vi.mock('./ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   assertSafeOutboundUrl: assertMock,
   resolveSafeOutbound: resolveMock,
   SsrfBlockedError: class SsrfBlockedError extends Error {},

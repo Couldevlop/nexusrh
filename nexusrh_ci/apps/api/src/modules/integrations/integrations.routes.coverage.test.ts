@@ -18,7 +18,7 @@ vi.mock('../../config.js', () => ({
 }))
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
 const { safeMock } = vi.hoisted(() => ({ safeMock: vi.fn() }))
-vi.mock('../../services/ssrf-guard.js', () => ({
+vi.mock('@nexusrhci/shared/ssrf-guard', () => ({
   isSafeOutboundUrl: safeMock,
   assertSafeOutboundUrl: vi.fn().mockResolvedValue(new URL('https://ok.example.com')),
 }))

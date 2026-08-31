@@ -19,8 +19,8 @@
  * ce job ne réimplémente AUCUNE règle métier de calcul de retard/escalade,
  * il assemble uniquement les entrées (pointages, horaire effectif, jour
  * férié CI, congé approuvé, dates déjà consommées) et persiste les
- * résultats. `../utils/ci-holidays.js` est de la même façon une copie
- * verbatim de `apps/api/src/utils/ci-holidays.ts`.
+ * résultats. Le calendrier des jours fériés vient de `@nexusrhci/shared/ci-holidays`,
+ * partagé avec l'API — il n'en existe plus qu'une seule implémentation.
  *
  * CONTRAT CRITIQUE — `workdays` : `EffectiveSchedule.workdays` (résolu par
  * `resolveSchedule`, cascade employé > département > tenant) DOIT être
@@ -57,7 +57,7 @@ import type { Job } from 'bullmq'
 import { Pool } from 'pg'
 import { logger } from '../logger.js'
 import { parseAttendanceEvaluatePayload, JobValidationError } from '../schemas.js'
-import { joursFeriesCI } from '../utils/ci-holidays.js'
+import { joursFeriesCI } from '@nexusrhci/shared/ci-holidays'
 import { computeDay } from '../attendance-core/attendance.compute.js'
 import { resolveSchedule } from '../attendance-core/attendance.schedule.js'
 import { evaluateEscalation } from '../attendance-core/attendance.escalation.js'
