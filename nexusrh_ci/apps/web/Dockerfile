@@ -1,4 +1,9 @@
 FROM nginx:1.27-alpine
+# Le tag nginx:1.27-alpine est figé sur les paquets Alpine du jour de sa
+# publication : il traînait 1 CVE critique et ~25 hautes (openssl, libpng,
+# libxml2, libexpat, zlib, curl, musl…). `apk upgrade` applique les correctifs
+# publiés depuis, sans changer de version de nginx.
+RUN apk upgrade --no-cache
 COPY apps/web/dist         /usr/share/nginx/html
 COPY apps/web/nginx.conf   /etc/nginx/conf.d/default.conf
 COPY apps/web/security-headers.conf /etc/nginx/snippets/security-headers.conf
