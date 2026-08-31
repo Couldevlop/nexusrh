@@ -8,12 +8,20 @@ import type { Job } from 'bullmq'
  */
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+// Garde SSRF : mockée pour que ces tests restent centrés sur le corps de
+// réponse. Le comportement réel (résolution DNS, refus des adresses internes,
+// épinglage) est couvert par ssrf-guard côté API ; le fait que ce job l'appelle
+// est verrouillé par architecture-invariants.golden.test.ts.
+const { resolveSafeMock, dispatcherCloseMock } = vi.hoisted(() => ({
+  resolveSafeMock: vi.fn(), dispatcherCloseMock: vi.fn(async () => undefined),
+}))
 const { loggerMock } = vi.hoisted(() => ({
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
 
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
+vi.mock('../utils/ssrf-guard.js', () => ({ resolveSafeOutboundResult: resolveSafeMock }))
 
 import { processLegalWatchJob } from './legal-watch.js'
 
@@ -34,6 +42,12 @@ beforeEach(() => {
   loggerMock.error.mockReset()
   loggerMock.warn.mockReset()
   vi.stubGlobal('fetch', vi.fn())
+  dispatcherCloseMock.mockClear()
+  resolveSafeMock.mockReset()
+  resolveSafeMock.mockImplementation(async (raw: string) => ({
+    ok: true,
+    value: { url: new URL(raw), ip: '93.184.216.34', family: 4, dispatcher: { close: dispatcherCloseMock } },
+  }))
 })
 
 describe('processLegalWatchJob — corps de réponse borné (A10-3)', () => {
@@ -116,5 +130,39 @@ describe('processLegalWatchJob — corps de réponse borné (A10-3)', () => {
     expect(global.fetch).not.toHaveBeenCalled()
     expect(queryMock).not.toHaveBeenCalled()
     expect(loggerMock.error).toHaveBeenCalled()
+  })
+})
+
+describe('processLegalWatchJob — garde SSRF (A10)', () => {
+  it('une source qui résout vers une adresse interne n’est jamais appelée', async () => {
+    // Avant le 31/08/2026 seul le SCHÉMA de l'URL était vérifié : le worker
+    // tourne DANS le cluster, il joignait donc les adresses privées et le
+    // service de métadonnées, et le corps récupéré atterrissait dans
+    // article_proposals sous les yeux du super_admin.
+    resolveSafeMock.mockResolvedValueOnce({ ok: false, reason: 'Adresse IP privée/interne interdite' })
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await expect(processLegalWatchJob(jobFor({ ...PAYLOAD, sourceUrl: 'http://169.254.169.254/latest/meta-data/' })))
+      .rejects.toThrow(/garde SSRF/)
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    // Rien n'est écrit : pas de proposition construite sur un contenu interne.
+    expect(queryMock.mock.calls.some(c => /INSERT/i.test(String(c[0])))).toBe(false)
+  })
+
+  it('appelle l’URL résolue par la garde, sans suivre les redirections', async () => {
+    queryMock.mockResolvedValue({ rows: [{ content: 'texte', content_hash: 'x' }] })
+    const fetchSpy = vi.fn(async (_url: string, _opts?: unknown) => new Response('texte', { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await processLegalWatchJob(jobFor(PAYLOAD)).catch(() => undefined)
+
+    expect(fetchSpy).toHaveBeenCalled()
+    const opts = fetchSpy.mock.calls[0]?.[1] as unknown as RequestInit & { dispatcher?: unknown }
+    expect(opts.redirect).toBe('manual')
+    expect(opts.dispatcher).toBeDefined()
+    // Le dispatcher épinglé est refermé, y compris quand le job échoue ensuite.
+    expect(dispatcherCloseMock).toHaveBeenCalled()
   })
 })

@@ -13,8 +13,10 @@
  * OWASP :
  *  - A04 : fetch avec timeout 30s + max body 1MB (anti-ressources illimitées)
  *  - A09 : log structuré pour audit
- *  - A10 : URLs configurables via env, pas SSRF par défaut (liste allowlist
- *          recommandée en production)
+ *  - A10 : garde SSRF sur l'URL surveillée (`resolveSafeOutboundResult`) —
+ *          résolution DNS validée, IP privées/loopback/lien-local refusées,
+ *          dispatcher épinglé sur l'IP validée (anti DNS-rebinding) et
+ *          redirections non suivies
  */
 import type { Job } from 'bullmq'
 import { Pool } from 'pg'
@@ -22,6 +24,7 @@ import { createHash } from 'crypto'
 import { logger } from '../logger.js'
 import { parseLegalWatchPayload, JobValidationError, type LegalWatchPayload } from '../schemas.js'
 import { readBodyCapped, BodyTooLargeError } from '../utils/http-body-limit.js'
+import { resolveSafeOutboundResult } from '../utils/ssrf-guard.js'
 
 // OWASP A04 — cap connexions PG (le worker peut traiter plusieurs sources en
 // parallèle, chacune fait 2-3 queries — 5 connexions suffisent et empêchent
@@ -34,11 +37,23 @@ const FETCH_TIMEOUT_MS = 30_000
 const MAX_BODY_BYTES   = 1_000_000  // 1 MB
 
 async function fetchText(url: string): Promise<string> {
+  // OWASP A10 — la validation de payload ne vérifiait que le SCHÉMA de l'URL :
+  // `http://169.254.169.254/…`, une IP privée du cluster ou un nom qui résout
+  // vers l'une d'elles passaient, et le corps récupéré atterrissait dans
+  // `article_proposals` sous les yeux du super_admin. La garde était pourtant
+  // déjà dans le worker (utilisée par attendance-poll) : elle est appelée ici.
+  const safe = await resolveSafeOutboundResult(url)
+  if (safe.ok !== true) throw new Error(`URL refusée par la garde SSRF : ${safe.reason}`)
+
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
   try {
-    const res = await fetch(url, {
+    const res = await fetch(safe.value.url.toString(), {
       signal: ctrl.signal,
+      // Les redirections ne sont PAS suivies : une source légitime qui redirige
+      // vers une adresse interne contournerait sinon la validation ci-dessus.
+      redirect: 'manual',
+      dispatcher: safe.value.dispatcher,
       headers: {
         'User-Agent': 'NexusRH-LegalWatch/1.0 (+https://nexusrh.openlabconsulting.com)',
         'Accept': 'text/plain, text/html, application/json, application/pdf;q=0.5, */*',
@@ -59,6 +74,7 @@ async function fetchText(url: string): Promise<string> {
     }
   } finally {
     clearTimeout(timer)
+    await safe.value.dispatcher.close().catch(() => undefined)
   }
 }
 

@@ -51,50 +51,8 @@ export class SsrfBlockedError extends Error {
   constructor(reason: string) { super(reason); this.name = 'SsrfBlockedError' }
 }
 
-/**
- * Valide une URL sortante. Lève SsrfBlockedError si dangereuse.
- * Renvoie l'URL normalisée (objet URL) si sûre.
- */
-export async function assertSafeOutboundUrl(raw: string): Promise<URL> {
-  let url: URL
-  try { url = new URL(raw) } catch { throw new SsrfBlockedError('URL invalide') }
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new SsrfBlockedError('Seuls http(s) sont autorisés')
-  }
-  if (url.username || url.password) {
-    throw new SsrfBlockedError('Identifiants dans l\'URL interdits')
-  }
-  const host = url.hostname.toLowerCase().replace(/\.$/, '')
-  if (BLOCKED_HOSTNAMES.has(host) || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new SsrfBlockedError('Hôte interne interdit')
-  }
-
-  // Si le hostname est déjà une IP littérale → vérifier directement.
-  if (isIP(host)) {
-    if (isPrivateIP(host)) throw new SsrfBlockedError('Adresse IP privée/interne interdite')
-    return url
-  }
-
-  // Sinon, résoudre le DNS et rejeter si une IP résolue est privée.
-  let addrs: { address: string }[]
-  try {
-    addrs = await lookup(host, { all: true })
-  } catch {
-    throw new SsrfBlockedError('Hôte introuvable (DNS)')
-  }
-  if (addrs.length === 0) throw new SsrfBlockedError('Hôte introuvable')
-  for (const a of addrs) {
-    if (isPrivateIP(a.address)) throw new SsrfBlockedError('L\'hôte résout vers une adresse interne')
-  }
-  return url
-}
 
 /** Variante non-levante (booléen) pour la validation avant fetch. */
-export async function isSafeOutboundUrl(raw: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  try { await assertSafeOutboundUrl(raw); return { ok: true } }
-  catch (e) { return { ok: false, reason: (e as Error).message } }
-}
 
 /**
  * Résultat d'une résolution sûre : l'URL validée + l'IP EXACTE que la garde a
