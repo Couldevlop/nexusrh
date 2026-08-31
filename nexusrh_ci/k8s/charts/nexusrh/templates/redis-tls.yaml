@@ -1,0 +1,80 @@
+{{- $ns  := include "nexusrh.namespace" . -}}
+{{- $rel := .Release.Name -}}
+# ── TLS interne pour Redis ────────────────────────────────────────────────────
+#
+# Pourquoi une autorite dediee plutot que Let's Encrypt : le certificat couvre un
+# nom de service INTERNE au cluster (`*.svc.cluster.local`), qu'aucune autorite
+# publique ne peut emettre. On genere donc une autorite interne, dont seuls les
+# pods de ce namespace ont besoin.
+#
+# Ce que ca ferme : `apps/worker/src/redis.ts` refuse une connexion Redis en
+# clair en production, parce que les queues portent de la paie, des declarations
+# CNPS et des emails. Le trafic pod-a-pod restait pourtant en clair, et l'API n'a
+# aucune garde equivalente sur le MEME Redis. Les deux parlent desormais TLS.
+#
+# La verification du certificat est REELLE cote client : la CA est montee dans
+# les pods API et worker via NODE_EXTRA_CA_CERTS. Sans cela il aurait fallu
+# desactiver la verification, ce qui aurait chiffre sans authentifier — donc
+# sans fermer le MITM que cette garde vise.
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $rel }}-selfsigned
+  namespace: {{ $ns }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $rel }}-redis-ca
+  namespace: {{ $ns }}
+spec:
+  isCA: true
+  commonName: nexusrh-redis-ca
+  secretName: nexusrh-redis-ca
+  duration: 87600h    # 10 ans — autorite interne, non exposee
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ $rel }}-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $rel }}-redis-ca-issuer
+  namespace: {{ $ns }}
+spec:
+  ca:
+    secretName: nexusrh-redis-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $rel }}-redis-tls
+  namespace: {{ $ns }}
+spec:
+  secretName: nexusrh-redis-tls
+  duration: 8760h     # 1 an
+  renewBefore: 720h   # renouvellement 30 j avant expiration, par cert-manager
+  # Tous les noms sous lesquels le service peut etre joint : ioredis verifie le
+  # nom presente dans l'URL, et le chart utilise le FQDN complet.
+  dnsNames:
+    - {{ $rel }}-redis-master
+    - {{ $rel }}-redis-master.{{ $ns }}
+    - {{ $rel }}-redis-master.{{ $ns }}.svc
+    - {{ $rel }}-redis-master.{{ $ns }}.svc.cluster.local
+    # La sonde de readiness tourne DANS le pod Redis et joint 127.0.0.1 : on ne
+    # veut pas dependre du fait que redis-cli soit indulgent sur le nom d'hote.
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    name: {{ $rel }}-redis-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

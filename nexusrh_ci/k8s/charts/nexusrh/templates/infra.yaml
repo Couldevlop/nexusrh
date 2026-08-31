@@ -84,7 +84,9 @@ spec:
   selector:
     app: nexusrh-infra-redis
   ports:
-  - name: redis
+  # Le port ne change pas : c'est le protocole qui devient TLS. Les clients
+  # passent de redis:// a rediss:// sur le meme 6379.
+  - name: redis-tls
     port: 6379
     targetPort: 6379
 ---
@@ -107,7 +109,21 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
-        command: [sh, -c, "redis-server --requirepass $REDIS_PASSWORD --save ''"]
+        # TLS OBLIGATOIRE : `--port 0` ferme completement le port en clair, seul
+        # `--tls-port 6379` ecoute. `--tls-auth-clients no` : les clients ne
+        # presentent pas de certificat (ils s'authentifient par mot de passe),
+        # mais ils VERIFIENT celui du serveur — c'est ce qui ferme le MITM que
+        # la garde de apps/worker/src/redis.ts refusait de laisser ouvert.
+        command:
+        - sh
+        - -c
+        - >-
+          redis-server --requirepass $REDIS_PASSWORD --save ''
+          --port 0 --tls-port 6379
+          --tls-cert-file /tls/tls.crt
+          --tls-key-file /tls/tls.key
+          --tls-ca-cert-file /tls/ca.crt
+          --tls-auth-clients no
         env:
         - name: REDIS_PASSWORD
           valueFrom:
@@ -116,9 +132,15 @@ spec:
               key: redis-password
         ports:
         - containerPort: 6379
+        volumeMounts:
+        - name: redis-tls
+          mountPath: /tls
+          readOnly: true
         readinessProbe:
+          # redis-cli doit lui aussi parler TLS, sinon la sonde echoue et le pod
+          # ne devient jamais ready.
           exec:
-            command: [sh, -c, "redis-cli -a $REDIS_PASSWORD ping"]
+            command: [sh, -c, "redis-cli --tls --cacert /tls/ca.crt -a $REDIS_PASSWORD ping"]
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:
@@ -128,6 +150,11 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+      volumes:
+      - name: redis-tls
+        secret:
+          secretName: nexusrh-redis-tls
+          defaultMode: 0444
 # ── MinIO (official image) ────────────────────────────────────────────────────
 ---
 apiVersion: v1
