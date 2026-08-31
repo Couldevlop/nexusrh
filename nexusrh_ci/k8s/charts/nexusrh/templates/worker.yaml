@@ -142,6 +142,15 @@ spec:
               command: [node, -e, "require('./dist/health-check.js')"]
             initialDelaySeconds: 30
             periodSeconds: 30
+            # Mesure sur l'image du jour, contre un vrai Redis : ~0,31 s. Le
+            # defaut Kubernetes est timeoutSeconds: 1 — trop juste pour un
+            # demarrage de Node + PING Redis quand le pod est charge (limite
+            # 1 CPU), et un depassement compte comme un ECHEC. C'est ce
+            # mecanisme qui avait produit le CrashLoop a l'origine de la
+            # desactivation du worker. On laisse de la marge, et on exige
+            # 3 echecs consecutifs avant redemarrage.
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: tmp
           emptyDir: {}
