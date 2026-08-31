@@ -83,9 +83,18 @@ helm upgrade --install nexusrh-ci "$CHART" \
   -f "$CHART/values.prod.yaml" \
   --force --wait
 
-kubectl rollout restart deployment/nexusrh-api deployment/nexusrh-web -n "$NS"
-kubectl rollout status  deployment/nexusrh-api -n "$NS" --timeout=180s
-kubectl rollout status  deployment/nexusrh-web -n "$NS" --timeout=180s
+# Le worker rejoint la boucle : sans redemarrage force il garderait l'image
+# :latest tiree lors de sa creation, donc du code perime a chaque deploiement
+# suivant. La boucle ignore un deploiement absent, pour que le script continue
+# de fonctionner si worker.enabled repasse a false.
+for d in nexusrh-api nexusrh-web nexusrh-worker; do
+  if ! kubectl get deployment "$d" -n "$NS" >/dev/null 2>&1; then
+    echo "OK $d absent du cluster (desactive dans le chart) — ignore"
+    continue
+  fi
+  kubectl rollout restart "deployment/$d" -n "$NS"
+  kubectl rollout status  "deployment/$d" -n "$NS" --timeout=180s
+done
 
 # -- Seed idempotent (mode preservation en prod : ne touche pas aux donnees) --
 API_POD=$(kubectl get pods -n "$NS" \
