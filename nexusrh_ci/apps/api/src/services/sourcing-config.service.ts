@@ -292,6 +292,28 @@ function mergeWeights(v: unknown): RichnessWeights {
 // Helpers : convertir modèles en tarifs (utilisés par costClaude/Mistral)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Noms de plateformes à transmettre au sourcing IA.
+ *
+ * Le référentiel administré par le super_admin (`platform.sourcing_platforms`,
+ * filtré sur `is_active`) fait foi. Une sélection envoyée par le client n'est
+ * donc PAS reprise telle quelle : elle est filtrée sur ce référentiel. Sans ce
+ * filtre, n'importe quelle chaîne postée par un utilisateur authentifié se
+ * retrouve interpolée dans le prompt du modèle — injection de prompt, sur des
+ * tokens facturés au tenant.
+ *
+ * Une sélection qui ne recoupe rien est traitée comme une absence de sélection
+ * (tout le référentiel), et non comme une erreur : le référentiel peut changer
+ * sous un écran déjà ouvert, ce n'est pas à l'utilisateur de le payer.
+ */
+export async function resolveSourcingPlatformNames(requested?: unknown): Promise<string[]> {
+  const allowed = (await loadSourcingPlatforms()).map((p) => p.name)
+  if (!Array.isArray(requested) || requested.length === 0) return allowed
+  const wanted = new Set(requested.filter((p): p is string => typeof p === 'string'))
+  const kept = allowed.filter((name) => wanted.has(name))
+  return kept.length > 0 ? kept : allowed
+}
+
 // Pour rester compatible avec les tests existants qui appellent
 // computeSourcingRichness avec une signature sans config DB, on expose
 // aussi les pondérations par défaut.
