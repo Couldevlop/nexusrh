@@ -55,6 +55,7 @@ vi.mock('./jobs/attendance-poll.js', () => ({ processAttendancePollJob: vi.fn(as
 vi.mock('./jobs/attendance-evaluate.js', () => ({ processAttendanceEvaluateJob: vi.fn(async () => undefined) }))
 vi.mock('./jobs/attendance-cron.js', () => ({ processAttendanceCronJob: vi.fn(async () => undefined) }))
 vi.mock('./jobs/interview-sim-consent-purge.js', () => ({ processInterviewSimConsentPurgeJob: vi.fn(async () => undefined) }))
+vi.mock('./jobs/platform-report.js', () => ({ processPlatformReportJob: vi.fn(async () => undefined) }))
 
 
 /** Laisse tourner les promesses en attente déclenchées par un évènement. */
@@ -68,9 +69,10 @@ describe('amorçage du worker', () => {
   it('pose les planifications au démarrage', async () => {
     await import('./index.js')
     await flush()
-    // legislation-watch, attendance et interview-sim-consent-purge sont
-    // inconditionnels ; legal-watch dépend de LEGAL_WATCH_ENABLED.
-    expect(upsertMock.mock.calls.length).toBeGreaterThanOrEqual(3)
+    // legislation-watch, attendance, interview-sim-consent-purge (1 chacun) et
+    // platform-report (2 : hebdomadaire + mensuel) sont inconditionnels ;
+    // legal-watch dépend de LEGAL_WATCH_ENABLED.
+    expect(upsertMock.mock.calls.length).toBeGreaterThanOrEqual(5)
   })
 
   it('les réarme quand Redis se reconnecte', async () => {
@@ -85,7 +87,7 @@ describe('amorçage du worker', () => {
       upsertMock.mock.calls.length,
       'après une reconnexion Redis, les planifications doivent être reposées : '
       + 'Redis ne les persiste pas et le déploiement le recrée à chaque livraison',
-    ).toBeGreaterThanOrEqual(3)
+    ).toBeGreaterThanOrEqual(5)
   })
 
   it('ne réarme pas deux fois en parallèle si Redis bat de l’aile', async () => {
@@ -93,7 +95,7 @@ describe('amorçage du worker', () => {
     await flush()
     upsertMock.mockClear()
 
-    const perRun = 3
+    const perRun = 5
     connectionStub.emit('ready')
     connectionStub.emit('ready')
     connectionStub.emit('ready')
