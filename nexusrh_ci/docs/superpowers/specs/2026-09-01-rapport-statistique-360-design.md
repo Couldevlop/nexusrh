@@ -108,7 +108,7 @@ apps/worker/src/report/
   collect.ts       requêtes SQL — SEUL module qui touche la base
   analyze.ts       PUR : classements, séries, signaux d'attention
   render-html.ts   PUR : ReportData → corps du mail
-  render-pdf.ts    ReportData → Buffer (pdfkit)
+  render-pdf.ts    ReportData → Uint8Array (pdf-lib)
 apps/worker/src/jobs/platform-report.ts   orchestration et envoi
 ```
 
@@ -116,9 +116,15 @@ Le découpage suit le patron déjà en place dans `attendance-core/` : les entr�
 et sorties sont isolées dans un module, la logique est pure et testable sans base
 ni SMTP.
 
-`pdfkit` est ajouté aux dépendances du worker. Il est déjà présent dans le
-monorepo (bulletins de paie côté API) : aucune bibliothèque nouvelle n'entre dans
-le dépôt.
+`pdf-lib` est ajouté aux dépendances du worker. C'est la bibliothèque déjà
+utilisée par l'API pour les bulletins de paie, l'organigramme et les attestations
+(`PDFDocument.create()`, `embedFont`, `rgb`) : aucune bibliothèque nouvelle
+n'entre dans le dépôt.
+
+> Vérifié à la rédaction du plan : `pdfkit` est bien déclaré dans les
+> dépendances de l'API mais n'y est **utilisé nulle part** — c'est `pdf-lib` qui
+> rend tous les PDF. Ne pas se fier au nom déclaré. Le nettoyage de cette
+> dépendance morte est hors périmètre de ce lot.
 
 ## Rendu
 
@@ -127,7 +133,7 @@ tableaux de synthèse et barres en HTML/CSS. Ni JavaScript ni SVG : Gmail et
 Outlook n'exécutent pas le premier et bloquent le second.
 
 **PDF joint** — les vrais graphiques (barres, camemberts) et le détail complet par
-cabinet et par entreprise, dessinés avec `pdfkit`.
+cabinet et par entreprise, dessinés avec `pdf-lib`.
 
 Au-delà de **50 entreprises**, le PDF détaille les 50 premières par effectif et
 agrège le reste. Sans cette borne, le rapport devient illisible et lourd à mesure
