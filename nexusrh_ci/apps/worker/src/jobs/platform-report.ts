@@ -60,13 +60,35 @@ export async function processPlatformReportJob(job: Job): Promise<void> {
       attachments: [{ filename: nom, content: Buffer.from(pdf), contentType: 'application/pdf' }],
     })
 
-    await markSent(pool, period)
     // OWASP A09 — on journalise des COMPTES, jamais le contenu du rapport
     // (il porte des données de clients).
     logger.info(
       { periodType, tenants: data.tenants.length, agencies: data.agencies.length, alerts: analysis.alerts.length },
       'platform-report: rapport envoyé',
     )
+
+    // `markSent` est volontairement HORS du try/catch générique ci-dessus : le
+    // mail est déjà parti à ce stade, donc son échec n'est PAS de la même
+    // nature qu'un échec de collecte/rendu/envoi. Si on le laissait tomber
+    // dans le catch générique, celui-ci appellerait `markFailed`, qui repasse
+    // la ligne en 'failed' — et `claimRun` réclame une ligne 'failed' au
+    // prochain déclenchement, ce qui renverrait le rapport une DEUXIÈME fois
+    // aux vrais destinataires. Un rapport envoyé en double est pire qu'un
+    // statut manquant : mieux vaut bloquer volontairement la période (elle
+    // reste en 'pending', jamais réclamée par `claimRun`) que de spammer.
+    try {
+      await markSent(pool, period)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'erreur inconnue'
+      logger.error(
+        { periodType, errMsg: msg },
+        'platform-report: le rapport A ÉTÉ ENVOYÉ mais son statut n\'a pas pu être enregistré '
+        + '— la période reste \'pending\' et ne sera pas renvoyée (blocage volontaire, pas un bug)',
+      )
+      // Ni markFailed, ni throw : on ne veut surtout pas que BullMQ retente
+      // (ça rejouerait tout l'envoi) ni que la ligne repasse en 'failed'
+      // (ça la rendrait de nouveau réclamable par claimRun).
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'erreur inconnue'
     await markFailed(pool, period, msg).catch(() => undefined)

@@ -52,4 +52,26 @@ describe('processPlatformReportJob', () => {
   it('rejette un type de période inconnu', async () => {
     await expect(processPlatformReportJob(job('quotidien'))).rejects.toThrow()
   })
+
+  it('n’envoie jamais deux fois : un échec d’enregistrement après envoi ne repasse pas la période en échec', async () => {
+    // Le mail part normalement (claim pris, collecte vide, sendMail OK), mais
+    // le seul UPDATE qui repasse le statut à 'sent' échoue (incident DB après
+    // l'envoi).
+    queryMock.mockImplementation(async (sql: unknown) => {
+      const text = String(sql)
+      if (text.includes("status = 'sent'")) throw new Error('DB indisponible après envoi')
+      if (text.includes('INSERT INTO platform.report_runs')) return { rows: [{ id: 'r1' }] }
+      return { rows: [] }
+    })
+
+    await expect(processPlatformReportJob(job('weekly'))).resolves.toBeUndefined()
+
+    expect(sendMailMock).toHaveBeenCalledTimes(1)
+    // Note : le SQL de claimRun contient légitimement le littéral "= 'failed'"
+    // dans sa clause ON CONFLICT (reprise d'une ligne en échec) — on vérifie
+    // donc précisément l'ABSENCE de l'UPDATE de markFailed (`SET status =
+    // 'failed'`), pas l'absence du mot dans n'importe quelle requête.
+    const sql = queryMock.mock.calls.map(c => String(c[0])).join('\n')
+    expect(sql).not.toContain("SET status = 'failed'")
+  })
 })
