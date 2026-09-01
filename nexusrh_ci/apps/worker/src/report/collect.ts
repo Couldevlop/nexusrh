@@ -104,25 +104,52 @@ function bucketStart(period: Period, n: number): Date {
 }
 
 /**
+ * Indice de la tranche contenant ce jour, ou -1 s'il est hors fenêtre.
+ *
+ * On compare aux bornes RÉELLES des tranches plutôt que de faire confiance à
+ * une clé calculée par la base : `date_trunc('week', …)` de PostgreSQL renvoie
+ * un lundi (ISO-8601) alors que nos périodes commencent un dimanche. Se fier à
+ * l'égalité des chaînes faisait disparaître toutes les valeurs en silence.
+ * `bornes` est trié du plus ancien au plus récent ; on cherche la dernière
+ * borne inférieure ou égale au jour considéré.
+ */
+function indiceTranche(bornes: Date[], jour: string): number {
+  const d = new Date(`${jour}T00:00:00.000Z`)
+  let indice = -1
+  for (let i = 0; i < bornes.length; i++) {
+    if (bornes[i]! > d) break
+    indice = i
+  }
+  return indice
+}
+
+/**
  * Évolution sur les 12 dernières périodes, tous tenants confondus.
  *
  * Deux séries seulement : arrivées et connexions réussies. L'effectif
  * historique n'est pas reconstituable — rien ne conserve l'état passé — et le
  * reconstruire produirait un graphique faux avec l'apparence du vrai.
+ *
+ * Le regroupement SQL se fait par JOUR calendaire (`to_char(created_at,
+ * 'YYYY-MM-DD')`), jamais par `date_trunc('week'|'month', …)` : PostgreSQL
+ * tronque la semaine sur un LUNDI (ISO-8601) alors que nos périodes
+ * commencent un DIMANCHE (voir `weeklyPeriod`) — une clé calculée par la base
+ * ne correspondrait alors jamais à un libellé de tranche, et toutes les
+ * valeurs seraient écartées en silence en mode hebdomadaire. L'affectation à
+ * la bonne tranche se fait donc côté JavaScript, par comparaison aux bornes
+ * réelles (`indiceTranche`).
  */
 export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS): Promise<TrendPoint[]> {
   const debut = bucketStart(period, buckets - 1)
   const fin = period.end
-  // 'week' ou 'month' : deux littéraux écrits ici, jamais une valeur reçue.
-  // C'est la seule raison qui rend cette interpolation acceptable — PostgreSQL
-  // ne permet pas de paramétrer l'unité de date_trunc.
-  const unite = period.type === 'weekly' ? 'week' : 'month'
 
   const points: TrendPoint[] = []
+  const bornes: Date[] = []
   for (let i = buckets - 1; i >= 0; i--) {
-    points.push({ label: bucketStart(period, i).toISOString().slice(0, 10), hires: 0, logins: 0 })
+    const borne = bucketStart(period, i)
+    bornes.push(borne)
+    points.push({ label: borne.toISOString().slice(0, 10), hires: 0, logins: 0 })
   }
-  const index = new Map(points.map((p, i) => [p.label, i]))
 
   const tenants = await pool.query<{ schema_name: string }>(
     `SELECT schema_name FROM platform.tenants
@@ -134,28 +161,28 @@ export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS
     const s = t.schema_name
     if (!SAFE_SCHEMA.test(s)) continue
     try {
-      const hires = await pool.query<{ bucket: string; n: string }>(
-        `SELECT to_char(date_trunc('${unite}', created_at), 'YYYY-MM-DD') AS bucket, count(*) AS n
+      const hires = await pool.query<{ jour: string; n: string }>(
+        `SELECT to_char(created_at, 'YYYY-MM-DD') AS jour, count(*) AS n
            FROM "${s}".employees
           WHERE created_at >= $1 AND created_at < $2
-          GROUP BY bucket`,
+          GROUP BY jour`,
         [debut, fin],
       )
       for (const r of hires.rows) {
-        const i = index.get(r.bucket)
-        if (i !== undefined) points[i]!.hires += Number(r.n)
+        const i = indiceTranche(bornes, r.jour)
+        if (i !== -1) points[i]!.hires += Number(r.n)
       }
 
-      const logins = await pool.query<{ bucket: string; n: string }>(
-        `SELECT to_char(date_trunc('${unite}', created_at), 'YYYY-MM-DD') AS bucket, count(*) AS n
+      const logins = await pool.query<{ jour: string; n: string }>(
+        `SELECT to_char(created_at, 'YYYY-MM-DD') AS jour, count(*) AS n
            FROM "${s}".audit_log
           WHERE action = 'auth.login.success' AND created_at >= $1 AND created_at < $2
-          GROUP BY bucket`,
+          GROUP BY jour`,
         [debut, fin],
       )
       for (const r of logins.rows) {
-        const i = index.get(r.bucket)
-        if (i !== undefined) points[i]!.logins += Number(r.n)
+        const i = indiceTranche(bornes, r.jour)
+        if (i !== -1) points[i]!.logins += Number(r.n)
       }
     } catch {
       // Isolation : ce tenant ne contribue pas à la tendance, les autres si.
