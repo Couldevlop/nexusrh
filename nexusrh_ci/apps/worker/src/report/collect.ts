@@ -1,6 +1,6 @@
 import type { Pool } from 'pg'
 import type { Period } from './period.js'
-import type { AgencyStats, ReportData, TenantStats } from './types.js'
+import type { AgencyStats, ReportData, TenantStats, TrendPoint } from './types.js'
 
 /**
  * Collecte du rapport — SEUL module du lot qui touche la base.
@@ -89,7 +89,79 @@ export async function collectReport(pool: Pool, period: Period): Promise<ReportD
     }
   })
 
-  return { period, generatedAt: new Date(), tenants, agencies }
+  const trend = await collectTrend(pool, period)
+  return { period, generatedAt: new Date(), tenants, agencies, trend }
+}
+
+const BUCKETS = 12
+
+/** Début de la tranche n avant la période courante (0 = la plus récente). */
+function bucketStart(period: Period, n: number): Date {
+  const d = new Date(period.start)
+  if (period.type === 'weekly') d.setUTCDate(d.getUTCDate() - 7 * n)
+  else d.setUTCMonth(d.getUTCMonth() - n)
+  return d
+}
+
+/**
+ * Évolution sur les 12 dernières périodes, tous tenants confondus.
+ *
+ * Deux séries seulement : arrivées et connexions réussies. L'effectif
+ * historique n'est pas reconstituable — rien ne conserve l'état passé — et le
+ * reconstruire produirait un graphique faux avec l'apparence du vrai.
+ */
+export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS): Promise<TrendPoint[]> {
+  const debut = bucketStart(period, buckets - 1)
+  const fin = period.end
+  // 'week' ou 'month' : deux littéraux écrits ici, jamais une valeur reçue.
+  // C'est la seule raison qui rend cette interpolation acceptable — PostgreSQL
+  // ne permet pas de paramétrer l'unité de date_trunc.
+  const unite = period.type === 'weekly' ? 'week' : 'month'
+
+  const points: TrendPoint[] = []
+  for (let i = buckets - 1; i >= 0; i--) {
+    points.push({ label: bucketStart(period, i).toISOString().slice(0, 10), hires: 0, logins: 0 })
+  }
+  const index = new Map(points.map((p, i) => [p.label, i]))
+
+  const tenants = await pool.query<{ schema_name: string }>(
+    `SELECT schema_name FROM platform.tenants
+      WHERE status NOT IN ('rejected', 'cancelled') LIMIT $1`,
+    [MAX_TENANTS],
+  )
+
+  for (const t of tenants.rows) {
+    const s = t.schema_name
+    if (!SAFE_SCHEMA.test(s)) continue
+    try {
+      const hires = await pool.query<{ bucket: string; n: string }>(
+        `SELECT to_char(date_trunc('${unite}', created_at), 'YYYY-MM-DD') AS bucket, count(*) AS n
+           FROM "${s}".employees
+          WHERE created_at >= $1 AND created_at < $2
+          GROUP BY bucket`,
+        [debut, fin],
+      )
+      for (const r of hires.rows) {
+        const i = index.get(r.bucket)
+        if (i !== undefined) points[i]!.hires += Number(r.n)
+      }
+
+      const logins = await pool.query<{ bucket: string; n: string }>(
+        `SELECT to_char(date_trunc('${unite}', created_at), 'YYYY-MM-DD') AS bucket, count(*) AS n
+           FROM "${s}".audit_log
+          WHERE action = 'auth.login.success' AND created_at >= $1 AND created_at < $2
+          GROUP BY bucket`,
+        [debut, fin],
+      )
+      for (const r of logins.rows) {
+        const i = index.get(r.bucket)
+        if (i !== undefined) points[i]!.logins += Number(r.n)
+      }
+    } catch {
+      // Isolation : ce tenant ne contribue pas à la tendance, les autres si.
+    }
+  }
+  return points
 }
 
 async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<TenantStats> {

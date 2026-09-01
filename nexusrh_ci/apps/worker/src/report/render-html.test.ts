@@ -27,7 +27,7 @@ describe('escapeHtml', () => {
 })
 
 describe('renderHtml', () => {
-  const data: ReportData = { period, generatedAt: NOW, tenants: [tenant()], agencies: [] }
+  const data: ReportData = { period, generatedAt: NOW, tenants: [tenant()], agencies: [], trend: [] }
 
   it('presente les sections attendues', () => {
     const html = renderHtml(data, analyze(data, NOW))
@@ -44,7 +44,7 @@ describe('renderHtml', () => {
   })
 
   it('le dit explicitement quand il n\'y a aucune donnee', () => {
-    const vide: ReportData = { period, generatedAt: NOW, tenants: [], agencies: [] }
+    const vide: ReportData = { period, generatedAt: NOW, tenants: [], agencies: [], trend: [] }
     expect(renderHtml(vide, analyze(vide, NOW))).toContain('Aucune')
   })
 })

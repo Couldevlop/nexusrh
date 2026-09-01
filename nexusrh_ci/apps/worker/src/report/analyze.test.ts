@@ -18,7 +18,7 @@ function tenant(over: Partial<TenantStats> = {}): TenantStats {
   }
 }
 const data = (tenants: TenantStats[]): ReportData =>
-  ({ period, generatedAt: NOW, tenants, agencies: [] })
+  ({ period, generatedAt: NOW, tenants, agencies: [], trend: [] })
 
 describe('analyze', () => {
   it('alerte sur une entreprise sans connexion depuis 14 jours', () => {

@@ -42,9 +42,18 @@ export interface AgencyStats {
   detached: number
 }
 
+/** Un point de la série d'évolution. `label` est la date de début de tranche. */
+export interface TrendPoint {
+  label: string
+  hires: number
+  logins: number
+}
+
 export interface ReportData {
   period: Period
   generatedAt: Date
   tenants: TenantStats[]
   agencies: AgencyStats[]
+  /** 12 dernières périodes, de la plus ancienne à la plus récente. */
+  trend: TrendPoint[]
 }

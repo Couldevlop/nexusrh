@@ -21,6 +21,8 @@ describe('collectReport', () => {
       .mockResolvedValueOnce({ rows: [{ ...TENANT, schema_name: 'tenant"; DROP' }] })
       .mockResolvedValueOnce({ rows: [] })   // agences
       .mockResolvedValueOnce({ rows: [] })   // rattachements
+      // collectTrend : relit la liste des tenants ; schéma invalide → ignoré, aucune autre requête
+      .mockResolvedValueOnce({ rows: [{ ...TENANT, schema_name: 'tenant"; DROP' }] })
     const data = await collectReport(pool, period)
     expect(data.tenants).toHaveLength(1)
     expect(data.tenants[0]?.collected).toBe(false)
@@ -41,6 +43,12 @@ describe('collectReport', () => {
       .mockResolvedValueOnce({ rows: [] })
       // t2 : le premier appel explose
       .mockRejectedValueOnce(Object.assign(new Error('relation absente'), { code: '42P01' }))
+      // collectTrend : relit la liste des tenants, puis 2 requêtes (arrivées, connexions) par tenant valide
+      .mockResolvedValueOnce({ rows: [TENANT, { ...TENANT, id: 't2', name: 'CABEX', schema_name: 'tenant_cabex' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
 
     const data = await collectReport(pool, period)
     expect(data.tenants[0]?.collected).toBe(true)
@@ -56,6 +64,10 @@ describe('collectReport', () => {
       .mockResolvedValueOnce({ rows: [{ headcount: 82, hires: 3, departures: 1 }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ active_users: 10, logged_in: 7, last_login_at: null }] })
+      .mockResolvedValueOnce({ rows: [] })
+      // collectTrend : relit la liste des tenants, puis 2 requêtes (arrivées, connexions)
+      .mockResolvedValueOnce({ rows: [TENANT] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
 
     const data = await collectReport(pool, period)

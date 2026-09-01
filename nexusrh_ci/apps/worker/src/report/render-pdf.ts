@@ -149,6 +149,20 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70, a.loginsByDay)
   y -= 130
 
+  // Évolution sur 12 périodes — deux séries seulement (arrivées, connexions
+  // réussies) : ce sont les seules reconstituables exactement depuis
+  // employees.created_at et audit_log. L'effectif historique n'est pas
+  // conservé et son estimation produirait un graphique faux avec l'apparence
+  // du vrai — il n'est donc pas affiché ici.
+  y -= 40
+  page.drawText('Arrivées sur 12 périodes', { x: MARGE, y, size: 11, font: bold, color: NAVY })
+  barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70,
+    data.trend.map((p) => ({ label: p.label, value: p.hires })))
+  y -= 130
+  page.drawText('Connexions réussies sur 12 périodes', { x: MARGE, y, size: 11, font: bold, color: NAVY })
+  barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70,
+    data.trend.map((p) => ({ label: p.label, value: p.logins })))
+
   // Détail par entreprise, borné.
   const detail = [...data.tenants].sort((x, z) => z.headcount - x.headcount).slice(0, MAX_DETAIL)
   page = doc.addPage([A4.w, A4.h])

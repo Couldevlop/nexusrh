@@ -21,7 +21,7 @@ function tenant(i: number): TenantStats {
 
 describe('renderPdf', () => {
   it('produit un document PDF valide', async () => {
-    const data: ReportData = { period, generatedAt: NOW, tenants: [tenant(1)], agencies: [] }
+    const data: ReportData = { period, generatedAt: NOW, tenants: [tenant(1)], agencies: [], trend: [] }
     const pdf = await renderPdf(data, analyze(data, NOW))
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-')
     expect(pdf.byteLength).toBeGreaterThan(1000)
@@ -29,7 +29,7 @@ describe('renderPdf', () => {
 
   it('reste borné quand le parc dépasse 50 entreprises', async () => {
     const many = Array.from({ length: 120 }, (_, i) => tenant(i + 1))
-    const data: ReportData = { period, generatedAt: NOW, tenants: many, agencies: [] }
+    const data: ReportData = { period, generatedAt: NOW, tenants: many, agencies: [], trend: [] }
     const pdf = await renderPdf(data, analyze(data, NOW))
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-')
     // Borne des 50 : le document ne doit pas croître linéairement sans fin.
@@ -37,7 +37,7 @@ describe('renderPdf', () => {
   })
 
   it('produit un document même sans aucune donnée', async () => {
-    const data: ReportData = { period, generatedAt: NOW, tenants: [], agencies: [] }
+    const data: ReportData = { period, generatedAt: NOW, tenants: [], agencies: [], trend: [] }
     const pdf = await renderPdf(data, analyze(data, NOW))
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-')
   })
