@@ -367,6 +367,9 @@ importers:
       nodemailer:
         specifier: ^9.0.6
         version: 9.0.6
+      pdf-lib:
+        specifier: ^1.17.1
+        version: 1.17.1
       pg:
         specifier: ^8.12.0
         version: 8.20.0
