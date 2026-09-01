@@ -80,10 +80,18 @@ const PALETTE: Color[] = [
  */
 export function texte(s: string, max = 60): string {
   const mappe = (s ?? '')
+    // Tiret cadratin/demi-cadratin : leur point de code Unicode dépasse
+    // 0xFF, mais WinAnsi (cp1252) les encode bel et bien — on les ramène
+    // malgré tout à un tiret simple ASCII pour rester conservateur.
     .replace(/[—–]/g, '-')
     .replace(/[’‘‚]/g, "'")
     .replace(/[“”„]/g, '"')
     .replace(/…/g, '...')
+    // Puce de liste (U+2022) : hors WinAnsi au sens du test `<= 0xFF`
+    // ci-dessous, donc avalée par le remplacement générique par `?` si on ne
+    // l'intercepte pas ici. Régression constatée sur la section « Points
+    // d'attention » du PDF : chaque ligne s'affichait « ? tenant — détail ».
+    .replace(/•/g, '-')
   let out = ''
   for (const ch of mappe) out += ch.charCodeAt(0) <= 0xff ? ch : '?'
   return out.length > max ? `${out.slice(0, max - 1)}.` : out

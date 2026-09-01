@@ -132,6 +132,38 @@ describe('collectReport', () => {
     expect(sqlEmp).not.toContain('deleted_at')
   })
 
+  it('n’utilise pas exit_date quand la colonne n’existe pas dans ce schéma', async () => {
+    repondSelonSql([
+      [/FROM platform\.tenants/, { rows: [TENANT] }],
+      [/information_schema\.columns/, { rows: [{ column_name: 'deleted_at' }] }],
+      [/headcount/, { rows: [{ headcount: 5, hires: 0, departures: 0 }] }],
+    ])
+
+    await collectReport(pool, period)
+    const sqlEmp = queryMock.mock.calls.map(c => String(c[0])).find(s => s.includes('headcount'))
+    expect(sqlEmp).not.toContain('exit_date')
+    expect(sqlEmp).toContain('deleted_at')
+  })
+
+  it('ramène le compteur de départs à 0 sans faire échouer la collecte quand ni exit_date ni deleted_at n’existent', async () => {
+    const t2 = { ...TENANT, id: 't2', name: 'ANCIEN', schema_name: 'tenant_ancien' }
+    repondSelonSql([
+      [/FROM platform\.tenants/, { rows: [TENANT, t2] }],
+      [/information_schema\.columns/, { rows: [] }],
+      [/headcount/, { rows: [{ headcount: 5, hires: 0, departures: 0 }] }],
+      [/active_users/, { rows: [{ active_users: 3, logged_in: 1, last_login_at: null }] }],
+    ])
+
+    const data = await collectReport(pool, period)
+    expect(data.tenants[0]?.collected).toBe(true)
+    expect(data.tenants[0]?.departures).toBe(0)
+    expect(data.tenants[1]?.collected).toBe(true)
+    expect(data.tenants[1]?.departures).toBe(0)
+    const sqlEmp = queryMock.mock.calls.map(c => String(c[0])).find(s => s.includes('headcount'))
+    expect(sqlEmp).not.toContain('exit_date')
+    expect(sqlEmp).not.toContain('deleted_at')
+  })
+
   it('ramène les jours en UTC explicitement, sans dépendre du fuseau de session', async () => {
     repondSelonSql([
       [/FROM platform\.tenants/, { rows: [TENANT] }],

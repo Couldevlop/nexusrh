@@ -279,12 +279,17 @@ async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<
    * compteur ratait de vrais départs et en inventait d'autres (toute mise à
    * jour d'une fiche déjà inactive était comptée). `deleted_at` n'existe pas
    * dans tous les schémas historiques — d'où la vérification des colonnes
-   * réellement présentes avant d'écrire la requête.
+   * réellement présentes avant d'écrire la requête. `exit_date` elle-même
+   * n'est pas garantie sur un schéma ancien : sans cette même vérification,
+   * la requête lève 42703 (colonne inexistante) et le tenant entier est
+   * marqué « données indisponibles » alors qu'il était collectable. Si ni
+   * l'une ni l'autre colonne n'existe, le compteur de départs vaut 0.
    */
-  const departsSql = colonnes.has('deleted_at')
-    ? `(exit_date >= $1::date AND exit_date < $2::date)
-        OR (deleted_at >= $1 AND deleted_at < $2)`
-    : `exit_date >= $1::date AND exit_date < $2::date`
+  const conditionsDeparts = [
+    colonnes.has('exit_date') ? '(exit_date >= $1::date AND exit_date < $2::date)' : null,
+    colonnes.has('deleted_at') ? '(deleted_at >= $1 AND deleted_at < $2)' : null,
+  ].filter((c): c is string => c !== null)
+  const departsSql = conditionsDeparts.length > 0 ? conditionsDeparts.join(' OR ') : 'false'
 
   const emp = await pool.query<{ headcount: string; hires: string; departures: string }>(
     `SELECT count(*) FILTER (WHERE is_active)                                 AS headcount,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderPdf } from './render-pdf.js'
+import { renderPdf, texte } from './render-pdf.js'
 import { analyze } from './analyze.js'
 import { weeklyPeriod } from './period.js'
 import type { ReportData, TenantStats } from './types.js'
@@ -94,5 +94,15 @@ describe('renderPdf', () => {
     expect(analyse.alerts.length).toBeGreaterThan(0)
     const pdf = await renderPdf(data, analyse)
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe('%PDF-')
+  })
+
+  it('ne transforme pas la puce des points d’attention en « ? » parasite', () => {
+    // Régression : la puce « • » (U+2022) dépasse 0xFF et se faisait avaler
+    // par le remplacement générique par `?` dans `texte()`, avant même
+    // d'atteindre pdf-lib — chaque ligne de « Points d'attention » affichait
+    // donc « ? SOTRA — détail » au lieu de « - SOTRA — détail ».
+    const rendu = texte('• SOTRA — données indisponibles')
+    expect(rendu).not.toContain('?')
+    expect(rendu).toContain('- SOTRA')
   })
 })
