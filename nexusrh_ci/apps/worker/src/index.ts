@@ -138,6 +138,47 @@ async function scheduleInterviewSimConsentPurgeCron(): Promise<void> {
   logger.info({ pattern }, 'interview-sim-consent-purge: cron quotidien programmé')
 }
 
+/**
+ * Pose les planifications récurrentes dans Redis.
+ *
+ * Appelée au démarrage ET à chaque reconnexion : les planifications BullMQ
+ * vivent DANS Redis, or Redis ne persiste rien (`--save ''`) et le script de
+ * déploiement le recrée à chaque livraison. Un worker qui survit à ce
+ * remplacement se retrouve donc vivant, connecté — et sans aucun cron.
+ *
+ * Constaté en production le 01/09/2026 : le worker tournait depuis deux heures,
+ * ses logs de démarrage annonçaient bien les trois crons, et Redis ne contenait
+ * AUCUNE clé de planification. Rien ne se serait déclenché, sans le moindre
+ * signal d'erreur.
+ *
+ * `upsertJobScheduler` est idempotent : rejouer l'enregistrement ne crée pas de
+ * doublon.
+ */
+async function registerSchedulers(): Promise<void> {
+  await scheduleLegalWatchCron()
+  await scheduleLegislationWatchCron()
+  await scheduleAttendanceCron()
+  await scheduleInterviewSimConsentPurgeCron()
+}
+
+/**
+ * Réarme les planifications après une coupure Redis.
+ *
+ * `ready` est émis à la connexion initiale ET après chaque reconnexion. La
+ * première est déjà couverte par `start()`, on ne réagit donc qu'aux suivantes.
+ * Le drapeau évite deux réenregistrements concurrents si Redis bat de l'aile.
+ */
+let schedulersRegistered = false
+let reregistering = false
+connection.on('ready', () => {
+  if (!schedulersRegistered || reregistering) return
+  reregistering = true
+  void registerSchedulers()
+    .then(() => logger.info('Planifications réarmées après reconnexion Redis'))
+    .catch((err: unknown) => logger.error({ err }, 'Échec du réarmement des planifications'))
+    .finally(() => { reregistering = false })
+})
+
 async function start(): Promise<void> {
   logger.info('NexusRH CI Worker starting...')
 
@@ -152,10 +193,8 @@ async function start(): Promise<void> {
   workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
   workers.push(createWorker('interview-sim-consent-purge', processInterviewSimConsentPurgeJob as JobHandler))
 
-  await scheduleLegalWatchCron()
-  await scheduleLegislationWatchCron()
-  await scheduleAttendanceCron()
-  await scheduleInterviewSimConsentPurgeCron()
+  await registerSchedulers()
+  schedulersRegistered = true
 
   logger.info(
     {
