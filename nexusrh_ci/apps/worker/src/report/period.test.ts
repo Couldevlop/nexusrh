@@ -15,6 +15,20 @@ describe('weeklyPeriod', () => {
     const b = weeklyPeriod(new Date('2026-09-06T23:59:00Z'))
     expect(a.start.toISOString()).toBe(b.start.toISOString())
   })
+
+  it('rend la même période quel que soit le jour d\'appel dans la semaine', () => {
+    const dimanche = weeklyPeriod(new Date('2026-09-06T06:00:00Z'))
+    for (const t of ['2026-09-07T02:00:00Z', '2026-09-09T18:00:00Z', '2026-09-12T23:59:00Z']) {
+      const autre = weeklyPeriod(new Date(t))
+      expect(autre.start.toISOString(), `appel du ${t}`).toBe(dimanche.start.toISOString())
+      expect(autre.end.toISOString(), `appel du ${t}`).toBe(dimanche.end.toISOString())
+    }
+  })
+
+  it('libelle la période avec son premier et son dernier jour', () => {
+    const p = weeklyPeriod(new Date('2026-09-06T06:00:00Z'))
+    expect(p.label).toBe('30 août 2026 — 5 septembre 2026')
+  })
 })
 
 describe('monthlyPeriod', () => {

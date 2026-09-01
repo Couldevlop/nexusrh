@@ -31,13 +31,28 @@ function jour(d: Date): string {
   return `${d.getUTCDate()} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
-/** Les 7 jours écoulés : du dimanche précédent (inclus) à ce dimanche (exclu). */
+/**
+ * Les 7 jours écoulés : du dimanche précédent (inclus) à ce dimanche (exclu).
+ *
+ * Cale sur la frontière de semaine (dimanche) pour l'idempotence sur reprise :
+ * si un envoi échoue et que la reprise automatique franchit minuit, les bornes
+ * ne glissent pas, et la contrainte d'unicité sur (period_type, period_start)
+ * empêche les doublons.
+ */
 export function weeklyPeriod(now: Date): Period {
-  const end = utcMidnight(now)
+  const midnight = utcMidnight(now)
+  const dayOfWeek = midnight.getUTCDay() // 0 = dimanche, 6 = samedi
+
+  // Retrouver le dimanche 00:00 UTC le plus récent (pourrait être aujourd'hui)
+  const end = new Date(midnight)
+  end.setUTCDate(end.getUTCDate() - dayOfWeek)
+
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - 7)
+
   const dernierJour = new Date(end)
   dernierJour.setUTCDate(dernierJour.getUTCDate() - 1)
+
   return { type: 'weekly', start, end, label: `${jour(start)} — ${jour(dernierJour)}` }
 }
 
