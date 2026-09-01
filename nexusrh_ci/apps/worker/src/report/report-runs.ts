@@ -31,11 +31,28 @@ export async function ensureReportRunsTable(pool: Pool): Promise<void> {
 }
 
 /**
+ * Délai au-delà duquel une ligne `pending` est considérée abandonnée.
+ *
+ * Le job complet (collecte, rendu, envoi) dure quelques secondes : un
+ * `pending` vieux de deux heures ne peut pas être un envoi encore en cours,
+ * c'est le vestige d'un processus tué entre la prise de la ligne et
+ * l'enregistrement du résultat. Le risque de double envoi est donc nul, alors
+ * que le risque inverse — la période bloquée POUR TOUJOURS, en silence, avec
+ * BullMQ affichant un succès — était certain.
+ */
+const PENDING_PERIME = '2 hours'
+
+/**
  * Tente de prendre la main sur la période. Renvoie `false` si un rapport a déjà
- * été envoyé, ou si un envoi est en cours.
+ * été envoyé, ou si un envoi est réellement en cours.
  *
  * Une ligne `failed` est reprise : sans cela, la contrainte d'unicité
  * transformerait le moindre échec SMTP en semaine définitivement perdue.
+ *
+ * Une ligne `pending` PÉRIMÉE (voir `PENDING_PERIME`) est reprise elle aussi :
+ * si le processus est tué entre la prise de la ligne et l'écriture du statut
+ * final, la ligne reste `pending` indéfiniment et plus aucun rapport ne part
+ * pour cette période.
  */
 export async function claimRun(pool: Pool, period: Period, recipients: string): Promise<boolean> {
   const res = await pool.query<{ id: string }>(
@@ -44,6 +61,8 @@ export async function claimRun(pool: Pool, period: Period, recipients: string): 
      ON CONFLICT (period_type, period_start) DO UPDATE
        SET status = 'pending', recipients = EXCLUDED.recipients, updated_at = now()
        WHERE platform.report_runs.status = 'failed'
+          OR (platform.report_runs.status = 'pending'
+              AND platform.report_runs.updated_at < now() - interval '${PENDING_PERIME}')
      RETURNING id`,
     [period.type, period.start, period.end, recipients.slice(0, MAX_RECIPIENTS_LEN)],
   )

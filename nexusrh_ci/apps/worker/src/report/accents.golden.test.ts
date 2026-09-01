@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 /**
  * Garde-fou : le texte de ce module part dans un email lu par le dirigeant de
@@ -37,18 +37,27 @@ function ligneDe(texte: string, index: number): number {
   return n
 }
 
+/**
+ * Fichiers scannés : tout src/report/ (hors tests) ET l'orchestrateur
+ * src/jobs/platform-report.ts — c'est lui qui compose le SUJET du mail, le
+ * texte le plus lu du rapport, qui échappait donc entièrement à ce garde-fou.
+ * Chemins absolus, pour pouvoir sortir du répertoire courant.
+ */
 function fichiersSource(): string[] {
-  return readdirSync(DIR)
+  const duModule = readdirSync(DIR)
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
     .sort()
+    .map((f) => join(DIR, f))
+  return [...duModule, join(DIR, '..', 'jobs', 'platform-report.ts')]
 }
 
 describe('accents du texte affiché (rapport statistique)', () => {
   it('ne contient aucun mot français courant privé de son accent dans une chaîne affichée', () => {
     const fautes: string[] = []
 
-    for (const fichier of fichiersSource()) {
-      const contenu = readFileSync(join(DIR, fichier), 'utf8')
+    for (const chemin of fichiersSource()) {
+      const fichier = basename(chemin)
+      const contenu = readFileSync(chemin, 'utf8')
 
       LITERAL_RE.lastIndex = 0
       let literalMatch: RegExpExecArray | null

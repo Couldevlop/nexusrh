@@ -1,6 +1,6 @@
 import type { Pool } from 'pg'
 import type { Period } from './period.js'
-import type { AgencyStats, ReportData, TenantStats, TrendPoint } from './types.js'
+import type { AgencyStats, PlatformAuthStats, ReportData, TenantStats, TrendPoint } from './types.js'
 
 /**
  * Collecte du rapport — SEUL module du lot qui touche la base.
@@ -9,6 +9,16 @@ import type { AgencyStats, ReportData, TenantStats, TrendPoint } from './types.j
  * avant toute interpolation d'identifiant, cap anti-storm, et isolation stricte
  * par tenant. Un schéma cassé produit un TenantStats `collected: false`, jamais
  * une exception qui ferait perdre le rapport entier.
+ *
+ * ⚠️ FUSEAU HORAIRE : partout où un `timestamptz` est ramené à un jour
+ * calendaire, la conversion est explicitement faite en UTC
+ * (`AT TIME ZONE 'UTC'`). Sans cela le jour rendu dépendrait du fuseau de
+ * SESSION du serveur PostgreSQL — que rien ne fixe dans le chart — alors que
+ * les bornes de période et `indiceTranche` raisonnent, elles, en UTC. C'est la
+ * même famille de défaut que le `date_trunc('week')` déjà écarté plus bas.
+ *
+ * ⚠️ RGPD : la colonne `changes` de l'audit n'est JAMAIS sélectionnée — elle
+ * contient notamment l'e-mail saisi lors d'un échec de connexion.
  */
 const SAFE_SCHEMA = /^[a-z0-9_]{1,63}$/
 const MAX_TENANTS = Number(process.env['PLATFORM_REPORT_MAX_TENANTS'] ?? 500)
@@ -33,11 +43,46 @@ function emptyStats(t: TenantRow, collected: boolean): TenantStats {
     maxEmployees: t.max_employees, trialEndsAt: t.trial_ends_at, createdAt: t.created_at,
     collected, headcount: 0, hires: 0, departures: 0, hiresByContract: {},
     activeUsers: 0, usersLoggedIn: 0, lastLoginAt: null, loginSuccess: 0,
-    loginFailed: 0, loginLocked: 0, mfaRequired: 0, auditWrites: 0, loginsByDay: {},
+    blockedOffline: 0, mfaRequired: 0, auditWrites: 0, loginsByDay: {},
   }
 }
 
+/**
+ * Échecs de connexion de l'ENSEMBLE de la plateforme.
+ *
+ * `auth.login.failed` et `auth.login.locked` sont écrits par l'API dans le
+ * schéma `platform` (auth.routes.ts) : au moment de l'échec, l'utilisateur
+ * n'est pas identifié, donc son entreprise non plus. Les chercher dans le
+ * schéma de chaque tenant renvoyait invariablement zéro — un faux signal
+ * rassurant sur le seul indicateur de sécurité du rapport. Une seule requête,
+ * hors de la boucle par tenant, et un total plateforme assumé comme tel.
+ *
+ * La colonne `changes` (qui porte l'e-mail saisi) n'est jamais lue.
+ */
+async function collectPlatformAuth(pool: Pool, period: Period): Promise<PlatformAuthStats> {
+  const stats: PlatformAuthStats = { loginFailed: 0, loginLocked: 0 }
+  const res = await pool.query<{ action: string; n: string }>(
+    `SELECT action, count(*) AS n
+       FROM platform.audit_log
+      WHERE action IN ('auth.login.failed', 'auth.login.locked')
+        AND created_at >= $1 AND created_at < $2
+      GROUP BY action`,
+    [period.start, period.end],
+  ).catch((e: unknown) => {
+    if (isMissingSchemaObject(e)) return { rows: [] as { action: string; n: string }[] }
+    throw e
+  })
+  for (const r of res.rows) {
+    if (r.action === 'auth.login.failed') stats.loginFailed += Number(r.n)
+    else if (r.action === 'auth.login.locked') stats.loginLocked += Number(r.n)
+  }
+  return stats
+}
+
 export async function collectReport(pool: Pool, period: Period): Promise<ReportData> {
+  // On demande une ligne de plus que le plafond : sa présence est le seul
+  // moyen de savoir que le parc a dépassé la borne, et donc de le SIGNALER
+  // au lieu de tronquer en silence.
   const tenantsRes = await pool.query<TenantRow>(
     `SELECT id, name, schema_name, status, plan_type, sector,
             max_users, max_employees, trial_ends_at, created_at
@@ -45,11 +90,15 @@ export async function collectReport(pool: Pool, period: Period): Promise<ReportD
       WHERE status NOT IN ('rejected', 'cancelled')
       ORDER BY name
       LIMIT $1`,
-    [MAX_TENANTS],
+    [MAX_TENANTS + 1],
   )
+  const truncated = tenantsRes.rows.length > MAX_TENANTS
+  const tenantRows = tenantsRes.rows.slice(0, MAX_TENANTS)
 
+  // La spec parle des cabinets ACTIFS : un cabinet archivé ne doit pas peser
+  // dans la part du parc.
   const agenciesRes = await pool.query<{ id: string; name: string; status: string }>(
-    `SELECT id, name, status FROM platform.agencies ORDER BY name`,
+    `SELECT id, name, status FROM platform.agencies WHERE status = 'active' ORDER BY name`,
   )
 
   const linksRes = await pool.query<{ agency_id: string; tenant_id: string; attached: boolean; detached: boolean }>(
@@ -61,8 +110,10 @@ export async function collectReport(pool: Pool, period: Period): Promise<ReportD
     [period.start, period.end],
   )
 
+  const platformAuth = await collectPlatformAuth(pool, period)
+
   const tenants: TenantStats[] = []
-  for (const t of tenantsRes.rows) {
+  for (const t of tenantRows) {
     if (!SAFE_SCHEMA.test(t.schema_name)) {
       tenants.push(emptyStats(t, false))
       continue
@@ -89,8 +140,11 @@ export async function collectReport(pool: Pool, period: Period): Promise<ReportD
     }
   })
 
-  const trend = await collectTrend(pool, period)
-  return { period, generatedAt: new Date(), tenants, agencies, trend }
+  // La tendance porte sur EXACTEMENT la même liste d'entreprises que le
+  // rapport : relire la table donnerait, au-delà du plafond, un sous-ensemble
+  // différent (l'ancienne requête n'avait même pas d'ORDER BY).
+  const trend = await collectTrend(pool, period, tenants.map((t) => t.schemaName))
+  return { period, generatedAt: new Date(), tenants, agencies, platformAuth, truncated, trend }
 }
 
 const BUCKETS = 12
@@ -124,22 +178,38 @@ function indiceTranche(bornes: Date[], jour: string): number {
 }
 
 /**
+ * Jour d'arrivée d'un salarié, en SQL.
+ *
+ * `hire_date` est la colonne métier (date d'embauche). `created_at` n'est que
+ * la date de SAISIE de la fiche : s'en servir ferait annoncer « 200 arrivées »
+ * la semaine où un nouveau client importe son effectif, et contaminerait la
+ * courbe des 12 périodes. Repli sur `created_at` (converti en UTC) quand
+ * l'embauche n'est pas renseignée, pour ne perdre personne.
+ */
+const JOUR_ARRIVEE = `COALESCE(hire_date, (created_at AT TIME ZONE 'UTC')::date)`
+
+/**
  * Évolution sur les 12 dernières périodes, tous tenants confondus.
  *
  * Deux séries seulement : arrivées et connexions réussies. L'effectif
  * historique n'est pas reconstituable — rien ne conserve l'état passé — et le
  * reconstruire produirait un graphique faux avec l'apparence du vrai.
  *
- * Le regroupement SQL se fait par JOUR calendaire (`to_char(created_at,
- * 'YYYY-MM-DD')`), jamais par `date_trunc('week'|'month', …)` : PostgreSQL
- * tronque la semaine sur un LUNDI (ISO-8601) alors que nos périodes
- * commencent un DIMANCHE (voir `weeklyPeriod`) — une clé calculée par la base
- * ne correspondrait alors jamais à un libellé de tranche, et toutes les
- * valeurs seraient écartées en silence en mode hebdomadaire. L'affectation à
- * la bonne tranche se fait donc côté JavaScript, par comparaison aux bornes
- * réelles (`indiceTranche`).
+ * La liste des schémas est FOURNIE par l'appelant (celle déjà collectée) et
+ * non relue ici : deux lectures plafonnées, dont une sans ORDER BY, pouvaient
+ * porter sur des sous-ensembles différents.
+ *
+ * Le regroupement SQL se fait par JOUR calendaire, jamais par
+ * `date_trunc('week'|'month', …)` : PostgreSQL tronque la semaine sur un
+ * LUNDI (ISO-8601) alors que nos périodes commencent un DIMANCHE (voir
+ * `weeklyPeriod`) — une clé calculée par la base ne correspondrait alors
+ * jamais à un libellé de tranche, et toutes les valeurs seraient écartées en
+ * silence en mode hebdomadaire. L'affectation à la bonne tranche se fait donc
+ * côté JavaScript, par comparaison aux bornes réelles (`indiceTranche`).
  */
-export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS): Promise<TrendPoint[]> {
+export async function collectTrend(
+  pool: Pool, period: Period, schemas: string[], buckets = BUCKETS,
+): Promise<TrendPoint[]> {
   const debut = bucketStart(period, buckets - 1)
   const fin = period.end
 
@@ -151,20 +221,13 @@ export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS
     points.push({ label: borne.toISOString().slice(0, 10), hires: 0, logins: 0 })
   }
 
-  const tenants = await pool.query<{ schema_name: string }>(
-    `SELECT schema_name FROM platform.tenants
-      WHERE status NOT IN ('rejected', 'cancelled') LIMIT $1`,
-    [MAX_TENANTS],
-  )
-
-  for (const t of tenants.rows) {
-    const s = t.schema_name
+  for (const s of schemas) {
     if (!SAFE_SCHEMA.test(s)) continue
     try {
       const hires = await pool.query<{ jour: string; n: string }>(
-        `SELECT to_char(created_at, 'YYYY-MM-DD') AS jour, count(*) AS n
+        `SELECT to_char(${JOUR_ARRIVEE}, 'YYYY-MM-DD') AS jour, count(*) AS n
            FROM "${s}".employees
-          WHERE created_at >= $1 AND created_at < $2
+          WHERE ${JOUR_ARRIVEE} >= $1::date AND ${JOUR_ARRIVEE} < $2::date
           GROUP BY jour`,
         [debut, fin],
       )
@@ -173,8 +236,9 @@ export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS
         if (i !== -1) points[i]!.hires += Number(r.n)
       }
 
+      // AT TIME ZONE 'UTC' : le jour ne doit pas dépendre du fuseau de session.
       const logins = await pool.query<{ jour: string; n: string }>(
-        `SELECT to_char(created_at, 'YYYY-MM-DD') AS jour, count(*) AS n
+        `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS jour, count(*) AS n
            FROM "${s}".audit_log
           WHERE action = 'auth.login.success' AND created_at >= $1 AND created_at < $2
           GROUP BY jour`,
@@ -191,14 +255,42 @@ export async function collectTrend(pool: Pool, period: Period, buckets = BUCKETS
   return points
 }
 
+/** Colonnes réellement présentes sur `<schéma>.employees`. */
+async function colonnesEmployees(pool: Pool, s: string): Promise<Set<string>> {
+  const res = await pool.query<{ column_name: string }>(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'employees'`,
+    [s],
+  )
+  return new Set(res.rows.map((r) => r.column_name))
+}
+
 async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<TenantStats> {
   const s = t.schema_name  // déjà validé par SAFE_SCHEMA
   const stats = emptyStats(t, true)
 
+  const colonnes = await colonnesEmployees(pool, s)
+
+  /*
+   * Départs : `exit_date` est la colonne métier de sortie (provisioning.ts).
+   * L'ancien compteur s'appuyait sur `NOT is_active AND updated_at` — or deux
+   * des trois chemins de sortie (archivage employé, radiation CNPS) ne
+   * touchent pas `updated_at` et aucun déclencheur ne la maintient : le
+   * compteur ratait de vrais départs et en inventait d'autres (toute mise à
+   * jour d'une fiche déjà inactive était comptée). `deleted_at` n'existe pas
+   * dans tous les schémas historiques — d'où la vérification des colonnes
+   * réellement présentes avant d'écrire la requête.
+   */
+  const departsSql = colonnes.has('deleted_at')
+    ? `(exit_date >= $1::date AND exit_date < $2::date)
+        OR (deleted_at >= $1 AND deleted_at < $2)`
+    : `exit_date >= $1::date AND exit_date < $2::date`
+
   const emp = await pool.query<{ headcount: string; hires: string; departures: string }>(
-    `SELECT count(*) FILTER (WHERE is_active)                                   AS headcount,
-            count(*) FILTER (WHERE created_at >= $1 AND created_at < $2)        AS hires,
-            count(*) FILTER (WHERE NOT is_active AND updated_at >= $1 AND updated_at < $2) AS departures
+    `SELECT count(*) FILTER (WHERE is_active)                                 AS headcount,
+            count(*) FILTER (WHERE ${JOUR_ARRIVEE} >= $1::date
+                               AND ${JOUR_ARRIVEE} < $2::date)                AS hires,
+            count(*) FILTER (WHERE ${departsSql})                             AS departures
        FROM "${s}".employees`,
     [period.start, period.end],
   )
@@ -209,7 +301,7 @@ async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<
   const byContract = await pool.query<{ contract_type: string | null; n: string }>(
     `SELECT contract_type, count(*) AS n
        FROM "${s}".employees
-      WHERE created_at >= $1 AND created_at < $2
+      WHERE ${JOUR_ARRIVEE} >= $1::date AND ${JOUR_ARRIVEE} < $2::date
       GROUP BY contract_type`,
     [period.start, period.end],
   )
@@ -228,8 +320,13 @@ async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<
   stats.usersLoggedIn = Number(users.rows[0]?.logged_in ?? 0)
   stats.lastLoginAt = users.rows[0]?.last_login_at ?? null
 
+  // AT TIME ZONE 'UTC' : sans cela le regroupement par jour dépendrait du
+  // fuseau de session du serveur, que rien ne fixe.
+  // `auth.login.blocked_offline` est le seul échec d'authentification écrit
+  // dans le schéma du tenant (identifiants valides → entreprise connue) ; il
+  // reste donc légitimement attribué ici.
   const audit = await pool.query<{ action: string; day: string; n: string }>(
-    `SELECT action, to_char(created_at, 'YYYY-MM-DD') AS day, count(*) AS n
+    `SELECT action, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*) AS n
        FROM "${s}".audit_log
       WHERE created_at >= $1 AND created_at < $2
       GROUP BY action, day`,
@@ -244,8 +341,7 @@ async function collectTenant(pool: Pool, t: TenantRow, period: Period): Promise<
     if (r.action === 'auth.login.success') {
       stats.loginSuccess += n
       stats.loginsByDay[r.day] = (stats.loginsByDay[r.day] ?? 0) + n
-    } else if (r.action === 'auth.login.failed') stats.loginFailed += n
-    else if (r.action === 'auth.login.locked') stats.loginLocked += n
+    } else if (r.action === 'auth.login.blocked_offline') stats.blockedOffline += n
     else if (r.action === 'auth.login.mfa_required') stats.mfaRequired += n
   }
 

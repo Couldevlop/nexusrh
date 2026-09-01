@@ -44,6 +44,15 @@ import type { Analysis, Slice } from './analyze.js'
  * empiriquement en rendant un PDF d'essai et en l'inspectant (voir rapport
  * de tâche) : sweep=1 produisait un camembert à l'envers/déformé, sweep=0
  * produit des secteurs corrects, jointifs et dans le bon sens.
+ *
+ * ⚠️ ENCODAGE : Helvetica (police standard PDF) n'encode que WinAnsi. Un nom
+ * d'entreprise contenant `ɛ`, `ɔ` ou `ŋ` (orthographes baoulé et dioula), un
+ * emoji ou un idéogramme faisait LEVER pdf-lib au premier `drawText` — donc
+ * échouer `renderPdf`, donc ne JAMAIS envoyer le rapport, à cause d'un seul
+ * nom saisi par un client. Toute chaîne venant de la base passe donc par
+ * `texte()`, qui assainit ET borne la longueur (patron déjà en place dans
+ * l'API : payroll/payslip-pdf.ts, org-chart/org-chart-pdf.ts,
+ * recruitment/hr-document-pdf.ts).
  */
 const A4 = { w: 595.28, h: 841.89 }
 const MARGE = 40
@@ -52,10 +61,33 @@ const MAX_DETAIL = 50 // borne du détail par entreprise (spec)
 const NAVY = rgb(0x0f / 255, 0x2a / 255, 0x44 / 255)
 const ORANGE = rgb(0xe8 / 255, 0x5d / 255, 0x04 / 255)
 const SLATE = rgb(0x47 / 255, 0x55 / 255, 0x69 / 255)
+const ROUGE = rgb(0xb9 / 255, 0x1c / 255, 0x1c / 255)
 const PALETTE: Color[] = [
   ORANGE, rgb(0.12, 0.5, 0.72), rgb(0.18, 0.65, 0.4), rgb(0.6, 0.35, 0.71),
   rgb(0.9, 0.75, 0.2), rgb(0.85, 0.33, 0.35), rgb(0.4, 0.45, 0.5),
 ]
+
+/**
+ * Assainit et borne une chaîne venant de la base avant tout `drawText`.
+ *
+ * 1. Les caractères typographiques usuels sont ramenés à leur équivalent
+ *    ASCII (tirets, guillemets, points de suspension) plutôt que remplacés
+ *    par un `?` qui abîmerait la lecture.
+ * 2. Tout ce qui reste hors WinAnsi (code > 0xFF) devient `?` : c'est ce qui
+ *    empêche pdf-lib de lever et donc le rapport d'être perdu.
+ * 3. La longueur est bornée DANS LA MÊME PASSE : un nom d'entreprise très
+ *    long débordait de la page et venait chevaucher la colonne voisine.
+ */
+export function texte(s: string, max = 60): string {
+  const mappe = (s ?? '')
+    .replace(/[—–]/g, '-')
+    .replace(/[’‘‚]/g, "'")
+    .replace(/[“”„]/g, '"')
+    .replace(/…/g, '...')
+  let out = ''
+  for (const ch of mappe) out += ch.charCodeAt(0) <= 0xff ? ch : '?'
+  return out.length > max ? `${out.slice(0, max - 1)}.` : out
+}
 
 /** Couleur de la palette pour l'index i, avec repli sûr (noUncheckedIndexedAccess). */
 function couleur(i: number): Color {
@@ -94,23 +126,45 @@ function camembert(page: PDFPage, font: PDFFont, x: number, y: number, r: number
   slices.forEach((s, i) => {
     const ly = y + r - i * 14
     page.drawRectangle({ x: x + r + 16, y: ly, width: 9, height: 9, color: couleur(i) })
-    page.drawText(`${s.label} (${s.value})`, { x: x + r + 30, y: ly, size: 9, font, color: SLATE })
+    // Légende bornée court : elle est collée au camembert, un libellé long
+    // sortirait de la page.
+    page.drawText(texte(`${s.label} (${s.value})`, 28), { x: x + r + 30, y: ly, size: 9, font, color: SLATE })
   })
 }
 
-function barres(page: PDFPage, font: PDFFont, x: number, y: number, w: number, h: number, slices: Slice[]): void {
+/** Libellé d'axe par défaut : 'YYYY-MM-DD' → 'MM-DD' (les séries de jours). */
+function libelleJour(s: Slice): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s.label) ? s.label.slice(5) : s.label
+}
+
+function barres(
+  page: PDFPage, font: PDFFont, x: number, y: number, w: number, h: number, slices: Slice[],
+  libelle: (s: Slice) => string = libelleJour,
+): void {
   if (slices.length === 0) {
     page.drawText('Aucune donnée', { x, y: y + h / 2, size: 10, font, color: SLATE })
     return
   }
   const max = Math.max(...slices.map((s) => s.value), 1)
   const pas = w / slices.length
+  // Un libellé plus large que le pas chevaucherait le voisin : on le borne au
+  // nombre de caractères que la colonne peut porter à cette taille de police.
+  const maxCar = Math.max(3, Math.floor(pas / 4))
   slices.forEach((s, i) => {
     const hb = Math.max(1, (s.value / max) * h)
     page.drawRectangle({ x: x + i * pas + 2, y, width: pas - 4, height: hb, color: ORANGE })
     page.drawText(String(s.value), { x: x + i * pas + 2, y: y + hb + 3, size: 7, font, color: SLATE })
-    page.drawText(s.label.slice(5), { x: x + i * pas + 2, y: y - 10, size: 7, font, color: SLATE })
+    page.drawText(texte(libelle(s), maxCar), { x: x + i * pas + 2, y: y - 10, size: 7, font, color: SLATE })
   })
+}
+
+/** Variation signée : « +3 » et « -3 » ne doivent pas se lire pareil. */
+function signe(n: number): string {
+  return n > 0 ? `+${n}` : String(n)
+}
+
+function dateCourte(d: Date | null): string {
+  return d ? d.toISOString().slice(0, 10) : 'jamais'
 }
 
 export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Array> {
@@ -122,7 +176,7 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   let y = A4.h - MARGE
 
   const titre = data.period.type === 'weekly' ? 'Rapport hebdomadaire' : 'Rapport mensuel'
-  page.drawText(`${titre} — ${data.period.label}`, { x: MARGE, y, size: 16, font: bold, color: NAVY })
+  page.drawText(texte(`${titre} — ${data.period.label}`, 80), { x: MARGE, y, size: 16, font: bold, color: NAVY })
   y -= 18
   page.drawText('NexusRH CI · OpenLab Consulting', { x: MARGE, y, size: 9, font, color: SLATE })
   y -= 30
@@ -131,10 +185,17 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   for (const ligne of [
     `Entreprises : ${t.tenants} (${t.active} actives, ${t.trial} en essai, ${t.suspended} suspendues)`,
     `Nouvelles sur la période : ${t.newTenants}`,
-    `Effectif consolidé : ${t.headcount} — ${t.hires} arrivées, ${t.departures} départs`,
-    `Connexions : ${t.loginSuccess} réussies, ${t.loginFailed} échouées, ${t.loginLocked} verrouillages`,
+    `Effectif consolidé : ${t.headcount} — variation ${signe(t.headcountChange)} `
+      + `(${t.hires} arrivées, ${t.departures} départs)`,
+    `Connexions réussies : ${t.loginSuccess} · comptes connectés ${t.usersLoggedIn}/${t.activeUsers}`,
+    // Libellé explicite : ces échecs viennent de l'audit PLATEFORME et ne sont
+    // pas attribuables à une entreprise (voir collect.collectPlatformAuth).
+    `Échecs de connexion, ensemble de la plateforme : ${t.loginFailed} échecs, `
+      + `${t.loginLocked} verrouillages`,
+    `Refus « entreprise hors ligne » : ${t.blockedOffline} · MFA requise : ${t.mfaRequired}`,
+    `Volume d'activité : ${t.auditWrites} écritures d'audit`,
   ]) {
-    page.drawText(ligne, { x: MARGE, y, size: 10, font, color: NAVY })
+    page.drawText(texte(ligne, 110), { x: MARGE, y, size: 10, font, color: NAVY })
     y -= 15
   }
 
@@ -145,16 +206,22 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   camembert(page, font, A4.w / 2 + 70, y - 80, 55, a.agencyShare)
   y -= 190
 
+  page.drawText('Répartition par secteur', { x: MARGE, y, size: 11, font: bold, color: NAVY })
+  camembert(page, font, MARGE + 70, y - 80, 55, a.bySector)
+  page.drawText('Arrivées par type de contrat', { x: A4.w / 2, y, size: 11, font: bold, color: NAVY })
+  barres(page, font, A4.w / 2, y - 90, A4.w / 2 - MARGE, 70, a.byContract, (s) => s.label)
+  y -= 190
+
   page.drawText('Connexions réussies par jour', { x: MARGE, y, size: 11, font: bold, color: NAVY })
   barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70, a.loginsByDay)
-  y -= 130
 
   // Évolution sur 12 périodes — deux séries seulement (arrivées, connexions
   // réussies) : ce sont les seules reconstituables exactement depuis
-  // employees.created_at et audit_log. L'effectif historique n'est pas
+  // employees.hire_date et audit_log. L'effectif historique n'est pas
   // conservé et son estimation produirait un graphique faux avec l'apparence
   // du vrai — il n'est donc pas affiché ici.
-  y -= 40
+  page = doc.addPage([A4.w, A4.h])
+  y = A4.h - MARGE
   page.drawText('Arrivées sur 12 périodes', { x: MARGE, y, size: 11, font: bold, color: NAVY })
   barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70,
     data.trend.map((p) => ({ label: p.label, value: p.hires })))
@@ -162,6 +229,22 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   page.drawText('Connexions réussies sur 12 périodes', { x: MARGE, y, size: 11, font: bold, color: NAVY })
   barres(page, font, MARGE, y - 90, A4.w - 2 * MARGE, 70,
     data.trend.map((p) => ({ label: p.label, value: p.logins })))
+  y -= 150
+
+  // Signaux d'attention : ils figuraient dans le mail mais pas dans le PDF —
+  // or c'est le PDF qui est archivé et relu plus tard.
+  page.drawText('Points d\'attention', { x: MARGE, y, size: 14, font: bold, color: NAVY })
+  y -= 20
+  if (a.alerts.length === 0) {
+    page.drawText('Aucun point d\'attention sur la période.', { x: MARGE, y, size: 10, font, color: SLATE })
+  }
+  for (const al of a.alerts) {
+    if (y < MARGE + 20) { page = doc.addPage([A4.w, A4.h]); y = A4.h - MARGE }
+    page.drawText(texte(`• ${al.tenant} — ${al.detail}`, 100), {
+      x: MARGE, y, size: 9, font, color: al.severity === 'high' ? ROUGE : SLATE,
+    })
+    y -= 13
+  }
 
   // Détail par entreprise, borné.
   const detail = [...data.tenants].sort((x, z) => z.headcount - x.headcount).slice(0, MAX_DETAIL)
@@ -172,18 +255,24 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   for (const x of detail) {
     if (y < MARGE + 30) { page = doc.addPage([A4.w, A4.h]); y = A4.h - MARGE }
     const suffixe = x.collected ? '' : '  (données indisponibles)'
-    page.drawText(`${x.name}${suffixe}`, { x: MARGE, y, size: 10, font: bold, color: NAVY })
+    page.drawText(texte(`${x.name}${suffixe}`, 70), { x: MARGE, y, size: 10, font: bold, color: NAVY })
     y -= 13
     page.drawText(
-      `effectif ${x.headcount} · arrivées ${x.hires} · départs ${x.departures} · `
-      + `connectés ${x.usersLoggedIn}/${x.activeUsers} · échecs ${x.loginFailed}`,
+      texte(
+        `effectif ${x.headcount} · arrivées ${x.hires} · départs ${x.departures} · `
+        + `connectés ${x.usersLoggedIn}/${x.activeUsers} · dernière connexion ${dateCourte(x.lastLoginAt)} · `
+        + `${x.auditWrites} écritures`,
+        120,
+      ),
       { x: MARGE + 10, y, size: 9, font, color: SLATE },
     )
     y -= 18
   }
   if (data.tenants.length > MAX_DETAIL) {
-    page.drawText(`… et ${data.tenants.length - MAX_DETAIL} autres entreprises (agrégées dans la vue plateforme).`,
-      { x: MARGE, y, size: 9, font, color: SLATE })
+    page.drawText(
+      texte(`… et ${data.tenants.length - MAX_DETAIL} autres entreprises (agrégées dans la vue plateforme).`, 100),
+      { x: MARGE, y, size: 9, font, color: SLATE },
+    )
   }
 
   return doc.save()

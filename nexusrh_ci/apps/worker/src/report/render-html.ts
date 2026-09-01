@@ -39,6 +39,16 @@ function bars(slices: Slice[]): string {
     </tr>`).join('') + '</table>'
 }
 
+/** Date lisible, ou un tiret quand il n'y a jamais eu de connexion. */
+function dateCourte(d: Date | null): string {
+  return d ? d.toISOString().slice(0, 10) : '—'
+}
+
+/** Variation signée, pour que « +3 » et « -3 » ne se lisent pas pareil. */
+function signe(n: number): string {
+  return n > 0 ? `+${n}` : String(n)
+}
+
 export function renderHtml(data: ReportData, a: Analysis): string {
   const t = a.totals
   const titre = data.period.type === 'weekly' ? 'Rapport hebdomadaire' : 'Rapport mensuel'
@@ -48,14 +58,16 @@ export function renderHtml(data: ReportData, a: Analysis): string {
     : `<table style="${CSS_TABLE}">
         <tr><th style="${CSS_TH}">Entreprise</th><th style="${CSS_TH}">Effectif</th>
             <th style="${CSS_TH}">Arrivées</th><th style="${CSS_TH}">Départs</th>
-            <th style="${CSS_TH}">Connectés</th><th style="${CSS_TH}">Échecs</th></tr>
+            <th style="${CSS_TH}">Connectés</th><th style="${CSS_TH}">Dernière connexion</th>
+            <th style="${CSS_TH}">Activité</th></tr>
         ${data.tenants.map((x) => `
         <tr><td style="${CSS_TD}">${escapeHtml(x.name)}${x.collected ? '' : ' <em style="color:#b91c1c">(indisponible)</em>'}</td>
             <td style="${CSS_TD}">${x.headcount}</td>
             <td style="${CSS_TD}">${x.hires}</td>
             <td style="${CSS_TD}">${x.departures}</td>
             <td style="${CSS_TD}">${x.usersLoggedIn}/${x.activeUsers}</td>
-            <td style="${CSS_TD}">${x.loginFailed}</td></tr>`).join('')}
+            <td style="${CSS_TD}">${dateCourte(x.lastLoginAt)}</td>
+            <td style="${CSS_TD}">${x.auditWrites}</td></tr>`).join('')}
        </table>`
 
   const cabinets = data.agencies.length === 0
@@ -84,8 +96,19 @@ export function renderHtml(data: ReportData, a: Analysis): string {
   <table style="${CSS_TABLE}">
     <tr><td style="${CSS_TD}">Entreprises</td><td style="${CSS_TD}"><strong>${t.tenants}</strong> — ${t.active} actives, ${t.trial} en essai, ${t.suspended} suspendues</td></tr>
     <tr><td style="${CSS_TD}">Nouvelles sur la période</td><td style="${CSS_TD}"><strong>${t.newTenants}</strong></td></tr>
-    <tr><td style="${CSS_TD}">Effectif consolidé</td><td style="${CSS_TD}"><strong>${t.headcount}</strong> — ${t.hires} arrivées, ${t.departures} départs</td></tr>
-    <tr><td style="${CSS_TD}">Connexions</td><td style="${CSS_TD}"><strong>${t.loginSuccess}</strong> réussies, ${t.loginFailed} échouées, ${t.loginLocked} verrouillages</td></tr>
+    <tr><td style="${CSS_TD}">Effectif consolidé</td><td style="${CSS_TD}"><strong>${t.headcount}</strong> — variation ${signe(t.headcountChange)} (${t.hires} arrivées, ${t.departures} départs)</td></tr>
+    <tr><td style="${CSS_TD}">Connexions réussies</td><td style="${CSS_TD}"><strong>${t.loginSuccess}</strong></td></tr>
+    <tr><td style="${CSS_TD}">Volume d'activité</td><td style="${CSS_TD}"><strong>${t.auditWrites}</strong> écritures d'audit</td></tr>
+  </table>
+
+  <h2 style="font-size:16px">Échecs de connexion, ensemble de la plateforme</h2>
+  <p style="color:#64748b;font-size:12px">Ces échecs ne sont PAS attribuables à une entreprise : au moment d'un échec
+  d'identifiants, l'utilisateur n'est pas identifié, donc son entreprise non plus. Ils sont journalisés au niveau de la
+  plateforme et présentés ici comme un total.</p>
+  <table style="${CSS_TABLE}">
+    <tr><td style="${CSS_TD}">Échecs d'identifiants</td><td style="${CSS_TD}"><strong>${t.loginFailed}</strong></td></tr>
+    <tr><td style="${CSS_TD}">Verrouillages de compte</td><td style="${CSS_TD}"><strong>${t.loginLocked}</strong></td></tr>
+    <tr><td style="${CSS_TD}">Refus « entreprise hors ligne » (par entreprise)</td><td style="${CSS_TD}"><strong>${t.blockedOffline}</strong></td></tr>
   </table>
 
   <h2 style="font-size:16px">Cabinets</h2>
@@ -94,10 +117,60 @@ export function renderHtml(data: ReportData, a: Analysis): string {
   <h2 style="font-size:16px">Entreprises</h2>
   ${entreprises}
 
+  <h2 style="font-size:16px">Arrivées par type de contrat</h2>
+  ${bars(a.byContract)}
+
   <h2 style="font-size:16px">Connexions réussies par jour</h2>
   ${bars(a.loginsByDay)}
 
   <h2 style="font-size:16px">Points d\'attention</h2>
   ${alertes}
 </div>`
+}
+
+/**
+ * Version texte du corps du mail.
+ *
+ * Nodemailer n'envoyait que la partie HTML : un client configuré en texte
+ * seul recevait donc un message VIDE. La partie texte reprend l'essentiel,
+ * sans balise ni échappement HTML (rien n'y est interprété).
+ */
+export function renderText(data: ReportData, a: Analysis): string {
+  const t = a.totals
+  const titre = data.period.type === 'weekly' ? 'Rapport hebdomadaire' : 'Rapport mensuel'
+  const lignes: string[] = [
+    `${titre} — ${data.period.label}`,
+    'NexusRH CI · OpenLab Consulting — le détail complet et les graphiques sont dans le PDF joint.',
+    '',
+    'VUE PLATEFORME',
+    `- Entreprises : ${t.tenants} (${t.active} actives, ${t.trial} en essai, ${t.suspended} suspendues)`,
+    `- Nouvelles sur la période : ${t.newTenants}`,
+    `- Effectif consolidé : ${t.headcount} — variation ${signe(t.headcountChange)} (${t.hires} arrivées, ${t.departures} départs)`,
+    `- Connexions réussies : ${t.loginSuccess}`,
+    `- Volume d'activité : ${t.auditWrites} écritures d'audit`,
+    '',
+    'ÉCHECS DE CONNEXION, ENSEMBLE DE LA PLATEFORME (non attribuables à une entreprise)',
+    `- Échecs d'identifiants : ${t.loginFailed}`,
+    `- Verrouillages de compte : ${t.loginLocked}`,
+    `- Refus « entreprise hors ligne » : ${t.blockedOffline}`,
+    '',
+    'ENTREPRISES',
+  ]
+  if (data.tenants.length === 0) lignes.push('- Aucune entreprise dans le parc.')
+  for (const x of data.tenants) {
+    lignes.push(
+      `- ${x.name}${x.collected ? '' : ' (données indisponibles)'} : effectif ${x.headcount}, `
+      + `${x.hires} arrivées, ${x.departures} départs, connectés ${x.usersLoggedIn}/${x.activeUsers}, `
+      + `dernière connexion ${dateCourte(x.lastLoginAt)}`,
+    )
+  }
+  lignes.push('', 'CABINETS')
+  if (data.agencies.length === 0) lignes.push('- Aucun cabinet enregistré.')
+  for (const c of data.agencies) {
+    lignes.push(`- ${c.name} : ${c.managedTenants} entreprises, effectif cumulé ${c.headcount}`)
+  }
+  lignes.push('', 'POINTS D\'ATTENTION')
+  if (a.alerts.length === 0) lignes.push('- Aucun point d\'attention sur la période.')
+  for (const x of a.alerts) lignes.push(`- ${x.tenant} : ${x.detail}`)
+  return lignes.join('\n')
 }

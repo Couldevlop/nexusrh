@@ -6,14 +6,27 @@ import { weeklyPeriod, monthlyPeriod, type Period } from '../report/period.js'
 import { ensureReportRunsTable, claimRun, markSent, markFailed } from '../report/report-runs.js'
 import { collectReport } from '../report/collect.js'
 import { analyze } from '../report/analyze.js'
-import { renderHtml } from '../report/render-html.js'
+import { renderHtml, renderText } from '../report/render-html.js'
 import { renderPdf } from '../report/render-pdf.js'
 
 // Orchestration du rapport statistique périodique de la plateforme :
-// période → anti-doublon → collecte → analyse → corps HTML + PDF → envoi.
+// période → anti-doublon → collecte → analyse → corps HTML + texte + PDF → envoi.
 // Aucune adresse en dur non surchargeable : le destinataire principal et la
 // copie sont surchageables via l'environnement, pour ne jamais figer un envoi
 // de production sur une adresse personnelle.
+//
+// ── Variables d'environnement du rapport ─────────────────────────────────────
+// | Variable                       | Défaut            | Rôle                  |
+// |--------------------------------|-------------------|-----------------------|
+// | PLATFORM_REPORT_TO             | waopron@openlabconsulting.com | destinataire principal |
+// | PLATFORM_REPORT_CC             | coulwao@gmail.com | copie                 |
+// | PLATFORM_REPORT_WEEKLY_CRON    | 0 6 * * 0         | planification hebdomadaire (index.ts, fuseau Africa/Abidjan) |
+// | PLATFORM_REPORT_MONTHLY_CRON   | 15 6 1 * *        | planification mensuelle (index.ts, même fuseau) |
+// | PLATFORM_REPORT_MAX_TENANTS    | 500               | plafond de collecte (report/collect.ts) ; au-delà, le rapport est partiel ET le signale |
+//
+// Plusieurs destinataires : séparer par des virgules, nodemailer les accepte
+// tels quels. Changer une adresse ne demande donc aucune reconstruction
+// d'image — c'est tout l'intérêt de ne rien figer dans le code.
 const pool = new Pool({ connectionString: process.env['DATABASE_URL'], max: 3 })
 
 const TO = process.env['PLATFORM_REPORT_TO'] ?? 'waopron@openlabconsulting.com'
@@ -48,6 +61,9 @@ export async function processPlatformReportJob(job: Job): Promise<void> {
     const data = await collectReport(pool, period)
     const analysis = analyze(data, now)
     const html = renderHtml(data, analysis)
+    // Partie texte : un client configuré en texte seul recevait jusqu'ici un
+    // message vide, le corps n'existant qu'en HTML.
+    const text = renderText(data, analysis)
     const pdf = await renderPdf(data, analysis)
 
     const nom = `nexusrh-rapport-${period.type}-${period.start.toISOString().slice(0, 10)}.pdf`
@@ -57,6 +73,7 @@ export async function processPlatformReportJob(job: Job): Promise<void> {
       cc: CC,
       subject: `NexusRH CI — ${periodType === 'weekly' ? 'rapport hebdomadaire' : 'rapport mensuel'} · ${period.label}`,
       html,
+      text,
       attachments: [{ filename: nom, content: Buffer.from(pdf), contentType: 'application/pdf' }],
     })
 
@@ -75,7 +92,15 @@ export async function processPlatformReportJob(job: Job): Promise<void> {
     // prochain déclenchement, ce qui renverrait le rapport une DEUXIÈME fois
     // aux vrais destinataires. Un rapport envoyé en double est pire qu'un
     // statut manquant : mieux vaut bloquer volontairement la période (elle
-    // reste en 'pending', jamais réclamée par `claimRun`) que de spammer.
+    // reste en 'pending') que de spammer.
+    //
+    // ⚠️ RÉSERVE, depuis que `claimRun` reprend un 'pending' de plus de deux
+    // heures (report-runs.ts) : ce blocage n'est plus absolu. Il tient tant
+    // que le prochain déclenchement pour LA MÊME période survient dans les
+    // deux heures — ce qui couvre les reprises BullMQ (secondes à minutes)
+    // mais pas un déclenchement manuel tardif sur la même période. Le
+    // compromis est assumé : une ligne 'pending' orpheline bloquait sinon la
+    // période POUR TOUJOURS, y compris quand aucun mail n'était jamais parti.
     try {
       await markSent(pool, period)
     } catch (e) {

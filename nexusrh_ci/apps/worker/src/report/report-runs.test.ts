@@ -21,6 +21,23 @@ describe('claimRun', () => {
     expect(await claimRun(pool, period, 'a@b.ci')).toBe(false)
   })
 
+  it('reprend une ligne pending abandonnée depuis plus de deux heures', async () => {
+    // Processus tué entre la prise de la ligne et l'écriture du statut : sans
+    // cette reprise, la période restait 'pending' POUR TOUJOURS et plus aucun
+    // rapport n'en partait, en silence, avec BullMQ affichant un succès.
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'r1' }] })
+    expect(await claimRun(pool, period, 'a@b.ci')).toBe(true)
+    const sql = String(queryMock.mock.calls[0]?.[0])
+    expect(sql).toContain("platform.report_runs.status = 'pending'")
+    expect(sql).toContain("interval '2 hours'")
+  })
+
+  it('ne reprend pas une ligne pending récente : c’est un envoi en cours', async () => {
+    // La clause SQL ne retient pas la ligne → aucune ligne renvoyée → refus.
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    expect(await claimRun(pool, period, 'a@b.ci')).toBe(false)
+  })
+
   it('borne la liste des destinataires écrite en base', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'r1' }] })
     await claimRun(pool, period, 'x'.repeat(5000))

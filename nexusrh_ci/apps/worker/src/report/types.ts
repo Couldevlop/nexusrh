@@ -23,8 +23,15 @@ export interface TenantStats {
   usersLoggedIn: number
   lastLoginAt: Date | null
   loginSuccess: number
-  loginFailed: number
-  loginLocked: number
+  /**
+   * Connexions refusées parce que le tenant est hors ligne. C'est le SEUL
+   * compteur d'échec attribuable à une entreprise : l'API l'écrit dans le
+   * schéma du tenant (identifiants valides → tenant connu). Les échecs
+   * d'identifiants et les verrouillages, eux, sont écrits dans le schéma
+   * `platform` (l'utilisateur n'est pas identifié, donc son tenant non plus)
+   * et remontent dans `ReportData.platformAuth`, jamais ici.
+   */
+  blockedOffline: number
   mfaRequired: number
   auditWrites: number
   /** 'YYYY-MM-DD' → nombre de connexions réussies. */
@@ -42,6 +49,20 @@ export interface AgencyStats {
   detached: number
 }
 
+/**
+ * Échecs d'authentification de l'ENSEMBLE de la plateforme.
+ *
+ * Non attribuables à une entreprise : au moment d'un échec d'identifiants,
+ * l'utilisateur n'est pas identifié, donc son tenant non plus — l'API écrit
+ * donc ces lignes dans `platform.audit_log` (auth.routes.ts). Les présenter par
+ * entreprise donnerait « 0 échec » partout, c'est-à-dire un faux signal
+ * rassurant sur le seul indicateur de sécurité du rapport.
+ */
+export interface PlatformAuthStats {
+  loginFailed: number
+  loginLocked: number
+}
+
 /** Un point de la série d'évolution. `label` est la date de début de tranche. */
 export interface TrendPoint {
   label: string
@@ -54,6 +75,10 @@ export interface ReportData {
   generatedAt: Date
   tenants: TenantStats[]
   agencies: AgencyStats[]
+  /** Échecs de connexion, ensemble de la plateforme (jamais par entreprise). */
+  platformAuth: PlatformAuthStats
+  /** true = le parc dépasse le plafond de collecte ; le rapport est partiel. */
+  truncated: boolean
   /** 12 dernières périodes, de la plus ancienne à la plus récente. */
   trend: TrendPoint[]
 }
