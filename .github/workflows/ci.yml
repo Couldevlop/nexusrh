@@ -55,8 +55,22 @@ jobs:
         output: 'trivy-fs.sarif'
         severity: 'CRITICAL,HIGH'
 
-    - uses: github/codeql-action/upload-sarif@v3
+    # Un run dont la branche a été supprimée entre-temps ne peut plus rattacher
+    # son SARIF à une référence git : l'upload échoue alors que l'analyse Trivy,
+    # elle, a bien tourné. On ne fait plus échouer le workflow pour ce motif.
+    - id: sarif
+      uses: github/codeql-action/upload-sarif@v3
       if: always()
+      continue-on-error: true
       with:
         sarif_file: 'trivy-fs.sarif'
         category: trivy-filesystem
+
+    # Non bloquant, mais jamais silencieux : un upload raté reste visible dans le
+    # résumé du run, sinon la remontée vers Code Scanning pourrait disparaître
+    # sans que personne ne s'en aperçoive.
+    - name: Signaler un upload SARIF manqué
+      if: always() && steps.sarif.outcome == 'failure'
+      run: |
+        echo "::warning::L'upload SARIF a échoué — les résultats Trivy ne sont pas remontés dans Code Scanning pour ce run."
+        echo "L'upload SARIF a échoué : résultats Trivy absents de Code Scanning." >> "$GITHUB_STEP_SUMMARY"

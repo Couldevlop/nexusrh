@@ -11,6 +11,7 @@ import { processAttendancePollJob } from './jobs/attendance-poll.js'
 import { processAttendanceEvaluateJob } from './jobs/attendance-evaluate.js'
 import { processAttendanceCronJob } from './jobs/attendance-cron.js'
 import { processInterviewSimConsentPurgeJob } from './jobs/interview-sim-consent-purge.js'
+import { processPlatformReportJob } from './jobs/platform-report.js'
 
 type AnyJob = Job<unknown, void>
 type JobHandler = (job: AnyJob) => Promise<void>
@@ -138,6 +139,25 @@ async function scheduleInterviewSimConsentPurgeCron(): Promise<void> {
   logger.info({ pattern }, 'interview-sim-consent-purge: cron quotidien programmé')
 }
 
+// Rapport statistique 360° de la plateforme : hebdomadaire le dimanche,
+// mensuel le 1er du mois. Deux planifications distinctes sur la MÊME file : le
+// handler distingue les deux par `periodType`, ce qui évite de dupliquer un
+// worker.
+async function schedulePlatformReportCrons(): Promise<void> {
+  const q = new Queue('platform-report', { connection })
+  const hebdo = process.env['PLATFORM_REPORT_WEEKLY_CRON'] ?? '0 6 * * 0'
+  const mensuel = process.env['PLATFORM_REPORT_MONTHLY_CRON'] ?? '15 6 1 * *'
+  await q.upsertJobScheduler(
+    'weekly', { pattern: hebdo, tz: 'Africa/Abidjan' },
+    { name: 'report', data: { periodType: 'weekly' }, opts: { attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } },
+  )
+  await q.upsertJobScheduler(
+    'monthly', { pattern: mensuel, tz: 'Africa/Abidjan' },
+    { name: 'report', data: { periodType: 'monthly' }, opts: { attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } },
+  )
+  logger.info({ hebdo, mensuel }, 'platform-report: crons programmés')
+}
+
 /**
  * Pose les planifications récurrentes dans Redis.
  *
@@ -159,6 +179,7 @@ async function registerSchedulers(): Promise<void> {
   await scheduleLegislationWatchCron()
   await scheduleAttendanceCron()
   await scheduleInterviewSimConsentPurgeCron()
+  await schedulePlatformReportCrons()
 }
 
 /**
@@ -192,6 +213,7 @@ async function start(): Promise<void> {
   workers.push(createWorker('attendance-evaluate', processAttendanceEvaluateJob as JobHandler))
   workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
   workers.push(createWorker('interview-sim-consent-purge', processInterviewSimConsentPurgeJob as JobHandler))
+  workers.push(createWorker('platform-report', processPlatformReportJob as JobHandler))
 
   await registerSchedulers()
   schedulersRegistered = true
@@ -201,7 +223,7 @@ async function start(): Promise<void> {
       queues: [
         'email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci',
         'legal-watch', 'legislation-watch', 'attendance-poll', 'attendance-evaluate',
-        'attendance-cron', 'interview-sim-consent-purge',
+        'attendance-cron', 'interview-sim-consent-purge', 'platform-report',
       ],
     },
     'Workers started',
