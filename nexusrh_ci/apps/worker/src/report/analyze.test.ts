@@ -26,6 +26,24 @@ describe('analyze', () => {
     expect(a.alerts.some(x => x.detail.includes('connexion'))).toBe(true)
   })
 
+  it('n alerte pas une entreprise jamais connectée créée il y a 2 jours', () => {
+    const a = analyze(data([tenant({
+      lastLoginAt: null,
+      createdAt: new Date('2026-09-04T06:00:00Z'),
+    })]), NOW)
+    expect(a.alerts.some(x => x.detail.includes('connexion'))).toBe(false)
+  })
+
+  it('alerte une entreprise jamais connectée créée il y a 60 jours, avec un libellé lié à la création', () => {
+    const a = analyze(data([tenant({
+      lastLoginAt: null,
+      createdAt: new Date('2026-07-08T06:00:00Z'),
+    })]), NOW)
+    const alerte = a.alerts.find(x => x.detail.includes('connexion'))
+    expect(alerte).toBeDefined()
+    expect(alerte?.detail).toContain('création')
+  })
+
   it('alerte sur un essai arrivant a echéance sous 14 jours', () => {
     const a = analyze(data([tenant({ status: 'trial', trialEndsAt: new Date('2026-09-10T00:00:00Z') })]), NOW)
     expect(a.alerts.some(x => x.detail.includes('essai'))).toBe(true)

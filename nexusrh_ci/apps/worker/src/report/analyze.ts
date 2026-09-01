@@ -67,21 +67,25 @@ export function analyze(data: ReportData, now: Date): Analysis {
   const alerts: Alert[] = []
   for (const t of tenants) {
     if (!t.collected) {
-      alerts.push({ severity: 'high', tenant: t.name, detail: 'donnees indisponibles — schema inaccessible' })
+      alerts.push({ severity: 'high', tenant: t.name, detail: 'données indisponibles — schéma inaccessible' })
       continue
     }
-    if (!t.lastLoginAt || now.getTime() - t.lastLoginAt.getTime() > JOURS_SANS_CONNEXION * JOUR_MS) {
-      alerts.push({ severity: 'high', tenant: t.name, detail: `aucune connexion depuis ${JOURS_SANS_CONNEXION} jours` })
+    if (t.lastLoginAt) {
+      if (now.getTime() - t.lastLoginAt.getTime() > JOURS_SANS_CONNEXION * JOUR_MS) {
+        alerts.push({ severity: 'high', tenant: t.name, detail: `aucune connexion depuis ${JOURS_SANS_CONNEXION} jours` })
+      }
+    } else if (now.getTime() - t.createdAt.getTime() > JOURS_SANS_CONNEXION * JOUR_MS) {
+      alerts.push({ severity: 'high', tenant: t.name, detail: 'aucune connexion depuis sa création' })
     }
     if (t.status === 'trial' && t.trialEndsAt
         && t.trialEndsAt.getTime() - now.getTime() < JOURS_AVANT_FIN_ESSAI * JOUR_MS) {
-      alerts.push({ severity: 'medium', tenant: t.name, detail: 'essai arrivant a echéance' })
+      alerts.push({ severity: 'medium', tenant: t.name, detail: 'essai arrivant à échéance' })
     }
     if (t.maxEmployees > 0 && t.headcount / t.maxEmployees >= SEUIL_PLAFOND) {
-      alerts.push({ severity: 'medium', tenant: t.name, detail: `plafond employes atteint a ${Math.round(100 * t.headcount / t.maxEmployees)} %` })
+      alerts.push({ severity: 'medium', tenant: t.name, detail: `plafond employés atteint à ${Math.round(100 * t.headcount / t.maxEmployees)} %` })
     }
     if (t.maxUsers > 0 && t.activeUsers / t.maxUsers >= SEUIL_PLAFOND) {
-      alerts.push({ severity: 'medium', tenant: t.name, detail: `plafond utilisateurs atteint a ${Math.round(100 * t.activeUsers / t.maxUsers)} %` })
+      alerts.push({ severity: 'medium', tenant: t.name, detail: `plafond utilisateurs atteint à ${Math.round(100 * t.activeUsers / t.maxUsers)} %` })
     }
     if (t.departures > t.hires) {
       alerts.push({ severity: 'medium', tenant: t.name, detail: `effectif en baisse (${t.hires} arrivées, ${t.departures} départs)` })
