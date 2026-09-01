@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ci-deploy.sh — script de déploiement exécuté SUR le serveur de production.
 #
 # INSTALLATION (à refaire si ce fichier change) :
