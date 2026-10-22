@@ -152,6 +152,8 @@
     "security": "Sécurité",
     "mfaRequiredLabel": "Imposer le MFA à tous les employés de ce tenant",
     "mfaRequiredHint": "Durcit la politique plateforme — vous pouvez l'imposer ici même si elle n'est pas globalement obligatoire, mais pas l'assouplir si la plateforme l'exige déjà.",
+    "managerHierarchyLabel": "Vue hiérarchique des managers",
+    "managerHierarchyHint": "Désactivé : un manager ne voit et n'approuve que ses subordonnés directs. Activé : il voit et approuve aussi toute sa branche (les équipes de ses propres managers, à tous les niveaux).",
     "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employés",
     "save": "Sauvegarder",
     "saving": "Sauvegarde...",
@@ -209,6 +211,13 @@
     },
     "confirmResetMfa": "Réinitialiser la double authentification de {{name}} ? Son authenticator et ses codes de secours actuels cesseront de fonctionner ; un nouveau QR code lui sera présenté à sa prochaine connexion.",
     "resetMfaTitle": "Réinitialiser la double authentification (MFA)",
+    "roleChange": {
+      "label": "Rôle de {{name}}",
+      "confirm": "Changer le rôle de {{name}} en « {{role}} » ? Ses sessions seront fermées : il devra se reconnecter pour obtenir ses nouveaux droits.",
+      "success": "Rôle mis à jour. La personne doit se reconnecter pour obtenir ses nouveaux droits.",
+      "error": "Le changement de rôle a échoué.",
+      "selfHint": "Vous ne pouvez pas modifier votre propre rôle."
+    },
     "resetMfaResult": {
       "title": "Double authentification réinitialisée",
       "description": "<0>{{name}}</0> recevra un nouveau QR code et de nouveaux codes de secours à sa prochaine connexion.",

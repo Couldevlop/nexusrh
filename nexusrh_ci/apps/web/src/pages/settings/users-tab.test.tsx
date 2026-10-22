@@ -13,12 +13,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  patchMock: vi.fn(),
 }))
 vi.mock('@/lib/api', () => ({
-  api: { get: getMock, post: postMock, patch: vi.fn(), delete: vi.fn(), put: vi.fn() },
+  api: { get: getMock, post: postMock, patch: patchMock, delete: vi.fn(), put: vi.fn() },
 }))
 // i18n : t() renvoie la clé — les assertions ciblent les clés, stables quelle
 // que soit la langue.
@@ -28,6 +29,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 import { UsersTab } from './SettingsPage'
+import { useAuthStore, type AuthUser } from '@/stores/authStore'
 
 function Host() {
   const qc = useQueryClient()
@@ -171,5 +173,59 @@ describe('UsersTab — réinitialisation MFA (recours quand authenticator ET cod
 
     await waitFor(() => expect(screen.getByText('Utilisateur introuvable')).toBeTruthy())
     expect(screen.queryByText('users.resetMfaResult.title')).toBeNull()
+  })
+})
+
+describe('UsersTab — changement de rôle (promotion, ex. employé → manager)', () => {
+  const USER = {
+    id: 'u7', email: 'awa.kone@sotra.ci', first_name: 'Awa', last_name: 'Koné',
+    role: 'employee', job_title: null, last_login_at: null, is_active: true,
+  }
+  const ADMIN = { ...USER, id: 'admin-1', email: 'admin@sotra.ci', role: 'admin' }
+
+  beforeEach(() => {
+    patchMock.mockReset()
+    getMock.mockReset().mockImplementation((url: string) =>
+      Promise.resolve({ data: { data: url === '/settings/users' ? [USER, ADMIN] : [] } }))
+    useAuthStore.setState({ user: { sub: 'admin-1', email: 'admin@sotra.ci', role: 'admin' } as AuthUser })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  it('confirme puis appelle PATCH /settings/users/:id avec le nouveau rôle', async () => {
+    patchMock.mockResolvedValue({ data: { data: { id: USER.id, role: 'manager' } } })
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('awa.kone@sotra.ci')).toBeTruthy())
+
+    fireEvent.change(screen.getByLabelText('users.roleChange.label'), { target: { value: 'manager' } })
+
+    await waitFor(() => expect(patchMock).toHaveBeenCalledWith(`/settings/users/${USER.id}`, { role: 'manager' }))
+    await waitFor(() => expect(screen.getByText('users.roleChange.success')).toBeTruthy())
+  })
+
+  it('sans confirmation → aucun appel', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('awa.kone@sotra.ci')).toBeTruthy())
+
+    fireEvent.change(screen.getByLabelText('users.roleChange.label'), { target: { value: 'manager' } })
+
+    expect(patchMock).not.toHaveBeenCalled()
+  })
+
+  it("sa propre ligne n'est pas modifiable (un seul sélecteur : celui de l'autre compte)", async () => {
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('admin@sotra.ci')).toBeTruthy())
+    expect(screen.getAllByLabelText('users.roleChange.label')).toHaveLength(1)
+    expect(screen.getByTitle('users.roleChange.selfHint')).toBeTruthy()
+  })
+
+  it('échec serveur → message affiché, jamais un silence', async () => {
+    patchMock.mockRejectedValue({ response: { data: { error: 'Rôle invalide (rôles tenant uniquement)' } } })
+    renderUsersTab()
+    await waitFor(() => expect(screen.getByText('awa.kone@sotra.ci')).toBeTruthy())
+
+    fireEvent.change(screen.getByLabelText('users.roleChange.label'), { target: { value: 'manager' } })
+
+    await waitFor(() => expect(screen.getByText('Rôle invalide (rôles tenant uniquement)')).toBeTruthy())
   })
 })

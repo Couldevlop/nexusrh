@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { managerScopeSql } from '../../services/manager-scope.service.js'
 import { renderAttestationPdf } from './training-attestation-pdf.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
@@ -420,11 +421,13 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
         const body = parsed.data
         employeeId = body.employee_id
         if (request.user.role === 'manager') {
-          // OWASP A01 — un manager ne peut inscrire QUE son équipe directe
+          // OWASP A01 — un manager ne peut inscrire QUE son périmètre
+          // (équipe directe ou branche, cf. manager-scope.service)
           const team = await pool.query(
             `SELECT 1 FROM "${schema}".employees e
-               JOIN "${schema}".employees m ON m.id = e.manager_id
-              WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+              WHERE e.id = $1
+                AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = $2 LIMIT 1)`)}
+              LIMIT 1`,
             [employeeId, request.user.email],
           )
           if (!team.rows[0]) {

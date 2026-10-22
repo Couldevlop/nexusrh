@@ -177,6 +177,7 @@ export async function createPlatformSchema(): Promise<void> {
   // le seed tourne AVANT le premier boot sur une base vierge — sans cette
   // colonne, l'activation dg_view de la démo échouerait en silence.
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_scope varchar(20) NOT NULL DEFAULT 'direct' CHECK (manager_scope IN ('direct', 'hierarchy'))`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.

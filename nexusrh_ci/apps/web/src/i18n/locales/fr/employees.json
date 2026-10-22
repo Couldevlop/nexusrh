@@ -27,6 +27,7 @@
       "familySituation": "Situation familiale",
       "familySituationHint": "(impacte le crédit d'impôt ITS)"
     },
+    "noManager": "— Aucun —",
     "fields": {
       "firstName": "Prénom *",
       "lastName": "Nom *",
@@ -39,6 +40,7 @@
       "city": "Ville",
       "jobTitle": "Intitulé du poste",
       "department": "Département",
+      "manager": "Responsable hiérarchique",
       "legalEntity": "Filiale",
       "seniority": "Séniorité",
       "professionalCategory": "Catégorie professionnelle",

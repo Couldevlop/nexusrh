@@ -4,6 +4,7 @@ import { pool } from '../../db/pool.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { managerScopeSql } from '../../services/manager-scope.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -77,8 +78,9 @@ async function userCanActOnEmployee(
   if (role !== 'manager') return false
   const r = await pool.query<{ id: string }>(
     `SELECT e.id FROM "${schema}".employees e
-       JOIN "${schema}".employees m ON m.id = e.manager_id
-      WHERE e.id = $1 AND m.email = $2 LIMIT 1`,
+      WHERE e.id = $1
+        AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = $2 LIMIT 1)`)}
+      LIMIT 1`,
     [targetEmployeeId, requesterEmail],
   )
   return r.rows.length > 0
@@ -248,7 +250,10 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
         const mgr = await pool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
-        if (mgr.rows[0]) { sql += ` AND e.manager_id = $${idx++}`; params.push(mgr.rows[0].id) }
+        // OWASP A01 — fail-closed : sans dossier employé, aucune évaluation
+        // (auparavant le filtre sautait et le manager voyait tout le tenant).
+        if (!mgr.rows[0]) return reply.send({ data: [] })
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(mgr.rows[0].id)
       }
       if (employee_id) { sql += ` AND ev.employee_id = $${idx++}`; params.push(employee_id) }
       if (year)        { sql += ` AND ev.year = $${idx++}`; params.push(parseInt(year)) }

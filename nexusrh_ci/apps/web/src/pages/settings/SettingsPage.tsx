@@ -24,6 +24,7 @@ interface TenantSettings {
   primary_color: string; secondary_color: string; logo_url: string | null
   max_users: number; max_employees: number
   mfa_required?: boolean
+  manager_scope?: 'direct' | 'hierarchy'
   sender_email?: string | null; sender_name?: string | null
 }
 interface TenantUser {
@@ -668,6 +669,16 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             <span className="block text-xs text-muted-foreground">{t('general.mfaRequiredHint')}</span>
           </span>
         </label>
+        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+          <input type="checkbox"
+            defaultChecked={s.manager_scope === 'hierarchy'}
+            onChange={e => setForm(p => ({ ...p, manager_scope: e.target.checked ? 'hierarchy' : 'direct' }))}
+            className="mt-0.5 h-4 w-4" />
+          <span className="text-sm">
+            <span className="font-medium">{t('general.managerHierarchyLabel')}</span>
+            <span className="block text-xs text-muted-foreground">{t('general.managerHierarchyHint')}</span>
+          </span>
+        </label>
 
         <div className="pt-2 flex items-center justify-between border-t border-border">
           <p className="text-xs text-muted-foreground">
@@ -835,6 +846,19 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => api.patch(`/settings/users/${id}`, { is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
   })
+  // Promotion / changement de fonction : l'API coupe les sessions de la
+  // personne, qui se reconnecte avec ses nouveaux droits.
+  const currentUserId = useAuthStore(st => st.user?.sub)
+  const [roleError, setRoleError] = useState<string | null>(null)
+  const changeRole = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: string }) => api.patch(`/settings/users/${id}`, { role }),
+    onSuccess: () => setRoleError(null),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: string } } }
+      setRoleError(e.response?.data?.error ?? t('users.roleChange.error'))
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
+  })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/users/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
@@ -897,9 +921,25 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <p className="text-xs text-muted-foreground">{u.email}</p>
                 </td>
                 <td className="p-4">
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {ROLE_KEYS.includes(u.role as typeof ROLE_KEYS[number]) ? t(`roles.${u.role}`) : u.role}
-                  </span>
+                  {u.id === currentUserId ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                      title={t('users.roleChange.selfHint')}>
+                      {ROLE_KEYS.includes(u.role as typeof ROLE_KEYS[number]) ? t(`roles.${u.role}`) : u.role}
+                    </span>
+                  ) : (
+                    <select value={u.role} aria-label={t('users.roleChange.label', { name: `${u.first_name} ${u.last_name}` })}
+                      disabled={changeRole.isPending}
+                      onChange={e => {
+                        const role = e.target.value
+                        if (confirm(t('users.roleChange.confirm', { name: `${u.first_name} ${u.last_name}`, role: t(`roles.${role}`) }))) {
+                          changeRole.mutate({ id: u.id, role })
+                        }
+                      }}
+                      className="rounded-lg border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
+                      {!ROLE_KEYS.includes(u.role as typeof ROLE_KEYS[number]) && <option value={u.role}>{u.role}</option>}
+                      {ROLE_KEYS.map(v => <option key={v} value={v}>{t(`roles.${v}`)}</option>)}
+                    </select>
+                  )}
                 </td>
                 <td className="p-4 text-muted-foreground">{u.job_title ?? '—'}</td>
                 <td className="p-4 text-xs text-muted-foreground">
@@ -944,6 +984,13 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           </tbody>
         </table>
       </div>
+
+      {roleError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{roleError}</div>
+      )}
+      {changeRole.isSuccess && !roleError && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{t('users.roleChange.success')}</div>
+      )}
 
       {/* Résultat de la réinitialisation MFA */}
       {mfaResetName && (

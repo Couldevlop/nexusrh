@@ -6,6 +6,7 @@ import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-money-providers.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { managerScopeSql } from '../../services/manager-scope.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -57,7 +58,9 @@ const paySchema = z.object({
 
 /**
  * OWASP A01 — un manager ne peut approver/rejeter que les notes de frais des
- * employés de son équipe directe. admin/hr_manager ont la portée tenant globale.
+ * employés de son périmètre (équipe directe, ou branche selon le réglage
+ * tenant — cf. manager-scope.service). admin/hr_manager = portée tenant.
+ * Sa propre note n'est jamais dans son périmètre (anti auto-approbation).
  */
 async function managerCanActOnReport(
   schema: string,
@@ -67,8 +70,9 @@ async function managerCanActOnReport(
   const r = await pool.query<{ id: string }>(
     `SELECT e.id FROM "${schema}".expense_reports er
        JOIN "${schema}".employees e ON e.id = er.employee_id
-       JOIN "${schema}".employees m ON m.id = e.manager_id
-      WHERE er.id = $1 AND m.email = $2 LIMIT 1`,
+      WHERE er.id = $1
+        AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = $2 LIMIT 1)`)}
+      LIMIT 1`,
     [reportId, managerEmail],
   )
   return r.rows.length > 0
@@ -76,7 +80,7 @@ async function managerCanActOnReport(
 
 /**
  * OWASP A01 — un manager ne peut imputer une note de frais qu'à un membre de son
- * équipe directe (ou à lui-même). Fail-closed : manager sans dossier employé →
+ * périmètre (ou à lui-même). Fail-closed : manager sans dossier employé →
  * aucune imputation possible pour autrui.
  */
 async function managerCanActOnEmployee(
@@ -86,8 +90,8 @@ async function managerCanActOnEmployee(
 ): Promise<boolean> {
   const r = await pool.query<{ id: string }>(
     `SELECT e.id FROM "${schema}".employees e
-       JOIN "${schema}".employees m ON m.id = e.manager_id
-      WHERE e.id = $1 AND m.email = $2
+      WHERE e.id = $1
+        AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = $2 LIMIT 1)`)}
       UNION ALL
      SELECT s.id FROM "${schema}".employees s
       WHERE s.id = $1 AND s.email = $2
@@ -165,7 +169,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         )
         // OWASP A01 — fail-closed : manager sans dossier employé → aucune note.
         if (!emp.rows[0]) return reply.send({ data: [] })
-        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
       }
       if (status)      { sql += ` AND er.status = $${idx++}`; params.push(status) }
       if (employee_id) { sql += ` AND er.employee_id = $${idx++}`; params.push(employee_id) }
