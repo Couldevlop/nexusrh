@@ -18,6 +18,7 @@ import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@ne
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -74,6 +75,8 @@ const patchTenantSchema = z.object({
   // L'effet ne peut qu'imposer le MFA (jamais l'assouplir sous la politique
   // globale plateforme) : cf. effectiveTenantMfaRequired côté login.
   mfa_required:    z.boolean().optional(),
+  // Périmètre des managers : équipe directe ou toute la branche hiérarchique.
+  manager_scope:   z.enum(MANAGER_SCOPES).optional(),
   // Expéditeur email configurable par le tenant : adresse "From" des emails
   // envoyés aux membres de la société (création d'accès, réinitialisation).
   // '' / null → repli sur l'expéditeur plateforme.
@@ -182,6 +185,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   dgi_number, rccm, at_rate, max_users, max_employees,
                   primary_color, secondary_color, logo_url, trial_ends_at,
                   COALESCE(mfa_required, false) AS mfa_required,
+                  COALESCE(manager_scope, 'direct') AS manager_scope,
                   sender_email, sender_name,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
@@ -209,7 +213,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','sender_email','sender_name']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','sender_email','sender_name']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1069,6 +1073,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const TENANT_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg']
       if (role !== undefined && !TENANT_ROLES.includes(role)) {
         return reply.status(400).send({ error: 'Rôle invalide (rôles tenant uniquement)' })
+      }
+      // Un admin ne peut ni se retirer son propre rôle admin ni se désactiver :
+      // le tenant risquerait de se retrouver sans aucun administrateur.
+      if (id === request.user.sub && ((role !== undefined && role !== 'admin') || is_active === false)) {
+        return reply.status(400).send({ error: 'Vous ne pouvez pas modifier votre propre rôle ni désactiver votre compte.' })
       }
 
       const updates: string[] = []

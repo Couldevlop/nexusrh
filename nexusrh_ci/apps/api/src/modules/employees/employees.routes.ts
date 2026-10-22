@@ -12,6 +12,10 @@ import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import {
+  isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
+  wouldCreateManagerCycle,
+} from '../../services/manager-scope.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -157,16 +161,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // On privilégie l'employeeId du token (autoritatif) ; repli sur l'email
       // (l'ancienne recherche par email seule pouvait retourner un mauvais
       // dossier quand l'email n'est pas unique → équipe vide à tort).
+      // Périmètre : équipe directe ou toute la branche selon le réglage tenant.
       if (request.user.role === 'manager') {
-        let mgrId = request.user.employeeId
-        if (!mgrId) {
-          const empRes = await pool.query<{ id: string }>(
-            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
-          )
-          mgrId = empRes.rows[0]?.id ?? null
-        }
+        const mgrId = await resolveManagerEmployeeId(pool, schema, request.user)
         if (!mgrId) return reply.send({ data: [], total: 0, page, limit })
-        where += ` AND e.manager_id = $${idx++}`; params.push(mgrId)
+        where += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(mgrId)
       }
 
       // total réel (mêmes filtres) — affiché « 80+ employés » même en page 1.
@@ -210,17 +209,15 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       // OWASP A01 — contrôle d'accès fin par rôle :
       // - employee : uniquement son propre dossier
-      // - manager : uniquement un membre de son équipe directe (manager_id)
+      // - manager : uniquement un membre de son périmètre (équipe directe ou
+      //   branche selon le réglage tenant) — même règle que la liste.
       if (request.user.role === 'employee' && emp.email !== request.user.email) {
         return reply.status(403).send({ error: 'Accès interdit' })
       }
       if (request.user.role === 'manager') {
-        const mgrRes = await pool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
-        )
-        const mgrId = mgrRes.rows[0]?.id
-        const isSelf = emp.email === request.user.email
-        if (!mgrId || (emp.manager_id !== mgrId && !isSelf)) {
+        const mgrId = await resolveManagerEmployeeId(pool, schema, request.user)
+        const isSelf = emp.email === request.user.email || (!!mgrId && emp.id === mgrId)
+        if (!mgrId || (!isSelf && !(await isInManagerScope(pool, schema, mgrId, emp.id)))) {
           return reply.status(403).send({ error: 'Accès interdit' })
         }
       }
@@ -376,6 +373,15 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const schema = request.user.schemaName
+
+      // Responsable hiérarchique : ni soi-même, ni l'un de ses subordonnés
+      // (sinon boucle A → B → A dans la hiérarchie).
+      if (typeof body.managerId === 'string'
+          && await wouldCreateManagerCycle(pool, schema, id, body.managerId)) {
+        return reply.status(422).send({
+          error: 'Responsable invalide : un employé ne peut pas dépendre de lui-même ni de l\'un de ses subordonnés.',
+        })
+      }
 
       // Vérification SMIG si modification salaire
       if (body.baseSalary != null && Number(body.baseSalary) < 75000) {
@@ -618,6 +624,24 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // GET /employees/manager-options — choix du responsable hiérarchique dans les
+  // formulaires RH. Tous les employés actifs, sans pagination (la liste paginée
+  // plafonne à 200) et avec le strict minimum (aucun salaire ni donnée sensible).
+  fastify.get('/manager-options', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    schema: { tags: ['employees'], summary: 'Responsables hiérarchiques sélectionnables' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const res = await pool.query(
+        `SELECT id, first_name, last_name, job_title
+         FROM "${schema}".employees
+         WHERE deleted_at IS NULL AND is_active = true
+         ORDER BY last_name, first_name`
+      )
+      return reply.send({ data: res.rows })
+    },
+  })
+
   // EMP-014 — GET /employees/export.csv : export de la liste (BOM UTF-8, anti-injection
   // CSV, salaires FCFA ENTIERS). NNI/IBAN exclus (RGPD : données chiffrées sensibles).
   fastify.get('/export.csv', {
@@ -743,10 +767,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(403).send({ error: 'Accès interdit' })
       }
       if (request.user.role === 'manager' && !isSelf) {
-        const mgrRes = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email])
-        const mgrId = mgrRes.rows[0]?.id
-        if (!mgrId || row.manager_id !== mgrId) {
+        const mgrId = await resolveManagerEmployeeId(pool, schema, request.user)
+        if (!(await isInManagerScope(pool, schema, mgrId, id))) {
           return reply.status(403).send({ error: 'Accès interdit' })
         }
       }

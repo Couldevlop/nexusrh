@@ -27,6 +27,7 @@
       "familySituation": "Family situation",
       "familySituationHint": "(affects the ITS tax credit)"
     },
+    "noManager": "— None —",
     "fields": {
       "firstName": "First name *",
       "lastName": "Last name *",
@@ -39,6 +40,7 @@
       "city": "City",
       "jobTitle": "Job title",
       "department": "Department",
+      "manager": "Line manager",
       "legalEntity": "Subsidiary",
       "seniority": "Seniority",
       "professionalCategory": "Professional category",

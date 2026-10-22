@@ -152,6 +152,8 @@
     "security": "Security",
     "mfaRequiredLabel": "Enforce MFA for all employees of this tenant",
     "mfaRequiredHint": "Hardens the platform policy — you can enforce it here even if it is not globally mandatory, but you cannot relax it if the platform already requires it.",
+    "managerHierarchyLabel": "Hierarchical manager view",
+    "managerHierarchyHint": "Off: a manager only sees and approves their direct reports. On: they also see and approve their whole branch (the teams of their own managers, at every level).",
     "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employees",
     "save": "Save",
     "saving": "Saving...",
@@ -209,6 +211,13 @@
     },
     "confirmResetMfa": "Reset two-factor authentication for {{name}}? Their current authenticator and backup codes will stop working; a new QR code will be shown at their next sign-in.",
     "resetMfaTitle": "Reset two-factor authentication (MFA)",
+    "roleChange": {
+      "label": "Role of {{name}}",
+      "confirm": "Change the role of {{name}} to \"{{role}}\"? Their sessions will be closed: they must sign in again to get their new rights.",
+      "success": "Role updated. The person must sign in again to get their new rights.",
+      "error": "The role change failed.",
+      "selfHint": "You cannot change your own role."
+    },
     "resetMfaResult": {
       "title": "Two-factor authentication reset",
       "description": "<0>{{name}}</0> will get a new QR code and new backup codes at their next sign-in.",

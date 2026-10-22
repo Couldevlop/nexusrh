@@ -33,6 +33,7 @@ import {
 import { generateOnboardingPlan } from '../../services/onboarding-ai.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { managerScopeSql } from '../../services/manager-scope.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -111,8 +112,9 @@ async function managerOwnsJourney(schema: string, managerEmail: string, journeyI
       `SELECT 1
        FROM "${schema}".onboarding_journeys j
        JOIN "${schema}".employees e ON e.id = j.employee_id
-       JOIN "${schema}".employees m ON m.id = e.manager_id
-       WHERE j.id = $1 AND m.email = $2 LIMIT 1`,
+       WHERE j.id = $1
+         AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = $2 LIMIT 1)`)}
+       LIMIT 1`,
       [journeyId, managerEmail],
     )
     return !!r.rows[0]
@@ -311,7 +313,8 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
         sql += ` AND j.status = $${i++}`; params.push(status)
       }
       if (request.user.role === 'manager') {
-        sql += ` AND e.manager_id = (SELECT id FROM "${schema}".employees WHERE email = $${i++} LIMIT 1)`
+        const emailParam = `$${i++}`
+        sql += ` AND ${managerScopeSql(schema, 'e', `(SELECT id FROM "${schema}".employees WHERE email = ${emailParam} LIMIT 1)`)}`
         params.push(request.user.email)
       }
       sql += ` ORDER BY j.started_at DESC`

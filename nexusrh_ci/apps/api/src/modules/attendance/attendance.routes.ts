@@ -36,6 +36,7 @@ import { joursFeriesCI } from '@nexusrhci/shared/ci-holidays'
 import type { AttendanceConfig, EffectiveSchedule, FieldMapping, NormalizedPunch } from './attendance.types.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { managerScopeSql } from '../../services/manager-scope.service.js'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -979,13 +980,13 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       if (from) { sql += ` AND p.punched_at >= $${idx++}::date`; params.push(from) }
       if (to) { sql += ` AND p.punched_at < ($${idx++}::date + interval '1 day')`; params.push(to) }
 
-      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
-        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
       }
 
       sql += ` ORDER BY p.punched_at DESC LIMIT 500`
@@ -1082,7 +1083,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
-        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
       }
 
       sql += ` ORDER BY d.work_date DESC LIMIT 500`
@@ -1232,13 +1233,13 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       if (employeeId) { sql += ` AND w.employee_id = $${idx++}`; params.push(employeeId) }
       if (status) { sql += ` AND w.status = $${idx++}`; params.push(status) }
 
-      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
-        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
       }
 
       sql += ' ORDER BY w.created_at DESC LIMIT 500'
@@ -1455,7 +1456,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       const params: unknown[] = [effFrom, effTo]
       let mgrFilter = ''
 
-      // RBAC-équipe : manager strictement limité à `e.manager_id = son propre id employé`.
+      // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
@@ -1467,7 +1468,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           })
         }
         params.push(emp.rows[0].id)
-        mgrFilter = ' AND e.manager_id = $3'
+        mgrFilter = ` AND ${managerScopeSql(schema, 'e', '$3')}`
       }
 
       const sql = `SELECT

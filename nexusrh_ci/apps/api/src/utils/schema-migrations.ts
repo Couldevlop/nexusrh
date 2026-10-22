@@ -879,6 +879,11 @@ export async function ensurePlatformSchema(): Promise<void> {
     // la vue DG 360°, opt-in). Cf. services/tenant-modules.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`,
 
+    // ── Périmètre des managers (admin tenant) ─────────────────────────────────
+    // 'direct' (défaut, comportement historique) = subordonnés directs ;
+    // 'hierarchy' = toute la branche. Cf. services/manager-scope.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_scope varchar(20) NOT NULL DEFAULT 'direct' CHECK (manager_scope IN ('direct', 'hierarchy'))`,
+
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,
 

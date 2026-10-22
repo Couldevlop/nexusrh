@@ -32,6 +32,19 @@ const CATEGORIES_CI = [
 
 interface Department { id: string; name: string }
 interface LegalEntityLite { id: string; name: string; country_code: string | null }
+interface ManagerOption { id: string; first_name: string; last_name: string; job_title: string | null }
+
+// Responsable hiérarchique (manager_id) : c'est lui qui définit l'équipe d'un
+// manager — sans ce rattachement, un compte promu manager voit une équipe vide.
+function useManagerOptions() {
+  const { data } = useQuery<{ data: ManagerOption[] }>({
+    queryKey: ['employee-manager-options'],
+    queryFn: () => api.get('/employees/manager-options').then(r => r.data).catch(() => ({ data: [] })),
+  })
+  return data?.data ?? []
+}
+const managerLabel = (m: ManagerOption) =>
+  `${m.last_name} ${m.first_name}${m.job_title ? ` — ${m.job_title}` : ''}`
 
 function CreateEmployeeModal({ onClose, onCreated }: {
   onClose: () => void
@@ -40,7 +53,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', gender: '',
     birthDate: '', nni: '', cnpsNumber: '',
-    departmentId: '', legalEntityId: '', jobTitle: '', jobLevel: '', professionalCategory: '',
+    departmentId: '', managerId: '', legalEntityId: '', jobTitle: '', jobLevel: '', professionalCategory: '',
     contractType: 'cdi', hireDate: new Date().toISOString().slice(0, 10),
     baseSalary: '', weeklyHours: '40',
     mobileMoneyProvider: '', mobileMoneyPhone: '',
@@ -58,6 +71,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
   })
   const departments = deptData?.data ?? []
+  const managerOptions = useManagerOptions()
 
   // MPF-005 — rattachement à une filiale (visible uniquement pour les tenants
   // multi-filiales). Le moteur de paie applique le pack législatif de la filiale.
@@ -95,6 +109,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         ...(form.nni ? { nni: form.nni.trim() } : {}),
         ...(form.cnpsNumber ? { cnpsNumber: form.cnpsNumber.trim() } : {}),
         ...(form.departmentId ? { departmentId: form.departmentId } : {}),
+        ...(form.managerId ? { managerId: form.managerId } : {}),
         ...(form.legalEntityId ? { legalEntityId: form.legalEntityId } : {}),
         ...(form.jobTitle ? { jobTitle: form.jobTitle.trim() } : {}),
         ...(form.jobLevel ? { jobLevel: form.jobLevel } : {}),
@@ -173,6 +188,11 @@ function CreateEmployeeModal({ onClose, onCreated }: {
                 <select className={inputCls} value={form.departmentId} onChange={set('departmentId')}>
                   <option value="">—</option>
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select></div>
+              <div><label className={labelCls}>{t('form.fields.manager')}</label>
+                <select className={inputCls} value={form.managerId} onChange={set('managerId')}>
+                  <option value="">{t('form.noManager')}</option>
+                  {managerOptions.map(m => <option key={m.id} value={m.id}>{managerLabel(m)}</option>)}
                 </select></div>
               {hasSubsidiaries && legalEntities.length > 0 && (
                 <div><label className={labelCls}>{t('form.fields.legalEntity', 'Filiale')}</label>
@@ -421,7 +441,7 @@ function DeleteModal({
 interface EmployeeDetail {
   id: string; first_name: string; last_name: string; email: string | null
   phone: string | null; gender: string | null; nni: string | null; cnps_number: string | null
-  city: string | null; department_id: string | null; legal_entity_id: string | null; job_title: string | null
+  city: string | null; department_id: string | null; manager_id: string | null; legal_entity_id: string | null; job_title: string | null
   job_level: string | null; professional_category: string | null
   contract_type: string | null; hire_date: string | null; weekly_hours: string | null
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
@@ -448,6 +468,9 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     queryFn: () => api.get('/employees/departments').then(r => r.data).catch(() => ({ data: [] })),
   })
   const departments = deptData?.data ?? []
+  // Un employé ne peut pas être son propre responsable (l'API refuse aussi
+  // le rattachement à l'un de ses subordonnés).
+  const managerOptions = useManagerOptions().filter(m => m.id !== employeeId)
   // MPF-005 — réaffectation de filiale (tenants multi-filiales uniquement)
   const hasSubsidiaries = useAuthStore((s) => s.tenantConfig?.hasSubsidiaries === true)
   const { data: leData } = useQuery<{ data: LegalEntityLite[] }>({
@@ -475,7 +498,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     const orig: Record<string, string> = {
       firstName: emp.first_name ?? '', lastName: emp.last_name ?? '', email: emp.email ?? '',
       phone: emp.phone ?? '', gender: emp.gender ?? '', nni: emp.nni ?? '', cnpsNumber: emp.cnps_number ?? '',
-      city: emp.city ?? '', departmentId: emp.department_id ?? '', legalEntityId: emp.legal_entity_id ?? '', jobTitle: emp.job_title ?? '',
+      city: emp.city ?? '', departmentId: emp.department_id ?? '', managerId: emp.manager_id ?? '', legalEntityId: emp.legal_entity_id ?? '', jobTitle: emp.job_title ?? '',
       jobLevel: emp.job_level ?? '', professionalCategory: emp.professional_category ?? '',
       contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
       weeklyHours: emp.weekly_hours ?? '', baseSalary: emp.base_salary ?? '',
@@ -488,6 +511,8 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     for (const [k, v] of Object.entries(form)) {
       const trimmed = typeof v === 'string' ? v.trim() : v
       if (trimmed === orig[k]) continue
+      // Retirer le responsable est un choix explicite (option « Aucun ») : null.
+      if (k === 'managerId' && trimmed === '') { payload.managerId = null; continue }
       if (trimmed === '') continue // champ vidé : on ne pousse pas (évite d'écraser involontairement)
       payload[k] = numericKeys.has(k) ? Number(trimmed) : trimmed
     }
@@ -557,6 +582,11 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   <select className={inputCls} value={val('departmentId', emp.department_id)} onChange={set('departmentId')}>
                     <option value="">—</option>
                     {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select></div>
+                <div><label className={labelCls}>{t('form.fields.manager')}</label>
+                  <select className={inputCls} value={val('managerId', emp.manager_id)} onChange={set('managerId')}>
+                    <option value="">{t('form.noManager')}</option>
+                    {managerOptions.map(m => <option key={m.id} value={m.id}>{managerLabel(m)}</option>)}
                   </select></div>
                 {hasSubsidiaries && legalEntities.length > 0 && (
                   <div><label className={labelCls}>{t('form.fields.legalEntity', 'Filiale')}</label>

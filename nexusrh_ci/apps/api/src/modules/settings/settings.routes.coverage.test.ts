@@ -181,6 +181,25 @@ describe('PATCH /settings/tenant — branches complémentaires', () => {
     })
     expect(res.statusCode).toBe(500)
   })
+
+  it('manager_scope : hierarchy accepté et écrit en base', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 't1', manager_scope: 'hierarchy' }] })
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/tenant', headers: auth(tokenFor(app, 'admin')),
+      payload: { manager_scope: 'hierarchy' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(String(queryMock.mock.calls[0]![0])).toContain('manager_scope = $1')
+    expect(queryMock.mock.calls[0]![1]).toEqual(['hierarchy', 't1'])
+  })
+
+  it('manager_scope : valeur hors liste → 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/tenant', headers: auth(tokenFor(app, 'admin')),
+      payload: { manager_scope: 'everyone' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -387,6 +406,16 @@ describe('POST /settings/users', () => {
 // PATCH /settings/users/:id
 // ════════════════════════════════════════════════════════════════════════════
 describe('PATCH /settings/users/:id', () => {
+  it("400 si l'admin tente de se retirer son propre rôle admin ou de se désactiver", async () => {
+    for (const payload of [{ role: 'employee' }, { is_active: false }]) {
+      const res = await app.inject({
+        method: 'PATCH', url: '/settings/users/u-admin', headers: auth(tokenFor(app, 'admin')), payload,
+      })
+      expect(res.statusCode).toBe(400)
+      expect(JSON.parse(res.body).error).toContain('propre rôle')
+    }
+  })
+
   it('400 si rôle non tenant (anti escalade super_admin)', async () => {
     const res = await app.inject({
       method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),

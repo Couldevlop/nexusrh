@@ -9,6 +9,7 @@ import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -54,25 +55,19 @@ async function userIdOfEmployee(schema: string, employeeId: string | null | unde
 
 /**
  * OWASP A01 — un manager ne peut approuver/rejeter que les absences des
- * employés dont il est manager direct. Renvoie true si l'utilisateur a le
- * droit d'agir sur cette absence.
+ * employés de son périmètre (équipe directe, ou branche selon le réglage
+ * tenant). Auto-approbation interdite (isInManagerScope est faux sur soi).
  */
 async function managerCanActOnAbsence(
   schema: string,
   managerEmployeeId: string | null | undefined,
   absenceEmployeeId: string,
 ): Promise<boolean> {
-  if (!managerEmployeeId) return false
-  if (managerEmployeeId === absenceEmployeeId) return false // auto-approbation interdite
-  const r = await rawPool.query<{ id: string }>(
-    `SELECT id FROM "${schema}".employees WHERE id = $1 AND manager_id = $2 LIMIT 1`,
-    [absenceEmployeeId, managerEmployeeId],
-  )
-  return r.rows.length > 0
+  return isInManagerScope(rawPool, schema, managerEmployeeId, absenceEmployeeId)
 }
 
 /**
- * OWASP A01 — portée de CONSULTATION d'un manager : son équipe directe, et
+ * OWASP A01 — portée de CONSULTATION d'un manager : son périmètre, et
  * lui-même. Fail-closed (manager sans dossier employé → aucun accès).
  * Distinct de `managerCanActOnAbsence` qui interdit volontairement l'auto-action
  * (anti auto-approbation) : consulter SON propre solde reste légitime.
@@ -84,11 +79,7 @@ async function managerCanViewEmployee(
 ): Promise<boolean> {
   if (!managerEmployeeId) return false
   if (managerEmployeeId === targetEmployeeId) return true
-  const r = await rawPool.query<{ id: string }>(
-    `SELECT id FROM "${schema}".employees WHERE id = $1 AND manager_id = $2 LIMIT 1`,
-    [targetEmployeeId, managerEmployeeId],
-  )
-  return r.rows.length > 0
+  return isInManagerScope(rawPool, schema, managerEmployeeId, targetEmployeeId)
 }
 
 function auditLogAbsence(
@@ -131,7 +122,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A01 — fail-closed : un manager sans dossier employé associé ne
         // doit voir AUCUNE absence (jamais toutes celles du tenant).
         if (!emp.rows[0]) return reply.send({ data: [] })
-        sql += ` AND e.manager_id = $${idx++}`; params.push(emp.rows[0].id)
+        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
       }
       sql += ` ORDER BY a.created_at DESC`
       const res = await rawPool.query(sql, params)

@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { isInManagerScope } from '../../services/manager-scope.service.js'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
@@ -543,7 +544,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             [employeeId],
           )
           if (!tgt.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
-          if (tgt.rows[0].manager_id !== mgrId) {
+          if (!(await isInManagerScope(rawPool, schema, mgrId, employeeId))) {
             return reply.status(403).send({ error: 'Accès interdit' })
           }
         }
