@@ -225,6 +225,11 @@ describe('MFA — secret TOTP chiffré au repos (OWASP A02)', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).token).toBeDefined()
+    // /auth/login s'arrête au 202 pour un compte MFA : c'est ici que la
+    // dernière connexion doit être enregistrée, dans la table du compte.
+    const lastLogin = queryMock.mock.calls.find(([sql]) => String(sql).includes('SET last_login_at = now()'))
+    expect(lastLogin?.[0]).toContain(`"${TENANT}".users`)
+    expect(lastLogin?.[1]).toEqual([UUID_A])
   })
 
   it('secret MFA legacy en clair (pré-migration, ENCRYPTION_KEY appliquée après coup) reste vérifiable — compat descendante', async () => {
