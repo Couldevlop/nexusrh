@@ -76,6 +76,9 @@ export function buildRobotsTxt(siteUrl) {
     'Allow: /og-image.png',
     // Fichier de vérification Bing Webmaster Tools (propriété du site).
     'Allow: /BingSiteAuth.xml',
+    // Le sitemap doit rester lisible : sous `Disallow: /`, Search Console
+    // refuse de le récupérer malgré la directive Sitemap.
+    'Allow: /sitemap.xml$',
     'Disallow: /',
     '',
     `Sitemap: ${siteUrl}/sitemap.xml`,
