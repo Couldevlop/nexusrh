@@ -70,6 +70,7 @@ describe('robots.txt et sitemap.xml', () => {
     const txt: string = buildRobotsTxt(SITE_URL)
     expect(txt).toContain('Allow: /$')
     expect(txt).toContain('Allow: /legal/')
+    expect(txt).toContain('Allow: /BingSiteAuth.xml')
     expect(txt).toContain('Disallow: /')
     expect(txt).toContain(`Sitemap: ${SITE_URL}/sitemap.xml`)
   })

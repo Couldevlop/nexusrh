@@ -74,6 +74,8 @@ export function buildRobotsTxt(siteUrl) {
     'Allow: /openlab.png',
     'Allow: /logo.svg',
     'Allow: /og-image.png',
+    // Fichier de vérification Bing Webmaster Tools (propriété du site).
+    'Allow: /BingSiteAuth.xml',
     'Disallow: /',
     '',
     `Sitemap: ${siteUrl}/sitemap.xml`,
