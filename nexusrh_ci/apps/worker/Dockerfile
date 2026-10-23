@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS pnpmstore
+FROM node:22-alpine AS pnpmstore
 
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
@@ -32,11 +32,11 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts --prefer-offline \
     --filter @nexusrhci/worker \
  && pnpm deploy --filter @nexusrhci/worker --prod /out
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 # Surface d'attaque de l'image de base :
 #  - `apk upgrade` applique les correctifs Alpine (libcrypto3/libssl3...) publies
-#    depuis la construction du tag node:20-alpine ;
+#    depuis la construction du tag node:22-alpine ;
 #  - le CLI npm n'est JAMAIS utilise a l'execution (on installe avec pnpm au
 #    build) mais il embarque ses propres dependances figees — tar, minimatch,
 #    glob, cross-spawn... — qui pesent une vingtaine de CVE hautes. On le retire.
