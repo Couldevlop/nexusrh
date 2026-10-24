@@ -64,9 +64,11 @@
       "to": "Au",
       "button": "Recalculer la période",
       "running": "Recalcul…",
-      "hint": "Recalcule retards et absences de tous les salariés actifs sur la période (jours sans pointage, corrections manuelles). Le calcul automatique ne traite que la veille.",
+      "hint": "Recalcule retards et absences sur la période (jours sans pointage, corrections manuelles). « Tous les salariés » : un salarié qui ne badge pas ressort absent chaque jour ouvré. Le calcul automatique ne traite que la veille.",
       "done": "{{count}} journée(s) recalculée(s).",
-      "error": "Le recalcul a échoué."
+      "error": "Le recalcul a échoué.",
+      "employee": "Salarié",
+      "allEmployees": "Tous les salariés actifs"
     }
   },
   "statuses": {

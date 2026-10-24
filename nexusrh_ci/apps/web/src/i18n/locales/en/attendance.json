@@ -64,9 +64,11 @@
       "to": "To",
       "button": "Recompute period",
       "running": "Recomputing…",
-      "hint": "Recomputes lateness and absences for all active employees over the period (days without punches, manual corrections). The automatic run only covers the previous day.",
+      "hint": "Recomputes lateness and absences over the period (days without punches, manual corrections). \"All employees\": an employee who never badges comes out absent every working day. The automatic run only covers the previous day.",
       "done": "{{count}} day(s) recomputed.",
-      "error": "Recompute failed."
+      "error": "Recompute failed.",
+      "employee": "Employee",
+      "allEmployees": "All active employees"
     }
   },
   "statuses": {
