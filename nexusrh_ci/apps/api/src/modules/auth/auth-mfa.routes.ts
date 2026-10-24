@@ -215,6 +215,18 @@ async function migrateSchemaOfAuthenticatedUser(req: FastifyRequest): Promise<vo
   await ensureAuthSchema(u?.schemaName)
 }
 
+/** Nom de l'organisation d'un compte tenant (null pour la plateforme / un cabinet). */
+async function resolveAccountLabel(schemaName: string): Promise<string | null> {
+  if (schemaName === 'platform' || !SCHEMA_NAME_RE.test(schemaName)) return null
+  try {
+    const r = await pool.query<{ name: string }>(
+      `SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schemaName])
+    return r?.rows?.[0]?.name ?? null
+  } catch {
+    return null
+  }
+}
+
 const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /auth/mfa/setup : génère secret + QR code + backup codes ──────────
   fastify.post('/mfa/setup', {
@@ -226,10 +238,25 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       const scope = await findUserScope(user.sub, user.schemaName)
       if (!scope) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
-      // Generate fresh TOTP secret + QR
-      const secret = authenticator.generateSecret()
-      const otpauth = authenticator.keyuri(scope.email, 'NexusRH CI', secret)
-      const qrDataUrl = await toDataURL(otpauth)
+      // MFA déjà active : un nouveau secret remplacerait celui de l'application
+      // d'authentification alors que /verify refuse (409) de le confirmer → compte
+      // verrouillé. On refuse donc tout ré-enrôlement (passer par /disable).
+      if (scope.mfaEnabled) {
+        return reply.status(409).send({
+          error: 'La double authentification est déjà active sur ce compte. Reconnectez-vous et saisissez le code de votre application.',
+          mfaAlreadyEnabled: true,
+        })
+      }
+
+      // Secret en attente (enrôlement commencé, pas encore confirmé) : on le
+      // réutilise. Le régénérer à chaque passage sur la page invalidait le QR
+      // déjà scanné et tous les codes saisis ensuite étaient refusés.
+      let secret: string | null = null
+      if (scope.mfaSecret) {
+        try { secret = decryptMfaSecret(scope.mfaSecret) } catch { secret = null }
+      }
+      const reused = secret !== null
+      if (!secret) secret = authenticator.generateSecret()
 
       // Generate 10 backup codes (montrés une seule fois au user)
       const backupCodesPlain: string[] = []
@@ -256,13 +283,23 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
           [user.sub, hash])
       }
 
-      auditMfa(user.schemaName, user.sub, 'mfa.setup_initiated', {}, request.ip ?? null)
+      auditMfa(user.schemaName, user.sub, 'mfa.setup_initiated', { reused }, request.ip ?? null)
+
+      // Une même adresse peut exister dans plusieurs tenants : l'émetteur porte
+      // le nom de l'organisation, sinon l'application d'authentification
+      // remplace l'entrée d'un tenant par celle de l'autre (même libellé).
+      const accountLabel = await resolveAccountLabel(user.schemaName)
+      const issuer = accountLabel ? `NexusRH CI · ${accountLabel}` : 'NexusRH CI'
+      const qrDataUrl = await toDataURL(authenticator.keyuri(scope.email, issuer, secret))
 
       // OWASP — les backup codes ne seront JAMAIS retournés à nouveau
       return reply.send({
         qrCodeDataUrl: qrDataUrl,
         secret,                                  // affiché à l'utilisateur pour saisie manuelle
         backupCodes: backupCodesPlain,           // affichés UNE SEULE fois (téléchargement recommandé)
+        accountLabel,                            // organisation du compte enrôlé (null = plateforme)
+        email: scope.email,
+        reused,
         message: 'Scannez le QR, sauvegardez les codes de secours, puis confirmez via /auth/mfa/verify',
       })
     },

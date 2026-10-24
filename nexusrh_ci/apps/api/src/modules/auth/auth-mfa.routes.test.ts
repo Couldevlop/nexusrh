@@ -437,3 +437,51 @@ describe('POST /auth/mfa/disable — re-vérification mot de passe', () => {
     expect(auditCall?.[1]?.[1]).toBe('mfa.disabled')
   })
 })
+
+describe('POST /auth/mfa/setup — enrôlement sans écrasement (même adresse dans plusieurs tenants)', () => {
+  function routeQueries(user: { mfa_enabled: boolean; mfa_secret: string | null }, tenantName = 'Test Bulletin de Solde') {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (/SELECT email, mfa_enabled, mfa_secret/.test(sql)) return { rows: [{ email: 'a@b.ci', is_active: true, ...user }] }
+      if (/SELECT name FROM platform\.tenants/.test(sql)) return { rows: [{ name: tenantName }] }
+      return { rows: [] }
+    })
+  }
+
+  it('MFA déjà active → 409 mfaAlreadyEnabled, secret actif jamais remplacé', async () => {
+    routeQueries({ mfa_enabled: true, mfa_secret: encrypt(authenticator.generateSecret()) })
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/setup',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).mfaAlreadyEnabled).toBe(true)
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('SET mfa_secret'))).toBe(false)
+  })
+
+  it('secret en attente → réutilisé (même QR), libellé = organisation du compte', async () => {
+    const pending = authenticator.generateSecret()
+    routeQueries({ mfa_enabled: false, mfa_secret: encrypt(pending) })
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/setup',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.secret).toBe(pending)
+    expect(body.reused).toBe(true)
+    expect(body.accountLabel).toBe('Test Bulletin de Solde')
+    expect(body.backupCodes).toHaveLength(10)
+  }, 60_000)
+
+  it('aucun secret en attente → nouveau secret, reused=false', async () => {
+    routeQueries({ mfa_enabled: false, mfa_secret: null })
+    const res = await app.inject({
+      method: 'POST', url: '/auth/mfa/setup',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.reused).toBe(false)
+    expect(body.secret).toMatch(/^[A-Z2-7]+$/)
+  }, 60_000)
+})
