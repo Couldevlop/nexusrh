@@ -41,6 +41,32 @@ export interface AttendancePayrollDeductions {
   suspendAttendanceBonus: boolean
 }
 
+/**
+ * Indemnité du solde de tout compte portée sur le bulletin de solde. Le
+ * traitement social / fiscal vient du pack (`settlementTreatment`).
+ */
+export interface SettlementEarning {
+  key: 'conges' | 'preavis' | 'licenciement'
+  label: string
+  amount: number
+}
+
+export type SettlementTreatment = Record<SettlementEarning['key'], { social: boolean; tax: boolean }>
+
+/**
+ * Défaut : congés et préavis sont des salaires (cotisations + impôt) ;
+ * l'indemnité de licenciement / de départ à la retraite en est exonérée.
+ */
+export const DEFAULT_SETTLEMENT_TREATMENT: SettlementTreatment = {
+  conges:       { social: true,  tax: true },
+  preavis:      { social: true,  tax: true },
+  licenciement: { social: false, tax: false },
+}
+
+const SETTLEMENT_LINE_CODES: Record<SettlementEarning['key'], string> = {
+  conges: '1610', preavis: '1620', licenciement: '1630',
+}
+
 export interface PayrollContext {
   baseSalary:      number  // FCFA brut mensuel
   workedDays:      number  // jours travaillés dans le mois (hors jours absence)
@@ -53,6 +79,8 @@ export interface PayrollContext {
   absence?: AbsencePayrollInfo
   /** Retenues pointage (optionnel — sans ce champ, aucune retenue) */
   attendanceDeductions?: AttendancePayrollDeductions
+  /** Bulletin de solde : indemnités du solde de tout compte (optionnel) */
+  settlementEarnings?: SettlementEarning[]
   /**
    * Pack législatif à appliquer (optionnel — défaut : CIV-2024).
    * Permet le multi-pays UEMOA (Palier 2). Un pack `status: 'stub'`
@@ -99,6 +127,7 @@ export interface PayrollResult {
   workingDays:     number
   // Absences
   indemniteAbsence?: number      // montant indemnité (maternité / maladie / AT)
+  settlementTotal?:  number      // indemnités du solde de tout compte portées au bulletin
   bordereauCnps?:    BordereauCnps  // bordereau remboursement CNPS (maternité / AT)
 }
 
@@ -280,8 +309,18 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const retenueAbsences = Math.min(salaireJours, Math.max(0, Math.floor(att?.absenceAmount ?? 0)))
   const retenueRetards  = Math.min(salaireJours - retenueAbsences, Math.max(0, Math.floor(att?.latenessAmount ?? 0)))
   const brutProrata  = salaireJours - retenueAbsences - retenueRetards
-  const baseAtPf     = Math.min(brutProrata, pack.plafondCnpsAtPf)
-  const baseRetraite = Math.min(brutProrata, pack.plafondCnpsRetraite)
+
+  // Solde de tout compte : chaque indemnité entre (ou non) dans l'assiette des
+  // cotisations et dans la base imposable selon le pack.
+  const treatment = pack.settlementTreatment ?? DEFAULT_SETTLEMENT_TREATMENT
+  const settlement = (ctx.settlementEarnings ?? [])
+    .map(s => ({ ...s, amount: Math.max(0, Math.round(s.amount)) }))
+    .filter(s => s.amount > 0)
+  const settlementSocial = settlement.filter(s => treatment[s.key]?.social).reduce((t, s) => t + s.amount, 0)
+  const settlementTax    = settlement.filter(s => treatment[s.key]?.tax).reduce((t, s) => t + s.amount, 0)
+
+  const baseAtPf     = Math.min(brutProrata + settlementSocial, pack.plafondCnpsAtPf)
+  const baseRetraite = Math.min(brutProrata + settlementSocial, pack.plafondCnpsRetraite)
 
   // ── ÉTAPE 2 : Cotisations sécurité sociale (sur présence uniquement) ────────
   const cnpsRetraiteSal = Math.floor(baseRetraite * pack.tauxCotisationRetraiteSalarie)
@@ -332,7 +371,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   // ── ÉTAPE 3 : Impôt sur les salaires (ITS CI / IUTS BF / IR SN / …) ─────────
   // Base taxable = (présence + indemnité maladie) × abattement - cotisations sal.
   // Indemnités maternité et AT sont exclues de la base imposable
-  const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree
+  const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree + settlementTax
   const salaireAbattu   = Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
   const baseImposable   = Math.max(0, salaireAbattu - totalCnpsSal)
   const itsBrut         = calculerBaremeImpot(baseImposable, pack)
@@ -376,6 +415,10 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     } else if (absence.type === 'accident_travail') {
       lines.push({ code: '1900', label: 'Indemnité journalière AT (CNPS)', type: 'earning', base: baseSalary, amount: indemniteAbsence })
     }
+  }
+
+  for (const s of settlement) {
+    lines.push({ code: SETTLEMENT_LINE_CODES[s.key], label: s.label, type: 'earning', base: s.amount, amount: s.amount })
   }
 
   const grossSalary = lines.filter(l => l.type === 'earning').reduce((s, l) => s + l.amount, 0)
@@ -433,6 +476,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     smigCompliant: netPayable >= pack.smigMensuel,
     workingDays: workedDays,
     indemniteAbsence: indemniteAbsence > 0 ? indemniteAbsence : undefined,
+    settlementTotal: settlement.length > 0 ? settlement.reduce((t, s) => t + s.amount, 0) : undefined,
     bordereauCnps,
   }
 }

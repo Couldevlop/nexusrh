@@ -183,8 +183,9 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
 
-      const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string }>(
-        `SELECT status, employee_id FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
+      const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string; departure_date?: string | null }>(
+        `SELECT status, employee_id, departure_date::text AS departure_date
+         FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       if (b.status && !canTransition(cur.rows[0].status, b.status)) {
@@ -215,6 +216,14 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (b.status === 'closed') {
         const arch = await archiveEmployeeCascade(rawPool, schema, cur.rows[0].employee_id)
           .catch(() => null)
+        // Date de sortie de la fiche (RNS, paie) : celle du dossier, sauf
+        // déclaration de sortie CNPS déjà saisie.
+        if (cur.rows[0].departure_date) {
+          await rawPool.query(
+            `UPDATE "${schema}".employees SET exit_date = COALESCE(exit_date, $2::date) WHERE id = $1`,
+            [cur.rows[0].employee_id, cur.rows[0].departure_date],
+          ).catch(() => undefined)
+        }
         if (arch) {
           audit(schema, request.user.sub, 'offboarding.employee_archived', id,
             { employeeId: cur.rows[0].employee_id, ...arch }, request.ip ?? null)

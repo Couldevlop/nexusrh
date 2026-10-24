@@ -2,8 +2,11 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
-import { getWorkingDays, resolveAbsenceForPayroll } from '../../services/payroll-absences.service.js'
-import { loadEffectiveAttendancePayrollSettings, resolveAttendanceForPayroll } from '../../services/attendance-payroll.service.js'
+import { getWorkingDays } from '../../services/payroll-absences.service.js'
+import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
+import {
+  loadPayrollPopulation, markSettlementPaid, previousMonth, resolveEmployeeMonth,
+} from '../../services/final-payslip.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { getPackByCountry } from '../../services/legislation-packs.js'
@@ -42,6 +45,19 @@ function parseMonth(month: string): { year: number; monthNum: number } | null {
   return { year, monthNum }
 }
 
+// Entrée / sortie du mois, renvoyée par la simulation (null = mois complet)
+function employmentSummary(m: Awaited<ReturnType<typeof resolveEmployeeMonth>>) {
+  const w = m.window
+  if (!w.hiredInMonth && !w.exitsThisMonth && !w.settlementOnly) return null
+  return {
+    start: w.start, end: w.end,
+    contractDays: w.contractDays, workingDaysMonth: w.workingDaysMonth,
+    hiredInMonth: w.hiredInMonth, finalPayslip: w.exitsThisMonth || w.settlementOnly,
+    settlementOnly: w.settlementOnly,
+    settlement: m.settlementEarnings,
+  }
+}
+
 const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
 
@@ -62,18 +78,37 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // (filiale orpheline, pack indisponible, colonne legacy) doit produire un
       // message exploitable plutôt qu'un 500 opaque côté client.
       try {
-      const empRes = await rawPool.query<{
+      type CalcEmployee = {
         id: string; base_salary: string; marital_status: string; children_count: number
         first_name: string; last_name: string; cnps_number: string; nni: string
         mobile_money_provider: string; mobile_money_phone: string; hire_date: string | null
-        legal_entity_id: string | null
-      }>(
+        legal_entity_id: string | null; exit_date?: string | null; settlement?: unknown
+      }
+      // Un salarié archivé reste simulable pour son mois de sortie (bulletin
+      // de solde) et le mois suivant (rattrapage du solde).
+      const empRes = await rawPool.query<CalcEmployee>(
+        `SELECT e.id, e.base_salary, e.marital_status, e.children_count,
+                e.first_name, e.last_name, e.cnps_number, e.nni,
+                e.mobile_money_provider, e.mobile_money_phone, e.hire_date::text AS hire_date, e.legal_entity_id,
+                COALESCE(e.exit_date, oc.departure_date)::text AS exit_date, oc.settlement
+         FROM "${schema}".employees e
+         LEFT JOIN LATERAL (
+           SELECT o.departure_date, o.settlement FROM "${schema}".offboarding_cases o
+           WHERE o.employee_id = e.id AND o.status <> 'cancelled'
+             AND (o.status IN ('settled', 'closed') OR o.departure_date >= $3::date)
+           ORDER BY o.departure_date DESC LIMIT 1
+         ) oc ON true
+         WHERE e.id = $1
+           AND (e.deleted_at IS NULL OR COALESCE(e.exit_date, oc.departure_date) >= $2::date)
+         LIMIT 1`,
+        [employeeId, `${previousMonth(month)}-01`, `${month}-01`]
+      ).catch(() => rawPool.query<CalcEmployee>(
         `SELECT id, base_salary, marital_status, children_count,
                 first_name, last_name, cnps_number, nni,
                 mobile_money_provider, mobile_money_phone, hire_date, legal_entity_id
          FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
         [employeeId]
-      )
+      ))
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
 
@@ -150,14 +185,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const { year, monthNum } = parsed
       const workingDaysMonth = getWorkingDays(year, monthNum)
 
-      // Résolution absence du mois
-      const absenceCtx = await resolveAbsenceForPayroll(schema, employeeId, month, emp.hire_date)
-      const attendance = await resolveAttendanceForPayroll(
-        await loadEffectiveAttendancePayrollSettings(schema), schema, employeeId, month, baseSalary, workingDaysMonth)
+      // Prorata entrée / sortie, absences, pointage et solde de tout compte
+      const monthInputs = await resolveEmployeeMonth(
+        schema, emp, month, await loadEffectiveAttendancePayrollSettings(schema))
+      const { absenceCtx, attendance } = monthInputs
 
       const result = calculatePayrollCI({
         baseSalary,
-        workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
+        workedDays:       monthInputs.workedDays,
         workingDaysMonth,
         atRate,
         maritalStatus:    emp.marital_status ?? 'single',
@@ -165,6 +200,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         variableElements: varEls,
         absence:          absenceCtx?.info,
         attendanceDeductions: attendance?.deductions,
+        settlementEarnings: monthInputs.settlementEarnings,
         legislationPack:  resolved.legislationPack,
       })
 
@@ -180,10 +216,11 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         absence: absenceCtx ? {
           type:        absenceCtx.info.type,
           absenceDays: absenceCtx.absenceDays,
-          workedDays:  absenceCtx.workedDays,
+          workedDays:  monthInputs.workedDays,
           maintienTaux: absenceCtx.info.type === 'maladie_sans_at' ? absenceCtx.info.maintienTaux : undefined,
         } : null,
         attendance: attendance?.summary ?? null,
+        employment: employmentSummary(monthInputs),
         result,
         currency: result.currency,
       })
@@ -307,30 +344,13 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Scope employés par filiale si applicable
-      const empsParams: unknown[] = []
-      let empsWhere = `is_active = true AND deleted_at IS NULL`
-      if (legalEntityId) {
-        empsParams.push(legalEntityId)
-        empsWhere += ` AND legal_entity_id = $${empsParams.length}`
-      }
-      const emps = await rawPool.query<{
-        id: string; base_salary: string; marital_status: string; children_count: number
-        mobile_money_provider: string; mobile_money_phone: string
-        first_name: string; last_name: string; cnps_number: string; nni: string
-        hire_date: string | null; legal_entity_id: string | null
-      }>(
-        `SELECT id, base_salary, marital_status, children_count,
-                mobile_money_provider, mobile_money_phone,
-                first_name, last_name, cnps_number, nni, hire_date, legal_entity_id
-         FROM "${schema}".employees WHERE ${empsWhere}`,
-        empsParams,
-      )
-
       const parsed = parseMonth(month)
       if (!parsed) {
         return reply.status(400).send({ error: 'Format mois invalide (attendu : YYYY-MM)' })
       }
+
+      // Actifs + sortants du mois (bulletin de solde), scope filiale si applicable
+      const emps = { rows: await loadPayrollPopulation(schema, month, { legalEntityId: legalEntityId ?? null }) }
       const { year, monthNum } = parsed
       const workingDaysMonth = getWorkingDays(year, monthNum)
 
@@ -378,10 +398,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         )
         for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
 
-        // Résolution absence pour cet employé ce mois-ci
-        const absenceCtx = await resolveAbsenceForPayroll(schema, emp.id, month, emp.hire_date)
-        const attendance = await resolveAttendanceForPayroll(
-          attendanceSettings, schema, emp.id, month, parseInt(emp.base_salary), workingDaysMonth)
+        // Prorata entrée / sortie, absences, pointage et solde de tout compte
+        const monthInputs = await resolveEmployeeMonth(schema, emp, month, attendanceSettings)
+        const { absenceCtx, attendance } = monthInputs
 
         // Résolution du contexte paie (at_rate + pack législatif selon filiale).
         // OWASP A09 : si fallback legacy, le warning est inclus dans l'audit
@@ -394,7 +413,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
         const result = calculatePayrollCI({
           baseSalary:       parseInt(emp.base_salary),
-          workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
+          workedDays:       monthInputs.workedDays,
           workingDaysMonth,
           atRate:           resolved.atRate,
           maritalStatus:    emp.marital_status ?? 'single',
@@ -402,6 +421,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           variableElements: varEls,
           absence:          absenceCtx?.info,
           attendanceDeductions: attendance?.deductions,
+          settlementEarnings: monthInputs.settlementEarnings,
           legislationPack:  resolved.legislationPack,
         })
 
@@ -463,6 +483,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             ],
           )
         })
+        // Solde de tout compte porté sur ce bulletin : marqué payé
+        if (slip.rows[0] && emp.offboarding_id && result.settlementTotal) {
+          await markSettlementPaid(schema, emp.offboarding_id, month, slip.rows[0].id)
+        }
         if (slip.rows[0]) paySlips.push({
           employeeId: emp.id,
           paySlipId: slip.rows[0].id,
@@ -470,6 +494,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           hasAbsence: !!absenceCtx,
           absenceType: absenceCtx?.info.type ?? null,
           hasBordereauCnps: !!result.bordereauCnps,
+          ...(monthInputs.window.exitsThisMonth || monthInputs.window.settlementOnly
+            ? { finalPayslip: true, settlementTotal: result.settlementTotal ?? 0 } : {}),
         })
       }
 
@@ -487,6 +513,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       const absenceCount = paySlips.filter((s: any) => s.hasAbsence).length
+      const finalPayslipCount = paySlips.filter((s: any) => s.finalPayslip).length
       const bordereauCount = paySlips.filter((s: any) => s.hasBordereauCnps).length
 
       return reply.send({
@@ -496,6 +523,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         employeesCount: emps.rows.length,
         absencesIntegrées: absenceCount,
         bordereauCnpsCount: bordereauCount,
+        bulletinsDeSolde: finalPayslipCount,
         totals: {
           grossSalary: totalGross, netPayable: totalNet,
           cnps: totalCnps, its: totalIts,

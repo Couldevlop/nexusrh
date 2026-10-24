@@ -26,6 +26,7 @@
     "submit": "Initiate closing",
     "error": "Error while closing",
     "resultDefault": "Period awaiting validation — {{count}} payslips generated",
+    "resultFinalPayslips": "including {{count}} final payslip(s) (leavers: prorated pay and final settlement)",
     "resultGross": "Gross payroll:",
     "resultNet": "Net pay:",
     "resultCnps": "CNPS:",
