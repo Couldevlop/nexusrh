@@ -3,13 +3,14 @@ import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '@nexusrhci/shared/crypto'
-import { joursFeriesCI } from '@nexusrhci/shared/ci-holidays'
 import { sendAbsenceRequestEmail } from '../../services/email.js'
 import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
+import { isMaternityCode, maternityRule, resolveAbsenceRequest } from '../../services/absence-duration.service.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { checkPaidLeaveRequest, loadLeavePolicyForEmployee, refreshPaidLeaveBalance } from '../../services/paid-leave.service.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
@@ -20,6 +21,12 @@ const createAbsenceSchema = z.object({
   halfDay:       z.boolean().optional(),
   reason:        z.string().max(1000).optional(),
   employeeId:    z.string().uuid().optional(),
+  // Maternité : prolongations légales déclarées (pack du pays)
+  maternity: z.object({
+    multipleBirth: z.boolean().optional(),
+    illnessExtension: z.boolean().optional(),
+    childHospitalizedDays: z.number().int().min(0).max(366).optional(),
+  }).strict().optional(),
 }).refine((d) => d.startDate <= d.endDate, {
   // ABS-003 — la date de fin doit être postérieure ou égale au début.
   // Comparaison lexicographique sûre sur des chaînes YYYY-MM-DD.
@@ -222,10 +229,17 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
     schema: { tags: ['absences'], summary: 'Types d\'absences CI' },
     handler: async (request, reply) => {
+      const schema = request.user.schemaName
       const res = await rawPool.query(
-        `SELECT * FROM "${request.user.schemaName}".absence_types WHERE is_active = true ORDER BY label`
+        `SELECT * FROM "${schema}".absence_types WHERE is_active = true ORDER BY label`
       )
-      return reply.send({ data: res.rows })
+      // Maternité : durée légale du pays du tenant (pré-remplissage du formulaire ;
+      // la demande est contrôlée sur le pack de la filiale de l'employée)
+      const rows = res.rows as Array<{ code?: string }>
+      if (!rows.some((r) => isMaternityCode(r.code))) return reply.send({ data: rows })
+      const ctx = await loadEmployeeTenantContext(rawPool, schema, null).catch(() => null)
+      const rule = maternityRule(ctx?.legislation.legislationPack.leaveRules)
+      return reply.send({ data: rows.map((r) => (isMaternityCode(r.code) && rule ? { ...r, maternity_rule: rule } : r)) })
     },
   })
 
@@ -263,23 +277,16 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      // Calcul jours ouvrables CI : dimanche exclu (samedi inclus, semaine 6 j)
-      // + jours fériés CI exclus (ABS-008). Couvre les années traversées.
+      // Décompte selon le type (jours ouvrables hors dimanche et fériés CI —
+      // ABS-008 — ou jours calendaires) + durée légale de la maternité.
       const start = new Date(body.startDate)
-      const end   = new Date(body.endDate)
-      const feries = new Set<string>([
-        ...joursFeriesCI(start.getFullYear()),
-        ...joursFeriesCI(end.getFullYear()),
-      ])
-      const ymdLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      let days = 0
-      const cur = new Date(start)
-      while (cur <= end) {
-        const dow = cur.getDay()
-        if (dow !== 0 && !feries.has(ymdLocal(cur))) days++ // ni dimanche ni férié
-        cur.setDate(cur.getDate() + 1)
+      const rules = await resolveAbsenceRequest(rawPool, schema, employeeId, body.absenceTypeId,
+        body.startDate, body.endDate, body.maternity)
+      if (rules.maternity && !rules.maternity.ok) {
+        return reply.status(422).send({ error: rules.maternity.error, allowedDays: rules.maternity.allowedDays })
       }
-      if (body.halfDay) days = 0.5
+      let days = rules.days
+      if (body.halfDay && rules.mode === 'working_days') days = 0.5
 
       // Congés payés : contrôle du solde acquis à date (paramétrable par tenant)
       const leaveCheck = await checkPaidLeaveRequest(rawPool, schema, employeeId, body.absenceTypeId, days)
@@ -356,7 +363,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         data: res.rows[0],
         ...(leaveCheck?.insufficient
           ? { warning: `Solde de congés payés dépassé : ${leaveCheck.available} j disponible(s), ${days} j demandé(s).` }
-          : {}),
+          : rules.maternity?.warning ? { warning: rules.maternity.warning } : {}),
       })
     },
   })

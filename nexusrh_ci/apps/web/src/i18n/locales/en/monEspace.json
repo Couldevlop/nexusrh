@@ -97,6 +97,13 @@
       "startRequired": "Start date required",
       "endRequired": "End date required",
       "endBeforeStart": "End date must be on or after start date"
+    },
+    "maternity": {
+      "legal": "Legal duration: {{days}} calendar days ({{weeks}} consecutive weeks). The end date is filled in automatically.",
+      "multipleBirth": "Multiple birth (+{{weeks}} weeks)",
+      "illness": "Medically certified illness related to pregnancy or childbirth (+{{weeks}} weeks)",
+      "hospitalized": "Days of the child's hospitalisation (extension)",
+      "total": "Total duration: {{days}} calendar days"
     }
   },
   "payslips": {
