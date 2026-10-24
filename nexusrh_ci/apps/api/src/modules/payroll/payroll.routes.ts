@@ -5,7 +5,7 @@ import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markSettlementPaid, previousMonth, resolveEmployeeMonth,
+  loadPayrollPopulation, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
@@ -453,7 +453,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
             result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
             result.netPayable, result.employerCost, JSON.stringify(result.lines),
-            emp.mobile_money_provider ?? 'mobile_money',
+            slipPaymentMethod(emp),
             bordereauJson,
             result.indemniteAbsence ?? null,
             resolved.legalEntityId,
@@ -476,7 +476,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
               result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
               result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
               result.netPayable, result.employerCost, JSON.stringify(result.lines),
-              emp.mobile_money_provider ?? 'mobile_money',
+              slipPaymentMethod(emp),
               bordereauJson,
               result.indemniteAbsence ?? null,
               result.currency,

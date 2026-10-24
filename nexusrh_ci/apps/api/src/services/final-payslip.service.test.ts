@@ -8,7 +8,7 @@ vi.mock('../config.js', () => ({
 
 import {
   employmentWindow, loadPayrollPopulation, markSettlementPaid, previousMonth,
-  resolveEmployeeMonth, settlementEarningsFrom, workedDaysFor,
+  resolveEmployeeMonth, settlementEarningsFrom, slipPaymentMethod, workedDaysFor,
 } from './final-payslip.service.js'
 import { calculatePayrollCI } from './payroll-engine-ci.js'
 import { CIV_2024 } from './legislation-packs.js'
@@ -55,6 +55,16 @@ describe('fenêtre d’emploi du mois', () => {
   it('mois précédent', () => {
     expect(previousMonth('2026-01')).toBe('2025-12')
     expect(previousMonth('2026-10')).toBe('2026-09')
+  })
+})
+
+describe('mode de paiement du bulletin', () => {
+  it('virement bancaire prime sur l’opérateur Mobile Money renseigné', () => {
+    expect(slipPaymentMethod({ payment_method: 'bank_transfer', mobile_money_provider: 'wave' })).toBe('bank_transfer')
+  })
+  it('Mobile Money : l’opérateur, sinon le libellé générique', () => {
+    expect(slipPaymentMethod({ payment_method: 'mobile_money', mobile_money_provider: 'mtn' })).toBe('mtn')
+    expect(slipPaymentMethod({ payment_method: null, mobile_money_provider: '' })).toBe('mobile_money')
   })
 })
 

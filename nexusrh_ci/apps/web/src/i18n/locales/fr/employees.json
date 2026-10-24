@@ -53,7 +53,8 @@
       "iban": "RIB / IBAN (chiffré AES-256)",
       "bankName": "Banque",
       "maritalStatus": "Statut marital",
-      "childrenCount": "Enfants à charge"
+      "childrenCount": "Enfants à charge",
+      "paymentMethod": "Mode de réception du salaire"
     },
     "placeholders": {
       "phone": "+225 07 XX XX XX XX",
@@ -91,10 +92,13 @@
     "errors": {
       "salaryBelowSmig": "Le salaire brut doit être ≥ 75 000 FCFA (SMIG).",
       "createGeneric": "Erreur lors de la création",
-      "salaryRequired": "Saisissez un salaire de base."
+      "salaryRequired": "Saisissez un salaire de base.",
+      "bankNameRequired": "Le virement bancaire exige le nom de la banque."
     },
     "submit": "Créer l'employé",
-    "submitting": "Création..."
+    "submitting": "Création...",
+    "paymentMobileMoney": "Mobile Money",
+    "paymentBankTransfer": "Virement bancaire"
   },
   "edit": {
     "title": "Modifier l'employé",
