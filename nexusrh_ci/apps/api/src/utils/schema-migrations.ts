@@ -485,6 +485,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       default_workdays integer[] NOT NULL DEFAULT '{1,2,3,4,5}',
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
+    // Lien badgeuse -> paie (attendance-payroll.service) : paramétrage jsonb,
+    // vide = désactivé. Lu de façon tolérante, jamais d'erreur de paie.
+    `ALTER TABLE "${schemaName}".attendance_config ADD COLUMN IF NOT EXISTS payroll_link jsonb NOT NULL DEFAULT '{}'`,
 
     // ── Processus de sortie (offboarding) + solde de tout compte ──────────────
     // Motif de départ, checklist de restitution, calcul du solde (Code du travail

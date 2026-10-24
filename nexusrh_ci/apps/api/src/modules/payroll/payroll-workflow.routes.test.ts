@@ -162,6 +162,7 @@ describe('Workflow — RAF soumet sa période', () => {
       }] })
       .mockResolvedValueOnce({ rows: [{ at_rate: '0.020', name: 'Filiale Test' }] })
       .mockResolvedValueOnce({ rows: [] })  // employees vide
+      .mockResolvedValueOnce({ rows: [] })  // attendance_config.payroll_link → lien paie désactivé
       .mockResolvedValueOnce({ rows: [{ id: 'child-1', status: 'completed_by_site' }] })
       .mockResolvedValueOnce({ rows: [] })  // audit_log
     const token = tokenFor(app, 'raf_site', 'u-me')

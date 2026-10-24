@@ -25,6 +25,22 @@ export interface AbsencePayrollInfo {
   atJourAccidentInMonth?: boolean
 }
 
+/**
+ * Retenues issues du pointage (badgeuse), déjà chiffrées par
+ * attendance-payroll.service selon le paramétrage du tenant. Absent = aucune
+ * retenue (pas de badgeuse, lien paie désactivé, aucun écart).
+ */
+export interface AttendancePayrollDeductions {
+  /** Jours d'absence injustifiée retenus */
+  absenceDays: number
+  absenceAmount: number
+  /** Minutes de retard retenues (après franchise) */
+  lateMinutes: number
+  latenessAmount: number
+  /** Suspendre les primes de présence (transport, panier) */
+  suspendAttendanceBonus: boolean
+}
+
 export interface PayrollContext {
   baseSalary:      number  // FCFA brut mensuel
   workedDays:      number  // jours travaillés dans le mois (hors jours absence)
@@ -35,6 +51,8 @@ export interface PayrollContext {
   variableElements: Record<string, number> // {'PRIME_TRANSPORT': 30000, ...}
   /** Absence du mois (optionnel — sans ce champ, calcul normal) */
   absence?: AbsencePayrollInfo
+  /** Retenues pointage (optionnel — sans ce champ, aucune retenue) */
+  attendanceDeductions?: AttendancePayrollDeductions
   /**
    * Pack législatif à appliquer (optionnel — défaut : CIV-2024).
    * Permet le multi-pays UEMOA (Palier 2). Un pack `status: 'stub'`
@@ -236,7 +254,7 @@ const PRIMES_PRESENCE = new Set(['PRIME_TRANSPORT', 'PRIME_PANIER'])
 export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const {
     baseSalary, workedDays, workingDaysMonth,
-    atRate, maritalStatus, childrenCount, absence,
+    atRate, maritalStatus, childrenCount, absence, attendanceDeductions: att,
   } = ctx
 
   // Pack actif : défaut CIV-2024
@@ -250,13 +268,18 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
 
   // Suspension automatique des primes de présence si absence déclarée
   const variableElements = { ...ctx.variableElements }
-  if (absence) {
+  if (absence || att?.suspendAttendanceBonus) {
     for (const prime of PRIMES_PRESENCE) delete variableElements[prime]
   }
 
   // ── ÉTAPE 1 : Variables de base ─────────────────────────────────────────────
   // brutProrata = salaire des jours de PRÉSENCE RÉELLE (hors jours d'absence)
-  const brutProrata  = Math.floor(baseSalary * (workedDays / workingDaysMonth))
+  // Les retenues pointage (absences injustifiées, retards) viennent en
+  // déduction du salaire de base, avant cotisations et impôt.
+  const salaireJours = Math.floor(baseSalary * (workedDays / workingDaysMonth))
+  const retenueAbsences = Math.min(salaireJours, Math.max(0, Math.floor(att?.absenceAmount ?? 0)))
+  const retenueRetards  = Math.min(salaireJours - retenueAbsences, Math.max(0, Math.floor(att?.latenessAmount ?? 0)))
+  const brutProrata  = salaireJours - retenueAbsences - retenueRetards
   const baseAtPf     = Math.min(brutProrata, pack.plafondCnpsAtPf)
   const baseRetraite = Math.min(brutProrata, pack.plafondCnpsRetraite)
 
@@ -321,8 +344,14 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
 
   lines.push({
     code: '1000', label: 'Salaire de base',
-    type: 'earning', base: baseSalary, amount: brutProrata,
+    type: 'earning', base: baseSalary, amount: salaireJours,
   })
+  if (retenueAbsences > 0 && att) {
+    lines.push({ code: '1010', label: `Retenue absences injustifiées (${att.absenceDays} j)`, type: 'earning', base: baseSalary, amount: -retenueAbsences })
+  }
+  if (retenueRetards > 0 && att) {
+    lines.push({ code: '1020', label: `Retenue retards (${att.lateMinutes} min)`, type: 'earning', base: baseSalary, amount: -retenueRetards })
+  }
 
   const varEarnings = [
     { code: '1100', label: "Prime d'ancienneté",           varKey: 'PRIME_ANCIENNETE'  },

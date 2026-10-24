@@ -136,8 +136,10 @@ describe('Workflow paie multi-pays end-to-end (Palier 3)', () => {
       }] })                                                            // SELECT period
       .mockResolvedValueOnce({ rows: [{ at_rate: '0.020', name: 'Filiale CI' }] }) // SELECT legal_entity
       .mockResolvedValueOnce({ rows: [{ id: EMP_CI, base_salary: '500000',
-        marital_status: 'married', children_count: 2 }] })             // SELECT employees
+        marital_status: 'married', children_count: 2, hire_date: null }] }) // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                              // attendance_config.payroll_link (désactivé)
       .mockResolvedValueOnce({ rows: [] })                              // SELECT variable_elements (vide)
+      .mockResolvedValueOnce({ rows: [] })                              // SELECT absences du mois (aucune)
       .mockResolvedValueOnce({ rows: [] })                              // INSERT pay_slips
       .mockResolvedValueOnce({ rows: [{ id: CHILD_CI, status: 'completed_by_site' }] }) // UPDATE period totals
       .mockResolvedValueOnce({ rows: [] })                              // audit_log
