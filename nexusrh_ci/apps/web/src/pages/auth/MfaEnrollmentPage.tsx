@@ -19,6 +19,11 @@ interface SetupResponse {
   qrCodeDataUrl: string
   secret: string
   backupCodes: string[]
+  /** Organisation du compte enrôlé (null pour la plateforme ou un cabinet) */
+  accountLabel?: string | null
+  email?: string
+  /** Enrôlement déjà commencé : même QR qu'au passage précédent */
+  reused?: boolean
 }
 
 /**
@@ -46,6 +51,7 @@ export default function MfaEnrollmentPage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<'secret' | 'codes' | null>(null)
+  const [alreadyEnabled, setAlreadyEnabled] = useState(false)
 
   const setupMut = useMutation({
     mutationFn: () => api.post<SetupResponse>('/auth/mfa/setup').then((r) => r.data),
@@ -54,7 +60,13 @@ export default function MfaEnrollmentPage() {
       setError(null)
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { status?: number; data?: { error?: string } } }
+      const e = err as { response?: { status?: number; data?: { error?: string; mfaAlreadyEnabled?: boolean } } }
+      // Déjà activée : rien à enrôler, le code se saisit à la connexion.
+      if (e.response?.data?.mfaAlreadyEnabled) {
+        setAlreadyEnabled(true)
+        setError(t('mfaEnroll.alreadyEnabled'))
+        return
+      }
       setError(e.response?.data?.error ?? t('mfaEnroll.setupError'))
     },
   })
@@ -157,6 +169,20 @@ export default function MfaEnrollmentPage() {
 
         {setupData && (
           <div className="space-y-4">
+            {/* Compte enrôlé : une même adresse peut exister dans plusieurs organisations */}
+            {(setupData.accountLabel || setupData.email) && (
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
+                <p>
+                  {t('mfaEnroll.accountFor')}{' '}
+                  <strong>{setupData.accountLabel ?? t('mfaEnroll.platformAccount')}</strong>
+                  {setupData.email ? <span className="text-gray-500"> · {setupData.email}</span> : null}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">{t('mfaEnroll.accountHint')}</p>
+                {setupData.reused && (
+                  <p className="mt-2 text-xs font-medium text-indigo-700">{t('mfaEnroll.reusedHint')}</p>
+                )}
+              </div>
+            )}
             {/* Étape 1 — scanner le QR */}
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <p className="mb-1 font-semibold text-gray-900">{t('mfaEnroll.step1Title')}</p>
@@ -268,7 +294,7 @@ export default function MfaEnrollmentPage() {
         )}
 
         {/* Setup en échec : proposer une nouvelle tentative (pas de sortie vers l'app) */}
-        {!setupData && !setupMut.isPending && error && (
+        {!setupData && !setupMut.isPending && error && !alreadyEnabled && (
           <button
             type="button"
             onClick={() => setupMut.mutate()}
