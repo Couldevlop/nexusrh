@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  effectiveTerminationRules, parseTerminationRules, terminationRulesSchema,
+  categoryLevel, effectiveTerminationRules, parseTerminationRules, resolveNotice, severanceAmount,
+  terminationRulesSchema,
 } from './termination-rules.service.js'
 import { CIV_2024, LEGISLATION_PACKS } from './legislation-packs.js'
 
@@ -52,5 +53,52 @@ describe('effectiveTerminationRules — priorité tenant > pack > aucune', () =>
     const tgo = LEGISLATION_PACKS['TGO-2024']!
     expect(tgo.terminationRules).toBeUndefined()
     expect(effectiveTerminationRules(null, tgo)).toEqual({ rules: null, source: 'none' })
+  })
+})
+
+describe('categoryLevel — libellé saisi au dossier', () => {
+  it('déduit le niveau de la grille CCI', () => {
+    expect(categoryLevel('1ère catégorie')).toBe(1)
+    expect(categoryLevel('5ème catégorie')).toBe(5)
+    expect(categoryLevel('Catégorie 6')).toBe(6)
+    expect(categoryLevel('Agent de maîtrise (AM2)')).toBe(7)
+    expect(categoryLevel('Cadre (C1)')).toBe(8)
+    expect(categoryLevel('Ingénieur')).toBe(8)
+    expect(categoryLevel('Hors catégorie')).toBe(8)
+    expect(categoryLevel('4')).toBe(4)
+  })
+  it('null quand non déterminable', () => {
+    expect(categoryLevel(null)).toBeNull()
+    expect(categoryLevel('')).toBeNull()
+    expect(categoryLevel('Chauffeur')).toBeNull()
+  })
+})
+
+describe('règles par catégorie', () => {
+  it('le schéma accepte les lignes par catégorie et les paliers en jours', () => {
+    expect(terminationRulesSchema.safeParse({
+      ...CONVENTION,
+      noticeByCategory: [{
+        key: 'cadres', label: 'Cadres', minCategoryLevel: 6,
+        tiers: [{ upToSeniorityMonths: 6, months: 0, days: 15 }, { upToSeniorityMonths: null, months: 3 }],
+      }],
+      severanceMinSeniorityMonths: 12,
+    }).success).toBe(true)
+  })
+  it('le schéma refuse une clé de catégorie invalide', () => {
+    expect(terminationRulesSchema.safeParse({
+      ...CONVENTION,
+      noticeByCategory: [{ key: 'Cadres !', label: 'Cadres', tiers: [{ upToSeniorityMonths: null, months: 3 }] }],
+    }).success).toBe(false)
+  })
+  it('resolveNotice : catégorie inconnue signalée seulement si des lignes par catégorie existent', () => {
+    const e = { seniorityMonths: 24, categoryLevel: null, payBasis: 'monthly' as const }
+    expect(resolveNotice(CIV_2024.terminationRules!, e)?.categoryUnknown).toBe(true)
+    expect(resolveNotice(CONVENTION, e)?.categoryUnknown).toBe(false)
+    expect(resolveNotice(null, e)).toBeNull()
+  })
+  it('severanceAmount : progressif par tranche, fraction d\'année incluse', () => {
+    expect(severanceAmount(0, 100_000, CONVENTION)).toBe(0)
+    expect(severanceAmount(18, 100_000, CONVENTION)).toBe(75_000)
   })
 })

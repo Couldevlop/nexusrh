@@ -495,7 +495,7 @@ describe('POST /cnps/events/cessation', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('cessation < 1 an ancienneté → préavis 30j, indemnité 0', async () => {
+  it('cessation < 1 an ancienneté → préavis 1 mois (30 j), indemnité 0', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: UUID_A, first_name: 'Jean', last_name: 'Kouassi',
@@ -515,7 +515,7 @@ describe('POST /cnps/events/cessation', () => {
     expect(body.droitsLegaux.indemniteLicenciement).toBe(0)
   })
 
-  it('cessation 1–5 ans → préavis 60j, indemnité > 0', async () => {
+  it('licenciement à 4 ans (mensuel cat. 1–5) → préavis 1 mois, indemnité > 0', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: UUID_A, first_name: 'Jean', last_name: 'Kouassi',
@@ -531,11 +531,14 @@ describe('POST /cnps/events/cessation', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(body.droitsLegaux.preavisJours).toBe(60)
-    expect(body.droitsLegaux.indemniteLicenciement).toBeGreaterThan(0)
+    // Décret 96-200 : 1 mois jusqu'à 6 ans d'ancienneté (payés au mois, cat. 1 à 5).
+    expect(body.droitsLegaux.preavisJours).toBe(30)
+    expect(body.droitsLegaux.preavisMois).toBe(1)
+    // 47 mois au salaire de base : 3 ans + 11/12 à 30 %.
+    expect(body.droitsLegaux.indemniteLicenciement).toBe(Math.round(0.30 * 300000 * (3 + 11 / 12)))
   })
 
-  it('cessation > 5 ans → préavis 90j', async () => {
+  it('départ à la retraite à 14 ans → préavis 3 mois (90 j) et indemnité de départ', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{
         id: UUID_A, first_name: 'Jean', last_name: 'Kouassi',
@@ -550,7 +553,31 @@ describe('POST /cnps/events/cessation', () => {
       payload: { employeeId: UUID_A, exitDate: '2024-12-31', reason: 'retirement' },
     })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).droitsLegaux.preavisJours).toBe(90)
+    const droits = JSON.parse(res.body).droitsLegaux
+    expect(droits.preavisJours).toBe(90)
+    expect(droits.indemniteLicenciement).toBeGreaterThan(0)
+  })
+
+  it('cadre (6e catégorie et au-delà) → 3 mois dès l\'embauche ; démission → pas d\'indemnité', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{
+        id: UUID_A, first_name: 'Awa', last_name: 'Koné',
+        cnps_number: 'C', nni: 'N',
+        hire_date: '2024-01-01', base_salary: '900000', professional_category: 'Cadre (C1)',
+      }] }) // employee
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CI par défaut)
+      .mockResolvedValueOnce({ rows: [] }) // INSERT
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE
+    const res = await app.inject({
+      method: 'POST', url: '/cnps/events/cessation',
+      headers: authHeaders(app, 'admin'),
+      payload: { employeeId: UUID_A, exitDate: '2024-12-31', reason: 'resignation' },
+    })
+    expect(res.statusCode).toBe(200)
+    const droits = JSON.parse(res.body).droitsLegaux
+    expect(droits.preavisMois).toBe(3)
+    expect(droits.preavisCategorie).toMatch(/6e catégorie/)
+    expect(droits.indemniteLicenciement).toBe(0)
   })
 })
 

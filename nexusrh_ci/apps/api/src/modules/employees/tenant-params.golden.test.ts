@@ -95,6 +95,8 @@ function fakeQuery(sql: unknown, params: unknown[] = []) {
       : { rows: [] }
   }
   if (q.includes('.offboarding_cases o')) return { rows: [{ ...db.offboardingCase, ...db.employee }] }
+  // 12 derniers bulletins au salaire de base (assiette de l'indemnité).
+  if (q.includes('AVG(gross_salary)')) return { rows: [{ avg: String(db.offboardingCase.base_salary ?? '0'), n: '12' }] }
   if (q.startsWith('INSERT INTO') && q.includes('.employees')) {
     db.employee = { id: EMP, custom_fields: JSON.parse(params[26] as string), legal_entity_id: params[12] }
     return { rows: [db.employee] }
@@ -243,10 +245,23 @@ describe('Solde de tout compte — règles du tenant / du pays', () => {
   })
 
   it('employé CI : règles du pack CIV, devise et source tracées', async () => {
+    db.employee = { legal_entity_id: null, professional_category: '4ème catégorie' }
+    const body = JSON.parse((await settle()).body).data
+    // Décret 96-200 : 7 ans d'ancienneté, payé au mois, catégorie 1 à 5 → 2 mois.
+    expect(body).toMatchObject({ noticeMonths: 2, rulesSource: 'pack', legislationPackCode: 'CIV-2024', currency: 'XOF', warnings: [] })
+    expect(body.indemnitePreavis).toBe(600_000)
+  })
+  it('employé CI cadre : 3 mois (6e catégorie et au-delà)', async () => {
+    db.employee = { legal_entity_id: null, professional_category: 'Cadre (C1)' }
+    const body = JSON.parse((await settle()).body).data
+    expect(body).toMatchObject({ noticeMonths: 3, indemnitePreavis: 900_000, warnings: [] })
+    expect(body.noticeCategory).toMatch(/6e catégorie/)
+  })
+  it('employé CI sans catégorie au dossier : barème par défaut + avertissement', async () => {
     db.employee = { legal_entity_id: null }
     const body = JSON.parse((await settle()).body).data
-    expect(body).toMatchObject({ noticeMonths: 3, rulesSource: 'pack', legislationPackCode: 'CIV-2024', currency: 'XOF', warnings: [] })
-    expect(body.indemnitePreavis).toBe(900_000)
+    expect(body.noticeMonths).toBe(2)
+    expect(body.warnings.join(' ')).toMatch(/Catégorie professionnelle non renseignée/)
   })
   it('employé au Togo (pack sans règles validées) : postes non calculés + avertissements', async () => {
     db.employee = { legal_entity_id: TGO_ENTITY }

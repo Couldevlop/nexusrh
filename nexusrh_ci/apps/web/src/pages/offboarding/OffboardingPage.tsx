@@ -12,7 +12,11 @@ interface Settlement {
   total: number; lines: SettlementLine[]
   // Règles du pays de l'employé ou convention du tenant (anciens soldes : absent)
   currency?: string; warnings?: string[]; rulesSource?: 'tenant' | 'pack' | 'none'
+  noticeMonths?: number; noticeCategory?: string | null
+  severanceBase?: number; severanceBaseMonths?: number
 }
+
+type PayBasis = 'monthly' | 'non_monthly'
 interface OffboardingRow {
   id: string
   employee_id: string
@@ -35,6 +39,12 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled: 'bg-rose-100 text-rose-800',
 }
 
+/** Préavis < 1 mois affiché en jours (8 j, 15 j), sinon en mois. */
+function formatNotice(months: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (months < 1) return t('settlement.noticeDays', { count: Math.round(months * 30) })
+  return t('settlement.noticeMonthsValue', { count: Math.round(months * 100) / 100 })
+}
+
 export default function OffboardingPage() {
   const { t } = useTranslation('offboarding')
   const qc = useQueryClient()
@@ -43,6 +53,8 @@ export default function OffboardingPage() {
   const [congesDays, setCongesDays] = useState<Record<string, number>>({})
   // Préavis du contrat / de la convention (mois) — vide = règles applicables.
   const [noticeOverride, setNoticeOverride] = useState<Record<string, string>>({})
+  // Mode de paie : le préavis des payés à l'heure / au jour est plus court la 1re année.
+  const [payBasis, setPayBasis] = useState<Record<string, PayBasis>>({})
 
   const listQ = useQuery({
     queryKey: ['offboarding'],
@@ -90,6 +102,7 @@ export default function OffboardingPage() {
       const notice = noticeOverride[id]?.trim()
       await api.post(`/offboarding/${id}/settlement`, {
         congesDaysOutstanding: congesDays[id] ?? 0,
+        payBasis: payBasis[id] ?? 'monthly',
         ...(notice ? { noticeMonths: Number(notice.replace(',', '.')) } : {}),
       })
     },
@@ -213,7 +226,16 @@ export default function OffboardingPage() {
               {/* Solde de tout compte */}
               <div>
                 <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('settlement.title')}</h3>
-                <div className="flex items-end gap-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">{t('settlement.payBasis')}</span>
+                    <select value={payBasis[c.id] ?? 'monthly'}
+                      onChange={(e) => setPayBasis((m) => ({ ...m, [c.id]: e.target.value as PayBasis }))}
+                      className="rounded-md border border-border bg-background px-2 py-1">
+                      <option value="monthly">{t('settlement.payBasisMonthly')}</option>
+                      <option value="non_monthly">{t('settlement.payBasisNonMonthly')}</option>
+                    </select>
+                  </label>
                   <label className="text-sm">
                     <span className="mb-1 block text-muted-foreground">{t('settlement.congesDays')}</span>
                     <input type="number" min={0} value={congesDays[c.id] ?? 0}
@@ -240,6 +262,19 @@ export default function OffboardingPage() {
                     <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
                       <span>{t('settlement.total')}</span><span>{formatMoney(c.settlement.total, c.settlement.currency)}</span>
                     </div>
+                    {c.settlement.noticeMonths !== undefined && c.settlement.noticeMonths > 0 && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {t('settlement.noticeApplied', { duration: formatNotice(c.settlement.noticeMonths, t) })}
+                        {c.settlement.noticeCategory ? ` — ${c.settlement.noticeCategory}` : ''}
+                      </p>
+                    )}
+                    {!!c.settlement.severanceBase && c.settlement.lines.some((l) => l.key === 'licenciement' && l.amount > 0) && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {c.settlement.severanceBaseMonths
+                          ? t('settlement.severanceBaseAverage', { amount: formatMoney(c.settlement.severanceBase, c.settlement.currency), count: c.settlement.severanceBaseMonths })
+                          : t('settlement.severanceBaseSalary', { amount: formatMoney(c.settlement.severanceBase, c.settlement.currency) })}
+                      </p>
+                    )}
                     {(c.settlement.warnings ?? []).map((w) => (
                       <p key={w} className="mt-1 flex items-start gap-1 text-[11px] text-amber-700">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />{w}

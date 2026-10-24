@@ -710,9 +710,15 @@
     "boundMonths": "Max. seniority (months)",
     "valueMonths": "Notice (months)",
     "boundYears": "Up to year",
-    "valueRate": "% of monthly gross salary",
+    "valueRate": "% of average monthly pay",
     "addTier": "Add a tier",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "defaultScale": "Default scale",
+    "defaultScaleHint": "Applies when no category row matches (category missing from the employee record).",
+    "categoryScales": "Notice by category",
+    "days": "{{n}} days",
+    "valueDays": "+ days",
+    "minSeniority": "Entitlement from {{n}} months of service"
   }
 }

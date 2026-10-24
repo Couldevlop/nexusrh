@@ -710,9 +710,15 @@
     "boundMonths": "Ancienneté max. (mois)",
     "valueMonths": "Préavis (mois)",
     "boundYears": "Jusqu'à l'année",
-    "valueRate": "% du salaire brut mensuel",
+    "valueRate": "% du salaire mensuel moyen",
     "addTier": "Ajouter un palier",
     "save": "Enregistrer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "defaultScale": "Barème par défaut",
+    "defaultScaleHint": "S'applique quand aucune ligne par catégorie ne correspond (catégorie non renseignée au dossier).",
+    "categoryScales": "Préavis par catégorie",
+    "days": "{{n}} jours",
+    "valueDays": "+ jours",
+    "minSeniority": "Ouverture du droit : {{n}} mois d'ancienneté"
   }
 }
