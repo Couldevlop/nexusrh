@@ -10,6 +10,7 @@ import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
+import { checkPaidLeaveRequest, loadLeavePolicyForEmployee, refreshPaidLeaveBalance } from '../../services/paid-leave.service.js'
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
@@ -201,6 +202,10 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         empId = r.rows[0]?.id ?? null
       }
       if (!empId) return reply.send({ data: [] })
+      // Acquisition mensuelle des congés payés mise à jour avant lecture
+      // (sans effet en mode manuel ; un échec laisse le solde stocké).
+      const policy = await loadLeavePolicyForEmployee(rawPool, schema, empId)
+      if (policy.accrualMode === 'monthly') await refreshPaidLeaveBalance(rawPool, schema, empId, policy)
       const res = await rawPool.query(
         `SELECT ab.*, at.label, at.code, at.color
          FROM "${schema}".absence_balances ab
@@ -276,6 +281,15 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (body.halfDay) days = 0.5
 
+      // Congés payés : contrôle du solde acquis à date (paramétrable par tenant)
+      const leaveCheck = await checkPaidLeaveRequest(rawPool, schema, employeeId, body.absenceTypeId, days)
+      if (leaveCheck?.blocked) {
+        return reply.status(422).send({
+          error: `Solde de congés payés insuffisant : ${leaveCheck.available} j disponible(s), ${days} j demandé(s).`,
+          balance: leaveCheck.balance,
+        })
+      }
+
       const res = await rawPool.query(
         `INSERT INTO "${schema}".absences
            (employee_id, absence_type_id, start_date, end_date, days, half_day, reason)
@@ -338,7 +352,12 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         } catch { /* non bloquant */ }
       })()
 
-      return reply.status(201).send({ data: res.rows[0] })
+      return reply.status(201).send({
+        data: res.rows[0],
+        ...(leaveCheck?.insufficient
+          ? { warning: `Solde de congés payés dépassé : ${leaveCheck.available} j disponible(s), ${days} j demandé(s).` }
+          : {}),
+      })
     },
   })
 

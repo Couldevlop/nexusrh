@@ -210,7 +210,7 @@ describe('LegislationPack — leaveRules par pays', () => {
     expect(r.maternityPayRate).toBe(1.0)
     expect(r.paternityDays).toBe(10)
     expect(r.workAccidentDayJEmployer).toBe(true)
-    expect(r.annualLeaveDaysPerMonth).toBe(2.5)
+    expect(r.annualLeaveDaysPerMonth).toBe(2.2) // CT art. 25.1 / CCI art. 69
     expect(r.workingDaysPerWeek).toBe(6)
     expect(r.sickLeaveMaintien).toEqual([
       { minYears: 0, rate: 0.5 },

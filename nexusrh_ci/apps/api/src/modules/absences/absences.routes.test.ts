@@ -3,6 +3,21 @@ import Fastify, { type FastifyInstance } from 'fastify'
 
 // ── Mocks globaux ──────────────────────────────────────────────────────────────
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+// Congés payés : calculs purs réels, accès base neutralisés (mocks pg séquentiels)
+vi.mock('../../services/paid-leave.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/paid-leave.service.js')>()
+  const { CIV_2024 } = await import('../../services/legislation-packs.js')
+  const policy = actual.effectiveLeavePolicy(CIV_2024.leaveRules, null)
+  return {
+    ...actual,
+    loadLeavePolicy: vi.fn(async () => policy),
+    loadLeavePolicyForEmployee: vi.fn(async () => policy),
+    refreshPaidLeaveBalance: vi.fn(async () => ({ year: 2026, mode: 'monthly' as const, accrued: 0, carriedOver: 0,
+      acquired: 0, taken: 0, pending: 0, remaining: 0, monthsServed: 0 })),
+    checkPaidLeaveRequest: vi.fn(async () => null),
+    averageRemuneration: vi.fn(async () => null),
+  }
+})
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
@@ -142,6 +157,42 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall).toBeDefined()
     expect(auditCall?.[1]?.[1]).toBe('absence.created')
+  })
+})
+
+describe('POST /absences — solde de congés payés', () => {
+  const payload = {
+    absenceTypeId: '11111111-1111-1111-1111-111111111111',
+    startDate: '2026-01-05', endDate: '2026-01-09',
+  }
+  const balance = { year: 2026, mode: 'monthly' as const, accrued: 2.2, carriedOver: 0,
+    acquired: 2.2, taken: 0, pending: 0, remaining: 2.2, monthsServed: 1 }
+
+  it('solde insuffisant en mode blocage → 422, aucune demande créée', async () => {
+    const pl = await import('../../services/paid-leave.service.js')
+    vi.mocked(pl.checkPaidLeaveRequest).mockResolvedValueOnce({
+      balance, requested: 5, available: 2.2, insufficient: true, blocked: true,
+    })
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({ method: 'POST', url: '/absences', headers: { authorization: `Bearer ${token}` }, payload })
+    expect(res.statusCode).toBe(422)
+    expect(JSON.parse(res.body).error).toContain('2.2 j disponible')
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('absences'))).toBe(false)
+  })
+
+  it('solde insuffisant en mode avertissement → 201 + warning', async () => {
+    const pl = await import('../../services/paid-leave.service.js')
+    vi.mocked(pl.checkPaidLeaveRequest).mockResolvedValueOnce({
+      balance, requested: 5, available: 2.2, insufficient: true, blocked: false,
+    })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'abs-2', start_date: '2026-01-05', end_date: '2026-01-09' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
+    const res = await app.inject({ method: 'POST', url: '/absences', headers: { authorization: `Bearer ${token}` }, payload })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).warning).toContain('dépassé')
   })
 })
 

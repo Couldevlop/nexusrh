@@ -98,7 +98,7 @@ Le lieu de travail est fixé à ${city}. Il pourra être modifié selon les néc
 La durée légale du travail est de 40 heures par semaine. Les heures supplémentaires sont rémunérées selon les majorations légales (Art. relatifs aux heures supplémentaires du Code du Travail CI).
 
 ## Article 6 — Congés payés
-Le/la Salarié(e) bénéficie de **2,5 jours ouvrables de congés payés par mois** de travail effectif, conformément au Code du Travail ivoirien.
+Le/la Salarié(e) bénéficie de **2,2 jours ouvrables de congés payés par mois** de service effectif, majorés selon l'ancienneté, conformément à l'article 25 du Code du Travail ivoirien.
 
 ## Article 7 — Sécurité sociale (CNPS)
 L'Employeur déclare et cotise le/la Salarié(e) auprès de la **CNPS** (retraite, prestations familiales, accidents du travail) conformément à la réglementation en vigueur.

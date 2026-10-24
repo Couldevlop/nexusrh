@@ -99,6 +99,8 @@ export interface SettlementInput {
   seniorityMonths: number
   departureType: DepartureType
   congesDaysOutstanding: number
+  /** Indemnité compensatrice de congés déjà chiffrée (paid-leave.service) ; défaut : jours × brut / 30. */
+  indemniteCongesAmount?: number
   /** Préavis effectué ? Si non (dispense employeur), une indemnité compensatrice est due. */
   noticeServed: boolean
   /** Règles de rupture applicables (tenant > pack pays) ; null = non paramétrées. */
@@ -161,7 +163,9 @@ export function computeSettlement(input: SettlementInput): Settlement {
   const notice = resolveNotice(input.rules, employee)
   const nm = input.noticeMonthsOverride ?? notice?.months ?? 0
 
-  const indemniteConges = Math.round(Math.max(0, input.congesDaysOutstanding) * dailyRate)
+  const indemniteConges = input.indemniteCongesAmount !== undefined
+    ? Math.max(0, Math.round(input.indemniteCongesAmount))
+    : Math.round(Math.max(0, input.congesDaysOutstanding) * dailyRate)
 
   let indemnitePreavis = 0
   if (
