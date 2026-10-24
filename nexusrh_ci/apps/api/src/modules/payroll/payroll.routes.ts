@@ -83,14 +83,14 @@ async function resolveAbsenceForPayroll(
   const monthEnd = `${month}-${String(daysInMonth).padStart(2, '0')}`
 
   // Récupérer toutes les absences approuvées du mois
+  // absence_types n'a pas de colonne slug : le type se reconnaît à son code
+  // (MATERNITE, MALADIE, AT… — cf. seedAbsenceTypesCI).
   const absRes = await rawPool.query<{
-    absence_type_slug: string
+    absence_type_code: string
     start_date: string
     end_date: string
-    days_count: number
   }>(
-    `SELECT at.slug AS absence_type_slug, a.start_date, a.end_date,
-            COALESCE(a.days_count, a.end_date::date - a.start_date::date + 1) AS days_count
+    `SELECT at.code AS absence_type_code, a.start_date, a.end_date
      FROM "${schema}".absences a
      JOIN "${schema}".absence_types at ON at.id = a.absence_type_id
      WHERE a.employee_id = $1
@@ -116,15 +116,15 @@ async function resolveAbsenceForPayroll(
       if (d.getDay() !== 0) days++ // lundi–samedi
     }
 
-    const slug = (row.absence_type_slug ?? '').toLowerCase()
-    if (slug.includes('maternit')) {
+    const code = (row.absence_type_code ?? '').toLowerCase()
+    if (code.includes('maternit')) {
       materniteDay += days
-    } else if (slug.includes('accident') || slug.includes('_at')) {
+    } else if (code === 'at' || code.includes('accident') || code.endsWith('_at')) {
       // Jour J = premier jour d'arrêt (payé employeur)
       const startMonth = new Date(row.start_date)
       atJourAccidentInMonth = startMonth >= new Date(monthStart) && startMonth <= new Date(monthEnd)
       atDays += days
-    } else if (slug.includes('maladi') || slug.includes('maladie')) {
+    } else if (code.includes('maladi')) {
       maladieDays += days
     }
   }

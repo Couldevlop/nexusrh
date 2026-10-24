@@ -156,7 +156,7 @@ describe('POST /payroll/calculate — bulletin unitaire', () => {
       if (q.includes('.pay_periods'))                  return { rows: [{ id: PERIOD_ID }] }
       if (q.includes('.variable_elements'))            return { rows: [] }
       if (q.includes('.absences')) return { rows: [{
-        absence_type_slug: 'maladie', start_date: '2024-12-02', end_date: '2024-12-06', days_count: 5,
+        absence_type_code: 'maladie', start_date: '2024-12-02', end_date: '2024-12-06',
       }] }
       return { rows: [] }
     })
@@ -181,8 +181,8 @@ describe('POST /payroll/calculate — bulletin unitaire', () => {
       if (q.includes('.pay_periods'))                  return { rows: [{ id: PERIOD_ID }] }
       if (q.includes('.variable_elements'))            return { rows: [] }
       if (q.includes('.absences')) return { rows: [
-        { absence_type_slug: 'maladie',   start_date: '2024-12-02', end_date: '2024-12-03', days_count: 2 },
-        { absence_type_slug: 'maternite', start_date: '2024-12-09', end_date: '2024-12-20', days_count: 10 },
+        { absence_type_code: 'maladie',   start_date: '2024-12-02', end_date: '2024-12-03' },
+        { absence_type_code: 'maternite', start_date: '2024-12-09', end_date: '2024-12-20' },
       ] }
       return { rows: [] }
     })
@@ -203,8 +203,8 @@ describe('POST /payroll/calculate — bulletin unitaire', () => {
       if (q.includes('.pay_periods'))                  return { rows: [{ id: PERIOD_ID }] }
       if (q.includes('.variable_elements'))            return { rows: [] }
       if (q.includes('.absences')) return { rows: [
-        { absence_type_slug: 'maladie',          start_date: '2024-12-02', end_date: '2024-12-03', days_count: 2 },
-        { absence_type_slug: 'accident_travail',  start_date: '2024-12-09', end_date: '2024-12-13', days_count: 5 },
+        { absence_type_code: 'maladie',          start_date: '2024-12-02', end_date: '2024-12-03' },
+        { absence_type_code: 'accident_travail',  start_date: '2024-12-09', end_date: '2024-12-13' },
       ] }
       return { rows: [] }
     })
@@ -225,7 +225,7 @@ describe('POST /payroll/calculate — bulletin unitaire', () => {
       if (q.includes('.pay_periods'))                  return { rows: [{ id: PERIOD_ID }] }
       if (q.includes('.variable_elements'))            return { rows: [] }
       if (q.includes('.absences')) return { rows: [{
-        absence_type_slug: 'maladie', start_date: '2024-12-02', end_date: '2024-12-06', days_count: 5,
+        absence_type_code: 'maladie', start_date: '2024-12-02', end_date: '2024-12-06',
       }] }
       return { rows: [] }
     })
