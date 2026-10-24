@@ -236,6 +236,7 @@ describe('POST /absences — création, jours ouvrables, demi-journée', () => {
   it('employee sans employeeId : résolution via email puis création (201)', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: 'emp-resolved' }] }) // SELECT id from email
+      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
       .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-05', end_date: '2026-01-09' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
       .mockResolvedValueOnce({ rows: [] }) // audit_log
@@ -250,6 +251,7 @@ describe('POST /absences — création, jours ouvrables, demi-journée', () => {
 
   it('demi-journée : days = 0.5 (201)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
       .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-05', end_date: '2026-01-05' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
       .mockResolvedValueOnce({ rows: [] }) // audit_log

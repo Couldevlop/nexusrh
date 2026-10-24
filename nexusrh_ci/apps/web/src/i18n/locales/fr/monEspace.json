@@ -97,6 +97,13 @@
       "startRequired": "Date début requise",
       "endRequired": "Date fin requise",
       "endBeforeStart": "La date de fin doit être postérieure ou égale au début"
+    },
+    "maternity": {
+      "legal": "Durée légale : {{days}} jours calendaires ({{weeks}} semaines consécutives). La date de fin est proposée automatiquement.",
+      "multipleBirth": "Naissance multiple (+{{weeks}} semaines)",
+      "illness": "Maladie liée à la grossesse ou aux couches, constatée médicalement (+{{weeks}} semaines)",
+      "hospitalized": "Jours d'hospitalisation de l'enfant (prolongation)",
+      "total": "Durée totale : {{days}} jours calendaires"
     }
   },
   "payslips": {

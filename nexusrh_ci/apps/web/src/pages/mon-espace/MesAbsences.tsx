@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,6 +13,10 @@ const schema = z.object({
   endDate:       z.string().min(1, 'absences.validation.endRequired'),
   halfDay:       z.boolean().default(false),
   reason:        z.string().optional(),
+  // Maternité : prolongations légales (contrôlées par l'API selon le pays)
+  multipleBirth:    z.boolean().default(false),
+  illnessExtension: z.boolean().default(false),
+  childHospitalizedDays: z.coerce.number().int().min(0).max(366).optional(),
 }).refine((d) => !d.startDate || !d.endDate || d.startDate <= d.endDate, {
   // ABS-003 — la date de fin doit être >= début (validation client immédiate)
   message: 'absences.validation.endBeforeStart',
@@ -20,7 +24,16 @@ const schema = z.object({
 })
 type FormData = z.infer<typeof schema>
 
-interface AbsenceType { id: string; label: string; code: string; color: string }
+interface MaternityRule {
+  legalDays: number; multipleBirthDays: number; illnessDays: number; maxHospitalizationDays: number
+}
+interface AbsenceType { id: string; label: string; code: string; color: string; maternity_rule?: MaternityRule }
+
+/** Date + n jours (YYYY-MM-DD, sans décalage de fuseau). */
+function addDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
 interface Absence {
   id: string; type_label: string; type_color: string
   start_date: string; end_date: string; days: number
@@ -74,7 +87,13 @@ export default function MesAbsences() {
   })
 
   const createMut = useMutation({
-    mutationFn: (data: FormData) => api.post('/absences', data),
+    mutationFn: ({ multipleBirth, illnessExtension, childHospitalizedDays, ...data }: FormData) => {
+      const isMaternity = !!absenceTypes.find(at => at.id === data.absenceTypeId)?.maternity_rule
+      return api.post('/absences', {
+        ...data,
+        ...(isMaternity ? { halfDay: false, maternity: { multipleBirth, illnessExtension, childHospitalizedDays: childHospitalizedDays || 0 } } : {}),
+      })
+    },
     onSuccess: (res: { data?: { warning?: string } }) => {
       // Solde de congés payés dépassé en mode « avertissement » : demande créée, signalée
       if (res?.data?.warning) setFeedback({ type: 'error', message: res.data.warning })
@@ -103,14 +122,29 @@ export default function MesAbsences() {
     }
   }
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { halfDay: false },
+    defaultValues: { halfDay: false, multipleBirth: false, illnessExtension: false },
   })
 
   const absences = absencesData?.data ?? []
   const balances = balancesData?.data ?? []
   const absenceTypes = typesData?.data ?? []
+
+  // Maternité : date de fin proposée = début + durée légale du pays (+ prolongations)
+  const selectedType = absenceTypes.find(at => at.id === watch('absenceTypeId'))
+  const maternity = selectedType?.maternity_rule
+  const startDate = watch('startDate')
+  const multipleBirth = watch('multipleBirth')
+  const illnessExtension = watch('illnessExtension')
+  const hospitalized = Number(watch('childHospitalizedDays') || 0)
+  const maternityDays = maternity
+    ? maternity.legalDays + (multipleBirth ? maternity.multipleBirthDays : 0) + (illnessExtension ? maternity.illnessDays : 0)
+      + Math.min(Math.max(0, hospitalized), maternity.maxHospitalizationDays)
+    : 0
+  useEffect(() => {
+    if (maternity && startDate) setValue('endDate', addDays(startDate, maternityDays - 1), { shouldValidate: true })
+  }, [maternity, startDate, maternityDays, setValue])
 
   return (
     <div className="p-6 space-y-6">
@@ -186,10 +220,38 @@ export default function MesAbsences() {
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" />
                 {errors.endDate && <p className="text-xs text-destructive mt-1">{t(errors.endDate.message ?? '')}</p>}
               </div>
-              <div className="flex items-center gap-2">
-                <input {...register('halfDay')} type="checkbox" id="halfDay" className="rounded" />
-                <label htmlFor="halfDay" className="text-sm">{t('absences.halfDay')}</label>
-              </div>
+              {maternity ? (
+                <div className="col-span-2 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    {t('absences.maternity.legal', { days: maternity.legalDays, weeks: maternity.legalDays / 7 })}
+                  </p>
+                  {maternity.multipleBirthDays > 0 && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input {...register('multipleBirth')} type="checkbox" className="rounded" />
+                      {t('absences.maternity.multipleBirth', { weeks: maternity.multipleBirthDays / 7 })}
+                    </label>
+                  )}
+                  {maternity.illnessDays > 0 && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input {...register('illnessExtension')} type="checkbox" className="rounded" />
+                      {t('absences.maternity.illness', { weeks: maternity.illnessDays / 7 })}
+                    </label>
+                  )}
+                  {maternity.maxHospitalizationDays > 0 && (
+                    <label className="flex items-center gap-2 text-sm">
+                      {t('absences.maternity.hospitalized')}
+                      <input {...register('childHospitalizedDays')} type="number" min={0} max={maternity.maxHospitalizationDays}
+                        className="w-20 rounded-lg border border-input bg-background px-2 py-1 text-sm" />
+                    </label>
+                  )}
+                  <p className="text-xs font-medium">{t('absences.maternity.total', { days: maternityDays })}</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input {...register('halfDay')} type="checkbox" id="halfDay" className="rounded" />
+                  <label htmlFor="halfDay" className="text-sm">{t('absences.halfDay')}</label>
+                </div>
+              )}
               <div className="col-span-2">
                 <label className="text-sm font-medium">{t('absences.reason')}</label>
                 <textarea {...register('reason')} rows={2} placeholder={t('absences.reasonPlaceholder')}

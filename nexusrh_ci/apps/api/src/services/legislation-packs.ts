@@ -165,6 +165,15 @@ export type LeaveAllowanceMethod = 'most_favourable' | 'average_calendar' | 'one
 export interface LeaveRules {
   /** Congé maternité : nombre de semaines de droit légal */
   maternityWeeks: number
+  /** Prolongations légales du congé de maternité */
+  maternityExtensions?: {
+    /** Semaines ajoutées en cas de naissance multiple */
+    multipleBirthWeeks: number
+    /** Semaines ajoutées en cas de maladie résultant de la grossesse ou des couches */
+    illnessWeeks: number
+    /** Prolongation maximale (jours) pendant l'hospitalisation de l'enfant */
+    maxChildHospitalizationDays: number
+  }
   /** Congé maternité : semaines avant accouchement / après */
   maternitySplit?: { before: number; after: number }
   /** Pourcentage du salaire maintenu pendant maternité (1.0 = 100%) */
@@ -259,6 +268,8 @@ export const CIV_2024: LegislationPack = {
   leaveRules: {
     maternityWeeks: 14,
     maternitySplit: { before: 6, after: 8 },
+    // CT art. 23.6 : +2 sem. naissance multiple, +3 sem. maladie, hospitalisation ≤ 12 mois
+    maternityExtensions: { multipleBirthWeeks: 2, illnessWeeks: 3, maxChildHospitalizationDays: 365 },
     maternityPayRate: 1.0,
     maternityFunding: 'social',           // CNPS rembourse 100% via bordereau
     paternityDays: 10,
