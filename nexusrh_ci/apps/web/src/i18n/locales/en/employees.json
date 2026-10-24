@@ -53,7 +53,8 @@
       "iban": "Bank details / IBAN (AES-256 encrypted)",
       "bankName": "Bank",
       "maritalStatus": "Marital status",
-      "childrenCount": "Dependent children"
+      "childrenCount": "Dependent children",
+      "paymentMethod": "Salary payment method"
     },
     "placeholders": {
       "phone": "+225 07 XX XX XX XX",
@@ -91,10 +92,13 @@
     "errors": {
       "salaryBelowSmig": "The gross salary must be ≥ 75,000 FCFA (minimum wage).",
       "createGeneric": "Error while creating",
-      "salaryRequired": "Enter a base salary."
+      "salaryRequired": "Enter a base salary.",
+      "bankNameRequired": "Bank transfer requires the bank name."
     },
     "submit": "Create employee",
-    "submitting": "Creating..."
+    "submitting": "Creating...",
+    "paymentMobileMoney": "Mobile Money",
+    "paymentBankTransfer": "Bank transfer"
   },
   "edit": {
     "title": "Edit employee",

@@ -456,7 +456,7 @@ interface EmployeeDetail {
   job_level: string | null; professional_category: string | null
   contract_type: string | null; hire_date: string | null; weekly_hours: string | null
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
-  iban: string | null; bank_name: string | null
+  iban: string | null; bank_name: string | null; payment_method: string | null
   marital_status: string | null; children_count: number | null
   custom_fields?: CustomFieldValues | null
 }
@@ -519,7 +519,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
       weeklyHours: emp.weekly_hours ?? '', baseSalary: emp.base_salary ?? '',
       mobileMoneyProvider: emp.mobile_money_provider ?? '', mobileMoneyPhone: emp.mobile_money_phone ?? '',
-      iban: emp.iban ?? '', bankName: emp.bank_name ?? '',
+      iban: emp.iban ?? '', bankName: emp.bank_name ?? '', paymentMethod: emp.payment_method ?? 'mobile_money',
       maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
     }
     const numericKeys = new Set(['baseSalary', 'weeklyHours', 'childrenCount'])
@@ -536,6 +536,12 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       Object.entries(customEdits).filter(([k, v]) => v !== (origCustom[k] ?? '')))
     if (Object.keys(customChanges).length) payload.customFields = customChanges
     if (Object.keys(payload).length === 0) { onClose(); return }
+    // Le fichier de virement exige la banque : on bloque avant l'appel.
+    if (val('paymentMethod', emp.payment_method ?? 'mobile_money') === 'bank_transfer'
+      && !val('bankName', emp.bank_name).trim()) {
+      setError(t('form.errors.bankNameRequired'))
+      return
+    }
     // SMIG du pays de l'employé : contrôlé par l'API (message explicite).
     setSaving(true)
     try {
@@ -645,6 +651,21 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
                   <input type="number" min={1} step={1} className={inputCls} value={val('baseSalary', emp.base_salary)} onChange={set('baseSalary')} /></div>
+                {/* Mode de réception du salaire — oriente la paie vers Mobile Money ou le fichier de virement */}
+                <div className="sm:col-span-3"><label className={labelCls}>{t('form.fields.paymentMethod')}</label>
+                  <div className="flex gap-2 mt-1">
+                    {(['mobile_money', 'bank_transfer'] as const).map(m => {
+                      const active = (val('paymentMethod', emp.payment_method ?? 'mobile_money') === 'bank_transfer') === (m === 'bank_transfer')
+                      return (
+                        <button key={m} type="button" aria-pressed={active}
+                          onClick={() => setForm(p => ({ ...p, paymentMethod: m }))}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${active ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground'}`}>
+                          {m === 'bank_transfer' ? t('form.paymentBankTransfer') : t('form.paymentMobileMoney')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
                 <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
                   <select className={inputCls} value={val('mobileMoneyProvider', emp.mobile_money_provider)} onChange={set('mobileMoneyProvider')}>
                     <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>

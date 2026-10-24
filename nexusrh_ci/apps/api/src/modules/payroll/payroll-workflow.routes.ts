@@ -23,7 +23,7 @@ import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markSettlementPaid, resolveEmployeeMonth,
+  loadPayrollPopulation, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
@@ -409,7 +409,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
                total_cnps_sal, total_cnps_pat, its, total_deductions,
                net_payable, employer_cost, lines, status, generated_at,
                payment_method, payment_status, legal_entity_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),'mobile_money','pending',$17)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$18,'pending',$17)
             ON CONFLICT DO NOTHING
             RETURNING id
           `, [
@@ -417,7 +417,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
             result.totalCnpsSal, result.totalCnpsPat, result.its, result.totalDeductions,
             result.netPayable, result.employerCost, JSON.stringify(result.lines),
-            period.legal_entity_id,
+            period.legal_entity_id, slipPaymentMethod(emp),
           ])
           // Solde de tout compte porté sur ce bulletin : marqué payé
           const slipId = slip?.rows?.[0]?.id

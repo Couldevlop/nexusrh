@@ -124,7 +124,8 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
          WHERE ps.month = $1 AND ps.status IN ('generated','approved')
-           AND ps.payment_status IN ('pending','failed')${providerFilter}
+           AND ps.payment_status IN ('pending','failed')
+           AND COALESCE(e.payment_method, 'mobile_money') <> 'bank_transfer'${providerFilter}
          ORDER BY e.last_name`,
         params,
       )

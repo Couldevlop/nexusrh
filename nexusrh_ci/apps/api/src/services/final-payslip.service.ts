@@ -32,6 +32,7 @@ export interface PayrollEmployeeRow {
   children_count: number
   mobile_money_provider: string
   mobile_money_phone: string
+  payment_method: string | null
   first_name: string
   last_name: string
   cnps_number: string
@@ -148,9 +149,15 @@ function defaultSettlementLabel(key: (typeof SETTLEMENT_KEYS)[number]): string {
 }
 
 const EMPLOYEE_COLUMNS = `e.id, e.base_salary, e.marital_status, e.children_count,
-  e.mobile_money_provider, e.mobile_money_phone,
+  e.mobile_money_provider, e.mobile_money_phone, e.payment_method,
   e.first_name, e.last_name, e.cnps_number, e.nni,
   e.hire_date::text AS hire_date, e.legal_entity_id`
+
+/** Mode de paiement porté sur le bulletin : virement, sinon l'opérateur Mobile Money. */
+export function slipPaymentMethod(emp: Pick<PayrollEmployeeRow, 'payment_method' | 'mobile_money_provider'>): string {
+  if (emp.payment_method === 'bank_transfer') return 'bank_transfer'
+  return emp.mobile_money_provider || 'mobile_money'
+}
 
 /**
  * Salariés à payer pour un mois (lot de clôture, ou un salarié pour la
