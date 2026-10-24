@@ -58,6 +58,15 @@
       "lateMinutes": "Late (min)",
       "firstIn": "First in",
       "lastOut": "Last out"
+    },
+    "recompute": {
+      "from": "From",
+      "to": "To",
+      "button": "Recompute period",
+      "running": "Recomputing…",
+      "hint": "Recomputes lateness and absences for all active employees over the period (days without punches, manual corrections). The automatic run only covers the previous day.",
+      "done": "{{count}} day(s) recomputed.",
+      "error": "Recompute failed."
     }
   },
   "statuses": {

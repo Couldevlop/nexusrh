@@ -358,7 +358,8 @@ const manualPunchBody = z.object({
 
 // ── Validation Zod — recalcul (POST /recompute) ─────────────────────────────
 const recomputeBody = z.object({
-  employeeIds: z.array(z.string().regex(UUID_RE, 'employeeIds doit contenir des UUID')).min(1).max(200),
+  // Absent : tous les salariés actifs du tenant (bouton « Recalculer » de l'écran Jours).
+  employeeIds: z.array(z.string().regex(UUID_RE, 'employeeIds doit contenir des UUID')).min(1).max(200).optional(),
   from: z.string().regex(DATE_RE, 'Format attendu YYYY-MM-DD'),
   to: z.string().regex(DATE_RE, 'Format attendu YYYY-MM-DD'),
 }).strict().refine((d) => d.from <= d.to, {
@@ -1099,6 +1100,12 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           employeeId: b.employeeId, direction: b.direction, punchedAt: punchedAt.toISOString(),
         }, request.ip ?? null, 'attendance_punch')
 
+        // Une correction manuelle porte souvent sur un jour passé, que le
+        // balayage quotidien (veille uniquement) ne revoit jamais : on recalcule
+        // la journée (heure d'Abidjan = UTC) pour que retard / présence suivent.
+        await recomputeAttendanceDays(schema, [b.employeeId], [punchedAt.toISOString().slice(0, 10)])
+          .catch(() => undefined)
+
         return reply.status(201).send({
           data: { id, employeeId: b.employeeId, direction: b.direction, punchedAt: punchedAt.toISOString(), source: 'manual' },
         })
@@ -1150,6 +1157,65 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
   })
 
   // POST /attendance/recompute — RH. Idempotent (ON CONFLICT DO UPDATE via upsertDay).
+  /**
+   * Recalcule les jours de présence (statut, retard) d'employés sur des dates :
+   * partagé par POST /recompute et la saisie manuelle d'un pointage.
+   */
+  async function recomputeAttendanceDays(schema: string, employeeIds: string[], dates: string[]): Promise<number> {
+    const extras = await loadConfigExtras(schema)
+
+    // Repli tenant : si aucune ligne `attendance_schedules` de portée
+    // 'tenant' n'existe, on utilise les défauts de `attendance_config`
+    // (ou les défauts applicatifs si le tenant n'a pas encore de config).
+    const fallbackTenant: EffectiveSchedule = {
+      expectedStart: extras?.default_expected_start
+        ? extras.default_expected_start.slice(0, 5)
+        : DEFAULT_CONFIG.defaultExpectedStart,
+      toleranceMin: extras?.default_tolerance_min ?? DEFAULT_CONFIG.defaultToleranceMin,
+      expectedEnd: null,
+      workdays: extras?.default_workdays ?? DEFAULT_CONFIG.defaultWorkdays,
+    }
+
+    // Cache des jours fériés CI par année (évite de recalculer Pâques à
+    // chaque date de la plage — `joursFeriesCI` est pure et déterministe).
+    const holidaysByYear = new Map<number, Set<string>>()
+    const isHolidayOn = (workDate: string): boolean => {
+      const year = Number(workDate.slice(0, 4))
+      let set = holidaysByYear.get(year)
+      if (!set) { set = joursFeriesCI(year); holidaysByYear.set(year, set) }
+      return set.has(workDate)
+    }
+
+    let recomputed = 0
+    for (const employeeId of employeeIds) {
+      const departmentId = await loadEmployeeDepartmentId(schema, employeeId)
+      // Isolation tenant : employé introuvable dans CE schéma → ignoré (jamais d'erreur).
+      if (departmentId === undefined) continue
+
+      const rawScopes = await resolveEmployeeSchedule(pool, schema, employeeId, departmentId)
+      const schedule = resolveSchedule({
+        employee: rawScopes.employee,
+        department: rawScopes.department,
+        tenant: rawScopes.tenant ?? fallbackTenant,
+      })
+
+      for (const workDate of dates) {
+        const punches = await loadPunchesForDate(schema, employeeId, workDate)
+        const approvedLeaveId = await loadApprovedLeaveId(schema, employeeId, workDate)
+        const computed = computeDay({
+          workDate,
+          punches,
+          schedule,
+          isHoliday: isHolidayOn(workDate),
+          approvedLeaveId,
+        })
+        await upsertDay(pool, schema, { ...computed, employeeId, expectedStart: schedule.expectedStart })
+        recomputed += 1
+      }
+    }
+    return recomputed
+  }
+
   fastify.post('/recompute', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
@@ -1168,64 +1234,23 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       if (dates.length > 366) {
         return reply.status(400).send({ error: 'Plage de dates trop large (maximum 366 jours)' })
       }
-
-      // Repli tenant : si aucune ligne `attendance_schedules` de portée
-      // 'tenant' n'existe, on utilise les défauts de `attendance_config`
-      // (ou les défauts applicatifs si le tenant n'a pas encore de config).
-      const extras = await loadConfigExtras(schema)
-      const fallbackTenant: EffectiveSchedule = {
-        expectedStart: extras?.default_expected_start
-          ? extras.default_expected_start.slice(0, 5)
-          : DEFAULT_CONFIG.defaultExpectedStart,
-        toleranceMin: extras?.default_tolerance_min ?? DEFAULT_CONFIG.defaultToleranceMin,
-        expectedEnd: null,
-        workdays: extras?.default_workdays ?? DEFAULT_CONFIG.defaultWorkdays,
-      }
-
-      // Cache des jours fériés CI par année (évite de recalculer Pâques à
-      // chaque date de la plage — `joursFeriesCI` est pure et déterministe).
-      const holidaysByYear = new Map<number, Set<string>>()
-      const isHolidayOn = (workDate: string): boolean => {
-        const year = Number(workDate.slice(0, 4))
-        let set = holidaysByYear.get(year)
-        if (!set) { set = joursFeriesCI(year); holidaysByYear.set(year, set) }
-        return set.has(workDate)
+      let employeeIds = b.employeeIds
+      if (!employeeIds) {
+        const act = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE is_active = true AND deleted_at IS NULL LIMIT 1000`,
+        ).catch(() => ({ rows: [] as Array<{ id: string }> }))
+        employeeIds = act.rows.map((r) => r.id)
       }
 
       let recomputed = 0
       try {
-        for (const employeeId of b.employeeIds) {
-          const departmentId = await loadEmployeeDepartmentId(schema, employeeId)
-          // Isolation tenant : employé introuvable dans CE schéma → ignoré (jamais d'erreur).
-          if (departmentId === undefined) continue
-
-          const rawScopes = await resolveEmployeeSchedule(pool, schema, employeeId, departmentId)
-          const schedule = resolveSchedule({
-            employee: rawScopes.employee,
-            department: rawScopes.department,
-            tenant: rawScopes.tenant ?? fallbackTenant,
-          })
-
-          for (const workDate of dates) {
-            const punches = await loadPunchesForDate(schema, employeeId, workDate)
-            const approvedLeaveId = await loadApprovedLeaveId(schema, employeeId, workDate)
-            const computed = computeDay({
-              workDate,
-              punches,
-              schedule,
-              isHoliday: isHolidayOn(workDate),
-              approvedLeaveId,
-            })
-            await upsertDay(pool, schema, { ...computed, employeeId, expectedStart: schedule.expectedStart })
-            recomputed += 1
-          }
-        }
+        recomputed = await recomputeAttendanceDays(schema, employeeIds, dates)
       } catch {
         return reply.status(500).send({ error: 'Échec du recalcul' })
       }
 
       audit(schema, request.user.sub, 'attendance.recompute', null, {
-        employeeIds: b.employeeIds, from: b.from, to: b.to, recomputed,
+        employeeIds: b.employeeIds ?? 'all_active', employees: employeeIds.length, from: b.from, to: b.to, recomputed,
       }, request.ip ?? null, 'attendance_days')
 
       return reply.send({ data: { recomputed } })
