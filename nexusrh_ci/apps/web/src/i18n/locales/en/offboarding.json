@@ -53,7 +53,18 @@
     "total": "Total final settlement",
     "estimateNote": "HR estimate (excluding tax, computed by the payroll engine).",
     "noticeMonths": "Notice (months)",
-    "noticeAuto": "auto"
+    "noticeAuto": "auto",
+    "payBasis": "Pay frequency",
+    "payBasisMonthly": "Paid monthly",
+    "payBasisNonMonthly": "Paid hourly / daily / weekly",
+    "noticeApplied": "Notice applied: {{duration}}",
+    "noticeDays_one": "{{count}} day",
+    "noticeDays_other": "{{count}} days",
+    "noticeMonthsValue_one": "{{count}} month",
+    "noticeMonthsValue_other": "{{count}} months",
+    "severanceBaseAverage_one": "Severance based on average total monthly pay ({{amount}}, {{count}} payslip).",
+    "severanceBaseAverage_other": "Severance based on average total monthly pay ({{amount}}, last {{count}} payslips).",
+    "severanceBaseSalary": "Severance based on base salary ({{amount}})."
   },
   "actions": {
     "progress": "Start",
