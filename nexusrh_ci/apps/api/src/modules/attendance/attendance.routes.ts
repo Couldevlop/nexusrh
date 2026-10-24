@@ -37,6 +37,7 @@ import type { AttendanceConfig, EffectiveSchedule, FieldMapping, NormalizedPunch
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
+import { attendancePayrollSettingsSchema, loadAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -478,6 +479,58 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         return reply.send({ data: row ?? body })
       } catch {
         return reply.status(500).send({ error: 'Échec de mise à jour de la configuration' })
+      }
+    },
+  })
+
+  // GET /attendance/payroll-link — paramétrage du lien badgeuse → paie.
+  // Toujours une réponse complète (défauts = désactivé), jamais d'erreur.
+  fastify.get('/payroll-link', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    schema: { tags: ['attendance'], summary: 'Lien badgeuse → paie (paramétrage)' },
+    handler: async (request, reply) => {
+      const data = await loadAttendancePayrollSettings(request.user.schemaName)
+      return reply.send({ data })
+    },
+  })
+
+  // PUT /attendance/payroll-link — admin only, audité. Le singleton de
+  // configuration est créé avec ses défauts s'il n'existe pas encore.
+  fastify.put('/payroll-link', {
+    preHandler: [fastify.authorize('admin')],
+    schema: { tags: ['attendance'], summary: 'Mettre à jour le lien badgeuse → paie' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const parsed = attendancePayrollSettingsSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation échouée',
+          issues: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsed.data
+      try {
+        const existing = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".attendance_config ORDER BY updated_at DESC LIMIT 1`,
+        )
+        let id = existing.rows[0]?.id ?? null
+        if (id) {
+          await pool.query(
+            `UPDATE "${schema}".attendance_config SET payroll_link = $1::jsonb, updated_at = now() WHERE id = $2`,
+            [JSON.stringify(body), id],
+          )
+        } else {
+          const res = await pool.query<{ id: string }>(
+            `INSERT INTO "${schema}".attendance_config (payroll_link) VALUES ($1::jsonb) RETURNING id`,
+            [JSON.stringify(body)],
+          )
+          id = res.rows[0]?.id ?? null
+        }
+        audit(schema, request.user.sub, 'attendance_payroll_link.updated', id,
+          body as Record<string, unknown>, request.ip ?? null)
+        return reply.send({ data: body })
+      } catch {
+        return reply.status(500).send({ error: 'Échec de mise à jour du lien avec la paie' })
       }
     },
   })
