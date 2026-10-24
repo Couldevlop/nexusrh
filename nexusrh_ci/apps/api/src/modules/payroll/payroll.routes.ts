@@ -457,6 +457,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       let totalGross = 0; let totalNet = 0; let totalCnps = 0; let totalIts = 0
+      // Devise des bulletins (pack du pays) — plus de XOF en dur.
+      const currencies = new Set<string>()
       const paySlips: unknown[] = []
 
       // Résolution du contexte paie commun (Clean Architecture — pure function)
@@ -508,6 +510,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         totalNet   += result.netPayable
         totalCnps  += result.totalCnpsSal + result.totalCnpsPat
         totalIts   += result.its
+        currencies.add(result.currency)
 
         // Sérialiser le bordereau CNPS s'il existe
         const bordereauJson = result.bordereauCnps ? JSON.stringify(result.bordereauCnps) : null
@@ -522,8 +525,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
               total_cnps_sal, total_cnps_pat, its, total_deductions,
               net_payable, employer_cost, lines, status, generated_at,
               payment_method, payment_status, bordereau_cnps, indemnite_absence,
-              legal_entity_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19,$20)
+              legal_entity_id, currency)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19,$20,$21)
            ON CONFLICT DO NOTHING
            RETURNING id`,
           [
@@ -535,6 +538,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             bordereauJson,
             result.indemniteAbsence ?? null,
             resolved.legalEntityId,
+            result.currency,
           ]
         ).catch(async () => {
           // Fallback si legal_entity_id pas encore migrée
@@ -544,8 +548,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
                 cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
                 total_cnps_sal, total_cnps_pat, its, total_deductions,
                 net_payable, employer_cost, lines, status, generated_at,
-                payment_method, payment_status, bordereau_cnps, indemnite_absence)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19)
+                payment_method, payment_status, bordereau_cnps, indemnite_absence, currency)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),$17,'pending',$18::jsonb,$19,$20)
              ON CONFLICT DO NOTHING
              RETURNING id`,
             [
@@ -556,6 +560,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
               emp.mobile_money_provider ?? 'mobile_money',
               bordereauJson,
               result.indemniteAbsence ?? null,
+              result.currency,
             ],
           )
         })
@@ -595,7 +600,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         totals: {
           grossSalary: totalGross, netPayable: totalNet,
           cnps: totalCnps, its: totalIts,
-          currency: 'XOF',
+          // Clôture par filiale → en pratique une seule devise ; chaque bulletin
+          // porte de toute façon la sienne (pay_slips.currency).
+          currency: currencies.values().next().value ?? 'XOF',
         },
         paySlips,
       })
@@ -1013,7 +1020,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
          ORDER BY month DESC LIMIT 24`,
         [employeeId]
       )
-      return reply.send({ data: res.rows, currency: 'XOF' })
+      return reply.send({ data: res.rows, currency: res.rows[0]?.currency ?? 'XOF' })
     },
   })
 

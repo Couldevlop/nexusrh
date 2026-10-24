@@ -100,8 +100,32 @@ export interface LegislationPack {
    */
   leaveRules?: LeaveRules
 
+  /**
+   * Règles de rupture du contrat (préavis + indemnité de licenciement), lues
+   * par le solde de tout compte. Optionnel : un pack sans règles validées ne
+   * calcule NI préavis NI indemnité (jamais de repli sur les règles CI) — le
+   * tenant les paramètre (convention collective) ou les saisit au dossier.
+   */
+  terminationRules?: TerminationRules
+
   /** Note pour les administrateurs */
   notes?: string
+}
+
+/** Libellé usuel d'une devise de paie (XOF et XAF s'écrivent tous deux FCFA). */
+export function currencyLabel(currency: LegislationPack['currency']): string {
+  return currency === 'XOF' || currency === 'XAF' ? 'FCFA' : currency
+}
+
+/**
+ * Paliers ordonnés : le premier dont la borne haute (incluse) couvre la valeur
+ * s'applique ; `null` = dernier palier, sans borne.
+ */
+export interface TerminationRules {
+  /** Préavis (mois) selon l'ancienneté en mois. */
+  noticeMonths: ReadonlyArray<{ upToSeniorityMonths: number | null; months: number }>
+  /** Taux d'indemnité de licenciement (× brut mensuel) par année d'ancienneté. */
+  severanceRates: ReadonlyArray<{ upToYear: number | null; rate: number }>
 }
 
 export interface LeaveRules {
@@ -209,6 +233,19 @@ export const CIV_2024: LegislationPack = {
     bereavementDays: 3,
     workingDaysPerWeek: 6,
     overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
+  },
+  // Valeurs historiques du solde de tout compte (offboarding) — inchangées.
+  terminationRules: {
+    noticeMonths: [
+      { upToSeniorityMonths: 11, months: 1 },
+      { upToSeniorityMonths: 60, months: 2 },
+      { upToSeniorityMonths: null, months: 3 },
+    ],
+    severanceRates: [
+      { upToYear: 5, rate: 0.30 },
+      { upToYear: 10, rate: 0.35 },
+      { upToYear: null, rate: 0.40 },
+    ],
   },
 }
 

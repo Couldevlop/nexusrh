@@ -82,6 +82,7 @@ describe('POST /employees — déclenchement automatique de l\'onboarding', () =
 
   it('création OK → 201 et autoStartOnboarding appelé avec les données du nouvel employé', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CIV, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: 'emp-new', first_name: 'Aminata' }] }) // INSERT employees
       .mockResolvedValueOnce({ rows: [] })                                          // audit
     const res = await app.inject({ method: 'POST', url: '/employees',
@@ -107,6 +108,7 @@ describe('POST /employees — déclenchement automatique de l\'onboarding', () =
   it('échec de l\'onboarding → la création d\'employé reste un 201 (best-effort)', async () => {
     autoStartMock.mockRejectedValueOnce(new Error('onboarding KO'))
     queryMock
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CIV, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: 'emp-new' }] })
       .mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({ method: 'POST', url: '/employees',

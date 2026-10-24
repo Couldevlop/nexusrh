@@ -2,13 +2,16 @@
  * Processus de sortie (offboarding) + solde de tout compte — logique PURE.
  *
  * Couche « domain » : motifs de départ, cycle de vie, checklist de restitution,
- * et calcul indicatif du solde de tout compte selon le Code du travail ivoirien.
+ * et calcul indicatif du solde de tout compte selon les règles de rupture du
+ * pays de l'employé (pack législatif) ou de la convention du tenant.
  * Aucune dépendance (Fastify/DB) → entièrement testable.
  *
- * Montants en FCFA ENTIERS (jamais de décimale). Le solde est un ESTIMATIF RH
+ * Montants ENTIERS dans la devise du pack (jamais de décimale). Le solde est un ESTIMATIF RH
  * (indemnité de congés non pris + préavis non effectué + indemnité de
  * licenciement) ; il n'inclut pas la fiscalité (calculée par le moteur de paie).
  */
+
+import type { TerminationRules } from '../../services/legislation-packs.js'
 
 export const DEPARTURE_TYPES = [
   'demission',
@@ -57,11 +60,22 @@ export function canTransition(from: OffboardingStatus, to: OffboardingStatus): b
   return STATUS_TRANSITIONS[from].includes(to)
 }
 
-/** Durée de préavis (mois) selon l'ancienneté — Code du travail CI (CDI). */
-export function noticeMonths(seniorityMonths: number): number {
-  if (seniorityMonths < 12) return 1
-  if (seniorityMonths <= 60) return 2
-  return 3
+/** Premier palier dont la borne haute (incluse) couvre `value` ; null = sans borne. */
+function tierFor<T>(tiers: ReadonlyArray<T>, value: number, upTo: (t: T) => number | null): T | null {
+  for (const t of tiers) {
+    const max = upTo(t)
+    if (max === null || value <= max) return t
+  }
+  return null
+}
+
+/**
+ * Durée de préavis (mois) selon l'ancienneté, d'après les règles du pays (ou
+ * de la convention du tenant). null = aucune règle paramétrée.
+ */
+export function noticeMonths(seniorityMonths: number, rules: TerminationRules | null): number | null {
+  if (!rules) return null
+  return tierFor(rules.noticeMonths, seniorityMonths, (t) => t.upToSeniorityMonths)?.months ?? null
 }
 
 export interface SettlementInput {
@@ -71,6 +85,10 @@ export interface SettlementInput {
   congesDaysOutstanding: number
   /** Préavis effectué ? Si non (dispense employeur), une indemnité compensatrice est due. */
   noticeServed: boolean
+  /** Règles de rupture applicables (tenant > pack pays) ; null = non paramétrées. */
+  rules: TerminationRules | null
+  /** Préavis saisi au dossier (contrat, convention) : prime sur les règles. */
+  noticeMonthsOverride?: number
 }
 
 export interface SettlementLine { key: string; label: string; amount: number }
@@ -82,13 +100,8 @@ export interface Settlement {
   noticeMonths: number
   seniorityYears: number
   lines: SettlementLine[]
-}
-
-/** Taux progressif d'indemnité de licenciement par année d'ancienneté (CI). */
-function licenciementRate(year: number): number {
-  if (year <= 5) return 0.30
-  if (year <= 10) return 0.35
-  return 0.40
+  /** Postes non calculés faute de règles paramétrées (à compléter par la RH). */
+  warnings: string[]
 }
 
 /**
@@ -98,13 +111,18 @@ function licenciementRate(year: number): number {
  *  - indemnité de préavis (compensatrice) due si départ licenciement / rupture
  *    conventionnelle ET préavis non effectué : noticeMonths × brut ;
  *  - indemnité de licenciement (départ licenciement, ancienneté ≥ 1 an) :
- *    cumul progressif 30 % (1–5 ans) / 35 % (6–10) / 40 % (>10) du brut par année.
+ *    cumul progressif, par année, du taux du palier d'ancienneté × brut
+ *    (CI : 30 % années 1–5 / 35 % 6–10 / 40 % au-delà).
+ * Préavis et licenciement suivent `rules` : sans règles (pays non paramétré),
+ * ces postes restent à 0 avec un avertissement — jamais les règles d'un autre pays.
  */
 export function computeSettlement(input: SettlementInput): Settlement {
   const monthly = Math.max(0, Math.round(input.monthlyGross))
   const dailyRate = Math.round(monthly / 30)
   const seniorityYears = Math.floor(Math.max(0, input.seniorityMonths) / 12)
-  const nm = noticeMonths(Math.max(0, input.seniorityMonths))
+  const warnings: string[] = []
+  const ruleNotice = noticeMonths(Math.max(0, input.seniorityMonths), input.rules)
+  const nm = input.noticeMonthsOverride ?? ruleNotice ?? 0
 
   const indemniteConges = Math.round(Math.max(0, input.congesDaysOutstanding) * dailyRate)
 
@@ -113,13 +131,21 @@ export function computeSettlement(input: SettlementInput): Settlement {
     (input.departureType === 'licenciement' || input.departureType === 'rupture_conventionnelle') &&
     !input.noticeServed
   ) {
+    if (input.noticeMonthsOverride === undefined && ruleNotice === null) {
+      warnings.push('Préavis non calculé : aucune règle de préavis paramétrée pour ce pays. Saisissez la durée au dossier ou dans les paramètres.')
+    }
     indemnitePreavis = nm * monthly
   }
 
   let indemniteLicenciement = 0
   if (input.departureType === 'licenciement' && seniorityYears >= 1) {
-    for (let y = 1; y <= seniorityYears; y++) {
-      indemniteLicenciement += Math.round(licenciementRate(y) * monthly)
+    if (!input.rules) {
+      warnings.push("Indemnité de licenciement non calculée : aucun barème paramétré pour ce pays.")
+    } else {
+      for (let y = 1; y <= seniorityYears; y++) {
+        const rate = tierFor(input.rules.severanceRates, y, (t) => t.upToYear)?.rate ?? 0
+        indemniteLicenciement += Math.round(rate * monthly)
+      }
     }
   }
 
@@ -131,5 +157,5 @@ export function computeSettlement(input: SettlementInput): Settlement {
     { key: 'licenciement', label: 'Indemnité de licenciement', amount: indemniteLicenciement },
   ]
 
-  return { indemniteConges, indemnitePreavis, indemniteLicenciement, total, noticeMonths: nm, seniorityYears, lines }
+  return { indemniteConges, indemnitePreavis, indemniteLicenciement, total, noticeMonths: nm, seniorityYears, lines, warnings }
 }
