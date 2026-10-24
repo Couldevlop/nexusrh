@@ -20,6 +20,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
+import { getWorkingDays, resolveAbsenceForPayroll } from '../../services/payroll-absences.service.js'
+import { loadEffectiveAttendancePayrollSettings, resolveAttendanceForPayroll } from '../../services/attendance-payroll.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 
@@ -353,8 +355,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         // Récupère les employés de la filiale
         const emps = await pool.query<{
           id: string; base_salary: string; marital_status: string; children_count: number
+          hire_date: string | null
         }>(
-          `SELECT id, base_salary, marital_status, children_count
+          `SELECT id, base_salary, marital_status, children_count, hire_date
            FROM "${schema}".employees
            WHERE is_active = true AND deleted_at IS NULL AND legal_entity_id = $1`,
           [period.legal_entity_id],
@@ -364,12 +367,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         const [yearStr, monthNumStr] = month.split('-')
         const year = parseInt(yearStr!, 10)
         const monthNum = parseInt(monthNumStr!, 10)
-        // Jours ouvrables : approx (26 si non spécifié)
-        const daysInMonth = new Date(year, monthNum, 0).getDate()
-        let workingDaysMonth = 0
-        for (let d = 1; d <= daysInMonth; d++) {
-          if (new Date(year, monthNum - 1, d).getDay() !== 0) workingDaysMonth++
-        }
+        const workingDaysMonth = getWorkingDays(year, monthNum)
+        // Mêmes règles que le lot mono-filiale : absences validées + pointage
+        const attendanceSettings = await loadEffectiveAttendancePayrollSettings(schema)
 
         let inserted = 0
         let totalGross = 0; let totalNet = 0; let totalCnps = 0; let totalIts = 0
@@ -384,14 +384,21 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           ).catch(() => ({ rows: [] as Array<{ rule_code: string; amount: string }> }))
           for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
 
+          const baseSalary = parseInt(emp.base_salary)
+          const absenceCtx = await resolveAbsenceForPayroll(schema, emp.id, month, emp.hire_date)
+          const attendance = await resolveAttendanceForPayroll(
+            attendanceSettings, schema, emp.id, month, baseSalary, workingDaysMonth)
+
           const result = calculatePayrollCI({
-            baseSalary:       parseInt(emp.base_salary),
-            workedDays:       workingDaysMonth,
+            baseSalary,
+            workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
             workingDaysMonth,
             atRate,
             maritalStatus:    emp.marital_status ?? 'single',
             childrenCount:    emp.children_count ?? 0,
             variableElements: varEls,
+            absence:          absenceCtx?.info,
+            attendanceDeductions: attendance?.deductions,
             legislationPack:  pack,
           })
           totalGross += result.grossSalary

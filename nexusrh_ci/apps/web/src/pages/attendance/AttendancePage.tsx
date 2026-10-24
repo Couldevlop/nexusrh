@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import AttendancePayrollLinkCard from './AttendancePayrollLinkCard'
 
 type Tab = 'dashboard' | 'punches' | 'days' | 'warnings' | 'config'
 
@@ -644,6 +645,9 @@ export default function AttendancePage() {
               </>
             )}
           </section>
+
+          {/* Lien avec la paie */}
+          <AttendancePayrollLinkCard />
 
           {/* Badgeuses */}
           <section className="space-y-3">

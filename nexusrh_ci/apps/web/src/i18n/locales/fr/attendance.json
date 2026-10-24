@@ -269,5 +269,31 @@
       "respondError": "Échec de l'envoi de votre réponse.",
       "alreadyResponded": "Réponse déjà envoyée"
     }
+  },
+  "payrollLink": {
+    "title": "Lien avec la paie",
+    "intro": "Reprend dans le bulletin les absences injustifiées et les retards relevés par la badgeuse. Sans badgeuse ou sans pointage, la paie se calcule normalement.",
+    "enabled": "Intégrer le pointage dans la paie",
+    "disabledHint": "Désactivé : la paie ignore le pointage.",
+    "deductUnjustifiedAbsences": "Retenir les absences injustifiées (au prorata)",
+    "absenceDivisor": "Taux journalier",
+    "divisor": {
+      "working_days": "Salaire ÷ jours ouvrables du mois",
+      "calendar_30": "Salaire ÷ 30"
+    },
+    "suspendAttendanceBonus": "Suspendre les primes de présence (transport, panier)",
+    "deductLateness": "Retenir les retards (minutes non travaillées)",
+    "latenessMinPerOccurrenceMin": "Retard ignoré en dessous de (min)",
+    "latenessMonthlyAllowanceMin": "Franchise mensuelle (min)",
+    "latenessRounding": "Arrondi des minutes",
+    "rounding": {
+      "exact": "À la minute",
+      "quarter_hour_down": "Au quart d'heure inférieur"
+    },
+    "monthlyHours": "Heures mensuelles de référence",
+    "latenessLegalNote": "Seul le temps non travaillé est retenu, au taux horaire. Aucune amende forfaitaire : les sanctions pécuniaires sont interdites.",
+    "maxPercentOfBase": "Plafond des retenues (% du salaire de base)",
+    "saved": "Lien avec la paie enregistré.",
+    "saveError": "Échec de l'enregistrement du lien avec la paie."
   }
 }

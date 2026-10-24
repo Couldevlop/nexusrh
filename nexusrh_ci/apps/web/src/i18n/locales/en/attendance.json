@@ -269,5 +269,31 @@
       "respondError": "Failed to send your response.",
       "alreadyResponded": "Response already sent"
     }
+  },
+  "payrollLink": {
+    "title": "Payroll link",
+    "intro": "Carries unjustified absences and lateness recorded by the time clock into the payslip. Without a time clock or punches, payroll is computed as usual.",
+    "enabled": "Use attendance in payroll",
+    "disabledHint": "Disabled: payroll ignores attendance.",
+    "deductUnjustifiedAbsences": "Deduct unjustified absences (pro rata)",
+    "absenceDivisor": "Daily rate",
+    "divisor": {
+      "working_days": "Salary ÷ working days of the month",
+      "calendar_30": "Salary ÷ 30"
+    },
+    "suspendAttendanceBonus": "Suspend attendance bonuses (transport, meal)",
+    "deductLateness": "Deduct lateness (minutes not worked)",
+    "latenessMinPerOccurrenceMin": "Ignore lateness under (min)",
+    "latenessMonthlyAllowanceMin": "Monthly allowance (min)",
+    "latenessRounding": "Minute rounding",
+    "rounding": {
+      "exact": "To the minute",
+      "quarter_hour_down": "Down to the quarter hour"
+    },
+    "monthlyHours": "Reference monthly hours",
+    "latenessLegalNote": "Only time not worked is deducted, at the hourly rate. No flat fines: monetary penalties are prohibited.",
+    "maxPercentOfBase": "Deduction cap (% of base salary)",
+    "saved": "Payroll link saved.",
+    "saveError": "Failed to save the payroll link."
   }
 }
