@@ -53,7 +53,18 @@
     "total": "Total solde de tout compte",
     "estimateNote": "Estimatif RH (hors fiscalité, calculée par le moteur de paie).",
     "noticeMonths": "Préavis (mois)",
-    "noticeAuto": "auto"
+    "noticeAuto": "auto",
+    "payBasis": "Mode de paie",
+    "payBasisMonthly": "Payé au mois",
+    "payBasisNonMonthly": "Payé à l'heure / au jour / à la semaine",
+    "noticeApplied": "Préavis retenu : {{duration}}",
+    "noticeDays_one": "{{count}} jour",
+    "noticeDays_other": "{{count}} jours",
+    "noticeMonthsValue_one": "{{count}} mois",
+    "noticeMonthsValue_other": "{{count}} mois",
+    "severanceBaseAverage_one": "Indemnité calculée sur le salaire global mensuel moyen ({{amount}}, {{count}} bulletin).",
+    "severanceBaseAverage_other": "Indemnité calculée sur le salaire global mensuel moyen ({{amount}}, {{count}} derniers bulletins).",
+    "severanceBaseSalary": "Indemnité calculée sur le salaire de base ({{amount}})."
   },
   "actions": {
     "progress": "Démarrer",

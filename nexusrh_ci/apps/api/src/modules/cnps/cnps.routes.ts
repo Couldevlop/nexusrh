@@ -4,6 +4,10 @@ import { pool as rawPool } from '../../db/pool.js'
 import { encodeField } from '../sage/sage.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
+import {
+  categoryLevel, effectiveTerminationRules, resolveNotice, severanceAmount,
+} from '../../services/termination-rules.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // CNP-002 — anti-injection CSV (OWASP A03) : neutralise +/-/=/@ et quote.
@@ -621,30 +625,41 @@ ${salaries}
 
       const empRes = await rawPool.query<{
         id: string; first_name: string; last_name: string; cnps_number: string; nni: string
-        hire_date: string; base_salary: string
+        hire_date: string; base_salary: string; legal_entity_id: string | null
+        professional_category: string | null
       }>(
-        `SELECT id, first_name, last_name, cnps_number, nni, hire_date, base_salary
+        `SELECT id, first_name, last_name, cnps_number, nni, hire_date, base_salary,
+                legal_entity_id, professional_category
          FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId]
       )
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
 
-      // Calculer indemnités légales CI
       const hireDate = new Date(emp.hire_date)
       const exit     = new Date(exitDate)
       const ancienneteMois = Math.max(0, (exit.getFullYear() - hireDate.getFullYear()) * 12 + (exit.getMonth() - hireDate.getMonth()))
       const ancienneteAns  = ancienneteMois / 12
 
-      // Préavis CI (Code du Travail art. 16.2)
-      const preavisJours = ancienneteAns < 1 ? 30 : ancienneteAns <= 5 ? 60 : 90
+      // Droits légaux : mêmes règles que le solde de tout compte (convention
+      // du tenant > pack du pays de l'employé), selon ancienneté et catégorie.
+      const ctx = await loadEmployeeTenantContext(rawPool, schema, emp.legal_entity_id)
+      const pack = ctx.legislation.legislationPack
+      const { rules } = effectiveTerminationRules(ctx.tenantTerminationRules, pack)
+      const notice = resolveNotice(rules, {
+        seniorityMonths: ancienneteMois,
+        categoryLevel: categoryLevel(emp.professional_category),
+        payBasis: 'monthly',
+      })
+      const preavisMois  = notice ? Math.round(notice.months * 100) / 100 : null
+      const preavisJours = notice ? Math.round(notice.months * 30) : null
 
-      // Indemnité de licenciement (1/3 mois/an 1-5 ans, 2/3 mois/an > 5 ans)
+      // Indemnité (licenciement / départ à la retraite) sur le salaire de base :
+      // estimation — le solde de tout compte retient la moyenne des 12 derniers mois.
       const baseSalary = parseInt(emp.base_salary ?? '0')
       let indemnite = 0
-      if (ancienneteAns >= 1) {
-        const ans1a5  = Math.min(ancienneteAns, 5)
-        const ansSup5 = Math.max(0, ancienneteAns - 5)
-        indemnite = Math.floor((baseSalary / 3) * ans1a5 + (baseSalary * 2 / 3) * (ansSup5 / 12) * 12)
+      if (rules && (reason === 'dismissal' || reason === 'retirement')
+        && ancienneteMois >= (rules.severanceMinSeniorityMonths ?? 12)) {
+        indemnite = severanceAmount(ancienneteMois, baseSalary, rules)
       }
 
       // Enregistrer l'événement RH
@@ -671,9 +686,13 @@ ${salaries}
         cessation: { exitDate, reason, ancienneteMois: Math.floor(ancienneteMois), ancienneteAns: ancienneteAns.toFixed(1) },
         droitsLegaux: {
           preavisJours,
+          preavisMois,
+          preavisCategorie: notice?.category?.label ?? null,
           indemniteLicenciement: indemnite,
-          currency: 'XOF',
-          reference: 'Art. 16 Code du Travail CI',
+          currency: pack.currency,
+          reference: pack.code === 'CIV-2024'
+            ? 'Code du travail CI art. 18.4 et 18.16 ; décrets 96-200 et 2017-210'
+            : `Pack législatif ${pack.code}`,
         },
         cnpsSignal: { status: 'recorded', message: 'Signal cessation enregistré — à déclarer avant le 15 du mois M+1 sur e-CNPS' },
       })

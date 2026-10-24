@@ -140,6 +140,37 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
     })
     expect(res.statusCode).toBe(404)
   })
+
+  it('cadre : préavis de 3 mois ; indemnité sur la moyenne des 12 derniers bulletins', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{
+        departure_type: 'licenciement', departure_date: '2026-03-31', notice_served: false,
+        status: 'open', base_salary: '300000', hire_date: '2024-03-31', employee_id: 'e1',
+        legal_entity_id: null, professional_category: 'Cadre (C2)',
+      }] })
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant → pack CI
+      .mockResolvedValueOnce({ rows: [{ avg: '400000', n: '12' }] }) // moyenne des bulletins
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'POST', url: '/offboarding/o1/settlement',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as { data: {
+      noticeMonths: number; indemnitePreavis: number; indemniteLicenciement: number
+      severanceBase: number; severanceBaseMonths: number; warnings: string[]
+    } }
+    expect(body.data.noticeMonths).toBe(3)
+    expect(body.data.indemnitePreavis).toBe(900_000)
+    expect(body.data.severanceBase).toBe(400_000)
+    expect(body.data.severanceBaseMonths).toBe(12)
+    expect(body.data.indemniteLicenciement).toBe(2 * 120_000)
+    expect(body.data.warnings).toEqual([])
+    const avg = queryMock.mock.calls.find((c) => String(c[0]).includes('AVG(gross_salary)'))
+    expect(avg?.[1]).toEqual(['e1', '2026-03'])
+  })
 })
 
 describe('PATCH /offboarding/:id — transition contrôlée', () => {

@@ -25,7 +25,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
-import { effectiveTerminationRules } from '../../services/termination-rules.service.js'
+import { categoryLevel, effectiveTerminationRules } from '../../services/termination-rules.service.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -54,6 +54,8 @@ const settlementSchema = z.object({
   congesDaysOutstanding: z.number().min(0).max(400).optional(),
   // Préavis du contrat / de la convention (mois) : prime sur les règles du pays.
   noticeMonths: z.number().min(0).max(24).optional(),
+  // Mode de paie (le préavis des payés à l'heure / au jour diffère) ; défaut : au mois.
+  payBasis: z.enum(['monthly', 'non_monthly']).optional(),
 })
 
 function badRequest(reply: import('fastify').FastifyReply, err: z.ZodError) {
@@ -77,6 +79,31 @@ function seniorityMonthsBetween(hireDate: string | Date, departureDate: string |
   let months = (d.getFullYear() - h.getFullYear()) * 12 + (d.getMonth() - h.getMonth())
   if (d.getDate() < h.getDate()) months -= 1
   return Math.max(0, months)
+}
+
+/**
+ * Salaire global mensuel moyen des 12 derniers bulletins jusqu'au mois de
+ * départ (assiette de l'indemnité de licenciement, décret CI 2017-210).
+ * null = aucun bulletin (l'appelant retombe sur le salaire de base).
+ */
+async function averageMonthlyGross(
+  schema: string, employeeId: string, departureDate: string | Date,
+): Promise<{ amount: number; months: number } | null> {
+  const d = new Date(departureDate)
+  const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  try {
+    const res = await rawPool.query<{ avg: string | null; n: string }>(
+      `SELECT AVG(gross_salary) AS avg, COUNT(*) AS n FROM (
+         SELECT gross_salary FROM "${schema}".pay_slips
+         WHERE employee_id = $1 AND month <= $2 ORDER BY month DESC LIMIT 12) t`,
+      [employeeId, month],
+    )
+    const n = parseInt(res.rows[0]?.n ?? '0', 10)
+    const avg = Number(res.rows[0]?.avg)
+    return n > 0 && Number.isFinite(avg) && avg > 0 ? { amount: Math.round(avg), months: n } : null
+  } catch {
+    return null
+  }
 }
 
 const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
@@ -207,10 +234,10 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const r = await rawPool.query<{
         departure_type: DepartureType; departure_date: string; notice_served: boolean;
         base_salary: string; hire_date: string | null; status: OffboardingStatus;
-        legal_entity_id: string | null;
+        legal_entity_id: string | null; employee_id: string; professional_category: string | null;
       }>(
-        `SELECT o.departure_type, o.departure_date, o.notice_served, o.status,
-                e.base_salary, e.hire_date, e.legal_entity_id
+        `SELECT o.departure_type, o.departure_date, o.notice_served, o.status, o.employee_id,
+                e.base_salary, e.hire_date, e.legal_entity_id, e.professional_category
          FROM "${schema}".offboarding_cases o
          JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 LIMIT 1`,
         [id],
@@ -225,16 +252,27 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const seniorityMonths = row.hire_date
         ? seniorityMonthsBetween(row.hire_date, row.departure_date) : 0
+      const average = await averageMonthlyGross(schema, row.employee_id, row.departure_date)
+      const computed = computeSettlement({
+        monthlyGross: parseInt(row.base_salary, 10) || 0,
+        seniorityMonths,
+        departureType: row.departure_type,
+        congesDaysOutstanding: parsed.data.congesDaysOutstanding ?? 0,
+        noticeServed: row.notice_served,
+        rules,
+        noticeMonthsOverride: parsed.data.noticeMonths,
+        categoryLevel: categoryLevel(row.professional_category),
+        payBasis: parsed.data.payBasis ?? 'monthly',
+        averageMonthlyGross: average?.amount,
+        // Convention du tenant : contrôlée contre le minimum légal du pays.
+        legalRules: source === 'tenant' ? pack.terminationRules ?? null : null,
+      })
+      if (!average && computed.indemniteLicenciement > 0) {
+        computed.warnings.push("Aucun bulletin sur les 12 derniers mois : l'indemnité est calculée sur le salaire de base au lieu du salaire global mensuel moyen.")
+      }
       const settlement = {
-        ...computeSettlement({
-          monthlyGross: parseInt(row.base_salary, 10) || 0,
-          seniorityMonths,
-          departureType: row.departure_type,
-          congesDaysOutstanding: parsed.data.congesDaysOutstanding ?? 0,
-          noticeServed: row.notice_served,
-          rules,
-          noticeMonthsOverride: parsed.data.noticeMonths,
-        }),
+        ...computed,
+        severanceBaseMonths: average?.months ?? 0,
         currency: pack.currency,
         legislationPackCode: pack.code,
         rulesSource: source,

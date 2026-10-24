@@ -122,10 +122,36 @@ export function currencyLabel(currency: LegislationPack['currency']): string {
  * s'applique ; `null` = dernier palier, sans borne.
  */
 export interface TerminationRules {
-  /** Préavis (mois) selon l'ancienneté en mois. */
-  noticeMonths: ReadonlyArray<{ upToSeniorityMonths: number | null; months: number }>
-  /** Taux d'indemnité de licenciement (× brut mensuel) par année d'ancienneté. */
+  /**
+   * Préavis par défaut selon l'ancienneté en mois : `months` + `days`/30.
+   * S'applique quand aucune ligne de `noticeByCategory` ne correspond.
+   */
+  noticeMonths: ReadonlyArray<NoticeTier>
+  /**
+   * Préavis par catégorie professionnelle / mode de paie, évalué dans l'ordre
+   * (première ligne correspondante). Absent = barème unique `noticeMonths`.
+   */
+  noticeByCategory?: ReadonlyArray<NoticeCategoryRule>
+  /** Taux d'indemnité de licenciement (× salaire mensuel moyen) par année d'ancienneté. */
   severanceRates: ReadonlyArray<{ upToYear: number | null; rate: number }>
+  /** Ancienneté minimale (mois) ouvrant droit à l'indemnité. Défaut : 12. */
+  severanceMinSeniorityMonths?: number
+}
+
+export interface NoticeTier { upToSeniorityMonths: number | null; months: number; days?: number }
+
+/** Mode de paie : 'monthly' = payé au mois ; 'non_monthly' = heure/jour/semaine/quinzaine. */
+export type PayBasis = 'monthly' | 'non_monthly'
+
+export interface NoticeCategoryRule {
+  key: string
+  label: string
+  /** Niveau de catégorie minimal / maximal inclus (cf. categoryLevel). */
+  minCategoryLevel?: number
+  maxCategoryLevel?: number
+  /** Restreint la ligne à un mode de paie. */
+  payBasis?: PayBasis
+  tiers: ReadonlyArray<NoticeTier>
 }
 
 export interface LeaveRules {
@@ -234,18 +260,48 @@ export const CIV_2024: LegislationPack = {
     workingDaysPerWeek: 6,
     overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
   },
-  // Valeurs historiques du solde de tout compte (offboarding) — inchangées.
+  // Préavis : décret n° 96-200 du 7 mars 1996 (repris par le décret
+  // n° 2026-198 du 15 avril 2026) pris pour l'art. 18.4 CT, identique à
+  // l'art. 34 de la CCI de 1977. Indemnité : décret n° 2017-210 du 30 mars 2017
+  // (art. 2 et 4) / art. 39 CCI — 1 an minimum, salaire global mensuel moyen
+  // des 12 derniers mois, fractions d'année au mois inférieur.
+  // Ancienneté en mois : bornes « jusqu'à N ans » incluses (6 ans = 72 mois).
   terminationRules: {
+    noticeByCategory: [
+      {
+        key: 'cat6_plus', label: '6e catégorie et au-delà (maîtrise, cadres)',
+        minCategoryLevel: 6,
+        tiers: [
+          { upToSeniorityMonths: 192, months: 3 },
+          { upToSeniorityMonths: null, months: 4 },
+        ],
+      },
+      {
+        key: 'cat1_5_non_monthly', label: 'Catégories 1 à 5 — payés à l’heure, au jour, à la semaine ou à la quinzaine',
+        maxCategoryLevel: 5, payBasis: 'non_monthly',
+        tiers: [
+          { upToSeniorityMonths: 6, months: 0, days: 8 },
+          { upToSeniorityMonths: 12, months: 0, days: 15 },
+          { upToSeniorityMonths: 72, months: 1 },
+          { upToSeniorityMonths: 132, months: 2 },
+          { upToSeniorityMonths: 192, months: 3 },
+          { upToSeniorityMonths: null, months: 4 },
+        ],
+      },
+    ],
+    // Défaut : catégories 1 à 5 payés au mois (cas le plus courant).
     noticeMonths: [
-      { upToSeniorityMonths: 11, months: 1 },
-      { upToSeniorityMonths: 60, months: 2 },
-      { upToSeniorityMonths: null, months: 3 },
+      { upToSeniorityMonths: 72, months: 1 },
+      { upToSeniorityMonths: 132, months: 2 },
+      { upToSeniorityMonths: 192, months: 3 },
+      { upToSeniorityMonths: null, months: 4 },
     ],
     severanceRates: [
       { upToYear: 5, rate: 0.30 },
       { upToYear: 10, rate: 0.35 },
       { upToYear: null, rate: 0.40 },
     ],
+    severanceMinSeniorityMonths: 12,
   },
 }
 
