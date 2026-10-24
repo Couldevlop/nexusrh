@@ -720,5 +720,39 @@
     "days": "{{n}} days",
     "valueDays": "+ days",
     "minSeniority": "Entitlement from {{n}} months of service"
+  },
+  "leavePolicy": {
+    "title": "Paid leave",
+    "sourcePack": "Country rules ({{pack}}) — no tenant override.",
+    "sourceTenant": "Tenant rules (agreement or practice), based on the {{pack}} pack.",
+    "reset": "Back to country rules",
+    "accrualMode": "Accrual",
+    "accrual": {
+      "monthly": "Monthly (computed from length of service)",
+      "manual": "Manual (balances entered by HR)"
+    },
+    "daysPerMonth": "Working days accrued per month",
+    "legalMin": "Legal minimum: {{n}} days/month",
+    "balanceCheck": "Request above the balance",
+    "check": {
+      "block": "Reject the request",
+      "warn": "Accept with a warning",
+      "off": "Do not check"
+    },
+    "maxAdvanceDays": "Days allowed in advance",
+    "allowanceMethod": "Leave allowance",
+    "method": {
+      "most_favourable": "Most favourable to the employee",
+      "average_calendar": "12-month average salary ÷ 30 × calendar days",
+      "one_twelfth": "1/12 of the period's pay"
+    },
+    "allowanceHint": "Never lower than the maintained salary.",
+    "calendarFactor": "Calendar days per working day",
+    "leaveTypeCode": "Absence type code for paid leave",
+    "carryOver": "Carry over last year's remaining days",
+    "seniority": "Seniority days (country):",
+    "seniorityTier": "+{{days}} d after {{years}} yrs",
+    "saved": "Leave policy saved.",
+    "save": "Save"
   }
 }

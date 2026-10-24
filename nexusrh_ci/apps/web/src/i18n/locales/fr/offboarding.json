@@ -64,7 +64,15 @@
     "noticeMonthsValue_other": "{{count}} mois",
     "severanceBaseAverage_one": "Indemnité calculée sur le salaire global mensuel moyen ({{amount}}, {{count}} bulletin).",
     "severanceBaseAverage_other": "Indemnité calculée sur le salaire global mensuel moyen ({{amount}}, {{count}} derniers bulletins).",
-    "severanceBaseSalary": "Indemnité calculée sur le salaire de base ({{amount}})."
+    "severanceBaseSalary": "Indemnité calculée sur le salaire de base ({{amount}}).",
+    "congesAuto": "auto (solde)",
+    "congesFromBalance": "Congés : {{days}} j ouvrables repris du solde à la date de départ ({{calendarDays}} j calendaires)",
+    "congesFromInput": "Congés : {{days}} j ouvrables saisis ({{calendarDays}} j calendaires)",
+    "allowanceMethod": {
+      "average_calendar": "salaire moyen des 12 mois ÷ 30 × jours calendaires",
+      "one_twelfth": "1/12 de la rémunération de la période",
+      "maintained_salary": "salaire maintenu"
+    }
   },
   "actions": {
     "progress": "Démarrer",

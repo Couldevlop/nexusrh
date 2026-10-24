@@ -2,6 +2,21 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+// Congés payés : calculs purs réels, accès base neutralisés (mocks pg séquentiels)
+vi.mock('../../services/paid-leave.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/paid-leave.service.js')>()
+  const { CIV_2024 } = await import('../../services/legislation-packs.js')
+  const policy = actual.effectiveLeavePolicy(CIV_2024.leaveRules, null)
+  return {
+    ...actual,
+    loadLeavePolicy: vi.fn(async () => policy),
+    loadLeavePolicyForEmployee: vi.fn(async () => policy),
+    refreshPaidLeaveBalance: vi.fn(async () => ({ year: 2026, mode: 'monthly' as const, accrued: 0, carriedOver: 0,
+      acquired: 0, taken: 0, pending: 0, remaining: 0, monthsServed: 0 })),
+    checkPaidLeaveRequest: vi.fn(async () => null),
+    averageRemuneration: vi.fn(async () => null),
+  }
+})
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
@@ -129,6 +144,34 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
     // l'UPDATE persiste le settlement
     const upd = queryMock.mock.calls.find((c) => String(c[0]).includes('SET settlement'))
     expect(upd).toBeDefined()
+  })
+
+  it('jours de congés repris du solde à la date de départ ; indemnité CCI art. 71', async () => {
+    const pl = await import('../../services/paid-leave.service.js')
+    vi.mocked(pl.refreshPaidLeaveBalance).mockResolvedValueOnce({
+      year: 2026, mode: 'monthly', accrued: 6.6, carriedOver: 0, acquired: 6.6, taken: 0, pending: 0, remaining: 6.6, monthsServed: 3,
+    })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{
+        departure_type: 'demission', departure_date: '2026-03-31', notice_served: true,
+        status: 'open', base_salary: '300000', hire_date: '2019-04-01',
+      }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/offboarding/o1/settlement',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(200)
+    const data = JSON.parse(res.body).data
+    expect(data.congesDays).toBe(6.6)
+    expect(data.congesDaysSource).toBe('balance')
+    // Simulation à la date de départ : rien n'est écrit dans le solde
+    expect(vi.mocked(pl.refreshPaidLeaveBalance).mock.calls.at(-1)?.[5]).toEqual({ persist: false })
+    // 300 000 / 30 × (6,6 × 1,25 = 8,25 j calendaires) = 82 500
+    expect(data.indemniteConges).toBe(82_500)
+    expect(data.congesAllowance.calendarDays).toBe(8.25)
   })
 
   it('404 si dossier inexistant', async () => {

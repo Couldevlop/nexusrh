@@ -248,7 +248,7 @@ CONTEXTE CI IMPORTANT :
 - CNPS retraite : 6,3% salarié + 7,7% employeur ; Prestations familiales 5% pat. ; Maternité 0,75% pat.
 - Taux AT (accidents du travail) PAR SECTEUR : Commerce/Services/tertiaire 2% | BTP/Transport 3% | Industrie/manufacture 4% | Extraction/Mines 5%
 - ITS : abattement 15% sur brut, tranches 0%→1,5%→5%→10%→15%
-- Congés : 2,5 jours ouvrables/mois travaillé (ex : 8 mois → 20 jours)
+- Congés : 2,2 jours ouvrables/mois de service (ex : 8 mois → 17,6 jours) + ancienneté (1 j après 5 ans, 2 après 10, 3 après 15, 5 après 20, 7 après 25, 8 après 30) ; allocation = salaire moyen des 12 derniers mois ÷ 30 × jours calendaires (jours ouvrables × 1,25)
 - Mobile Money : Wave, MTN MoMo, Orange Money pour paiement salaires
 - DISA : déclaration annuelle obligatoire (loi 99-477)
 - FDFP : contribution patronale 0,4% de la masse salariale (formation professionnelle)

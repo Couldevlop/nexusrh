@@ -515,7 +515,7 @@
       "smigMonthly": "SMIG mensuel",
       "smigMonthlyValue": "75 000 FCFA (2026)",
       "leavePerMonth": "Congés / mois travaillé",
-      "leavePerMonthValue": "2,5 jours ouvrables",
+      "leavePerMonthValue": "2,2 jours ouvrables",
       "cnpsRetirementEmployee": "CNPS retraite (salarié)",
       "cnpsRetirementEmployeeValue": "6,3 %",
       "cnpsRetirementEmployer": "CNPS retraite (patronal)",
@@ -720,5 +720,39 @@
     "days": "{{n}} jours",
     "valueDays": "+ jours",
     "minSeniority": "Ouverture du droit : {{n}} mois d'ancienneté"
+  },
+  "leavePolicy": {
+    "title": "Congés payés",
+    "sourcePack": "Règles du pays ({{pack}}) — aucune surcharge du tenant.",
+    "sourceTenant": "Règles du tenant (convention ou usage), sur la base du pack {{pack}}.",
+    "reset": "Revenir aux règles du pays",
+    "accrualMode": "Acquisition",
+    "accrual": {
+      "monthly": "Mensuelle (calculée selon l'ancienneté)",
+      "manual": "Manuelle (soldes saisis par la RH)"
+    },
+    "daysPerMonth": "Jours ouvrables acquis par mois",
+    "legalMin": "Minimum légal : {{n}} j/mois",
+    "balanceCheck": "Demande au-delà du solde",
+    "check": {
+      "block": "Refuser la demande",
+      "warn": "Accepter avec avertissement",
+      "off": "Ne pas contrôler"
+    },
+    "maxAdvanceDays": "Jours pris par anticipation autorisés",
+    "allowanceMethod": "Allocation de congés",
+    "method": {
+      "most_favourable": "La plus favorable au salarié",
+      "average_calendar": "Salaire moyen 12 mois ÷ 30 × jours calendaires",
+      "one_twelfth": "1/12 de la rémunération de la période"
+    },
+    "allowanceHint": "Jamais inférieure au salaire maintenu.",
+    "calendarFactor": "Jours calendaires par jour ouvrable",
+    "leaveTypeCode": "Code du type d'absence « congés payés »",
+    "carryOver": "Reporter le reliquat de l'année précédente",
+    "seniority": "Jours d'ancienneté (pays) :",
+    "seniorityTier": "+{{days}} j après {{years}} ans",
+    "saved": "Politique de congés enregistrée.",
+    "save": "Enregistrer"
   }
 }

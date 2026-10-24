@@ -3,6 +3,21 @@ import Fastify, { type FastifyInstance } from 'fastify'
 
 // ── Mocks globaux (mêmes patterns que absences.routes.test.ts) ─────────────────
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+// Congés payés : calculs purs réels, accès base neutralisés (mocks pg séquentiels)
+vi.mock('../../services/paid-leave.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/paid-leave.service.js')>()
+  const { CIV_2024 } = await import('../../services/legislation-packs.js')
+  const policy = actual.effectiveLeavePolicy(CIV_2024.leaveRules, null)
+  return {
+    ...actual,
+    loadLeavePolicy: vi.fn(async () => policy),
+    loadLeavePolicyForEmployee: vi.fn(async () => policy),
+    refreshPaidLeaveBalance: vi.fn(async () => ({ year: 2026, mode: 'monthly' as const, accrued: 0, carriedOver: 0,
+      acquired: 0, taken: 0, pending: 0, remaining: 0, monthsServed: 0 })),
+    checkPaidLeaveRequest: vi.fn(async () => null),
+    averageRemuneration: vi.fn(async () => null),
+  }
+})
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))

@@ -70,7 +70,7 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     category: 'overtime',
   },
   '1600': {
-    formulaHuman: () => 'Indemnité de congés payés (2,5 jours ouvrables / mois travaillé)',
+    formulaHuman: () => 'Allocation de congés payés (2,2 jours ouvrables / mois de service ; salaire moyen des 12 mois ÷ 30 × jours calendaires)',
     legalReference: 'Code du Travail CI - Article 25 (droit aux congés payés)',
     category: 'leave',
   },
