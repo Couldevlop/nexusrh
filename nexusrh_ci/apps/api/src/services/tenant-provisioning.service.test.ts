@@ -100,7 +100,7 @@ describe('createTenantWithSchema', () => {
 
 describe('createTenantWithSchema — slug avec tiret et échec de provisionnement', () => {
   function routedPool(opts: { schemaExists?: boolean } = {}) {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM platform.tenants WHERE slug')) return { rows: [] }
       if (sql.includes('INSERT INTO platform.tenants')) return { rows: [{ id: 'tenant-uuid-2' }] }
       if (sql.includes('information_schema.schemata')) return { rows: opts.schemaExists ? [{ '?column?': 1 }] : [] }
