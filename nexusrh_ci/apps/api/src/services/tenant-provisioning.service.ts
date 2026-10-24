@@ -109,7 +109,9 @@ export async function createTenantWithSchema(
   opts: CreateTenantOptions = {},
 ): Promise<CreateTenantResult> {
   const slug = input.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-  const schemaName = `tenant_${slug}`
+  // Un nom de schéma n'accepte pas le tiret (assertSafeSchemaName) : `ma-boite`
+  // → `tenant_ma_boite`, comme le fait déjà reset-admin.
+  const schemaName = `tenant_${slug.replace(/-/g, '_')}`
   const planType = input.planType ?? 'trial'
   const plan = PLAN_DEFAULTS[planType] ?? { maxUsers: 10, maxEmployees: 20 }
   const atRate = AT_RATE_BY_SECTOR[input.sector ?? 'services'] ?? 0.020
@@ -158,22 +160,35 @@ export async function createTenantWithSchema(
   const tenantId = tenantRes.rows[0]?.id
   if (!tenantId) throw new Error('Erreur création tenant')
 
-  // 2. Provisionner le schéma
-  await provisionTenantSchema(schemaName)
-
-  // 3. Seed rubriques CI + types absences
-  await seedPayrollRulesCI(schemaName, atRate)
-  await seedAbsenceTypesCI(schemaName)
-
-  // 4. Créer l'admin
+  // Un échec des étapes 2 à 4 ne doit pas laisser un tenant orphelin (inscrit
+  // au registre, sans schéma ni admin) qui bloquerait le slug.
+  const schemaPreexisted = (await pool.query(
+    `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`, [schemaName],
+  )).rows.length > 0
   const tempPassword = `CI_${randomBytes(6).toString('base64url').toUpperCase()}!`
-  const passwordHash = await bcrypt.hash(tempPassword, 12)
-  await pool.query(
-    `INSERT INTO "${schemaName}".users
-       (email, password_hash, first_name, last_name, role, is_active)
-     VALUES ($1, $2, $3, $4, 'admin', true)`,
-    [input.adminEmail, passwordHash, input.adminFirstName, input.adminLastName],
-  )
+  try {
+    // 2. Provisionner le schéma
+    await provisionTenantSchema(schemaName)
+
+    // 3. Seed rubriques CI + types absences
+    await seedPayrollRulesCI(schemaName, atRate)
+    await seedAbsenceTypesCI(schemaName)
+
+    // 4. Créer l'admin
+    const passwordHash = await bcrypt.hash(tempPassword, 12)
+    await pool.query(
+      `INSERT INTO "${schemaName}".users
+         (email, password_hash, first_name, last_name, role, is_active)
+       VALUES ($1, $2, $3, $4, 'admin', true)`,
+      [input.adminEmail, passwordHash, input.adminFirstName, input.adminLastName],
+    )
+  } catch (err) {
+    if (!schemaPreexisted) {
+      await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined)
+    }
+    await pool.query(`DELETE FROM platform.tenants WHERE id = $1`, [tenantId]).catch(() => undefined)
+    throw err
+  }
 
   // 5. Données de démonstration (optionnel, non bloquant)
   if (input.seedDemoData === true) {

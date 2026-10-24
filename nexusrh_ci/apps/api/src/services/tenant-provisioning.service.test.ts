@@ -97,3 +97,42 @@ describe('createTenantWithSchema', () => {
     expect(arg.replyTo).toBeNull()
   })
 })
+
+describe('createTenantWithSchema — slug avec tiret et échec de provisionnement', () => {
+  function routedPool(opts: { schemaExists?: boolean } = {}) {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('FROM platform.tenants WHERE slug')) return { rows: [] }
+      if (sql.includes('INSERT INTO platform.tenants')) return { rows: [{ id: 'tenant-uuid-2' }] }
+      if (sql.includes('information_schema.schemata')) return { rows: opts.schemaExists ? [{ '?column?': 1 }] : [] }
+      return { rows: [] }
+    })
+    return { pool: { query } as never, query }
+  }
+
+  it('slug « test-solde » → schéma tenant_test_solde (le tiret est refusé dans un nom de schéma)', async () => {
+    const { pool } = routedPool()
+    const res = await createTenantWithSchema(pool, { ...baseInput, slug: 'test-solde' })
+    expect(res.slug).toBe('test-solde')
+    expect(res.schemaName).toBe('tenant_test_solde')
+    expect(provisionMock).toHaveBeenCalledWith('tenant_test_solde')
+  })
+
+  it('échec du provisionnement : tenant retiré du registre et schéma créé supprimé, erreur relancée', async () => {
+    const { pool, query } = routedPool()
+    provisionMock.mockRejectedValueOnce(new Error('boom'))
+    await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('boom')
+    const sqls = query.mock.calls.map(c => String(c[0]))
+    expect(sqls.some(s => s.includes('DROP SCHEMA IF EXISTS "tenant_acme" CASCADE'))).toBe(true)
+    expect(query.mock.calls.some(c => String(c[0]).includes('DELETE FROM platform.tenants')
+      && (c[1] as unknown[])[0] === 'tenant-uuid-2')).toBe(true)
+    expect(sendWelcomeMock).not.toHaveBeenCalled()
+  })
+
+  it('échec avec un schéma qui existait déjà : le schéma n\'est jamais supprimé', async () => {
+    const { pool, query } = routedPool({ schemaExists: true })
+    seedAbsMock.mockRejectedValueOnce(new Error('seed KO'))
+    await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('seed KO')
+    expect(query.mock.calls.some(c => String(c[0]).includes('DROP SCHEMA'))).toBe(false)
+    expect(query.mock.calls.some(c => String(c[0]).includes('DELETE FROM platform.tenants'))).toBe(true)
+  })
+})
