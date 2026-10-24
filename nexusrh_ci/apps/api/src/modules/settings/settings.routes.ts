@@ -23,6 +23,7 @@ import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/em
 import {
   effectiveTerminationRules, parseTerminationRules, terminationRulesSchema,
 } from '../../services/termination-rules.service.js'
+import { effectiveLeavePolicy, leavePolicySchema, parseLeavePolicy } from '../../services/paid-leave.service.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 
 // OWASP A03 — patterns de validation stricts
@@ -410,6 +411,68 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       auditLogSettings(schema, request.user.sub, 'settings.termination_rules_updated', res.rows[0].id,
         { rules: parsed.data.rules }, request.ip ?? null)
       return reply.send({ data: { rules: parsed.data.rules } })
+    },
+  })
+
+  // ── GET /settings/leave-policy — congés payés (pack du pays + surcharge) ──
+  fastify.get('/leave-policy', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const ctx = await loadEmployeeTenantContext(pool, schema, null)
+      const pack = ctx.legislation.legislationPack
+      let raw: unknown = null
+      try {
+        const r = await pool.query<{ leave_policy: unknown }>(
+          `SELECT leave_policy FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema])
+        raw = r.rows[0]?.leave_policy ?? null
+      } catch { /* colonne pas encore migrée */ }
+      return reply.send({
+        data: {
+          legislationPackCode: pack.code,
+          packRules: {
+            daysPerMonth: pack.leaveRules?.annualLeaveDaysPerMonth ?? null,
+            seniorityDays: pack.leaveRules?.annualLeaveSeniorityDays ?? [],
+            leaveAllowance: pack.leaveRules?.leaveAllowance ?? null,
+          },
+          tenantPolicy: raw ? parseLeavePolicy(raw) : null,
+          effective: effectiveLeavePolicy(pack.leaveRules, raw),
+        },
+      })
+    },
+  })
+
+  // ── PUT /settings/leave-policy — admin, audité. { policy: null } = règles du pays.
+  // Une convention ne peut qu'améliorer le minimum légal d'acquisition.
+  fastify.put('/leave-policy', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const parsed = z.object({ policy: leavePolicySchema.nullable() }).strict().safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Politique de congés invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const schema = request.user.schemaName
+      const policy = parsed.data.policy
+      const ctx = await loadEmployeeTenantContext(pool, schema, null)
+      const legal = ctx.legislation.legislationPack.leaveRules?.annualLeaveDaysPerMonth
+      if (policy?.daysPerMonth != null && legal != null && policy.daysPerMonth < legal) {
+        return reply.status(422).send({
+          error: `Acquisition inférieure au minimum légal du pays (${legal} j/mois) : seule une règle plus favorable au salarié est permise.`,
+        })
+      }
+      const res = await pool.query<{ id: string }>(
+        `UPDATE platform.tenants SET leave_policy = $1::jsonb, updated_at = now()
+         WHERE schema_name = $2 RETURNING id`,
+        [policy ? JSON.stringify(policy) : null, schema],
+      )
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      auditLogSettings(schema, request.user.sub, 'settings.leave_policy_updated', res.rows[0].id,
+        { policy }, request.ip ?? null)
+      return reply.send({ data: { policy } })
     },
   })
 

@@ -17,6 +17,7 @@ import MobileMoneyTab from './MobileMoneyTab'
 import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
+import LeavePolicyCard from './LeavePolicyCard'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface TenantSettings {
@@ -316,6 +317,9 @@ function LegislationTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
       {/* Rupture du contrat : préavis + indemnité (pays ou convention du tenant) */}
       <TerminationRulesCard qc={qc} />
+
+      {/* Congés payés : acquisition, contrôle du solde, allocation */}
+      <LeavePolicyCard qc={qc} />
     </div>
   )
 }

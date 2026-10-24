@@ -75,7 +75,9 @@ export default function MesAbsences() {
 
   const createMut = useMutation({
     mutationFn: (data: FormData) => api.post('/absences', data),
-    onSuccess: () => {
+    onSuccess: (res: { data?: { warning?: string } }) => {
+      // Solde de congés payés dépassé en mode « avertissement » : demande créée, signalée
+      if (res?.data?.warning) setFeedback({ type: 'error', message: res.data.warning })
       setShowForm(false)
       queryClient.invalidateQueries({ queryKey: ['my-absences'] })
       queryClient.invalidateQueries({ queryKey: ['my-balances'] })

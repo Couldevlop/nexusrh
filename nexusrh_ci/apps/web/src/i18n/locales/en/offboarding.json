@@ -64,7 +64,15 @@
     "noticeMonthsValue_other": "{{count}} months",
     "severanceBaseAverage_one": "Severance based on average total monthly pay ({{amount}}, {{count}} payslip).",
     "severanceBaseAverage_other": "Severance based on average total monthly pay ({{amount}}, last {{count}} payslips).",
-    "severanceBaseSalary": "Severance based on base salary ({{amount}})."
+    "severanceBaseSalary": "Severance based on base salary ({{amount}}).",
+    "congesAuto": "auto (balance)",
+    "congesFromBalance": "Leave: {{days}} working days taken from the balance at the leaving date ({{calendarDays}} calendar days)",
+    "congesFromInput": "Leave: {{days}} working days entered ({{calendarDays}} calendar days)",
+    "allowanceMethod": {
+      "average_calendar": "12-month average salary ÷ 30 × calendar days",
+      "one_twelfth": "1/12 of the period's pay",
+      "maintained_salary": "maintained salary"
+    }
   },
   "actions": {
     "progress": "Start",

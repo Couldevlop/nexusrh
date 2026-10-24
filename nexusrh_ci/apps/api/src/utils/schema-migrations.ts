@@ -899,6 +899,8 @@ export async function ensurePlatformSchema(): Promise<void> {
     // ── Règles de rupture propres au tenant (convention collective) ──────────
     // NULL = règles du pack législatif du pays de l'employé. Cf. offboarding.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS termination_rules jsonb`,
+    // Politique de congés payés du tenant (paid-leave.service) : null = règles du pays
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS leave_policy jsonb`,
 
     // ── IA : autorisation d'usage de la clé plateforme par tenant ─────────────
     // true (défaut) = le tenant sans sa propre clé bénéficie du repli sur la clé

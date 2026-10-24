@@ -14,6 +14,9 @@ interface Settlement {
   currency?: string; warnings?: string[]; rulesSource?: 'tenant' | 'pack' | 'none'
   noticeMonths?: number; noticeCategory?: string | null
   severanceBase?: number; severanceBaseMonths?: number
+  // Jours de congés retenus : saisis ou repris du solde acquis à la date de départ
+  congesDays?: number; congesDaysSource?: 'input' | 'balance' | 'none'
+  congesAllowance?: { method: string; calendarDays: number }
 }
 
 type PayBasis = 'monthly' | 'non_monthly'
@@ -50,7 +53,8 @@ export default function OffboardingPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ employeeId: '', departureType: 'demission', departureDate: '', reason: '', noticeServed: true })
-  const [congesDays, setCongesDays] = useState<Record<string, number>>({})
+  // Vide = solde de congés payés acquis à la date de départ
+  const [congesDays, setCongesDays] = useState<Record<string, string>>({})
   // Préavis du contrat / de la convention (mois) — vide = règles applicables.
   const [noticeOverride, setNoticeOverride] = useState<Record<string, string>>({})
   // Mode de paie : le préavis des payés à l'heure / au jour est plus court la 1re année.
@@ -100,8 +104,9 @@ export default function OffboardingPage() {
   const settlementMut = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
       const notice = noticeOverride[id]?.trim()
+      const conges = congesDays[id]?.trim()
       await api.post(`/offboarding/${id}/settlement`, {
-        congesDaysOutstanding: congesDays[id] ?? 0,
+        ...(conges ? { congesDaysOutstanding: Number(conges.replace(',', '.')) } : {}),
         payBasis: payBasis[id] ?? 'monthly',
         ...(notice ? { noticeMonths: Number(notice.replace(',', '.')) } : {}),
       })
@@ -238,8 +243,9 @@ export default function OffboardingPage() {
                   </label>
                   <label className="text-sm">
                     <span className="mb-1 block text-muted-foreground">{t('settlement.congesDays')}</span>
-                    <input type="number" min={0} value={congesDays[c.id] ?? 0}
-                      onChange={(e) => setCongesDays((m) => ({ ...m, [c.id]: Number(e.target.value) }))}
+                    <input type="number" min={0} step="0.1" value={congesDays[c.id] ?? ''}
+                      placeholder={t('settlement.congesAuto')}
+                      onChange={(e) => setCongesDays((m) => ({ ...m, [c.id]: e.target.value }))}
                       className="w-24 rounded-md border border-border bg-background px-2 py-1" />
                   </label>
                   <label className="text-sm">
@@ -273,6 +279,13 @@ export default function OffboardingPage() {
                         {c.settlement.severanceBaseMonths
                           ? t('settlement.severanceBaseAverage', { amount: formatMoney(c.settlement.severanceBase, c.settlement.currency), count: c.settlement.severanceBaseMonths })
                           : t('settlement.severanceBaseSalary', { amount: formatMoney(c.settlement.severanceBase, c.settlement.currency) })}
+                      </p>
+                    )}
+                    {c.settlement.congesDays !== undefined && c.settlement.congesDays > 0 && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {t(c.settlement.congesDaysSource === 'balance' ? 'settlement.congesFromBalance' : 'settlement.congesFromInput',
+                          { days: c.settlement.congesDays, calendarDays: c.settlement.congesAllowance?.calendarDays ?? '' })}
+                        {c.settlement.congesAllowance ? ` — ${t(`settlement.allowanceMethod.${c.settlement.congesAllowance.method}`)}` : ''}
                       </p>
                     )}
                     {(c.settlement.warnings ?? []).map((w) => (

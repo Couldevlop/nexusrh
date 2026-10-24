@@ -154,6 +154,14 @@ export interface NoticeCategoryRule {
   tiers: ReadonlyArray<NoticeTier>
 }
 
+/**
+ * Allocation de congés : moyenne des 12 mois ÷ 30 × jours calendaires
+ * (`average_calendar`), 1/12 de la rémunération de la période (`one_twelfth`),
+ * ou le plus favorable des deux (`most_favourable`). Jamais moins que le
+ * salaire maintenu.
+ */
+export type LeaveAllowanceMethod = 'most_favourable' | 'average_calendar' | 'one_twelfth'
+
 export interface LeaveRules {
   /** Congé maternité : nombre de semaines de droit légal */
   maternityWeeks: number
@@ -186,6 +194,14 @@ export interface LeaveRules {
 
   /** Congés payés : nombre de jours ouvrables acquis par mois travaillé */
   annualLeaveDaysPerMonth: number
+  /** Jours ouvrables supplémentaires par an selon l'ancienneté (palier le plus haut atteint) */
+  annualLeaveSeniorityDays?: Array<{ minYears: number; days: number }>
+  /** Calcul de l'allocation / indemnité compensatrice de congés */
+  leaveAllowance?: {
+    /** Jours calendaires par jour ouvrable de congé (CI : 1,25) */
+    calendarDaysPerWorkingDay: number
+    method: LeaveAllowanceMethod
+  }
 
   /** Congé deuil familial : jours ouvrables (parent, conjoint, enfant) */
   bereavementDays?: number
@@ -255,7 +271,15 @@ export const CIV_2024: LegislationPack = {
       { minYears: 1, rate: 0.75 },
       { minYears: 5, rate: 1.0 },
     ],
-    annualLeaveDaysPerMonth: 2.5,         // Art. 25 CT CI
+    // CT art. 25.1 / CCI art. 69 : 2,2 jours ouvrables par mois de service
+    annualLeaveDaysPerMonth: 2.2,
+    // CT art. 25.2 (ordonnance 2021-902)
+    annualLeaveSeniorityDays: [
+      { minYears: 5, days: 1 }, { minYears: 10, days: 2 }, { minYears: 15, days: 3 },
+      { minYears: 20, days: 5 }, { minYears: 25, days: 7 }, { minYears: 30, days: 8 },
+    ],
+    // CCI art. 71 (moyenne ÷ 30 × jours calendaires) / décret 98-39 art. 12 (1/12)
+    leaveAllowance: { calendarDaysPerWorkingDay: 1.25, method: 'most_favourable' },
     bereavementDays: 3,
     workingDaysPerWeek: 6,
     overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },

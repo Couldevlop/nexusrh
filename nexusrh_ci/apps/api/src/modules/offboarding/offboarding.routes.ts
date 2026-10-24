@@ -26,6 +26,9 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { categoryLevel, effectiveTerminationRules } from '../../services/termination-rules.service.js'
+import {
+  averageRemuneration, loadLeavePolicy, paidLeaveAllowance, refreshPaidLeaveBalance,
+} from '../../services/paid-leave.service.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -253,11 +256,35 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const seniorityMonths = row.hire_date
         ? seniorityMonthsBetween(row.hire_date, row.departure_date) : 0
       const average = await averageMonthlyGross(schema, row.employee_id, row.departure_date)
+      const baseSalary = parseInt(row.base_salary, 10) || 0
+
+      // Congés non pris : saisis, sinon solde acquis à la date de départ
+      // (simulation, rien n'est écrit) ; indemnité selon la méthode légale.
+      const leavePolicy = await loadLeavePolicy(rawPool, schema, pack)
+      let congesDays = parsed.data.congesDaysOutstanding
+      let congesDaysSource: 'input' | 'balance' | 'none' = 'input'
+      if (congesDays === undefined) {
+        const bal = await refreshPaidLeaveBalance(rawPool, schema, row.employee_id, leavePolicy, row.departure_date, { persist: false })
+        congesDays = Math.max(0, bal?.remaining ?? 0)
+        congesDaysSource = bal ? 'balance' : 'none'
+      }
+      const dep = new Date(row.departure_date)
+      const depMonth = `${dep.getFullYear()}-${String(dep.getMonth() + 1).padStart(2, '0')}`
+      const remuneration = await averageRemuneration(rawPool, schema, row.employee_id, depMonth)
+      const congesAllowance = paidLeaveAllowance({
+        days: congesDays,
+        averageMonthlyExclFrais: remuneration?.exclFrais ?? baseSalary,
+        averageMonthlyTotal: remuneration?.total ?? baseSalary,
+        currentMonthly: baseSalary,
+        policy: leavePolicy,
+      })
+
       const computed = computeSettlement({
-        monthlyGross: parseInt(row.base_salary, 10) || 0,
+        monthlyGross: baseSalary,
         seniorityMonths,
         departureType: row.departure_type,
-        congesDaysOutstanding: parsed.data.congesDaysOutstanding ?? 0,
+        congesDaysOutstanding: congesDays,
+        indemniteCongesAmount: congesAllowance.amount,
         noticeServed: row.notice_served,
         rules,
         noticeMonthsOverride: parsed.data.noticeMonths,
@@ -270,8 +297,18 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!average && computed.indemniteLicenciement > 0) {
         computed.warnings.push("Aucun bulletin sur les 12 derniers mois : l'indemnité est calculée sur le salaire de base au lieu du salaire global mensuel moyen.")
       }
+      if (congesDaysSource === 'none') {
+        computed.warnings.push('Solde de congés payés introuvable : saisissez les jours non pris.')
+      }
       const settlement = {
         ...computed,
+        congesDays,
+        congesDaysSource,
+        congesAllowance: {
+          method: congesAllowance.method,
+          calendarDays: congesAllowance.calendarDays,
+          candidates: congesAllowance.candidates,
+        },
         severanceBaseMonths: average?.months ?? 0,
         currency: pack.currency,
         legislationPackCode: pack.code,

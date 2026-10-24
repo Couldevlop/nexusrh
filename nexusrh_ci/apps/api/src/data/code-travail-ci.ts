@@ -238,15 +238,15 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   // ─── CONGÉS ET REPOS ──────────────────────────────────────────────────────────
   { ...P, source: CT, article_id: 'art-25-8', article_numero: 'Art. 25.8', livre: LI,
     titre: 'Titre IV — Congés et repos', chapitre: 'Chap. I — Congés payés',
-    titre_article: 'Droit aux congés payés — 2,5 jours par mois',
-    texte: 'Tout salarié acquiert droit à un congé payé à raison de 2,5 jours ouvrables par mois de travail effectif. La durée totale est de 30 jours ouvrables par an. Bonus d\'ancienneté : 1 jour supplémentaire après 5 ans, 2 jours après 10 ans, 3 jours après 15 ans d\'ancienneté.',
-    keywords: ['congés payés', 'CP', '2,5 jours', 'ouvrables', 'ancienneté'], payroll_codes: ['1600'] },
+    titre_article: 'Droit aux congés payés — 2,2 jours par mois',
+    texte: 'Sauf disposition plus favorable, le travailleur acquiert droit au congé payé à raison de 2,2 jours ouvrables par mois de service effectif, soit 26,4 jours ouvrables par an (art. 25.1). Majoration d\'ancienneté (art. 25.2, ordonnance 2021-902) : 1 jour après 5 ans, 2 après 10 ans, 3 après 15 ans, 5 après 20 ans, 7 après 25 ans, 8 après 30 ans ; 2 jours par enfant à charge de moins de 21 ans. Le droit de jouissance s\'ouvre après un an de service effectif (art. 25.4).',
+    keywords: ['congés payés', 'CP', '2,2 jours', 'ouvrables', 'ancienneté'], payroll_codes: ['1600'] },
 
   { ...P, source: CT, article_id: 'art-25-9', article_numero: 'Art. 25.9', livre: LI,
     titre: 'Titre IV — Congés et repos', chapitre: 'Chap. I — Congés payés',
     titre_article: 'Indemnité de congés payés — Calcul',
-    texte: 'L\'indemnité de congés payés est égale au dixième de la rémunération totale perçue au cours de l\'année de référence, ou au salaire qui aurait été perçu pendant la période de congé si ce mode de calcul est plus favorable.',
-    keywords: ['indemnité congés', 'calcul', '1/10e', 'règle favorable'], payroll_codes: ['1600'] },
+    texte: 'L\'allocation de congé est au moins égale aux salaires et éléments de rémunération (art. 25.7). Décret 98-39 art. 12 : 1/12 de la rémunération totale perçue pendant la période de référence. CCI art. 71 : salaire mensuel moyen des 12 derniers mois (hors remboursements de frais : transport, panier) ÷ 30 × nombre de jours calendaires de congé. À la rupture, une indemnité compensatrice calculée sur les droits acquis est due (art. 25.8).',
+    keywords: ['indemnité congés', 'allocation de congé', 'calcul', '1/12e', 'salaire moyen', 'jours calendaires'], payroll_codes: ['1600'] },
 
   { ...P, source: CT, article_id: 'art-25-10', article_numero: 'Art. 25.10', livre: LI,
     titre: 'Titre IV — Congés et repos', chapitre: 'Chap. I — Congés payés',
