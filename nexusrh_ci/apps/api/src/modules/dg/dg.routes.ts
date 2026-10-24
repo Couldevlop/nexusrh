@@ -155,12 +155,12 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
         }, 0),
         safe(async () => {
           const r = await pool.query<{ name: string | null; count: string; days: string | null }>(
-            `SELECT at.name, count(*) AS count, COALESCE(sum(a.days), 0) AS days
+            `SELECT at.label AS name, count(*) AS count, COALESCE(sum(a.days), 0) AS days
                FROM "${s}".absences a
                LEFT JOIN "${s}".absence_types at ON at.id = a.absence_type_id
               WHERE a.status = 'approved'
                 AND a.start_date >= date_trunc('year', CURRENT_DATE)::date
-              GROUP BY at.name ORDER BY count DESC`)
+              GROUP BY at.label ORDER BY count DESC`)
           return r.rows.map(x => ({
             type: x.name ?? 'Autre', count: parseInt(x.count), days: Number(x.days ?? 0),
           }))
