@@ -379,9 +379,10 @@ describe('POST /payroll/periods/:month/close — branches restantes', () => {
         return { rows: [] }
       }
       if (q.includes('.pay_slips')) {
-        // INSERT moderne avec legal_entity_id (dernier $20) → rejette
-        if (q.includes('$20')) throw new Error('column legal_entity_id does not exist')
-        // INSERT legacy (fallback)
+        // INSERT moderne avec legal_entity_id ($20) + devise ($21) → rejette
+        if (q.includes('$21')) throw new Error('column legal_entity_id does not exist')
+        // INSERT legacy (fallback) : la devise du pack reste écrite ($20)
+        expect(q).toContain('currency')
         return { rows: [{ id: 'slip-legacy-1' }] }
       }
       return { rows: [] }

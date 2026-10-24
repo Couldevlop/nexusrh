@@ -9,12 +9,14 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, ShieldOff, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic, ListPlus,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
 import MobileMoneyTab from './MobileMoneyTab'
 import PayslipBuilder from './PayslipBuilder'
+import EmployeeFieldsTab from './EmployeeFieldsTab'
+import TerminationRulesCard from './TerminationRulesCard'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface TenantSettings {
@@ -73,6 +75,7 @@ const TABS = [
   { id: 'legislation',    labelKey: 'tabs.legislation',   icon: Globe },
   { id: 'users',          labelKey: 'tabs.users',         icon: Users },
   { id: 'departments',    labelKey: 'tabs.departments',   icon: Building2 },
+  { id: 'employee-fields', labelKey: 'tabs.employeeFields', icon: ListPlus },
   { id: 'absence-types',  labelKey: 'tabs.absenceTypes',  icon: FileText },
   { id: 'payroll-rules',  labelKey: 'tabs.payrollRules',  icon: Banknote },
   { id: 'payslip-template', labelKey: 'tabs.payslipTemplate', icon: FileText },
@@ -142,6 +145,7 @@ export default function SettingsPage() {
       {tab === 'legislation'    && <LegislationTab qc={qc} />}
       {tab === 'users'          && <UsersTab qc={qc} />}
       {tab === 'departments'    && <DepartmentsTab qc={qc} />}
+      {tab === 'employee-fields' && <EmployeeFieldsTab qc={qc} />}
       {tab === 'absence-types'  && <AbsenceTypesTab qc={qc} />}
       {tab === 'payroll-rules'  && <PayrollRulesTab qc={qc} />}
       {tab === 'payslip-template' && <PayslipBuilder />}
@@ -309,6 +313,9 @@ function LegislationTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           {row(t('legislation.fields.workingDays'), t('legislation.daysPerWeek', { n: pack.leaveRules.workingDaysPerWeek }))}
         </div>
       )}
+
+      {/* Rupture du contrat : préavis + indemnité (pays ou convention du tenant) */}
+      <TerminationRulesCard qc={qc} />
     </div>
   )
 }

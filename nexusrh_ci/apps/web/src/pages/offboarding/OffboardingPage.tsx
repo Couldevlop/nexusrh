@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { DoorOpen, Plus, Calculator, Trash2 } from 'lucide-react'
-import { api, formatFCFA } from '@/lib/api'
+import { DoorOpen, Plus, Calculator, Trash2, AlertCircle } from 'lucide-react'
+import { api, formatMoney } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface EmployeeRow { id: string; first_name: string; last_name: string }
 interface ChecklistItem { key: string; label: string; done: boolean }
 interface SettlementLine { key: string; label: string; amount: number }
-interface Settlement { total: number; lines: SettlementLine[] }
+interface Settlement {
+  total: number; lines: SettlementLine[]
+  // Règles du pays de l'employé ou convention du tenant (anciens soldes : absent)
+  currency?: string; warnings?: string[]; rulesSource?: 'tenant' | 'pack' | 'none'
+}
 interface OffboardingRow {
   id: string
   employee_id: string
@@ -37,6 +41,8 @@ export default function OffboardingPage() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ employeeId: '', departureType: 'demission', departureDate: '', reason: '', noticeServed: true })
   const [congesDays, setCongesDays] = useState<Record<string, number>>({})
+  // Préavis du contrat / de la convention (mois) — vide = règles applicables.
+  const [noticeOverride, setNoticeOverride] = useState<Record<string, string>>({})
 
   const listQ = useQuery({
     queryKey: ['offboarding'],
@@ -81,7 +87,11 @@ export default function OffboardingPage() {
 
   const settlementMut = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
-      await api.post(`/offboarding/${id}/settlement`, { congesDaysOutstanding: congesDays[id] ?? 0 })
+      const notice = noticeOverride[id]?.trim()
+      await api.post(`/offboarding/${id}/settlement`, {
+        congesDaysOutstanding: congesDays[id] ?? 0,
+        ...(notice ? { noticeMonths: Number(notice.replace(',', '.')) } : {}),
+      })
     },
     onSuccess: invalidate,
   })
@@ -210,6 +220,13 @@ export default function OffboardingPage() {
                       onChange={(e) => setCongesDays((m) => ({ ...m, [c.id]: Number(e.target.value) }))}
                       className="w-24 rounded-md border border-border bg-background px-2 py-1" />
                   </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">{t('settlement.noticeMonths')}</span>
+                    <input type="number" min={0} max={24} step="any" value={noticeOverride[c.id] ?? ''}
+                      placeholder={t('settlement.noticeAuto')}
+                      onChange={(e) => setNoticeOverride((m) => ({ ...m, [c.id]: e.target.value }))}
+                      className="w-24 rounded-md border border-border bg-background px-2 py-1" />
+                  </label>
                   <button type="button" disabled={settlementMut.isPending} onClick={() => settlementMut.mutate({ id: c.id })}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
                     <Calculator className="h-4 w-4" /> {settlementMut.isPending ? t('settlement.computing') : t('settlement.compute')}
@@ -218,11 +235,16 @@ export default function OffboardingPage() {
                 {c.settlement && (
                   <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2 text-sm">
                     {c.settlement.lines.filter((l) => l.amount > 0).map((l) => (
-                      <div key={l.key} className="flex justify-between"><span className="text-muted-foreground">{l.label}</span><span>{formatFCFA(l.amount)}</span></div>
+                      <div key={l.key} className="flex justify-between"><span className="text-muted-foreground">{l.label}</span><span>{formatMoney(l.amount, c.settlement?.currency)}</span></div>
                     ))}
                     <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
-                      <span>{t('settlement.total')}</span><span>{formatFCFA(c.settlement.total)}</span>
+                      <span>{t('settlement.total')}</span><span>{formatMoney(c.settlement.total, c.settlement.currency)}</span>
                     </div>
+                    {(c.settlement.warnings ?? []).map((w) => (
+                      <p key={w} className="mt-1 flex items-start gap-1 text-[11px] text-amber-700">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />{w}
+                      </p>
+                    ))}
                     <p className="mt-1 text-[11px] text-muted-foreground">{t('settlement.estimateNote')}</p>
                   </div>
                 )}

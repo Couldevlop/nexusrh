@@ -82,6 +82,7 @@ describe('POST /employees — heures, catégorie, RIB', () => {
 
   it('capture heures hebdo + catégorie + RIB (IBAN chiffré, jamais en clair en SQL)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CIV, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: EMP }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] })            // audit
     const res = await app.inject({ method: 'POST', url: '/employees',
@@ -106,6 +107,7 @@ describe('POST /employees — heures, catégorie, RIB', () => {
 
   it('défauts : 40 h hebdo, pas de catégorie ni RIB', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CIV, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: EMP }] })
       .mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({ method: 'POST', url: '/employees',

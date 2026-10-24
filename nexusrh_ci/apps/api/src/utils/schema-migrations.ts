@@ -887,6 +887,16 @@ export async function ensurePlatformSchema(): Promise<void> {
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,
 
+    // ── Champs personnalisés du dossier employé (admin tenant) ───────────────
+    // Définitions [{ key, label, type, required, options, sensitive }] ; les
+    // valeurs vivent dans <tenant>.employees.custom_fields. Cf.
+    // services/employee-custom-fields.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_custom_fields jsonb NOT NULL DEFAULT '[]'`,
+
+    // ── Règles de rupture propres au tenant (convention collective) ──────────
+    // NULL = règles du pack législatif du pays de l'employé. Cf. offboarding.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS termination_rules jsonb`,
+
     // ── IA : autorisation d'usage de la clé plateforme par tenant ─────────────
     // true (défaut) = le tenant sans sa propre clé bénéficie du repli sur la clé
     // générale du super_admin. false = ce tenant n'a l'IA que s'il configure sa

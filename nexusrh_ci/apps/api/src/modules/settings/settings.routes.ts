@@ -19,6 +19,11 @@ import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
+import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
+import {
+  effectiveTerminationRules, parseTerminationRules, terminationRulesSchema,
+} from '../../services/termination-rules.service.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -310,6 +315,101 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
+    },
+  })
+
+  // ── GET /settings/employee-fields — champs personnalisés du dossier ───────
+  // Lecture pour tout membre du tenant : le formulaire et la fiche employé en
+  // ont besoin. Ce ne sont que des libellés ; les VALEURS sensibles restent
+  // filtrées par /employees (A01).
+  fastify.get('/employee-fields', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'readonly', 'employee')],
+    handler: async (request, reply) => {
+      const res = await pool.query<{ employee_custom_fields: unknown }>(
+        `SELECT employee_custom_fields FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+        [request.user.schemaName],
+      )
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      return reply.send({ data: parseFieldDefinitions(res.rows[0].employee_custom_fields) })
+    },
+  })
+
+  // ── PUT /settings/employee-fields — définit les champs (admin) ────────────
+  // OWASP A03 : définitions validées (clés, types, options) ; A09 : audité.
+  // Retirer un champ ne supprime pas les valeurs déjà saisies (récupérables
+  // en le recréant avec la même clé).
+  fastify.put('/employee-fields', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const parsed = z.object({ fields: fieldDefinitionsSchema }).strict().safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Définitions de champs invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const schema = request.user.schemaName
+      const before = await pool.query<{ employee_custom_fields: unknown }>(
+        `SELECT employee_custom_fields FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+      )
+      if (!before.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      await pool.query(
+        `UPDATE platform.tenants SET employee_custom_fields = $1::jsonb, updated_at = now() WHERE schema_name = $2`,
+        [JSON.stringify(parsed.data.fields), schema],
+      )
+      auditLogSettings(schema, request.user.sub, 'settings.employee_fields_updated', request.user.tenantId ?? null, {
+        before: parseFieldDefinitions(before.rows[0].employee_custom_fields).map((f) => f.key),
+        after: parsed.data.fields.map((f) => f.key),
+      }, request.ip ?? null)
+      return reply.send({ data: parsed.data.fields })
+    },
+  })
+
+  // ── GET /settings/termination-rules — préavis + indemnité de licenciement ──
+  // Règles du pays du tenant (pack) + surcharge éventuelle (convention collective).
+  fastify.get('/termination-rules', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const ctx = await loadEmployeeTenantContext(pool, request.user.schemaName, null)
+      const pack = ctx.legislation.legislationPack
+      const effective = effectiveTerminationRules(ctx.tenantTerminationRules, pack)
+      return reply.send({
+        data: {
+          legislationPackCode: pack.code,
+          packRules: pack.terminationRules ?? null,
+          tenantRules: parseTerminationRules(ctx.tenantTerminationRules),
+          effectiveRules: effective.rules,
+          source: effective.source,
+        },
+      })
+    },
+  })
+
+  // ── PUT /settings/termination-rules — convention du tenant (admin) ────────
+  // { rules: null } = retour aux règles du pays. A03 (paliers validés) / A09 :
+  // impact direct sur les soldes de tout compte, donc audité.
+  fastify.put('/termination-rules', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const parsed = z.object({ rules: terminationRulesSchema.nullable() }).strict().safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Règles de rupture invalides',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const schema = request.user.schemaName
+      const res = await pool.query<{ id: string }>(
+        `UPDATE platform.tenants SET termination_rules = $1::jsonb, updated_at = now()
+         WHERE schema_name = $2 RETURNING id`,
+        [parsed.data.rules ? JSON.stringify(parsed.data.rules) : null, schema],
+      )
+      if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+      auditLogSettings(schema, request.user.sub, 'settings.termination_rules_updated', res.rows[0].id,
+        { rules: parsed.data.rules }, request.ip ?? null)
+      return reply.send({ data: { rules: parsed.data.rules } })
     },
   })
 

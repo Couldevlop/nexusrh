@@ -51,7 +51,9 @@
     "preavis": "Indemnité compensatrice de préavis",
     "licenciement": "Indemnité de licenciement",
     "total": "Total solde de tout compte",
-    "estimateNote": "Estimatif RH (hors fiscalité, calculée par le moteur de paie)."
+    "estimateNote": "Estimatif RH (hors fiscalité, calculée par le moteur de paie).",
+    "noticeMonths": "Préavis (mois)",
+    "noticeAuto": "auto"
   },
   "actions": {
     "progress": "Démarrer",

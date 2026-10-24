@@ -80,6 +80,7 @@ beforeEach(() => {
 
 describe('Cycle de vie collaborateur — recrutement → sortie', () => {
   it('1. EMBAUCHE : création employé → 201 + parcours d\'intégration auto-généré', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // contexte tenant (pack CIV, aucun champ perso)
     queryMock.mockResolvedValueOnce({ rows: [{ id: EMP, first_name: 'Aya', last_name: 'Koné' }] }) // INSERT employees
     const res = await app.inject({
       method: 'POST', url: '/employees', headers: auth(token(app)),

@@ -51,7 +51,9 @@
     "preavis": "Notice compensation",
     "licenciement": "Severance pay",
     "total": "Total final settlement",
-    "estimateNote": "HR estimate (excluding tax, computed by the payroll engine)."
+    "estimateNote": "HR estimate (excluding tax, computed by the payroll engine).",
+    "noticeMonths": "Notice (months)",
+    "noticeAuto": "auto"
   },
   "actions": {
     "progress": "Start",

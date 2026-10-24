@@ -6,6 +6,9 @@ import { api, formatFCFA, formatDate } from '@/lib/api'
 import { ArrowLeft, Camera, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
+import {
+  formatCustomFieldValue, useEmployeeFieldDefinitions, type CustomFieldValues,
+} from '@/components/employees/CustomFields'
 
 interface EmployeeDetails {
   id: string; first_name: string; last_name: string; email: string
@@ -21,6 +24,9 @@ interface EmployeeDetails {
   seniority_label?: string; seniority_months?: number
   // EMP-015 — photo de profil
   profile_photo_url?: string | null
+  // Champs personnalisés du tenant (les sensibles sont retirés par l'API
+  // pour les lecteurs sans accès RH)
+  custom_fields?: CustomFieldValues | null
 }
 
 export default function EmployeeDetail() {
@@ -39,6 +45,7 @@ export default function EmployeeDetail() {
     queryKey: ['employee', id],
     queryFn: () => api.get(`/employees/${id}`).then(r => r.data),
   })
+  const fieldDefs = useEmployeeFieldDefinitions()
 
   // A08-2 — la photo est désormais servie par un endpoint AUTHENTIFIÉ
   // (GET /employees/:id/photo) : une balise <img> ne portant pas le header
@@ -215,6 +222,21 @@ export default function EmployeeDetail() {
           </div>
         </div>
       </div>
+
+      {/* Champs personnalisés : seuls ceux renvoyés par l'API sont visibles */}
+      {fieldDefs.some(d => emp.custom_fields?.[d.key] !== undefined) && (
+        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <h2 className="font-semibold border-b border-border pb-2">{t('customFields.section')}</h2>
+          {fieldDefs.filter(d => emp.custom_fields?.[d.key] !== undefined).map(d => (
+            <div key={d.key} className="flex justify-between text-sm">
+              <span className="text-muted-foreground">{d.label}</span>
+              <span className="font-medium">
+                {formatCustomFieldValue(d, emp.custom_fields?.[d.key], { yes: t('customFields.yes'), no: t('customFields.no') })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-4">
         <InterviewFocusPanel
