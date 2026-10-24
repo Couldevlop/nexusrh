@@ -1643,3 +1643,55 @@ describe('GET /attendance/dashboard — KPIs agrégés', () => {
     expect(kpiCall?.[1]).toContain(MANAGER_EMPLOYEE_ID)
   })
 })
+
+describe('Recalcul des jours depuis l\'interface (saisie manuelle, bouton « Recalculer »)', () => {
+  const DAY = '2026-07-15'
+  function routeQueries(): void {
+    queryMock.mockImplementation((sql: string) => {
+      const s = String(sql)
+      if (s.includes('.employees') && s.includes('is_active = true') && s.includes('LIMIT 1000')) {
+        return Promise.resolve({ rows: [{ id: EMPLOYEE_ID }] })
+      }
+      if (s.includes('.employees') && s.includes('department_id')) return Promise.resolve({ rows: [{ department_id: null }] })
+      if (s.includes('SELECT id FROM') && s.includes('.employees')) return Promise.resolve({ rows: [{ id: EMPLOYEE_ID }] })
+      if (s.includes('INSERT INTO') && s.includes('attendance_punches')) return Promise.resolve({ rows: [{ id: 'p-1' }] })
+      return Promise.resolve({ rows: [] })
+    })
+  }
+  const upserts = () => queryMock.mock.calls.filter((c) => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('attendance_days'))
+
+  it('POST /recompute sans employeeIds → tous les salariés actifs du tenant', async () => {
+    routeQueries()
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/recompute', headers: adminAuth(app),
+      payload: { from: DAY, to: DAY },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.recomputed).toBe(1)
+    expect((upserts()[0]?.[1] as unknown[])[0]).toBe(EMPLOYEE_ID)
+  })
+
+  it('pointage manuel sur un jour passé → la journée de cet employé est recalculée', async () => {
+    routeQueries()
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches', headers: adminAuth(app),
+      payload: { employeeId: EMPLOYEE_ID, direction: 'in', punchedAt: `${DAY}T08:45:00.000Z` },
+    })
+    expect(res.statusCode).toBe(201)
+    const params = upserts()[0]?.[1] as unknown[]
+    expect(params[0]).toBe(EMPLOYEE_ID)
+    expect(params[1]).toBe(DAY)
+  })
+
+  it('échec du recalcul après un pointage manuel → le pointage reste créé (201)', async () => {
+    routeQueries()
+    const base = queryMock.getMockImplementation()!
+    queryMock.mockImplementation((sql: string, p?: unknown[]) =>
+      String(sql).includes('attendance_days') ? Promise.reject(new Error('db')) : base(sql, p))
+    const res = await app.inject({
+      method: 'POST', url: '/attendance/punches', headers: adminAuth(app),
+      payload: { employeeId: EMPLOYEE_ID, direction: 'in', punchedAt: `${DAY}T08:45:00.000Z` },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+})
