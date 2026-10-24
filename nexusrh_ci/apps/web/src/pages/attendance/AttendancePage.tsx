@@ -148,11 +148,16 @@ export default function AttendancePage() {
   // Recalcul d'une période (tous les salariés actifs) : fait apparaître les
   // absences des jours sans pointage et applique les corrections passées.
   const todayIso = new Date().toISOString().slice(0, 10)
-  const [recompute, setRecompute] = useState({ from: `${todayIso.slice(0, 7)}-01`, to: todayIso })
+  // employeeId vide = tous les salariés actifs (un salarié sans aucun pointage
+  // ressort en absence injustifiée chaque jour ouvré de la période).
+  const [recompute, setRecompute] = useState({ employeeId: '', from: `${todayIso.slice(0, 7)}-01`, to: todayIso })
   const [recomputeMsg, setRecomputeMsg] = useState<{ ok: boolean; msg: string } | null>(null)
   const recomputeMut = useMutation({
     mutationFn: async () =>
-      (await api.post('/attendance/recompute', { from: recompute.from, to: recompute.to })).data.data as { recomputed: number },
+      (await api.post('/attendance/recompute', {
+        from: recompute.from, to: recompute.to,
+        ...(recompute.employeeId ? { employeeIds: [recompute.employeeId] } : {}),
+      })).data.data as { recomputed: number },
     onSuccess: (d) => {
       setRecomputeMsg({ ok: true, msg: t('days.recompute.done', { count: d.recomputed }) })
       void qc.invalidateQueries({ queryKey: ['attendance', 'days'] })
@@ -479,6 +484,15 @@ export default function AttendancePage() {
       {tab === 'days' && (
         <div>
           <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">{t('days.recompute.employee')}</label>
+              <select value={recompute.employeeId}
+                onChange={(e) => setRecompute((r) => ({ ...r, employeeId: e.target.value }))}
+                className="mt-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm">
+                <option value="">{t('days.recompute.allEmployees')}</option>
+                {(employeesQ.data ?? []).map((e) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground">{t('days.recompute.from')}</label>
               <input type="date" value={recompute.from} max={recompute.to}
