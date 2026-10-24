@@ -223,7 +223,8 @@ describe('Clôture paie — Tenant SANS filiale (mono-entité)', () => {
     const call = employeesSqlCall()
     expect(call).toBeDefined()
     expect(String(call![0])).not.toContain('legal_entity_id =')
-    expect((call![1] as unknown[]) ?? []).toHaveLength(0)
+    // Seules les bornes du mois (population actifs + sortants) sont passées
+    expect((call![1] as unknown[]) ?? []).toHaveLength(4)
   })
 
   it('refuse une période déjà clôturée (422)', async () => {
@@ -302,8 +303,8 @@ describe('Clôture paie — Tenant AVEC filiales (multi-entités)', () => {
     })
     const call = employeesSqlCall()
     expect(call).toBeDefined()
-    expect(String(call![0])).toContain('legal_entity_id = $1')
-    expect((call![1] as unknown[])[0]).toBe(LE_CI)
+    expect(String(call![0])).toContain('legal_entity_id = $5')
+    expect((call![1] as unknown[])[4]).toBe(LE_CI)
   })
 
   it('le taux AT filiale (3%) produit une part CNPS patronale > celle au taux tenant (2%)', () => {

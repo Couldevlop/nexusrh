@@ -108,6 +108,14 @@ export interface LegislationPack {
    */
   terminationRules?: TerminationRules
 
+  /**
+   * Bulletin de solde : assujettissement aux cotisations sociales (`social`)
+   * et à l'impôt sur les salaires (`tax`) de chaque indemnité du solde de tout
+   * compte. Absent = défaut du moteur (congés et préavis assujettis,
+   * indemnité de licenciement / retraite exonérée).
+   */
+  settlementTreatment?: Record<'conges' | 'preavis' | 'licenciement', { social: boolean; tax: boolean }>
+
   /** Note pour les administrateurs */
   notes?: string
 }
@@ -301,6 +309,15 @@ export const CIV_2024: LegislationPack = {
   // (art. 2 et 4) / art. 39 CCI — 1 an minimum, salaire global mensuel moyen
   // des 12 derniers mois, fractions d'année au mois inférieur.
   // Ancienneté en mois : bornes « jusqu'à N ans » incluses (6 ans = 72 mois).
+  // Bulletin de solde : l'indemnité compensatrice de congés et celle de préavis
+  // ont le caractère de salaire (assiette CNPS + ITS) ; l'indemnité de
+  // licenciement / de départ à la retraite, dans la limite légale, est
+  // exonérée d'ITS et hors assiette CNPS.
+  settlementTreatment: {
+    conges:       { social: true,  tax: true },
+    preavis:      { social: true,  tax: true },
+    licenciement: { social: false, tax: false },
+  },
   terminationRules: {
     noticeByCategory: [
       {

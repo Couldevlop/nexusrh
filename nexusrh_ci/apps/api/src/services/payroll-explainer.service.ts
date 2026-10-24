@@ -74,6 +74,22 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     legalReference: 'Code du Travail CI - Article 25 (droit aux congés payés)',
     category: 'leave',
   },
+  // ─── BULLETIN DE SOLDE (solde de tout compte) ───────────────────────────
+  '1610': {
+    formulaHuman: () => 'Indemnité compensatrice des congés acquis non pris à la date de sortie (soumise CNPS et ITS)',
+    legalReference: 'Code du Travail CI - Article 25 ; CCI art. 71',
+    category: 'leave',
+  },
+  '1620': {
+    formulaHuman: () => 'Indemnité compensatrice du préavis non effectué (soumise CNPS et ITS)',
+    legalReference: 'Convention collective interprofessionnelle CI (préavis)',
+    category: 'leave',
+  },
+  '1630': {
+    formulaHuman: () => 'Indemnité de licenciement ou de départ à la retraite, dans la limite légale (hors assiette CNPS, exonérée d’ITS)',
+    legalReference: 'Décret n° 2017-210 du 30 mars 2017 (indemnité de licenciement)',
+    category: 'leave',
+  },
 
   // ─── COTISATIONS SALARIÉ ─────────────────────────────────────────────────
   '2000': {

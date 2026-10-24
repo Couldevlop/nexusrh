@@ -20,8 +20,11 @@ import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
-import { getWorkingDays, resolveAbsenceForPayroll } from '../../services/payroll-absences.service.js'
-import { loadEffectiveAttendancePayrollSettings, resolveAttendanceForPayroll } from '../../services/attendance-payroll.service.js'
+import { getWorkingDays } from '../../services/payroll-absences.service.js'
+import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
+import {
+  loadPayrollPopulation, markSettlementPaid, resolveEmployeeMonth,
+} from '../../services/final-payslip.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 
@@ -352,18 +355,10 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const atRate = le.at_rate ? parseFloat(le.at_rate) : 0.02
 
-        // Récupère les employés de la filiale
-        const emps = await pool.query<{
-          id: string; base_salary: string; marital_status: string; children_count: number
-          hire_date: string | null
-        }>(
-          `SELECT id, base_salary, marital_status, children_count, hire_date
-           FROM "${schema}".employees
-           WHERE is_active = true AND deleted_at IS NULL AND legal_entity_id = $1`,
-          [period.legal_entity_id],
-        )
-
         const month = period.month
+        // Employés de la filiale : actifs + sortants du mois (bulletin de solde)
+        const emps = { rows: await loadPayrollPopulation(schema, month, { legalEntityId: period.legal_entity_id }) }
+
         const [yearStr, monthNumStr] = month.split('-')
         const year = parseInt(yearStr!, 10)
         const monthNum = parseInt(monthNumStr!, 10)
@@ -385,13 +380,13 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
 
           const baseSalary = parseInt(emp.base_salary)
-          const absenceCtx = await resolveAbsenceForPayroll(schema, emp.id, month, emp.hire_date)
-          const attendance = await resolveAttendanceForPayroll(
-            attendanceSettings, schema, emp.id, month, baseSalary, workingDaysMonth)
+          // Prorata entrée / sortie, absences, pointage et solde de tout compte
+          const monthInputs = await resolveEmployeeMonth(schema, emp, month, attendanceSettings)
+          const { absenceCtx, attendance } = monthInputs
 
           const result = calculatePayrollCI({
             baseSalary,
-            workedDays:       absenceCtx ? absenceCtx.workedDays : workingDaysMonth,
+            workedDays:       monthInputs.workedDays,
             workingDaysMonth,
             atRate,
             maritalStatus:    emp.marital_status ?? 'single',
@@ -399,6 +394,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             variableElements: varEls,
             absence:          absenceCtx?.info,
             attendanceDeductions: attendance?.deductions,
+            settlementEarnings: monthInputs.settlementEarnings,
             legislationPack:  pack,
           })
           totalGross += result.grossSalary
@@ -406,7 +402,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           totalCnps  += result.totalCnpsSal + result.totalCnpsPat
           totalIts   += result.its
 
-          await pool.query(`
+          const slip = await pool.query<{ id: string }>(`
             INSERT INTO "${schema}".pay_slips
               (employee_id, period_id, month, base_salary, gross_salary,
                cnps_retraite_sal, cnps_retraite_pat, cnps_pf_pat, cnps_at_pat,
@@ -415,6 +411,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
                payment_method, payment_status, legal_entity_id)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generated',now(),'mobile_money','pending',$17)
             ON CONFLICT DO NOTHING
+            RETURNING id
           `, [
             emp.id, id, month, emp.base_salary, result.grossSalary,
             result.cnpsRetraiteSal, result.cnpsRetraitePat, result.cnpsPfPat, result.cnpsAtPat,
@@ -422,6 +419,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             result.netPayable, result.employerCost, JSON.stringify(result.lines),
             period.legal_entity_id,
           ])
+          // Solde de tout compte porté sur ce bulletin : marqué payé
+          const slipId = slip?.rows?.[0]?.id
+          if (slipId && emp.offboarding_id && result.settlementTotal) {
+            await markSettlementPaid(schema, emp.offboarding_id, month, slipId)
+          }
           inserted++
         }
 

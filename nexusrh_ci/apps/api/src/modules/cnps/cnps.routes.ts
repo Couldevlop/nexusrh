@@ -930,7 +930,7 @@ ${salaries}
         LEFT JOIN "${schema}".legal_entities le ON le.id = e.legal_entity_id
         LEFT JOIN "${schema}".pay_slips ps
                ON ps.employee_id = e.id AND ps.month = ANY($1::text[])
-        WHERE e.is_active = true AND e.deleted_at IS NULL
+        WHERE ((e.is_active = true AND e.deleted_at IS NULL) OR ps.id IS NOT NULL) -- sortis dans l'année inclus
           -- Le RNS est un document CNPS Côte d'Ivoire : il ne concerne QUE les
           -- salariés relevant de la réglementation ivoirienne. La maison mère est
           -- en CI mais peut avoir des filiales à l'étranger : on inclut donc les

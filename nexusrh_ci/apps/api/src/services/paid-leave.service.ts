@@ -191,8 +191,11 @@ export function paidLeaveAllowance(input: PaidLeaveAllowanceInput): PaidLeaveAll
   return { amount: candidates[method], method, calendarDays, candidates }
 }
 
-/** Codes de ligne exclus de l'assiette CCI : remboursements de frais et l'allocation elle-même. */
-const EXCLUDED_FROM_ALLOWANCE = new Set(['1300', '1600'])
+/**
+ * Codes de ligne exclus de l'assiette CCI : remboursements de frais,
+ * l'allocation elle-même et les indemnités du bulletin de solde.
+ */
+const EXCLUDED_FROM_ALLOWANCE = new Set(['1300', '1600', '1610', '1620', '1630'])
 
 /**
  * Moyennes mensuelles des 12 derniers bulletins jusqu'au mois `month` inclus.
