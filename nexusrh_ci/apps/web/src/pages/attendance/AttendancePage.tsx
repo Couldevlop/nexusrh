@@ -145,6 +145,20 @@ export default function AttendancePage() {
     enabled: tab === 'days',
     queryFn: async () => (await api.get('/attendance/days')).data.data as DayRow[],
   })
+  // Recalcul d'une période (tous les salariés actifs) : fait apparaître les
+  // absences des jours sans pointage et applique les corrections passées.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [recompute, setRecompute] = useState({ from: `${todayIso.slice(0, 7)}-01`, to: todayIso })
+  const [recomputeMsg, setRecomputeMsg] = useState<{ ok: boolean; msg: string } | null>(null)
+  const recomputeMut = useMutation({
+    mutationFn: async () =>
+      (await api.post('/attendance/recompute', { from: recompute.from, to: recompute.to })).data.data as { recomputed: number },
+    onSuccess: (d) => {
+      setRecomputeMsg({ ok: true, msg: t('days.recompute.done', { count: d.recomputed }) })
+      void qc.invalidateQueries({ queryKey: ['attendance', 'days'] })
+    },
+    onError: (err) => setRecomputeMsg({ ok: false, msg: apiErrorMessage(err, t('days.recompute.error')) }),
+  })
 
   // ── Avertissements ─────────────────────────────────────────────────────
   const warningsQ = useQuery({
@@ -464,6 +478,29 @@ export default function AttendancePage() {
       {/* ── Retards & absences ── */}
       {tab === 'days' && (
         <div>
+          <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">{t('days.recompute.from')}</label>
+              <input type="date" value={recompute.from} max={recompute.to}
+                onChange={(e) => setRecompute((r) => ({ ...r, from: e.target.value }))}
+                className="mt-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">{t('days.recompute.to')}</label>
+              <input type="date" value={recompute.to} min={recompute.from}
+                onChange={(e) => setRecompute((r) => ({ ...r, to: e.target.value }))}
+                className="mt-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm" />
+            </div>
+            <button type="button" onClick={() => { setRecomputeMsg(null); recomputeMut.mutate() }}
+              disabled={recomputeMut.isPending || !recompute.from || !recompute.to || recompute.from > recompute.to}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {recomputeMut.isPending ? t('days.recompute.running') : t('days.recompute.button')}
+            </button>
+            <p className="w-full text-xs text-muted-foreground">{t('days.recompute.hint')}</p>
+            {recomputeMsg && (
+              <p className={cn('w-full text-sm', recomputeMsg.ok ? 'text-green-700' : 'text-destructive')}>{recomputeMsg.msg}</p>
+            )}
+          </div>
           {daysQ.isLoading && <p className="py-10 text-center text-sm text-muted-foreground">{t('days.loading')}</p>}
           {daysQ.isError && <p className="py-10 text-center text-sm text-destructive">{t('days.loadError')}</p>}
           {!daysQ.isLoading && (daysQ.data?.length ?? 0) === 0 && (

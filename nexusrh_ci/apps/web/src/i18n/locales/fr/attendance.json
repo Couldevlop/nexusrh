@@ -58,6 +58,15 @@
       "lateMinutes": "Retard (min)",
       "firstIn": "Première entrée",
       "lastOut": "Dernière sortie"
+    },
+    "recompute": {
+      "from": "Du",
+      "to": "Au",
+      "button": "Recalculer la période",
+      "running": "Recalcul…",
+      "hint": "Recalcule retards et absences de tous les salariés actifs sur la période (jours sans pointage, corrections manuelles). Le calcul automatique ne traite que la veille.",
+      "done": "{{count}} journée(s) recalculée(s).",
+      "error": "Le recalcul a échoué."
     }
   },
   "statuses": {
