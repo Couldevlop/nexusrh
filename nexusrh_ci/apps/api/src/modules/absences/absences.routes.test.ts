@@ -137,6 +137,7 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
 
   it('accepte un body valide et persiste, logue audit_log absence.created', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
       .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', end_date: '2026-01-05' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
@@ -186,6 +187,7 @@ describe('POST /absences — solde de congés payés', () => {
       balance, requested: 5, available: 2.2, insufficient: true, blocked: false,
     })
     queryMock
+      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
       .mockResolvedValueOnce({ rows: [{ id: 'abs-2', start_date: '2026-01-05', end_date: '2026-01-09' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
