@@ -162,7 +162,7 @@ export async function executeAiTool(
           first_name: string; last_name: string; type_name: string | null
           start_date: string; end_date: string
         }>(
-          `SELECT e.first_name, e.last_name, at.name AS type_name, a.start_date, a.end_date
+          `SELECT e.first_name, e.last_name, at.label AS type_name, a.start_date, a.end_date
              FROM "${s}".absences a
              JOIN "${s}".employees e ON e.id = a.employee_id
              LEFT JOIN "${s}".absence_types at ON at.id = a.absence_type_id
