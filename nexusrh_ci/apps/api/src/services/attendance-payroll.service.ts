@@ -175,12 +175,16 @@ export async function loadEffectiveAttendancePayrollSettings(schema: string): Pr
 }
 
 /** Pointages du mois d'un employé ; aucune donnée sur toute erreur. */
-export async function loadAttendanceMonth(schema: string, employeeId: string, month: string): Promise<AttendanceMonthData> {
+export async function loadAttendanceMonth(
+  schema: string, employeeId: string, month: string,
+  range?: { start: string; end: string },
+): Promise<AttendanceMonthData> {
   const empty: AttendanceMonthData = { unjustifiedDays: 0, lateMinutesByDay: [] }
   if (!/^\d{4}-\d{2}$/.test(month)) return empty
   const [year, monthNum] = month.split('-').map(Number) as [number, number]
-  const monthStart = `${month}-01`
-  const monthEnd = `${month}-${String(new Date(year, monthNum, 0).getDate()).padStart(2, '0')}`
+  // Entrée / sortie en cours de mois : seuls les jours sous contrat comptent
+  const monthStart = range?.start ?? `${month}-01`
+  const monthEnd = range?.end ?? `${month}-${String(new Date(year, monthNum, 0).getDate()).padStart(2, '0')}`
   try {
     // Un jour pointé « absent » puis couvert par une absence approuvée après
     // coup (pointage non recalculé) n'est jamais retenu.
@@ -221,8 +225,9 @@ export async function resolveAttendanceForPayroll(
   month: string,
   baseSalary: number,
   workingDaysMonth: number,
+  range?: { start: string; end: string },
 ): Promise<AttendancePayrollResult | null> {
   if (!settings) return null
-  const data = await loadAttendanceMonth(schema, employeeId, month)
+  const data = await loadAttendanceMonth(schema, employeeId, month, range)
   return computeAttendanceDeductions(settings, data, baseSalary, workingDaysMonth)
 }

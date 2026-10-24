@@ -313,7 +313,8 @@ export default function PayrollPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [selectedEntityId, setSelectedEntityId] = useState<string>('')
   const [closingResult, setClosingResult] = useState<{
-    status?: string; message?: string; employeesCount?: number; totals?: Record<string, number>
+    status?: string; message?: string; employeesCount?: number; bulletinsDeSolde?: number
+    totals?: Record<string, number>
   } | null>(null)
   const [livreYear, setLivreYear] = useState(new Date().getFullYear().toString())
   const [livreLoading, setLivreLoading] = useState(false)
@@ -337,7 +338,10 @@ export default function PayrollPage() {
       hasSubsidiaries && selectedEntityId ? { legalEntityId: selectedEntityId } : {},
     ),
     onSuccess: (res) => {
-      setClosingResult(res.data as { status?: string; message?: string; employeesCount?: number; totals?: Record<string, number> })
+      setClosingResult(res.data as {
+        status?: string; message?: string; employeesCount?: number; bulletinsDeSolde?: number
+        totals?: Record<string, number>
+      })
       queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
     },
   })
@@ -475,6 +479,11 @@ export default function PayrollPage() {
               <ShieldAlert className="h-4 w-4" />
               {closingResult.message ?? t('close.resultDefault', { count: closingResult.employeesCount ?? 0 })}
             </p>
+            {(closingResult.bulletinsDeSolde ?? 0) > 0 && (
+              <p className="mb-2 text-sm text-amber-800">
+                {t('close.resultFinalPayslips', { count: closingResult.bulletinsDeSolde })}
+              </p>
+            )}
             {closingResult.totals && (
               <div className="grid grid-cols-2 gap-2 text-sm text-amber-800">
                 <p>{t('close.resultGross')} <strong>{formatFCFA(closingResult.totals['grossSalary'] ?? 0)}</strong></p>

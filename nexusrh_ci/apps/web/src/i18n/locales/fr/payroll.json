@@ -26,6 +26,7 @@
     "submit": "Initier la clôture",
     "error": "Erreur lors de la clôture",
     "resultDefault": "Période en attente de validation — {{count}} bulletins générés",
+    "resultFinalPayslips": "dont {{count}} bulletin(s) de solde (salariés sortants : prorata et solde de tout compte)",
     "resultGross": "Masse brute :",
     "resultNet": "Net à payer :",
     "resultCnps": "CNPS :",
