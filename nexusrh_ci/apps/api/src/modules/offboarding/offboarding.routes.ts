@@ -24,6 +24,8 @@ import {
 } from './offboarding.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
+import { effectiveTerminationRules } from '../../services/termination-rules.service.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -50,6 +52,8 @@ const updateSchema = z.object({
 
 const settlementSchema = z.object({
   congesDaysOutstanding: z.number().min(0).max(400).optional(),
+  // Préavis du contrat / de la convention (mois) : prime sur les règles du pays.
+  noticeMonths: z.number().min(0).max(24).optional(),
 })
 
 function badRequest(reply: import('fastify').FastifyReply, err: z.ZodError) {
@@ -203,9 +207,10 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const r = await rawPool.query<{
         departure_type: DepartureType; departure_date: string; notice_served: boolean;
         base_salary: string; hire_date: string | null; status: OffboardingStatus;
+        legal_entity_id: string | null;
       }>(
         `SELECT o.departure_type, o.departure_date, o.notice_served, o.status,
-                e.base_salary, e.hire_date
+                e.base_salary, e.hire_date, e.legal_entity_id
          FROM "${schema}".offboarding_cases o
          JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 LIMIT 1`,
         [id],
@@ -213,15 +218,27 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const row = r.rows[0]
       if (!row) return reply.status(404).send({ error: 'Dossier introuvable' })
 
+      // Règles de rupture : convention du tenant > pack du pays de l'employé.
+      const ctx = await loadEmployeeTenantContext(rawPool, schema, row.legal_entity_id)
+      const pack = ctx.legislation.legislationPack
+      const { rules, source } = effectiveTerminationRules(ctx.tenantTerminationRules, pack)
+
       const seniorityMonths = row.hire_date
         ? seniorityMonthsBetween(row.hire_date, row.departure_date) : 0
-      const settlement = computeSettlement({
-        monthlyGross: parseInt(row.base_salary, 10) || 0,
-        seniorityMonths,
-        departureType: row.departure_type,
-        congesDaysOutstanding: parsed.data.congesDaysOutstanding ?? 0,
-        noticeServed: row.notice_served,
-      })
+      const settlement = {
+        ...computeSettlement({
+          monthlyGross: parseInt(row.base_salary, 10) || 0,
+          seniorityMonths,
+          departureType: row.departure_type,
+          congesDaysOutstanding: parsed.data.congesDaysOutstanding ?? 0,
+          noticeServed: row.notice_served,
+          rules,
+          noticeMonthsOverride: parsed.data.noticeMonths,
+        }),
+        currency: pack.currency,
+        legislationPackCode: pack.code,
+        rulesSource: source,
+      }
 
       // Le solde calculé est historisé (transmissible au module Paie) et le
       // dossier passe en 'settled' si la transition est autorisée.

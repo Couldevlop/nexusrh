@@ -137,11 +137,16 @@ api.interceptors.response.use(
 
 // Formateur FCFA
 export function formatFCFA(amount: number | string): string {
+  return formatMoney(amount, 'XOF')
+}
+
+// Montant dans la devise du pack législatif (XOF, XAF, NGN, GHS…).
+export function formatMoney(amount: number | string, currency: string = 'XOF'): string {
   const num = typeof amount === 'string' ? parseInt(amount) : amount
-  if (isNaN(num)) return '0 FCFA'
+  if (isNaN(num)) return currency === 'XOF' ? '0 FCFA' : `0 ${currency}`
   return new Intl.NumberFormat('fr-CI', {
     style: 'currency',
-    currency: 'XOF',
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(num)

@@ -16,6 +16,41 @@ import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
   wouldCreateManagerCycle,
 } from '../../services/manager-scope.service.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
+import { currencyLabel, type LegislationPack } from '../../services/legislation-packs.js'
+import {
+  parseFieldDefinitions, redactCustomFields, validateCustomFieldValues,
+  type CustomFieldError,
+} from '../../services/employee-custom-fields.service.js'
+
+// SMIG du pays de l'employé (pack législatif), plus de 75 000 FCFA en dur.
+function smigError(pack: LegislationPack, baseSalary: number): string | null {
+  if (baseSalary >= pack.smigMensuel) return null
+  // Séparateur de milliers = espace simple (toLocaleString('fr-FR') insère une
+  // espace fine insécable, qui changerait le message historique).
+  const amount = String(pack.smigMensuel).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return `Le salaire ne peut pas être inférieur au SMIG (${amount} ${currencyLabel(pack.currency)})`
+}
+
+function customFieldsError(errors: CustomFieldError[]) {
+  return {
+    error: 'Champs personnalisés invalides',
+    details: errors.map((e) => ({ path: `customFields.${e.key}`, message: e.message })),
+  }
+}
+
+// Définitions des champs personnalisés du tenant (lecture seule). Échec de
+// lecture → aucune définition : redactCustomFields masque alors tout (fail-closed).
+async function loadCustomFieldDefinitions(schema: string) {
+  try {
+    const r = await pool.query<{ employee_custom_fields: unknown }>(
+      `SELECT employee_custom_fields FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+    )
+    return parseFieldDefinitions(r?.rows?.[0]?.employee_custom_fields)
+  } catch {
+    return []
+  }
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -78,6 +113,8 @@ const createEmployeeSchema = z.object({
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
+  // Champs personnalisés du tenant — validés contre leur définition au handler.
+  customFields:        z.record(z.unknown()).optional(),
 })
 
 // OWASP A03 — validation Zod du body PATCH /employees/:id
@@ -113,6 +150,7 @@ const patchEmployeeSchema = z.object({
   isActive:            z.boolean().optional(),
   profilePhotoUrl:     z.string().max(2000).optional(),
   address:             z.string().max(500).optional(),
+  customFields:        z.record(z.unknown()).optional(),
 }).strict()
 
 // Champs qu'un employee a le droit de modifier sur son propre profil (subset
@@ -180,6 +218,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
                        LIMIT $${idx++} OFFSET $${idx++}`
       const res = await pool.query(listSql, [...params, limit, offset])
 
+      // Champs personnalisés sensibles : réservés aux rôles RH (A01).
+      if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) && res.rows.length) {
+        const defs = await loadCustomFieldDefinitions(schema)
+        for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
+      }
+
       return reply.send({ data: res.rows, total, page, limit })
     },
   })
@@ -234,6 +278,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       } else {
         delete emp.nni
         delete emp.iban
+        emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
       }
 
       // EMP-009 — ancienneté CALCULÉE depuis la date d'embauche.
@@ -264,12 +309,14 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const body = parsed.data
-      if (body.baseSalary < 75000) {
-        return reply.status(422).send({ error: 'Le salaire ne peut pas être inférieur au SMIG (75 000 FCFA)' })
-      }
-
-      // pool module-level
       const schema = request.user.schemaName
+
+      // Pays de l'employé (filiale ou tenant) + champs personnalisés du tenant.
+      const ctx = await loadEmployeeTenantContext(pool, schema, body.legalEntityId)
+      const smig = smigError(ctx.legislation.legislationPack, body.baseSalary)
+      if (smig) return reply.status(422).send({ error: smig })
+      const custom = validateCustomFieldValues(ctx.customFields, body.customFields, 'create')
+      if (!custom.ok) return reply.status(400).send(customFieldsError(custom.errors))
 
       let res
       try {
@@ -279,8 +326,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
               nni, cnps_number, mobile_money_provider, mobile_money_phone,
               department_id, manager_id, legal_entity_id, job_title, job_level, contract_type,
               hire_date, base_salary, weekly_hours, professional_category,
-              iban, bank_name, payment_method, city, marital_status, children_count)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb)
            RETURNING *`,
           [
             body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
@@ -296,6 +343,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             encryptIfPresent(body.iban), body.bankName ?? null,
             body.paymentMethod ?? 'mobile_money',
             body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
+            JSON.stringify(custom.values),
           ]
         )
       } catch (err) {
@@ -383,18 +431,32 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Vérification SMIG si modification salaire
-      if (body.baseSalary != null && Number(body.baseSalary) < 75000) {
-        return reply.status(422).send({ error: 'Salaire inférieur au SMIG (75 000 FCFA)' })
-      }
-
       // EMP-010 — capter l'ancien salaire AVANT l'UPDATE pour historiser le
-      // changement (augmentation/baisse) dans hr_events après le succès.
+      // changement (augmentation/baisse) dans hr_events après le succès. La
+      // même lecture donne la filiale (pays du SMIG) et les champs personnalisés
+      // existants (fusion).
       let oldSalary: number | null = null
-      if (body.baseSalary != null) {
-        const prev = await pool.query<{ base_salary: string | null }>(
-          `SELECT base_salary FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [id])
-        oldSalary = prev.rows[0]?.base_salary != null ? Number(prev.rows[0].base_salary) : null
+      if (body.baseSalary != null || body.customFields !== undefined) {
+        const prev = await pool.query<{
+          base_salary: string | null; legal_entity_id: string | null; custom_fields: unknown
+        }>(
+          `SELECT base_salary, legal_entity_id, custom_fields FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [id])
+        const cur = prev.rows[0]
+        oldSalary = cur?.base_salary != null ? Number(cur.base_salary) : null
+        const legalEntityId = body.legalEntityId !== undefined
+          ? (body.legalEntityId as string | null) : (cur?.legal_entity_id ?? null)
+        const ctx = await loadEmployeeTenantContext(pool, schema, legalEntityId)
+
+        // SMIG du pays de l'employé si modification du salaire
+        if (body.baseSalary != null) {
+          const smig = smigError(ctx.legislation.legislationPack, Number(body.baseSalary))
+          if (smig) return reply.status(422).send({ error: smig })
+        }
+        if (body.customFields !== undefined) {
+          const custom = validateCustomFieldValues(ctx.customFields, body.customFields, 'update', cur?.custom_fields)
+          if (!custom.ok) return reply.status(400).send(customFieldsError(custom.errors))
+          body.customFields = custom.values
+        }
       }
 
       // Zod a déjà filtré les champs autorisés. On convertit juste camelCase
@@ -405,7 +467,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       let idx = 1
       for (const [k, v] of Object.entries(body)) {
         const dbKey = k.replace(/([A-Z])/g, '_$1').toLowerCase()
-        if (dbKey === 'address') {
+        if (dbKey === 'address' || dbKey === 'custom_fields') {
           // `address` est une colonne jsonb : une chaîne brute déclenchait
           // « invalid input syntax for type json » (500). On encode en JSON.
           sets.push(`${dbKey} = $${idx++}::jsonb`)

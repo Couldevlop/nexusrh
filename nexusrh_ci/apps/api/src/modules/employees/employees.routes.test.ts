@@ -114,6 +114,7 @@ describe('POST /employees — Zod validation (OWASP A03)', () => {
 
   it('accepte un body valide, persiste et logue audit_log employee.created', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] }) // SELECT contexte tenant (pack CIV par défaut, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: 'emp-1', first_name: 'Marie', last_name: 'Konaté' }] })
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
 
@@ -131,6 +132,7 @@ describe('POST /employees — Zod validation (OWASP A03)', () => {
 
   // ── Erreurs PERSONNALISÉES : aucune 500 brute ne doit remonter ──────────────
   it('email déjà existant (PG 23505) → 409 message personnalisé, pas de 500', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // contexte tenant
     queryMock.mockRejectedValueOnce(
       Object.assign(new Error('duplicate key'), { code: '23505', constraint: 'employees_email_key' }),
     )
@@ -161,6 +163,7 @@ describe('POST /employees — Zod validation (OWASP A03)', () => {
   })
 
   it('erreur DB inattendue → 500 message personnalisé (jamais le détail brut)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // contexte tenant
     queryMock.mockRejectedValueOnce(new Error('connection terminated unexpectedly'))
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
@@ -221,6 +224,7 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
   it('un hr_manager peut modifier baseSalary, audit_log trace les champs', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ base_salary: 350000 }] }) // SELECT ancien salaire (EMP-010)
+      .mockResolvedValueOnce({ rows: [] }) // SELECT contexte tenant (pack CIV par défaut, aucun champ perso)
       .mockResolvedValueOnce({ rows: [{ id: 'emp-1', base_salary: 400000 }] }) // UPDATE RETURNING
       .mockResolvedValueOnce({ rows: [] }) // INSERT hr_events (salaire 350k -> 400k)
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
@@ -256,6 +260,9 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
   })
 
   it('refuse baseSalary < SMIG (422)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ base_salary: 350000, legal_entity_id: null, custom_fields: {} }] })
+      .mockResolvedValueOnce({ rows: [] }) // contexte tenant → pack CIV (SMIG 75 000)
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'PATCH',
@@ -264,6 +271,7 @@ describe('PATCH /employees/:id — IDOR + Zod (OWASP A01 + A03)', () => {
       payload: { baseSalary: 50000 },
     })
     expect(res.statusCode).toBe(422)
+    expect(queryMock.mock.calls.some((c) => String(c[0]).startsWith('UPDATE'))).toBe(false)
   })
 })
 

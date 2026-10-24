@@ -427,6 +427,15 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       auditMfa(payload.schemaName, payload.sub, 'mfa.login_success',
         { usedBackupCode: !!usedBackupCode, pwdResetRequired }, request.ip ?? null)
 
+      // Le login n'est finalisé qu'ici pour un compte MFA (/auth/login s'arrête
+      // au 202) : sans cette mise à jour, la dernière connexion affichée reste
+      // figée à l'activation du MFA. Non bloquant : la connexion est acquise.
+      try {
+        await pool.query(`UPDATE ${scope.table} SET last_login_at = now() WHERE id = $1`, [payload.sub])
+      } catch {
+        // colonne absente (base pré-migration) : sans incidence sur la connexion
+      }
+
       // OWASP A02 — pose le JWT en cookie httpOnly aussi (parité avec /auth/login)
       reply.setCookie(AUTH_COOKIE_NAME, finalToken, {
         httpOnly: true,

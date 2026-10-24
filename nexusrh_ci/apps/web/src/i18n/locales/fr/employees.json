@@ -90,7 +90,8 @@
     "onboardingHint": "Un <strong>parcours d'intégration</strong> sera créé automatiquement selon la séniorité et le poste (modèles configurés dans Intégration → Modèles).",
     "errors": {
       "salaryBelowSmig": "Le salaire brut doit être ≥ 75 000 FCFA (SMIG).",
-      "createGeneric": "Erreur lors de la création"
+      "createGeneric": "Erreur lors de la création",
+      "salaryRequired": "Saisissez un salaire de base."
     },
     "submit": "Créer l'employé",
     "submitting": "Création..."
@@ -149,5 +150,10 @@
       "divorced": "Divorcé(e)",
       "widowed": "Veuf/Veuve"
     }
+  },
+  "customFields": {
+    "section": "Informations complémentaires",
+    "yes": "Oui",
+    "no": "Non"
   }
 }

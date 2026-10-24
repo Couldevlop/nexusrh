@@ -5,6 +5,9 @@ import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil, Download, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import {
+  CustomFieldsFieldset, useEmployeeFieldDefinitions, type CustomFieldValue, type CustomFieldValues,
+} from '@/components/employees/CustomFields'
 
 interface Employee {
   id: string; first_name: string; last_name: string; email: string
@@ -60,6 +63,8 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     iban: '', bankName: '', paymentMethod: 'mobile_money',
     city: 'Abidjan', maritalStatus: '', childrenCount: '0',
   })
+  const [custom, setCustom] = useState<CustomFieldValues>({})
+  const fieldDefs = useEmployeeFieldDefinitions()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t } = useTranslation('employees')
@@ -92,11 +97,13 @@ function CreateEmployeeModal({ onClose, onCreated }: {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    // Le SMIG dépend du pays de l'employé (filiale) : contrôlé par l'API.
     const salary = parseInt(form.baseSalary, 10)
-    if (!Number.isFinite(salary) || salary < 75000) {
-      setError(t('form.errors.salaryBelowSmig'))
+    if (!Number.isFinite(salary) || salary <= 0) {
+      setError(t('form.errors.salaryRequired'))
       return
     }
+    const customFields = Object.fromEntries(Object.entries(custom).filter(([, v]) => v !== ''))
     setSaving(true)
     try {
       await api.post('/employees', {
@@ -126,6 +133,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         city: form.city || 'Abidjan',
         ...(form.maritalStatus ? { maritalStatus: form.maritalStatus } : {}),
         childrenCount: parseInt(form.childrenCount, 10) || 0,
+        ...(Object.keys(customFields).length ? { customFields } : {}),
       })
       onCreated(`${form.firstName} ${form.lastName}`)
     } catch (err) {
@@ -236,7 +244,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
             <legend className="text-sm font-semibold mb-1">{t('form.sections.compensationAndPayment')}</legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
-                <input type="number" min={75000} step={1} className={inputCls}
+                <input type="number" min={1} step={1} className={inputCls}
                   value={form.baseSalary} onChange={set('baseSalary')} required placeholder={t('form.placeholders.baseSalary')} /></div>
               {/* Mode de réception du salaire — pilote l'affichage RIB / Mobile Money */}
               <div className="sm:col-span-3"><label className={labelCls}>{t('form.fields.paymentMethod', 'Mode de réception du salaire')}</label>
@@ -290,6 +298,9 @@ function CreateEmployeeModal({ onClose, onCreated }: {
                   value={form.childrenCount} onChange={set('childrenCount')} /></div>
             </div>
           </fieldset>
+
+          <CustomFieldsFieldset defs={fieldDefs} values={custom} inputCls={inputCls} labelCls={labelCls}
+            onChange={(k, v) => setCustom(p => ({ ...p, [k]: v }))} />
 
           <div className="flex items-start gap-2 rounded-lg bg-indigo-50 border border-indigo-100 p-3">
             <Rocket className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
@@ -447,6 +458,7 @@ interface EmployeeDetail {
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
   iban: string | null; bank_name: string | null
   marital_status: string | null; children_count: number | null
+  custom_fields?: CustomFieldValues | null
 }
 
 function EditEmployeeModal({ employeeId, onClose, onSaved }: {
@@ -480,6 +492,10 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
   })
   const legalEntities = leData?.data ?? []
   const emp = detail?.data
+  const fieldDefs = useEmployeeFieldDefinitions()
+  // Champs personnalisés modifiés (clé → nouvelle valeur ; '' = effacer).
+  const [customEdits, setCustomEdits] = useState<CustomFieldValues>({})
+  const origCustom: CustomFieldValues = emp?.custom_fields ?? {}
 
   // Valeur effective d'un champ : saisie en cours sinon valeur d'origine.
   const val = (k: string, orig: string | number | null | undefined) =>
@@ -516,10 +532,11 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       if (trimmed === '') continue // champ vidé : on ne pousse pas (évite d'écraser involontairement)
       payload[k] = numericKeys.has(k) ? Number(trimmed) : trimmed
     }
+    const customChanges = Object.fromEntries(
+      Object.entries(customEdits).filter(([k, v]) => v !== (origCustom[k] ?? '')))
+    if (Object.keys(customChanges).length) payload.customFields = customChanges
     if (Object.keys(payload).length === 0) { onClose(); return }
-    if (payload.baseSalary != null && Number(payload.baseSalary) < 75000) {
-      setError(t('form.errors.salaryBelowSmig')); return
-    }
+    // SMIG du pays de l'employé : contrôlé par l'API (message explicite).
     setSaving(true)
     try {
       await api.patch(`/employees/${employeeId}`, payload)
@@ -627,7 +644,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
               <legend className="text-sm font-semibold mb-1">{t('form.sections.compensationAndPayment')}</legend>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className={labelCls}>{t('form.fields.baseSalary')}</label>
-                  <input type="number" min={75000} step={1} className={inputCls} value={val('baseSalary', emp.base_salary)} onChange={set('baseSalary')} /></div>
+                  <input type="number" min={1} step={1} className={inputCls} value={val('baseSalary', emp.base_salary)} onChange={set('baseSalary')} /></div>
                 <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
                   <select className={inputCls} value={val('mobileMoneyProvider', emp.mobile_money_provider)} onChange={set('mobileMoneyProvider')}>
                     <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
@@ -657,6 +674,10 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   <input type="number" min={0} max={30} className={inputCls} value={val('childrenCount', emp.children_count)} onChange={set('childrenCount')} /></div>
               </div>
             </fieldset>
+
+            <CustomFieldsFieldset defs={fieldDefs} values={{ ...origCustom, ...customEdits }}
+              inputCls={inputCls} labelCls={labelCls}
+              onChange={(k: string, v: CustomFieldValue) => setCustomEdits(p => ({ ...p, [k]: v }))} />
 
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>

@@ -90,7 +90,8 @@
     "onboardingHint": "An <strong>onboarding journey</strong> will be created automatically based on seniority and role (templates configured in Onboarding → Templates).",
     "errors": {
       "salaryBelowSmig": "The gross salary must be ≥ 75,000 FCFA (minimum wage).",
-      "createGeneric": "Error while creating"
+      "createGeneric": "Error while creating",
+      "salaryRequired": "Enter a base salary."
     },
     "submit": "Create employee",
     "submitting": "Creating..."
@@ -149,5 +150,10 @@
       "divorced": "Divorced",
       "widowed": "Widowed"
     }
+  },
+  "customFields": {
+    "section": "Additional information",
+    "yes": "Yes",
+    "no": "No"
   }
 }

@@ -17,7 +17,8 @@
     "ai": "AI (key & model)",
     "connectivity": "Connectivity",
     "mobileMoney": "Mobile Money",
-    "interviewSim": "Interview simulations"
+    "interviewSim": "Interview simulations",
+    "employeeFields": "Custom fields"
   },
   "roles": {
     "admin": "Administrator",
@@ -662,5 +663,56 @@
       "disable": "Disable MFA",
       "cancel": "Cancel"
     }
+  },
+  "employeeFields": {
+    "title": "Employee record custom fields",
+    "subtitle": "Add your own information to the employee record (internal ID, badge number, blood type…). The fields appear in the create and edit forms and on the employee page.",
+    "empty": "No custom field yet.",
+    "label": "Label",
+    "key": "Technical key",
+    "type": "Type",
+    "types": {
+      "text": "Text",
+      "number": "Number",
+      "date": "Date",
+      "select": "Choice list",
+      "boolean": "Yes / no"
+    },
+    "options": "Possible choices (one per line)",
+    "optionsHint": "E.g.:\nAbidjan site\nSan-Pédro site",
+    "required": "Required",
+    "sensitive": "Sensitive data",
+    "sensitiveHint": "Visible only to HR and the employee (hidden from managers and read-only users).",
+    "removeHint": "Removing a field does not erase values already entered: recreate it with the same key to get them back.",
+    "add": "Add a field",
+    "save": "Save",
+    "saved": "Saved"
+  },
+  "terminationRules": {
+    "title": "Contract termination — notice and severance pay",
+    "source": {
+      "pack": "Statutory rules of the country ({{pack}}).",
+      "tenant": "Your company agreement (takes precedence over the country rules).",
+      "none": "No validated rules for this country ({{pack}})."
+    },
+    "noneWarning": "Final settlements will not compute notice or severance pay until you enter your rules (collective agreement) or the notice on the case.",
+    "customize": "Customize (collective agreement)",
+    "reset": "Back to country rules",
+    "notice": "Notice",
+    "severance": "Severance pay (per year)",
+    "allSeniority": "Any seniority",
+    "allYears": "All years",
+    "beyond": "Beyond",
+    "upToMonths": "Up to {{n}} months of seniority",
+    "upToYear": "Up to year {{n}}",
+    "months": "{{n}} months",
+    "editHint": "Each tier applies up to its bound (included). The last tier covers everything else.",
+    "boundMonths": "Max. seniority (months)",
+    "valueMonths": "Notice (months)",
+    "boundYears": "Up to year",
+    "valueRate": "% of monthly gross salary",
+    "addTier": "Add a tier",
+    "save": "Save",
+    "cancel": "Cancel"
   }
 }

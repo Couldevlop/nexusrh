@@ -17,7 +17,8 @@
     "ai": "IA (clé & modèle)",
     "connectivity": "Connectivité",
     "mobileMoney": "Mobile Money",
-    "interviewSim": "Simulations d'entretien"
+    "interviewSim": "Simulations d'entretien",
+    "employeeFields": "Champs personnalisés"
   },
   "roles": {
     "admin": "Administrateur",
@@ -662,5 +663,56 @@
       "disable": "Désactiver la MFA",
       "cancel": "Annuler"
     }
+  },
+  "employeeFields": {
+    "title": "Champs personnalisés du dossier employé",
+    "subtitle": "Ajoutez vos propres informations au dossier salarié (matricule interne, n° de badge, groupe sanguin…). Elles apparaissent dans les formulaires de création et de modification, et sur la fiche employé.",
+    "empty": "Aucun champ personnalisé pour le moment.",
+    "label": "Libellé",
+    "key": "Clé technique",
+    "type": "Type",
+    "types": {
+      "text": "Texte",
+      "number": "Nombre",
+      "date": "Date",
+      "select": "Liste de choix",
+      "boolean": "Oui / non"
+    },
+    "options": "Choix possibles (un par ligne)",
+    "optionsHint": "Ex. :\nSite Abidjan\nSite San-Pédro",
+    "required": "Obligatoire",
+    "sensitive": "Donnée sensible",
+    "sensitiveHint": "Visible uniquement par la RH et le salarié lui-même (masquée aux managers et lecteurs).",
+    "removeHint": "Supprimer un champ n'efface pas les valeurs déjà saisies : recréez-le avec la même clé pour les retrouver.",
+    "add": "Ajouter un champ",
+    "save": "Enregistrer",
+    "saved": "Enregistré"
+  },
+  "terminationRules": {
+    "title": "Rupture du contrat — préavis et indemnité de licenciement",
+    "source": {
+      "pack": "Règles légales du pays ({{pack}}).",
+      "tenant": "Convention de votre entreprise (prioritaire sur les règles du pays).",
+      "none": "Aucune règle validée pour ce pays ({{pack}})."
+    },
+    "noneWarning": "Le solde de tout compte ne calculera ni préavis ni indemnité de licenciement tant que vous n'aurez pas saisi vos règles (convention collective) ou la durée au dossier.",
+    "customize": "Personnaliser (convention collective)",
+    "reset": "Revenir aux règles du pays",
+    "notice": "Préavis",
+    "severance": "Indemnité de licenciement (par année)",
+    "allSeniority": "Toute ancienneté",
+    "allYears": "Toutes les années",
+    "beyond": "Au-delà",
+    "upToMonths": "Jusqu'à {{n}} mois d'ancienneté",
+    "upToYear": "Jusqu'à la {{n}}e année",
+    "months": "{{n}} mois",
+    "editHint": "Chaque palier s'applique jusqu'à sa borne (incluse). Le dernier palier couvre tout le reste.",
+    "boundMonths": "Ancienneté max. (mois)",
+    "valueMonths": "Préavis (mois)",
+    "boundYears": "Jusqu'à l'année",
+    "valueRate": "% du salaire brut mensuel",
+    "addTier": "Ajouter un palier",
+    "save": "Enregistrer",
+    "cancel": "Annuler"
   }
 }
