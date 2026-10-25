@@ -81,6 +81,7 @@ export type VariableTreatmentOverride = Readonly<Record<string, { social?: boole
 const DEFAULT_VARIABLE_TREATMENT: VariableTreatment = {
   PRIME_ANCIENNETE:  { social: true, tax: true },
   PRIME_RENDEMENT:   { social: true, tax: true },
+  PRIME_PANIER:      { social: true, tax: true },
   HEURES_SUPP_NORM:  { social: true, tax: true },
   HEURES_SUPP_NUIT:  { social: true, tax: true },
   HEURES_SUPP_FERIE: { social: true, tax: true },
@@ -371,6 +372,7 @@ const VARIABLE_EARNINGS: ReadonlyArray<{ code: string; label: string; varKey: st
   { code: '1250', label: 'Gratification',                    varKey: 'GRATIFICATION'     },
   { code: '1260', label: 'Avantage en nature',               varKey: 'AVANTAGE_NATURE'   },
   { code: '1300', label: 'Prime de transport',               varKey: 'PRIME_TRANSPORT'   },
+  { code: '1350', label: 'Prime de panier',                  varKey: 'PRIME_PANIER'      },
   { code: '1400', label: 'Heures supp. +15%',               varKey: 'HEURES_SUPP_NORM'  },
   { code: '1500', label: 'Heures supp. +50% (nuit/dim)',    varKey: 'HEURES_SUPP_NUIT'  },
   { code: '1550', label: 'Heures supp. +100% (jour férié)', varKey: 'HEURES_SUPP_FERIE' },

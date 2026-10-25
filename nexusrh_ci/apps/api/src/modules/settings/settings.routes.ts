@@ -1195,6 +1195,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           const linkErr = await checkEmployeeLinkable(schema, body.employee_id, null)
           if (linkErr) return reply.status(linkErr.status).send({ error: linkErr.error })
           employeeId = body.employee_id
+          // La fiche sans email reprend celui du compte (contact, notifications).
+          await pool.query(
+            `UPDATE "${schema}".employees SET email = $1, updated_at = now()
+             WHERE id = $2 AND (email IS NULL OR email = '')`,
+            [body.email, employeeId]
+          )
           if (body.department_id) {
             await pool.query(
               `UPDATE "${schema}".employees SET department_id = $1, updated_at = now() WHERE id = $2`,
