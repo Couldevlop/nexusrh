@@ -12,6 +12,15 @@ import AttendancePayrollLinkCard from './AttendancePayrollLinkCard'
 type Tab = 'dashboard' | 'punches' | 'days' | 'warnings' | 'config'
 
 /** Message d'erreur lisible depuis une réponse API — jamais un silence. */
+// Le moteur de présence raisonne en heure murale d'Abidjan (GMT, UTC+0) :
+// saisie et affichage des pointages dans ce fuseau, quel que soit celui du navigateur.
+const ATTENDANCE_TZ = 'UTC'
+
+/** 'YYYY-MM-DDTHH:mm' (champ datetime-local) → ISO, lu comme heure murale du tenant. */
+function wallClockToIso(local: string): string {
+  return new Date(`${local.length === 16 ? `${local}:00` : local}Z`).toISOString()
+}
+
 function apiErrorMessage(err: unknown, fallback: string): string {
   const data = (err as { response?: { data?: { error?: string } } } | undefined)?.response?.data
   if (data?.error) return data.error
@@ -125,7 +134,7 @@ export default function AttendancePage() {
       await api.post('/attendance/punches', {
         employeeId: punchForm.employeeId,
         direction: punchForm.direction,
-        punchedAt: new Date(punchForm.punchedAt).toISOString(),
+        punchedAt: wallClockToIso(punchForm.punchedAt),
         reason: punchForm.reason || undefined,
       })
     },
@@ -469,7 +478,7 @@ export default function AttendancePage() {
                     <tr key={p.id} className="border-b border-border/60 last:border-0">
                       <td className="px-3 py-2 font-medium">{employeeName(p.employee_id)}</td>
                       <td className="px-3 py-2">{t(`directions.${p.direction}`)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{new Date(p.punched_at).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{new Date(p.punched_at).toLocaleString(undefined, { timeZone: ATTENDANCE_TZ })}</td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">{p.source}</td>
                     </tr>
                   ))}
@@ -535,15 +544,15 @@ export default function AttendancePage() {
                   {(daysQ.data ?? []).map((d) => (
                     <tr key={d.id} className="border-b border-border/60 last:border-0">
                       <td className="px-3 py-2 font-medium">{employeeName(d.employee_id)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{d.work_date}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{d.work_date.slice(0, 10)}</td>
                       <td className="px-3 py-2">
                         <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', DAY_STATUS_STYLE[d.status] ?? 'bg-muted')}>
                           {t(`statuses.${d.status}`)}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{d.late_minutes}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{d.first_in ? new Date(d.first_in).toLocaleTimeString() : '—'}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{d.last_out ? new Date(d.last_out).toLocaleTimeString() : '—'}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{d.first_in ? new Date(d.first_in).toLocaleTimeString(undefined, { timeZone: ATTENDANCE_TZ }) : '—'}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{d.last_out ? new Date(d.last_out).toLocaleTimeString(undefined, { timeZone: ATTENDANCE_TZ }) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
