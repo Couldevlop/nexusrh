@@ -238,6 +238,53 @@ export async function markSettlementPaid(
   ).catch(() => undefined)
 }
 
+/** Notes de frais approuvées, remboursées sur le bulletin du mois. */
+export interface ReimbursableExpenses {
+  ids: string[]
+  total: number
+}
+
+const NO_EXPENSES: ReimbursableExpenses = { ids: [], total: 0 }
+
+/**
+ * Notes de frais approuvées au plus tard le dernier jour du mois et pas encore
+ * remboursées : portées au bulletin (hors brut — ni CNPS ni ITS). Désactivable
+ * par le tenant (Paramètres → Workflow, notes de frais : payOnPayslip=false,
+ * remboursement alors hors paie, par Mobile Money). Ne lève jamais.
+ */
+export async function loadReimbursableExpenses(schema: string, employeeId: string, month: string): Promise<ReimbursableExpenses> {
+  try {
+    const r = await rawPool.query<{ id: string; total_amount: string | number }>(
+      `SELECT er.id, er.total_amount
+         FROM "${schema}".expense_reports er
+        WHERE er.employee_id = $1 AND er.status = 'approved' AND er.paid_at IS NULL
+          AND er.approved_at < ($2::date + interval '1 month')
+          AND COALESCE((SELECT (wc.config->>'payOnPayslip')::boolean
+                          FROM "${schema}".workflow_configs wc WHERE wc.module = 'expenses' LIMIT 1), true)
+        ORDER BY er.approved_at`,
+      [employeeId, `${month}-01`],
+    )
+    const rows = r?.rows ?? []
+    return {
+      ids: rows.map((x) => x.id),
+      total: rows.reduce((t, x) => t + Math.max(0, Math.round(Number(x.total_amount) || 0)), 0),
+    }
+  } catch {
+    return NO_EXPENSES
+  }
+}
+
+/** Notes remboursées par le bulletin : payées (jamais remboursées deux fois). */
+export async function markExpensesPaid(schema: string, ids: readonly string[], paySlipId: string | null): Promise<void> {
+  if (ids.length === 0) return
+  await rawPool.query(
+    `UPDATE "${schema}".expense_reports
+        SET status = 'paid', payment_method = 'payslip', payment_reference = $2, paid_at = now(), updated_at = now()
+      WHERE id = ANY($1::uuid[]) AND status = 'approved'`,
+    [ids, paySlipId],
+  ).catch(() => undefined)
+}
+
 export interface EmployeeMonthInputs {
   window: EmploymentWindow
   /** Jours rémunérés (prorata entrée / sortie, moins les absences) */
@@ -245,6 +292,8 @@ export interface EmployeeMonthInputs {
   absenceCtx: Awaited<ReturnType<typeof resolveAbsenceForPayroll>>
   attendance: AttendancePayrollResult | null
   settlementEarnings: SettlementEarning[]
+  /** Notes de frais approuvées remboursées sur ce bulletin */
+  expenses: ReimbursableExpenses
 }
 
 /**
@@ -261,8 +310,9 @@ export async function resolveEmployeeMonth(
   const window = employmentWindow(month, emp.hire_date, emp.exit_date ?? null)
   const settlementEarnings = window.exitsThisMonth || window.settlementOnly
     ? settlementEarningsFrom(emp.settlement, month) : []
+  const expenses = await loadReimbursableExpenses(schema, emp.id, month)
   if (window.contractDays === 0) {
-    return { window, workedDays: 0, absenceCtx: null, attendance: null, settlementEarnings }
+    return { window, workedDays: 0, absenceCtx: null, attendance: null, settlementEarnings, expenses }
   }
   const absenceCtx = await resolveAbsenceForPayroll(schema, emp.id, month, emp.hire_date)
   const partial = window.hiredInMonth || window.leavesInMonth
@@ -272,6 +322,6 @@ export async function resolveEmployeeMonth(
   return {
     window,
     workedDays: workedDaysFor(window, absenceCtx?.absenceDays),
-    absenceCtx, attendance, settlementEarnings,
+    absenceCtx, attendance, settlementEarnings, expenses,
   }
 }

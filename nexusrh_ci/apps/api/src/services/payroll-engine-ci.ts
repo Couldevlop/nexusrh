@@ -82,6 +82,11 @@ export interface PayrollContext {
   /** Bulletin de solde : indemnités du solde de tout compte (optionnel) */
   settlementEarnings?: SettlementEarning[]
   /**
+   * Remboursement de notes de frais approuvées (FCFA). Hors brut : ni CNPS
+   * ni ITS (frais professionnels réels justifiés) ; ajouté au net à payer.
+   */
+  expenseReimbursement?: number
+  /**
    * Pack législatif à appliquer (optionnel — défaut : CIV-2024).
    * Permet le multi-pays UEMOA (Palier 2). Un pack `status: 'stub'`
    * fait lever une erreur explicite (refus de calcul).
@@ -92,7 +97,7 @@ export interface PayrollContext {
 export interface PayrollLine {
   code:   string
   label:  string
-  type:   'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution'
+  type:   'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution' | 'reimbursement'
   base:   number
   amount: number // FCFA entier
 }
@@ -128,6 +133,7 @@ export interface PayrollResult {
   // Absences
   indemniteAbsence?: number      // montant indemnité (maternité / maladie / AT)
   settlementTotal?:  number      // indemnités du solde de tout compte portées au bulletin
+  reimbursementTotal?: number    // notes de frais remboursées (hors brut, ajoutées au net)
   bordereauCnps?:    BordereauCnps  // bordereau remboursement CNPS (maternité / AT)
 }
 
@@ -451,9 +457,15 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const mutuellePat = variableElements['MUTUELLE_PAT'] ?? 0
   if (mutuellePat > 0) lines.push({ code: '4100', label: 'Mutuelle santé patronal', type: 'employer_contribution', base: 0, amount: mutuellePat })
 
+  // Notes de frais : remboursement de frais réels, hors brut (ni CNPS ni ITS).
+  const reimbursement = Math.max(0, Math.round(ctx.expenseReimbursement ?? 0))
+  if (reimbursement > 0) {
+    lines.push({ code: '6000', label: 'Remboursement de frais professionnels', type: 'reimbursement', base: 0, amount: reimbursement })
+  }
+
   // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
   const totalRetenues = totalCnpsSal + its + avance + mutuelleSal
-  const netPayable    = Math.max(0, grossSalary - totalRetenues)
+  const netPayable    = Math.max(0, grossSalary - totalRetenues) + reimbursement
   const employerCost  = grossSalary + totalCnpsPat + mutuellePat
 
   return {
@@ -477,6 +489,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     workingDays: workedDays,
     indemniteAbsence: indemniteAbsence > 0 ? indemniteAbsence : undefined,
     settlementTotal: settlement.length > 0 ? settlement.reduce((t, s) => t + s.amount, 0) : undefined,
+    reimbursementTotal: reimbursement > 0 ? reimbursement : undefined,
     bordereauCnps,
   }
 }

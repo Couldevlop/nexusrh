@@ -5,7 +5,7 @@ import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
+  loadPayrollPopulation, markExpensesPaid, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
@@ -201,6 +201,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         absence:          absenceCtx?.info,
         attendanceDeductions: attendance?.deductions,
         settlementEarnings: monthInputs.settlementEarnings,
+        expenseReimbursement: monthInputs.expenses.total,
         legislationPack:  resolved.legislationPack,
       })
 
@@ -422,6 +423,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           absence:          absenceCtx?.info,
           attendanceDeductions: attendance?.deductions,
           settlementEarnings: monthInputs.settlementEarnings,
+          expenseReimbursement: monthInputs.expenses.total,
           legislationPack:  resolved.legislationPack,
         })
 
@@ -487,6 +489,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         if (slip.rows[0] && emp.offboarding_id && result.settlementTotal) {
           await markSettlementPaid(schema, emp.offboarding_id, month, slip.rows[0].id)
         }
+        // Notes de frais remboursées par ce bulletin : marquées payées
+        if (slip.rows[0]) await markExpensesPaid(schema, monthInputs.expenses.ids, slip.rows[0].id)
         if (slip.rows[0]) paySlips.push({
           employeeId: emp.id,
           paySlipId: slip.rows[0].id,
@@ -859,6 +863,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           .reduce((s, l) => s + Math.abs(Number(l.amount)), 0),
         employerContributions: explained
           .filter(l => l.type === 'employer_contribution')
+          .reduce((s, l) => s + Number(l.amount), 0),
+        reimbursements: explained
+          .filter(l => l.type === 'reimbursement')
           .reduce((s, l) => s + Number(l.amount), 0),
       }
 

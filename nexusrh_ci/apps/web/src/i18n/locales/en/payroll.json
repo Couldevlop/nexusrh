@@ -238,6 +238,7 @@
       "earnings": "Earnings · {{amount}}",
       "employeeDeductions": "Employee deductions · −{{amount}}",
       "employerContributions": "Employer contributions (informational) · {{amount}}",
+      "reimbursements": "Expense reimbursement (outside gross) · {{amount}}",
       "grossSalary": "Gross salary",
       "totalDeductions": "− Total deductions",
       "netPayable": "Net pay",

@@ -9,7 +9,7 @@ import {
 
 interface ExplainedLine {
   code: string; label: string
-  type: 'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution'
+  type: 'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution' | 'reimbursement'
   base: number; amount: number
   formulaHuman: string
   rate?: number
@@ -37,7 +37,7 @@ interface TransparencyData {
     initiatedAt: string | null; closedAt: string | null
   }
   lines: ExplainedLine[]
-  totals: { earnings: number; employeeContributions: number; employerContributions: number }
+  totals: { earnings: number; employeeContributions: number; employerContributions: number; reimbursements?: number }
   comparison: Array<{ month: string; grossSalary: number; netPayable: number; totalCnpsSal: number; its: number }>
   audit: Array<{ action: string; entity: string; createdAt: string; actorName: string | null; changes: unknown }>
 }
@@ -57,7 +57,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 function ExpandableLine({ line }: { line: ExplainedLine }) {
   const { t } = useTranslation('payroll')
   const [open, setOpen] = useState(false)
-  const isNegative = line.type !== 'earning'
+  const isNegative = line.type !== 'earning' && line.type !== 'reimbursement'
   const colorCls = CATEGORY_COLOR[line.category] ?? CATEGORY_COLOR.other
 
   return (
@@ -254,6 +254,20 @@ export default function PaySlipTransparentModal({
                       ))}
                     </div>
                   </section>
+
+                  {/* Notes de frais remboursées (hors brut, ajoutées au net) */}
+                  {data.lines.some(l => l.type === 'reimbursement') && (
+                    <section>
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                        {t('transparency.detail.reimbursements', { amount: formatFCFA(data.totals.reimbursements ?? 0) })}
+                      </h4>
+                      <div className="space-y-2">
+                        {data.lines.filter(l => l.type === 'reimbursement').map(l => (
+                          <ExpandableLine key={l.code} line={l} />
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
                   {/* Cotisations employeur (informatif) */}
                   {data.lines.some(l => l.type === 'employer_contribution') && (
