@@ -375,7 +375,7 @@
       "rccm": "RCCM: ",
       "atRate": "AT rate: ",
       "legislationPack": "Legislation pack: ",
-      "collectiveAgreement": "CBA: "
+      "collectiveAgreement": "CBA: ", "raf": "Payroll officer: ","rafMissing": "not assigned — required to dispatch payroll"
     },
     "empty": "No legal entity — create your first entity (head office or subsidiary).",
     "modal": {
@@ -398,7 +398,7 @@
       "dgiNumber": "DGI no.",
       "rccm": "RCCM",
       "atRate": "CNPS AT rate (0.02 = 2%)",
-      "collectiveAgreement": "Applicable collective agreement",
+      "collectiveAgreement": "Applicable collective agreement", "raf": "Subsidiary payroll officer (RAF)", "rafNone": "— None —", "rafHint": "Receives the dispatched payroll of the subsidiary and submits it. Role: subsidiary RAF, admin or HR director.",
       "collectiveAgreementPlaceholder": "e.g. CI Urban Transport Agreement",
       "address": "Address",
       "cancel": "Cancel",

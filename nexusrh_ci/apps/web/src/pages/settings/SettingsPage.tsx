@@ -59,6 +59,7 @@ interface LegalEntity {
   dgi_number: string | null; address: string | null; city: string; legal_form: string
   collective_agreement: string | null; at_rate: string; employees_count: number
   country_code: string | null; legislation_pack_code: string | null
+  raf_user_id?: string | null
   is_active: boolean
 }
 // Circuit N+1 … N+n → RH (absences, notes de frais) : échéances, valideur RH, prévenance.
@@ -1677,6 +1678,7 @@ interface LegalEntityForm {
   address: string; city: string; legal_form: string
   collective_agreement: string; at_rate: string
   country_code: string; legislation_pack_code: string
+  raf_user_id: string
 }
 
 const EMPTY_LE_FORM: LegalEntityForm = {
@@ -1684,6 +1686,7 @@ const EMPTY_LE_FORM: LegalEntityForm = {
   address: '', city: 'Abidjan', legal_form: 'SARL',
   collective_agreement: '', at_rate: '0.02',
   country_code: 'CIV', legislation_pack_code: 'CIV-2024',
+  raf_user_id: '',
 }
 
 function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
@@ -1704,6 +1707,18 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     queryFn: () => api.get('/settings/legal-entities').then(r => r.data),
   })
   const entities = data?.data ?? []
+  // RAF de filiale : utilisateurs actifs pouvant tenir la paie (mêmes rôles que l'API)
+  const { data: usersData } = useQuery<{ data: TenantUser[] }>({
+    queryKey: ['settings-users'],
+    queryFn: () => api.get('/settings/users').then(r => r.data),
+    enabled: hasSubsidiaries,
+  })
+  const rafCandidates = (usersData?.data ?? [])
+    .filter(u => u.is_active && ['raf_site', 'admin', 'hr_manager'].includes(u.role))
+  const rafName = (id: string | null | undefined) => {
+    const u = id ? (usersData?.data ?? []).find(x => x.id === id) : undefined
+    return u ? `${u.first_name} ${u.last_name}`.trim() || u.email : null
+  }
 
   const openCreate = () => {
     setEditingId(null)
@@ -1724,13 +1739,14 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       legal_form: e.legal_form, collective_agreement: e.collective_agreement ?? '',
       at_rate: e.at_rate, country_code: e.country_code ?? 'CIV',
       legislation_pack_code: e.legislation_pack_code ?? 'CIV-2024',
+      raf_user_id: e.raf_user_id ?? '',
     })
     setShowModal(true)
   }
 
   const save = useMutation({
     mutationFn: (d: LegalEntityForm) => {
-      const payload = { ...d, at_rate: parseFloat(d.at_rate) }
+      const payload = { ...d, at_rate: parseFloat(d.at_rate), raf_user_id: d.raf_user_id || null }
       return editingId
         ? api.patch(`/settings/legal-entities/${editingId}`, payload)
         : api.post('/settings/legal-entities', payload)
@@ -1832,6 +1848,14 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   </div>
                 )}
                 {e.collective_agreement && <div className="col-span-2"><span className="text-muted-foreground">{t('legalEntities.card.collectiveAgreement')}</span>{e.collective_agreement}</div>}
+                {hasSubsidiaries && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">{t('legalEntities.card.raf')}</span>
+                    {rafName(e.raf_user_id)
+                      ? <span className="font-medium">{rafName(e.raf_user_id)}</span>
+                      : <span className="font-medium text-amber-700">{t('legalEntities.card.rafMissing')}</span>}
+                  </div>
+                )}
               </div>
             </div>
           )
@@ -1940,6 +1964,19 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <input value={form.at_rate} onChange={e => setForm(p => ({ ...p, at_rate: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none font-mono" />
                 </div>
+                {hasSubsidiaries && (
+                  <div className="col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.raf')}</label>
+                    <select value={form.raf_user_id} onChange={e => setForm(p => ({ ...p, raf_user_id: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none">
+                      <option value="">{t('legalEntities.modal.rafNone')}</option>
+                      {rafCandidates.map(u => (
+                        <option key={u.id} value={u.id}>{`${u.first_name} ${u.last_name}`.trim() || u.email} · {u.email}</option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">{t('legalEntities.modal.rafHint')}</p>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.collectiveAgreement')}</label>
                   <input value={form.collective_agreement} onChange={e => setForm(p => ({ ...p, collective_agreement: e.target.value }))}

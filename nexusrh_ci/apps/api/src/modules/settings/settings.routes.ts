@@ -126,7 +126,22 @@ const createLegalEntitySchema = z.object({
   at_rate:               z.coerce.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
   country_code:          z.string().regex(/^[A-Z]{2,3}$/).optional(),
   legislation_pack_code: z.string().max(50).optional().nullable(),
+  // Responsable paie de la filiale (RAF) : reçoit la paie déclinée et la soumet.
+  raf_user_id:           z.string().uuid().optional().nullable(),
 }).strict()
+
+/** Rôles pouvant tenir la paie d'une filiale (RAF). */
+const RAF_ROLES = ['raf_site', 'admin', 'hr_manager'] as const
+const RAF_INVALID = 'Le RAF doit être un utilisateur actif du tenant (rôle RAF filiale, admin ou DRH).'
+
+/** true si l'utilisateur peut être désigné RAF d'une filiale du tenant. */
+async function isValidRaf(schema: string, userId: string): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT 1 FROM "${schema}".users WHERE id = $1 AND is_active = true AND role = ANY($2::text[]) LIMIT 1`,
+    [userId, [...RAF_ROLES]],
+  )
+  return (r.rowCount ?? 0) > 0
+}
 
 const patchLegalEntitySchema = createLegalEntitySchema.partial().extend({
   is_active: z.boolean().optional(),
@@ -1705,26 +1720,32 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       try {
+        if (body.raf_user_id && !(await isValidRaf(schema, body.raf_user_id))) {
+          return reply.status(400).send({ error: RAF_INVALID })
+        }
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".legal_entities
             (name, rccm, cnps_number, dgi_number, address, city, legal_form,
-             collective_agreement, at_rate, country_code, legislation_pack_code)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+             collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
         `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
             body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
-            body.country_code ?? 'CIV', body.legislation_pack_code ?? null])
+            body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null])
         const created = res.rows[0]
         // Déclarer une filiale active le workflow paie multi-filiales du tenant :
         // sinon le lien « Paie multi-filiales » (qui porte l'initiation du draft)
         // reste masqué dans la sidebar (conditionné à tenantConfig.hasSubsidiaries).
+        // Seulement à partir de la 2e entité : la PREMIÈRE est l'entreprise elle-même
+        // (« Renseigner l'entité » d'un tenant mono-entité), qui doit garder sa paie simple.
         // Idempotent (ne réécrit que si false), non bloquant — un échec de cette
         // mise à jour secondaire ne doit jamais faire échouer la création.
         try {
           await pool.query(
             `UPDATE platform.tenants
                 SET has_subsidiaries = true, payroll_mode = 'multi_country', updated_at = now()
-              WHERE schema_name = $1 AND has_subsidiaries = false`,
+              WHERE schema_name = $1 AND has_subsidiaries = false
+                AND (SELECT count(*) FROM "${schema}".legal_entities) >= 2`,
             [schema],
           )
         } catch { /* non bloquant */ }
@@ -1760,7 +1781,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data as Record<string, unknown>
       const allowed = ['name','rccm','cnps_number','dgi_number','address','city',
-        'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active']
+        'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active',
+        'raf_user_id']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1775,6 +1797,9 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
+        if (typeof body.raf_user_id === 'string' && !(await isValidRaf(schema, body.raf_user_id))) {
+          return reply.status(400).send({ error: RAF_INVALID })
+        }
         const res = await pool.query(
           `UPDATE "${schema}".legal_entities SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`, values
         )
