@@ -13,6 +13,7 @@ import { getPackByCountry } from '../../services/legislation-packs.js'
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -1059,14 +1060,19 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const c0 = cum.rows[0]!
 
       const rawLines = Array.isArray(slip.lines) ? (slip.lines as PayslipPdfLine[]) : []
+      // Mentions obligatoires (embauche/ancienneté, catégorie, temps de travail,
+      // congés, RCCM/DGI) — lecture seule, sans impact sur les montants.
+      const mentions = await loadPayslipMentions(rawPool, schema, employeeId, slip.month)
 
       const pdf = await renderPayslipPdf({
         tenantName,
-        employer: { cnpsNumber: tenant?.cnps_number ?? null, city: tenant?.city ?? null },
+        employer: { cnpsNumber: tenant?.cnps_number ?? null, city: tenant?.city ?? null, ...mentions.employer },
         employee: {
           firstName: slip.first_name, lastName: slip.last_name, jobTitle: slip.job_title,
-          cnpsNumber: slip.cnps_number, nni: slip.nni,
+          cnpsNumber: slip.cnps_number, nni: slip.nni, ...mentions.employee,
         },
+        worked: mentions.worked,
+        leaveBalance: mentions.leaveBalance,
         month: slip.month,
         lines: rawLines,
         grossSalary: Number(slip.gross_salary),
