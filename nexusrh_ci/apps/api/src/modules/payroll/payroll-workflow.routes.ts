@@ -359,7 +359,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           }
           if (missingRaf.length > 0) {
             return reply.status(400).send({
-              error: `Filiales sans RAF assigné : ${missingRaf.join(', ')}. Définir legal_entities.raf_user_id d'abord.`,
+              error: `Filiales sans RAF assigné : ${missingRaf.join(', ')}. Désignez le RAF de chaque filiale dans Paramètres → Entités juridiques.`,
             })
           }
         }

@@ -202,6 +202,37 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
     expect(res.statusCode).toBe(201)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('settings.legal_entity_created')
+    // La 1re entité = l'entreprise elle-même : la bascule multi-filiales exige ≥ 2 entités
+    const flip = queryMock.mock.calls.find((c) => String(c[0]).includes('has_subsidiaries = true'))
+    expect(String(flip?.[0])).toMatch(/count\(\*\) FROM "[^"]+"\.legal_entities\) >= 2/)
+  })
+
+  it('RAF de filiale : un utilisateur non éligible est refusé (400), aucune insertion', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 }) // isValidRaf
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'RG Bénin', raf_user_id: '11111111-1111-4111-8111-111111111111' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('INSERT INTO'))).toBe(false)
+  })
+
+  it('RAF de filiale : désigné à la modification (PATCH)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }], rowCount: 1 }) // isValidRaf
+      .mockResolvedValueOnce({ rows: [{ id: 'le-1', raf_user_id: '11111111-1111-4111-8111-111111111111' }] }) // UPDATE
+      .mockResolvedValue({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/legal-entities/22222222-2222-4222-8222-222222222222',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { raf_user_id: '11111111-1111-4111-8111-111111111111' },
+    })
+    expect(res.statusCode).toBe(200)
+    const upd = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('legal_entities'))
+    expect(String(upd?.[0])).toContain('raf_user_id = $1')
   })
 
   it('accepte legal_form « SASU » + at_rate en chaîne (régression mismatch front↔back)', async () => {

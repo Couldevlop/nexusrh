@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Sidebar } from './Sidebar'
 import AiChat from '@/components/ai/AiChat'
 import { AlertTriangle, Menu } from 'lucide-react'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore, type TenantConfig } from '@/stores/authStore'
+import { api } from '@/lib/api'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 import { isModuleEnabled } from '@/lib/modules'
 import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
@@ -31,7 +32,20 @@ export default function MainLayout() {
   const { t } = useTranslation('nav')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { tenantConfig } = useAuthStore()
+  const updateTenantConfig = useAuthStore(s => s.updateTenantConfig)
   const location = useLocation()
+  const hasTenant = tenantConfig !== null
+
+  // La config du tenant (filiales, modules…) n'était lue qu'au login : relue à
+  // chaque chargement de l'app pour refléter un changement fait entre-temps.
+  useEffect(() => {
+    if (!hasTenant) return
+    let cancelled = false
+    api.get<{ tenantConfig: TenantConfig | null }>('/auth/me')
+      .then(r => { if (!cancelled && r.data.tenantConfig) updateTenantConfig(r.data.tenantConfig) })
+      .catch(() => { /* non bloquant : on garde la config du login */ })
+    return () => { cancelled = true }
+  }, [hasTenant, updateTenantConfig])
   const labelKey = ROUTE_LABEL_KEYS[location.pathname]
   const pageTitle = labelKey ? t(labelKey) : t('appName')
 
