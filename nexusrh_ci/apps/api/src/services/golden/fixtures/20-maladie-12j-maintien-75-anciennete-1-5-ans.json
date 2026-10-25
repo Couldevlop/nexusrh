@@ -7,7 +7,14 @@
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 251298 → 309615 ; its 3039 → 41019 ; totalDeductions 14912 → 52892 ; netPayable 294702 → 256723 ; grossSalary 309614 → 309615 ; employerCost 329550 → 329551 ; indemniteAbsence 121153 → 121154"
+      }
+    ]
   },
   "input": {
     "baseSalary": 350000,
@@ -26,26 +33,26 @@
   "expected": {
     "baseSalary": 350000,
     "brutProrata": 188461,
-    "grossSalary": 309614,
+    "grossSalary": 309615,
     "cnpsRetraiteSal": 11873,
     "cnpsRetraitePat": 14511,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
     "totalCnpsSal": 11873,
     "totalCnpsPat": 19936,
-    "baseImposable": 251298,
-    "its": 3039,
-    "totalDeductions": 14912,
-    "netPayable": 294702,
-    "employerCost": 329550,
+    "baseImposable": 309615,
+    "its": 41019,
+    "totalDeductions": 52892,
+    "netPayable": 256723,
+    "employerCost": 329551,
     "workingDays": 14,
     "smigCompliant": true,
-    "indemniteAbsence": 121153,
+    "indemniteAbsence": 121154,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 188461 },
-      { "code": "1800", "type": "earning",                 "amount": 121153 },
+      { "code": "1800", "type": "earning",                 "amount": 121154 },
       { "code": "2000", "type": "employee_contribution",   "amount":  11873 },
-      { "code": "2100", "type": "employee_contribution",   "amount":   3039 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  41019 },
       { "code": "3000", "type": "employer_contribution",   "amount":  14511 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },

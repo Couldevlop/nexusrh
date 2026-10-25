@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  categoryLevel, effectiveTerminationRules, parseTerminationRules, resolveNotice, severanceAmount,
-  terminationRulesSchema,
+  categoryLevel, completedSeniorityMonths, effectiveTerminationRules, parseTerminationRules, resolveNotice,
+  severanceAmount, terminationRulesSchema,
 } from './termination-rules.service.js'
 import { CIV_2024, LEGISLATION_PACKS } from './legislation-packs.js'
 
@@ -100,5 +100,28 @@ describe('règles par catégorie', () => {
   it('severanceAmount : progressif par tranche, fraction d\'année incluse', () => {
     expect(severanceAmount(0, 100_000, CONVENTION)).toBe(0)
     expect(severanceAmount(18, 100_000, CONVENTION)).toBe(75_000)
+  })
+})
+
+describe('completedSeniorityMonths — mois complets, jour de sortie inclus', () => {
+  it('compte le mois de sortie travaillé jusqu\'au dernier jour', () => {
+    expect(completedSeniorityMonths('2025-10-01', '2026-10-31')).toBe(13)
+    expect(completedSeniorityMonths('2025-11-01', '2026-10-31')).toBe(12)
+    expect(completedSeniorityMonths('2025-10-01', '2026-10-30')).toBe(12)
+  })
+  it('embauche en cours de mois et fins de mois courtes', () => {
+    expect(completedSeniorityMonths('2025-03-15', '2025-04-14')).toBe(1)
+    expect(completedSeniorityMonths('2025-03-15', '2025-04-13')).toBe(0)
+    expect(completedSeniorityMonths('2025-01-31', '2025-02-28')).toBe(1)
+    expect(completedSeniorityMonths('2024-12-01', '2025-12-31')).toBe(13)
+  })
+  it('accepte les Date lues par pg (minuit local) et les horodatages ISO', () => {
+    expect(completedSeniorityMonths(new Date(2025, 9, 1), new Date(2026, 9, 31))).toBe(13)
+    expect(completedSeniorityMonths('2025-10-01T00:00:00.000Z', '2026-10-31')).toBe(13)
+  })
+  it('sortie antérieure à l\'embauche ou date invalide → 0', () => {
+    expect(completedSeniorityMonths('2026-10-01', '2025-10-01')).toBe(0)
+    expect(completedSeniorityMonths('n/a', '2025-10-01')).toBe(0)
+    expect(completedSeniorityMonths(new Date('invalid'), '2025-10-01')).toBe(0)
   })
 })

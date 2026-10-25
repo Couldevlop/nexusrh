@@ -94,7 +94,7 @@ Toutes les URL sortantes sont protégées contre les attaques SSRF (les adresses
 
 ## 7. Conformité Côte d'Ivoire incluse
 
-CNPS 2024 (retraite, prestations familiales, AT par secteur), ITS/DGI (barème + crédits famille), SMIG, congés (jours ouvrables), **DISA** (loi 99-477), **e-CNPS**, contrats **OHADA**, formation **FDFP**, paiement salaires **Mobile Money** (Wave, MTN, Orange). Devise **FCFA** exclusivement.
+CNPS 2024 (retraite, prestations familiales, AT par secteur), ITS/DGI (barème 2024 + réduction pour charges de famille), SMIG, congés (jours ouvrables), **DISA** (loi 99-477), **e-CNPS**, contrats **OHADA**, formation **FDFP**, paiement salaires **Mobile Money** (Wave, MTN, Orange). Devise **FCFA** exclusivement.
 
 ---
 

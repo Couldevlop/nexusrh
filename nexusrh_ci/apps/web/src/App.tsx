@@ -280,7 +280,9 @@ export default function App() {
               </RoleGuard>
             } />
             <Route path="payroll/multi-filiales" element={
-              <RoleGuard allowedRoles={['admin','hr_manager']}>
+              // hr_officer / readonly : consultation (un hr_officer peut être valideur désigné
+              // du circuit de paie) — les actions de pilotage restent admin / hr_manager.
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <ModuleGuard moduleKey="payroll">
                   <PayrollMultiSitesPage />
                 </ModuleGuard>

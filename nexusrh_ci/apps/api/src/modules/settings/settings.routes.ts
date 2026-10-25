@@ -142,6 +142,9 @@ const createPayrollRuleSchema = z.object({
   is_active:    z.boolean().optional(),
   order:        z.number().int().min(0).max(9999).optional(),
   description:  z.string().max(1000).optional().nullable(),
+  // Assujettissement CNPS / ITS de la rubrique (null = règle du pack législatif)
+  subject_social: z.boolean().optional().nullable(),
+  subject_tax:    z.boolean().optional().nullable(),
 }).strict()
 
 const patchPayrollRuleSchema = createPayrollRuleSchema.omit({ code: true, type: true }).partial().strict()
@@ -1565,10 +1568,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const formula = body.formula ?? (body.rate != null ? `BRUT * ${body.rate}` : '0')
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".payroll_rules
-            (code, label, type, formula, "order", is_active)
-          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *, label AS name
+            (code, label, type, formula, "order", is_active, subject_social, subject_tax)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *, label AS name
         `, [body.code, body.name, body.type, formula,
-            body.order ?? 99, body.is_active ?? true])
+            body.order ?? 99, body.is_active ?? true,
+            body.subject_social ?? null, body.subject_tax ?? null])
         const created = res.rows[0]
         // OWASP A09 — création règle de paie = action critique (taux cotisation)
         auditLogSettings(
@@ -1603,7 +1607,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       // Mappe le modèle API (name/rate/formula) vers les colonnes réelles
       // (label/formula). 'rate' seul devient une formule "BRUT * <taux>".
       // ceiling_type/description ne sont pas stockés (colonnes absentes).
-      const colMap: Record<string, string> = { name: 'label', formula: 'formula', is_active: 'is_active', order: '"order"' }
+      const colMap: Record<string, string> = {
+        name: 'label', formula: 'formula', is_active: 'is_active', order: '"order"',
+        subject_social: 'subject_social', subject_tax: 'subject_tax',
+      }
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1888,6 +1895,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           shortNoticeDays: z.number().int().min(0).max(365).optional(),
           longNoticeDays:  z.number().int().min(0).max(365).optional(),
         }).strict().optional(),
+        // Clôture de paie : valideur nominatif par niveau (index = niveau - 1),
+        // libellé de fonction et échéance (SLA) au-delà de laquelle l'équipe RH
+        // prend la main. Réservé au module `payroll` (contrôlé plus bas).
+        validators: z.array(z.object({
+          userId:        z.string().uuid().nullable(),
+          functionLabel: z.string().trim().max(80).nullable().optional(),
+          slaDays:       z.number().int().min(1).max(30).optional(),
+        }).strict()).max(5).optional(),
       }).strict()
       const workflowSchema = z.array(z.object({
         module:       z.string().min(1).max(50),
@@ -1910,6 +1925,32 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             )
             if (!u.rows[0]) {
               return reply.status(400).send({ error: 'Le valideur RH désigné doit être un membre de l\'équipe RH (admin, RH manager ou gestionnaire RH).' })
+            }
+          }
+          // Valideurs nominatifs de la paie : membres ACTIFS de l'équipe RH du
+          // tenant (OWASP A01 — jamais un id d'un autre tenant), tous distincts
+          // (un approbateur ne valide jamais deux niveaux).
+          const validators = cfg.config?.validators
+          if (validators) {
+            if (cfg.module !== 'payroll') {
+              return reply.status(400).send({ error: 'Les valideurs nominatifs ne se paramètrent que pour la clôture de paie.' })
+            }
+            if (validators.length > cfg.levels_count) {
+              return reply.status(400).send({ error: 'Plus de valideurs désignés que de niveaux de validation : retirez les niveaux en trop.' })
+            }
+            const ids = validators.map(v => v.userId).filter((x): x is string => !!x)
+            if (new Set(ids).size !== ids.length) {
+              return reply.status(400).send({ error: 'Une même personne ne peut pas être désignée à deux niveaux de validation de la paie.' })
+            }
+            if (ids.length > 0) {
+              const found = await pool.query<{ id: string }>(
+                `SELECT id FROM "${schema}".users
+                  WHERE id::text = ANY($1::text[]) AND role IN ('admin','hr_manager','hr_officer') AND COALESCE(is_active, true)`,
+                [ids],
+              )
+              if ((found.rows ?? []).length !== ids.length) {
+                return reply.status(400).send({ error: 'Chaque valideur de la paie doit être un membre actif de l\'équipe RH (administrateur, responsable RH ou gestionnaire RH).' })
+              }
             }
           }
         }

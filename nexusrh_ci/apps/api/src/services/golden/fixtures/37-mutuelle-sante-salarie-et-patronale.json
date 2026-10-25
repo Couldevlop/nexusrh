@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 12 — extension MUTUELLE_SAL/PAT codes 4000/4100",
         "deltaSummary": "baseSalary 0 → 350000 ; brutProrata 0 → 350000 ; grossSalary 0 → 350000 ; cnpsRetraiteSal 0 → 22050 ; cnpsRetraitePat 0 → 26950 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 22050 ; totalCnpsPat 0 → 32375 ; baseImposable 0 → 275450 ; its 0 → 4247 ; totalDeductions 0 → 34297 ; netPayable 0 → 315703 ; employerCost 0 → 398375 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 9"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 275450 → 350000 ; its 4247 → 49500 ; totalDeductions 34297 → 79550 ; netPayable 315703 → 270450"
       }
     ]
   },
@@ -38,10 +44,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 22050,
     "totalCnpsPat": 32375,
-    "baseImposable": 275450,
-    "its": 4247,
-    "totalDeductions": 34297,
-    "netPayable": 315703,
+    "baseImposable": 350000,
+    "its": 49500,
+    "totalDeductions": 79550,
+    "netPayable": 270450,
     "employerCost": 398375,
     "workingDays": 26,
     "smigCompliant": true,
@@ -59,7 +65,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 4247
+        "amount": 49500
       },
       {
         "code": "4000",

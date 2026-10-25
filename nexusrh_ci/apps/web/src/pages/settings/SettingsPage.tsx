@@ -52,6 +52,7 @@ interface PayrollRule {
   id: string; code: string; name: string; type: string
   formula: string | null; rate: string | null; ceiling_type: string | null
   is_active: boolean; order: number; description: string | null
+  subject_social?: boolean | null; subject_tax?: boolean | null
 }
 interface LegalEntity {
   id: string; name: string; rccm: string | null; cnps_number: string | null
@@ -65,8 +66,11 @@ interface NoticeConfig {
   enabled?: boolean; typeCodes?: string[]
   shortMinDays?: number; shortMaxDays?: number; shortNoticeDays?: number; longNoticeDays?: number
 }
+// Clôture de paie : valideur nominatif par niveau (index = niveau - 1), fonction et échéance.
+interface PayrollValidatorConfig { userId: string | null; functionLabel?: string | null; slaDays?: number }
 interface CircuitConfig {
   managerSlaDays?: number; hrSlaDays?: number; hrValidatorUserId?: string | null; notice?: NoticeConfig
+  validators?: PayrollValidatorConfig[]
 }
 interface WorkflowConfig { id: string; module: string; levels_count: number; config?: CircuitConfig | null }
 
@@ -1506,6 +1510,14 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     mutationFn: (id: string) => api.delete(`/settings/payroll-rules/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-payroll-rules'] }),
   })
+  // Assujettissement CNPS / ITS d'une rubrique de gain : null = règle du pack
+  const setSubject = useMutation({
+    mutationFn: ({ id, field, value }: { id: string; field: 'subject_social' | 'subject_tax'; value: boolean | null }) =>
+      api.patch(`/settings/payroll-rules/${id}`, { [field]: value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-payroll-rules'] }),
+  })
+  const subjectValue = (v: boolean | null | undefined) => (v === true ? 'yes' : v === false ? 'no' : 'pack')
+  const parseSubject = (v: string): boolean | null => (v === 'yes' ? true : v === 'no' ? false : null)
 
   return (
     <div className="space-y-4">
@@ -1527,6 +1539,8 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <th className="p-3">{t('payrollRules.table.label')}</th>
               <th className="p-3">{t('payrollRules.table.type')}</th>
               <th className="p-3">{t('payrollRules.table.formulaOrRate')}</th>
+              <th className="p-3">{t('payrollRules.table.subjectSocial')}</th>
+              <th className="p-3">{t('payrollRules.table.subjectTax')}</th>
               <th className="p-3">{t('payrollRules.table.status')}</th>
               <th className="p-3">{t('payrollRules.table.actions')}</th>
             </tr>
@@ -1550,6 +1564,20 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <td className="p-3 font-mono text-xs">
                     {r.formula ?? (r.rate ? `${(parseFloat(r.rate) * 100).toFixed(2)} %` : '—')}
                   </td>
+                  {(['subject_social', 'subject_tax'] as const).map(field => (
+                    <td key={field} className="p-3">
+                      {r.type === 'earning' && r.formula?.startsWith('VAR:') ? (
+                        <select aria-label={t(field === 'subject_social' ? 'payrollRules.table.subjectSocial' : 'payrollRules.table.subjectTax')}
+                          value={subjectValue(r[field])}
+                          onChange={e => setSubject.mutate({ id: r.id, field, value: parseSubject(e.target.value) })}
+                          className="rounded-md border border-input bg-background px-2 py-1 text-xs outline-none">
+                          <option value="pack">{t('payrollRules.subject.pack')}</option>
+                          <option value="yes">{t('payrollRules.subject.yes')}</option>
+                          <option value="no">{t('payrollRules.subject.no')}</option>
+                        </select>
+                      ) : <span className="text-xs text-muted-foreground">—</span>}
+                    </td>
+                  ))}
                   <td className="p-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
                       {r.is_active ? t('payrollRules.active') : t('payrollRules.inactive')}
@@ -2525,6 +2553,8 @@ const MODULE_META: Record<string, { icon: React.ElementType; color: string }> = 
 const CIRCUIT_MODULES = new Set(['absences', 'expenses'])
 const MAX_CIRCUIT_LEVELS = 10
 // Valeurs appliquées par l'API quand le tenant n'a rien paramétré.
+// Échéance par défaut d'un niveau de validation de la paie (aligné sur l'API).
+const DEFAULT_PAYROLL_SLA_DAYS = 2
 const DEFAULT_NOTICE: Required<NoticeConfig> = {
   enabled: true, typeCodes: ['CP', 'SANS_SOLDE'], shortMinDays: 2, shortMaxDays: 5, shortNoticeDays: 7, longNoticeDays: 30,
 }
@@ -2604,10 +2634,35 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const notice = circuitOf('absences').notice
   const noticeInvalid = notice.shortMinDays > notice.shortMaxDays
 
+  // Clôture de paie : un valideur nominatif (+ fonction, échéance) par niveau.
+  const [localValidators, setLocalValidators] = useState<PayrollValidatorConfig[] | null>(null)
+  const payrollLevels = Math.min(levelsOf('payroll'), LEVEL_NAME_KEYS.length)
+  const payrollValidators: Required<PayrollValidatorConfig>[] = Array.from({ length: payrollLevels }, (_, i) => {
+    const v = (localValidators ?? configMap.payroll?.config?.validators ?? [])[i]
+    return { userId: v?.userId ?? null, functionLabel: v?.functionLabel ?? '', slaDays: v?.slaDays ?? DEFAULT_PAYROLL_SLA_DAYS }
+  })
+  const updateValidator = (index: number, patch: Partial<PayrollValidatorConfig>) =>
+    setLocalValidators(payrollValidators.map((v, i) => (i === index ? { ...v, ...patch } : v)))
+  const designatedIds = payrollValidators.map(v => v.userId).filter((x): x is string => !!x)
+  const validatorsDuplicate = new Set(designatedIds).size !== designatedIds.length
+
   const save = useMutation({
     mutationFn: () => api.patch('/settings/workflow',
       allModules.map(m => {
         const levels_count = Math.min(levelsOf(m), CIRCUIT_MODULES.has(m) ? MAX_CIRCUIT_LEVELS : LEVEL_NAME_KEYS.length)
+        if (m === 'payroll') {
+          return {
+            module: m,
+            levels_count,
+            config: {
+              validators: payrollValidators.slice(0, levels_count).map(v => ({
+                userId: v.userId,
+                functionLabel: v.functionLabel?.trim() ? v.functionLabel.trim() : null,
+                slaDays: v.slaDays,
+              })),
+            },
+          }
+        }
         if (!CIRCUIT_MODULES.has(m)) return { module: m, levels_count }
         const c = circuitOf(m)
         // La fusion côté API est superficielle : le bloc « notice » est envoyé complet.
@@ -2624,7 +2679,7 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       })
     ),
     onSuccess: () => {
-      setLocalLevels({}); setLocalCircuit({})
+      setLocalLevels({}); setLocalCircuit({}); setLocalValidators(null)
       qc.invalidateQueries({ queryKey: ['settings-workflow'] })
     },
   })
@@ -2666,7 +2721,9 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           const hrLabel = t('workflow.circuit.hr')
           const chainFor = (count: number) => isCircuit
             ? circuitChain(count, hrLabel)
-            : LEVEL_NAME_KEYS.slice(0, count).map(k => t(`workflow.levelNames.${k}`)).join(' → ')
+            : LEVEL_NAME_KEYS.slice(0, count)
+              .map((k, i) => (module === 'payroll' && payrollValidators[i]?.functionLabel?.trim()) || t(`workflow.levelNames.${k}`))
+              .join(' → ')
           const choices = Array.from({ length: isCircuit ? MAX_CIRCUIT_LEVELS : LEVEL_NAME_KEYS.length }, (_, i) => i + 1)
           const circuit = isCircuit ? circuitOf(module) : null
           return (
@@ -2705,6 +2762,48 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <p className="text-xs text-muted-foreground mt-2">
                 {t('workflow.chain', { chain: chainFor(current) })}
               </p>
+
+              {module === 'payroll' && (
+                <div className="mt-4 space-y-3 border-t border-border pt-3">
+                  <p className="text-xs text-muted-foreground">{t('workflow.payrollCircuit.intro')}</p>
+                  {payrollValidators.map((v, i) => (
+                    <div key={i} className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[auto_1fr_1fr_auto] sm:items-end">
+                      <p className="text-sm font-medium sm:pb-2">{t('workflow.payrollCircuit.level', { level: i + 1 })}</p>
+                      <label className="text-xs">
+                        <span className="text-muted-foreground">{t('workflow.payrollCircuit.validator')}</span>
+                        <select value={v.userId ?? ''}
+                          aria-label={`${t('workflow.payrollCircuit.validator')} — ${t('workflow.payrollCircuit.level', { level: i + 1 })}`}
+                          onChange={e => updateValidator(i, { userId: e.target.value || null })}
+                          className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus:ring-2 focus:ring-ring outline-none">
+                          <option value="">{t('workflow.payrollCircuit.anyHr')}</option>
+                          {hrTeam.map(u => (
+                            <option key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs">
+                        <span className="text-muted-foreground">{t('workflow.payrollCircuit.functionLabel')}</span>
+                        <input type="text" maxLength={80} value={v.functionLabel ?? ''}
+                          aria-label={`${t('workflow.payrollCircuit.functionLabel')} — ${t('workflow.payrollCircuit.level', { level: i + 1 })}`}
+                          placeholder={t('workflow.payrollCircuit.functionPlaceholder')}
+                          onChange={e => updateValidator(i, { functionLabel: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus:ring-2 focus:ring-ring outline-none" />
+                      </label>
+                      <label className="text-xs">
+                        <span className="text-muted-foreground">{t('workflow.payrollCircuit.sla')}</span>
+                        <input type="number" min={1} max={30} value={v.slaDays}
+                          aria-label={`${t('workflow.payrollCircuit.sla')} — ${t('workflow.payrollCircuit.level', { level: i + 1 })}`}
+                          onChange={e => updateValidator(i, { slaDays: clampInt(e.target.value, 1, 30) })}
+                          className={`mt-1 block ${numberCls}`} />
+                      </label>
+                    </div>
+                  ))}
+                  {validatorsDuplicate && (
+                    <p role="alert" className="text-xs text-destructive">{t('workflow.payrollCircuit.duplicate')}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{t('workflow.payrollCircuit.sodHint')}</p>
+                </div>
+              )}
 
               {circuit && (
                 <div className="mt-4 space-y-3 border-t border-border pt-3">
@@ -2803,7 +2902,7 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => save.mutate()}
-            disabled={save.isPending || noticeInvalid}
+            disabled={save.isPending || noticeInvalid || validatorsDuplicate}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             <Save className="h-4 w-4" />
             {save.isPending ? t('workflow.saving') : t('workflow.save')}

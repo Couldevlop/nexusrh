@@ -584,7 +584,7 @@
       "features": {
         "chat": "Chat assistant RH CI (CNPS, CT, OHADA)",
         "chatRoles": "Admin, RH, Managers",
-        "simulator": "Simulateur ITS/IGR quotient familial",
+        "simulator": "Simulateur ITS (barème 2024 + parts / RICF)",
         "simulatorRoles": "Tous (POST /ai/simulate-its)",
         "docs": "Génération documents RH (CDI, lettre...)",
         "docsRoles": "Admin, RH",
@@ -635,11 +635,10 @@
         "TAUX_CNPS_AT_BTP": "AT — BTP/Transport",
         "TAUX_CNPS_AT_INDUSTRIE": "AT — Industrie",
         "TAUX_CNPS_AT_EXTRACTION": "AT — Extraction/Mines",
-        "ABATTEMENT_ITS": "Abattement forfaitaire ITS",
-        "CREDIT_IMPOT_MARIE": "Crédit impôt — marié(e)",
-        "CREDIT_IMPOT_1ENFANT": "Crédit impôt — 1 enfant",
-        "CREDIT_IMPOT_2ENFANTS": "Crédit impôt — 2 enfants",
-        "CREDIT_IMPOT_3ENFANTS_PLUS": "Crédit impôt — 3 enfants+",
+        "ABATTEMENT_ITS": "Abattement forfaitaire ITS (supprimé depuis le 01/01/2024 — 0 %)",
+        "RICF_PAR_DEMI_PART": "RICF — réduction par demi-part au-delà de 1 part",
+        "RICF_PLAFOND_PARTS": "RICF — plafond du nombre de parts",
+        "RICF_MAX": "RICF — réduction maximale (5 parts)",
         "CONGES_JOURS_PAR_MOIS": "Congés par mois travaillé",
         "CONTRIBUTION_FDFP": "Contribution FDFP (>10 sal)"
       }

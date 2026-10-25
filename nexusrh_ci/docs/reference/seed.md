@@ -60,14 +60,14 @@ payrollRules : 16 rubriques CI préconfigurées (voir paie-mobile-money-ia.md)
 payPeriods : 6 mois (juil–déc 2024), status = "closed"
 paySlips : 80 employés × 6 mois = 480 bulletins, status = "generated"
   → netPayable calculé selon moteur CI (CNPS + ITS) pour chaque employé
-  → Vérification SMIG 60 000 FCFA respectée pour tous
+  → Vérification SMIG 75 000 FCFA respectée pour tous
 
 cnps_declarations : 6 déclarations mensuelles générées (juil–déc 2024)
   → Export e-CNPS CSV généré pour chaque mois
 disa_records : DISA 2024 générée pour les 80 employés
 
 absenceTypes : CP | Maladie | Maternité | Paternité | Deuil familial | Sans solde | Formation
-absenceBalances pour tous (cohérents : 2,5j/mois × ancienneté)
+absenceBalances pour tous (cohérents : 2,2 j/mois × ancienneté)
 absences : historique 12 mois, mix statuts
   → Kouassi Jean-Paul (employe@) : 2 approuvées + 1 en attente + 1 rejetée
 

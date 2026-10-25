@@ -584,7 +584,7 @@
       "features": {
         "chat": "CI HR assistant chat (CNPS, Labour Code, OHADA)",
         "chatRoles": "Admin, HR, Managers",
-        "simulator": "ITS/IGR family quotient simulator",
+        "simulator": "ITS simulator (2024 scale + shares / RICF)",
         "simulatorRoles": "All (POST /ai/simulate-its)",
         "docs": "HR document generation (CDI, letter...)",
         "docsRoles": "Admin, HR",
@@ -635,11 +635,10 @@
         "TAUX_CNPS_AT_BTP": "Work-accident — Construction/Transport",
         "TAUX_CNPS_AT_INDUSTRIE": "Work-accident — Industry",
         "TAUX_CNPS_AT_EXTRACTION": "Work-accident — Mining",
-        "ABATTEMENT_ITS": "ITS standard allowance",
-        "CREDIT_IMPOT_MARIE": "Tax credit — married",
-        "CREDIT_IMPOT_1ENFANT": "Tax credit — 1 child",
-        "CREDIT_IMPOT_2ENFANTS": "Tax credit — 2 children",
-        "CREDIT_IMPOT_3ENFANTS_PLUS": "Tax credit — 3+ children",
+        "ABATTEMENT_ITS": "ITS standard deduction (abolished since 01/01/2024 — 0%)",
+        "RICF_PAR_DEMI_PART": "RICF — reduction per half-share above 1 share",
+        "RICF_PLAFOND_PARTS": "RICF — maximum number of shares",
+        "RICF_MAX": "RICF — maximum reduction (5 shares)",
         "CONGES_JOURS_PAR_MOIS": "Leave per month worked",
         "CONTRIBUTION_FDFP": "FDFP contribution (>10 emp.)"
       }

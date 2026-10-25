@@ -6,7 +6,7 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import {
-  categoryLevel, effectiveTerminationRules, resolveNotice, severanceAmount,
+  categoryLevel, completedSeniorityMonths, effectiveTerminationRules, resolveNotice, severanceAmount,
 } from '../../services/termination-rules.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -635,9 +635,8 @@ ${salaries}
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
 
-      const hireDate = new Date(emp.hire_date)
-      const exit     = new Date(exitDate)
-      const ancienneteMois = Math.max(0, (exit.getFullYear() - hireDate.getFullYear()) * 12 + (exit.getMonth() - hireDate.getMonth()))
+      // Mois complets, jour de sortie inclus (même règle que le solde de tout compte).
+      const ancienneteMois = emp.hire_date ? completedSeniorityMonths(emp.hire_date, exitDate) : 0
       const ancienneteAns  = ancienneteMois / 12
 
       // Droits légaux : mêmes règles que le solde de tout compte (convention

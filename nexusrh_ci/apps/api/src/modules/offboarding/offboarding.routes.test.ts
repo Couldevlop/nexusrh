@@ -174,6 +174,25 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
     expect(data.congesAllowance.calendarDays).toBe(8.25)
   })
 
+  it('recette Yao : 01/10/2025 → 31/10/2026 = 13 mois → indemnité 81 250 (pas 75 000)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{
+        departure_type: 'licenciement', departure_date: '2026-10-31', notice_served: true,
+        status: 'open', base_salary: '250000', hire_date: '2025-10-01',
+      }] })
+      .mockResolvedValueOnce({ rows: [] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit
+    const res = await app.inject({
+      method: 'POST', url: '/offboarding/o1/settlement',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { congesDaysOutstanding: 0 },
+    })
+    expect(res.statusCode).toBe(200)
+    const data = JSON.parse(res.body).data as { indemniteLicenciement: number; seniorityYears: number }
+    expect(data.seniorityYears).toBe(1)
+    expect(data.indemniteLicenciement).toBe(81_250)
+  })
+
   it('404 si dossier inexistant', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({

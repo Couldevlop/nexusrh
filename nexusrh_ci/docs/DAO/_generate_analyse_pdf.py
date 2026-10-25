@@ -264,7 +264,7 @@ def build():
     s.append(conformity_table([
         ("Demandes via portail self-service (web + mobile)", "OUI", "/mon-espace/absences + PWA."),
         ("Typologie d'absences parametrable (CP, maladie, maternite...)", "OUI", "absence_types conformes CI."),
-        ("Calcul auto des soldes selon Code du travail CI (2,5 j ouvrables/mois)", "OUI", "Conforme ; jours feries CI 2024 integres."),
+        ("Calcul auto des soldes selon Code du travail CI (2,2 j ouvrables/mois)", "OUI", "Conforme ; jours feries CI 2024 integres."),
         ("Workflow de validation N+1 puis RH", "OUI", "validationLevel multi-niveau."),
         ("Planning d'equipe (service/agence) + alertes depassement/conflits", "PARTIEL",
          "Donnees presentes, alertes via dashboard DG ; vue planning a enrichir.")]))

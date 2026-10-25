@@ -8,17 +8,26 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CalendarDays, CheckCircle, Inbox, Loader2, Receipt, XCircle } from 'lucide-react'
-import { formatFCFA } from '@/lib/api'
+import { Link } from 'react-router-dom'
+import { Banknote, CalendarDays, CheckCircle, ChevronRight, Inbox, Loader2, Receipt, XCircle } from 'lucide-react'
+import { formatFCFA, formatMonth } from '@/lib/api'
 import {
-  readOnlyLabel, usePendingApprovals, useApprovalDecision, type ApprovalModule, type PendingApproval,
+  readOnlyLabel, usePendingApprovals, useApprovalDecision, type ApprovalModule, type PendingApproval, type PendingModule,
 } from '@/components/approvals/workflow'
 import { FeedbackBanner, RejectReasonModal, SlaBadge, WorkflowStep } from '@/components/approvals/WorkflowBadges'
 
-const MODULE_ICON: Record<ApprovalModule, React.ElementType> = { absences: CalendarDays, expenses: Receipt }
+const MODULE_ICON: Record<PendingModule, React.ElementType> = { absences: CalendarDays, expenses: Receipt, payroll: Banknote }
+
+/** Clôture de paie : valideur attendu « Nom (fonction) » de l'étape courante. */
+function payrollValidator(item: PendingApproval): string {
+  const next = item.workflow.next
+  if (next?.kind !== 'payroll' || !next.validatorName) return ''
+  return next.functionLabel ? `${next.validatorName} (${next.functionLabel})` : next.validatorName
+}
 
 /** Le détail d'une note de frais arrive en « <montant> FCFA » brut : on le reformate. */
 function formatDetail(item: PendingApproval): string {
+  if (item.module === 'payroll') return payrollValidator(item)
   if (item.module !== 'expenses') return item.detail
   const amount = parseFloat(item.detail)
   return Number.isFinite(amount) ? formatFCFA(Math.round(amount)) : item.detail
@@ -28,7 +37,7 @@ export default function ApprovalsPage() {
   const { t } = useTranslation('approvals')
   const { data, isLoading, isError } = usePendingApprovals()
   const { approve, reject, feedback, setFeedback } = useApprovalDecision()
-  const [rejectTarget, setRejectTarget] = useState<PendingApproval | null>(null)
+  const [rejectTarget, setRejectTarget] = useState<{ module: ApprovalModule; id: string } | null>(null)
 
   const items = data?.data ?? []
   const actionable = items.filter(i => i.workflow.canAct)
@@ -37,33 +46,47 @@ export default function ApprovalsPage() {
 
   const renderRow = (item: PendingApproval) => {
     const Icon = MODULE_ICON[item.module]
+    const module = item.module
+    const isPayroll = module === 'payroll'
     const busy = (approve.isPending && approve.variables?.id === item.id)
       || (reject.isPending && reject.variables?.id === item.id)
     return (
       <tr key={`${item.module}:${item.id}`} className="hover:bg-muted/30">
         <td className="p-4">
-          <p className="font-medium">{item.employeeName}</p>
+          <p className="font-medium">
+            {isPayroll && item.employeeName ? t('payrollInitiatedBy', { name: item.employeeName }) : item.employeeName}
+          </p>
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
             <Icon className="h-3 w-3" /> {t(`modules.${item.module}`)}
           </p>
         </td>
         <td className="p-4">
-          <p className="text-sm">{item.label}</p>
+          <p className="text-sm">{isPayroll ? t('payrollLabel', { month: formatMonth(item.month ?? item.label) }) : item.label}</p>
           <p className="text-xs text-muted-foreground">{formatDetail(item)}</p>
         </td>
         <td className="p-4"><WorkflowStep workflow={item.workflow} /></td>
         <td className="p-4"><SlaBadge workflow={item.workflow} dueSoon={item.dueSoon} /></td>
         <td className="p-4">
-          {item.workflow.canAct ? (
+          {module === 'payroll' ? (
+            // La clôture de paie se valide / se renvoie depuis l'écran Paie (circuit complet) ;
+            // paie multi-filiales : circuit de la période parente, écran Paie multi-filiales.
+            <Link
+              to={item.scope === 'multi_sites'
+                ? `/payroll/multi-filiales?validate=${encodeURIComponent(item.id)}`
+                : `/payroll?validate=${encodeURIComponent(item.month ?? item.label)}`}
+              className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200">
+              {t('actions.open')} <ChevronRight className="h-3 w-3" />
+            </Link>
+          ) : item.workflow.canAct ? (
             <div className="flex gap-2">
               <button
-                onClick={() => approve.mutate({ module: item.module, id: item.id })}
+                onClick={() => approve.mutate({ module, id: item.id })}
                 disabled={busy}
                 className="flex items-center gap-1 rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50">
                 {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />} {t('actions.approve')}
               </button>
               <button
-                onClick={() => setRejectTarget(item)}
+                onClick={() => setRejectTarget({ module, id: item.id })}
                 disabled={busy}
                 className="flex items-center gap-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50">
                 <XCircle className="h-3 w-3" /> {t('actions.reject')}

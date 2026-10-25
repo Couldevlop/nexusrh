@@ -329,6 +329,44 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
     expect(body.summary.inserted).toBe(1)
     expect(body.summary.totalGross).toBeGreaterThan(0)
   })
+
+  it('prime de transport : plafond exonéré de la ville de la filiale (Bouaké 24 000) et paramétrage des rubriques', async () => {
+    const employee = { id: 'emp-1', base_salary: '300000', marital_status: 'single', children_count: 0 }
+    const run = async (city: string): Promise<{ totalCnps: number; totalIts: number; veSql: string }> => {
+      let veSql = ''
+      queryMock.mockReset()
+      queryMock.mockImplementation(async (sql: unknown) => {
+        const q = String(sql)
+        if (q.includes('FROM "tenant_multi".pay_periods WHERE id = $1') && !/UPDATE/i.test(q)) {
+          return { rows: [periodRow()] }
+        }
+        if (q.includes('.legal_entities')) return { rows: [{ at_rate: null, name: 'Filiale CIV', city }] }
+        if (q.includes('.employees'))      return { rows: [employee] }
+        if (q.includes('.variable_elements')) {
+          veSql = q
+          return { rows: [{ rule_code: 'PRIME_TRANSPORT', amount: '30000', subject_social: null, subject_tax: null }] }
+        }
+        if (/UPDATE/i.test(q) && q.includes('.pay_periods')) {
+          return { rows: [{ id: CHILD, status: 'completed_by_site', total_gross: 330000 }] }
+        }
+        return { rows: [] }
+      })
+      const res = await app.inject({
+        method: 'POST', url: `/payroll-workflow/periods/${CHILD}/submit-by-raf`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'raf_site', RAF_SUB)}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const { summary } = JSON.parse(res.body) as { summary: { totalCnps: number; totalIts: number } }
+      return { ...summary, veSql }
+    }
+    const abidjan = await run('Cocody')
+    const bouake  = await run('Bouaké')
+    // Abidjan : 30 000 ≤ plafond 30 000 → exonéré ; Bouaké : 6 000 F d'excédent soumis.
+    expect(bouake.totalCnps).toBeGreaterThan(abidjan.totalCnps)
+    expect(bouake.totalIts).toBeGreaterThan(abidjan.totalIts)
+    // L'assujettissement paramétré par rubrique (payroll_rules) est lu.
+    expect(bouake.veSql).toContain('subject_social')
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -399,9 +437,13 @@ describe('POST /payroll-workflow/periods/:id/close', () => {
 
   it('clôture validated_central → 200 + audit', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ status: 'validated_central' }] }) // parent
-      .mockResolvedValueOnce({ rows: [] })                                // UPDATE
-      .mockResolvedValueOnce({ rows: [] })                                // audit
+      .mockResolvedValueOnce({ rows: [{ id: PARENT, month: '2024-12', status: 'validated_central', parent_period_id: null, initiated_by: 'u-init' }] }) // parent
+      .mockResolvedValueOnce({ rows: [{ levels_count: 1, config: {} }] }) // circuit paie : 1 niveau
+      .mockResolvedValueOnce({ rows: [] })                                // validations existantes
+      .mockResolvedValueOnce({ rows: [] })                                // INSERT validation
+      .mockResolvedValueOnce({ rows: [] })                                // audit approve
+      .mockResolvedValueOnce({ rows: [] })                                // UPDATE closed
+      .mockResolvedValueOnce({ rows: [] })                                // audit close
     const res = await app.inject({
       method: 'POST', url: `/payroll-workflow/periods/${PARENT}/close`,
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },

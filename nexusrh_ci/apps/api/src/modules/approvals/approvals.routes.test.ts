@@ -112,6 +112,135 @@ describe('GET /approvals/pending', () => {
     expect(JSON.parse(res.body)).toMatchObject({ data: [], summary: { actionable: 0, overdue: 0, dueSoon: 0, readOnly: 0 } })
   })
 
+  describe('clôture de paie en validation (module payroll)', () => {
+    const DAY = 24 * HOUR
+    function routePayroll(opts: { initiatedAgo: number; validators: Array<{ userId: string | null; functionLabel?: string; slaDays?: number }> }) {
+      queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+        const s = String(sql)
+        if (s.includes('workflow_configs')) {
+          return s.includes("module = 'payroll'")
+            ? { rows: [{ levels_count: 2, config: { validators: opts.validators } }] }
+            : { rows: [{ levels_count: 1, config: {} }] }
+        }
+        if (s.includes('SELECT id, manager_id FROM')) return { rows: HIERARCHY }
+        if (s.includes('.pay_periods p')) {
+          return { rows: [{ id: 'per-1', month: '2026-10', status: 'pending_validation', initiated_by: 'u-init',
+            initiated_at: new Date(Date.now() - opts.initiatedAgo).toISOString(), first_name: 'Awa', last_name: 'Koné' }] }
+        }
+        if (s.includes('pay_period_approvals')) return { rows: [] }
+        if (s.includes('.users')) {
+          const ids = (params?.[0] as string[]) ?? []
+          return { rows: [{ id: 'u-paie', first_name: 'Yao', last_name: 'Brou', role: 'hr_officer', is_active: true }].filter(u => ids.includes(u.id)) }
+        }
+        return { rows: [] }
+      })
+    }
+
+    it('le valideur désigné la voit, actionnable, avec son échéance', async () => {
+      routePayroll({ initiatedAgo: HOUR, validators: [{ userId: 'u-paie', functionLabel: 'Chef de service paie', slaDays: 2 }] })
+      const res = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_officer', null, 'u-paie')}` } })
+      const body = JSON.parse(res.body)
+      expect(body.data).toHaveLength(1)
+      expect(body.data[0]).toMatchObject({ module: 'payroll', id: 'per-1', month: '2026-10', employeeName: 'Awa Koné' })
+      expect(body.data[0].workflow).toMatchObject({
+        canAct: true, designated: true, overdue: false, doneSteps: 0, totalSteps: 2,
+        next: { kind: 'payroll', level: 1, validatorName: 'Yao Brou', functionLabel: 'Chef de service paie' },
+      })
+      expect(Date.parse(body.data[0].workflow.dueAt) - Date.now()).toBeGreaterThan(DAY)
+      expect(body.summary.actionable).toBe(1)
+    })
+
+    it('le reste de l’équipe RH ne la voit pas avant l’échéance', async () => {
+      routePayroll({ initiatedAgo: HOUR, validators: [{ userId: 'u-paie', slaDays: 2 }] })
+      const res = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('admin', null, 'u-admin')}` } })
+      expect(JSON.parse(res.body).data).toEqual([])
+    })
+
+    it('après l’échéance : l’équipe RH (hors initiateur) la voit, en retard, par escalade', async () => {
+      routePayroll({ initiatedAgo: 3 * DAY, validators: [{ userId: 'u-paie', slaDays: 2 }] })
+      const res = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('admin', null, 'u-admin')}` } })
+      const body = JSON.parse(res.body)
+      expect(body.data[0].workflow).toMatchObject({ canAct: true, designated: false, overdue: true })
+      expect(body.summary.overdue).toBe(1)
+      const init = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_manager', null, 'u-init')}` } })
+      expect(JSON.parse(init.body).data).toEqual([])
+    })
+
+    it('sans désignation : admin / hr_manager hors initiateur ; jamais un manager ni un salarié', async () => {
+      routePayroll({ initiatedAgo: HOUR, validators: [] })
+      const hr = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_manager', null, 'u-drh')}` } })
+      expect(JSON.parse(hr.body).data.map((d: { module: string }) => d.module)).toEqual(['payroll'])
+      const mgr = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('manager', 'n1')}` } })
+      expect(JSON.parse(mgr.body).data).toEqual([])
+      const officer = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_officer', null, 'u-other')}` } })
+      expect(JSON.parse(officer.body).data).toEqual([])
+    })
+
+    describe('paie multi-filiales consolidée (période parente validated_central)', () => {
+      const PARENT = 'par-1'
+      // Parente consolidée + 2 filles + une paie déjà clôturée : le faux SQL applique
+      // les filtres de statut et « parent_period_id IS NULL » présents dans la requête.
+      function routeMulti(opts: { consolidatedAgo: number; validators: Array<{ userId: string | null; functionLabel?: string; slaDays?: number }> }) {
+        const at = new Date(Date.now() - opts.consolidatedAgo).toISOString()
+        const periods = [
+          { id: PARENT, month: '2026-11', status: 'validated_central', parent_period_id: null, initiated_by: 'u-init', initiated_at: at, first_name: 'Awa', last_name: 'Koné' },
+          { id: 'fille-1', month: '2026-11', status: 'validated_central', parent_period_id: PARENT, initiated_by: null, initiated_at: null, first_name: null, last_name: null },
+          { id: 'fille-2', month: '2026-11', status: 'validated_central', parent_period_id: PARENT, initiated_by: null, initiated_at: null, first_name: null, last_name: null },
+          { id: 'par-old', month: '2026-10', status: 'closed', parent_period_id: null, initiated_by: 'u-init', initiated_at: at, first_name: 'Awa', last_name: 'Koné' },
+        ]
+        queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+          const s = String(sql)
+          if (s.includes('workflow_configs')) {
+            return s.includes("module = 'payroll'")
+              ? { rows: [{ levels_count: 2, config: { validators: opts.validators } }] }
+              : { rows: [{ levels_count: 1, config: {} }] }
+          }
+          if (s.includes('SELECT id, manager_id FROM')) return { rows: HIERARCHY }
+          if (s.includes('.pay_periods p')) {
+            const statuses = ['pending_validation', 'validated_central', 'closed'].filter(st => s.includes(`'${st}'`))
+            return { rows: periods
+              .filter(p => statuses.includes(p.status))
+              .filter(p => !s.includes('p.parent_period_id IS NULL') || p.parent_period_id === null)
+              .map(({ parent_period_id: _ignored, ...rest }) => rest) }
+          }
+          if (s.includes('pay_period_approvals')) return { rows: [] }
+          if (s.includes('.users')) {
+            const ids = (params?.[0] as string[]) ?? []
+            return { rows: [{ id: 'u-paie', first_name: 'Yao', last_name: 'Brou', role: 'hr_officer', is_active: true }].filter(u => ids.includes(u.id)) }
+          }
+          return { rows: [] }
+        })
+      }
+
+      it('le valideur désigné la voit UNE fois (la parente, jamais les filles), avec son échéance', async () => {
+        routeMulti({ consolidatedAgo: HOUR, validators: [{ userId: 'u-paie', functionLabel: 'Chef de service paie', slaDays: 2 }] })
+        const res = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_officer', null, 'u-paie')}` } })
+        const body = JSON.parse(res.body)
+        expect(body.data).toHaveLength(1)
+        expect(body.data[0]).toMatchObject({ module: 'payroll', id: PARENT, month: '2026-11', scope: 'multi_sites', employeeName: 'Awa Koné' })
+        expect(body.data[0].workflow).toMatchObject({
+          canAct: true, designated: true, overdue: false, doneSteps: 0, totalSteps: 2,
+          next: { kind: 'payroll', level: 1, validatorName: 'Yao Brou', functionLabel: 'Chef de service paie' },
+        })
+        expect(Date.parse(body.data[0].workflow.dueAt) - Date.now()).toBeGreaterThan(DAY)
+      })
+
+      it('l’équipe RH ne la voit qu’après l’échéance, l’initiateur jamais', async () => {
+        routeMulti({ consolidatedAgo: HOUR, validators: [{ userId: 'u-paie', slaDays: 2 }] })
+        const before = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('admin', null, 'u-admin')}` } })
+        expect(JSON.parse(before.body).data).toEqual([])
+        routeMulti({ consolidatedAgo: 3 * DAY, validators: [{ userId: 'u-paie', slaDays: 2 }] })
+        const after = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('admin', null, 'u-admin')}` } })
+        const items = JSON.parse(after.body).data
+        expect(items).toHaveLength(1)
+        expect(items[0]).toMatchObject({ id: PARENT, scope: 'multi_sites' })
+        expect(items[0].workflow).toMatchObject({ canAct: true, designated: false, overdue: true })
+        const init = await app.inject({ method: 'GET', url: '/approvals/pending', headers: { authorization: `Bearer ${tokenFor('hr_manager', null, 'u-init')}` } })
+        expect(JSON.parse(init.body).data).toEqual([])
+      })
+    })
+  })
+
   it('sans authentification : 401', async () => {
     const res = await app.inject({ method: 'GET', url: '/approvals/pending' })
     expect(res.statusCode).toBe(401)

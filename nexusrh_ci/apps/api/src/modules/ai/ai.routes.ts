@@ -7,6 +7,8 @@ import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { generateHRDocument } from '../../services/hr-document-generator.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
+import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
+import { CIV_2024 } from '../../services/legislation-packs.js'
 import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
 // renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
@@ -44,7 +46,7 @@ const chatSchema = z.object({
 
 const simulateItsSchema = z.object({
   baseSalary:     z.number().int().min(1).max(100_000_000),
-  maritalStatus:  z.enum(['single', 'married']).optional(),
+  maritalStatus:  z.enum(['single', 'married', 'divorced', 'widowed']).optional(),
   childrenCount:  z.number().int().min(0).max(30).optional(),
   atRate:         z.number().min(0).max(0.10).optional(),
   primes:         z.number().int().min(0).max(100_000_000).optional(),
@@ -247,7 +249,8 @@ CONTEXTE CI IMPORTANT :
 - CNPS : plafond retraite 1 647 315 FCFA, plafond AT/PF 70 000 FCFA
 - CNPS retraite : 6,3% salarié + 7,7% employeur ; Prestations familiales 5% pat. ; Maternité 0,75% pat.
 - Taux AT (accidents du travail) PAR SECTEUR : Commerce/Services/tertiaire 2% | BTP/Transport 3% | Industrie/manufacture 4% | Extraction/Mines 5%
-- ITS : abattement 15% sur brut, tranches 0%→1,5%→5%→10%→15%
+- ITS (réforme ordonnance n° 2023-719, en vigueur au 01/01/2024) : barème mensuel sur 100 % du brut imposable, SANS abattement ni déduction de la CNPS salariale — 0–75 000 : 0 % | 75 001–240 000 : 16 % | 240 001–800 000 : 21 % | 800 001–2 400 000 : 24 % | 2 400 001–8 000 000 : 28 % | > 8 000 000 : 32 %. Puis RICF (réduction pour charges de famille) par parts : 1 part 0 | 1,5 → 5 500 | 2 → 11 000 | … | 5 parts (plafond) → 44 000 FCFA/mois (5 500 par demi-part). Parts : célibataire/divorcé/veuf sans enfant 1 ; marié 2 ; +0,5 par enfant ; célibataire/divorcé avec enfant(s) 1,5 + 0,5/enfant. Les anciens IS/CN/IGR et l'abattement de 15 % n'existent plus. Ex. : célibataire brut 450 000 → ITS 70 500
+- Indemnité de licenciement : 30 % (≤ 5 ans), 35 % (6–10 ans), 40 % (> 10 ans) du salaire mensuel moyen des 12 derniers mois par année, fractions d'année au prorata des mois complets (ex. 13 mois, 250 000 → 81 250)
 - Congés : 2,2 jours ouvrables/mois de service (ex : 8 mois → 17,6 jours) + ancienneté (1 j après 5 ans, 2 après 10, 3 après 15, 5 après 20, 7 après 25, 8 après 30) ; allocation = salaire moyen des 12 derniers mois ÷ 30 × jours calendaires (jours ouvrables × 1,25)
 - Mobile Money : Wave, MTN MoMo, Orange Money pour paiement salaires
 - DISA : déclaration annuelle obligatoire (loi 99-477)
@@ -421,10 +424,12 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
     },
   })
 
-  // POST /ai/simulate-its — simulateur ITS/IGR avec quotient familial
+  // POST /ai/simulate-its — simulateur ITS (réforme 2024) avec RICF par parts.
+  // Le calcul est délégué au moteur de paie (pack CIV-2024) : une seule source
+  // de vérité pour le barème, les parts et les cotisations.
   fastify.post('/simulate-its', {
     preHandler: [fastify.authenticate],
-    schema: { tags: ['ai'], summary: 'Simulateur ITS/IGR CI avec quotient familial' },
+    schema: { tags: ['ai'], summary: 'Simulateur ITS CI 2024 (barème sur 100 % du brut + RICF par parts)' },
     config: AI_SIMULATE_RATE_LIMIT,
     handler: async (request, reply) => {
       // OWASP A03 — validation Zod stricte
@@ -437,61 +442,35 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         atRate = 0.020, primes = 0,
       } = parsed.data
 
-      // Calcul CNPS
-      const PLAFOND_AT_PF    = 70_000
-      const PLAFOND_RETRAITE = 1_647_315
+      // Les primes saisies sont traitées comme du salaire imposable et soumis
+      // à cotisations (brut mensuel complet, mois plein).
       const brut = baseSalary + primes
-      const baseAtPf    = Math.min(brut, PLAFOND_AT_PF)
-      const baseRetraite = Math.min(brut, PLAFOND_RETRAITE)
-      const cnpsSal = Math.floor(baseRetraite * 0.063)
-      const cnpsPat = Math.floor(baseRetraite * 0.077) + Math.floor(baseAtPf * (0.0575 + atRate))
-
-      // Calcul ITS avec quotient familial CI
-      const salaireNetImposable = Math.floor(brut * 0.85)
-      const baseImposable = Math.max(0, salaireNetImposable - cnpsSal)
-
-      const TRANCHES = [
-        { max: 75_000, taux: 0.000 },
-        { max: 240_000, taux: 0.015 },
-        { max: 800_000, taux: 0.050 },
-        { max: 2_000_000, taux: 0.100 },
-        { max: Infinity, taux: 0.150 },
-      ]
-      let itsBrut = 0
-      let prev = 0
-      for (const t of TRANCHES) {
-        if (baseImposable <= prev) break
-        itsBrut += Math.min(baseImposable - prev, t.max - prev) * t.taux
-        prev = t.max
-      }
-      itsBrut = Math.floor(itsBrut)
-
-      const creditImpot = (maritalStatus === 'married' ? 5_500 : 0)
-        + (childrenCount === 1 ? 3_000 : childrenCount === 2 ? 6_000 : childrenCount >= 3 ? 9_000 : 0)
-      const its = Math.max(0, itsBrut - creditImpot)
-
-      const netPayable = brut - cnpsSal - its
-      const smigOk = netPayable >= 75_000
-
-      // Simulation enfant supplémentaire
-      const creditAvecEnfantSupp = creditImpot + (childrenCount >= 3 ? 0 : childrenCount === 2 ? 3_000 : childrenCount === 1 ? 3_000 : 3_000)
-      const itsAvecEnfantSupp = Math.max(0, itsBrut - creditAvecEnfantSupp)
-      const gainEnfantSupp = its - itsAvecEnfantSupp
+      const simuler = (enfants: number) => calculatePayrollCI({
+        baseSalary: brut, workedDays: 26, workingDaysMonth: 26, atRate,
+        maritalStatus, childrenCount: enfants, variableElements: {},
+        legislationPack: CIV_2024,
+      })
+      const r = simuler(childrenCount)
+      const plus1 = simuler(childrenCount + 1)
+      const gainEnfantSupp = r.its - plus1.its
+      const plafondAtteint = (plus1.partsFiscales ?? 0) === (r.partsFiscales ?? 0)
 
       return reply.send({
         input:       { baseSalary, primes, brut, maritalStatus, childrenCount, atRate },
-        cnps:        { salarial: cnpsSal, patronal: cnpsPat },
-        its:         { base: baseImposable, brut: itsBrut, credit: creditImpot, net: its },
-        net:         { payable: netPayable, smigCompliant: smigOk },
-        employerCost: brut + cnpsPat,
+        cnps:        { salarial: r.totalCnpsSal, patronal: r.totalCnpsPat },
+        its:         { base: r.baseImposable, brut: r.itsBrut, credit: r.reductionImpot, parts: r.partsFiscales ?? 1, net: r.its },
+        net:         { payable: r.netPayable, smigCompliant: r.smigCompliant },
+        employerCost: r.employerCost,
         simulation: {
           avecUnEnfantSupp: {
-            its: itsAvecEnfantSupp,
-            net: brut - cnpsSal - itsAvecEnfantSupp,
+            its: plus1.its,
+            net: plus1.netPayable,
             gain: gainEnfantSupp,
             message: gainEnfantSupp > 0
               ? `Avec 1 enfant de plus, le net augmenterait de ${gainEnfantSupp.toLocaleString('fr-CI')} FCFA/mois`
-              : `Le crédit maximum est déjà atteint (3 enfants et plus)`,
+              : plafondAtteint
+                ? `Le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
+                : `L'impôt est déjà entièrement couvert par la réduction pour charges de famille`,
           },
         },
         currency: 'XOF',

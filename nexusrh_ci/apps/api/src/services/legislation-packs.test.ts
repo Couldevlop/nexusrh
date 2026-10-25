@@ -21,7 +21,7 @@ describe('LegislationPack — pack par défaut CIV-2024', () => {
     expect(CIV_2024.status).toBe('active')
   })
 
-  it('CIV-2024 reflète les constantes CI 2024 historiques', () => {
+  it('CIV-2024 reflète les constantes CI 2024 (CNPS + ITS réformé)', () => {
     expect(CIV_2024.smigMensuel).toBe(75_000)
     expect(CIV_2024.plafondCnpsRetraite).toBe(1_647_315)
     expect(CIV_2024.plafondCnpsAtPf).toBe(70_000)
@@ -29,9 +29,11 @@ describe('LegislationPack — pack par défaut CIV-2024', () => {
     expect(CIV_2024.tauxCotisationRetraitePatronal).toBe(0.077)
     expect(CIV_2024.tauxCotisationPfPatronal).toBe(0.05)
     expect(CIV_2024.tauxCotisationMaternitePatronal).toBe(0.0075)
-    expect(CIV_2024.abattementImpotSalaire).toBe(0.15)
-    expect(CIV_2024.creditImpotMarieSansEnfant).toBe(5_500)
-    expect(CIV_2024.creditImpotParEnfant).toEqual([3_000, 6_000, 9_000])
+    expect(CIV_2024.abattementImpotSalaire).toBe(0)                 // réforme ITS 2024 : abattement supprimé
+    expect(CIV_2024.creditImpotMarieSansEnfant).toBe(0)             // remplacé par la RICF par parts
+    expect(CIV_2024.creditImpotParEnfant).toEqual([0, 0, 0])
+    expect(CIV_2024.reductionChargesFamille?.montantsParParts.at(-1)).toEqual({ parts: 5, montant: 44_000 })
+    expect(CIV_2024.tranchesImpotSalaire.map(t => t.taux)).toEqual([0, 0.16, 0.21, 0.24, 0.28, 0.32])
     expect(CIV_2024.bracketScale).toBe('monthly')
   })
 

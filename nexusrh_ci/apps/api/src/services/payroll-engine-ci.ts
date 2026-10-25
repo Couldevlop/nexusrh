@@ -11,6 +11,7 @@
  */
 import {
   DEFAULT_LEGISLATION_PACK,
+  type FamilyTaxReduction,
   type LegislationPack,
 } from './legislation-packs.js'
 
@@ -67,6 +68,35 @@ const SETTLEMENT_LINE_CODES: Record<SettlementEarning['key'], string> = {
   conges: '1610', preavis: '1620', licenciement: '1630',
 }
 
+export type VariableTreatment = Readonly<Record<string, { social: boolean; tax: boolean }>>
+export type VariableTreatmentOverride = Readonly<Record<string, { social?: boolean; tax?: boolean }>>
+
+/**
+ * Défaut : les éléments de rémunération (primes, heures supplémentaires,
+ * indemnité de congés, gratifications, avantages en nature) sont du salaire —
+ * assujettis aux cotisations et à l'impôt. La prime de transport est traitée
+ * à part (exonérée dans la limite du plafond du pack). Un pack peut surcharger
+ * ce traitement élément par élément (`traitementElementsVariables`).
+ */
+const DEFAULT_VARIABLE_TREATMENT: VariableTreatment = {
+  PRIME_ANCIENNETE:  { social: true, tax: true },
+  PRIME_RENDEMENT:   { social: true, tax: true },
+  HEURES_SUPP_NORM:  { social: true, tax: true },
+  HEURES_SUPP_NUIT:  { social: true, tax: true },
+  HEURES_SUPP_FERIE: { social: true, tax: true },
+  ICP:               { social: true, tax: true },
+  GRATIFICATION:     { social: true, tax: true },
+  AVANTAGE_NATURE:   { social: true, tax: true },
+}
+
+/** Plafond exonéré de la prime de transport (null = entièrement exonérée). */
+function plafondTransport(pack: LegislationPack, zone: string | undefined): number | null {
+  const p = pack.primeTransportExoneree
+  if (!p) return null
+  const z = zone?.trim().toLowerCase()
+  return (z && p.parZone?.[z] !== undefined) ? p.parZone[z]! : p.defaut
+}
+
 export interface PayrollContext {
   baseSalary:      number  // FCFA brut mensuel
   workedDays:      number  // jours travaillés dans le mois (hors jours absence)
@@ -92,6 +122,19 @@ export interface PayrollContext {
    * fait lever une erreur explicite (refus de calcul).
    */
   legislationPack?: LegislationPack
+  /**
+   * Zone de travail pour le plafond exonéré de la prime de transport (clé de
+   * `pack.primeTransportExoneree.parZone`, ex. abidjan / bouake / autres).
+   * Absent ou inconnu = plafond par défaut du pack.
+   */
+  transportZone?: string
+  /**
+   * Paramétrage tenant de l'assujettissement des éléments variables (colonnes
+   * `payroll_rules.subject_social` / `subject_tax`), fusionné champ par champ
+   * après le défaut moteur et celui du pack. Un champ absent garde la valeur
+   * du pack.
+   */
+  variableTreatment?: VariableTreatmentOverride
 }
 
 export interface PayrollLine {
@@ -122,6 +165,12 @@ export interface PayrollResult {
   totalCnpsPat:    number
   // ITS
   baseImposable:   number
+  /** Impôt brut issu du barème, avant réduction famille */
+  itsBrut:         number
+  /** Réduction famille imputée (RICF CI ou crédits du pack) */
+  reductionImpot:  number
+  /** Nombre de parts fiscales retenu (packs à RICF uniquement) */
+  partsFiscales?:  number
   its:             number
   // Totaux
   totalDeductions: number
@@ -147,26 +196,60 @@ function calculerBaremeImpot(baseImposable: number, pack: LegislationPack): numb
   const annuel = pack.bracketScale === 'annual'
   const baseProjetee = annuel ? baseImposable * 12 : baseImposable
   let impot = 0
+  // Les tranches sont déclarées en bornes entières incluses (0–75 000,
+  // 75 001–240 000…) : la portion imposée dans une tranche part de la borne
+  // haute de la tranche précédente, sinon on perdrait 1 F par tranche
+  // (240 000 → (240 000 − 75 000) × 16 %, pas (240 000 − 75 001) × 16 %).
+  let borneBasse = 0
   for (const tranche of pack.tranchesImpotSalaire) {
-    if (baseProjetee <= tranche.min) break
-    const montant = Math.min(baseProjetee, tranche.max) - tranche.min
-    impot += montant * tranche.taux
+    if (baseProjetee <= borneBasse) break
+    const montant = Math.min(baseProjetee, tranche.max) - borneBasse
+    if (montant > 0) impot += montant * tranche.taux
+    borneBasse = tranche.max
   }
   if (annuel) impot /= 12
-  return Math.floor(impot)
+  // Arrondi à l'entier inférieur ; l'epsilon neutralise les erreurs de
+  // représentation binaire (165 000 × 0,16 = 26 399,999…).
+  return Math.floor(impot + 1e-6)
+}
+
+/** Nombre de parts fiscales (RICF) selon la situation familiale. */
+function getPartsFiscales(
+  maritalStatus: string, childrenCount: number, r: FamilyTaxReduction,
+): number {
+  const enfants = Math.max(0, Math.floor(childrenCount))
+  let parts: number
+  if (maritalStatus === 'married' || (maritalStatus === 'widowed' && enfants > 0)) {
+    parts = r.partsMarie + enfants * r.partsParEnfant
+  } else if (enfants > 0) {
+    parts = r.partsSansEnfant + r.majorationParentIsole + enfants * r.partsParEnfant
+  } else {
+    parts = r.partsSansEnfant
+  }
+  return Math.min(parts, r.plafondParts)
 }
 
 /**
- * Crédit d'impôt famille — valeurs définies par le pack
+ * Réduction d'impôt famille — définie par le pack : RICF par parts si le pack
+ * la porte, sinon crédits historiques marié / enfants.
  */
 function getCreditImpot(
   maritalStatus: string, childrenCount: number, pack: LegislationPack,
-): number {
+): { credit: number; parts?: number } {
+  const ricf = pack.reductionChargesFamille
+  if (ricf) {
+    const parts = getPartsFiscales(maritalStatus, childrenCount, ricf)
+    let credit = 0
+    for (const palier of ricf.montantsParParts) {
+      if (palier.parts <= parts) credit = palier.montant
+    }
+    return { credit, parts }
+  }
   let credit = maritalStatus === 'married' ? pack.creditImpotMarieSansEnfant : 0
   if (childrenCount === 1)      credit += pack.creditImpotParEnfant[0]
   else if (childrenCount === 2) credit += pack.creditImpotParEnfant[1]
   else if (childrenCount >= 3)  credit += pack.creditImpotParEnfant[2]
-  return credit
+  return { credit }
 }
 
 /**
@@ -279,6 +362,40 @@ export function evalFormule(formula: string, vars: Record<string, number>): numb
   }
 }
 
+// Éléments variables de rémunération portés sur le bulletin (ordre d'affichage).
+// Leur assujettissement CNPS / ITS est donné par le traitement des éléments
+// variables (défaut moteur ← pack ← paramétrage tenant).
+const VARIABLE_EARNINGS: ReadonlyArray<{ code: string; label: string; varKey: string }> = [
+  { code: '1100', label: "Prime d'ancienneté",              varKey: 'PRIME_ANCIENNETE'  },
+  { code: '1200', label: 'Prime de rendement',               varKey: 'PRIME_RENDEMENT'   },
+  { code: '1250', label: 'Gratification',                    varKey: 'GRATIFICATION'     },
+  { code: '1260', label: 'Avantage en nature',               varKey: 'AVANTAGE_NATURE'   },
+  { code: '1300', label: 'Prime de transport',               varKey: 'PRIME_TRANSPORT'   },
+  { code: '1400', label: 'Heures supp. +15%',               varKey: 'HEURES_SUPP_NORM'  },
+  { code: '1500', label: 'Heures supp. +50% (nuit/dim)',    varKey: 'HEURES_SUPP_NUIT'  },
+  { code: '1550', label: 'Heures supp. +100% (jour férié)', varKey: 'HEURES_SUPP_FERIE' },
+  { code: '1600', label: 'Indemnité congés payés',           varKey: 'ICP'               },
+]
+
+// Communes du District autonome d'Abidjan (plafond transport « Abidjan »).
+const COMMUNES_ABIDJAN = new Set([
+  'abidjan', 'abobo', 'adjame', 'anyama', 'attecoube', 'bingerville', 'cocody', 'koumassi',
+  'marcory', 'plateau', 'port-bouet', 'port bouet', 'songon', 'treichville', 'yopougon',
+])
+
+/**
+ * Zone de plafond d'exonération de la prime de transport à partir de la ville
+ * du lieu de travail (filiale, sinon tenant). Ville absente → undefined
+ * (plafond par défaut du pack).
+ */
+export function transportZoneFromCity(city?: string | null): string | undefined {
+  const c = (city ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+  if (!c) return undefined
+  if (COMMUNES_ABIDJAN.has(c) || c.startsWith('abidjan')) return 'abidjan'
+  if (c.startsWith('bouake')) return 'bouake'
+  return 'autres'
+}
+
 // Primes liées à la présence physique — suspendues automatiquement en cas d'absence
 const PRIMES_PRESENCE = new Set(['PRIME_TRANSPORT', 'PRIME_PANIER'])
 
@@ -325,10 +442,38 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const settlementSocial = settlement.filter(s => treatment[s.key]?.social).reduce((t, s) => t + s.amount, 0)
   const settlementTax    = settlement.filter(s => treatment[s.key]?.tax).reduce((t, s) => t + s.amount, 0)
 
-  const baseAtPf     = Math.min(brutProrata + settlementSocial, pack.plafondCnpsAtPf)
-  const baseRetraite = Math.min(brutProrata + settlementSocial, pack.plafondCnpsRetraite)
+  // Éléments variables : part soumise aux cotisations et part imposable.
+  // Prime de transport : exonérée jusqu'au plafond du pack (zone de travail),
+  // l'excédent est cotisable et imposable. Éléments inconnus du traitement :
+  // assujettis (rémunération par défaut).
+  const baseTreatment: VariableTreatment = { ...DEFAULT_VARIABLE_TREATMENT, ...(pack.traitementElementsVariables ?? {}) }
+  const treatmentOf = (key: string): { social: boolean; tax: boolean } => {
+    const b = baseTreatment[key] ?? { social: true, tax: true }
+    const o = ctx.variableTreatment?.[key]
+    return { social: o?.social ?? b.social, tax: o?.tax ?? b.tax }
+  }
+  const plafondTr = plafondTransport(pack, ctx.transportZone)
+  let variablesSocial = 0
+  let variablesTax    = 0
+  for (const { varKey } of VARIABLE_EARNINGS) {
+    const amount = variableElements[varKey] ?? 0
+    if (!(amount > 0)) continue
+    const o = ctx.variableTreatment?.[varKey]
+    if (varKey === 'PRIME_TRANSPORT' && o?.social === undefined && o?.tax === undefined) {
+      const excedent = plafondTr === null ? 0 : Math.max(0, amount - plafondTr)
+      variablesSocial += excedent
+      variablesTax    += excedent
+      continue
+    }
+    const t = treatmentOf(varKey)
+    if (t.social) variablesSocial += amount
+    if (t.tax)    variablesTax    += amount
+  }
 
-  // ── ÉTAPE 2 : Cotisations sécurité sociale (sur présence uniquement) ────────
+  const baseAtPf     = Math.min(brutProrata + variablesSocial + settlementSocial, pack.plafondCnpsAtPf)
+  const baseRetraite = Math.min(brutProrata + variablesSocial + settlementSocial, pack.plafondCnpsRetraite)
+
+  // ── ÉTAPE 2 : Cotisations sécurité sociale (présence + éléments variables soumis)
   const cnpsRetraiteSal = Math.floor(baseRetraite * pack.tauxCotisationRetraiteSalarie)
   const cnpsRetraitePat = Math.floor(baseRetraite * pack.tauxCotisationRetraitePatronal)
   const cnpsPfPat       = Math.floor(baseAtPf * (pack.tauxCotisationPfPatronal + pack.tauxCotisationMaternitePatronal))
@@ -344,9 +489,17 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
 
   if (absence && absence.absenceDays > 0) {
     const tauxJour = baseSalary / workingDaysMonth
+    // Indemnité des jours d'absence. Quand présence + absence couvrent tout le
+    // mois, l'indemnité est le COMPLÉMENT exact du salaire des jours travaillés
+    // (base − prorata) : deux arrondis indépendants feraient perdre 1 F
+    // (ex. 77 777 + 62 222 = 139 999 pour une base de 140 000).
+    const indemniteJours = (jours: number, taux = 1): number =>
+      workedDays + jours >= workingDaysMonth
+        ? Math.floor((baseSalary - salaireJours) * taux + 1e-6)
+        : Math.floor(tauxJour * jours * taux)
 
     if (absence.type === 'maternite') {
-      indemniteAbsence  = Math.floor(tauxJour * absence.absenceDays)
+      indemniteAbsence  = indemniteJours(absence.absenceDays)
       indemniteExoneree = indemniteAbsence
       bordereauCnps = {
         motif: 'maternite',
@@ -355,7 +508,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
       }
     } else if (absence.type === 'maladie_sans_at') {
       const taux = absence.maintienTaux ?? 1.0
-      indemniteAbsence = Math.floor(tauxJour * absence.absenceDays * taux)
+      indemniteAbsence = indemniteJours(absence.absenceDays, taux)
       // Maladie : soumise à ITS — indemniteExoneree reste 0
     } else if (absence.type === 'accident_travail') {
       // Jour J payé par l'employeur = inclus dans brutProrata via workedDays
@@ -363,7 +516,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
         ? Math.max(0, absence.absenceDays - 1)
         : absence.absenceDays
       if (joursIjCnps > 0) {
-        indemniteAbsence  = Math.floor(tauxJour * joursIjCnps)
+        indemniteAbsence  = indemniteJours(joursIjCnps)
         indemniteExoneree = indemniteAbsence
         bordereauCnps = {
           motif: 'accident_travail',
@@ -375,13 +528,17 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   }
 
   // ── ÉTAPE 3 : Impôt sur les salaires (ITS CI / IUTS BF / IR SN / …) ─────────
-  // Base taxable = (présence + indemnité maladie) × abattement - cotisations sal.
-  // Indemnités maternité et AT sont exclues de la base imposable
-  const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree + settlementTax
+  // Base taxable = (présence + indemnité maladie + indemnités de solde
+  // imposables) × (1 − abattement du pack) − cotisations salariales si le pack
+  // les déduit. CI (réforme 2024) : abattement 0 et aucune déduction → barème
+  // sur 100 % du brut imposable. Indemnités maternité / AT, indemnité de
+  // licenciement (limite légale) et remboursements de frais restent hors base.
+  const brutTaxable     = brutProrata + variablesTax + indemniteAbsence - indemniteExoneree + settlementTax
   const salaireAbattu   = Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
-  const baseImposable   = Math.max(0, salaireAbattu - totalCnpsSal)
+  const deduireCotis    = pack.deduireCotisationsAssietteImpot ?? true
+  const baseImposable   = Math.max(0, salaireAbattu - (deduireCotis ? totalCnpsSal : 0))
   const itsBrut         = calculerBaremeImpot(baseImposable, pack)
-  const creditImpot     = getCreditImpot(maritalStatus, childrenCount, pack)
+  const { credit: creditImpot, parts: partsFiscales } = getCreditImpot(maritalStatus, childrenCount, pack)
   const its             = Math.max(0, itsBrut - creditImpot)
 
   // ── ÉTAPE 4 : Construction des lignes du bulletin ───────────────────────────
@@ -398,16 +555,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     lines.push({ code: '1020', label: `Retenue retards (${att.lateMinutes} min)`, type: 'earning', base: baseSalary, amount: -retenueRetards })
   }
 
-  const varEarnings = [
-    { code: '1100', label: "Prime d'ancienneté",           varKey: 'PRIME_ANCIENNETE'  },
-    { code: '1200', label: 'Prime de rendement',            varKey: 'PRIME_RENDEMENT'   },
-    { code: '1300', label: 'Prime de transport',            varKey: 'PRIME_TRANSPORT'   },
-    { code: '1400', label: 'Heures supp. +15%',            varKey: 'HEURES_SUPP_NORM'  },
-    { code: '1500', label: 'Heures supp. +50% (nuit/dim)', varKey: 'HEURES_SUPP_NUIT'  },
-    { code: '1550', label: 'Heures supp. +100% (jour férié)', varKey: 'HEURES_SUPP_FERIE' },
-    { code: '1600', label: 'Indemnité congés payés',        varKey: 'ICP'               },
-  ]
-  for (const e of varEarnings) {
+  for (const e of VARIABLE_EARNINGS) {
     const amount = variableElements[e.varKey] ?? 0
     if (amount > 0) lines.push({ code: e.code, label: e.label, type: 'earning', base: brutProrata, amount })
   }
@@ -447,6 +595,11 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const avance = variableElements['AVANCE'] ?? 0
   if (avance > 0) lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
 
+  // Avantage en nature : valorisé dans le brut (soumis CNPS / ITS) puis repris
+  // en retenue, l'avantage ayant déjà été fourni en nature (logement, véhicule…).
+  const avantageNature = Math.max(0, variableElements['AVANTAGE_NATURE'] ?? 0)
+  if (avantageNature > 0) lines.push({ code: '5200', label: 'Avantage en nature (fourni en nature)', type: 'deduction', base: 0, amount: avantageNature })
+
   lines.push({ code: '3000', label: `${caisse} Retraite patronal (${tauxRetPatPct}%)`, type: 'employer_contribution', base: baseRetraite, amount: cnpsRetraitePat })
   lines.push({ code: '3100', label: `${caisse} Prestations familiales (${tauxPfPatPct}%)`, type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * pack.tauxCotisationPfPatronal) })
   if (pack.tauxCotisationMaternitePatronal > 0) {
@@ -464,7 +617,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   }
 
   // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
-  const totalRetenues = totalCnpsSal + its + avance + mutuelleSal
+  const totalRetenues = totalCnpsSal + its + avance + mutuelleSal + avantageNature
   const netPayable    = Math.max(0, grossSalary - totalRetenues) + reimbursement
   const employerCost  = grossSalary + totalCnpsPat + mutuellePat
 
@@ -480,6 +633,9 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     totalCnpsSal,
     totalCnpsPat,
     baseImposable,
+    itsBrut,
+    reductionImpot: Math.min(itsBrut, creditImpot),
+    partsFiscales,
     its,
     totalDeductions: totalRetenues,
     netPayable,

@@ -283,7 +283,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
             </div>
           </fieldset>
 
-          {/* Situation familiale (crédit d'impôt ITS) */}
+          {/* Situation familiale (parts ITS / RICF) */}
           <fieldset className="space-y-3">
             <legend className="text-sm font-semibold mb-1">{t('form.sections.familySituation')} <span className="font-normal text-xs text-muted-foreground">{t('form.sections.familySituationHint')}</span></legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

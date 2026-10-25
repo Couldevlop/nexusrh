@@ -1,6 +1,6 @@
 {
   "id": "31-cadre-mine-extraction-at-5pct-icp",
-  "description": "Cadre du secteur extraction/mines (atRate 5,00 % — taux AT le plus élevé prévu par la CNPS CI) avec indemnité de congés payés (ICP 50 000 FCFA). Vérifie l'interaction taux AT extraction + ICP non imposable. Secteur sensible en CI (Côte d'Ivoire est producteur de manganèse, or, diamants, fer)",
+  "description": "Cadre du secteur extraction/mines (atRate 5,00 % — taux AT le plus élevé prévu par la CNPS CI) avec indemnité de congés payés (ICP 50 000 FCFA). Vérifie l'interaction taux AT extraction + ICP soumise CNPS + ITS. Secteur sensible en CI (Côte d'Ivoire est producteur de manganèse, or, diamants, fer)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -13,6 +13,18 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 9 — fixture initiale, capture sortie moteur",
         "deltaSummary": "baseSalary 0 → 600000 ; brutProrata 0 → 600000 ; grossSalary 0 → 650000 ; cnpsRetraiteSal 0 → 37800 ; cnpsRetraitePat 0 → 46200 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 3500 ; totalCnpsSal 0 → 37800 ; totalCnpsPat 0 → 53725 ; baseImposable 0 → 472200 ; its 0 → 14084 ; totalDeductions 0 → 51884 ; netPayable 0 → 598116 ; employerCost 0 → 703725 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 8"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 472200 → 600000 ; its 14084 → 102000 ; totalDeductions 51884 → 139800 ; netPayable 598116 → 510200"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 37800 → 40950 ; cnpsRetraitePat 46200 → 50050 ; totalCnpsSal 37800 → 40950 ; totalCnpsPat 53725 → 57575 ; baseImposable 600000 → 650000 ; its 102000 → 112500 ; totalDeductions 139800 → 153450 ; netPayable 510200 → 496550 ; employerCost 703725 → 707575 ; ligne 2000 37800 → 40950 ; ligne 2100 102000 → 112500 ; ligne 3000 46200 → 50050"
       }
     ]
   },
@@ -31,17 +43,17 @@
     "baseSalary": 600000,
     "brutProrata": 600000,
     "grossSalary": 650000,
-    "cnpsRetraiteSal": 37800,
-    "cnpsRetraitePat": 46200,
+    "cnpsRetraiteSal": 40950,
+    "cnpsRetraitePat": 50050,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 3500,
-    "totalCnpsSal": 37800,
-    "totalCnpsPat": 53725,
-    "baseImposable": 472200,
-    "its": 14084,
-    "totalDeductions": 51884,
-    "netPayable": 598116,
-    "employerCost": 703725,
+    "totalCnpsSal": 40950,
+    "totalCnpsPat": 57575,
+    "baseImposable": 650000,
+    "its": 112500,
+    "totalDeductions": 153450,
+    "netPayable": 496550,
+    "employerCost": 707575,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -58,17 +70,17 @@
       {
         "code": "2000",
         "type": "employee_contribution",
-        "amount": 37800
+        "amount": 40950
       },
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 14084
+        "amount": 112500
       },
       {
         "code": "3000",
         "type": "employer_contribution",
-        "amount": 46200
+        "amount": 50050
       },
       {
         "code": "3100",

@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 11 — non-conformité SMIG flag",
         "deltaSummary": "baseSalary 0 → 50000 ; brutProrata 0 → 50000 ; grossSalary 0 → 50000 ; cnpsRetraiteSal 0 → 3150 ; cnpsRetraitePat 0 → 3850 ; cnpsPfPat 0 → 2875 ; cnpsAtPat 0 → 1000 ; totalCnpsSal 0 → 3150 ; totalCnpsPat 0 → 7725 ; baseImposable 0 → 39350 ; totalDeductions 0 → 3150 ; netPayable 0 → 46850 ; employerCost 0 → 57725 ; workingDays 0 → 26 ; lines count 0 → 7"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 39350 → 50000"
       }
     ]
   },
@@ -35,7 +41,7 @@
     "cnpsAtPat": 1000,
     "totalCnpsSal": 3150,
     "totalCnpsPat": 7725,
-    "baseImposable": 39350,
+    "baseImposable": 50000,
     "its": 0,
     "totalDeductions": 3150,
     "netPayable": 46850,

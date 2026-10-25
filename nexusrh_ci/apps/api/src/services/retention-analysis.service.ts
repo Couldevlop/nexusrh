@@ -10,7 +10,7 @@
 import type { Pool } from 'pg'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
-const SMIG_CI = 60_000 // FCFA/mois
+const SMIG_CI = 75_000 // FCFA/mois (SMIG CI depuis le 01/01/2023)
 
 export interface RetentionFactor { label: string; weight: number }
 export interface RetentionResult {

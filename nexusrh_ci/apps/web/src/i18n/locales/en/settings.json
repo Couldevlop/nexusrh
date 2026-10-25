@@ -310,8 +310,15 @@
       "label": "Label",
       "type": "Type",
       "formulaOrRate": "Formula / Rate",
+      "subjectSocial": "Subject to CNPS",
+      "subjectTax": "Subject to ITS",
       "status": "Status",
       "actions": "Actions"
+    },
+    "subject": {
+      "pack": "Per legislation pack",
+      "yes": "Yes",
+      "no": "No (exempt)"
     },
     "active": "Active",
     "inactive": "Inactive",
@@ -539,8 +546,8 @@
       "retirementCeilingValue": "1 647 315 FCFA",
       "atPfCeiling": "AT/PF ceiling / month",
       "atPfCeilingValue": "70 000 FCFA",
-      "itsAbatement": "ITS — Standard allowance",
-      "itsAbatementValue": "15 % of gross",
+      "itsAbatement": "ITS — Tax base (2024 reform)",
+      "itsAbatementValue": "100 % of taxable gross, no standard deduction · 0 to 32 % scale",
       "fdfpContribution": "FDFP contribution",
       "fdfpContributionValue": "0.4 % of payroll"
     },
@@ -559,6 +566,17 @@
       "hrValidator": "Designated HR approver",
       "wholeHrTeam": "Whole HR team",
       "hrValidatorHint": "Once their deadline has passed, any HR team member (admin, HR manager, HR officer) can decide."
+    },
+    "payrollCircuit": {
+      "intro": "Name the approver (an HR team member) and their position for each level. Without a designation, any administrator or HR manager other than the initiator can approve.",
+      "level": "Level {{level}}",
+      "validator": "Approver",
+      "anyHr": "HR team (administrator or HR manager)",
+      "functionLabel": "Position",
+      "functionPlaceholder": "E.g.: Payroll supervisor, HR Director",
+      "sla": "Deadline (days)",
+      "sodHint": "The initiator never approves their own closing: if designated, the level is immediately open to the rest of the HR team. Once the deadline has passed, any administrator or HR manager (other than the initiator) can take over.",
+      "duplicate": "The same person cannot be designated at two levels."
     },
     "notice": {
       "enabled": "Notice period for planned absences",

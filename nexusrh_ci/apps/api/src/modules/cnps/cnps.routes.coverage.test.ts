@@ -534,8 +534,9 @@ describe('POST /cnps/events/cessation', () => {
     // Décret 96-200 : 1 mois jusqu'à 6 ans d'ancienneté (payés au mois, cat. 1 à 5).
     expect(body.droitsLegaux.preavisJours).toBe(30)
     expect(body.droitsLegaux.preavisMois).toBe(1)
-    // 47 mois au salaire de base : 3 ans + 11/12 à 30 %.
-    expect(body.droitsLegaux.indemniteLicenciement).toBe(Math.round(0.30 * 300000 * (3 + 11 / 12)))
+    // 01/01/2021 → 31/12/2024 (jour de sortie inclus) = 48 mois complets : 4 ans à 30 %.
+    expect(body.cessation.ancienneteMois).toBe(48)
+    expect(body.droitsLegaux.indemniteLicenciement).toBe(360_000)
   })
 
   it('départ à la retraite à 14 ans → préavis 3 mois (90 j) et indemnité de départ', async () => {

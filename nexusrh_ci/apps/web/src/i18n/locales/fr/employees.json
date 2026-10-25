@@ -26,7 +26,7 @@
       "jobAndContract": "Poste & contrat",
       "compensationAndPayment": "Rémunération & paiement",
       "familySituation": "Situation familiale",
-      "familySituationHint": "(impacte le crédit d'impôt ITS)"
+      "familySituationHint": "(détermine le nombre de parts ITS et la réduction pour charges de famille)"
     },
     "noManager": "— Aucun —",
     "fields": {
