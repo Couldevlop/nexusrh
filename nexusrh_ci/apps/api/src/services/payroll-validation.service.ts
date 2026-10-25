@@ -289,11 +289,11 @@ function formatDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { timeZone: 'Africa/Abidjan' })
 }
 
-/** Message utilisateur : « Période 2026-10 en attente de validation de … ». */
+/** Message utilisateur : « Période 2026-10 en attente de validation par … ». */
 export function pendingValidationMessage(month: string, state: PayrollLevelState | null): string {
   const who = expectedValidatorText(state)
   return who
-    ? `Période ${month} en attente de validation de ${who}`
+    ? `Période ${month} en attente de validation par ${who}`
     : `Période ${month} en attente de validation par un administrateur ou responsable RH autre que l'initiateur`
 }
 

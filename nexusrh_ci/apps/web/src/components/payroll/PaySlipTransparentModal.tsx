@@ -57,7 +57,9 @@ const CATEGORY_COLOR: Record<string, string> = {
 function ExpandableLine({ line }: { line: ExplainedLine }) {
   const { t } = useTranslation('payroll')
   const [open, setOpen] = useState(false)
-  const isNegative = line.type !== 'earning' && line.type !== 'reimbursement'
+  // Retenues et cotisations ; une retenue portée en gain négatif (absence 1010,
+  // retards 1020) est elle aussi une diminution du brut.
+  const isNegative = (line.type !== 'earning' && line.type !== 'reimbursement') || line.amount < 0
   const colorCls = CATEGORY_COLOR[line.category] ?? CATEGORY_COLOR.other
 
   return (

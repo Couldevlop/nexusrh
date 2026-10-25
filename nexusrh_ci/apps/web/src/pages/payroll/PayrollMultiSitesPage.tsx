@@ -134,7 +134,7 @@ export default function PayrollMultiSitesPage() {
     onSuccess: invalidate,
     onError: onError(t('multiSites.errors.sendToSites')),
   })
-  // Consolidation = initiation du circuit : message « Période … en attente de validation de … »
+  // Consolidation = initiation du circuit : message « Période … en attente de validation par … »
   const validateCentral = useMutation({
     mutationFn: (p: { id: string; month: string }) =>
       api.post(`/payroll-workflow/periods/${p.id}/validate-central`)
