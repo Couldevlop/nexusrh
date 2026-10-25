@@ -113,3 +113,32 @@ describe('AttendancePage — onglet Avertissements', () => {
     )
   })
 })
+
+describe('AttendancePage — saisie manuelle d’un pointage', () => {
+  it('l’heure saisie est l’heure d’Abidjan (UTC), quel que soit le fuseau du navigateur', async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === '/employees') {
+        return Promise.resolve({ data: { data: [{ id: 'e1', first_name: 'Yao', last_name: 'Koffi', employee_number: null }] } })
+      }
+      return defaultGetImpl(url)
+    })
+    postMock.mockResolvedValue({ data: { data: { id: 'p1' } } })
+    const { container } = renderPage()
+    await waitFor(() => expect(screen.getByText('tabs.punches')).toBeTruthy())
+    fireEvent.click(screen.getByText('tabs.punches'))
+    fireEvent.click(await screen.findByText('punches.new'))
+
+    await waitFor(() => expect(screen.getByText('Yao Koffi')).toBeTruthy())
+    const employeeSelect = screen.getByText('Yao Koffi').closest('select') as HTMLSelectElement
+    fireEvent.change(employeeSelect, { target: { value: 'e1' } })
+    const when = container.querySelector('input[type="datetime-local"]') as HTMLInputElement
+    fireEvent.change(when, { target: { value: '2026-10-01T08:45' } })
+    fireEvent.click(screen.getByText('punches.form.submit'))
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/attendance/punches', expect.objectContaining({
+        employeeId: 'e1', punchedAt: '2026-10-01T08:45:00.000Z',
+      })),
+    )
+  })
+})
