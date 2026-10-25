@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { MessageSquare, Plus, BarChart3, Trash2, ShieldCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type QType = 'scale' | 'boolean' | 'text'
 interface SurveyRow {
@@ -167,7 +168,7 @@ export default function ClimatePage() {
                 {s.status === 'draft' && <button type="button" onClick={() => statusMut.mutate({ id: s.id, status: 'open' })} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('actions.open')}</button>}
                 {s.status === 'open' && <button type="button" onClick={() => statusMut.mutate({ id: s.id, status: 'closed' })} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('actions.close')}</button>}
                 <button type="button" onClick={() => setResultsFor((cur) => cur === s.id ? null : s.id)} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"><BarChart3 className="h-3.5 w-3.5" /> {t('actions.results')}</button>
-                <button type="button" onClick={() => { if (window.confirm(t('actions.deleteConfirm'))) deleteMut.mutate(s.id) }} className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={async () => { if (await confirmDialog({ message: t('actions.deleteConfirm'), danger: true })) deleteMut.mutate(s.id) }} className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
 

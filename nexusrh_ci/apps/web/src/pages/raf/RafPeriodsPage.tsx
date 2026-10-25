@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { Send, Loader2, CheckCircle2, ClipboardList, Building2 } from 'lucide-react'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 /**
  * Page RAF site — chaque RAF voit UNIQUEMENT les périodes qui lui sont
@@ -138,8 +139,8 @@ export default function RafPeriodsPage() {
                   <td className="px-4 py-3 text-right">
                     {p.status === 'sent_to_sites' ? (
                       <button
-                        onClick={() => {
-                          if (confirm(t('submitConfirm', { month: p.month }))) {
+                        onClick={async () => {
+                          if (await confirmDialog({ message: t('submitConfirm', { month: p.month }), danger: false })) {
                             submitMut.mutate(p.id)
                           }
                         }}

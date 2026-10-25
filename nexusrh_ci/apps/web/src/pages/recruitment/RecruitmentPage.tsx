@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
 import ScreeningReview from './ScreeningReview'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 interface Department { id: string; name: string }
 
@@ -542,8 +543,8 @@ export default function RecruitmentPage() {
                               {/* REC-002 — Clôturer l'offre (action directe, distincte de Pause) */}
                               {job.status !== 'closed' && (
                                 <button
-                                  onClick={() => {
-                                    if (confirm(t('table.closeConfirm', { title: job.title, defaultValue: 'Clôturer l\'offre « {{title}} » ? Elle ne sera plus visible dans les offres actives.' }))) {
+                                  onClick={async () => {
+                                    if (await confirmDialog({ message: t('table.closeConfirm', { title: job.title, defaultValue: 'Clôturer l\'offre « {{title}} » ? Elle ne sera plus visible dans les offres actives.' }), danger: true })) {
                                       updateJob.mutate({ id: job.id, body: { status: 'closed' } })
                                     }
                                   }}
@@ -558,8 +559,8 @@ export default function RecruitmentPage() {
                                 <Edit3 className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm(t('table.deleteConfirm', { title: job.title }))) {
+                                onClick={async () => {
+                                  if (await confirmDialog({ message: t('table.deleteConfirm', { title: job.title }), danger: true })) {
                                     deleteJob.mutate(job.id)
                                   }
                                 }}

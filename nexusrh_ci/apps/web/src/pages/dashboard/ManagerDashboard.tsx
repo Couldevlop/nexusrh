@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Users, Calendar, Receipt, CalendarX, ArrowRight } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { KpiCard } from './DashboardPage'
 import ApprovalsWidget from '@/components/approvals/ApprovalsWidget'
@@ -162,8 +162,8 @@ export default function ManagerDashboard() {
                     <p className="font-medium">{fullName(a.first_name, a.last_name)}</p>
                     <p className="text-xs text-muted-foreground">
                       {a.type_label ?? t('manager.pending.absence')}
-                      {a.start_date && ` · ${a.start_date}`}
-                      {a.end_date && ` → ${a.end_date}`}
+                      {a.start_date && ` · ${formatDate(a.start_date)}`}
+                      {a.end_date && ` → ${formatDate(a.end_date)}`}
                     </p>
                   </div>
                   <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { GraduationCap, Plus, Trash2, Briefcase, GitCompare } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Tab = 'catalog' | 'profiles' | 'compare'
 const BLOOM = [1, 2, 3, 4, 5, 6] as const
@@ -134,7 +135,7 @@ export default function CompetenciesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <BloomBadge level={c.bloom_level} />
-                  <button type="button" onClick={() => { if (window.confirm(t('catalog.deleteConfirm'))) deleteComp.mutate(c.id) }}
+                  <button type="button" onClick={async () => { if (await confirmDialog({ message: t('catalog.deleteConfirm'), danger: true })) deleteComp.mutate(c.id) }}
                     className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
@@ -177,7 +178,7 @@ export default function CompetenciesPage() {
                     <p className="text-xs text-muted-foreground">{p.category ?? '—'} · {t('profiles.count', { count: Number(p.competency_count) })}</p>
                   </div>
                 </button>
-                <button type="button" onClick={() => { if (window.confirm(t('profiles.deleteConfirm'))) deleteProfile.mutate(p.id) }}
+                <button type="button" onClick={async () => { if (await confirmDialog({ message: t('profiles.deleteConfirm'), danger: true })) deleteProfile.mutate(p.id) }}
                   className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
               {openProfile === p.id && (

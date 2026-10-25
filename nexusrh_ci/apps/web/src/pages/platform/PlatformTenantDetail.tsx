@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { MODULE_DEFAULTS, type ModuleKey } from '@/lib/modules'
 import { ModuleTogglesGrid } from '@/components/shared/ModuleTogglesGrid'
 import { ArrowLeft, Power, RefreshCw, AlertTriangle, Wrench, Save, Palette, FileText, Boxes, Database, Download, Trash2 } from 'lucide-react'
@@ -678,7 +678,7 @@ export default function PlatformTenantDetail() {
                           {u.is_active ? 'Actif' : 'Suspendu'}
                         </span>
                       </td>
-                      <td className="py-2 pr-4 text-xs text-muted-foreground">{u.created_at?.slice(0, 10)}</td>
+                      <td className="py-2 pr-4 text-xs text-muted-foreground">{formatDate(u.created_at)}</td>
                       <td className="py-2">
                         <button
                           onClick={() => userToggleMut.mutate({ userId: u.id, isActive: !u.is_active })}

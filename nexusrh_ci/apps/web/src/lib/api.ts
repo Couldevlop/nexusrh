@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import i18n from '@/i18n'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -152,11 +153,22 @@ export function formatMoney(amount: number | string, currency: string = 'XOF'): 
   }).format(num)
 }
 
-export function formatDate(date: string | Date): string {
+// Date « calendaire » (sans heure significative) : AAAA-MM-JJ ou minuit UTC
+// tel que sérialisé par PostgreSQL (`2026-10-31T00:00:00.000Z`). Formatée en UTC
+// pour ne jamais glisser d'un jour selon le fuseau du navigateur.
+const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}(T00:00:00(\.0+)?Z)?$/
+
+// Format local court (31/10/2026) selon la langue de l'interface.
+export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return ''
-  return new Intl.DateTimeFormat('fr-CI', {
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return typeof date === 'string' ? date : ''
+  const locale = (i18n.language ?? 'fr').startsWith('en') ? 'en-GB' : 'fr-CI'
+  const calendar = typeof date === 'string' && CALENDAR_DATE_RE.test(date)
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit', month: '2-digit', year: 'numeric',
-  }).format(new Date(date))
+    ...(calendar ? { timeZone: 'UTC' } : {}),
+  }).format(d)
 }
 
 export function formatMonth(month: string): string {
