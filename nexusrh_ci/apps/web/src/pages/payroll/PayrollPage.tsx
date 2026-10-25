@@ -25,7 +25,7 @@ function pendingWithText(pw: PendingWith | null | undefined, t: TFunction): stri
   return t('history.pendingWithTeam')
 }
 
-/** Message de clôture : « Période 2026-10 en attente de validation de … ». */
+/** Message de clôture : « Période 2026-10 en attente de validation par … ». */
 function closeMessage(month: string, pw: PendingWith | null | undefined, t: TFunction): string {
   return pw?.name
     ? t('close.pendingWithNamed', { month, name: pw.name, fn: pw.functionLabel ?? '' })

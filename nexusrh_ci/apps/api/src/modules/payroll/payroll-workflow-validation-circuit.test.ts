@@ -268,7 +268,7 @@ describe('Consolidation = initiation du circuit', () => {
     const res = await call('POST', 'validate-central', 'u-init')
     expect(res.statusCode).toBe(200)
     const body = json(res)
-    expect(body.message).toBe(`Période ${MONTH} en attente de validation de Yao Brou (Chef de service paie)`)
+    expect(body.message).toBe(`Période ${MONTH} en attente de validation par Yao Brou (Chef de service paie)`)
     expect(body.message).not.toMatch(/validated_central|POST|\/payroll/)
     expect(body.pendingWith).toMatchObject({ level: 1, requiredLevels: 2, userId: 'u-paie', name: 'Yao Brou' })
     expect(parentOf()).toMatchObject({ status: 'validated_central', initiated_by: 'u-init' })
@@ -335,7 +335,7 @@ describe('Valideur désigné, SoD, escalade', () => {
     const l1 = await call('POST', 'approve', 'u-paie', { notes: 'Totaux conformes' })
     expect(l1.statusCode).toBe(200)
     expect(json(l1).data).toMatchObject({ status: 'validated_central', level: 1, requiredLevels: 2, escalated: false })
-    expect(json(l1).message).toContain('Période 2026-10 en attente de validation de Fanta Traoré (DRH)')
+    expect(json(l1).message).toContain('Période 2026-10 en attente de validation par Fanta Traoré (DRH)')
     expect(db.log).toContain('notify:u-drh:payroll_validation_requested')
     expect(db.periods.every(p => p.status === 'validated_central')).toBe(true)
 
