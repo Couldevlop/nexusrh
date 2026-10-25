@@ -75,7 +75,7 @@ function grossUp(targetNet: number, maritalStatus: string, childrenCount: number
 
 const fmt = (n: number): string => n.toLocaleString('fr-FR').replace(/ /g, ' ') + ' FCFA'
 
-const CP_PAR_MOIS = 2.5 // jours ouvrables acquis / mois travaillé (Code du Travail CI)
+const CP_PAR_MOIS = 2.2 // jours ouvrables acquis / mois de service (CT art. 25.1)
 
 /** Solde de congés payés (acquis/pris/restant) à la fin du mois donné. */
 function congesAsOf(e: Emp, year: number, month1to12: number): { acquired: number; taken: number; remaining: number } {

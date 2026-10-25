@@ -1247,38 +1247,6 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // GET /payroll/my-access-log — journal d'accès ARTCI
-  fastify.get('/my-access-log', {
-    preHandler: [fastify.authenticate],
-    schema: { tags: ['payroll'], summary: 'Journal accès données personnelles (conformité ARTCI)' },
-    handler: async (request, reply) => {
-      const schema = request.user.schemaName
-      let employeeId = request.user.employeeId ?? null
-      if (!employeeId) {
-        const r = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
-        )
-        employeeId = r.rows[0]?.id ?? null
-      }
-
-      await rawPool.query(
-        `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, created_at)
-         VALUES ($1,'READ','payslip',null,$2::jsonb,now())`,
-        [request.user.sub, JSON.stringify({ access: 'my_access_log', ip: request.ip })]
-      ).catch(() => null)
-
-      const res = await rawPool.query(
-        `SELECT al.id, al.user_id, al.action, al.entity, al.entity_id,
-                al.changes, al.ip_address, al.created_at
-         FROM "${schema}".audit_log al
-         WHERE al.user_id = $1
-         ORDER BY al.created_at DESC LIMIT 20`,
-        [request.user.sub]
-      )
-      return reply.send({ data: res.rows })
-    },
-  })
-
   // GET /payroll/periods — liste des périodes
   fastify.get('/periods', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],

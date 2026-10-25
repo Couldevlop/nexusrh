@@ -20,7 +20,8 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
-import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
+import { calculatePayrollCI, transportZoneFromCity } from '../../services/payroll-engine-ci.js'
+import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } from '../../services/payroll-variable-elements.js'
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
@@ -449,13 +450,19 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         // On lit les paramètres de calcul depuis legal_entities + on applique
         // le pack législatif stocké sur la période enfant (résolu au send-to-sites).
         const leRes = await pool.query<{
-          at_rate: string | null; name: string
+          at_rate: string | null; name: string; city: string | null
         }>(
-          `SELECT at_rate, name FROM "${schema}".legal_entities WHERE id = $1`,
-          [period.legal_entity_id],
+          // Lieu de travail (plafond exonéré de la prime de transport) : ville de
+          // la filiale, sinon celle du tenant — même règle que la paie mono-filiale.
+          `SELECT le.at_rate, le.name, COALESCE(NULLIF(le.city, ''), t.city) AS city
+             FROM "${schema}".legal_entities le
+             LEFT JOIN platform.tenants t ON t.schema_name = $2
+            WHERE le.id = $1`,
+          [period.legal_entity_id, schema],
         )
         const le = leRes.rows[0]
         if (!le) return reply.status(500).send({ error: 'Filiale introuvable' })
+        const transportZone = transportZoneFromCity(le.city)
 
         const pack = getLegislationPack(period.legislation_pack_code)
         if (pack.status === 'stub') {
@@ -481,13 +488,15 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         for (const emp of emps.rows) {
           // Variables locales (heures supp, primes, avances) — saisies par le RAF
           // dans la table variable_elements, scope (employé, période enfant).
+          // Assujettissement CNPS / ITS paramétré par rubrique (payroll_rules).
           const varEls: Record<string, number> = {}
-          const velRes = await pool.query<{ rule_code: string; amount: string }>(
-            `SELECT rule_code, amount FROM "${schema}".variable_elements
-             WHERE employee_id = $1 AND period_id = $2`,
+          const velRes = await pool.query<VariableElementRow>(
+            `${VARIABLE_ELEMENTS_SQL(schema)}
+             WHERE ve.employee_id = $1 AND ve.period_id = $2`,
             [emp.id, id],
-          ).catch(() => ({ rows: [] as Array<{ rule_code: string; amount: string }> }))
+          ).catch(() => ({ rows: [] as VariableElementRow[] }))
           for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
+          const variableTreatment = treatmentFromRows(velRes.rows)
 
           const baseSalary = parseInt(emp.base_salary)
           // Prorata entrée / sortie, absences, pointage et solde de tout compte
@@ -507,6 +516,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             settlementEarnings: monthInputs.settlementEarnings,
             expenseReimbursement: monthInputs.expenses.total,
             legislationPack:  pack,
+            transportZone,
+            variableTreatment,
           })
           totalGross += result.grossSalary
           totalNet   += result.netPayable
