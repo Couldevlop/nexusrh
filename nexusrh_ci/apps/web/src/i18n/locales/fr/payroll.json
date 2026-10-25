@@ -32,7 +32,7 @@
     "resultCnps": "CNPS :",
     "resultIts": "ITS :",
     "resultHint": "→ Le valideur attendu est prévenu ; suivez l'avancement depuis l'historique ci-dessous.",
-    "pendingWithNamed": "Période {{month}} en attente de validation de {{name}} ({{fn}})",
+    "pendingWithNamed": "Période {{month}} en attente de validation par {{name}} ({{fn}})",
     "pendingWithTeam": "Période {{month}} en attente de validation par un administrateur ou responsable RH autre que l'initiateur",
     "generated_one": "{{count}} bulletin généré.",
     "generated_other": "{{count}} bulletins générés."

@@ -172,7 +172,7 @@ describe('Valideur désigné par niveau', () => {
     const body = JSON.parse(res.body)
     expect(body.data).toMatchObject({ status: 'pending_validation', level: 1, requiredLevels: 2, escalated: false })
     // Le message annonce le valideur suivant, nommé, sans jargon technique
-    expect(body.message).toContain('en attente de validation de Fanta Traoré (DRH)')
+    expect(body.message).toContain('en attente de validation par Fanta Traoré (DRH)')
     expect(body.message).not.toMatch(/POST|\/payroll|hr_manager/)
     expect(db.log).toContain('audit:payroll.approved')
     expect(db.log).toContain('notify:u-drh:payroll_validation_requested')
@@ -403,7 +403,7 @@ describe('Clôture — message de période en validation', () => {
     const res = await app.inject({ method: 'POST', url: `/payroll/periods/${MONTH}/close`, headers: { authorization: `Bearer ${token('u-init', 'hr_manager')}` }, payload: {} })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(body.message).toContain('Période 2026-10 en attente de validation de Yao Brou (Chef de service paie)')
+    expect(body.message).toContain('Période 2026-10 en attente de validation par Yao Brou (Chef de service paie)')
     expect(body.message).not.toMatch(/POST|\/payroll|admin\/hr_manager/)
     expect(body.pendingWith).toMatchObject({ level: 1, name: 'Yao Brou' })
   })
