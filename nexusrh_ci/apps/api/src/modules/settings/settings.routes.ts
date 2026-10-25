@@ -1836,6 +1836,37 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // GET /settings/workflow/unlinked-managers — responsables hiérarchiques
+  // (manager_id d'au moins un salarié actif) SANS compte utilisateur actif lié :
+  // leurs validations N+1 resteraient bloquées. Lien explicite users.employee_id
+  // ou, à défaut, repli historique par email.
+  fastify.get('/workflow/unlinked-managers', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const res = await pool.query(
+          `SELECT m.id, m.first_name, m.last_name, m.email, count(e.id)::int AS reports_count
+             FROM "${schema}".employees m
+             JOIN "${schema}".employees e ON e.manager_id = m.id AND e.deleted_at IS NULL
+            WHERE m.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM "${schema}".users u
+                 WHERE COALESCE(u.is_active, true)
+                   AND (u.employee_id = m.id
+                        OR (u.employee_id IS NULL AND m.email IS NOT NULL AND lower(u.email) = lower(m.email))))
+            GROUP BY m.id, m.first_name, m.last_name, m.email
+            ORDER BY m.last_name, m.first_name
+            LIMIT 200`,
+        )
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // PATCH /settings/workflow
   fastify.patch('/workflow', {
     preHandler: [fastify.authorize('admin')],

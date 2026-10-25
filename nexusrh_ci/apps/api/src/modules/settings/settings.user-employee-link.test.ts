@@ -192,3 +192,28 @@ describe('GET /settings/users — fiche liée (explicite ou repli email)', () =>
     expect(sql).toContain('u.employee_id IS NULL')
   })
 })
+
+describe('GET /settings/workflow/unlinked-managers — N+1 sans compte', () => {
+  it('liste les responsables sans compte actif lié (lien explicite ou email)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: EMP, first_name: 'Yao', last_name: 'Kouadio', email: null, reports_count: 3 }] })
+    const res = await app.inject({
+      method: 'GET', url: '/settings/workflow/unlinked-managers',
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data[0].reports_count).toBe(3)
+    const sql = String(queryMock.mock.calls[0]![0])
+    expect(sql).toContain('e.manager_id = m.id')
+    expect(sql).toContain('NOT EXISTS')
+    expect(sql).toContain('u.employee_id = m.id')
+    expect(sql).toContain(`"${TENANT}".users`)
+  })
+
+  it('refusé à un manager (403)', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/settings/workflow/unlinked-managers',
+      headers: { authorization: `Bearer ${tokenFor(app, 'manager')}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+})

@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import { loadPayslipMentions } from './payslip-mentions.service.js'
 
+type Db = Parameters<typeof loadPayslipMentions>[0]
+
 function dbWith(handler: (sql: string, params: unknown[]) => unknown[] | Error) {
-  return {
-    query: vi.fn(async (sql: string, params: unknown[] = []) => {
-      const r = handler(sql, params)
-      if (r instanceof Error) throw r
-      return { rows: r }
-    }),
-  }
+  const query = vi.fn(async (sql: string, params: unknown[] = []) => {
+    const r = handler(sql, params)
+    if (r instanceof Error) throw r
+    return { rows: r }
+  })
+  return Object.assign({ query } as unknown as Db, { query })
 }
 
 describe('loadPayslipMentions — mentions obligatoires du bulletin', () => {
