@@ -7,6 +7,7 @@ import { AlertTriangle, Menu } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 import { isModuleEnabled } from '@/lib/modules'
+import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
 
 /** Route → clé du namespace `nav` (libellés traduits FR/EN). */
 const ROUTE_LABEL_KEYS: Record<string, string> = {
@@ -15,6 +16,7 @@ const ROUTE_LABEL_KEYS: Record<string, string> = {
   '/contracts': 'contracts',
   '/payroll': 'payroll',
   '/absences': 'absences',
+  '/approvals': 'approvals',
   '/expenses-rh': 'expenses',
   '/recruitment': 'recruitment',
   '/training': 'training',
@@ -59,6 +61,9 @@ export default function MainLayout() {
             </div>
             <span className="text-xs text-muted-foreground truncate max-w-[120px]">{tenantConfig?.name}</span>
           </header>
+
+          {/* Échéances de validation (N+1… / RH) en retard ou proches */}
+          <ApprovalAlerts href="/approvals" />
 
           <main className="flex-1 overflow-auto bg-background">
             <Outlet />

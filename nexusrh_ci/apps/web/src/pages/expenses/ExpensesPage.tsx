@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Receipt, CheckCircle, XCircle, CreditCard } from 'lucide-react'
+import { readOnlyLabel, useApprovalDecision, type WorkflowSummary } from '@/components/approvals/workflow'
+import { FeedbackBanner, RejectReasonModal, SlaBadge, WorkflowStep } from '@/components/approvals/WorkflowBadges'
 
 interface ExpenseReport {
   id: string; employee_id: string; first_name: string; last_name: string
@@ -10,6 +12,8 @@ interface ExpenseReport {
   total_amount: string; status: string; submitted_at: string | null
   approved_at: string | null; paid_at: string | null
   rejection_reason: string | null; created_at: string
+  /** Circuit N+1 … N+n → RH : visible par la RH dès la soumission, en lecture seule avant son étape. */
+  workflow?: WorkflowSummary
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -23,10 +27,10 @@ const STATUS_ORDER = ['draft', 'submitted', 'approved', 'paid', 'rejected'] as c
 
 export default function ExpensesPage() {
   const { t } = useTranslation('expenses')
+  const { t: ta } = useTranslation('approvals')
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('submitted')
   const [rejectId, setRejectId] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState('')
   const [payId, setPayId] = useState<string | null>(null)
   const [payProvider, setPayProvider] = useState('wave')
   const [payError, setPayError] = useState<string | null>(null)
@@ -36,19 +40,7 @@ export default function ExpensesPage() {
     queryFn: () => api.get(`/expenses?status=${statusFilter}`).then(r => r.data),
   })
 
-  const approveMut = useMutation({
-    mutationFn: (id: string) => api.patch(`/expenses/${id}/approve`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] }),
-  })
-
-  const rejectMut = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.patch(`/expenses/${id}/reject`, { reason }),
-    onSuccess: () => {
-      setRejectId(null); setRejectReason('')
-      queryClient.invalidateQueries({ queryKey: ['expenses'] })
-    },
-  })
+  const { approve, reject, feedback, setFeedback } = useApprovalDecision()
 
   // FRA-006 — remboursement Mobile Money : on transmet le provider choisi.
   const payMut = useMutation({
@@ -92,7 +84,9 @@ export default function ExpensesPage() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <FeedbackBanner feedback={feedback} onClose={() => setFeedback(null)} />
+
+      <div className="rounded-xl border border-border bg-card overflow-x-auto">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -106,6 +100,8 @@ export default function ExpensesPage() {
                 <th className="p-4">{t('table.month')}</th>
                 <th className="p-4 text-right">{t('table.amount')}</th>
                 <th className="p-4">{t('table.status')}</th>
+                <th className="p-4">{t('table.step')}</th>
+                <th className="p-4">{t('table.sla')}</th>
                 <th className="p-4">{t('table.submittedAt')}</th>
                 <th className="p-4">{t('table.actions')}</th>
               </tr>
@@ -132,14 +128,21 @@ export default function ExpensesPage() {
                       </p>
                     )}
                   </td>
+                  <td className="p-4">
+                    {r.status === 'submitted' ? <WorkflowStep workflow={r.workflow} /> : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="p-4">
+                    {r.status === 'submitted' ? <SlaBadge workflow={r.workflow} /> : <span className="text-muted-foreground">—</span>}
+                  </td>
                   <td className="p-4 text-muted-foreground text-xs">
                     {r.submitted_at ? formatDate(r.submitted_at) : t('noDate')}
                   </td>
                   <td className="p-4">
                     <div className="flex gap-2 flex-wrap">
-                      {r.status === 'submitted' && (
+                      {/* Décision uniquement à l'étape de l'utilisateur ; sinon lecture seule */}
+                      {r.status === 'submitted' && r.workflow?.canAct === true && (
                         <>
-                          <button onClick={() => approveMut.mutate(r.id)} disabled={approveMut.isPending}
+                          <button onClick={() => approve.mutate({ module: 'expenses', id: r.id })} disabled={approve.isPending}
                             className="flex items-center gap-1 rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50">
                             <CheckCircle className="h-3 w-3" /> {t('actions.approve')}
                           </button>
@@ -148,6 +151,9 @@ export default function ExpensesPage() {
                             <XCircle className="h-3 w-3" /> {t('actions.reject')}
                           </button>
                         </>
+                      )}
+                      {r.status === 'submitted' && r.workflow?.canAct !== true && (
+                        <span className="text-xs text-muted-foreground">{readOnlyLabel(r.workflow, ta)}</span>
                       )}
                       {r.status === 'approved' && (
                         <button onClick={() => { setPayError(null); setPayProvider('wave'); setPayId(r.id) }}
@@ -161,7 +167,7 @@ export default function ExpensesPage() {
               ))}
               {reports.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     <Receipt className="mx-auto mb-2 h-8 w-8 opacity-30" />
                     {t('empty', { status: t(`status.${statusFilter}`).toLowerCase() })}
                   </td>
@@ -174,24 +180,14 @@ export default function ExpensesPage() {
 
       {/* Modal refus */}
       {rejectId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRejectId(null)}>
-          <div className="rounded-xl border border-border bg-card p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-3">{t('rejectModal.title')}</h3>
-            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
-              placeholder={t('rejectModal.placeholder')}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none resize-none"
-              rows={3} />
-            <div className="mt-4 flex gap-2 justify-end">
-              <button onClick={() => setRejectId(null)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('rejectModal.cancel')}</button>
-              <button onClick={() => rejectMut.mutate({ id: rejectId, reason: rejectReason })}
-                disabled={rejectMut.isPending}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
-                {t('rejectModal.confirm')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <RejectReasonModal
+          pending={reject.isPending}
+          onCancel={() => setRejectId(null)}
+          onConfirm={(reason) => reject.mutate(
+            { module: 'expenses', id: rejectId, reason },
+            { onSettled: () => setRejectId(null) },
+          )}
+        />
       )}
 
       {/* FRA-006 — Modal remboursement Mobile Money */}

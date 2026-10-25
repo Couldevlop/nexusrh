@@ -502,7 +502,7 @@
       }
     },
     "title": "Workflow d'approbation — Niveaux paramétrables",
-    "description": "Définissez jusqu'à 5 niveaux hiérarchiques par module. Chaque niveau correspond à un approbateur supplémentaire avant finalisation.",
+    "description": "Absences et notes de frais : circuit hiérarchique N+1 → N+2 → … (1 à 10 niveaux ; les niveaux absents de l'organigramme sont sautés), puis décision finale de l'équipe RH. Personne ne valide sa propre demande. Clôture de paie : jusqu'à 5 niveaux d'approbation.",
     "levelBadge_one": "{{count}} niveau",
     "levelBadge_other": "{{count}} niveaux",
     "chain": "Chaîne : {{chain}}",
@@ -528,6 +528,38 @@
       "itsAbatementValue": "15 % du brut",
       "fdfpContribution": "Contribution FDFP",
       "fdfpContributionValue": "0,4 % masse salariale"
+    },
+    "saveError": "Échec de l'enregistrement du workflow.",
+    "circuit": {
+      "hr": "RH",
+      "levelBadge_one": "{{count}} niveau hiérarchique + RH",
+      "levelBadge_other": "{{count}} niveaux hiérarchiques + RH",
+      "levelsHint": "Nombre de niveaux hiérarchiques (N+1, N+2…) avant la validation RH.",
+      "visibility": {
+        "absences": "Une absence n'est visible par la RH qu'une fois tous les visas hiérarchiques obtenus.",
+        "expenses": "Une note de frais est visible par la RH dès sa soumission, en lecture seule jusqu'à l'étape RH."
+      },
+      "managerSla": "SLA hiérarchique (jours par niveau)",
+      "hrSla": "SLA RH (jours)",
+      "hrValidator": "Valideur RH désigné",
+      "wholeHrTeam": "Toute l'équipe RH",
+      "hrValidatorHint": "Une fois son échéance dépassée, tout membre de l'équipe RH (admin, RH manager, gestionnaire RH) peut statuer."
+    },
+    "notice": {
+      "enabled": "Délai de prévenance des absences planifiées",
+      "hint": "Les demandes saisies trop tard sont refusées à la saisie (les rôles RH en sont exemptés).",
+      "types": "Types concernés",
+      "shortFrom": "De",
+      "shortTo": "à",
+      "shortArrow": "jours d’absence → au moins",
+      "daysAhead": "jours à l'avance",
+      "longFrom": "Au-delà de {{days}} jours → au moins",
+      "shortMinDays": "Durée minimale (jours)",
+      "shortMaxDays": "Durée maximale (jours)",
+      "shortNoticeDays": "Prévenance courte (jours)",
+      "longNoticeDays": "Prévenance longue (jours)",
+      "invalidRange": "La durée minimale doit être inférieure ou égale à la durée maximale.",
+      "hrExempt": "Les absences plus courtes que la durée minimale ne sont pas soumises au délai."
     }
   },
   "connectivity": {

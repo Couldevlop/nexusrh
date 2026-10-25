@@ -5,6 +5,7 @@ import { Users, Calendar, Receipt, CalendarX, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { KpiCard } from './DashboardPage'
+import ApprovalsWidget from '@/components/approvals/ApprovalsWidget'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,9 @@ export default function ManagerDashboard() {
             : t('manager.kpi.absencesTodayNone')}
         />
       </div>
+
+      {/* ── Mes validations : étape, échéances (masqué s'il n'y a rien à suivre) ── */}
+      <ApprovalsWidget />
 
       {/* ── Demandes à valider ──────────────────────────────── */}
       <div className="grid gap-5 lg:grid-cols-2">

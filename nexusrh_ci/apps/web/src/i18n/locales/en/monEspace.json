@@ -26,8 +26,11 @@
       "attendance": "My punches",
       "attendanceWarnings": "My warnings",
       "profile": "My profile",
-      "default": "My space"
-    }
+      "default": "My space",
+      "validations": "My approvals"
+    },
+    "validations": "My approvals",
+    "backToRh": "HR space"
   },
   "common": {
     "status": {

@@ -51,6 +51,7 @@ import frSage from './locales/fr/sage.json'
 import frAttendance from './locales/fr/attendance.json'
 import frInterviewSim from './locales/fr/interviewSim.json'
 import frInterviewFocus from './locales/fr/interviewFocus.json'
+import frApprovals from './locales/fr/approvals.json'
 
 // ── English ───────────────────────────────────────────────────────────────────
 import enLegal from './locales/en/legal.json'
@@ -94,6 +95,7 @@ import enSage from './locales/en/sage.json'
 import enAttendance from './locales/en/attendance.json'
 import enInterviewSim from './locales/en/interviewSim.json'
 import enInterviewFocus from './locales/en/interviewFocus.json'
+import enApprovals from './locales/en/approvals.json'
 
 export const LANGUAGE_STORAGE_KEY = 'nexusrh:lang'
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const
@@ -103,7 +105,7 @@ const NAMESPACES = [
   'home', 'legal', 'common', 'nav', 'auth', 'dashboard', 'employees', 'contracts', 'careers',
   'payroll', 'cnps', 'mobileMoney', 'absences', 'expenses', 'training',
   'recruitment', 'onboarding', 'reporting', 'settings', 'platform', 'agency',
-  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification', 'signature', 'security', 'sage', 'attendance', 'interviewSim', 'interviewFocus',
+  'monEspace', 'referentiels', 'raf', 'publicPages', 'dg', 'orgChart', 'discipline', 'offboarding', 'climate', 'succession', 'competencies', 'calibration', 'mobility', 'classification', 'signature', 'security', 'sage', 'attendance', 'interviewSim', 'interviewFocus', 'approvals',
 ] as const
 
 const resources = {
@@ -120,6 +122,7 @@ const resources = {
     competencies: frCompetencies, calibration: frCalibration, mobility: frMobility,
     classification: frClassification, signature: frSignature, security: frSecurity, sage: frSage,
     attendance: frAttendance, interviewSim: frInterviewSim, interviewFocus: frInterviewFocus,
+    approvals: frApprovals,
   },
   en: {
     home: enHome, legal: enLegal, common: enCommon, nav: enNav, auth: enAuth, dashboard: enDashboard,
@@ -134,6 +137,7 @@ const resources = {
     competencies: enCompetencies, calibration: enCalibration, mobility: enMobility,
     classification: enClassification, signature: enSignature, security: enSecurity, sage: enSage,
     attendance: enAttendance, interviewSim: enInterviewSim, interviewFocus: enInterviewFocus,
+    approvals: enApprovals,
   },
 } as const
 

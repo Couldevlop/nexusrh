@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify'
 import authPlugin from '../../plugins/auth.js'
 
+vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('pg', () => {
   const mockPool = {
     query: vi.fn(),

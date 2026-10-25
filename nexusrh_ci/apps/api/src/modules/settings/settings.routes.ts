@@ -1755,6 +1755,25 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // GET /settings/workflow/hr-team — membres de l'équipe RH (choix du valideur désigné)
+  fastify.get('/workflow/hr-team', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const res = await pool.query(
+          `SELECT id, first_name, last_name, email, role FROM "${schema}".users
+            WHERE role IN ('admin','hr_manager','hr_officer') AND COALESCE(is_active, true)
+            ORDER BY last_name, first_name`,
+        )
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // PATCH /settings/workflow
   fastify.patch('/workflow', {
     preHandler: [fastify.authorize('admin')],
@@ -1762,9 +1781,25 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       // OWASP A03 — le corps DOIT être un tableau de configs ; sans validation un
       // corps non-itérable (objet) faisait planter le for...of → 500. → 400 propre.
+      // Circuit N+1 … N+n → RH (absences, notes de frais) : niveaux hiérarchiques,
+      // échéances (SLA), valideur RH désigné, délai de prévenance des absences.
+      const circuitSchema = z.object({
+        managerSlaDays:    z.number().int().min(1).max(30).optional(),
+        hrSlaDays:         z.number().int().min(1).max(30).optional(),
+        hrValidatorUserId: z.string().uuid().nullable().optional(),
+        notice: z.object({
+          enabled:         z.boolean().optional(),
+          typeCodes:       z.array(z.string().min(1).max(30)).max(50).optional(),
+          shortMinDays:    z.number().int().min(1).max(365).optional(),
+          shortMaxDays:    z.number().int().min(1).max(365).optional(),
+          shortNoticeDays: z.number().int().min(0).max(365).optional(),
+          longNoticeDays:  z.number().int().min(0).max(365).optional(),
+        }).strict().optional(),
+      }).strict()
       const workflowSchema = z.array(z.object({
         module:       z.string().min(1).max(50),
         levels_count: z.number().int().min(1).max(10),
+        config:       circuitSchema.optional(),
       })).max(50)
       const parsed = workflowSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -1772,12 +1807,27 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const configs = parsed.data
       try {
+        // Le valideur RH désigné doit être un membre de l'équipe RH du tenant.
+        for (const cfg of configs) {
+          const validator = cfg.config?.hrValidatorUserId
+          if (validator) {
+            const u = await pool.query(
+              `SELECT 1 FROM "${schema}".users WHERE id = $1 AND role IN ('admin','hr_manager','hr_officer') LIMIT 1`,
+              [validator],
+            )
+            if (!u.rows[0]) {
+              return reply.status(400).send({ error: 'Le valideur RH désigné doit être un membre de l\'équipe RH (admin, RH manager ou gestionnaire RH).' })
+            }
+          }
+        }
         for (const cfg of configs) {
           await pool.query(`
-            INSERT INTO "${schema}".workflow_configs (module, levels_count)
-            VALUES ($1,$2)
-            ON CONFLICT (module) DO UPDATE SET levels_count = EXCLUDED.levels_count
-          `, [cfg.module, cfg.levels_count])
+            INSERT INTO "${schema}".workflow_configs (module, levels_count, config)
+            VALUES ($1,$2,$3::jsonb)
+            ON CONFLICT (module) DO UPDATE SET levels_count = EXCLUDED.levels_count,
+              config = COALESCE("${schema}".workflow_configs.config, '{}'::jsonb) || EXCLUDED.config,
+              updated_at = now()
+          `, [cfg.module, cfg.levels_count, JSON.stringify(cfg.config ?? {})])
         }
         const res = await pool.query(`SELECT * FROM "${schema}".workflow_configs ORDER BY module`)
         return reply.send({ data: res.rows })

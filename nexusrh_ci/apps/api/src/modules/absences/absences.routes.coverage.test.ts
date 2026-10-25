@@ -221,6 +221,15 @@ describe('GET /absences/types — types CI', () => {
 })
 
 // ── POST /absences ──────────────────────────────────────────────────────────────
+// Mock pg routé par fragment SQL (l'ordre des requêtes du circuit de validation
+// varie selon le cas : configuration, hiérarchie, demande, mise à jour…).
+function routeSql(routes: Array<[string, unknown[]]>) {
+  queryMock.mockImplementation(async (sql: string) => {
+    const hit = routes.find(([needle]) => String(sql).includes(needle))
+    return { rows: hit ? hit[1] : [] }
+  })
+}
+
 describe('POST /absences — création, jours ouvrables, demi-journée', () => {
   it('employee sans dossier employé : 422', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT id from email → vide
@@ -234,27 +243,25 @@ describe('POST /absences — création, jours ouvrables, demi-journée', () => {
   })
 
   it('employee sans employeeId : résolution via email puis création (201)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ id: 'emp-resolved' }] }) // SELECT id from email
-      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-05', end_date: '2026-01-09' }] }) // INSERT
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    routeSql([
+      ['WHERE email = $1', [{ id: 'emp-resolved' }]],
+      ['absence_types', [{ code: 'CP', calculation_mode: 'working_days' }]],
+      ['INSERT INTO "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2027-03-01', end_date: '2027-03-05' }]],
+    ])
     const token = tokenFor(app, 'employee', { email: 'kouassi@sotra.ci' })
     const res = await app.inject({
       method: 'POST', url: '/absences',
       headers: { authorization: `Bearer ${token}` },
-      payload: { absenceTypeId: UUID_AT, startDate: '2026-01-05', endDate: '2026-01-09' },
+      payload: { absenceTypeId: UUID_AT, startDate: '2027-03-01', endDate: '2027-03-05' },
     })
     expect(res.statusCode).toBe(201)
   })
 
   it('demi-journée : days = 0.5 (201)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-05', end_date: '2026-01-05' }] }) // INSERT
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    routeSql([
+      ['absence_types', [{ code: 'CP', calculation_mode: 'working_days' }]],
+      ['INSERT INTO "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2026-01-05', end_date: '2026-01-05' }]],
+    ])
     const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
     const res = await app.inject({
       method: 'POST', url: '/absences',
@@ -271,13 +278,17 @@ describe('POST /absences — création, jours ouvrables, demi-journée', () => {
 
 // ── PATCH /absences/:id/approve — workflow multi-niveaux ────────────────────────
 describe('PATCH /absences/:id/approve — workflow multi-niveaux', () => {
-  it('workflow 2 niveaux : premier passage reste submitted (niveau 1/2)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ levels_count: 2 }] }) // workflow_configs
-      .mockResolvedValueOnce({ rows: [{ validation_level: 0, status: 'submitted', employee_id: 'emp-1', days: 3, absence_type_id: 'at-1' }] }) // SELECT absence
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', status: 'submitted' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
-    const token = tokenFor(app, 'hr_manager')
+  it('2 niveaux hiérarchiques : le N+1 vise (étape 1/3), la suite est le visa du N+2', async () => {
+    routeSql([
+      ['workflow_configs', [{ levels_count: 2, config: {} }]],
+      ['SELECT id, manager_id FROM', [
+        { id: 'emp-1', manager_id: 'n1' }, { id: 'n1', manager_id: 'n2' }, { id: 'n2', manager_id: null },
+      ]],
+      ['SELECT validation_level', [{ validation_level: 0, status: 'submitted', employee_id: 'emp-1', days: 3,
+        absence_type_id: 'at-1', created_at: new Date().toISOString(), approval_trail: [] }]],
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2026-01-01', status: 'submitted' }]],
+    ])
+    const token = tokenFor(app, 'manager', { employeeId: 'n1' })
     const res = await app.inject({
       method: 'PATCH', url: '/absences/abs-1/approve',
       headers: { authorization: `Bearer ${token}` },
@@ -286,7 +297,25 @@ describe('PATCH /absences/:id/approve — workflow multi-niveaux', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.fullyApproved).toBe(false)
-    expect(body.message).toContain('1/2')
+    expect(body.message).toContain('1/3')
+    expect(body.message).toContain('N+2')
+  })
+
+  it('étape hiérarchique : la RH ne peut pas court-circuiter le visa du N+1 (403)', async () => {
+    routeSql([
+      ['workflow_configs', [{ levels_count: 1, config: {} }]],
+      ['SELECT id, manager_id FROM', [{ id: 'emp-1', manager_id: 'n1' }, { id: 'n1', manager_id: null }]],
+      ['SELECT validation_level', [{ validation_level: 0, status: 'submitted', employee_id: 'emp-1', days: 3,
+        absence_type_id: 'at-1', created_at: '2026-01-01T00:00:00Z', approval_trail: [] }]],
+    ])
+    const token = tokenFor(app, 'hr_manager', { employeeId: 'rh-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: '/absences/abs-1/approve',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toContain('N+1')
   })
 
   it('absence déjà rejetée → 422', async () => {
@@ -303,13 +332,12 @@ describe('PATCH /absences/:id/approve — workflow multi-niveaux', () => {
     expect(JSON.parse(res.body).error).toContain('rejetée')
   })
 
-  it('workflow_configs absent : défaut 1 niveau → approuve directement (200)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // workflow_configs vide → défaut 1
-      .mockResolvedValueOnce({ rows: [{ validation_level: 0, status: 'submitted', employee_id: 'emp-1', days: 3, absence_type_id: 'at-1' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', status: 'approved' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+  it('workflow_configs absent, salarié sans N+1 : la RH approuve directement (200)', async () => {
+    routeSql([
+      ['SELECT validation_level', [{ validation_level: 0, status: 'submitted', employee_id: 'emp-1', days: 3,
+        absence_type_id: 'at-1', created_at: new Date().toISOString(), approval_trail: [] }]],
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2026-01-01', status: 'approved' }]],
+    ])
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'PATCH', url: '/absences/abs-1/approve',
@@ -335,12 +363,12 @@ describe('PATCH /absences/:id/reject — succès et auto-approbation interdite',
   })
 
   it('manager peut rejeter une absence de son équipe directe (200)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-team', days: 3, absence_type_id: 'at-1', start_date: '2026-02-01' }] }) // SELECT absence
-      .mockResolvedValueOnce({ rows: [{ id: 'emp-team' }] }) // managerCanActOnAbsence → ok
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', status: 'rejected' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    routeSql([
+      ['SELECT employee_id, days', [{ employee_id: 'emp-team', days: 3, absence_type_id: 'at-1', start_date: '2026-02-01',
+        validation_level: 0, status: 'submitted', created_at: new Date().toISOString(), approval_trail: [] }]],
+      ['SELECT id, manager_id FROM', [{ id: 'emp-team', manager_id: 'manager-1' }, { id: 'manager-1', manager_id: null }]],
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', status: 'rejected' }]],
+    ])
     const token = tokenFor(app, 'manager', { employeeId: 'manager-1', email: 'manager@sotra.ci' })
     const res = await app.inject({
       method: 'PATCH', url: '/absences/abs-1/reject',

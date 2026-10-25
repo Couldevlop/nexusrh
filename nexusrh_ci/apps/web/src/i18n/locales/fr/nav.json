@@ -43,5 +43,9 @@
   "dgActivity": "Activité des responsables",
   "byOpenlab": "by OpenLab Consulting",
   "maintenance": "Service en maintenance — Certaines fonctionnalités sont temporairement indisponibles.",
-  "appName": "NexusRH CI"
+  "appName": "NexusRH CI",
+  "approvals": "Mes validations",
+  "mySpace": "Mon espace",
+  "approvalsBadge_one": "{{count}} demande à traiter",
+  "approvalsBadge_other": "{{count}} demandes à traiter"
 }

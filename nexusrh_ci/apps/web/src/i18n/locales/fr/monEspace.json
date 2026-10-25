@@ -26,8 +26,11 @@
       "attendance": "Mes pointages",
       "attendanceWarnings": "Mes avertissements",
       "profile": "Mon profil",
-      "default": "Mon espace"
-    }
+      "default": "Mon espace",
+      "validations": "Mes validations"
+    },
+    "validations": "Mes validations",
+    "backToRh": "Espace RH"
   },
   "common": {
     "status": {
