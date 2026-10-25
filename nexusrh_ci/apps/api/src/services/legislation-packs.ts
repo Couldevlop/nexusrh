@@ -90,6 +90,17 @@ export interface LegislationPack {
   /** Abattement appliqué au brut avant calcul impôt (0.15 = 15% ; 0 = aucun) */
   abattementImpotSalaire: number
   /**
+   * L'abattement ne porte que sur le salaire de base (BF, CGI art. 111) et non
+   * sur tout le brut imposable. Absent = `false` (abattement sur tout le brut).
+   */
+  abattementSurSalaireBase?: boolean
+  /**
+   * Réduction pour charges de famille exprimée en % de l'impôt brut, indexée
+   * par le nombre de charges (conjoint + enfants), dernier palier = plafond.
+   * BF (CGI art. 113) : [0, 0.08, 0.10, 0.12, 0.14]. Absent = pas de réduction %.
+   */
+  reductionImpotPctParCharges?: readonly number[]
+  /**
    * Déduire les cotisations sociales salariales de l'assiette de l'impôt sur
    * les salaires. Absent = `true` (comportement historique des packs). La CI
    * (réforme ITS 2024, ordonnance n° 2023-719) taxe 100 % du brut imposable :
@@ -587,22 +598,30 @@ export const BFA_2024: LegislationPack = {
   currency: 'XOF',
   bracketScale: 'monthly',
   status: 'active',
-  smigMensuel: 37_500,
-  plafondCnpsRetraite: 600_000,
-  plafondCnpsAtPf: 600_000,
-  tauxCotisationRetraiteSalarie: 0.055,
-  tauxCotisationRetraitePatronal: 0.055,
-  tauxCotisationPfPatronal: 0.07,
+  smigMensuel: 45_000,                       // Conseil des ministres du 29/06/2023
+  plafondCnpsRetraite: 800_000,              // arrêté 2022-067 du 30/08/2022
+  plafondCnpsAtPf: 800_000,
+  tauxCotisationRetraiteSalarie: 0.055,      // CNSS BF (décret 2023-0129)
+  tauxCotisationRetraitePatronal: 0.085,
+  tauxCotisationPfPatronal: 0.06,
   tauxCotisationMaternitePatronal: 0.0,
-  tauxAtDefaultPatronal: 0.035,
-  abattementImpotSalaire: 0.0,
+  tauxAtDefaultPatronal: 0.015,              // risques professionnels : taux unique 1,5 %
+  tauxAtMin: 0.015,
+  tauxAtMax: 0.015,
+  // CGI BF art. 111 : abattement forfaitaire 25 % du SALAIRE DE BASE
+  // (20 % catégories supérieures — non modélisé : la catégorie n'est pas au contrat)
+  abattementImpotSalaire: 0.25,
+  abattementSurSalaireBase: true,
+  // CGI BF art. 113 : 8/10/12/14 % de l'IUTS pour 1/2/3/4 charges
+  reductionImpotPctParCharges: [0, 0.08, 0.10, 0.12, 0.14],
+  // CGI BF art. 112 (à jour LF 2021)
   tranchesImpotSalaire: [
     { min: 0,        max: 30_000,   taux: 0.000 },
-    { min: 30_001,   max: 50_000,   taux: 0.110 },
-    { min: 50_001,   max: 80_000,   taux: 0.140 },
-    { min: 80_001,   max: 120_000,  taux: 0.170 },
-    { min: 120_001,  max: 170_000,  taux: 0.190 },
-    { min: 170_001,  max: 250_000,  taux: 0.215 },
+    { min: 30_001,   max: 50_000,   taux: 0.121 },
+    { min: 50_001,   max: 80_000,   taux: 0.139 },
+    { min: 80_001,   max: 120_000,  taux: 0.157 },
+    { min: 120_001,  max: 170_000,  taux: 0.184 },
+    { min: 170_001,  max: 250_000,  taux: 0.217 },
     { min: 250_001,  max: Infinity, taux: 0.250 },
   ],
   creditImpotMarieSansEnfant: 0,

@@ -13,7 +13,7 @@ import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.se
 import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
-import { isSupportedCountry } from '../../services/legislation-packs.js'
+import { isSupportedCountry, getLegislationPack, getPackByCountry } from '../../services/legislation-packs.js'
 import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@nexusrhci/shared/ssrf-guard'
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
@@ -39,6 +39,22 @@ const URL_OR_DATA_RE = /^(https?:\/\/|data:image\/)/
 // Hors plage = fraude potentielle (sous-cotisation ou erreur de saisie destructrice).
 const AT_RATE_MIN = 0.02
 const AT_RATE_MAX = 0.05
+// Filiales : bornes larges au schéma (tous pays), puis bornes légales du pack
+// du pays de la filiale (CI 2-5 %, BF 1,5 %…) via atRateError.
+const LE_AT_RATE_MIN = 0.005
+const LE_AT_RATE_MAX = 0.10
+
+/** Message d'erreur si le taux AT sort des bornes légales du pack de la filiale. */
+function atRateError(rate: number, packCode: string | null | undefined, country: string | null | undefined): string | null {
+  const pack = packCode ? getLegislationPack(packCode) : (getPackByCountry(country ?? 'CIV') ?? getLegislationPack(null))
+  const min = pack.tauxAtMin ?? LE_AT_RATE_MIN
+  const max = pack.tauxAtMax ?? LE_AT_RATE_MAX
+  if (rate >= min - 1e-9 && rate <= max + 1e-9) return null
+  const pct = (n: number) => `${(n * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`
+  return min === max
+    ? `Taux AT ${pct(rate)} invalide pour ${pack.code} : le taux légal est ${pct(min)}.`
+    : `Taux AT ${pct(rate)} invalide pour ${pack.code} : il doit être compris entre ${pct(min)} et ${pct(max)}.`
+}
 
 // OWASP A04 — cap import CSV pour éviter DoS (memory spike + DB starvation).
 const IMPORT_MAX_HEADERS = 50
@@ -123,7 +139,7 @@ const createLegalEntitySchema = z.object({
   legal_form:            z.enum(['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'EURL', 'SCI', 'SCOP', 'GIE', 'EI', 'Association', 'ONG', 'Établissement public', 'AUTRE']).optional(),
   collective_agreement:  z.string().max(200).optional().nullable(),
   // coerce : le formulaire envoie le taux AT en chaîne.
-  at_rate:               z.coerce.number().min(AT_RATE_MIN).max(AT_RATE_MAX).optional(),
+  at_rate:               z.coerce.number().min(LE_AT_RATE_MIN).max(LE_AT_RATE_MAX).optional(),
   country_code:          z.string().regex(/^[A-Z]{2,3}$/).optional(),
   legislation_pack_code: z.string().max(50).optional().nullable(),
   // Responsable paie de la filiale (RAF) : reçoit la paie déclinée et la soumet.
@@ -1723,6 +1739,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (body.raf_user_id && !(await isValidRaf(schema, body.raf_user_id))) {
           return reply.status(400).send({ error: RAF_INVALID })
         }
+        const atErr = atRateError(body.at_rate ?? 0.02, body.legislation_pack_code, body.country_code)
+        if (atErr) return reply.status(400).send({ error: atErr })
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".legal_entities
             (name, rccm, cnps_number, dgi_number, address, city, legal_form,
@@ -1799,6 +1817,18 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         if (typeof body.raf_user_id === 'string' && !(await isValidRaf(schema, body.raf_user_id))) {
           return reply.status(400).send({ error: RAF_INVALID })
+        }
+        if (typeof body.at_rate === 'number') {
+          let packCode = body.legislation_pack_code as string | null | undefined
+          let country = body.country_code as string | null | undefined
+          if (packCode === undefined && country === undefined) {
+            const cur = await pool.query<{ legislation_pack_code: string | null; country_code: string | null }>(
+              `SELECT legislation_pack_code, country_code FROM "${schema}".legal_entities WHERE id = $1`, [id])
+            packCode = cur.rows[0]?.legislation_pack_code
+            country = cur.rows[0]?.country_code
+          }
+          const atErr = atRateError(body.at_rate, packCode, country)
+          if (atErr) return reply.status(400).send({ error: atErr })
         }
         const res = await pool.query(
           `UPDATE "${schema}".legal_entities SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`, values

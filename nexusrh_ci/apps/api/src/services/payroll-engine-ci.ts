@@ -472,8 +472,10 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     if (t.tax)    variablesTax    += amount
   }
 
-  const baseAtPf     = Math.min(brutProrata + variablesSocial + settlementSocial, pack.plafondCnpsAtPf)
-  const baseRetraite = Math.min(brutProrata + variablesSocial + settlementSocial, pack.plafondCnpsRetraite)
+  // Plafond ≤ 0 = pas de plafond (BEN, MLI, NER… : sinon base nulle, aucune cotisation)
+  const plafond      = (p: number) => (p > 0 ? p : Infinity)
+  const baseAtPf     = Math.min(brutProrata + variablesSocial + settlementSocial, plafond(pack.plafondCnpsAtPf))
+  const baseRetraite = Math.min(brutProrata + variablesSocial + settlementSocial, plafond(pack.plafondCnpsRetraite))
 
   // ── ÉTAPE 2 : Cotisations sécurité sociale (présence + éléments variables soumis)
   const cnpsRetraiteSal = Math.floor(baseRetraite * pack.tauxCotisationRetraiteSalarie)
@@ -536,12 +538,18 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   // sur 100 % du brut imposable. Indemnités maternité / AT, indemnité de
   // licenciement (limite légale) et remboursements de frais restent hors base.
   const brutTaxable     = brutProrata + variablesTax + indemniteAbsence - indemniteExoneree + settlementTax
-  const salaireAbattu   = Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
+  const salaireAbattu   = pack.abattementSurSalaireBase
+    ? brutTaxable - Math.floor(brutProrata * pack.abattementImpotSalaire)
+    : Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
   const deduireCotis    = pack.deduireCotisationsAssietteImpot ?? true
   const baseImposable   = Math.max(0, salaireAbattu - (deduireCotis ? totalCnpsSal : 0))
   const itsBrut         = calculerBaremeImpot(baseImposable, pack)
   const { credit: creditImpot, parts: partsFiscales } = getCreditImpot(maritalStatus, childrenCount, pack)
-  const its             = Math.max(0, itsBrut - creditImpot)
+  // Réduction familiale en % de l'impôt (BF) : charges = conjoint + enfants
+  const pctCharges      = pack.reductionImpotPctParCharges
+  const nbCharges       = (maritalStatus === 'married' ? 1 : 0) + Math.max(0, childrenCount)
+  const reductionPct    = pctCharges?.length ? pctCharges[Math.min(nbCharges, pctCharges.length - 1)] ?? 0 : 0
+  const its             = Math.max(0, itsBrut - Math.floor(itsBrut * reductionPct) - creditImpot)
 
   // ── ÉTAPE 4 : Construction des lignes du bulletin ───────────────────────────
   const lines: PayrollLine[] = []

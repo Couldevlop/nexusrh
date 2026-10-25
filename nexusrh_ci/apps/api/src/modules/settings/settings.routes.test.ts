@@ -235,6 +235,28 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
     expect(String(upd?.[0])).toContain('raf_user_id = $1')
   })
 
+  it('taux AT borné par le pack du pays : 3,5 % refusé pour une filiale BF (taux légal 1,5 %)', async () => {
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'RG Burkina', country_code: 'BFA', legislation_pack_code: 'BFA-2024', at_rate: 0.035 },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toContain('1,5')
+  })
+
+  it('taux AT 1,5 % accepté pour une filiale BF', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'le-bf', name: 'RG Burkina' }] }).mockResolvedValue({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'RG Burkina', country_code: 'BFA', legislation_pack_code: 'BFA-2024', at_rate: 0.015 },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
   it('accepte legal_form « SASU » + at_rate en chaîne (régression mismatch front↔back)', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: 'le-2', name: 'Filiale SASU', at_rate: '0.03' }] })
@@ -264,6 +286,7 @@ describe('PATCH /settings/legal-entities/:id — UUID + audit', () => {
 
   it('update OK + audit settings.legal_entity_updated', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ legislation_pack_code: 'CIV-2024', country_code: 'CIV' }] }) // pack de la filiale (bornes AT)
       .mockResolvedValueOnce({ rows: [{ id: UUID_A, at_rate: '0.04' }] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit_log
 
