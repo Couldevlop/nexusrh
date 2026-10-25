@@ -152,9 +152,38 @@ export function resolveNotice(rules: TerminationRules | null, e: NoticeEmployee)
   }
 }
 
+/** Date civile (année, mois 0-11, jour) ; une colonne `date` lue par pg arrive à minuit local. */
+function civilDate(v: string | Date): { y: number; m: number; d: number } | null {
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime()) ? null : { y: v.getFullYear(), m: v.getMonth(), d: v.getDate() }
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(v)
+  if (!match) return null
+  return { y: Number(match[1]), m: Number(match[2]) - 1, d: Number(match[3]) }
+}
+
 /**
- * Indemnité progressive : chaque année au taux de son palier, la fraction
- * d'année (mois entiers) au taux de l'année entamée.
+ * Ancienneté en mois COMPLETS de l'embauche à la date de sortie, ce dernier
+ * jour inclus (le contrat court jusqu'au soir de la sortie) : embauche le
+ * 01/10/2025, sortie le 31/10/2026 → 13 mois. Les fractions de mois ne
+ * comptent pas (décret 2017-210 : fractions d'année au prorata des mois
+ * complets). Dates invalides ou sortie antérieure → 0.
+ */
+export function completedSeniorityMonths(hireDate: string | Date, exitDate: string | Date): number {
+  const h = civilDate(hireDate)
+  const e = civilDate(exitDate)
+  if (!h || !e) return 0
+  // Lendemain de la sortie, calculé en UTC pour ignorer le fuseau du serveur.
+  const next = new Date(Date.UTC(e.y, e.m, e.d + 1))
+  let months = (next.getUTCFullYear() - h.y) * 12 + (next.getUTCMonth() - h.m)
+  if (next.getUTCDate() < h.d) months -= 1
+  return Math.max(0, months)
+}
+
+/**
+ * Indemnité progressive : chaque année complète au taux de son palier, la
+ * fraction d'année au prorata des mois complets, au taux du palier de l'année
+ * entamée (5 ans et 6 mois → 5 × 30 % + 6/12 × 35 %). Arrondi à l'unité.
  */
 export function severanceAmount(seniorityMonths: number, base: number, rules: TerminationRules): number {
   const months = Math.max(0, Math.floor(seniorityMonths))

@@ -9,6 +9,7 @@ import {
   computeSettlement,
 } from './offboarding.service.js'
 import { CIV_2024, type TerminationRules } from '../../services/legislation-packs.js'
+import { completedSeniorityMonths } from '../../services/termination-rules.service.js'
 
 const CI_RULES = CIV_2024.terminationRules!
 
@@ -211,6 +212,66 @@ describe('offboarding.service — indemnité (décret 2017-210)', () => {
       congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES }
     expect(computeSettlement({ ...base, seniorityMonths: 11 }).indemniteLicenciement).toBe(0)
     expect(computeSettlement({ ...base, seniorityMonths: 12 }).indemniteLicenciement).toBe(30_000)
+  })
+
+  it('recette Yao : 13 mois (01/10/2025 → 31/10/2026) sur 250 000 → 30 % × 13/12 = 81 250', () => {
+    const seniorityMonths = completedSeniorityMonths('2025-10-01', '2026-10-31')
+    expect(seniorityMonths).toBe(13)
+    const s = computeSettlement({
+      monthlyGross: 250_000, seniorityMonths, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    // Avant correctif : 75 000 (fraction d'année ignorée, ancienneté comptée 12 mois).
+    expect(s.indemniteLicenciement).toBe(81_250)
+  })
+
+  it('ancienneté exacte de 12 mois → une année pleine, sans fraction', () => {
+    const seniorityMonths = completedSeniorityMonths('2025-11-01', '2026-10-31')
+    expect(seniorityMonths).toBe(12)
+    const s = computeSettlement({
+      monthlyGross: 250_000, seniorityMonths, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    expect(s.indemniteLicenciement).toBe(75_000)
+  })
+
+  it('à cheval sur la tranche 5/10 ans : 5 ans 6 mois → 5 × 30 % + 6/12 × 35 %', () => {
+    const seniorityMonths = completedSeniorityMonths('2021-05-01', '2026-10-31')
+    expect(seniorityMonths).toBe(66)
+    const s = computeSettlement({
+      monthlyGross: 250_000, seniorityMonths, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    // 375 000 + 43 750 = 418 750
+    expect(s.indemniteLicenciement).toBe(418_750)
+  })
+
+  it('à cheval sur la tranche 10 ans+ : 10 ans 3 mois → 5 × 30 % + 5 × 35 % + 3/12 × 40 %', () => {
+    const s = computeSettlement({
+      monthlyGross: 100_000, seniorityMonths: 123, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    // 150 000 + 175 000 + 10 000 = 335 000
+    expect(s.indemniteLicenciement).toBe(335_000)
+  })
+
+  it('moins de 12 mois complets (11 mois et 30 jours) → aucune indemnité', () => {
+    const seniorityMonths = completedSeniorityMonths('2025-10-01', '2026-09-29')
+    expect(seniorityMonths).toBe(11)
+    const s = computeSettlement({
+      monthlyGross: 250_000, seniorityMonths, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    expect(s.indemniteLicenciement).toBe(0)
+  })
+
+  it('arrondi au FCFA entier : 13 mois sur 123 457 → 30 % × 13/12', () => {
+    const s = computeSettlement({
+      monthlyGross: 123_457, seniorityMonths: 13, departureType: 'licenciement',
+      congesDaysOutstanding: 0, noticeServed: true, rules: CI_RULES,
+    })
+    // 37 037,1 + 3 086,425 = 40 123,525 → 40 124
+    expect(s.indemniteLicenciement).toBe(40_124)
   })
 
   it('départ à la retraite : indemnité de départ calculée comme le licenciement', () => {
