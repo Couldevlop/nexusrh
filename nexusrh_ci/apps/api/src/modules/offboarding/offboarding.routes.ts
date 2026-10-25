@@ -77,31 +77,6 @@ function audit(
   auditTenant(schema, { userId: userId ?? null, action: action, entity: 'offboarding_case', entityId: id, changes: changes, ip: ip })
 }
 
-/**
- * Salaire global mensuel moyen des 12 derniers bulletins jusqu'au mois de
- * départ (assiette de l'indemnité de licenciement, décret CI 2017-210).
- * null = aucun bulletin (l'appelant retombe sur le salaire de base).
- */
-async function averageMonthlyGross(
-  schema: string, employeeId: string, departureDate: string | Date,
-): Promise<{ amount: number; months: number } | null> {
-  const d = new Date(departureDate)
-  const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  try {
-    const res = await rawPool.query<{ avg: string | null; n: string }>(
-      `SELECT AVG(gross_salary) AS avg, COUNT(*) AS n FROM (
-         SELECT gross_salary FROM "${schema}".pay_slips
-         WHERE employee_id = $1 AND month <= $2 ORDER BY month DESC LIMIT 12) t`,
-      [employeeId, month],
-    )
-    const n = parseInt(res.rows[0]?.n ?? '0', 10)
-    const avg = Number(res.rows[0]?.avg)
-    return n > 0 && Number.isFinite(avg) && avg > 0 ? { amount: Math.round(avg), months: n } : null
-  } catch {
-    return null
-  }
-}
-
 const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
 
@@ -258,8 +233,15 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       // Mois complets, jour de sortie inclus (01/10/2025 → 31/10/2026 = 13 mois).
       const seniorityMonths = row.hire_date
         ? completedSeniorityMonths(row.hire_date, row.departure_date) : 0
-      const average = await averageMonthlyGross(schema, row.employee_id, row.departure_date)
       const baseSalary = parseInt(row.base_salary, 10) || 0
+      // Moyennes des 12 derniers bulletins jusqu'au mois de départ, hors
+      // indemnités de rupture : `total` = salaire global mensuel moyen (assiette
+      // du licenciement, décret 2017-210), `exclFrais` = assiette CCI des congés.
+      const dep = new Date(row.departure_date)
+      const depMonth = `${dep.getFullYear()}-${String(dep.getMonth() + 1).padStart(2, '0')}`
+      const remuneration = await averageRemuneration(rawPool, schema, row.employee_id, depMonth)
+      const average = remuneration && remuneration.total > 0
+        ? { amount: remuneration.total, months: remuneration.months } : null
 
       // Congés non pris : saisis, sinon solde acquis à la date de départ
       // (simulation, rien n'est écrit) ; indemnité selon la méthode légale.
@@ -271,9 +253,6 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
         congesDays = Math.max(0, bal?.remaining ?? 0)
         congesDaysSource = bal ? 'balance' : 'none'
       }
-      const dep = new Date(row.departure_date)
-      const depMonth = `${dep.getFullYear()}-${String(dep.getMonth() + 1).padStart(2, '0')}`
-      const remuneration = await averageRemuneration(rawPool, schema, row.employee_id, depMonth)
       const congesAllowance = paidLeaveAllowance({
         days: congesDays,
         averageMonthlyExclFrais: remuneration?.exclFrais ?? baseSalary,

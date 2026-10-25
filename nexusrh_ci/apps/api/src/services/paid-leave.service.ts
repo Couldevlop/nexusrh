@@ -198,7 +198,16 @@ export function paidLeaveAllowance(input: PaidLeaveAllowanceInput): PaidLeaveAll
 const EXCLUDED_FROM_ALLOWANCE = new Set(['1300', '1600', '1610', '1620', '1630'])
 
 /**
- * Moyennes mensuelles des 12 derniers bulletins jusqu'au mois `month` inclus.
+ * Indemnités de rupture portées par le bulletin de solde (congés, préavis,
+ * licenciement). Exclues des DEUX moyennes : elles sont calculées à partir de
+ * ces moyennes, les y compter ferait gonfler le solde à chaque recalcul.
+ */
+const SETTLEMENT_LINES = new Set(['1610', '1620', '1630'])
+
+/**
+ * Moyennes mensuelles des 12 derniers bulletins jusqu'au mois `month` inclus,
+ * hors indemnités de rupture (`total` : rémunération globale, assiette de
+ * l'indemnité de licenciement ; `exclFrais` : assiette CCI des congés).
  * null = aucun bulletin (l'appelant retombe sur le salaire de base).
  */
 export async function averageRemuneration(
@@ -218,9 +227,10 @@ export async function averageRemuneration(
       const gross = Number(r.gross_salary) || 0
       let lines: Array<{ code?: string; amount?: number }> = []
       try { lines = Array.isArray(r.lines) ? r.lines as typeof lines : JSON.parse(String(r.lines ?? '[]')) } catch { lines = [] }
-      const frais = lines.filter((l) => l && EXCLUDED_FROM_ALLOWANCE.has(String(l.code))).reduce((s, l) => s + (Number(l.amount) || 0), 0)
-      total += gross
-      excl += Math.max(0, gross - frais)
+      const sumOf = (codes: Set<string>): number =>
+        lines.filter((l) => l && codes.has(String(l.code))).reduce((s, l) => s + (Number(l.amount) || 0), 0)
+      total += Math.max(0, gross - sumOf(SETTLEMENT_LINES))
+      excl += Math.max(0, gross - sumOf(EXCLUDED_FROM_ALLOWANCE))
     }
     return { total: Math.round(total / rows.length), exclFrais: Math.round(excl / rows.length), months: rows.length }
   } catch {

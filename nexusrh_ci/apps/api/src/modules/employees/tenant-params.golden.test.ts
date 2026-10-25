@@ -27,7 +27,6 @@ vi.mock('../../services/paid-leave.service.js', async (importOriginal) => {
     refreshPaidLeaveBalance: vi.fn(async () => ({ year: 2026, mode: 'monthly' as const, accrued: 0, carriedOver: 0,
       acquired: 0, taken: 0, pending: 0, remaining: 0, monthsServed: 0 })),
     checkPaidLeaveRequest: vi.fn(async () => null),
-    averageRemuneration: vi.fn(async () => null),
   }
 })
 vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
@@ -111,7 +110,9 @@ function fakeQuery(sql: unknown, params: unknown[] = []) {
   }
   if (q.includes('.offboarding_cases o')) return { rows: [{ ...db.offboardingCase, ...db.employee }] }
   // 12 derniers bulletins au salaire de base (assiette de l'indemnité).
-  if (q.includes('AVG(gross_salary)')) return { rows: [{ avg: String(db.offboardingCase.base_salary ?? '0'), n: '12' }] }
+  if (q.includes('SELECT gross_salary, lines') && q.includes('.pay_slips')) {
+    return { rows: Array.from({ length: 12 }, () => ({ gross_salary: String(db.offboardingCase.base_salary ?? '0'), lines: [] })) }
+  }
   if (q.startsWith('INSERT INTO') && q.includes('.employees')) {
     db.employee = { id: EMP, custom_fields: JSON.parse(params[26] as string), legal_entity_id: params[12] }
     return { rows: [db.employee] }

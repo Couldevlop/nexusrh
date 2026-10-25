@@ -102,6 +102,21 @@ describe('moyenne des 12 derniers bulletins', () => {
     ]]])
     expect(await averageRemuneration(db, 'tenant_x', 'e1', '2026-10')).toEqual({ total: 315000, exclFrais: 275000, months: 2 })
   })
+  it('exclut des deux moyennes les indemnités de rupture du bulletin de solde (1610/1620/1630)', async () => {
+    // Recette 10/2026 (Yao) : le bulletin de solde d'octobre portait congés + préavis +
+    // licenciement ; les compter gonflait la base du solde qui les calcule (circularité).
+    const db = fakeDb([['pay_slips', [
+      { gross_salary: 792384, lines: [
+        { code: '1000', amount: 250000 }, { code: '1010', amount: -9259 }, { code: '1020', amount: -2524 },
+        { code: '1610', amount: 229167 }, { code: '1620', amount: 250000 }, { code: '1630', amount: 75000 },
+      ] },
+      { gross_salary: 250000, lines: [{ code: '1000', amount: 250000 }] },
+      { gross_salary: 250000, lines: [{ code: '1000', amount: 250000 }] },
+      { gross_salary: 250000, lines: [{ code: '1000', amount: 250000 }] },
+    ]]])
+    expect(await averageRemuneration(db, 'tenant_x', 'e1', '2026-10'))
+      .toEqual({ total: 247054, exclFrais: 247054, months: 4 })
+  })
   it('aucun bulletin ou erreur → null', async () => {
     expect(await averageRemuneration(fakeDb([]), 's', 'e', '2026-10')).toBeNull()
     expect(await averageRemuneration(fakeDb([['pay_slips', new Error('x')]]), 's', 'e', '2026-10')).toBeNull()
