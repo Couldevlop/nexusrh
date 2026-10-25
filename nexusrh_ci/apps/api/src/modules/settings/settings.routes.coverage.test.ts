@@ -1038,6 +1038,92 @@ describe('PATCH /settings/workflow', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  // ── Circuit nominatif de la clôture de paie ────────────────────────────────
+  const V1 = '22222222-2222-4222-8222-222222222222'
+  const V2 = '33333333-3333-4333-8333-333333333333'
+
+  it('paie : valideurs nominatifs (fonction + SLA) enregistrés après contrôle tenant/rôle/actif', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: V1 }, { id: V2 }] })               // valideurs ∈ équipe RH active
+      .mockResolvedValueOnce({ rows: [] })                                     // UPSERT
+      .mockResolvedValueOnce({ rows: [{ module: 'payroll', levels_count: 2 }] }) // SELECT final
+    const config = { validators: [
+      { userId: V1, functionLabel: 'Chef de service paie', slaDays: 2 },
+      { userId: V2, functionLabel: 'DRH', slaDays: 3 },
+    ] }
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 2, config }],
+    })
+    expect(res.statusCode).toBe(200)
+    const check = queryMock.mock.calls[0]!
+    expect(String(check[0])).toContain("role IN ('admin','hr_manager','hr_officer')")
+    expect(String(check[0])).toContain('is_active')
+    expect(check[1]).toEqual([[V1, V2]])
+    const upsert = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO'))
+    expect(JSON.parse(upsert?.[1]?.[2] as string)).toEqual(config)
+  })
+
+  it('paie : un niveau sans désignation (userId null) est accepté sans contrôle', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ module: 'payroll', levels_count: 1 }] })
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 1, config: { validators: [{ userId: null, functionLabel: null }] } }],
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('paie : 400 si une même personne est désignée à deux niveaux', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 2, config: { validators: [{ userId: V1 }, { userId: V1 }] } }],
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('deux niveaux')
+  })
+
+  it('paie : 400 si un valideur n’est pas un membre actif de l’équipe RH du tenant', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: V1 }] })
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 2, config: { validators: [{ userId: V1 }, { userId: V2 }] } }],
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('membre actif')
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('INSERT INTO'))).toBe(false)
+  })
+
+  it('400 si des valideurs nominatifs sont envoyés pour un autre module que la paie', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'absences', levels_count: 1, config: { validators: [{ userId: V1 }] } }],
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('paie : 400 si plus de valideurs que de niveaux, ou libellé trop long', async () => {
+    const tooMany = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 1, config: { validators: [{ userId: V1 }, { userId: V2 }] } }],
+    })
+    expect(tooMany.statusCode).toBe(400)
+    const tooLong = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'payroll', levels_count: 1, config: { validators: [{ userId: V1, functionLabel: 'x'.repeat(81) }] } }],
+    })
+    expect(tooLong.statusCode).toBe(400)
+  })
+
+  it('paie : RBAC — un hr_manager ne modifie pas le circuit (403)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'hr_manager')),
+      payload: [{ module: 'payroll', levels_count: 1, config: { validators: [{ userId: V1 }] } }],
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
   it('403 si rôle hr_manager', async () => {
     const res = await app.inject({
       method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'hr_manager')),

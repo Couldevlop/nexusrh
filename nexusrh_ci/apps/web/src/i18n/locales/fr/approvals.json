@@ -1,6 +1,6 @@
 {
   "title": "Mes validations",
-  "subtitle": "Demandes d'absence et notes de frais en attente de votre décision",
+  "subtitle": "Demandes d'absence, notes de frais et clôtures de paie en attente de votre décision",
   "groups": {
     "actionable": "À traiter",
     "readOnly": "Pour information"
@@ -12,12 +12,14 @@
   "emptyGroup": "Rien à traiter pour le moment",
   "modules": {
     "absences": "Absence",
-    "expenses": "Note de frais"
+    "expenses": "Note de frais",
+    "payroll": "Clôture de paie"
   },
   "step": {
     "manager": "Visa N+{{level}}",
     "hr": "Validation RH",
-    "done": "Circuit terminé"
+    "done": "Circuit terminé",
+    "payroll": "Validation paie — niveau {{level}}"
   },
   "progress": "Étape {{done}}/{{total}} validée(s)",
   "sla": {
@@ -27,12 +29,15 @@
   "waitingOther": "En attente d'un autre valideur",
   "readOnlyWaiting": "Lecture seule — en attente du visa N+{{level}}",
   "readOnlyWaitingHr": "Lecture seule — en attente de la validation RH",
+  "payrollLabel": "Paie de {{month}}",
+  "payrollInitiatedBy": "Initiée par {{name}}",
   "actions": {
     "approve": "Approuver",
     "reject": "Refuser",
     "close": "Fermer",
     "processNow": "Traiter maintenant",
-    "remindLater": "Me le rappeler plus tard"
+    "remindLater": "Me le rappeler plus tard",
+    "open": "Ouvrir"
   },
   "rejectModal": {
     "title": "Motif du refus",

@@ -14,11 +14,17 @@ import type { TFunction } from 'i18next'
 import { api } from '@/lib/api'
 
 export type ApprovalModule = 'absences' | 'expenses'
+/** Modules listés dans « Mes validations » : la clôture de paie se traite depuis l'écran Paie. */
+export type PendingModule = ApprovalModule | 'payroll'
 
 export interface WorkflowSummary {
   totalSteps: number
   doneSteps: number
-  next: { kind: 'manager'; level: number; approverEmployeeId: string } | { kind: 'hr' } | null
+  next:
+    | { kind: 'manager'; level: number; approverEmployeeId: string }
+    | { kind: 'hr' }
+    | { kind: 'payroll'; level: number; validatorName: string | null; functionLabel: string | null }
+    | null
   dueAt: string | null
   overdue: boolean
   canAct: boolean
@@ -27,7 +33,9 @@ export interface WorkflowSummary {
 }
 
 export interface PendingApproval {
-  module: ApprovalModule
+  module: PendingModule
+  /** Clôture de paie : mois concerné (AAAA-MM). */
+  month?: string
   id: string
   employeeId: string
   employeeName: string
@@ -70,6 +78,7 @@ export function formatDueAt(iso: string): string {
 export function stepLabel(workflow: WorkflowSummary | null | undefined, t: TFunction): string {
   const next = workflow?.next
   if (!next) return t('step.done')
+  if (next.kind === 'payroll') return t('step.payroll', { level: next.level })
   return next.kind === 'hr' ? t('step.hr') : t('step.manager', { level: next.level })
 }
 

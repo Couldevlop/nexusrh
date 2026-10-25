@@ -162,8 +162,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const { hasSubsidiaries } = await assertMultiCountryTenant(schema)
       if (!hasSubsidiaries) {
         return reply.status(400).send({
-          error: 'Ce tenant n\'a pas activé la gestion multi-pays. ' +
-                 'Utilisez /payroll/periods pour une paie mono-pays.',
+          error: 'La gestion multi-pays (multi-filiales) n\'est pas activée pour votre entreprise. ' +
+                 'Utilisez l\'écran Paie (clôture mensuelle) pour une paie mono-pays.',
         })
       }
       const body = request.body as { month: string }

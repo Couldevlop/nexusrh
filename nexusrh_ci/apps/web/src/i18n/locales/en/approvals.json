@@ -1,6 +1,6 @@
 {
   "title": "My approvals",
-  "subtitle": "Absence requests and expense reports awaiting your decision",
+  "subtitle": "Absence requests, expense reports and payroll closings awaiting your decision",
   "groups": {
     "actionable": "To process",
     "readOnly": "For information"
@@ -12,12 +12,14 @@
   "emptyGroup": "Nothing to process for now",
   "modules": {
     "absences": "Absence",
-    "expenses": "Expense report"
+    "expenses": "Expense report",
+    "payroll": "Payroll closing"
   },
   "step": {
     "manager": "N+{{level}} approval",
     "hr": "HR approval",
-    "done": "Chain completed"
+    "done": "Chain completed",
+    "payroll": "Payroll validation — level {{level}}"
   },
   "progress": "Step {{done}}/{{total}} approved",
   "sla": {
@@ -27,12 +29,15 @@
   "waitingOther": "Waiting for another approver",
   "readOnlyWaiting": "Read-only — waiting for N+{{level}} approval",
   "readOnlyWaitingHr": "Read-only — waiting for HR approval",
+  "payrollLabel": "Payroll for {{month}}",
+  "payrollInitiatedBy": "Initiated by {{name}}",
   "actions": {
     "approve": "Approve",
     "reject": "Reject",
     "close": "Close",
     "processNow": "Process now",
-    "remindLater": "Remind me later"
+    "remindLater": "Remind me later",
+    "open": "Open"
   },
   "rejectModal": {
     "title": "Rejection reason",

@@ -564,7 +564,7 @@ describe('GET /payroll/payslips/:id/transparency — drill-down complet', () => 
       if (q.includes('FROM "tenant_sotra".pay_slips ps') && q.includes('JOIN "tenant_sotra".employees')) {
         return { rows: slip ? [slip] : [] }
       }
-      if (q.includes('ORDER BY month DESC LIMIT 3')) return { rows: [
+      if (q.includes('ORDER BY ps.month DESC LIMIT 3')) return { rows: [
         { month: '2024-11', gross_salary: '300000', net_payable: '270000', total_cnps_sal: '18900', its: '4200' },
       ] }
       if (q.includes('.audit_log')) return { rows: [
@@ -645,7 +645,7 @@ describe('GET /payroll/my-payslips — self-service', () => {
     queryMock.mockImplementation(async (sql: unknown) => {
       const q = String(sql)
       if (/^\s*UPDATE/i.test(q)) return { rows: [] }
-      if (q.includes('ORDER BY month DESC LIMIT 24')) return { rows: [
+      if (q.includes('ORDER BY ps.month DESC LIMIT 24')) return { rows: [
         { id: SLIP_ID, month: MONTH, net_payable: '270000' },
       ] }
       return { rows: [] }
@@ -665,7 +665,7 @@ describe('GET /payroll/my-payslips — self-service', () => {
       const q = String(sql)
       if (q.includes('WHERE email')) return { rows: [{ id: EMP_A }] }
       if (/^\s*UPDATE/i.test(q)) return { rows: [] }
-      if (q.includes('ORDER BY month DESC LIMIT 24')) return { rows: [] }
+      if (q.includes('ORDER BY ps.month DESC LIMIT 24')) return { rows: [] }
       return { rows: [] }
     })
     const res = await app.inject({

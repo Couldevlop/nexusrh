@@ -14,6 +14,34 @@ import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
+import {
+  decidePayrollActor, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers, loadPeriodApprovals,
+  notifyPayrollUser, payrollDenialMessage, payrollLevelState, pendingValidationMessage, pendingWithOf,
+  resetPendingPeriod, userDisplayName, PayrollResetConflict,
+  type ApprovalForValidation, type PayrollCircuit, type PayrollDecision, type PayrollLevelState,
+  type PayrollUser, type PeriodForValidation,
+} from '../../services/payroll-validation.service.js'
+
+// OWASP A03 — motif de rejet (commentaire obligatoire) / commentaire d'annulation / visa
+const rejectBodySchema = z.object({
+  reason: z.string().trim().min(10, 'Commentaire obligatoire (10 caractères minimum)').max(2000),
+}).strict()
+const cancelBodySchema = z.object({
+  comment: z.string().trim().max(2000).optional(),
+}).strict()
+const approveBodySchema = z.object({
+  notes: z.string().trim().max(2000).optional(),
+}).strict()
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+
+// Statut de période à partir duquel un bulletin est PUBLIÉ au salarié : la
+// période est entièrement validée et clôturée ('closed' est le statut terminal
+// des deux circuits — validation N niveaux et multi-filiales, où la clôture
+// passe la période parente ET ses filles à 'closed'). Avant (open,
+// pending_validation, draft_central, sent_to_sites, completed_by_site,
+// validated_central…), le bulletin reste invisible en self-service : liste,
+// PDF, « Comprendre ». Passé en paramètre SQL ($n), jamais concaténé.
+const EMPLOYEE_VISIBLE_PERIOD_STATUS = 'closed'
 
 // OWASP A03 — UUID regex stricte pour les paramètres sensibles (legalEntityId)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -57,6 +85,47 @@ function employmentSummary(m: Awaited<ReturnType<typeof resolveEmployeeMonth>>) 
     settlementOnly: w.settlementOnly,
     settlement: m.settlementEarnings,
   }
+}
+
+/** Période « en validation » + état de son circuit, ou l'erreur HTTP à renvoyer. */
+async function loadPendingPeriod(schema: string, month: string): Promise<
+  | { status: 404 | 409; error: string }
+  | {
+      period: PeriodForValidation; circuit: PayrollCircuit; approvals: ApprovalForValidation[]
+      users: Map<string, PayrollUser>; state: PayrollLevelState | null
+    }
+> {
+  const r = await rawPool.query<PeriodForValidation>(
+    `SELECT id, status, initiated_by, initiated_at FROM "${schema}".pay_periods
+       WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
+    [month],
+  )
+  const period = r.rows[0]
+  if (!period) return { status: 404, error: 'Période introuvable' }
+  if (period.status === 'closed') {
+    return { status: 409, error: 'Période clôturée : elle est immuable (ni validation, ni rejet, ni annulation).' }
+  }
+  if (period.status !== 'pending_validation') {
+    return { status: 409, error: 'Période non éligible : elle n\'est pas en attente de validation.' }
+  }
+  const circuit = await loadPayrollCircuit(rawPool, schema)
+  const approvals = (await loadPeriodApprovals(rawPool, schema, [period.id])).get(String(period.id)) ?? []
+  const users = await loadPayrollUsers(rawPool, schema, circuit.steps.map(s => s.userId))
+  return { period, circuit, approvals, users, state: payrollLevelState(circuit, period, approvals, users) }
+}
+
+/**
+ * Droit d'agir sur une période en validation. Sans niveau courant (tous les
+ * niveaux déjà validés après une réduction du circuit), l'équipe RH hors
+ * initiateur finalise la clôture.
+ */
+function decideOnPeriod(
+  state: PayrollLevelState | null, period: { initiated_by: string | null }, user: { sub: string; role: string },
+): PayrollDecision {
+  if (state) return decidePayrollActor(state, { userId: user.sub, role: user.role })
+  if (period.initiated_by && period.initiated_by === user.sub) return { allowed: false, reason: 'initiator' }
+  if (user.role === 'admin' || user.role === 'hr_manager') return { allowed: true, escalated: false }
+  return { allowed: false, reason: 'role' }
 }
 
 const payrollRoutes: FastifyPluginAsync = async (fastify) => {
@@ -340,7 +409,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // d'abord rejeter la période (retour à 'open').
       if (existing.rows[0]?.status === 'pending_validation') {
         return reply.status(409).send({
-          error: 'Clôture déjà initiée pour cette période (en attente de validation). Rejetez-la d\'abord pour recalculer.',
+          error: 'Clôture déjà initiée pour cette période (en attente de validation). Pour recalculer, le valideur doit la renvoyer en préparation, ou l\'initiateur annuler son initiation tant qu\'aucun niveau n\'a validé.',
           periodId: existing.rows[0].id,
           status: 'pending_validation',
         })
@@ -521,8 +590,23 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const finalPayslipCount = paySlips.filter((s: any) => s.finalPayslip).length
       const bordereauCount = paySlips.filter((s: any) => s.hasBordereauCnps).length
 
+      // Valideur attendu du 1er niveau (circuit nominatif, Paramètres → Workflow)
+      let firstLevel: PayrollLevelState | null = null
+      try {
+        const circuit = await loadPayrollCircuit(rawPool, schema)
+        const users = await loadPayrollUsers(rawPool, schema, [circuit.steps[0]?.userId])
+        firstLevel = payrollLevelState(circuit,
+          { id: periodId, status: 'pending_validation', initiated_by: request.user.sub, initiated_at: new Date() }, [], users)
+      } catch { firstLevel = null }
+      const pendingWith = pendingWithOf(firstLevel)
+      if (pendingWith?.userId) {
+        notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
+          `La paie ${month} attend votre validation (niveau 1/${pendingWith.requiredLevels}).`, { month, periodId, level: 1 })
+      }
+
       return reply.send({
-        message: `Période ${month} en attente de validation — ${emps.rows.length} bulletins générés. Demandez à un autre admin/hr_manager de valider via POST /payroll/periods/${month}/validate.`,
+        message: `${pendingValidationMessage(month, firstLevel)}. ${emps.rows.length} bulletin(s) générés.`,
+        pendingWith,
         periodId,
         status: 'pending_validation',
         employeesCount: emps.rows.length,
@@ -546,192 +630,279 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   // OWASP A04 : Segregation of Duties strictement appliquée.
   // workflow_configs.levels_count détermine le nombre d'approbations requises.
 
-  // GET /payroll/periods/:month/workflow — état du workflow (timeline)
+  // GET /payroll/periods/:month/workflow — état du circuit : niveaux validés
+  // (qui, quand), niveau courant (valideur attendu + échéance) et droits du
+  // lecteur (valider / rejeter / annuler), calculés ici — l'UI n'en duplique rien.
   fastify.get('/periods/:month/workflow', {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
     handler: async (request, reply) => {
       const { month } = request.params as { month: string }
+      if (!MONTH_RE.test(month)) return reply.status(400).send({ error: 'Mois invalide (format AAAA-MM attendu).' })
       const schema = request.user.schemaName
-      const period = await rawPool.query<{
-        id: string; month: string; status: string
-        initiated_at: string | null; initiated_by: string | null
-        rejection_reason: string | null; closed_at: string | null; closed_by: string | null
-        initiator_first_name: string | null; initiator_last_name: string | null
-      }>(
-        `SELECT p.id, p.month, p.status, p.initiated_at, p.initiated_by,
-                p.rejection_reason, p.closed_at, p.closed_by,
-                ui.first_name AS initiator_first_name,
-                ui.last_name  AS initiator_last_name
-           FROM "${schema}".pay_periods p
-           LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
-           WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
-        [month],
-      )
-      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
-      const p = period.rows[0]
+      try {
+        const period = await rawPool.query<{
+          id: string; month: string; status: string
+          initiated_at: string | null; initiated_by: string | null
+          rejection_reason: string | null; closed_at: string | null; closed_by: string | null
+          initiator_first_name: string | null; initiator_last_name: string | null
+        }>(
+          `SELECT p.id, p.month, p.status, p.initiated_at, p.initiated_by,
+                  p.rejection_reason, p.closed_at, p.closed_by,
+                  ui.first_name AS initiator_first_name,
+                  ui.last_name  AS initiator_last_name
+             FROM "${schema}".pay_periods p
+             LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
+             WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
+          [month],
+        )
+        if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
+        const p = period.rows[0]
 
-      const cfg = await rawPool.query<{ levels_count: number }>(
-        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
-      )
-      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
+        const circuit = await loadPayrollCircuit(rawPool, schema)
+        const requiredLevels = circuit.levels
 
-      const approvals = await rawPool.query<{
-        level: number; approver_id: string; approver_role: string | null
-        approved_at: string; notes: string | null
-        first_name: string | null; last_name: string | null
-      }>(
-        `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
-                u.first_name, u.last_name
-           FROM "${schema}".pay_period_approvals a
-           LEFT JOIN "${schema}".users u ON u.id = a.approver_id
-          WHERE a.period_id = $1
-          ORDER BY a.level ASC`,
-        [p.id],
-      )
-
-      const initiatorName = [p.initiator_first_name, p.initiator_last_name].filter(Boolean).join(' ') || null
-
-      return reply.send({
-        period: {
-          id: p.id, month: p.month, status: p.status,
-          initiatedAt: p.initiated_at, initiatedBy: p.initiated_by,
-          initiatorName,
-          rejectionReason: p.rejection_reason,
-          closedAt: p.closed_at, closedBy: p.closed_by,
-        },
-        requiredLevels,
-        currentLevel: approvals.rows.length,
-        isComplete: approvals.rows.length >= requiredLevels,
-        approvals: approvals.rows.map(a => ({
+        const approvals = await rawPool.query<{
+          level: number; approver_id: string; approver_role: string | null
+          approved_at: string; notes: string | null
+          first_name: string | null; last_name: string | null
+        }>(
+          `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
+                  u.first_name, u.last_name
+             FROM "${schema}".pay_period_approvals a
+             LEFT JOIN "${schema}".users u ON u.id = a.approver_id
+            WHERE a.period_id = $1
+            ORDER BY a.level ASC`,
+          [p.id],
+        )
+        const users = await loadPayrollUsers(rawPool, schema, circuit.steps.map(s => s.userId))
+        const state = payrollLevelState(circuit, p, approvals.rows, users)
+        const decision = decideOnPeriod(state, p, request.user)
+        const approvalRows = approvals.rows.map(a => ({
           level: a.level,
           approverId: a.approver_id,
           approverRole: a.approver_role,
           approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
           approvedAt: a.approved_at,
           notes: a.notes,
-        })),
-      })
-    },
-  })
+        }))
 
-  // POST /payroll/periods/:month/approve — N+1 (ou plus) valide
-  fastify.post('/periods/:month/approve', {
-    preHandler: [fastify.authorize('admin','hr_manager')],
-    handler: async (request, reply) => {
-      const { month } = request.params as { month: string }
-      const { notes } = (request.body ?? {}) as { notes?: string }
-      const schema = request.user.schemaName
-
-      const period = await rawPool.query<{
-        id: string; status: string; initiated_by: string | null
-      }>(
-        `SELECT id, status, initiated_by FROM "${schema}".pay_periods
-           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
-        [month],
-      )
-      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
-      const p = period.rows[0]
-
-      if (p.status !== 'pending_validation') {
-        return reply.status(409).send({
-          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+        const levels = circuit.steps.map(step => {
+          const done = approvalRows.find(a => a.level === step.level) ?? null
+          const designatedUser = step.userId ? users.get(step.userId) : undefined
+          const isCurrent = state?.level === step.level
+          return {
+            level: step.level,
+            status: done ? 'approved' : isCurrent ? 'current' : 'upcoming',
+            validator: step.userId ? {
+              userId: step.userId,
+              name: userDisplayName(designatedUser),
+              role: designatedUser?.role ?? null,
+              available: isCurrent ? state?.designatedAvailable ?? false : !!designatedUser && designatedUser.isActive,
+            } : null,
+            functionLabel: step.functionLabel,
+            slaDays: step.slaDays,
+            dueAt: isCurrent ? state?.dueAt ?? null : null,
+            overdue: isCurrent ? state?.overdue ?? false : false,
+            teamCanAct: isCurrent ? state?.teamCanAct ?? false : false,
+            approval: done ? { ...done, escalated: !!step.userId && done.approverId !== step.userId } : null,
+          }
         })
-      }
-      // OWASP A04 SoD : l'initiateur ne peut PAS approuver
-      if (p.initiated_by === request.user.sub) {
-        return reply.status(403).send({
-          error: 'Vous avez initié cette paie. Un autre approbateur est requis (séparation des tâches).',
-        })
-      }
-      // L'approver ne doit pas avoir déjà approuvé à un niveau précédent
-      const dup = await rawPool.query(
-        `SELECT 1 FROM "${schema}".pay_period_approvals
-           WHERE period_id = $1 AND approver_id = $2 LIMIT 1`,
-        [p.id, request.user.sub],
-      )
-      if (dup.rows[0]) {
-        return reply.status(403).send({
-          error: 'Vous avez déjà approuvé un niveau précédent. Un autre approbateur est requis.',
-        })
-      }
 
-      const cfg = await rawPool.query<{ levels_count: number }>(
-        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'payroll' LIMIT 1`,
-      )
-      const requiredLevels = cfg.rows[0]?.levels_count ?? 2
-
-      const currentCount = await rawPool.query<{ cnt: number }>(
-        `SELECT count(*)::int AS cnt FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
-        [p.id],
-      )
-      const nextLevel = (currentCount.rows[0]?.cnt ?? 0) + 1
-
-      await rawPool.query(
-        `INSERT INTO "${schema}".pay_period_approvals
-           (period_id, level, approver_id, approver_role, notes)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [p.id, nextLevel, request.user.sub, request.user.role, notes ?? null],
-      )
-
-      // Si on a atteint le nombre requis → clôture définitive
-      if (nextLevel >= requiredLevels) {
-        await rawPool.query(
-          `UPDATE "${schema}".pay_periods
-             SET status = 'closed', closed_at = now(), closed_by = $1
-             WHERE id = $2`,
-          [request.user.sub, p.id],
-        )
-        // Audit log (non bloquant)
-        auditTenant(schema, { userId: request.user.sub, action: 'payroll.closed', entity: 'pay_period', entityId: p.id, changes: { month, finalLevel: nextLevel, requiredLevels }, ip: request.ip ?? null })
+        const pending = p.status === 'pending_validation'
         return reply.send({
-          data: { status: 'closed', level: nextLevel, requiredLevels },
-          message: `Paie ${month} validée à tous les niveaux requis et clôturée.`,
+          period: {
+            id: p.id, month: p.month, status: p.status,
+            initiatedAt: p.initiated_at, initiatedBy: p.initiated_by,
+            initiatorName: [p.initiator_first_name, p.initiator_last_name].filter(Boolean).join(' ') || null,
+            rejectionReason: p.rejection_reason,
+            closedAt: p.closed_at, closedBy: p.closed_by,
+          },
+          requiredLevels,
+          currentLevel: approvals.rows.length,
+          isComplete: approvals.rows.length >= requiredLevels,
+          approvals: approvalRows,
+          levels,
+          pendingWith: pendingWithOf(state),
+          viewer: {
+            canApprove: pending && decision.allowed,
+            canReject: pending && decision.allowed,
+            canCancel: pending && p.initiated_by === request.user.sub && approvals.rows.length === 0,
+            escalated: pending && decision.allowed && decision.escalated,
+            deniedReason: pending && !decision.allowed ? decision.reason : null,
+            deniedMessage: pending && !decision.allowed ? payrollDenialMessage(decision.reason, state) : null,
+          },
         })
+      } catch (err) {
+        request.log.error({ err, schema, month }, 'payroll workflow state failed')
+        return reply.status(500).send({ error: 'Impossible de charger le circuit de validation de la paie. Réessayez.' })
       }
-
-      return reply.send({
-        data: { status: 'pending_validation', level: nextLevel, requiredLevels },
-        message: `Validation niveau ${nextLevel}/${requiredLevels} enregistrée. ${requiredLevels - nextLevel} validation(s) restante(s).`,
-      })
     },
   })
 
-  // POST /payroll/periods/:month/reject — rejette et retour à open
+  // POST /payroll/periods/:month/approve — validation du niveau courant par le
+  // valideur désigné (ou, échéance dépassée, par l'équipe RH hors initiateur).
+  fastify.post('/periods/:month/approve', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      if (!MONTH_RE.test(month)) return reply.status(400).send({ error: 'Mois invalide (format AAAA-MM attendu).' })
+      const body = approveBodySchema.safeParse(request.body ?? {})
+      if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
+      const notes = body.data.notes || null
+      const schema = request.user.schemaName
+      try {
+        const loaded = await loadPendingPeriod(schema, month)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period: p, circuit, approvals, users, state } = loaded
+
+        const decision = decideOnPeriod(state, p, request.user)
+        if (!decision.allowed) {
+          return reply.status(403).send({ error: payrollDenialMessage(decision.reason, state) })
+        }
+        const requiredLevels = circuit.levels
+        const level = state?.level ?? approvals.length + 1
+
+        if (state) {
+          try {
+            await rawPool.query(
+              `INSERT INTO "${schema}".pay_period_approvals
+                 (period_id, level, approver_id, approver_role, notes)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [p.id, level, request.user.sub, request.user.role, notes],
+            )
+          } catch (err) {
+            if ((err as { code?: string } | null)?.code === '23505') {
+              return reply.status(409).send({ error: 'Ce niveau vient d\'être validé par quelqu\'un d\'autre. Rechargez la page.' })
+            }
+            throw err
+          }
+          auditTenant(schema, { userId: request.user.sub, action: 'payroll.approved', entity: 'pay_period', entityId: p.id, changes: { month, level, requiredLevels, escalated: decision.escalated }, ip: request.ip ?? null })
+        }
+
+        // Dernier niveau requis atteint → clôture définitive
+        if (level >= requiredLevels) {
+          await rawPool.query(
+            `UPDATE "${schema}".pay_periods
+               SET status = 'closed', closed_at = now(), closed_by = $1
+               WHERE id = $2`,
+            [request.user.sub, p.id],
+          )
+          auditTenant(schema, { userId: request.user.sub, action: 'payroll.closed', entity: 'pay_period', entityId: p.id, changes: { month, finalLevel: level, requiredLevels, escalated: decision.escalated }, ip: request.ip ?? null })
+          notifyPayrollUser(schema, p.initiated_by, 'payroll_closed', 'Paie clôturée',
+            `La paie ${month} a été validée à tous les niveaux et clôturée.`, { month, periodId: p.id })
+          return reply.send({
+            data: { status: 'closed', level, requiredLevels, escalated: decision.escalated },
+            message: `Paie ${month} validée à tous les niveaux requis et clôturée.`,
+          })
+        }
+
+        const next = payrollLevelState(circuit, p,
+          [...approvals, { level, approver_id: request.user.sub, approved_at: new Date() }], users)
+        const pendingWith = pendingWithOf(next)
+        if (pendingWith?.userId) {
+          notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
+            `La paie ${month} attend votre validation (niveau ${pendingWith.level}/${requiredLevels}).`, { month, periodId: p.id, level: pendingWith.level })
+        }
+        return reply.send({
+          data: { status: 'pending_validation', level, requiredLevels, escalated: decision.escalated },
+          pendingWith,
+          message: `Validation niveau ${level}/${requiredLevels} enregistrée. ${pendingValidationMessage(month, next)}.`,
+        })
+      } catch (err) {
+        request.log.error({ err, schema, month }, 'payroll approve failed')
+        return reply.status(500).send({ error: 'La validation de la paie a échoué. Réessayez ; si le problème persiste, contactez le support.' })
+      }
+    },
+  })
+
+  // POST /payroll/periods/:month/reject — rejet / renvoi en préparation par le
+  // valideur attendu (ou l'équipe RH après échéance). Commentaire obligatoire.
+  // Bulletins générés supprimés, notes de frais et solde de tout compte
+  // rétablis (transaction) : la période peut être recalculée puis ré-initiée.
   fastify.post('/periods/:month/reject', {
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer')],
+    handler: async (request, reply) => {
+      const { month } = request.params as { month: string }
+      if (!MONTH_RE.test(month)) return reply.status(400).send({ error: 'Mois invalide (format AAAA-MM attendu).' })
+      const body = rejectBodySchema.safeParse(request.body ?? {})
+      if (!body.success) {
+        return reply.status(400).send({ error: 'Commentaire obligatoire : expliquez le motif du renvoi en préparation (10 caractères minimum).' })
+      }
+      const reason = body.data.reason
+      const schema = request.user.schemaName
+      try {
+        const loaded = await loadPendingPeriod(schema, month)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period: p, state } = loaded
+
+        const decision = decideOnPeriod(state, p, request.user)
+        if (!decision.allowed) {
+          return reply.status(403).send({ error: payrollDenialMessage(decision.reason, state) })
+        }
+        let reverted
+        try {
+          reverted = await resetPendingPeriod(schema, p.id, reason)
+        } catch (err) {
+          if (err instanceof PayrollResetConflict) return reply.status(409).send({ error: err.message })
+          throw err
+        }
+        auditTenant(schema, { userId: request.user.sub, action: 'payroll.rejected', entity: 'pay_period', entityId: p.id, changes: {
+          month, reason, level: state?.level ?? null, escalated: decision.escalated,
+          deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses, restoredSettlements: reverted.restoredSettlements,
+        }, ip: request.ip ?? null })
+        const actorName = [request.user.firstName, request.user.lastName].filter(Boolean).join(' ').trim() || 'un valideur'
+        notifyPayrollUser(schema, p.initiated_by, 'payroll_rejected', 'Paie renvoyée en préparation',
+          `La paie ${month} a été renvoyée en préparation par ${actorName}. Motif : ${reason}`, { month, periodId: p.id })
+        return reply.send({
+          data: { status: 'open', ...reverted },
+          message: 'Paie renvoyée en préparation : les bulletins générés ont été supprimés. Corrigez puis relancez la clôture.',
+        })
+      } catch (err) {
+        request.log.error({ err, schema, month }, 'payroll reject failed')
+        return reply.status(500).send({ error: 'Le renvoi en préparation a échoué. Réessayez ; si le problème persiste, contactez le support.' })
+      }
+    },
+  })
+
+  // POST /payroll/periods/:month/cancel — l'INITIATEUR annule sa clôture tant
+  // qu'aucun niveau n'a validé (mêmes effets que le rejet, sans motif imposé).
+  fastify.post('/periods/:month/cancel', {
     preHandler: [fastify.authorize('admin','hr_manager')],
     handler: async (request, reply) => {
       const { month } = request.params as { month: string }
-      const { reason } = (request.body ?? {}) as { reason?: string }
-      if (!reason || reason.trim().length < 5) {
-        return reply.status(400).send({ error: 'Motif de rejet requis (min 5 caractères)' })
-      }
+      if (!MONTH_RE.test(month)) return reply.status(400).send({ error: 'Mois invalide (format AAAA-MM attendu).' })
+      const body = cancelBodySchema.safeParse(request.body ?? {})
+      if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
       const schema = request.user.schemaName
-      const period = await rawPool.query<{ id: string; status: string }>(
-        `SELECT id, status FROM "${schema}".pay_periods
-           WHERE month = $1 AND parent_period_id IS NULL LIMIT 1`,
-        [month],
-      )
-      if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
-      const p = period.rows[0]
-      if (p.status !== 'pending_validation') {
-        return reply.status(409).send({
-          error: `Période non éligible (status=${p.status}, attendu=pending_validation)`,
+      try {
+        const loaded = await loadPendingPeriod(schema, month)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period: p, approvals } = loaded
+        if (p.initiated_by !== request.user.sub) {
+          return reply.status(403).send({ error: 'Seul l\'initiateur de la clôture peut annuler son initiation.' })
+        }
+        if (approvals.length > 0) {
+          return reply.status(409).send({ error: 'Un niveau a déjà été validé : l\'initiation ne peut plus être annulée. Demandez au valideur de renvoyer la période en préparation.' })
+        }
+        let reverted
+        try {
+          reverted = await resetPendingPeriod(schema, p.id, null, { requireNoApproval: true })
+        } catch (err) {
+          if (err instanceof PayrollResetConflict) return reply.status(409).send({ error: err.message })
+          throw err
+        }
+        auditTenant(schema, { userId: request.user.sub, action: 'payroll.initiation_cancelled', entity: 'pay_period', entityId: p.id, changes: {
+          month, comment: body.data.comment || null,
+          deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses, restoredSettlements: reverted.restoredSettlements,
+        }, ip: request.ip ?? null })
+        return reply.send({
+          data: { status: 'open', ...reverted },
+          message: 'Initiation annulée : la période est revenue en préparation et les bulletins générés ont été supprimés.',
         })
+      } catch (err) {
+        request.log.error({ err, schema, month }, 'payroll cancel failed')
+        return reply.status(500).send({ error: 'L\'annulation de l\'initiation a échoué. Réessayez ; si le problème persiste, contactez le support.' })
       }
-      // Reset : status → open, supprimer toutes les approbations partielles
-      await rawPool.query(
-        `DELETE FROM "${schema}".pay_period_approvals WHERE period_id = $1`,
-        [p.id],
-      )
-      await rawPool.query(
-        `UPDATE "${schema}".pay_periods
-           SET status = 'open', rejection_reason = $1,
-               initiated_at = NULL, initiated_by = NULL
-           WHERE id = $2`,
-        [reason, p.id],
-      )
-      auditTenant(schema, { userId: request.user.sub, action: 'payroll.rejected', entity: 'pay_period', entityId: p.id, changes: { month, reason }, ip: request.ip ?? null })
-      return reply.send({ data: { status: 'open' }, message: 'Paie rejetée — retour à open. Re-calculer la paie après corrections.' })
     },
   })
 
@@ -815,6 +986,11 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         if (myEmployeeId !== slip.employee_id) {
           return reply.status(403).send({ error: 'Accès refusé à ce bulletin' })
         }
+        // Bulletin non publié (période pas encore clôturée) : 404 — on ne
+        // révèle pas au salarié l'existence d'une paie en cours de validation.
+        if (slip.period_status !== EMPLOYEE_VISIBLE_PERIOD_STATUS) {
+          return reply.status(404).send({ error: 'Bulletin introuvable' })
+        }
       } else if (!['admin','hr_manager','hr_officer','readonly'].includes(role)) {
         // OWASP A01 (deny-by-default) — la paie est hors du périmètre du manager
         // (matrice RBAC : manager = aucun accès paie). Seuls admin/hr_manager/
@@ -828,16 +1004,24 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const rawLines = Array.isArray(slip.lines) ? slip.lines : []
       const explained = explainLines(rawLines as never)
 
-      // Comparaison : 3 mois précédents pour le même employé
+      // Comparaison : 3 mois précédents pour le même employé (côté salarié :
+      // uniquement des bulletins publiés, période clôturée).
+      const compParams: unknown[] = [slip.employee_id, id, slip.month]
+      let compPublished = ''
+      if (role === 'employee') {
+        compParams.push(EMPLOYEE_VISIBLE_PERIOD_STATUS)
+        compPublished = ` AND EXISTS (SELECT 1 FROM "${schema}".pay_periods pp
+                                      WHERE pp.id = ps.period_id AND pp.status = $4)`
+      }
       const compRes = await rawPool.query<{
         month: string; gross_salary: string; net_payable: string
         total_cnps_sal: string; its: string
       }>(
-        `SELECT month, gross_salary, net_payable, total_cnps_sal, its
-           FROM "${schema}".pay_slips
-          WHERE employee_id = $1 AND id <> $2 AND month < $3
-          ORDER BY month DESC LIMIT 3`,
-        [slip.employee_id, id, slip.month],
+        `SELECT ps.month, ps.gross_salary, ps.net_payable, ps.total_cnps_sal, ps.its
+           FROM "${schema}".pay_slips ps
+          WHERE ps.employee_id = $1 AND ps.id <> $2 AND ps.month < $3${compPublished}
+          ORDER BY ps.month DESC LIMIT 3`,
+        compParams,
       )
 
       // Audit : événements liés au bulletin ou à sa période
@@ -938,22 +1122,28 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (!employeeId) return reply.send({ data: [] })
 
+      // Seuls les bulletins PUBLIÉS (période clôturée) sont visibles — et
+      // marqués « vus » — en self-service, quel que soit le rôle (un manager
+      // ou un RH consultant SES bulletins est un salarié à cet égard).
       await rawPool.query(
-        `UPDATE "${schema}".pay_slips
+        `UPDATE "${schema}".pay_slips ps
          SET viewed_by_employee_at = now()
-         WHERE employee_id = $1 AND viewed_by_employee_at IS NULL`,
-        [employeeId]
+         FROM "${schema}".pay_periods pp
+         WHERE ps.employee_id = $1 AND ps.viewed_by_employee_at IS NULL
+           AND pp.id = ps.period_id AND pp.status = $2`,
+        [employeeId, EMPLOYEE_VISIBLE_PERIOD_STATUS]
       )
 
       const res = await rawPool.query(
-        `SELECT id, month, gross_salary, net_payable, its, total_cnps_sal,
-                status, payment_method, payment_status, payment_reference,
-                generated_at, viewed_by_employee_at, file_url, currency,
-                indemnite_absence, bordereau_cnps
-         FROM "${schema}".pay_slips
-         WHERE employee_id = $1
-         ORDER BY month DESC LIMIT 24`,
-        [employeeId]
+        `SELECT ps.id, ps.month, ps.gross_salary, ps.net_payable, ps.its, ps.total_cnps_sal,
+                ps.status, ps.payment_method, ps.payment_status, ps.payment_reference,
+                ps.generated_at, ps.viewed_by_employee_at, ps.file_url, ps.currency,
+                ps.indemnite_absence, ps.bordereau_cnps
+         FROM "${schema}".pay_slips ps
+         JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id AND pp.status = $2
+         WHERE ps.employee_id = $1
+         ORDER BY ps.month DESC LIMIT 24`,
+        [employeeId, EMPLOYEE_VISIBLE_PERIOD_STATUS]
       )
       return reply.send({ data: res.rows, currency: res.rows[0]?.currency ?? 'XOF' })
     },
@@ -1006,10 +1196,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
                 e.first_name, e.last_name, e.job_title, e.cnps_number, e.nni
            FROM "${schema}".pay_slips ps
            JOIN "${schema}".employees e ON e.id = ps.employee_id
+           JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id AND pp.status = $3
           WHERE ps.id = $1 AND ps.employee_id = $2 LIMIT 1`,
-        [id, employeeId],
+        [id, employeeId, EMPLOYEE_VISIBLE_PERIOD_STATUS],
       )
       const slip = slipRes.rows[0]
+      // Inexistant, d'un autre salarié OU non publié (période non clôturée) : 404.
       if (!slip) return reply.status(404).send({ error: 'Bulletin introuvable' })
 
       // Employeur + modèle de bulletin personnalisable (logo, colonnes, couleur…)
@@ -1051,11 +1243,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // PAY-025 — cumuls annuels (YTD) : somme des bulletins de l'année ≤ ce mois.
       const year = slip.month.slice(0, 4)
       const cum = await rawPool.query<{ g: string; c: string; i: string; n: string }>(
-        `SELECT COALESCE(SUM(gross_salary),0) g, COALESCE(SUM(total_cnps_sal),0) c,
-                COALESCE(SUM(its),0) i, COALESCE(SUM(net_payable),0) n
-           FROM "${schema}".pay_slips
-          WHERE employee_id = $1 AND month LIKE $2 AND month <= $3`,
-        [employeeId, `${year}-%`, slip.month],
+        `SELECT COALESCE(SUM(ps.gross_salary),0) g, COALESCE(SUM(ps.total_cnps_sal),0) c,
+                COALESCE(SUM(ps.its),0) i, COALESCE(SUM(ps.net_payable),0) n
+           FROM "${schema}".pay_slips ps
+           JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id AND pp.status = $4
+          WHERE ps.employee_id = $1 AND ps.month LIKE $2 AND ps.month <= $3`,
+        [employeeId, `${year}-%`, slip.month, EMPLOYEE_VISIBLE_PERIOD_STATUS],
       ).catch(() => ({ rows: [{ g: '0', c: '0', i: '0', n: '0' }] }))
       const c0 = cum.rows[0]!
 
@@ -1148,10 +1341,16 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin','hr_manager','hr_officer','readonly')],
     schema: { tags: ['payroll'], summary: 'Périodes de paie' },
     handler: async (request, reply) => {
-      const res = await rawPool.query(
-        `SELECT * FROM "${request.user.schemaName}".pay_periods ORDER BY month DESC`
+      const schema = request.user.schemaName
+      const res = await rawPool.query<PeriodForValidation & Record<string, unknown>>(
+        `SELECT * FROM "${schema}".pay_periods ORDER BY month DESC`
       )
-      return reply.send({ data: res.rows })
+      // Valideur attendu (nom + fonction + échéance) des périodes en validation
+      const pendingWith = await describePendingPeriods(rawPool, schema, res.rows)
+        .catch(() => new Map<string, ReturnType<typeof pendingWithOf>>())
+      return reply.send({
+        data: res.rows.map(row => ({ ...row, pending_with: pendingWith.get(String(row.id)) ?? null })),
+      })
     },
   })
 

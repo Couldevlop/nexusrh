@@ -539,8 +539,8 @@
       "retirementCeilingValue": "1 647 315 FCFA",
       "atPfCeiling": "Plafond AT/PF / mois",
       "atPfCeilingValue": "70 000 FCFA",
-      "itsAbatement": "ITS — Abattement forfaitaire",
-      "itsAbatementValue": "15 % du brut",
+      "itsAbatement": "ITS — Assiette (réforme 2024)",
+      "itsAbatementValue": "100 % du brut imposable, sans abattement · barème 0 à 32 %",
       "fdfpContribution": "Contribution FDFP",
       "fdfpContributionValue": "0,4 % masse salariale"
     },
@@ -559,6 +559,17 @@
       "hrValidator": "Valideur RH désigné",
       "wholeHrTeam": "Toute l'équipe RH",
       "hrValidatorHint": "Une fois son échéance dépassée, tout membre de l'équipe RH (admin, RH manager, gestionnaire RH) peut statuer."
+    },
+    "payrollCircuit": {
+      "intro": "Nommez pour chaque niveau le valideur (membre de l'équipe RH) et sa fonction. Sans désignation, tout administrateur ou responsable RH autre que l'initiateur peut valider.",
+      "level": "Niveau {{level}}",
+      "validator": "Valideur",
+      "anyHr": "Équipe RH (administrateur ou responsable RH)",
+      "functionLabel": "Fonction",
+      "functionPlaceholder": "Ex. : Chef de service paie, DRH",
+      "sla": "Échéance (jours)",
+      "sodHint": "L'initiateur ne valide jamais sa propre clôture : s'il est désigné, le niveau est ouvert d'emblée au reste de l'équipe RH. Une fois l'échéance dépassée, tout administrateur ou responsable RH (hors initiateur) peut reprendre la main.",
+      "duplicate": "Une même personne ne peut pas être désignée à deux niveaux."
     },
     "notice": {
       "enabled": "Délai de prévenance des absences planifiées",
