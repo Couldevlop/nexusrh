@@ -2722,7 +2722,10 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           const chainFor = (count: number) => isCircuit
             ? circuitChain(count, hrLabel)
             : LEVEL_NAME_KEYS.slice(0, count)
-              .map((k, i) => (module === 'payroll' && payrollValidators[i]?.functionLabel?.trim()) || t(`workflow.levelNames.${k}`))
+              .map((k, i) => module === 'payroll'
+                // Paie : valideurs de l'équipe RH (fonction saisie, sinon « Équipe RH — niveau N »)
+                ? (payrollValidators[i]?.functionLabel?.trim() || t('workflow.levelNames.hrTeamLevel', { level: i + 1 }))
+                : t(`workflow.levelNames.${k}`))
               .join(' → ')
           const choices = Array.from({ length: isCircuit ? MAX_CIRCUIT_LEVELS : LEVEL_NAME_KEYS.length }, (_, i) => i + 1)
           const circuit = isCircuit ? circuitOf(module) : null
