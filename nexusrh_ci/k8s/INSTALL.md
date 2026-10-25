@@ -9,6 +9,26 @@ Le cluster k3s héberge déjà :
 - **ingress-nginx** (namespace `ingress-nginx`) — IP publique `62.238.11.20`
 - **NexusRH CI** (namespace `nexusrh-ci`) — `nexusrh.openlabconsulting.com`
 
+### IP réelle des visiteurs (ARTCI, loi 2013-450) — réglage OBLIGATOIRE
+
+Le service `ingress-nginx-controller` doit être en `externalTrafficPolicy: Local`.
+En `Cluster` (défaut), le répartiteur k3s remplace l'IP de chaque visiteur par
+`10.42.0.1` : le journal d'accès ARTCI, l'audit et le rate limiting voient tous
+la même adresse. Appliqué en prod le 25/10/2026 ; à refaire après toute
+réinstallation d'ingress-nginx :
+
+```bash
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl patch svc ingress-nginx-controller -n ingress-nginx \
+  -p '{"spec":{"externalTrafficPolicy":"Local"}}'
+# Vérification : l'IP publique du visiteur doit apparaître (pas 10.42.0.1)
+kubectl logs -n ingress-nginx deploy/ingress-nginx-controller --since=1m | tail -3
+```
+
+Côté API, `TRUST_PROXY=loopback, uniquelocal` fait confiance à l'ingress
+(10.42.x) et retient l'IP qu'il a constatée — aucun réglage applicatif requis.
+Seules les sondes Kubernetes (`/health`) gardent `10.42.0.1`.
+
 ---
 
 ## DÉPLOYER UNE NOUVELLE APPLICATION (ex: sygescom)
