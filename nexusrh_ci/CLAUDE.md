@@ -125,17 +125,21 @@ export const CI_LEGAL_CONSTANTS_2024 = {
   TAUX_CNPS_AT_COMMERCE: 0.02, TAUX_CNPS_AT_BTP: 0.03,
   TAUX_CNPS_AT_INDUSTRIE: 0.04, TAUX_CNPS_AT_EXTRACTION: 0.05,
 
-  // ITS — abattement AVANT barème
-  ABATTEMENT_ITS: 0.15,
+  // ITS — réforme au 01/01/2024 (Ordonnance n° 2023-719 du 13/09/2023) : remplace IS/CN/IGR.
+  // Barème sur 100 % du brut imposable : PAS d'abattement, cotisations CNPS salariales NON déduites.
+  ABATTEMENT_ITS: 0,
   TRANCHES_ITS_MENSUELLES: [
     { min: 0, max: 75_000, taux: 0.0 },
-    { min: 75_001, max: 240_000, taux: 0.015 },
-    { min: 240_001, max: 800_000, taux: 0.05 },
-    { min: 800_001, max: 2_000_000, taux: 0.1 },
-    { min: 2_000_001, max: Infinity, taux: 0.15 },
+    { min: 75_001, max: 240_000, taux: 0.16 },
+    { min: 240_001, max: 800_000, taux: 0.21 },
+    { min: 800_001, max: 2_400_000, taux: 0.24 },
+    { min: 2_400_001, max: 8_000_000, taux: 0.28 },
+    { min: 8_000_001, max: Infinity, taux: 0.32 },
   ],
-  CREDIT_IMPOT_CELIBATAIRE: 0, CREDIT_IMPOT_MARIE_SANS_ENFANT: 5_500,
-  CREDIT_IMPOT_PAR_ENFANT: [3_000, 6_000, 9_000], // 1, 2, 3+ enfants
+  // RICF (réduction pour charges de famille), imputée sur l'impôt brut : 5 500 par demi-part au-delà de 1.
+  // Parts : célibataire/divorcé/veuf sans enfant 1 · marié 2 · +0,5/enfant · isolé avec ≥1 enfant 1,5 + 0,5/enfant · plafond 5.
+  RICF_PAR_PARTS: { 1: 0, 1.5: 5_500, 2: 11_000, 2.5: 16_500, 3: 22_000, 3.5: 27_500, 4: 33_000, 4.5: 38_500, 5: 44_000 },
+  // Exemples célibataire 0 enfant : brut 200 000 → 20 000 · 450 000 → 70 500 · 1 500 000 → 312 000
 
   // Congés (jours OUVRABLES)
   JOURS_CONGES_PAR_MOIS: 2.5,
@@ -169,7 +173,7 @@ const PLAN_DEFAULTS = {
 ## PATTERNS ET PIÈGES — SPÉCIFIQUES CI
 
 1. **CNPS — double plafond.** AT/PF/Maternité plafonnés à 70 000 FCFA ; Retraite à 1 647 315 FCFA. Jamais le même plafond pour toutes les branches. Tester avec un salaire à 2 000 000 FCFA.
-2. **ITS — abattement AVANT tranches.** `net_imposable = BRUT × 0.85`, PUIS déduire cotisations CNPS salariales, PUIS appliquer le barème. Jamais les tranches directement sur le brut. `PLAN_DEFAULTS` (ci-dessus) toujours dans l'INSERT tenant.
+2. **ITS — barème 2024 sur 100 % du brut imposable.** Plus d'abattement de 15 % (supprimé au 01/01/2024) et les cotisations CNPS salariales ne sont PAS déduites de l'assiette : `its_brut = barème(brut_imposable)` (0/16/21/24/28/32 %), PUIS `ITS = max(0, its_brut − RICF(parts))`. Ne jamais réintroduire l'ancien régime (abattement, tranches 1,5/5/10/15 %, crédits 5 500 + 3 000/6 000/9 000). `PLAN_DEFAULTS` (ci-dessus) toujours dans l'INSERT tenant.
 3. **FCFA entiers.** Colonnes PostgreSQL `integer`/`bigint`, jamais `numeric(10,2)`. Aucun centime sur les bulletins.
 4. **Mobile Money — numéros CI.** Format `+225 07…` (Wave/Orange) ou `+225 05…` (MTN). Valider `/^\+2250[57]\d{8}$/` avant tout virement.
 5. **Hébergement souverain CI.** `hosting_location: 'ci'` (public/banques) force S3/MinIO vers endpoint local CI. Jamais vers AWS US/EU.
@@ -242,7 +246,7 @@ pnpm run dev
 ## CHECKLIST AVANT DE GÉNÉRER
 
 - [ ] Architecture multi-tenant (schema-per-tenant) comprise
-- [ ] Moteur de paie CI : CNPS (double plafond) + ITS (abattement 15% → barème DGI)
+- [ ] Moteur de paie CI : CNPS (double plafond) + ITS (barème 2024 0–32 % sur 100 % du brut → RICF par parts)
 - [ ] SMIG 60 000 FCFA vérifié sur chaque bulletin · FCFA entiers partout (zéro décimale)
 - [ ] Mobile Money : Wave + MTN + Orange (format +225, regex validée)
 - [ ] Modules CI : CNPS/DISA, OHADA contrats, FDFP formation

@@ -35,7 +35,7 @@
       "accident": "CNPS Work accident",
       "accidentNote": "Accident / family / maternity ceiling: 70,000 FCFA",
       "family": "CNPS Family benefits",
-      "its": "ITS (15% allowance, then DGI brackets)"
+      "its": "ITS (progressive scale on 100% of gross, 1 share)"
     },
     "note": "The same 2,000,000 FCFA produce three different calculation bases. NexusRH CI applies the right one on every line, and the payslip is in whole FCFA — never cents."
   },
@@ -69,7 +69,7 @@
     },
     "its": {
       "title": "ITS and DGI",
-      "text": "The 15% allowance applied before the brackets, employee contributions deducted, monthly brackets, tax credits by family situation."
+      "text": "2024 reform: progressive monthly scale from 0 to 32% applied to 100% of taxable gross pay, with no standard deduction, then the family-charges tax reduction (RICF) based on the number of shares."
     },
     "labour": {
       "title": "Labour Code",

@@ -214,7 +214,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-25-1', article_numero: 'Art. 18.16 — Décret 2017-210', livre: LI,
     titre: 'Titre III — Rupture du contrat', chapitre: 'Chap. IV — Indemnités',
     titre_article: 'Indemnité de licenciement — Calcul',
-    texte: 'Le travailleur licencié ayant au moins un an de service effectif, hors faute lourde, a droit à une indemnité de licenciement distincte du préavis (décret n° 2017-210 du 30 mars 2017, art. 2 et 4 ; CCI 1977 art. 39). Elle est calculée, pour chaque année de présence, sur le salaire global mensuel moyen des 12 derniers mois : 30 % jusqu\'à la 5e année comprise, 35 % de la 6e à la 10e année, 40 % au-delà de la 10e année ; les fractions d\'année, arrondies au mois inférieur, sont prises en compte. L\'indemnité de départ à la retraite se calcule de la même façon (art. 5).',
+    texte: 'Le travailleur licencié ayant au moins un an de service effectif, hors faute lourde, a droit à une indemnité de licenciement distincte du préavis (décret n° 2017-210 du 30 mars 2017, art. 2 et 4 ; CCI 1977 art. 39). Elle est calculée, pour chaque année de présence, sur le salaire global mensuel moyen des 12 derniers mois : 30 % jusqu\'à la 5e année comprise, 35 % de la 6e à la 10e année, 40 % au-delà de la 10e année ; les fractions d\'année sont prises en compte au prorata des mois complets (ex. 13 mois d\'ancienneté, salaire moyen 250 000 FCFA : 250 000 × 30 % × 13/12 = 81 250 FCFA). L\'indemnité de départ à la retraite se calcule de la même façon (art. 5).',
     keywords: ['indemnité licenciement', 'ancienneté', '30%', '35%', '40%', 'calcul', 'retraite'] },
 
   { ...P, source: CT, article_id: 'art-25-2', article_numero: 'Décret 2017-210 art. 4', livre: LI,
@@ -643,9 +643,9 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   // ─── ITS — IMPÔT SUR LES TRAITEMENTS ET SALAIRES ────────────────────────────
   { ...P, source: CT, article_id: 'art-its-1', article_numero: 'CGI Art. 116',
     livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
-    titre_article: 'ITS — Barème progressif DGI CI 2024',
-    texte: 'L\'ITS est calculé sur le salaire net imposable après abattement forfaitaire de 15% du brut. Barème mensuel : 0–75 000 FCFA → 0% ; 75 001–240 000 FCFA → 1,5% ; 240 001–800 000 FCFA → 5% ; 800 001–2 000 000 FCFA → 10% ; au-delà → 15%. Crédits famille : marié +5 500 FCFA, par enfant +3 000 à +9 000 FCFA.',
-    keywords: ['ITS', 'impôt salaires', 'barème DGI', 'abattement 15%', 'crédit impôt famille'], payroll_codes: ['2100'] },
+    titre_article: 'ITS — Barème progressif mensuel (réforme 2024)',
+    texte: 'Depuis le 1er janvier 2024 (Ordonnance n° 2023-719 du 13 septembre 2023), l\'ITS (impôt sur les traitements et salaires) remplace les anciens IS, CN et IGR. Il s\'applique sur 100 % du revenu brut imposable : l\'ancien abattement forfaitaire de 15 % est supprimé et les cotisations CNPS salariales ne sont pas déduites de l\'assiette. Barème mensuel progressif : 0–75 000 FCFA → 0 % ; 75 001–240 000 FCFA → 16 % ; 240 001–800 000 FCFA → 21 % ; 800 001–2 400 000 FCFA → 24 % ; 2 400 001–8 000 000 FCFA → 28 % ; au-delà de 8 000 000 FCFA → 32 %. La réduction d\'impôt pour charges de famille (RICF) est ensuite imputée sur l\'impôt brut. Exemples (célibataire sans enfant) : brut 200 000 → ITS 20 000 ; brut 450 000 → ITS 70 500 ; brut 1 500 000 → ITS 312 000 FCFA.',
+    keywords: ['ITS', 'impôt salaires', 'barème DGI', 'réforme 2024', 'ordonnance 2023-719', '16%', '32%', 'RICF'], payroll_codes: ['2100'] },
 
   { ...P, source: CT, article_id: 'art-its-2', article_numero: 'CGI Art. 117',
     livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
@@ -661,9 +661,9 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
 
   { ...P, source: CT, article_id: 'art-its-4', article_numero: 'CGI Art. 120',
     livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
-    titre_article: 'ITS — Crédit d\'impôt famille (CIF)',
-    texte: 'Le crédit d\'impôt famille est accordé en fonction de la situation familiale : Célibataire/divorcé sans enfant : 0 FCFA. Marié sans enfant : 5 500 FCFA/mois. 1 enfant à charge : +3 000 FCFA. 2 enfants : +6 000 FCFA. 3 enfants et plus : +9 000 FCFA.',
-    keywords: ['crédit impôt famille', 'CIF', 'situation familiale', 'enfants charge', '5500 FCFA'], payroll_codes: ['2100'] },
+    titre_article: 'ITS — Réduction d\'impôt pour charges de famille (RICF)',
+    texte: 'La RICF est imputée sur l\'ITS brut selon le nombre de parts du salarié : 1 part → 0 FCFA ; 1,5 → 5 500 ; 2 → 11 000 ; 2,5 → 16 500 ; 3 → 22 000 ; 3,5 → 27 500 ; 4 → 33 000 ; 4,5 → 38 500 ; 5 parts → 44 000 FCFA/mois (5 500 FCFA par demi-part au-delà de 1, plafond 5 parts). Parts : célibataire, divorcé ou veuf sans enfant = 1 ; marié = 2 ; + 0,5 par enfant à charge ; célibataire, divorcé ou veuf avec au moins un enfant à charge = 1,5 + 0,5 par enfant ; plafond 5 parts. L\'ITS net ne peut pas être négatif.',
+    keywords: ['RICF', 'charges de famille', 'parts', 'situation familiale', 'enfants charge', '5500 FCFA', 'réduction impôt'], payroll_codes: ['2100'] },
 
   { ...P, source: CT, article_id: 'art-its-5', article_numero: 'CGI Art. 122',
     livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',

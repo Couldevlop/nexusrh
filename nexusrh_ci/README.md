@@ -13,7 +13,7 @@ Propulsé par **Claude AI** (Anthropic)
 | Conformité       | Détail                                                                 |
 | ---------------- | ---------------------------------------------------------------------- |
 | **CNPS 2024**    | Retraite 6,3% sal. / 7,7% pat. · PF 5,75% pat. · AT 2–5% selon secteur |
-| **ITS / DGI**    | Barème progressif · abattement 15% · crédits famille                   |
+| **ITS / DGI**    | Réforme 2024 : barème 0–32% sur 100% du brut (sans abattement) · RICF par parts |
 | **SMIG**         | 75 000 FCFA / mois                                                     |
 | **Congés**       | 2,5 jours ouvrables / mois travaillé (Code du Travail CI)              |
 | **DISA**         | Génération automatique (loi 99-477)                                    |
@@ -115,7 +115,7 @@ pnpm run dev
 | ------- | ---------- |
 | **Tests automatisés** | **2022 tests verts** (Vitest) sur 61 fichiers — paie, recrutement, absences, contrats, employés, expenses, reporting, training, careers, mobile-money, IA assistant, CNPS, settings, référentiels, legal-watch, authentification (plugin + routes + MFA TOTP + forgot/reset password), cookie httpOnly + CSRF, **cabinet de recrutement** (login + activation de session + CRUD + isolation), **connectivité** (webhooks/clés API/connecteurs + SSRF), **garde de cloisonnement contexte-plateforme**, packs législatifs, workflows, security headers, golden fixtures paie  |
 | **Transparence paie** | 4 axes livrés côté API : (1) bulletin explicable ligne-par-ligne (formule humaine + référence Code Travail/CNPS/DGI) via `GET /payroll/payslips/:id/transparency`, (2) **simulation what-if** via `POST /payroll/simulate` — calcul sans persistance, RBAC IDOR strict (employee = soi, manager = équipe), (3) diff mois-à-mois automatique (3 mois précédents dans la réponse transparency), (4) audit log de consultation. UI : `PaySlipTransparentModal.tsx` branché côté employé (`/mon-espace/bulletins`) et RH (`/payroll/payslips`) |
-| **Golden fixtures paie** | 28 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité complet/partiel, maladie maintien 50%/75%/100%, AT avec jour J inclus/hors mois/1j sans IJSS, heures supp, avance, SMIG exact (cas limite), haut salaire 3 enfants, cumul prime+heures supp, tranche ITS 5% pure, **cumul maximal 6 variableElements**, **plafond CNPS retraite exact 1 647 315 FCFA**) |
+| **Golden fixtures paie** | 28 cas type figés au franc CFA près (célibataire, marié + enfants, haut salaire, primes transport/ancienneté/rendement/ICP, congé maternité complet/partiel, maladie maintien 50%/75%/100%, AT avec jour J inclus/hors mois/1j sans IJSS, heures supp, avance, SMIG exact (cas limite), haut salaire 3 enfants, cumul prime+heures supp, tranche ITS intermédiaire pure, **cumul maximal 6 variableElements**, **plafond CNPS retraite exact 1 647 315 FCFA**) |
 | **Non-régression bloquante** | Toute modification du moteur `calculatePayrollCI` qui fait varier un montant déclenche un échec CI explicite |
 | **Audit IA recrutement** | Chaque analyse de CV enregistre dans `audit_log` : utilisateur, modèle, score, signaux utilisés, note de risque démographique (OWASP A09) |
 | **Audit de biais** | Le moteur IA expose les signaux concrets ayant influencé chaque score et alerte explicitement si un signal démographique (école, région, prénom, genre, âge estimé) a pesé — différenciant majeur sur le marché Afrique francophone |

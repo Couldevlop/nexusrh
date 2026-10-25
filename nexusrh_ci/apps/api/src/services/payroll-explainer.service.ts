@@ -105,9 +105,9 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     category: 'cnps',
   },
   '2100': {
-    formulaHuman: () => 'ITS — Barème DGI progressif sur (Brut × 85 % − cotisations CNPS) puis crédit d\'impôt famille',
-    baseLabel: 'Abattement professionnel 15 % + barème 0/1,5/5/10/15 %',
-    legalReference: 'Loi de finances CI - Code Général des Impôts, articles 116 à 124 (ITS)',
+    formulaHuman: () => 'ITS — Barème mensuel progressif appliqué sur 100 % du brut imposable, puis réduction pour charges de famille (RICF) selon le nombre de parts',
+    baseLabel: 'Brut imposable sans abattement · barème 0/16/21/24/28/32 % (0-75k / 75k-240k / 240k-800k / 800k-2,4M / 2,4M-8M / >8M)',
+    legalReference: 'Ordonnance n° 2023-719 du 13/09/2023 (réforme ITS, en vigueur au 01/01/2024) — Code Général des Impôts CI',
     category: 'tax',
   },
   '4000': {

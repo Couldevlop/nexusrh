@@ -30,27 +30,40 @@ Taux AT par secteur :
 Date limite déclaration e-CNPS : avant le 15 du mois M+1
 ```
 
-### ITS — Impôt sur les Traitements et Salaires (DGI CI 2024)
+### ITS — Impôt sur les Traitements et Salaires (réforme 2024)
 
 ```
-L'ITS se calcule sur le salaire net imposable après déduction des cotisations.
-Barème progressif DGI CI (tranches mensuelles en FCFA) :
+Ordonnance n° 2023-719 du 13/09/2023, en vigueur au 01/01/2024.
+L'ITS remplace les anciens IS, CN et IGR. Il s'applique sur 100 % du
+revenu brut imposable : AUCUN abattement forfaitaire (l'ancien 15 % est
+supprimé) et les cotisations CNPS salariales ne sont PAS déduites.
+
+Barème progressif (tranches mensuelles en FCFA) :
 
 Tranche mensuelle              Taux
 ──────────────────────────────────────
-0 – 75 000                     0 %
-75 001 – 240 000                1,5 %
-240 001 – 800 000               5 %
-800 001 – 2 000 000            10 %
-> 2 000 000                    15 %
+0 – 75 000                      0 %
+75 001 – 240 000               16 %
+240 001 – 800 000              21 %
+800 001 – 2 400 000            24 %
+2 400 001 – 8 000 000          28 %
+> 8 000 000                    32 %
 
-Abattement forfaitaire : 15 % du salaire brut
-Crédit d'impôt famille :
-  Célibataire sans enfant    :  0 FCFA/mois
-  Marié sans enfant          :  5 500 FCFA/mois
-  1 enfant à charge          :  3 000 FCFA/mois supplémentaires
-  2 enfants                  :  6 000 FCFA/mois
-  3 enfants et plus          :  9 000 FCFA/mois
+Réduction d'impôt pour charges de famille (RICF), imputée sur l'impôt brut :
+  Parts   1   1,5    2      2,5    3      3,5    4      4,5    5
+  RICF    0   5 500  11 000 16 500 22 000 27 500 33 000 38 500 44 000  (FCFA/mois)
+  (5 500 FCFA par demi-part au-delà de 1 part, plafond 5 parts)
+
+Nombre de parts :
+  Célibataire / divorcé / veuf sans enfant          : 1
+  Marié                                              : 2 (+ 0,5 par enfant à charge)
+  Célibataire / divorcé / veuf avec ≥ 1 enfant      : 1,5 + 0,5 par enfant
+  Plafond                                            : 5 parts
+
+Exemples (célibataire, 0 enfant) :
+  brut 200 000    → (200 000 − 75 000) × 16 %                 =  20 000
+  brut 450 000    → 26 400 + (450 000 − 240 000) × 21 %       =  70 500
+  brut 1 500 000  → 26 400 + 117 600 + (1 500 000 − 800 000) × 24 % = 312 000
 ```
 
 ### Autres obligations légales CI
@@ -105,12 +118,13 @@ PayrollEngineCi.calculate(ctx) :
   total_cotisations_sal    = cotisation_retraite_sal
   total_cotisations_pat    = cotisation_retraite_pat + cotisation_pf_mat_pat + cotisation_at_pat
 
-ÉTAPE 3 — Calcul ITS/DGI
-  salaire_net_imposable    = BRUT_PRORATA × (1 - 0.15)  [abattement 15%]
-  salaire_imposable_net    = salaire_net_imposable - total_cotisations_sal
-  its_brut                 = appliquer_bareme_DGI(salaire_imposable_net)
-  credit_impot             = credit_selon_situation_familiale(nb_enfants, statut_marital)
-  ITS                      = max(0, its_brut - credit_impot)
+ÉTAPE 3 — Calcul ITS (réforme 2024)
+  brut_imposable           = brut soumis à l'ITS (100 %, sans abattement,
+                             cotisations CNPS salariales NON déduites)
+  its_brut                 = appliquer_bareme_ITS(brut_imposable)   [0/16/21/24/28/32 %]
+  parts                    = nombre_de_parts(statut_marital, nb_enfants)  [plafond 5]
+  ricf                     = 5 500 × (parts − 1) / 0,5             [0 → 44 000]
+  ITS                      = max(0, its_brut - ricf)
 
 ÉTAPE 4 — computeTotals()
   salaire_brut             = BRUT_PRORATA + primes + heures_supp + autres_gains

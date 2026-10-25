@@ -44,7 +44,7 @@ balises Open Graph et données structurées. Ce document couvre ce qui se fait
 > OpenLab Consulting, basé à Cocody (Abidjan), édite NexusRH CI, le logiciel de
 > paie et de gestion des ressources humaines conçu pour la Côte d'Ivoire. La paie
 > applique nativement les règles ivoiriennes : cotisations CNPS 2024 avec double
-> plafond, ITS selon le barème DGI, congés en jours ouvrables, DISA annuelle et
+> plafond, ITS selon le barème 2024, congés en jours ouvrables, DISA annuelle et
 > déclarations CNPS. Les salaires peuvent être versés par Mobile Money (Wave,
 > Orange, MTN) ou par virement bancaire. NexusRH CI couvre aussi le recrutement,
 > la formation FDFP, les entretiens, les carrières et le pilotage multi-filiales
@@ -63,11 +63,11 @@ openlabconsulting.com et relayé sur LinkedIn, avec un lien vers la vitrine :
 
 | Sujet (requête visée) | Angle |
 |---|---|
-| « calcul ITS Côte d'Ivoire » | Abattement de 15 % puis barème, exemple chiffré |
+| « calcul ITS Côte d'Ivoire » | Réforme 2024 : barème 0 à 32 % sur 100 % du brut (abattement supprimé), puis RICF selon les parts, exemple chiffré |
 | « cotisations CNPS 2024 taux plafond » | Le double plafond (70 000 / 1 647 315 FCFA) expliqué |
 | « DISA Côte d'Ivoire » | Qui, quand (janvier N+1), quoi déclarer |
 | « calcul congés payés Côte d'Ivoire » | 2,5 jours ouvrables par mois, jours fériés, ancienneté |
-| « indemnité de licenciement Côte d'Ivoire » | Barème progressif, préavis, solde de tout compte |
+| « indemnité de licenciement Côte d'Ivoire » | 30 / 35 / 40 % du salaire moyen par année, fraction d'année au prorata des mois, préavis, solde de tout compte |
 | « payer les salaires par Mobile Money » | Wave / Orange / MTN, contrôles, traçabilité |
 | « SMIG Côte d'Ivoire » | Montant en vigueur et impact sur la paie |
 
@@ -92,8 +92,8 @@ page publique pré-générée.
 
 ### Post LinkedIn de lancement (prêt à publier)
 
-> La paie ivoirienne a ses règles : double plafond CNPS, abattement ITS avant
-> barème, congés en jours ouvrables, DISA en janvier. Trop de logiciels étrangers
+> La paie ivoirienne a ses règles : double plafond CNPS, nouveau barème ITS
+> 2024 et réduction pour charges de famille, congés en jours ouvrables, DISA en janvier. Trop de logiciels étrangers
 > les « adaptent » à la main.
 >
 > Avec NexusRH CI, nous avons fait l'inverse : un SIRH écrit pour le droit

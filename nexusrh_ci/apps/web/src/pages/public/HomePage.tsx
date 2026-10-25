@@ -120,7 +120,7 @@ export default function HomePage() {
     { code: '2000', label: t('proof.rows.retirement'), note: t('proof.rows.retirementNote'), base: '1 647 315', rate: '6,3 %', amount: '103 781' },
     { code: '3300', label: t('proof.rows.accident'),   note: t('proof.rows.accidentNote'),   base: '70 000',    rate: '2,0 %', amount: '1 400' },
     { code: '3200', label: t('proof.rows.family'),     note: null,                            base: '70 000',    rate: '5,0 %', amount: '3 500' },
-    { code: '2100', label: t('proof.rows.its'),        note: null,                            base: '1 700 000', rate: '15 %',  amount: '212 500' },
+    { code: '2100', label: t('proof.rows.its'),        note: null,                            base: '2 000 000', rate: '0→24 %', amount: '432 000' },
   ]
 
   const marquee = families.map(k => t(`modules.${k}.items`)).join(' · ')

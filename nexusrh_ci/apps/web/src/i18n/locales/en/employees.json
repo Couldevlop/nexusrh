@@ -26,7 +26,7 @@
       "jobAndContract": "Job & contract",
       "compensationAndPayment": "Compensation & payment",
       "familySituation": "Family situation",
-      "familySituationHint": "(affects the ITS tax credit)"
+      "familySituationHint": "(sets the number of ITS shares and the family-charges tax reduction)"
     },
     "noManager": "— None —",
     "fields": {
