@@ -155,8 +155,12 @@ export function resolvePayrollContext(args: {
                   ?? packFromCountry(legalEntity.countryCode)
                   ?? tenantFallbackPack
     const { pack, code } = packFromCode(packCode)
-    const at = safeAtRate(legalEntity.atRate, tenant.atRate, { min: pack.tauxAtMin, max: pack.tauxAtMax })
-    if (at.usedFallback) warnings.push(`legal_entity.at_rate invalide ou absent — fallback tenant ${at.rate}`)
+    const bounds = { min: pack.tauxAtMin, max: pack.tauxAtMax }
+    // Repli : taux du tenant s'il est légal pour le pack de la filiale, sinon taux
+    // par défaut du pack (un taux CI ne vaut pas pour une filiale BF/BEN).
+    const fallbackAt = safeAtRate(tenant.atRate, pack.tauxAtDefaultPatronal ?? AT_RATE_MIN_GENERIC, bounds).rate
+    const at = safeAtRate(legalEntity.atRate, fallbackAt, bounds)
+    if (at.usedFallback) warnings.push(`legal_entity.at_rate invalide ou absent — fallback ${at.rate}`)
     return {
       atRate:              at.rate,
       legislationPackCode: code,
