@@ -68,6 +68,24 @@ afterAll(async () => { await app.close() })
 
 beforeEach(() => { queryMock.mockReset() })
 
+// Mock pg routé par fragment SQL (circuit de validation : configuration,
+// hiérarchie, note, mise à jour — l'ordre varie selon le cas).
+function routeSql(routes: Array<[string, unknown[]]>) {
+  queryMock.mockImplementation(async (sql: string) => {
+    const hit = routes.find(([needle]) => String(sql).includes(needle))
+    return { rows: hit ? hit[1] : [] }
+  })
+}
+const REPORT = (over: Record<string, unknown> = {}) => ({
+  employee_id: 'emp-1', status: 'submitted', validation_level: 0, title: 'Mission',
+  submitted_at: new Date().toISOString(), created_at: new Date().toISOString(), approval_trail: [], total_amount: 15000,
+  ...over,
+})
+// emp-1 → mgr-1 (N+1) → aucun N+2
+const HIERARCHY: [string, unknown[]] = ['SELECT id, manager_id FROM', [
+  { id: 'emp-1', manager_id: 'mgr-1' }, { id: 'mgr-1', manager_id: null },
+]]
+
 // ── GET /expenses (liste RH) ───────────────────────────────────────────────────
 describe('GET /expenses — liste, filtres et RBAC manager', () => {
   it('hr_manager liste toutes les notes (200)', async () => {
@@ -366,22 +384,28 @@ describe('PATCH /expenses/:id/submit — workflow brouillon→soumis', () => {
 
 // ── PATCH /expenses/:id/approve ─────────────────────────────────────────────────
 describe('PATCH /expenses/:id/approve — succès, événement, erreurs', () => {
-  it('manager approuve une note de son équipe + émet expense.approved (200)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ id: 'e-1' }] }) // managerCanActOnReport → ok
-      .mockResolvedValueOnce({ rows: [{ id: UUID_A, status: 'approved', total_amount: 12000, employee_id: 'emp-1' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
-    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+  it('le N+1 vise une note de son équipe : elle part à la RH (200, pas encore approuvée)', async () => {
+    routeSql([
+      ['FROM "tenant_sotra".expense_reports WHERE id', [REPORT()]],
+      HIERARCHY,
+      ['UPDATE "tenant_sotra".expense_reports', [{ id: UUID_A, status: 'submitted', total_amount: 12000, employee_id: 'emp-1' }]],
+    ])
+    const token = tokenFor(app, 'manager', { employeeId: 'mgr-1', email: 'manager@sotra.ci' })
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/approve`,
       headers: { authorization: `Bearer ${token}` },
       payload: {},
     })
     expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.fullyApproved).toBe(false)
+    expect(body.message).toContain('validation RH')
+    const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
+    expect(auditCall?.[1]?.[1]).toBe('expense.approval_step')
   })
 
   it('note non approvable (pas en submitted) : 400', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE 0 rows
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT({ status: 'approved' })]]])
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/approve`,
@@ -426,11 +450,12 @@ describe('PATCH /expenses/:id/reject — validation body, succès, erreurs', () 
   })
 
   it('manager rejette une note de son équipe (200)', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ id: 'e-1' }] }) // managerCanActOnReport → ok
-      .mockResolvedValueOnce({ rows: [{ id: UUID_A, status: 'rejected', employee_id: 'emp-1' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
-    const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
+    routeSql([
+      ['FROM "tenant_sotra".expense_reports WHERE id', [REPORT()]],
+      HIERARCHY,
+      ['UPDATE "tenant_sotra".expense_reports', [{ id: UUID_A, status: 'rejected', employee_id: 'emp-1' }]],
+    ])
+    const token = tokenFor(app, 'manager', { employeeId: 'mgr-1', email: 'manager@sotra.ci' })
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/reject`,
       headers: { authorization: `Bearer ${token}` },
@@ -440,7 +465,7 @@ describe('PATCH /expenses/:id/reject — validation body, succès, erreurs', () 
   })
 
   it('note non refusable (pas en submitted) : 400', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE 0 rows
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT({ status: 'rejected' })]]])
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/reject`,

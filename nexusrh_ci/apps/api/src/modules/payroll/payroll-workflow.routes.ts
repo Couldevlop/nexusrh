@@ -23,7 +23,7 @@ import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
+  loadPayrollPopulation, markExpensesPaid, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
@@ -395,6 +395,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             absence:          absenceCtx?.info,
             attendanceDeductions: attendance?.deductions,
             settlementEarnings: monthInputs.settlementEarnings,
+            expenseReimbursement: monthInputs.expenses.total,
             legislationPack:  pack,
           })
           totalGross += result.grossSalary
@@ -424,6 +425,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           if (slipId && emp.offboarding_id && result.settlementTotal) {
             await markSettlementPaid(schema, emp.offboarding_id, month, slipId)
           }
+          // Notes de frais remboursées par ce bulletin : marquées payées
+          if (slipId) await markExpensesPaid(schema, monthInputs.expenses.ids, slipId)
           inserted++
         }
 

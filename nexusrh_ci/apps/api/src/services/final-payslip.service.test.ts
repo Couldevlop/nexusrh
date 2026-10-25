@@ -7,7 +7,7 @@ vi.mock('../config.js', () => ({
 }))
 
 import {
-  employmentWindow, loadPayrollPopulation, markSettlementPaid, previousMonth,
+  employmentWindow, loadPayrollPopulation, loadReimbursableExpenses, markExpensesPaid, markSettlementPaid, previousMonth,
   resolveEmployeeMonth, settlementEarningsFrom, slipPaymentMethod, workedDaysFor,
 } from './final-payslip.service.js'
 import { calculatePayrollCI } from './payroll-engine-ci.js'
@@ -167,14 +167,16 @@ describe('accès base', () => {
     expect(String(sql)).toContain("jsonb_build_object('paidInMonth'")
     expect(params).toEqual(['o1', '2026-10', 'ps1'])
   })
-  it('solde seul : ni absences ni pointage interrogés', async () => {
+  it('solde seul : ni absences ni pointage interrogés (seules les notes de frais)', async () => {
     const m = await resolveEmployeeMonth('tenant_x', {
       id: 'e1', base_salary: '300000', hire_date: '2019-04-01', exit_date: '2026-09-30',
       settlement: { indemniteConges: 50_000 },
     }, '2026-10', { enabled: true } as never)
     expect(m.workedDays).toBe(0)
     expect(m.settlementEarnings).toHaveLength(1)
-    expect(queryMock).not.toHaveBeenCalled()
+    expect(m.expenses).toEqual({ ids: [], total: 0 })
+    expect(queryMock).toHaveBeenCalledTimes(1)
+    expect(String(queryMock.mock.calls[0]![0])).toContain('expense_reports')
   })
   it('sortie en cours de mois : pointage borné aux jours sous contrat', async () => {
     const m = await resolveEmployeeMonth('tenant_x', {
@@ -183,5 +185,49 @@ describe('accès base', () => {
     expect(m.workedDays).toBe(13)
     const att = queryMock.mock.calls.find(c => String(c[0]).includes('attendance_days'))
     expect(att?.[1]).toEqual(['e1', '2026-10-01', '2026-10-15'])
+  })
+})
+
+describe('notes de frais sur le bulletin', () => {
+  it('charge les notes approuvées non payées du mois et somme les montants', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 'x1', total_amount: '45000.00' }, { id: 'x2', total_amount: 12_500 }] })
+    const r = await loadReimbursableExpenses('tenant_x', 'e1', '2026-10')
+    expect(r).toEqual({ ids: ['x1', 'x2'], total: 57_500 })
+    const [sql, params] = queryMock.mock.calls[0]!
+    expect(String(sql)).toContain(`status = 'approved' AND er.paid_at IS NULL`)
+    expect(String(sql)).toContain('payOnPayslip')
+    expect(params).toEqual(['e1', '2026-10-01'])
+  })
+  it('table absente : aucun remboursement, jamais d’exception', async () => {
+    queryMock.mockRejectedValueOnce(new Error('relation does not exist'))
+    expect(await loadReimbursableExpenses('tenant_x', 'e1', '2026-10')).toEqual({ ids: [], total: 0 })
+  })
+  it('marque payées les notes remboursées, uniquement si approuvées', async () => {
+    await markExpensesPaid('tenant_x', ['x1'], 'slip-1')
+    const [sql, params] = queryMock.mock.calls[0]!
+    expect(String(sql)).toContain(`payment_method = 'payslip'`)
+    expect(String(sql)).toContain(`status = 'approved'`)
+    expect(params).toEqual([['x1'], 'slip-1'])
+  })
+  it('aucune note : aucune requête', async () => {
+    await markExpensesPaid('tenant_x', [], 'slip-1')
+    expect(queryMock).not.toHaveBeenCalled()
+  })
+  it('moteur : ligne 6000 hors brut, ni CNPS ni ITS, ajoutée au net', () => {
+    const base = {
+      baseSalary: 300_000, workedDays: 27, workingDaysMonth: 27, atRate: 0.02,
+      maritalStatus: 'single', childrenCount: 0, variableElements: {}, legislationPack: CIV_2024,
+    }
+    const ref = calculatePayrollCI(base)
+    const r = calculatePayrollCI({ ...base, expenseReimbursement: 57_500 })
+    expect(r.lines.find(l => l.code === '6000')).toMatchObject({ type: 'reimbursement', amount: 57_500 })
+    expect(r.grossSalary).toBe(ref.grossSalary)
+    expect(r.its).toBe(ref.its)
+    expect(r.totalCnpsSal).toBe(ref.totalCnpsSal)
+    expect(r.employerCost).toBe(ref.employerCost)
+    expect(r.netPayable).toBe(ref.netPayable + 57_500)
+    expect(r.reimbursementTotal).toBe(57_500)
+    expect(ref.reimbursementTotal).toBeUndefined()
+    expect(ref.lines.some(l => l.code === '6000')).toBe(false)
   })
 })

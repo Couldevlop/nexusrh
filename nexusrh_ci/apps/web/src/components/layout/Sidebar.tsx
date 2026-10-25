@@ -8,11 +8,13 @@ import {
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
   Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet, Clock,
+  ListChecks, UserCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
+import { usePendingApprovals } from '@/components/approvals/workflow'
 
 interface NavItem {
   to: string
@@ -34,6 +36,12 @@ interface NavItem {
 
 // Entrée épinglée en haut, hors groupe (toujours visible).
 const PINNED: NavItem = { to: '/dashboard', labelKey: 'dashboard', icon: LayoutDashboard, end: true }
+// RH et managers sont aussi des salariés : accès direct à leur espace personnel
+// (demandes d'absence, notes de frais, bulletins…).
+const PINNED_SELF: NavItem = { to: '/mon-espace', labelKey: 'mySpace', icon: UserCircle, roles: ['admin','hr_manager','hr_officer','manager','readonly'] }
+
+// Route de « Mes validations » : porte la pastille du nombre de demandes à traiter.
+const APPROVALS_ROUTE = '/approvals'
 
 interface NavGroup {
   /** Clé de traduction du libellé de groupe dans le namespace `nav.groups`. */
@@ -72,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/sage',          labelKey: 'sage',       icon: FileSpreadsheet, end: true, roles: ['admin','hr_manager'], moduleKey: 'sage' },
   ] },
   { key: 'timeExpenses', items: [
+    { to: APPROVALS_ROUTE,  labelKey: 'approvals',  icon: ListChecks, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
     { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true, moduleKey: 'absences' },
     { to: '/attendance',    labelKey: 'attendance', icon: Clock,      end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'attendance' },
     { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'expenses' },
@@ -142,6 +151,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   const isDg = user?.role === 'dg'
+  // Pastille « Mes validations » : même requête (cache partagé) que la bannière d'échéances.
+  const { data: pending } = usePendingApprovals(!isDg && !!user)
+  const actionableCount = pending?.summary?.actionable ?? 0
   // DG : navigation courte et plate (pas de regroupement). HR : groupes dépliables.
   const dgItems = isDg ? DG_NAV.filter(isVisible) : []
   const groups = isDg
@@ -175,6 +187,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     >
       <item.icon className="h-4 w-4 shrink-0" />
       <span className="flex-1">{t(item.labelKey)}</span>
+      {item.to === APPROVALS_ROUTE && actionableCount > 0 && (
+        <span aria-label={t('approvalsBadge', { count: actionableCount })}
+          className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+          {actionableCount > 99 ? '99+' : actionableCount}
+        </span>
+      )}
       <ChevronRight className="h-3 w-3 opacity-30" />
     </NavLink>
   )
@@ -225,6 +243,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <>
               {/* Tableau de bord — épinglé en haut, hors groupe */}
               {renderLink(PINNED)}
+              {isVisible(PINNED_SELF) && renderLink(PINNED_SELF)}
 
               {groups.map(group => {
                 const isOpen = expanded[group.key] ?? false

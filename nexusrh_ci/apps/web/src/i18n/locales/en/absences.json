@@ -14,7 +14,9 @@
     "days": "Days",
     "reason": "Reason",
     "status": "Status",
-    "actions": "Actions"
+    "actions": "Actions",
+    "step": "Step",
+    "sla": "Due"
   },
   "halfDay": "½d",
   "fullDays": "{{count}}d",
@@ -29,5 +31,38 @@
     "placeholder": "Explain the reason for rejection (optional)...",
     "cancel": "Cancel",
     "confirm": "Confirm rejection"
+  },
+  "entry": {
+    "open": "Enter an absence",
+    "title": "Enter an absence for an employee",
+    "subtitle": "Entered by a manager in the employee's reporting line: counts as their approval. HR can enter it for any employee.",
+    "employee": "Employee",
+    "employeeFilter": "Filter by name…",
+    "selectEmployee": "Select an employee",
+    "type": "Absence type",
+    "selectType": "Select a type",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "halfDay": "Half day",
+    "reason": "Reason",
+    "reasonPlaceholder": "Reason (optional)",
+    "submit": "Save absence",
+    "cancel": "Cancel",
+    "created": "Absence saved.",
+    "error": "Unable to save. Please try again.",
+    "maternity": {
+      "legal": "Legal duration: {{days}} calendar days ({{weeks}} consecutive weeks). The end date is filled in automatically.",
+      "multipleBirth": "Multiple birth (+{{weeks}} weeks)",
+      "illness": "Medically certified illness related to pregnancy or childbirth (+{{weeks}} weeks)",
+      "hospitalized": "Days of the child's hospitalisation (extension)",
+      "total": "Total duration: {{days}} calendar days"
+    },
+    "validation": {
+      "employeeRequired": "Employee required",
+      "typeRequired": "Type required",
+      "startRequired": "Start date required",
+      "endRequired": "End date required",
+      "endBeforeStart": "End date must be on or after start date"
+    }
   }
 }

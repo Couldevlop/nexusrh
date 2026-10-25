@@ -136,6 +136,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS bordereau_cnps jsonb`,
     `ALTER TABLE "${schemaName}".absences ADD COLUMN IF NOT EXISTS validation_level int NOT NULL DEFAULT 0`,
     `ALTER TABLE "${schemaName}".expense_reports ADD COLUMN IF NOT EXISTS validation_level int NOT NULL DEFAULT 0`,
+    // Circuit N+1 … N+n → RH : piste des visas (qui, quand, escalade) et auteur
+    // de la saisie (salarié, son responsable ou la RH).
+    `ALTER TABLE "${schemaName}".absences ADD COLUMN IF NOT EXISTS approval_trail jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE "${schemaName}".absences ADD COLUMN IF NOT EXISTS created_by uuid`,
+    `ALTER TABLE "${schemaName}".expense_reports ADD COLUMN IF NOT EXISTS approval_trail jsonb NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS evaluator_id uuid`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_employee boolean DEFAULT false`,
     `ALTER TABLE "${schemaName}".evaluations ADD COLUMN IF NOT EXISTS signed_by_manager boolean DEFAULT false`,

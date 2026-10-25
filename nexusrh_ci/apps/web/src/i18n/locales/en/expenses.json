@@ -15,7 +15,9 @@
     "amount": "Amount",
     "status": "Status",
     "submittedAt": "Submission date",
-    "actions": "Actions"
+    "actions": "Actions",
+    "step": "Step",
+    "sla": "Due"
   },
   "noDate": "—",
   "actions": {

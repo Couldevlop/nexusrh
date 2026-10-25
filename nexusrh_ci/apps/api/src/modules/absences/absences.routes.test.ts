@@ -78,6 +78,15 @@ beforeEach(() => {
   queryMock.mockReset()
 })
 
+// Mock pg routé par fragment SQL (l'ordre des requêtes du circuit de validation
+// varie selon le cas : configuration, hiérarchie, demande, mise à jour…).
+function routeSql(routes: Array<[string, unknown[]]>) {
+  queryMock.mockImplementation(async (sql: string) => {
+    const hit = routes.find(([needle]) => String(sql).includes(needle))
+    return { rows: hit ? hit[1] : [] }
+  })
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 describe('POST /absences — validation Zod (OWASP A03)', () => {
   it('refuse un body sans absenceTypeId (400)', async () => {
@@ -136,11 +145,10 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
   })
 
   it('accepte un body valide et persiste, logue audit_log absence.created', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', end_date: '2026-01-05' }] }) // INSERT
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+    routeSql([
+      ['absence_types', [{ code: 'CP', calculation_mode: 'working_days' }]],
+      ['INSERT INTO "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2027-03-01', end_date: '2027-03-05' }]],
+    ])
 
     const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
     const res = await app.inject({
@@ -149,7 +157,7 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         absenceTypeId: '11111111-1111-1111-1111-111111111111',
-        startDate: '2026-01-05', endDate: '2026-01-09',
+        startDate: '2027-03-01', endDate: '2027-03-05',
         reason: 'Vacances',
       },
     })
@@ -164,7 +172,7 @@ describe('POST /absences — validation Zod (OWASP A03)', () => {
 describe('POST /absences — solde de congés payés', () => {
   const payload = {
     absenceTypeId: '11111111-1111-1111-1111-111111111111',
-    startDate: '2026-01-05', endDate: '2026-01-09',
+    startDate: '2027-03-01', endDate: '2027-03-05',
   }
   const balance = { year: 2026, mode: 'monthly' as const, accrued: 2.2, carriedOver: 0,
     acquired: 2.2, taken: 0, pending: 0, remaining: 2.2, monthsServed: 1 }
@@ -186,11 +194,10 @@ describe('POST /absences — solde de congés payés', () => {
     vi.mocked(pl.checkPaidLeaveRequest).mockResolvedValueOnce({
       balance, requested: 5, available: 2.2, insufficient: true, blocked: false,
     })
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ code: 'CP', calculation_mode: 'working_days' }] }) // SELECT absence_types (décompte)
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-2', start_date: '2026-01-05', end_date: '2026-01-09' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
+    routeSql([
+      ['absence_types', [{ code: 'CP', calculation_mode: 'working_days' }]],
+      ['INSERT INTO "tenant_sotra".absences', [{ id: 'abs-2', start_date: '2027-03-01', end_date: '2027-03-05' }]],
+    ])
     const token = tokenFor(app, 'employee', { employeeId: 'emp-1' })
     const res = await app.inject({ method: 'POST', url: '/absences', headers: { authorization: `Bearer ${token}` }, payload })
     expect(res.statusCode).toBe(201)
@@ -219,17 +226,16 @@ describe('PATCH /absences/:id/approve — RBAC manager (OWASP A01)', () => {
     expect(JSON.parse(res.body).error).toContain('équipe directe')
   })
 
-  it('un manager PEUT approuver l\'absence de son équipe directe', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ levels_count: 1 }] }) // workflow_configs
-      .mockResolvedValueOnce({ rows: [{
-        validation_level: 0, status: 'submitted',
-        employee_id: 'emp-team', days: 3, absence_type_id: 'at-1',
-      }] }) // SELECT absence
-      .mockResolvedValueOnce({ rows: [{ id: 'emp-team' }] }) // SELECT employees — manager match
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01', status: 'approved' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+  it('le N+1 vise l\'absence de son équipe directe : elle part à la RH (pas encore approuvée)', async () => {
+    routeSql([
+      ['workflow_configs', [{ levels_count: 1, config: {} }]],
+      ['SELECT id, manager_id FROM', [{ id: 'emp-team', manager_id: 'manager-1' }, { id: 'manager-1', manager_id: null }]],
+      ['SELECT validation_level', [{
+        validation_level: 0, status: 'submitted', created_at: new Date().toISOString(),
+        employee_id: 'emp-team', days: 3, absence_type_id: 'at-1', approval_trail: [],
+      }]],
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2026-01-01', status: 'submitted' }]],
+    ])
 
     const token = tokenFor(app, 'manager', { employeeId: 'manager-1' })
     const res = await app.inject({
@@ -239,19 +245,23 @@ describe('PATCH /absences/:id/approve — RBAC manager (OWASP A01)', () => {
       payload: {},
     })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).fullyApproved).toBe(true)
+    const body = JSON.parse(res.body)
+    expect(body.fullyApproved).toBe(false)
+    expect(body.message).toContain('validation RH')
+    const update = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE "tenant_sotra".absences'))
+    expect(update?.[1]?.[0]).toBe(1) // validation_level : visa N+1 franchi
+    expect(update?.[1]?.[1]).toBe('submitted')
   })
 
-  it('un hr_manager peut approuver l\'absence de N\'IMPORTE QUEL employé du tenant', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ levels_count: 1 }] })
-      .mockResolvedValueOnce({ rows: [{
-        validation_level: 0, status: 'submitted',
-        employee_id: 'emp-quiconque', days: 3, absence_type_id: 'at-1',
-      }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', start_date: '2026-01-01' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+  it('un hr_manager décide une absence arrivée à l\'étape RH (N\'IMPORTE QUEL employé du tenant)', async () => {
+    routeSql([
+      ['workflow_configs', [{ levels_count: 1, config: {} }]],
+      ['SELECT validation_level', [{
+        validation_level: 0, status: 'submitted', created_at: new Date().toISOString(),
+        employee_id: 'emp-quiconque', days: 3, absence_type_id: 'at-1', approval_trail: [],
+      }]], // sans N+1 : l'étape courante est directement la RH
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', start_date: '2026-01-01' }]],
+    ])
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
@@ -316,13 +326,13 @@ describe('PATCH /absences/:id/reject — RBAC manager + audit_log', () => {
   })
 
   it('un hr_officer rejette correctement et déclenche audit_log absence.rejected', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{
+    routeSql([
+      ['SELECT employee_id, days', [{
         employee_id: 'emp-1', days: 2, absence_type_id: 'at-1', start_date: '2026-03-01',
-      }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'abs-1', status: 'rejected' }] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE balances
-      .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log
+        validation_level: 0, status: 'submitted', created_at: new Date().toISOString(), approval_trail: [],
+      }]],
+      ['UPDATE "tenant_sotra".absences', [{ id: 'abs-1', status: 'rejected' }]],
+    ])
 
     const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({

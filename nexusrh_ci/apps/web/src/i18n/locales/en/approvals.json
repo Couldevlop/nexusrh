@@ -1,0 +1,77 @@
+{
+  "title": "My approvals",
+  "subtitle": "Absence requests and expense reports awaiting your decision",
+  "groups": {
+    "actionable": "To process",
+    "readOnly": "For information"
+  },
+  "groupsHint": {
+    "readOnly": "Read-only requests: they have not reached your step of the approval chain yet."
+  },
+  "empty": "No pending approvals",
+  "emptyGroup": "Nothing to process for now",
+  "modules": {
+    "absences": "Absence",
+    "expenses": "Expense report"
+  },
+  "step": {
+    "manager": "N+{{level}} approval",
+    "hr": "HR approval",
+    "done": "Chain completed"
+  },
+  "progress": "Step {{done}}/{{total}} approved",
+  "sla": {
+    "overdue": "Overdue",
+    "dueSoon": "Due soon"
+  },
+  "waitingOther": "Waiting for another approver",
+  "readOnlyWaiting": "Read-only — waiting for N+{{level}} approval",
+  "readOnlyWaitingHr": "Read-only — waiting for HR approval",
+  "actions": {
+    "approve": "Approve",
+    "reject": "Reject",
+    "close": "Close",
+    "processNow": "Process now",
+    "remindLater": "Remind me later"
+  },
+  "rejectModal": {
+    "title": "Rejection reason",
+    "placeholder": "Explain the reason for rejection (optional)...",
+    "cancel": "Cancel",
+    "confirm": "Confirm rejection"
+  },
+  "table": {
+    "employee": "Employee",
+    "request": "Request",
+    "step": "Step",
+    "sla": "Due",
+    "actions": "Actions"
+  },
+  "banner": {
+    "overdue_one": "{{count}} approval overdue",
+    "overdue_other": "{{count}} approvals overdue",
+    "dueSoon_one": "{{count}} due soon",
+    "dueSoon_other": "{{count}} due soon",
+    "view": "View"
+  },
+  "reminder": {
+    "title": "Approvals to process",
+    "intro": "These requests are past or close to their approval deadline:"
+  },
+  "summary": {
+    "actionable": "To process",
+    "overdue": "Overdue",
+    "dueSoon": "Due soon",
+    "readOnly": "For information"
+  },
+  "widget": {
+    "title": "My approvals",
+    "viewAll": "View all"
+  },
+  "approved": "Request approved",
+  "rejected": "Request rejected",
+  "errors": {
+    "generic": "Action failed. Please try again.",
+    "load": "Unable to load pending approvals."
+  }
+}

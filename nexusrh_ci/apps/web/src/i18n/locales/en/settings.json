@@ -502,7 +502,7 @@
       }
     },
     "title": "Approval workflow — Configurable levels",
-    "description": "Define up to 5 hierarchical levels per module. Each level corresponds to an additional approver before finalization.",
+    "description": "Absences and expense reports: reporting-line chain N+1 → N+2 → … (1 to 10 levels; levels missing from the org chart are skipped), then the HR team makes the final decision. Nobody approves their own request. Payroll closing: up to 5 approval levels.",
     "levelBadge_one": "{{count}} level",
     "levelBadge_other": "{{count}} levels",
     "chain": "Chain: {{chain}}",
@@ -528,6 +528,38 @@
       "itsAbatementValue": "15 % of gross",
       "fdfpContribution": "FDFP contribution",
       "fdfpContributionValue": "0.4 % of payroll"
+    },
+    "saveError": "Failed to save the workflow.",
+    "circuit": {
+      "hr": "HR",
+      "levelBadge_one": "{{count}} reporting level + HR",
+      "levelBadge_other": "{{count}} reporting levels + HR",
+      "levelsHint": "Number of reporting levels (N+1, N+2…) before HR approval.",
+      "visibility": {
+        "absences": "An absence becomes visible to HR only once all reporting-line approvals are done.",
+        "expenses": "An expense report is visible to HR from submission, read-only until it reaches the HR step."
+      },
+      "managerSla": "Reporting-line SLA (days per level)",
+      "hrSla": "HR SLA (days)",
+      "hrValidator": "Designated HR approver",
+      "wholeHrTeam": "Whole HR team",
+      "hrValidatorHint": "Once their deadline has passed, any HR team member (admin, HR manager, HR officer) can decide."
+    },
+    "notice": {
+      "enabled": "Notice period for planned absences",
+      "hint": "Requests entered too late are refused on entry (HR roles are exempt).",
+      "types": "Absence types concerned",
+      "shortFrom": "From",
+      "shortTo": "to",
+      "shortArrow": "days of absence → at least",
+      "daysAhead": "days in advance",
+      "longFrom": "Beyond {{days}} days → at least",
+      "shortMinDays": "Minimum duration (days)",
+      "shortMaxDays": "Maximum duration (days)",
+      "shortNoticeDays": "Short notice (days)",
+      "longNoticeDays": "Long notice (days)",
+      "invalidRange": "The minimum duration must be less than or equal to the maximum duration.",
+      "hrExempt": "Absences shorter than the minimum duration are not subject to notice."
     }
   },
   "connectivity": {

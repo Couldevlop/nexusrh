@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import ManagerDashboard from './ManagerDashboard'
+import ApprovalsWidget from '@/components/approvals/ApprovalsWidget'
 import {
   Users, CreditCard, FileText, AlertCircle, TrendingUp,
   ArrowUpRight, ArrowDownRight, Download, Printer,
@@ -267,6 +268,9 @@ export default function DashboardPage() {
             sub={t('kpi.payrollTrendSub')}
           />
         </div>
+
+        {/* ── Mes validations (masqué s'il n'y a rien à suivre) ── */}
+        <div className="no-print"><ApprovalsWidget /></div>
 
         {/* ── Graphiques ligne 1 ───────────────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-3">

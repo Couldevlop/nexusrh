@@ -6,7 +6,12 @@ import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-money-providers.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
+import {
+  denialMessage, evaluateRequest, hrCanSee, loadManagerMap, loadWorkflowSettings, stepLabel, summarize, trailEntry,
+  type Actor, type ApprovalTrailEntry,
+} from '../../services/approval-workflow.service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -141,6 +146,44 @@ async function managerUserIdOfEmployee(schema: string, employeeId: string | null
   } catch { return null }
 }
 
+/** Utilisateur connecté vu par le circuit de validation (dossier employé résolu). */
+async function actorOf(schema: string, user: { sub: string; role: string; employeeId?: string | null; email?: string }): Promise<Actor> {
+  let employeeId = user.employeeId ?? null
+  if (!employeeId && user.email) {
+    try {
+      const r = await pool.query<{ id: string }>(
+        `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+      )
+      employeeId = r?.rows?.[0]?.id ?? null
+    } catch { employeeId = null }
+  }
+  return { role: user.role, userId: user.sub, employeeId }
+}
+
+interface ReportWorkflowRow {
+  employee_id: string; status: string; validation_level: number | null
+  submitted_at: string | null; created_at: string | null; approval_trail: ApprovalTrailEntry[] | null
+  total_amount?: string | number | null; title?: string | null
+}
+
+async function loadReportForWorkflow(schema: string, id: string): Promise<ReportWorkflowRow | null> {
+  const r = await pool.query<ReportWorkflowRow>(
+    `SELECT employee_id, status, validation_level, submitted_at, created_at, approval_trail, total_amount, title
+       FROM "${schema}".expense_reports WHERE id = $1 LIMIT 1`, [id],
+  )
+  return r?.rows?.[0] ?? null
+}
+
+function toWorkflowRequest(row: ReportWorkflowRow) {
+  return {
+    employeeId: row.employee_id,
+    validationLevel: Number(row.validation_level ?? 0),
+    status: row.status,
+    submittedAt: new Date(row.submitted_at ?? row.created_at ?? Date.now()),
+    trail: Array.isArray(row.approval_trail) ? row.approval_trail : [],
+  }
+}
+
 function auditLogExpense(
   schema: string, userId: string, action: string,
   reportId: string, changes: Record<string, unknown>, ip: string | null,
@@ -149,6 +192,8 @@ function auditLogExpense(
 }
 
 const expensesRoutes: FastifyPluginAsync = async (fastify) => {
+  // Migration paresseuse (colonnes du circuit de validation sur les anciens tenants).
+  fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   // GET /expenses — toutes les notes (RH)
   fastify.get('/', {
@@ -163,13 +208,19 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
                  WHERE 1=1`
       const params: unknown[] = []
       let idx = 1
+      let managerEmpId: string | null = null
       if (request.user.role === 'manager') {
         const emp = await pool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
         )
         // OWASP A01 — fail-closed : manager sans dossier employé → aucune note.
         if (!emp.rows[0]) return reply.send({ data: [] })
-        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
+        managerEmpId = emp.rows[0].id as string
+        // Son périmètre, plus les notes de sa branche en attente (visa N+2…).
+        const p = `$${idx++}`; params.push(managerEmpId)
+        sql = sql.replace('SELECT er.*,', `SELECT er.*, (${managerScopeSql(schema, 'e', p)}) AS in_scope,`)
+        sql += ` AND (${managerScopeSql(schema, 'e', p)}
+                 OR (er.status = 'submitted' AND ${managerScopeSql(schema, 'e', p, { forceHierarchy: true })}))`
       }
       if (status)      { sql += ` AND er.status = $${idx++}`; params.push(status) }
       if (employee_id) { sql += ` AND er.employee_id = $${idx++}`; params.push(employee_id) }
@@ -177,7 +228,26 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       params.push(parseInt(limit), parseInt(offset))
       try {
         const res = await pool.query(sql, params)
-        return reply.send({ data: res.rows })
+        const rows = (res?.rows ?? []) as Array<ReportWorkflowRow & { in_scope?: boolean }>
+        if (rows.length === 0) return reply.send({ data: rows })
+        // Circuit : la RH voit les notes dès la soumission, en lecture seule
+        // tant qu'elles ne sont pas arrivées à son niveau.
+        const settings = await loadWorkflowSettings(pool, schema, 'expenses')
+        const managerOf = await loadManagerMap(pool, schema)
+        const actor = managerEmpId
+          ? { role: request.user.role, userId: request.user.sub, employeeId: managerEmpId }
+          : await actorOf(schema, request.user)
+        const data = rows
+          .map(({ in_scope: inScope, ...row }) => ({
+            ...row,
+            inScope: inScope !== false,
+            workflow: summarize(settings, managerOf, toWorkflowRequest(row), actor),
+          }))
+          .filter((row) => managerEmpId !== null
+            ? row.inScope || row.workflow.canAct
+            : hrCanSee('expenses', row.workflow))
+          .map(({ inScope: _inScope, ...row }) => row)
+        return reply.send({ data })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -375,30 +445,57 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // PATCH /expenses/:id/approve
+  // PATCH /expenses/:id/approve — circuit N+1 … N+n → RH (Paramètres → Workflow).
+  // Le valideur de l'étape agit, quel que soit son rôle (un chef d'équipe peut
+  // avoir le rôle employee) ; la RH décide en dernier. Jamais sur sa propre note.
   fastify.patch('/:id/approve', {
-    preHandler: [fastify.authorize('admin','hr_manager','manager')],
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','employee')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      // OWASP A01 : un manager ne peut approuver que les notes de son équipe directe
-      if (request.user.role === 'manager') {
-        const allowed = await managerCanActOnReport(schema, request.user.email, id)
-        if (!allowed) {
-          return reply.status(403).send({ error: 'Vous ne pouvez approuver que les notes de votre équipe directe' })
-        }
-      }
       try {
+        const report = await loadReportForWorkflow(schema, id)
+        if (!report) return reply.status(404).send({ error: 'Note introuvable' })
+        if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non approvable' })
+        const actor = await actorOf(schema, request.user)
+        const settings = await loadWorkflowSettings(pool, schema, 'expenses')
+        const ev = evaluateRequest(settings, await loadManagerMap(pool, schema), toWorkflowRequest(report), actor)
+        if (!ev.decision.allowed) {
+          return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'note de frais') })
+        }
+        const isFinal = ev.step.kind === 'hr'
+        const nextLevel = ev.index + 1
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
-          SET status = 'approved', approved_by = $1, approved_at = now(), updated_at = now()
-          WHERE id = $2 AND status = 'submitted' RETURNING *
-        `, [request.user.sub, id])
+          SET validation_level = $1, status = $2,
+              approved_by = $3, approved_at = $4, updated_at = now(),
+              approval_trail = COALESCE(approval_trail, '[]'::jsonb) || $5::jsonb
+          WHERE id = $6 AND status = 'submitted' RETURNING *
+        `, [nextLevel, isFinal ? 'approved' : 'submitted', isFinal ? request.user.sub : null, isFinal ? new Date() : null,
+            JSON.stringify([trailEntry(ev.index, ev.step, actor, ev.decision.override)]), id])
         if (!res.rows[0]) return reply.status(400).send({ error: 'Note non approvable' })
+        if (!isFinal) {
+          auditLogExpense(schema, request.user.sub, 'expense.approval_step', id, {
+            step: ev.step.kind === 'hr' ? 'hr' : `n+${ev.step.level}`, level: nextLevel, totalLevels: ev.steps.length,
+            employeeId: report.employee_id,
+          }, request.ip ?? null)
+          const next = ev.steps[nextLevel]
+          if (next?.kind === 'manager') {
+            void userIdOfEmployee(schema, next.approverEmployeeId).then((uid) =>
+              notifyUser(schema, uid, 'expense_submitted', 'Note de frais à viser',
+                `La note « ${report.title ?? ''} » attend votre visa (N+${next.level}).`, { reportId: id }))
+          }
+          return reply.send({
+            data: res.rows[0],
+            message: `Étape ${nextLevel}/${ev.steps.length} validée — suite : ${next ? stepLabel(next) : 'validation RH'}`,
+            fullyApproved: false,
+          })
+        }
         auditLogExpense(schema, request.user.sub, 'expense.approved', id, {
           totalAmount: res.rows[0].total_amount,
           employeeId:  res.rows[0].employee_id,
+          escalated:   ev.decision.override,
         }, request.ip ?? null)
         emitIntegrationEvent(pool, schema, 'expense.approved', {
           id, employeeId: res.rows[0].employee_id, totalAmount: res.rows[0].total_amount,
@@ -408,7 +505,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           notifyUser(schema, uid, 'expense_approved', 'Note de frais approuvée',
             'Votre note de frais a été approuvée — remboursement à venir.',
             { reportId: id }))
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: res.rows[0], message: 'Note de frais approuvée', fullyApproved: true })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -418,7 +515,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
 
   // PATCH /expenses/:id/reject
   fastify.patch('/:id/reject', {
-    preHandler: [fastify.authorize('admin','hr_manager','manager')],
+    preHandler: [fastify.authorize('admin','hr_manager','hr_officer','manager','employee')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
@@ -429,14 +526,17 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Motif invalide' })
       }
       const reason = parsed.data.reason
-      // OWASP A01 : même RBAC manager que approve
-      if (request.user.role === 'manager') {
-        const allowed = await managerCanActOnReport(schema, request.user.email, id)
-        if (!allowed) {
-          return reply.status(403).send({ error: 'Vous ne pouvez rejeter que les notes de votre équipe directe' })
-        }
-      }
       try {
+        // OWASP A01 : même circuit que approve (valideur de l'étape, jamais soi-même).
+        const report = await loadReportForWorkflow(schema, id)
+        if (!report) return reply.status(404).send({ error: 'Note introuvable' })
+        if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non refusable' })
+        const actor = await actorOf(schema, request.user)
+        const settings = await loadWorkflowSettings(pool, schema, 'expenses')
+        const ev = evaluateRequest(settings, await loadManagerMap(pool, schema), toWorkflowRequest(report), actor)
+        if (!ev.decision.allowed) {
+          return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'note de frais') })
+        }
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
           SET status = 'rejected', rejection_reason = $1, updated_at = now()

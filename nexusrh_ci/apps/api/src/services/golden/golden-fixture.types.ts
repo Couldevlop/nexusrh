@@ -2,7 +2,7 @@ import type { PayrollContext, PayrollResult } from '../payroll-engine-ci.js'
 
 export interface GoldenFixtureExpectedLine {
   code: string
-  type: 'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution'
+  type: 'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution' | 'reimbursement'
   amount: number
 }
 

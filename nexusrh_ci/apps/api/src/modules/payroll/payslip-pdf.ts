@@ -12,7 +12,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf
 export interface PayslipPdfLine {
   code?:  string | null
   label:  string
-  type:   'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution' | string
+  type:   'earning' | 'deduction' | 'employee_contribution' | 'employer_contribution' | 'reimbursement' | string
   base?:  number | null
   amount: number
 }
@@ -242,6 +242,9 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
       [`${impotLbl}`, -data.its],
       ['Total des retenues', -data.totalDeductions],
     ]
+    // Notes de frais : hors brut, ajoutées au net à payer
+    const reimbursed = data.lines.filter((l) => l.type === 'reimbursement').reduce((t, l) => t + l.amount, 0)
+    if (reimbursed > 0) recap.push(['Remboursement de frais (hors brut)', reimbursed])
     for (const [label, val] of recap) {
       text(label, cLabel, yy + 11, 9, { color: SLATE })
       textRight(formatMoney(val, data.currency), cRet, yy + 11, 9, { color: val < 0 ? rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) : NAVY })

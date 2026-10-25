@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('pg', () => ({
   Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
 }))
@@ -55,6 +56,24 @@ beforeAll(async () => {
 afterAll(async () => { await app.close() })
 
 beforeEach(() => { queryMock.mockReset() })
+
+// Mock pg routé par fragment SQL (circuit de validation : configuration,
+// hiérarchie, note, mise à jour — l'ordre varie selon le cas).
+function routeSql(routes: Array<[string, unknown[]]>) {
+  queryMock.mockImplementation(async (sql: string) => {
+    const hit = routes.find(([needle]) => String(sql).includes(needle))
+    return { rows: hit ? hit[1] : [] }
+  })
+}
+const REPORT = (over: Record<string, unknown> = {}) => ({
+  employee_id: 'emp-1', status: 'submitted', validation_level: 0, title: 'Mission',
+  submitted_at: new Date().toISOString(), created_at: new Date().toISOString(), approval_trail: [], total_amount: 15000,
+  ...over,
+})
+// emp-1 → mgr-1 (N+1) → aucun N+2
+const HIERARCHY: [string, unknown[]] = ['SELECT id, manager_id FROM', [
+  { id: 'emp-1', manager_id: 'mgr-1' }, { id: 'mgr-1', manager_id: null },
+]]
 
 describe('POST /expenses — Zod (OWASP A03)', () => {
   it('refuse body sans title (400)', async () => {
@@ -143,8 +162,8 @@ describe('PATCH /expenses/:id/approve — RBAC manager équipe + audit (OWASP A0
   })
 
   it('un manager NE PEUT PAS approuver une note hors équipe (403)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] }) // managerCanActOnReport → false
-    const token = tokenFor(app, 'manager', { employeeId: 'mgr-1', email: 'manager@sotra.ci' })
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT()]], HIERARCHY])
+    const token = tokenFor(app, 'manager', { employeeId: 'mgr-autre', email: 'manager@sotra.ci' })
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/approve`,
       headers: { authorization: `Bearer ${token}` },
@@ -154,10 +173,12 @@ describe('PATCH /expenses/:id/approve — RBAC manager équipe + audit (OWASP A0
     expect(JSON.parse(res.body).error).toContain('équipe directe')
   })
 
-  it('un hr_manager approuve, trace audit_log expense.approved', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ id: UUID_A, status: 'approved', total_amount: 15000, employee_id: 'emp-1' }] })
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+  it('un hr_manager décide une note visée par le N+1, trace audit_log expense.approved', async () => {
+    routeSql([
+      ['FROM "tenant_sotra".expense_reports WHERE id', [REPORT({ validation_level: 1 })]],
+      HIERARCHY,
+      ['UPDATE "tenant_sotra".expense_reports', [{ id: UUID_A, status: 'approved', total_amount: 15000, employee_id: 'emp-1' }]],
+    ])
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
@@ -169,11 +190,35 @@ describe('PATCH /expenses/:id/approve — RBAC manager équipe + audit (OWASP A0
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('expense.approved')
   })
+
+  it('la RH voit la note dès la soumission mais ne peut pas agir avant le visa du N+1 (403)', async () => {
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT()]], HIERARCHY])
+    const token = tokenFor(app, 'hr_manager', { employeeId: 'rh-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/approve`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toContain('N+1')
+  })
+
+  it('personne n\'approuve sa propre note, même la RH (403)', async () => {
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT({ employee_id: 'rh-1' })]], HIERARCHY])
+    const token = tokenFor(app, 'hr_manager', { employeeId: 'rh-1' })
+    const res = await app.inject({
+      method: 'PATCH', url: `/expenses/${UUID_A}/approve`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toContain('propre')
+  })
 })
 
 describe('PATCH /expenses/:id/reject — RBAC manager + audit', () => {
   it('un manager NE PEUT PAS rejeter une note hors équipe (403)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] }) // pas équipe
+    routeSql([['FROM "tenant_sotra".expense_reports WHERE id', [REPORT()]], HIERARCHY])
     const token = tokenFor(app, 'manager', { email: 'manager@sotra.ci' })
     const res = await app.inject({
       method: 'PATCH', url: `/expenses/${UUID_A}/reject`,
@@ -184,9 +229,11 @@ describe('PATCH /expenses/:id/reject — RBAC manager + audit', () => {
   })
 
   it('un hr_manager rejette, trace audit_log expense.rejected avec motif', async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [{ id: UUID_A, status: 'rejected', employee_id: 'emp-1' }] })
-      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    routeSql([
+      ['FROM "tenant_sotra".expense_reports WHERE id', [REPORT({ validation_level: 1 })]],
+      HIERARCHY,
+      ['UPDATE "tenant_sotra".expense_reports', [{ id: UUID_A, status: 'rejected', employee_id: 'emp-1' }]],
+    ])
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
