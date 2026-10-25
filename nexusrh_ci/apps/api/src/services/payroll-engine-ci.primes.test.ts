@@ -37,6 +37,14 @@ describe('Primes et heures supplémentaires — soumises CNPS + ITS', () => {
     expect(r.netPayable).toBe(205_750)           // 250 000 − 15 750 − 28 500
   })
 
+  it('prime de panier 50 000 : ligne 1350 portée au bulletin, bases 250 000', () => {
+    const r = calculatePayrollCI(ctx({ variableElements: { PRIME_PANIER: 50_000 } }))
+    expect(r.lines.find(l => l.code === '1350')?.amount).toBe(50_000)
+    expect(r.grossSalary).toBe(250_000)
+    expect(r.baseImposable).toBe(250_000)
+    expect(r.its).toBe(28_500)
+  })
+
   it('gratification 100 000 : ligne 1250, bases 300 000', () => {
     const r = calculatePayrollCI(ctx({ variableElements: { GRATIFICATION: 100_000 } }))
     expect(r.lines.find(l => l.code === '1250')?.amount).toBe(100_000)

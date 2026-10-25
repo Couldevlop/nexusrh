@@ -503,6 +503,7 @@
   },
   "workflow": {
     "levelNames": {
+      "hrTeamLevel": "Équipe RH — niveau {{level}}",
       "directManager": "Manager direct",
       "hrManager": "DRH / RH Manager",
       "accounting": "Comptabilité",

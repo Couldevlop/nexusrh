@@ -8,7 +8,7 @@ import {
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
   Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet, Clock,
-  ListChecks, UserCircle,
+  ListChecks, UserCircle, FileText,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
@@ -74,6 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
       roles: ['admin','hr_manager','hr_officer','readonly'], requiresSubsidiaries: true, moduleKey: 'payroll' },
     { to: '/raf/periods',   labelKey: 'payrollRaf', icon: ClipboardList, end: true,
       roles: ['raf_site'], requiresSubsidiaries: true, moduleKey: 'payroll' },
+    { to: '/payroll/payslips', labelKey: 'payslips', icon: FileText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'payroll' },
     { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'payroll' },
     { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'cnps' },
     { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'cnps' },
