@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 10 — ajout rubrique HEURES_SUPP_FERIE code 1550 (Code Travail CI +100%)",
         "deltaSummary": "baseSalary 0 → 200000 ; brutProrata 0 → 200000 ; grossSalary 0 → 230000 ; cnpsRetraiteSal 0 → 12600 ; cnpsRetraitePat 0 → 15400 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 12600 ; totalCnpsPat 0 → 20825 ; baseImposable 0 → 157400 ; its 0 → 1235 ; totalDeductions 0 → 13835 ; netPayable 0 → 216165 ; employerCost 0 → 250825 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 8"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 157400 → 200000 ; its 1235 → 20000 ; totalDeductions 13835 → 32600 ; netPayable 216165 → 197400"
       }
     ]
   },
@@ -37,10 +43,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 12600,
     "totalCnpsPat": 20825,
-    "baseImposable": 157400,
-    "its": 1235,
-    "totalDeductions": 13835,
-    "netPayable": 216165,
+    "baseImposable": 200000,
+    "its": 20000,
+    "totalDeductions": 32600,
+    "netPayable": 197400,
     "employerCost": 250825,
     "workingDays": 26,
     "smigCompliant": true,
@@ -63,7 +69,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 1235
+        "amount": 20000
       },
       {
         "code": "3000",

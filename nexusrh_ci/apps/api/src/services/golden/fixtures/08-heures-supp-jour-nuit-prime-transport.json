@@ -7,7 +7,14 @@
     "period": "2024-11",
     "createdAt": "2026-05-19",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 141660 → 180000 ; its 999 → 16800 ; totalDeductions 12339 → 28140 ; netPayable 209661 → 193860"
+      }
+    ]
   },
   "input": {
     "baseSalary": 180000,
@@ -32,10 +39,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 11340,
     "totalCnpsPat": 19285,
-    "baseImposable": 141660,
-    "its": 999,
-    "totalDeductions": 12339,
-    "netPayable": 209661,
+    "baseImposable": 180000,
+    "its": 16800,
+    "totalDeductions": 28140,
+    "netPayable": 193860,
     "employerCost": 241285,
     "workingDays": 26,
     "smigCompliant": true,
@@ -45,7 +52,7 @@
       { "code": "1400", "type": "earning",                 "amount":  12000 },
       { "code": "1500", "type": "earning",                 "amount":   5000 },
       { "code": "2000", "type": "employee_contribution",   "amount":  11340 },
-      { "code": "2100", "type": "employee_contribution",   "amount":    999 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  16800 },
       { "code": "3000", "type": "employer_contribution",   "amount":  13860 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },

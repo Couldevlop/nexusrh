@@ -3,7 +3,7 @@
  *   - /status : IA indisponible (aucune clé) → message d'invitation à configurer ;
  *   - /chat : schema JWT invalide (A05) → 400 ;
  *   - /chat : aucune clé Claude (tenant ni plateforme) → 503 ;
- *   - /simulate-its : branche « crédit maximum atteint » (3 enfants, gain nul).
+ *   - /simulate-its : barème ITS 2024, RICF par parts, plafond 5 parts (gain nul).
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
@@ -136,20 +136,25 @@ describe('POST /ai/chat — défenses schema + credentials', () => {
   })
 })
 
-describe('POST /ai/simulate-its — crédit maximum atteint', () => {
-  it('3 enfants : gain nul → message « crédit maximum est déjà atteint »', async () => {
+describe('POST /ai/simulate-its — ITS 2024 et RICF par parts', () => {
+  it('marié 6 enfants (5 parts, plafond) : gain nul → message « plafond de 5 parts »', async () => {
     const res = await app.inject({
       method: 'POST', url: '/ai/simulate-its',
       headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
-      payload: { baseSalary: 1_500_000, maritalStatus: 'married', childrenCount: 3 },
+      payload: { baseSalary: 1_500_000, maritalStatus: 'married', childrenCount: 6 },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
+    // 26 400 + 117 600 + 700 000 × 24 % = 312 000 ; RICF 5 parts = 44 000
+    expect(body.its.brut).toBe(312_000)
+    expect(body.its.parts).toBe(5)
+    expect(body.its.credit).toBe(44_000)
+    expect(body.its.net).toBe(268_000)
     expect(body.simulation.avecUnEnfantSupp.gain).toBe(0)
-    expect(body.simulation.avecUnEnfantSupp.message).toContain('crédit maximum')
+    expect(body.simulation.avecUnEnfantSupp.message).toContain('plafond de 5 parts')
   })
 
-  it('1 enfant marié : crédit famille appliqué (branches childrenCount===1)', async () => {
+  it('marié 1 enfant : 2,5 parts → RICF 16 500', async () => {
     const res = await app.inject({
       method: 'POST', url: '/ai/simulate-its',
       headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
@@ -157,29 +162,46 @@ describe('POST /ai/simulate-its — crédit maximum atteint', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    // marié (5500) + 1 enfant (3000) = 8500 de crédit
-    expect(body.its.credit).toBe(8_500)
+    // base = 100 % du brut, sans abattement ni CNPS
+    expect(body.its.base).toBe(1_000_000)
+    expect(body.its.brut).toBe(192_000)    // 144 000 + 200 000 × 24 %
+    expect(body.its.parts).toBe(2.5)
+    expect(body.its.credit).toBe(16_500)
+    expect(body.its.net).toBe(175_500)
   })
 
-  it('2 enfants : crédit famille = 6000 (branche childrenCount===2)', async () => {
+  it('célibataire 2 enfants : 1,5 + 2 × 0,5 = 2,5 parts → RICF 16 500', async () => {
     const res = await app.inject({
       method: 'POST', url: '/ai/simulate-its',
       headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
       payload: { baseSalary: 1_000_000, maritalStatus: 'single', childrenCount: 2 },
     })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).its.credit).toBe(6_000)
+    expect(JSON.parse(res.body).its.credit).toBe(16_500)
   })
 
-  it('salaire élevé, célibataire : gain positif → message d\'augmentation du net', async () => {
+  it('célibataire 450 000 : ITS 70 500, +1 enfant → gain 11 000 (2 parts)', async () => {
     const res = await app.inject({
       method: 'POST', url: '/ai/simulate-its',
       headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
-      payload: { baseSalary: 2_000_000, maritalStatus: 'single', childrenCount: 0 },
+      payload: { baseSalary: 450_000, maritalStatus: 'single', childrenCount: 0 },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(body.simulation.avecUnEnfantSupp.gain).toBeGreaterThan(0)
+    expect(body.its.net).toBe(70_500)
+    expect(body.simulation.avecUnEnfantSupp.gain).toBe(11_000)
     expect(body.simulation.avecUnEnfantSupp.message).toContain('le net augmenterait')
+  })
+
+  it('impôt déjà couvert par la RICF : message dédié', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/ai/simulate-its',
+      headers: { authorization: `Bearer ${tokenFor(app, 'employee')}` },
+      payload: { baseSalary: 100_000, maritalStatus: 'married', childrenCount: 1 },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.its.net).toBe(0)           // 25 000 × 16 % = 4 000 ≤ 16 500
+    expect(body.simulation.avecUnEnfantSupp.message).toContain('entièrement couvert')
   })
 })

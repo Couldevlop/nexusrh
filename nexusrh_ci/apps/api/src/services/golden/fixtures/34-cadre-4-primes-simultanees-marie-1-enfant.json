@@ -1,6 +1,6 @@
 {
   "id": "34-cadre-4-primes-simultanees-marie-1-enfant",
-  "description": "Cadre marié 1 enfant avec cumul de 4 primes earnings simultanées : ancienneté + rendement + transport + ICP. Cas typique d'un cadre confirmé en fin d'année (prime annuelle de rendement). Vérifie l'agrégation correcte au grossSalary, l'exclusion de toutes les primes de la baseImposable ITS (seul brutProrata est imposé), et le crédit famille marié+1 enfant (5500 + 3000 = 8500)",
+  "description": "Cadre marié 1 enfant avec cumul de 4 primes earnings simultanées : ancienneté + rendement + transport + ICP. Cas typique d'un cadre confirmé en fin d'année (prime annuelle de rendement). Vérifie l'agrégation correcte au grossSalary, l'exclusion de toutes les primes de la baseImposable ITS (seul brutProrata est imposé), et la RICF marié + 1 enfant (2,5 parts = 16 500 FCFA)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 11 — cumul 4 primes simultanées",
         "deltaSummary": "baseSalary 0 → 700000 ; brutProrata 0 → 700000 ; grossSalary 0 → 973000 ; cnpsRetraiteSal 0 → 44100 ; cnpsRetraitePat 0 → 53900 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 44100 ; totalCnpsPat 0 → 59325 ; baseImposable 0 → 550900 ; its 0 → 9519 ; totalDeductions 0 → 53619 ; netPayable 0 → 919381 ; employerCost 0 → 1032325 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 11"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 550900 → 700000 ; its 9519 → 106500 ; totalDeductions 53619 → 150600 ; netPayable 919381 → 822400"
       }
     ]
   },
@@ -40,10 +46,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 44100,
     "totalCnpsPat": 59325,
-    "baseImposable": 550900,
-    "its": 9519,
-    "totalDeductions": 53619,
-    "netPayable": 919381,
+    "baseImposable": 700000,
+    "its": 106500,
+    "totalDeductions": 150600,
+    "netPayable": 822400,
     "employerCost": 1032325,
     "workingDays": 26,
     "smigCompliant": true,
@@ -81,7 +87,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 9519
+        "amount": 106500
       },
       {
         "code": "3000",

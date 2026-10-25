@@ -116,10 +116,9 @@ const CONSTANT_META: Record<string, { unit: string; category: string }> = {
   TAUX_CNPS_AT_INDUSTRIE:       { unit: '%',      category: 'cnps' },
   TAUX_CNPS_AT_EXTRACTION:      { unit: '%',      category: 'cnps' },
   ABATTEMENT_ITS:               { unit: '%',     category: 'its' },
-  CREDIT_IMPOT_MARIE:           { unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_1ENFANT:         { unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_2ENFANTS:        { unit: 'FCFA/mois', category: 'its' },
-  CREDIT_IMPOT_3ENFANTS_PLUS:   { unit: 'FCFA/mois', category: 'its' },
+  RICF_PAR_DEMI_PART:           { unit: 'FCFA/mois', category: 'its' },
+  RICF_PLAFOND_PARTS:           { unit: 'parts',     category: 'its' },
+  RICF_MAX:                     { unit: 'FCFA/mois', category: 'its' },
   CONGES_JOURS_PAR_MOIS:        { unit: 'j/mois', category: 'conges' },
   CONTRIBUTION_FDFP:            { unit: '% masse sal.', category: 'fdfp' },
 }

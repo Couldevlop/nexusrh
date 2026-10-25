@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Palier 3 multi-filiales — at_rate filiale industrie 4%",
         "deltaSummary": "baseSalary 0 → 850000 ; brutProrata 0 → 850000 ; grossSalary 0 → 850000 ; cnpsRetraiteSal 0 → 53550 ; cnpsRetraitePat 0 → 65450 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 2800 ; totalCnpsSal 0 → 53550 ; totalCnpsPat 0 → 72275 ; baseImposable 0 → 668950 ; its 0 → 12422 ; totalDeductions 0 → 65972 ; netPayable 0 → 784028 ; employerCost 0 → 922275 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 7"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 668950 → 850000 ; its 12422 → 134000 ; totalDeductions 65972 → 187550 ; netPayable 784028 → 662450"
       }
     ]
   },
@@ -35,10 +41,10 @@
     "cnpsAtPat": 2800,
     "totalCnpsSal": 53550,
     "totalCnpsPat": 72275,
-    "baseImposable": 668950,
-    "its": 12422,
-    "totalDeductions": 65972,
-    "netPayable": 784028,
+    "baseImposable": 850000,
+    "its": 134000,
+    "totalDeductions": 187550,
+    "netPayable": 662450,
     "employerCost": 922275,
     "workingDays": 26,
     "smigCompliant": true,
@@ -56,7 +62,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 12422
+        "amount": 134000
       },
       {
         "code": "3000",

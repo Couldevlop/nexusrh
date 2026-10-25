@@ -1,10 +1,10 @@
 /**
  * Packs législatifs UEMOA / hors UEMOA — Palier 2 de la stratégie multi-pays.
  *
- * Le pack CIV-2024 reflète strictement les constantes du moteur CI 2024
- * actuel : un refactor du moteur consommant le pack par défaut CIV-2024
- * produit des résultats identiques au comportement précédent (les 46 tests
- * existants doivent rester verts sans modification).
+ * Le pack CIV-2024 porte les règles légales ivoiriennes en vigueur (CNPS,
+ * ITS réformé par l'ordonnance n° 2023-719 : barème 0/16/21/24/28/32 % sur
+ * 100 % du brut imposable, RICF par parts). Il est verrouillé par les
+ * fixtures golden (services/golden).
  *
  * Les packs autres pays sont déclarés mais marqués `status: 'stub'`.
  * Le moteur refusera explicitement de les exécuter tant qu'un expert paie
@@ -21,6 +21,25 @@ export interface ItsBracket {
   max: number
   /** Taux marginal appliqué à la portion dans la tranche */
   taux: number
+}
+
+/**
+ * Réduction d'impôt pour charges de famille par nombre de parts, imputée sur
+ * l'impôt brut (mensuel).
+ */
+export interface FamilyTaxReduction {
+  /** Célibataire, divorcé ou veuf sans enfant à charge */
+  partsSansEnfant: number
+  /** Marié (et veuf avec au moins un enfant à charge) */
+  partsMarie: number
+  /** Part supplémentaire par enfant à charge */
+  partsParEnfant: number
+  /** Célibataire ou divorcé avec au moins un enfant à charge : majoration */
+  majorationParentIsole: number
+  /** Plafond du nombre de parts */
+  plafondParts: number
+  /** Montant mensuel de la réduction par nombre de parts (ordre croissant) */
+  montantsParParts: readonly { parts: number; montant: number }[]
 }
 
 export interface LegislationPack {
@@ -68,15 +87,28 @@ export interface LegislationPack {
   tauxAtMin?: number
   tauxAtMax?: number
 
-  /** Abattement appliqué au brut avant calcul impôt (0.15 = 15%) */
+  /** Abattement appliqué au brut avant calcul impôt (0.15 = 15% ; 0 = aucun) */
   abattementImpotSalaire: number
+  /**
+   * Déduire les cotisations sociales salariales de l'assiette de l'impôt sur
+   * les salaires. Absent = `true` (comportement historique des packs). La CI
+   * (réforme ITS 2024, ordonnance n° 2023-719) taxe 100 % du brut imposable :
+   * `false`.
+   */
+  deduireCotisationsAssietteImpot?: boolean
   /** Barème impôt progressif sur traitements et salaires (mensuel) */
   tranchesImpotSalaire: readonly ItsBracket[]
 
-  /** Crédit d'impôt mensuel — marié sans enfant */
+  /** Crédit d'impôt mensuel — marié sans enfant (ignoré si `reductionChargesFamille`) */
   creditImpotMarieSansEnfant: number
-  /** Crédit d'impôt mensuel par enfant à charge (indexé [0]=1 enfant, [1]=2, [2]=3+) */
+  /** Crédit d'impôt mensuel par enfant à charge (indexé [0]=1 enfant, [1]=2, [2]=3+) — ignoré si `reductionChargesFamille` */
   creditImpotParEnfant: readonly [number, number, number]
+  /**
+   * Réduction d'impôt pour charges de famille calculée par nombre de parts
+   * (RICF ivoirienne). Présente = remplace `creditImpot*` ; absente = logique
+   * historique des crédits marié/enfants.
+   */
+  reductionChargesFamille?: FamilyTaxReduction
 
   /**
    * Libellé local de l'impôt sur les salaires (utilisé pour l'affichage
@@ -239,9 +271,9 @@ export interface LeaveRules {
   }
 }
 
-// ─── Pack CI 2024 — référence stable, ne pas modifier ─────────────────────────
-// Les valeurs ici DOIVENT correspondre exactement aux constantes utilisées
-// historiquement par le moteur CI : c'est ce qui garantit zéro régression.
+// ─── Pack CI 2024 — référence légale ──────────────────────────────────────────
+// Toute modification doit être sourcée (texte légal) et répercutée dans les
+// fixtures golden, recalculées et vérifiées à la main (services/golden).
 export const CIV_2024: LegislationPack = {
   code: 'CIV-2024',
   name: 'Côte d\'Ivoire — CNPS + ITS 2024',
@@ -260,16 +292,41 @@ export const CIV_2024: LegislationPack = {
   tauxAtDefaultPatronal: 0.02,
   tauxAtMin: 0.02,                            // CI : 2 % (commerce/services)
   tauxAtMax: 0.05,                            // CI : 5 % (extraction/mines)
-  abattementImpotSalaire: 0.15,
+  // ITS — réforme de l'ordonnance n° 2023-719 du 13/09/2023 (en vigueur au
+  // 01/01/2024) : barème mensuel progressif sur 100 % du revenu brut
+  // imposable (abattement forfaitaire supprimé, cotisations CNPS salariales
+  // non déduites de l'assiette), puis RICF par nombre de parts.
+  abattementImpotSalaire: 0,
+  deduireCotisationsAssietteImpot: false,
   tranchesImpotSalaire: [
-    { min: 0,          max: 75_000,    taux: 0.000 },
-    { min: 75_001,     max: 240_000,   taux: 0.015 },
-    { min: 240_001,    max: 800_000,   taux: 0.050 },
-    { min: 800_001,    max: 2_000_000, taux: 0.100 },
-    { min: 2_000_001,  max: Infinity,  taux: 0.150 },
+    { min: 0,          max: 75_000,    taux: 0.00 },
+    { min: 75_001,     max: 240_000,   taux: 0.16 },
+    { min: 240_001,    max: 800_000,   taux: 0.21 },
+    { min: 800_001,    max: 2_400_000, taux: 0.24 },
+    { min: 2_400_001,  max: 8_000_000, taux: 0.28 },
+    { min: 8_000_001,  max: Infinity,  taux: 0.32 },
   ],
-  creditImpotMarieSansEnfant: 5_500,
-  creditImpotParEnfant: [3_000, 6_000, 9_000],
+  // Crédits marié/enfants du régime antérieur à 2024 : remplacés par la RICF.
+  creditImpotMarieSansEnfant: 0,
+  creditImpotParEnfant: [0, 0, 0],
+  reductionChargesFamille: {
+    partsSansEnfant: 1,
+    partsMarie: 2,
+    partsParEnfant: 0.5,
+    majorationParentIsole: 0.5,
+    plafondParts: 5,
+    montantsParParts: [
+      { parts: 1,   montant: 0 },
+      { parts: 1.5, montant: 5_500 },
+      { parts: 2,   montant: 11_000 },
+      { parts: 2.5, montant: 16_500 },
+      { parts: 3,   montant: 22_000 },
+      { parts: 3.5, montant: 27_500 },
+      { parts: 4,   montant: 33_000 },
+      { parts: 4.5, montant: 38_500 },
+      { parts: 5,   montant: 44_000 },
+    ],
+  },
   labelImpotSalaire: 'ITS — Impôt sur Traitements et Salaires',
   labelCaisseSociale: 'CNPS',
   // Règles légales de congés CI 2024 (Code du Travail CI + CNPS)
@@ -307,7 +364,8 @@ export const CIV_2024: LegislationPack = {
   // n° 2026-198 du 15 avril 2026) pris pour l'art. 18.4 CT, identique à
   // l'art. 34 de la CCI de 1977. Indemnité : décret n° 2017-210 du 30 mars 2017
   // (art. 2 et 4) / art. 39 CCI — 1 an minimum, salaire global mensuel moyen
-  // des 12 derniers mois, fractions d'année au mois inférieur.
+  // des 12 derniers mois, fractions d'année au prorata des mois complets
+  // (ex. 13 mois → 13/12 d'année au taux de la tranche).
   // Ancienneté en mois : bornes « jusqu'à N ans » incluses (6 ans = 72 mois).
   // Bulletin de solde : l'indemnité compensatrice de congés et celle de préavis
   // ont le caractère de salaire (assiette CNPS + ITS) ; l'indemnité de
@@ -1114,7 +1172,9 @@ export function listLegislationPacks(): Array<Omit<LegislationPack, 'tranchesImp
     tauxCotisationMaternitePatronal: p.tauxCotisationMaternitePatronal,
     tauxAtDefaultPatronal: p.tauxAtDefaultPatronal,
     abattementImpotSalaire: p.abattementImpotSalaire,
+    deduireCotisationsAssietteImpot: p.deduireCotisationsAssietteImpot ?? true,
     creditImpotMarieSansEnfant: p.creditImpotMarieSansEnfant,
+    reductionChargesFamille: p.reductionChargesFamille,
     labelImpotSalaire: p.labelImpotSalaire,
     labelCaisseSociale: p.labelCaisseSociale,
     notes: p.notes,

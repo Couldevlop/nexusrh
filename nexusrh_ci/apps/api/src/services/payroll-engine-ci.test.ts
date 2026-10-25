@@ -102,23 +102,24 @@ describe('PayrollEngineCi — absence maternité', () => {
   })
 })
 
-describe('PayrollEngineCi — tranches ITS hautes', () => {
-  it('ITS tranche 10% (salaire 1 200 000 FCFA)', () => {
-    const ctx: PayrollContext = { ...baseCtx, baseSalary: 1_200_000 }
-    const r = calculatePayrollCI(ctx)
-    // imposable = 1_200_000 * 0.85 - cnps_sal ; dépasse 800 001 → tranche 10%
-    expect(r.its).toBeGreaterThan(0)
-    // net imposable ≈ 1 020 000 − cnps, en tranche 10% partielle
-    const netImposable = Math.floor(1_200_000 * 0.85) - r.cnpsRetraiteSal
-    expect(netImposable).toBeGreaterThan(800_000)
+describe('PayrollEngineCi — tranches ITS hautes (barème 2024 sur 100 % du brut)', () => {
+  it('ITS tranche 24 % (salaire 1 200 000 FCFA, célibataire)', () => {
+    const r = calculatePayrollCI({ ...baseCtx, baseSalary: 1_200_000 })
+    // 26 400 + 117 600 + (1 200 000 − 800 000) × 24 % = 240 000
+    expect(r.baseImposable).toBe(1_200_000)
+    expect(r.its).toBe(240_000)
   })
 
-  it('ITS tranche 15% (salaire 3 000 000 FCFA)', () => {
-    const ctx: PayrollContext = { ...baseCtx, baseSalary: 3_000_000 }
-    const r = calculatePayrollCI(ctx)
-    const netImposable = Math.floor(3_000_000 * 0.85) - r.cnpsRetraiteSal
-    expect(netImposable).toBeGreaterThan(2_000_000)
-    expect(r.its).toBeGreaterThan(0)
+  it('ITS tranche 28 % (salaire 3 000 000 FCFA, célibataire)', () => {
+    const r = calculatePayrollCI({ ...baseCtx, baseSalary: 3_000_000 })
+    // 26 400 + 117 600 + 384 000 + (3 000 000 − 2 400 000) × 28 % = 696 000
+    expect(r.its).toBe(696_000)
+  })
+
+  it('ITS tranche 32 % (salaire 10 000 000 FCFA, célibataire)', () => {
+    const r = calculatePayrollCI({ ...baseCtx, baseSalary: 10_000_000 })
+    // 26 400 + 117 600 + 384 000 + 1 568 000 + (10 000 000 − 8 000 000) × 32 % = 2 736 000
+    expect(r.its).toBe(2_736_000)
   })
 })
 

@@ -1,13 +1,20 @@
 {
   "id": "25-avance-credit-famille-its-zero",
-  "description": "Cumul avance sur salaire 75 000 + crédit famille (marié 1 enfant). L'ITS brut tomberait à 8 182 FCFA mais le crédit famille (5 500 + 3 000 = 8 500) l'annule à 0. L'avance est une LIGNE deduction code 5000, soustraite du grossSalary pour donner le netPayable",
+  "description": "Cumul avance sur salaire 75 000 + RICF (marié 1 enfant = 2,5 parts). Brut 450 000 : impôt brut 70 500 − RICF 16 500 = ITS 54 000. L'avance est une LIGNE deduction code 5000, soustraite du grossSalary pour donner le netPayable",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 354150 → 450000 ; its 0 → 54000 ; totalDeductions 103350 → 157350 ; netPayable 346650 → 292650"
+      }
+    ]
   },
   "input": {
     "baseSalary": 450000,
@@ -30,17 +37,17 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 28350,
     "totalCnpsPat": 40075,
-    "baseImposable": 354150,
-    "its": 0,
-    "totalDeductions": 103350,
-    "netPayable": 346650,
+    "baseImposable": 450000,
+    "its": 54000,
+    "totalDeductions": 157350,
+    "netPayable": 292650,
     "employerCost": 490075,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 450000 },
       { "code": "2000", "type": "employee_contribution",   "amount":  28350 },
-      { "code": "2100", "type": "employee_contribution",   "amount":      0 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  54000 },
       { "code": "5000", "type": "deduction",               "amount":  75000 },
       { "code": "3000", "type": "employer_contribution",   "amount":  34650 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },

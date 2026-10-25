@@ -1,13 +1,20 @@
 {
   "id": "13-haut-salaire-marie-3-enfants",
-  "description": "Cadre supérieur marié avec 3 enfants, brut 1 500 000 FCFA — tranche ITS 10% atteinte mais crédit famille maximal (5500 + 9000 = 14500 FCFA réduit l'ITS effectif)",
+  "description": "Cadre supérieur marié avec 3 enfants, brut 1 500 000 FCFA — impôt brut 312 000 (barème 2024 sur 100 % du brut) − RICF 3,5 parts 27 500 = ITS 284 500",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 1180500 → 1500000 ; its 54024 → 284500 ; totalDeductions 148524 → 379000 ; netPayable 1351476 → 1121000"
+      }
+    ]
   },
   "input": {
     "baseSalary": 1500000,
@@ -28,17 +35,17 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 94500,
     "totalCnpsPat": 120925,
-    "baseImposable": 1180500,
-    "its": 54024,
-    "totalDeductions": 148524,
-    "netPayable": 1351476,
+    "baseImposable": 1500000,
+    "its": 284500,
+    "totalDeductions": 379000,
+    "netPayable": 1121000,
     "employerCost": 1620925,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 1500000 },
       { "code": "2000", "type": "employee_contribution",   "amount":   94500 },
-      { "code": "2100", "type": "employee_contribution",   "amount":   54024 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  284500 },
       { "code": "3000", "type": "employer_contribution",   "amount":  115500 },
       { "code": "3100", "type": "employer_contribution",   "amount":    3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":     525 },

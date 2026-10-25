@@ -593,6 +593,15 @@ describe('GET /platform/legal-constants', () => {
     const res = await app.inject({ method: 'GET', url: '/platform/legal-constants', headers: hSuper() })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data).toHaveLength(1)
+    // Seed + migration ITS 2024 : barème 0/16/21/24/28/32 %, sans abattement, RICF
+    const seed = queryMock.mock.calls.find(c => String(c[0]).includes('INSERT INTO platform.legal_constants'))
+    expect(String(seed?.[0])).toContain("constants->>'ABATTEMENT_ITS' = '0.15'")
+    const params = seed?.[1] as string[]
+    const its = JSON.parse(params[1]!) as { ABATTEMENT_ITS: number; TRANCHES_ITS: Array<{ taux: number }>; RICF_MAX: number }
+    expect(its.ABATTEMENT_ITS).toBe(0)
+    expect(its.TRANCHES_ITS.map(t => t.taux)).toEqual([0, 0.16, 0.21, 0.24, 0.28, 0.32])
+    expect(its.RICF_MAX).toBe(44_000)
+    expect(params[0]).not.toContain('CREDIT_IMPOT')
   })
   it('SELECT échoue → data vide (catch)', async () => {
     queryMock
@@ -633,7 +642,7 @@ describe('PATCH /platform/legal-constants/:country/:version', () => {
       .mockResolvedValueOnce({ rows: [] }) // CREATE TABLE
       .mockResolvedValueOnce({ rows: [] }) // upsert
     const res = await app.inject({ method: 'PATCH', url: '/platform/legal-constants/CI/2024', headers: hSuper(),
-      payload: { constants: { ABATTEMENT_ITS: 0.15 } } })
+      payload: { constants: { CONTRIBUTION_FDFP: 0.004 } } })
     expect(res.statusCode).toBe(200)
     expect(queryMock.mock.calls.some(c => String(c[0]).includes('LEGAL_UPDATE'))).toBe(false)
   })

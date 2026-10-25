@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 9 — fixture initiale, capture sortie moteur",
         "deltaSummary": "baseSalary 0 → 600000 ; brutProrata 0 → 600000 ; grossSalary 0 → 650000 ; cnpsRetraiteSal 0 → 37800 ; cnpsRetraitePat 0 → 46200 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 3500 ; totalCnpsSal 0 → 37800 ; totalCnpsPat 0 → 53725 ; baseImposable 0 → 472200 ; its 0 → 14084 ; totalDeductions 0 → 51884 ; netPayable 0 → 598116 ; employerCost 0 → 703725 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 8"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 472200 → 600000 ; its 14084 → 102000 ; totalDeductions 51884 → 139800 ; netPayable 598116 → 510200"
       }
     ]
   },
@@ -37,10 +43,10 @@
     "cnpsAtPat": 3500,
     "totalCnpsSal": 37800,
     "totalCnpsPat": 53725,
-    "baseImposable": 472200,
-    "its": 14084,
-    "totalDeductions": 51884,
-    "netPayable": 598116,
+    "baseImposable": 600000,
+    "its": 102000,
+    "totalDeductions": 139800,
+    "netPayable": 510200,
     "employerCost": 703725,
     "workingDays": 26,
     "smigCompliant": true,
@@ -63,7 +69,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 14084
+        "amount": 102000
       },
       {
         "code": "3000",

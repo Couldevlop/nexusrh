@@ -1138,11 +1138,36 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         )
       `).catch(() => null)
 
-      // Seed CI 2024 si absent
+      // ITS — réforme de l'ordonnance n° 2023-719 (en vigueur au 01/01/2024) :
+      // barème sur 100 % du brut imposable (abattement supprimé, CNPS non
+      // déduite), puis RICF de 5 500 FCFA par demi-part au-delà de 1 part,
+      // plafond 5 parts (44 000 FCFA).
+      const itsConstants2024 = {
+        ABATTEMENT_ITS: 0,
+        TRANCHES_ITS: [
+          { max: 75000, taux: 0.00 },
+          { max: 240000, taux: 0.16 },
+          { max: 800000, taux: 0.21 },
+          { max: 2400000, taux: 0.24 },
+          { max: 8000000, taux: 0.28 },
+          { max: null, taux: 0.32 },
+        ],
+        RICF_PAR_DEMI_PART: 5500,
+        RICF_PLAFOND_PARTS: 5,
+        RICF_MAX: 44000,
+      }
+      // Seed CI 2024 si absent ; une ligne encore à l'ancien régime ITS
+      // (abattement 15 %, crédits marié/enfants) est migrée — les autres
+      // constantes éventuellement surchargées par le super_admin sont gardées.
       await pool.query(`
         INSERT INTO platform.legal_constants (country, version, effective, constants, notes)
         VALUES ('CI', '2024', '2024-01-01', $1, 'Constantes légales CI 2024 — CNPS + ITS/DGI + Code du Travail')
-        ON CONFLICT (country, version) DO NOTHING
+        ON CONFLICT (country, version) DO UPDATE
+          SET constants = (platform.legal_constants.constants
+                - 'CREDIT_IMPOT_MARIE' - 'CREDIT_IMPOT_1ENFANT'
+                - 'CREDIT_IMPOT_2ENFANTS' - 'CREDIT_IMPOT_3ENFANTS_PLUS') || $2::jsonb,
+              updated_at = NOW()
+          WHERE platform.legal_constants.constants->>'ABATTEMENT_ITS' = '0.15'
       `, [JSON.stringify({
           SMIG_MENSUEL: 75000,
           SMIG_HORAIRE: 433,
@@ -1156,21 +1181,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           TAUX_CNPS_AT_BTP: 0.030,
           TAUX_CNPS_AT_INDUSTRIE: 0.040,
           TAUX_CNPS_AT_EXTRACTION: 0.050,
-          ABATTEMENT_ITS: 0.15,
           CONGES_JOURS_PAR_MOIS: 2.5,
           CONTRIBUTION_FDFP: 0.004,
-          TRANCHES_ITS: [
-            { max: 75000, taux: 0.000 },
-            { max: 240000, taux: 0.015 },
-            { max: 800000, taux: 0.050 },
-            { max: 2000000, taux: 0.100 },
-            { max: null, taux: 0.150 },
-          ],
-          CREDIT_IMPOT_MARIE: 5500,
-          CREDIT_IMPOT_1ENFANT: 3000,
-          CREDIT_IMPOT_2ENFANTS: 6000,
-          CREDIT_IMPOT_3ENFANTS_PLUS: 9000,
-        })]).catch(() => null)
+          ...itsConstants2024,
+        }), JSON.stringify(itsConstants2024)]).catch(() => null)
 
       const res = await pool.query(
         `SELECT * FROM platform.legal_constants ORDER BY country, version DESC`
@@ -1255,7 +1269,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         INSERT INTO platform.country_configs
           (country_code, country_name, currency, timezone, payroll_engine, is_active, config)
         VALUES
-          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0.15,"zone":"UEMOA"}'),
+          ('CI','Côte d''Ivoire','XOF','Africa/Abidjan','ci_2024',true,'{"smig":75000,"cnpsRetraite":0.063,"itsAbattement":0,"zone":"UEMOA"}'),
           ('SN','Sénégal','XOF','Africa/Dakar','sn_2024',true,'{"smig":69120,"ipresRetraite":0.056,"cfceTaux":0.08,"zone":"UEMOA"}'),
           ('BJ','Bénin','XOF','Africa/Porto-Novo','bj_2024',true,'{"smig":52000,"cnssRetraite":0.036,"zone":"UEMOA"}'),
           ('TG','Togo','XOF','Africa/Lome','tg_2024',true,'{"smig":35000,"cnavsRetraite":0.04,"zone":"UEMOA"}'),

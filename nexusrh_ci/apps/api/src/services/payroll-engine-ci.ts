@@ -11,6 +11,7 @@
  */
 import {
   DEFAULT_LEGISLATION_PACK,
+  type FamilyTaxReduction,
   type LegislationPack,
 } from './legislation-packs.js'
 
@@ -122,6 +123,12 @@ export interface PayrollResult {
   totalCnpsPat:    number
   // ITS
   baseImposable:   number
+  /** Impôt brut issu du barème, avant réduction famille */
+  itsBrut:         number
+  /** Réduction famille imputée (RICF CI ou crédits du pack) */
+  reductionImpot:  number
+  /** Nombre de parts fiscales retenu (packs à RICF uniquement) */
+  partsFiscales?:  number
   its:             number
   // Totaux
   totalDeductions: number
@@ -147,26 +154,60 @@ function calculerBaremeImpot(baseImposable: number, pack: LegislationPack): numb
   const annuel = pack.bracketScale === 'annual'
   const baseProjetee = annuel ? baseImposable * 12 : baseImposable
   let impot = 0
+  // Les tranches sont déclarées en bornes entières incluses (0–75 000,
+  // 75 001–240 000…) : la portion imposée dans une tranche part de la borne
+  // haute de la tranche précédente, sinon on perdrait 1 F par tranche
+  // (240 000 → (240 000 − 75 000) × 16 %, pas (240 000 − 75 001) × 16 %).
+  let borneBasse = 0
   for (const tranche of pack.tranchesImpotSalaire) {
-    if (baseProjetee <= tranche.min) break
-    const montant = Math.min(baseProjetee, tranche.max) - tranche.min
-    impot += montant * tranche.taux
+    if (baseProjetee <= borneBasse) break
+    const montant = Math.min(baseProjetee, tranche.max) - borneBasse
+    if (montant > 0) impot += montant * tranche.taux
+    borneBasse = tranche.max
   }
   if (annuel) impot /= 12
-  return Math.floor(impot)
+  // Arrondi à l'entier inférieur ; l'epsilon neutralise les erreurs de
+  // représentation binaire (165 000 × 0,16 = 26 399,999…).
+  return Math.floor(impot + 1e-6)
+}
+
+/** Nombre de parts fiscales (RICF) selon la situation familiale. */
+function getPartsFiscales(
+  maritalStatus: string, childrenCount: number, r: FamilyTaxReduction,
+): number {
+  const enfants = Math.max(0, Math.floor(childrenCount))
+  let parts: number
+  if (maritalStatus === 'married' || (maritalStatus === 'widowed' && enfants > 0)) {
+    parts = r.partsMarie + enfants * r.partsParEnfant
+  } else if (enfants > 0) {
+    parts = r.partsSansEnfant + r.majorationParentIsole + enfants * r.partsParEnfant
+  } else {
+    parts = r.partsSansEnfant
+  }
+  return Math.min(parts, r.plafondParts)
 }
 
 /**
- * Crédit d'impôt famille — valeurs définies par le pack
+ * Réduction d'impôt famille — définie par le pack : RICF par parts si le pack
+ * la porte, sinon crédits historiques marié / enfants.
  */
 function getCreditImpot(
   maritalStatus: string, childrenCount: number, pack: LegislationPack,
-): number {
+): { credit: number; parts?: number } {
+  const ricf = pack.reductionChargesFamille
+  if (ricf) {
+    const parts = getPartsFiscales(maritalStatus, childrenCount, ricf)
+    let credit = 0
+    for (const palier of ricf.montantsParParts) {
+      if (palier.parts <= parts) credit = palier.montant
+    }
+    return { credit, parts }
+  }
   let credit = maritalStatus === 'married' ? pack.creditImpotMarieSansEnfant : 0
   if (childrenCount === 1)      credit += pack.creditImpotParEnfant[0]
   else if (childrenCount === 2) credit += pack.creditImpotParEnfant[1]
   else if (childrenCount >= 3)  credit += pack.creditImpotParEnfant[2]
-  return credit
+  return { credit }
 }
 
 /**
@@ -344,9 +385,17 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
 
   if (absence && absence.absenceDays > 0) {
     const tauxJour = baseSalary / workingDaysMonth
+    // Indemnité des jours d'absence. Quand présence + absence couvrent tout le
+    // mois, l'indemnité est le COMPLÉMENT exact du salaire des jours travaillés
+    // (base − prorata) : deux arrondis indépendants feraient perdre 1 F
+    // (ex. 77 777 + 62 222 = 139 999 pour une base de 140 000).
+    const indemniteJours = (jours: number, taux = 1): number =>
+      workedDays + jours >= workingDaysMonth
+        ? Math.floor((baseSalary - salaireJours) * taux + 1e-6)
+        : Math.floor(tauxJour * jours * taux)
 
     if (absence.type === 'maternite') {
-      indemniteAbsence  = Math.floor(tauxJour * absence.absenceDays)
+      indemniteAbsence  = indemniteJours(absence.absenceDays)
       indemniteExoneree = indemniteAbsence
       bordereauCnps = {
         motif: 'maternite',
@@ -355,7 +404,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
       }
     } else if (absence.type === 'maladie_sans_at') {
       const taux = absence.maintienTaux ?? 1.0
-      indemniteAbsence = Math.floor(tauxJour * absence.absenceDays * taux)
+      indemniteAbsence = indemniteJours(absence.absenceDays, taux)
       // Maladie : soumise à ITS — indemniteExoneree reste 0
     } else if (absence.type === 'accident_travail') {
       // Jour J payé par l'employeur = inclus dans brutProrata via workedDays
@@ -363,7 +412,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
         ? Math.max(0, absence.absenceDays - 1)
         : absence.absenceDays
       if (joursIjCnps > 0) {
-        indemniteAbsence  = Math.floor(tauxJour * joursIjCnps)
+        indemniteAbsence  = indemniteJours(joursIjCnps)
         indemniteExoneree = indemniteAbsence
         bordereauCnps = {
           motif: 'accident_travail',
@@ -375,13 +424,17 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   }
 
   // ── ÉTAPE 3 : Impôt sur les salaires (ITS CI / IUTS BF / IR SN / …) ─────────
-  // Base taxable = (présence + indemnité maladie) × abattement - cotisations sal.
-  // Indemnités maternité et AT sont exclues de la base imposable
+  // Base taxable = (présence + indemnité maladie + indemnités de solde
+  // imposables) × (1 − abattement du pack) − cotisations salariales si le pack
+  // les déduit. CI (réforme 2024) : abattement 0 et aucune déduction → barème
+  // sur 100 % du brut imposable. Indemnités maternité / AT, indemnité de
+  // licenciement (limite légale) et remboursements de frais restent hors base.
   const brutTaxable     = brutProrata + indemniteAbsence - indemniteExoneree + settlementTax
   const salaireAbattu   = Math.floor(brutTaxable * (1 - pack.abattementImpotSalaire))
-  const baseImposable   = Math.max(0, salaireAbattu - totalCnpsSal)
+  const deduireCotis    = pack.deduireCotisationsAssietteImpot ?? true
+  const baseImposable   = Math.max(0, salaireAbattu - (deduireCotis ? totalCnpsSal : 0))
   const itsBrut         = calculerBaremeImpot(baseImposable, pack)
-  const creditImpot     = getCreditImpot(maritalStatus, childrenCount, pack)
+  const { credit: creditImpot, parts: partsFiscales } = getCreditImpot(maritalStatus, childrenCount, pack)
   const its             = Math.max(0, itsBrut - creditImpot)
 
   // ── ÉTAPE 4 : Construction des lignes du bulletin ───────────────────────────
@@ -480,6 +533,9 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     totalCnpsSal,
     totalCnpsPat,
     baseImposable,
+    itsBrut,
+    reductionImpot: Math.min(itsBrut, creditImpot),
+    partsFiscales,
     its,
     totalDeductions: totalRetenues,
     netPayable,

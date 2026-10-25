@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 10 — cumul HS norme+nuit+férié",
         "deltaSummary": "baseSalary 0 → 180000 ; brutProrata 0 → 180000 ; grossSalary 0 → 218000 ; cnpsRetraiteSal 0 → 11340 ; cnpsRetraitePat 0 → 13860 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 2100 ; totalCnpsSal 0 → 11340 ; totalCnpsPat 0 → 19985 ; baseImposable 0 → 141660 ; totalDeductions 0 → 11340 ; netPayable 0 → 206660 ; employerCost 0 → 237985 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 10"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 141660 → 180000"
       }
     ]
   },
@@ -39,7 +45,7 @@
     "cnpsAtPat": 2100,
     "totalCnpsSal": 11340,
     "totalCnpsPat": 19985,
-    "baseImposable": 141660,
+    "baseImposable": 180000,
     "its": 0,
     "totalDeductions": 11340,
     "netPayable": 206660,

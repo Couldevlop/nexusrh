@@ -1,13 +1,20 @@
 {
   "id": "18-salaire-600k-celibataire-tranche-5pct",
-  "description": "Salaire 600 000 FCFA célibataire — exerce explicitement la tranche ITS 5% (240k-800k). Pas de variableElements pour isoler le calcul ITS. Pas de crédit famille (single, 0 enfant)",
+  "description": "Salaire 600 000 FCFA célibataire — exerce explicitement la tranche ITS 21 % (240 001–800 000) : 26 400 + 75 600 = 102 000. Pas de variableElements pour isoler le calcul ITS. Pas de RICF (célibataire, 0 enfant = 1 part)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 472200 → 600000 ; its 14084 → 102000 ; totalDeductions 51884 → 139800 ; netPayable 548116 → 460200"
+      }
+    ]
   },
   "input": {
     "baseSalary": 600000,
@@ -28,17 +35,17 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 37800,
     "totalCnpsPat": 51625,
-    "baseImposable": 472200,
-    "its": 14084,
-    "totalDeductions": 51884,
-    "netPayable": 548116,
+    "baseImposable": 600000,
+    "its": 102000,
+    "totalDeductions": 139800,
+    "netPayable": 460200,
     "employerCost": 651625,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 600000 },
       { "code": "2000", "type": "employee_contribution",   "amount":  37800 },
-      { "code": "2100", "type": "employee_contribution",   "amount":  14084 },
+      { "code": "2100", "type": "employee_contribution",   "amount": 102000 },
       { "code": "3000", "type": "employer_contribution",   "amount":  46200 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },

@@ -130,8 +130,10 @@ describe('calculatePayrollCI — accident du travail', () => {
       absence: { type: 'accident_travail', absenceDays: 6, atJourAccidentInMonth: false },
     }
     const r = calculatePayrollCI(ctx)
-    const tauxJour = baseCtx.baseSalary / baseCtx.workingDaysMonth
-    expect(r.indemniteAbsence).toBe(Math.floor(tauxJour * 6))
+    // 20 j travaillés + 6 j indemnisés = mois complet → complément exact du
+    // prorata (aucun franc perdu à l'arrondi)
+    const salaireJours = Math.floor(baseCtx.baseSalary * (20 / baseCtx.workingDaysMonth))
+    expect(r.indemniteAbsence).toBe(baseCtx.baseSalary - salaireJours)
   })
 
   it('AT d\'un seul jour avec jour J inclus → aucune indemnité CNPS (joursIjCnps = 0)', () => {
