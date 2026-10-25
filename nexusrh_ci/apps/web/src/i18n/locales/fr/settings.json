@@ -168,7 +168,8 @@
       "jobTitle": "Poste",
       "lastLogin": "Dernière connexion",
       "status": "Statut",
-      "actions": "Actions"
+      "actions": "Actions",
+      "employee": "Fiche employé"
     },
     "never": "Jamais",
     "active": "Actif",
@@ -208,7 +209,8 @@
       "cancel": "Annuler",
       "create": "Créer",
       "creating": "Création...",
-      "error": "La création a échoué. Si le problème persiste, actualisez la liste : le compte a pu être créé malgré l'erreur."
+      "error": "La création a échoué. Si le problème persiste, actualisez la liste : le compte a pu être créé malgré l'erreur.",
+      "employee": "Fiche employé liée (optionnel)"
     },
     "confirmResetMfa": "Réinitialiser la double authentification de {{name}} ? Son authenticator et ses codes de secours actuels cesseront de fonctionner ; un nouveau QR code lui sera présenté à sa prochaine connexion.",
     "resetMfaTitle": "Réinitialiser la double authentification (MFA)",
@@ -223,6 +225,19 @@
       "title": "Double authentification réinitialisée",
       "description": "<0>{{name}}</0> recevra un nouveau QR code et de nouveaux codes de secours à sa prochaine connexion.",
       "error": "La réinitialisation de la double authentification a échoué."
+    },
+    "employeeLink": {
+      "searchPlaceholder": "Rechercher une fiche (nom, N° CNPS)…",
+      "none": "Aucune fiche liée",
+      "alreadyLinked": "déjà liée à un compte",
+      "loading": "Recherche…",
+      "implicit": "par email",
+      "implicitHint": "Lien implicite par égalité d'email : rattachez explicitement la fiche pour fiabiliser les validations.",
+      "missing": "Aucune fiche",
+      "edit": "Modifier la fiche liée",
+      "editTitle": "Fiche employé de {{name}}",
+      "help": "Le compte agit au nom de cette fiche (absences, notes de frais, validations N+1). Une fiche ne peut être liée qu'à un seul compte. Les sessions de l'utilisateur sont fermées après modification.",
+      "save": "Enregistrer le lien"
     }
   },
   "departments": {
@@ -560,6 +575,15 @@
       "longNoticeDays": "Prévenance longue (jours)",
       "invalidRange": "La durée minimale doit être inférieure ou égale à la durée maximale.",
       "hrExempt": "Les absences plus courtes que la durée minimale ne sont pas soumises au délai."
+    },
+    "unlinkedManagers": {
+      "title_one": "{{count}} responsable hiérarchique sans compte utilisateur",
+      "title_other": "{{count}} responsables hiérarchiques sans compte utilisateur",
+      "description": "Leurs collaborateurs les ont pour N+1 : sans compte lié à leur fiche, les validations de niveau N+1 resteront bloquées. Donnez-leur un accès depuis leur fiche employé ou liez leur compte dans Paramètres → Utilisateurs.",
+      "reports_one": "{{count}} collaborateur",
+      "reports_other": "{{count}} collaborateurs",
+      "more_one": "… et {{count}} autre",
+      "more_other": "… et {{count}} autres"
     }
   },
   "connectivity": {

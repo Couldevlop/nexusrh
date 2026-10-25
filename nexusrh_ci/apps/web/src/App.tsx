@@ -5,6 +5,7 @@ import { useAuthStore, useMfaPending } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard, RhDashboardGuard } from '@/guards/RoleGuard'
 import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
+import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 const MainLayout       = lazy(() => import('@/components/layout/MainLayout'))
@@ -543,6 +544,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <ConfirmDialogHost />
       </ChunkLoadErrorBoundary>
     </BrowserRouter>
   )

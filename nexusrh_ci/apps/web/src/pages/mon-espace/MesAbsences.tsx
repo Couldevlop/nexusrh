@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { api, formatDate } from '@/lib/api'
 import { Plus, Calendar, Loader2, X } from 'lucide-react'
 import { addDays, maternityTotalDays, type AbsenceType } from '@/lib/absence-maternity'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 const schema = z.object({
   absenceTypeId: z.string().min(1, 'absences.validation.typeRequired'),
@@ -106,8 +107,8 @@ export default function MesAbsences() {
     },
   })
 
-  const handleCancel = (id: string) => {
-    if (window.confirm(t('absences.cancelConfirm'))) {
+  const handleCancel = async (id: string) => {
+    if (await confirmDialog({ message: t('absences.cancelConfirm'), danger: true })) {
       setFeedback(null)
       cancelMut.mutate(id)
     }

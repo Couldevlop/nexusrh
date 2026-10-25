@@ -96,5 +96,20 @@
     "label": "Language",
     "fr": "Français",
     "en": "English"
+  },
+  "confirmDialog": {
+    "title": "Confirmation",
+    "infoTitle": "Information",
+    "ok": "OK"
+  },
+  "paymentMethods": {
+    "mobile_money": "Mobile Money",
+    "bank_transfer": "Bank transfer",
+    "wave": "Wave",
+    "mtn": "MTN MoMo",
+    "orange": "Orange Money",
+    "cofina": "COFINA",
+    "cash": "Cash",
+    "cheque": "Cheque"
   }
 }

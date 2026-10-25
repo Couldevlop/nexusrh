@@ -7,6 +7,7 @@ import {
   Bell, Building2, AlertCircle, CheckCircle, Scale, Globe,
   Sparkles, Plus, Trash2, Edit3, RefreshCw,
 } from 'lucide-react'
+import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
 
 interface PlatformSettings {
   id?: string
@@ -889,7 +890,7 @@ function ModelsSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <button onClick={() => setEditing(m)} className="text-muted-foreground hover:text-primary" title={t('settings.sourcingIa.models.edit')}>
                     <Edit3 className="inline h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => { if (confirm(t('settings.sourcingIa.models.deleteConfirm'))) remove.mutate(m.id) }}
+                  <button onClick={async () => { if (await confirmDialog({ message: t('settings.sourcingIa.models.deleteConfirm'), danger: true })) remove.mutate(m.id) }}
                     className="text-red-400 hover:text-red-600" title={t('settings.sourcingIa.models.delete')}>
                     <Trash2 className="inline h-3.5 w-3.5" />
                   </button>
@@ -1102,7 +1103,7 @@ function PlatformGroup({ title, platforms, onEdit, onRemove }: {
               <button onClick={() => onEdit(p)} className="text-muted-foreground hover:text-primary p-1">
                 <Edit3 className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => { if (confirm(t('settings.sourcingIa.platforms.deleteConfirm'))) onRemove(p.id) }}
+              <button onClick={async () => { if (await confirmDialog({ message: t('settings.sourcingIa.platforms.deleteConfirm'), danger: true })) onRemove(p.id) }}
                 className="text-red-400 hover:text-red-600 p-1">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1296,7 +1297,7 @@ function AdvancedSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const onSave = () => {
     let weights: Record<string, number>
     try { weights = JSON.parse(form.weights) }
-    catch { alert(t('settings.sourcingIa.advanced.weightsInvalid')); return }
+    catch { void alertDialog({ message: t('settings.sourcingIa.advanced.weightsInvalid') }); return }
     save.mutate({
       max_profiles_min:         form.min,
       max_profiles_max:         form.max,

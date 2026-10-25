@@ -18,6 +18,7 @@ import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@ne
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
 import {
@@ -56,6 +57,26 @@ function auditLogSettings(
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
   auditTenant(schema, { userId: userId, action: action, entity: 'settings', entityId: entityId, changes: changes, ip: ip })
+}
+
+/**
+ * Rattachement compte ↔ fiche employé : la fiche doit exister dans le schéma
+ * du tenant courant (jamais un autre tenant : la requête est bornée au schéma
+ * du token) et ne pas être déjà liée à un AUTRE compte (1 compte ↔ 1 fiche).
+ */
+async function checkEmployeeLinkable(
+  schema: string, employeeId: string, exceptUserId: string | null,
+): Promise<{ status: number; error: string } | null> {
+  const emp = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`, [employeeId],
+  )
+  if (!emp.rows[0]) return { status: 404, error: 'Fiche employé introuvable' }
+  const taken = await pool.query<{ id: string }>(
+    `SELECT id FROM "${schema}".users WHERE employee_id = $1 AND ($2::uuid IS NULL OR id <> $2::uuid) LIMIT 1`,
+    [employeeId, exceptUserId],
+  )
+  if (taken.rows[0]) return { status: 409, error: 'Cette fiche employé est déjà liée à un autre compte.' }
+  return null
 }
 
 // OWASP A03 — schémas Zod stricts
@@ -741,8 +762,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = PAYSLIP_SCOPE.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       const b = parsed.data
-      const tRes = await pool.query<{ name: string; cnps_number: string | null; city: string | null }>(
-        `SELECT name, cnps_number, city FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
+      const tRes = await pool.query<{ name: string; cnps_number: string | null; city: string | null; rccm?: string | null; dgi_number?: string | null }>(
+        `SELECT name, cnps_number, city, rccm, dgi_number FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
       )
       const t = tRes.rows[0]
       let logo: { bytes: Uint8Array; mime: string } | null = null
@@ -755,8 +776,19 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       // Bulletin d'exemple (données fictives) rendu avec le modèle en cours d'édition.
       const pdf = await renderPayslipPdf({
         tenantName: t?.name ?? 'Votre entreprise',
-        employer: { cnpsNumber: t?.cnps_number ?? 'CI-0000000-X', city: t?.city ?? 'Abidjan' },
-        employee: { firstName: 'Awa', lastName: 'Koné', jobTitle: 'Exemple', cnpsNumber: 'CI-1234567', nni: 'CI000000001' },
+        // Mentions employeur RÉELLES du tenant : un N° CNPS manquant n'est plus
+        // masqué par une valeur d'exemple, il est signalé (hrPreview).
+        employer: {
+          cnpsNumber: t?.cnps_number ?? null, city: t?.city ?? 'Abidjan',
+          rccm: t?.rccm ?? null, dgiNumber: t?.dgi_number ?? null,
+        },
+        employee: {
+          firstName: 'Awa', lastName: 'Koné', jobTitle: 'Exemple', cnpsNumber: 'CI-1234567', nni: 'CI000000001',
+          hireDate: '2019-03-01', category: '5ème catégorie',
+        },
+        worked: { days: 30, hours: 173.33 },
+        leaveBalance: { year: 2025, acquired: 11, taken: 3, remaining: 8 },
+        hrPreview: true,
         month: '2025-05',
         lines: [
           { code: '1000', label: 'Salaire de base', type: 'earning', base: 250000, amount: 250000 },
@@ -1098,9 +1130,22 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query(`
           SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
             u.last_login_at, u.created_at,
-            e.id AS employee_id, e.job_title
+            le.id AS employee_id, le.job_title,
+            le.first_name AS employee_first_name, le.last_name AS employee_last_name,
+            le.link AS employee_link
           FROM "${schema}".users u
-          LEFT JOIN "${schema}".employees e ON e.id = u.employee_id
+          -- Fiche liée : lien explicite users.employee_id, sinon repli historique
+          -- par email (signalé 'email' pour inviter à rattacher explicitement).
+          LEFT JOIN LATERAL (
+            SELECT e.id, e.job_title, e.first_name, e.last_name,
+                   CASE WHEN e.id = u.employee_id THEN 'explicit' ELSE 'email' END AS link
+              FROM "${schema}".employees e
+             WHERE e.deleted_at IS NULL
+               AND (e.id = u.employee_id
+                    OR (u.employee_id IS NULL AND e.email IS NOT NULL AND lower(e.email) = lower(u.email)))
+             ORDER BY (e.id = u.employee_id) DESC NULLS LAST
+             LIMIT 1
+          ) le ON true
           ORDER BY u.created_at DESC
         `)
         return reply.send({ data: res.rows })
@@ -1126,6 +1171,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         last_name:     z.string().min(1).max(100).trim(),
         role:          z.enum(['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg']).optional(),
         department_id: z.string().uuid().optional(),
+        // Lien EXPLICITE vers une fiche employé du même tenant (1 compte ↔ 1 fiche).
+        employee_id:   z.string().uuid().optional(),
         is_active:     z.boolean().optional(),
       }).strict()
       const parsed = createUserSchema.safeParse(request.body)
@@ -1138,9 +1185,20 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const hash = await bcrypt.hash(tempPassword, 12)
         const isActive = body.is_active !== false
 
-        // Si un département est fourni, créer/lier un employé
+        // Fiche explicitement choisie : même tenant (requête sur le schéma du
+        // token) et pas déjà rattachée à un autre compte.
         let employeeId: string | null = null
-        if (body.department_id) {
+        if (body.employee_id) {
+          const linkErr = await checkEmployeeLinkable(schema, body.employee_id, null)
+          if (linkErr) return reply.status(linkErr.status).send({ error: linkErr.error })
+          employeeId = body.employee_id
+          if (body.department_id) {
+            await pool.query(
+              `UPDATE "${schema}".employees SET department_id = $1, updated_at = now() WHERE id = $2`,
+              [body.department_id, employeeId]
+            )
+          }
+        } else if (body.department_id) {
           // Vérifier s'il existe déjà un employé avec cet email
           const existing = await pool.query(
             `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [body.email]
@@ -1171,13 +1229,6 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           RETURNING id, email, first_name, last_name, role, is_active, created_at
         `, [body.email, hash, body.first_name, body.last_name, body.role ?? 'employee', isActive, employeeId])
 
-        // Lier l'employee_id si créé
-        if (employeeId) {
-          await pool.query(
-            `UPDATE "${schema}".users SET employee_id = $1 WHERE id = $2`,
-            [employeeId, res.rows[0].id]
-          )
-        }
 
         // SET-004 — email d'invitation (non bloquant ET borné dans le temps).
         // Le tempPassword reste dans la réponse comme filet de sécurité si
@@ -1228,7 +1279,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const { role, is_active } = request.body as { role?: string; is_active?: boolean }
+      const { role, is_active, employee_id } = (request.body ?? {}) as { role?: string; is_active?: boolean; employee_id?: string | null }
+      if (employee_id !== undefined && employee_id !== null && (typeof employee_id !== 'string' || !UUID_RE.test(employee_id))) {
+        return reply.status(400).send({ error: 'Fiche employé invalide' })
+      }
 
       // OWASP A01 (escalade de privilège) — un admin de tenant ne peut attribuer
       // QUE des rôles tenant. 'super_admin' (plateforme) est interdit : sinon un
@@ -1247,30 +1301,36 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const values: unknown[] = []
       if (role !== undefined)      { updates.push(`role = $${values.length + 1}`); values.push(role) }
       if (is_active !== undefined) { updates.push(`is_active = $${values.length + 1}`); values.push(is_active) }
+      if (employee_id !== undefined) { updates.push(`employee_id = $${values.length + 1}`); values.push(employee_id) }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
         // OWASP A09 — snapshot AVANT pour tracer le before/after (changement de
         // rôle = action sensible auditée).
-        const before = await pool.query<{ role: string; is_active: boolean }>(
-          `SELECT role, is_active FROM "${schema}".users WHERE id = $1`, [id],
+        const before = await pool.query<{ role: string; is_active: boolean; employee_id?: string | null }>(
+          `SELECT role, is_active, employee_id FROM "${schema}".users WHERE id = $1`, [id],
         )
         if (!before.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
+        if (employee_id) {
+          const linkErr = await checkEmployeeLinkable(schema, employee_id, id)
+          if (linkErr) return reply.status(linkErr.status).send({ error: linkErr.error })
+        }
 
         const res = await pool.query(
-          `UPDATE "${schema}".users SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING id, email, role, is_active`,
+          `UPDATE "${schema}".users SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING id, email, role, is_active, employee_id`,
           values
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Utilisateur introuvable' })
 
         const roleChanged = role !== undefined && role !== before.rows[0].role
+        const linkChanged = employee_id !== undefined && employee_id !== (before.rows[0].employee_id ?? null)
         auditLogSettings(
           schema, request.user.sub,
           roleChanged ? 'user.role_changed' : 'user.updated', id,
           {
-            before: { role: before.rows[0].role, isActive: before.rows[0].is_active },
-            after:  { role: role ?? before.rows[0].role, isActive: is_active ?? before.rows[0].is_active },
+            before: { role: before.rows[0].role, isActive: before.rows[0].is_active, ...(linkChanged ? { employeeId: before.rows[0].employee_id ?? null } : {}) },
+            after:  { role: role ?? before.rows[0].role, isActive: is_active ?? before.rows[0].is_active, ...(linkChanged ? { employeeId: employee_id } : {}) },
           },
           request.ip ?? null,
         )
@@ -1278,8 +1338,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // IMMÉDIATEMENT toute session existante de la cible : sinon un compte
         // démis/désactivé garde son accès (rôle périmé) jusqu'à expiration du
         // JWT (7j) via /auth/refresh. cf. plugins/auth.ts (token-epoch).
+        // Le lien de fiche est porté par le JWT (employeeId) : un changement de
+        // fiche invalide aussi les sessions pour ne pas agir sous l'ancienne.
         const becameInactive = is_active === false
-        if (roleChanged || becameInactive) {
+        if (roleChanged || becameInactive || linkChanged) {
           try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
         }
         return reply.send({ data: res.rows[0] })
@@ -1765,6 +1827,37 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT id, first_name, last_name, email, role FROM "${schema}".users
             WHERE role IN ('admin','hr_manager','hr_officer') AND COALESCE(is_active, true)
             ORDER BY last_name, first_name`,
+        )
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // GET /settings/workflow/unlinked-managers — responsables hiérarchiques
+  // (manager_id d'au moins un salarié actif) SANS compte utilisateur actif lié :
+  // leurs validations N+1 resteraient bloquées. Lien explicite users.employee_id
+  // ou, à défaut, repli historique par email.
+  fastify.get('/workflow/unlinked-managers', {
+    preHandler: [fastify.authorize('admin','hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const res = await pool.query(
+          `SELECT m.id, m.first_name, m.last_name, m.email, count(e.id)::int AS reports_count
+             FROM "${schema}".employees m
+             JOIN "${schema}".employees e ON e.manager_id = m.id AND e.deleted_at IS NULL
+            WHERE m.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM "${schema}".users u
+                 WHERE COALESCE(u.is_active, true)
+                   AND (u.employee_id = m.id
+                        OR (u.employee_id IS NULL AND m.email IS NOT NULL AND lower(u.email) = lower(m.email))))
+            GROUP BY m.id, m.first_name, m.last_name, m.email
+            ORDER BY m.last_name, m.first_name
+            LIMIT 200`,
         )
         return reply.send({ data: res.rows })
       } catch (err) {
@@ -2357,10 +2450,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             const emp = await pool.query(`SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email])
             if (!emp.rows[0]) { skipped++; errors.push(`Ligne ${i + 2}: ${email} introuvable`); continue }
             // OWASP A03 — whitelist opérateurs (anti-injection valeur libre)
-            const provider = get(row, 'operateur').toLowerCase()
-            const allowedProviders = ['wave', 'mtn_momo', 'orange_money']
-            if (!allowedProviders.includes(provider)) {
-              errors.push(`Ligne ${i + 2}: opérateur "${provider}" invalide (autorisés : ${allowedProviders.join(', ')})`); skipped++; continue
+            // Formes historiques (mtn_momo/orange_money) acceptées, écrites en forme canonique.
+            const rawProvider = get(row, 'operateur').toLowerCase()
+            const provider = canonicalEmployeeMmProvider(rawProvider)
+            if (!provider) {
+              errors.push(`Ligne ${i + 2}: opérateur "${rawProvider}" invalide (autorisés : wave, mtn, orange, cofina)`); skipped++; continue
             }
             const phone = get(row, 'numero_telephone')
             try {

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { GitBranch, Plus, Trash2, AlertTriangle, CheckCircle2, UserPlus } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Criticality = 'low' | 'medium' | 'high' | 'critical'
 type Readiness = 'ready_now' | 'short_term' | 'medium_term' | 'long_term'
@@ -159,7 +160,7 @@ export default function SuccessionPage() {
                   {p.coverage.atRisk ? t('coverage.atRisk') : t('coverage.covered')}
                 </span>
                 <span className="text-xs text-muted-foreground">{t('coverage.candidates', { count: p.coverage.candidateCount })}</span>
-                <button type="button" onClick={() => { if (window.confirm(t('actions.deleteConfirm'))) deleteMut.mutate(p.id) }}
+                <button type="button" onClick={async () => { if (await confirmDialog({ message: t('actions.deleteConfirm'), danger: true })) deleteMut.mutate(p.id) }}
                   className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>

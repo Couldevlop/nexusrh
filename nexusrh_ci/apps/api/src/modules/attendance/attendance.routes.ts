@@ -25,6 +25,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { encrypt, decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { isSafeOutboundUrl } from '@nexusrhci/shared/ssrf-guard'
 import { fetchDevicePunches } from './attendance.fetch.js'
@@ -341,7 +342,7 @@ function recentRange(daysBack = 30): { from: string; to: string } {
  */
 async function resolveSelfEmployeeId(schema: string, email: string): Promise<string | null> {
   const r = await pool.query<{ id: string }>(
-    `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [email],
+    actorEmployeeSql(schema), [email],
   )
   return r.rows[0]?.id ?? null
 }
@@ -1037,7 +1038,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          actorEmployeeSql(schema), [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
         sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
@@ -1140,7 +1141,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          actorEmployeeSql(schema), [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
         sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
@@ -1314,7 +1315,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          actorEmployeeSql(schema), [request.user.email],
         )
         if (!emp.rows[0]) return reply.send({ data: [] }) // fail-closed
         sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
@@ -1537,7 +1538,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
         const emp = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email],
+          actorEmployeeSql(schema), [request.user.email],
         )
         if (!emp.rows[0]) {
           // fail-closed : jamais les KPIs de tout le tenant sans dossier employé.

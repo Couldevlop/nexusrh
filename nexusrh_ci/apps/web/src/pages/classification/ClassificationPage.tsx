@@ -5,6 +5,7 @@ import { Layers, Plus, Trash2, Pencil, Check, X, ShieldAlert } from 'lucide-reac
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Tab = 'levels' | 'categories'
 const TENANT_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'dg', 'raf_site'] as const
@@ -224,7 +225,7 @@ export default function ClassificationPage() {
                       <td className="px-3 py-2 text-xs text-muted-foreground">{c.examples ?? '—'}</td>
                       {canEditCategories && (
                         <td className="px-3 py-2 text-right">
-                          <button type="button" onClick={() => { if (window.confirm(t('categories.deleteConfirm'))) deleteCat.mutate(c.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                          <button type="button" onClick={async () => { if (await confirmDialog({ message: t('categories.deleteConfirm'), danger: true })) deleteCat.mutate(c.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
                         </td>
                       )}
                     </tr>

@@ -785,6 +785,37 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // pas réparer ces tenants — il s'arrête en mode préservation. Portée bornée
     // aux tenants dont personne n'a de niveau ; no-op définitif ensuite.
     jobLevelBackfillSql(schemaName),
+    // ── Reprise : opérateur Mobile Money sous forme CANONIQUE ────────────────
+    // Le formulaire RH écrit wave|mtn|orange|cofina ; le seed, l'import CSV et
+    // l'ancien self-service écrivaient mtn_momo/orange_money → le select de
+    // la fiche ne se pré-remplissait pas. Idempotent : ne vise que les formes
+    // historiques, no-op une fois converties.
+    `UPDATE "${schemaName}".employees
+        SET mobile_money_provider = CASE lower(mobile_money_provider)
+              WHEN 'mtn_momo' THEN 'mtn' WHEN 'momo' THEN 'mtn'
+              WHEN 'orange_money' THEN 'orange' WHEN 'om' THEN 'orange'
+              ELSE lower(mobile_money_provider) END
+      WHERE mobile_money_provider IS NOT NULL
+        AND (mobile_money_provider <> lower(mobile_money_provider)
+             OR lower(mobile_money_provider) IN ('mtn_momo', 'momo', 'orange_money', 'om'))`,
+    // ── Lien EXPLICITE compte utilisateur ↔ fiche employé ────────────────────
+    // users.employee_id existait mais restait NULL : la résolution passait par
+    // l'égalité d'email. Reprise : on renseigne le lien quand l'email désigne
+    // UNE SEULE fiche et que cette fiche n'est pas déjà liée à un autre compte.
+    // Idempotent (ne touche que employee_id IS NULL).
+    `ALTER TABLE "${schemaName}".users ADD COLUMN IF NOT EXISTS employee_id uuid`,
+    `UPDATE "${schemaName}".users u
+        SET employee_id = e.id
+       FROM "${schemaName}".employees e
+      WHERE u.employee_id IS NULL
+        AND e.email IS NOT NULL
+        AND lower(e.email) = lower(u.email)
+        AND (SELECT count(*) FROM "${schemaName}".employees e2
+              WHERE lower(e2.email) = lower(u.email)) = 1
+        AND NOT EXISTS (SELECT 1 FROM "${schemaName}".users u2 WHERE u2.employee_id = e.id)`,
+    // Unicité 1 compte ↔ 1 fiche (après la reprise ; filet en plus du contrôle applicatif).
+    `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_users_employee_id_uniq"
+       ON "${schemaName}".users(employee_id) WHERE employee_id IS NOT NULL`,
   ]
 
   for (const sql of alters) {

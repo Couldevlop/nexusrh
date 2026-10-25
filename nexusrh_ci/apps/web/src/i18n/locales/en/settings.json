@@ -168,7 +168,8 @@
       "jobTitle": "Job title",
       "lastLogin": "Last login",
       "status": "Status",
-      "actions": "Actions"
+      "actions": "Actions",
+      "employee": "Employee record"
     },
     "never": "Never",
     "active": "Active",
@@ -208,7 +209,8 @@
       "cancel": "Cancel",
       "create": "Create",
       "creating": "Creating...",
-      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error."
+      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error.",
+      "employee": "Linked employee record (optional)"
     },
     "confirmResetMfa": "Reset two-factor authentication for {{name}}? Their current authenticator and backup codes will stop working; a new QR code will be shown at their next sign-in.",
     "resetMfaTitle": "Reset two-factor authentication (MFA)",
@@ -223,6 +225,19 @@
       "title": "Two-factor authentication reset",
       "description": "<0>{{name}}</0> will get a new QR code and new backup codes at their next sign-in.",
       "error": "Resetting two-factor authentication failed."
+    },
+    "employeeLink": {
+      "searchPlaceholder": "Search a record (name, CNPS no.)…",
+      "none": "No linked record",
+      "alreadyLinked": "already linked to an account",
+      "loading": "Searching…",
+      "implicit": "by email",
+      "implicitHint": "Implicit link through matching email: link the record explicitly to make approvals reliable.",
+      "missing": "No record",
+      "edit": "Change linked record",
+      "editTitle": "Employee record of {{name}}",
+      "help": "The account acts on behalf of this record (leave, expense reports, line-manager approvals). A record can only be linked to one account. The user's sessions are closed after the change.",
+      "save": "Save link"
     }
   },
   "departments": {
@@ -560,6 +575,15 @@
       "longNoticeDays": "Long notice (days)",
       "invalidRange": "The minimum duration must be less than or equal to the maximum duration.",
       "hrExempt": "Absences shorter than the minimum duration are not subject to notice."
+    },
+    "unlinkedManagers": {
+      "title_one": "{{count}} line manager without a user account",
+      "title_other": "{{count}} line managers without a user account",
+      "description": "Their reports have them as line manager: without an account linked to their record, line-manager approvals will stay blocked. Grant them access from their employee record or link their account in Settings → Users.",
+      "reports_one": "{{count}} report",
+      "reports_other": "{{count}} reports",
+      "more_one": "… and {{count}} more",
+      "more_other": "… and {{count}} more"
     }
   },
   "connectivity": {

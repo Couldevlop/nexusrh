@@ -5,6 +5,7 @@ import { FileSignature, Plus, Trash2, Send, X, Check, PenLine } from 'lucide-rea
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Tab = 'requests' | 'mine'
 const MANAGE_ROLES = ['admin', 'hr_manager']
@@ -204,8 +205,8 @@ export default function SignaturePage() {
                   <div className="flex items-center gap-2">
                     <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLE[r.status] ?? 'bg-muted')}>{t(`statuses.${r.status}`)}</span>
                     {r.status === 'draft' && canWrite && <button type="button" onClick={() => sendReq.mutate(r.id)} className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"><Send className="h-3.5 w-3.5" /> {t('requests.send')}</button>}
-                    {(r.status === 'draft' || r.status === 'pending') && canManage && <button type="button" onClick={() => { if (window.confirm(t('requests.cancelConfirm'))) cancelReq.mutate(r.id) }} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('requests.cancel')}</button>}
-                    {r.status === 'draft' && canManage && <button type="button" onClick={() => { if (window.confirm(t('requests.deleteConfirm'))) deleteReq.mutate(r.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>}
+                    {(r.status === 'draft' || r.status === 'pending') && canManage && <button type="button" onClick={async () => { if (await confirmDialog({ message: t('requests.cancelConfirm'), danger: true })) cancelReq.mutate(r.id) }} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('requests.cancel')}</button>}
+                    {r.status === 'draft' && canManage && <button type="button" onClick={async () => { if (await confirmDialog({ message: t('requests.deleteConfirm'), danger: true })) deleteReq.mutate(r.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </div>
 

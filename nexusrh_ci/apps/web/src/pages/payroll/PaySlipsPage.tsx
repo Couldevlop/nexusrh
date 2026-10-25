@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { paymentMethodLabel } from '@/lib/payment'
 import { FileText, Eye } from 'lucide-react'
 import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
 
@@ -93,7 +94,7 @@ export default function PaySlipsPage() {
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${payStatusColor[slip.payment_status] ?? 'bg-muted text-muted-foreground'}`}>
                         {slip.payment_status === 'paid' ? t('payslips.payStatus.paid') : slip.payment_status === 'pending' ? t('payslips.payStatus.pending') : slip.payment_status}
                       </span>
-                      <p className="text-xs text-muted-foreground mt-0.5 capitalize">{slip.payment_method?.replace('_', ' ')}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{paymentMethodLabel(slip.payment_method)}</p>
                     </td>
                     <td className="p-4 text-right">
                       <Eye className="inline h-4 w-4 text-muted-foreground" />

@@ -19,11 +19,24 @@ export interface PayslipPdfLine {
 
 export interface PayslipPdfData {
   tenantName:   string
-  employer?:    { cnpsNumber?: string | null; address?: string | null; city?: string | null }
+  employer?:    {
+    cnpsNumber?: string | null; address?: string | null; city?: string | null
+    // Mentions légales employeur : RCCM + N° de compte contribuable (DGI)
+    rccm?: string | null; dgiNumber?: string | null
+  }
   employee:     {
     firstName: string; lastName: string; jobTitle?: string | null
     cnpsNumber?: string | null; nni?: string | null; matricule?: string | null
+    // Mentions obligatoires : date d'embauche (→ ancienneté) + catégorie / classification
+    hireDate?: string | null; category?: string | null
   }
+  // Temps de travail de la période (jours / heures) — mention obligatoire
+  worked?:          { days: number; hours: number } | null
+  // Congés payés : droits acquis / pris / restants (jours)
+  leaveBalance?:    { year: number; acquired: number; taken: number; remaining: number } | null
+  // Aperçu RH (constructeur de modèle) : avertissements visibles sur les
+  // mentions obligatoires manquantes. JAMAIS sur l'exemplaire salarié.
+  hrPreview?:       boolean
   month:        string   // YYYY-MM
   lines:        PayslipPdfLine[]
   grossSalary:  number
@@ -118,6 +131,44 @@ function formatMonthFr(month: string): string {
   return `${MONTHS_FR[idx] ?? m[2]} ${m[1]}`
 }
 
+/** Libellé lisible du mode de paiement (les bulletins stockent un code brut). */
+function paymentMethodLabel(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const LABELS: Record<string, string> = {
+    mobile_money: 'Mobile Money', bank_transfer: 'Virement bancaire', virement: 'Virement bancaire',
+    wave: 'Wave', mtn: 'MTN MoMo', mtn_momo: 'MTN MoMo', momo: 'MTN MoMo',
+    orange: 'Orange Money', orange_money: 'Orange Money', cofina: 'COFINA',
+    cash: 'Espèces', especes: 'Espèces', cheque: 'Chèque',
+  }
+  return LABELS[raw.trim().toLowerCase()] ?? raw
+}
+
+/** JJ/MM/AAAA depuis une date ISO (AAAA-MM-JJ…), sans glissement de fuseau. */
+function formatDateFr(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
+}
+
+/** Ancienneté à la fin de la période de paie : « X an(s) Y mois ». */
+function seniorityAt(hireDate: string, month: string): string | null {
+  const h = /^(\d{4})-(\d{2})-(\d{2})/.exec(hireDate)
+  const p = /^(\d{4})-(\d{2})$/.exec(month)
+  if (!h || !p) return null
+  const [hy, hm, hd] = [Number(h[1]), Number(h[2]), Number(h[3])]
+  const [py, pm] = [Number(p[1]), Number(p[2])]
+  const lastDay = new Date(Date.UTC(py, pm, 0)).getUTCDate()
+  let months = (py - hy) * 12 + (pm - hm) - (lastDay < hd ? 1 : 0)
+  if (months < 0) months = 0
+  const y = Math.floor(months / 12)
+  const mo = months % 12
+  return `${y} an${y > 1 ? 's' : ''} ${mo} mois`
+}
+
+/** Jours / heures avec une décimale, séparateur français, espaces ASCII (WinAnsi). */
+function formatDays(n: number): string {
+  return (Math.round(n * 10) / 10).toFixed(1).replace('.', ',')
+}
+
 function formatMoney(n: number, currency: string): string {
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(Math.round(n))
@@ -190,24 +241,50 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
 
   // ── Blocs (chaque fonction dessine à partir de `y` et renvoie le nouveau y) ──
   // Bloc identité : employeur + salarié
+  // Mentions obligatoires (Code du travail CI) : elles vivent dans ce bloc
+  // légal, toujours rendu même si la config tenant l'omet (cf. plus bas).
   function drawIdentity(y0: number): number {
     const colW = contentW / 2
-    const boxH = 86
+    const boxH = 110
+    const lineH = 12
     page.drawRectangle({ x: ML, y: toY(y0 + boxH), width: colW - 6, height: boxH, color: LIGHT })
     page.drawRectangle({ x: ML + colW + 6, y: toY(y0 + boxH), width: colW - 6, height: boxH, color: LIGHT })
     text('EMPLOYEUR', ML + 10, y0 + 16, 8, { bold: true, color: accent })
     text(data.tenantName || '-', ML + 10, y0 + 32, 9, { bold: true })
-    if (data.employer?.address) text(data.employer.address, ML + 10, y0 + 46, 8, { color: SLATE })
-    if (data.employer?.city) text(data.employer.city, ML + 10, y0 + 58, 8, { color: SLATE })
-    if (data.employer?.cnpsNumber) text(`N° ${caisseShort} employeur : ${data.employer.cnpsNumber}`, ML + 10, y0 + 72, 8, { color: SLATE })
+    const er: string[] = []
+    const addr = [data.employer?.address, data.employer?.city].filter(Boolean).join(' · ')
+    if (addr) er.push(addr)
+    if (data.employer?.cnpsNumber) er.push(`N° ${caisseShort} employeur : ${data.employer.cnpsNumber}`)
+    if (data.employer?.rccm) er.push(`RCCM : ${data.employer.rccm}`)
+    if (data.employer?.dgiNumber) er.push(`N° compte contribuable (DGI) : ${data.employer.dgiNumber}`)
+    er.slice(0, 6).forEach((l, i) => text(l, ML + 10, y0 + 46 + i * lineH, 8, { color: SLATE }))
+
     const x2 = ML + colW + 16
     const empName = `${data.employee.firstName ?? ''} ${data.employee.lastName ?? ''}`.trim()
     text('SALARIÉ', x2, y0 + 16, 8, { bold: true, color: accent })
     text(empName || '-', x2, y0 + 32, 9, { bold: true })
-    if (data.employee.jobTitle) text(data.employee.jobTitle, x2, y0 + 46, 8, { color: SLATE })
-    if (data.employee.cnpsNumber) text(`N° CNPS : ${data.employee.cnpsNumber}`, x2, y0 + 58, 8, { color: SLATE })
-    if (data.employee.nni) text(`NNI : ${data.employee.nni}`, x2, y0 + 72, 8, { color: SLATE })
-    return y0 + boxH + 22
+    const ee: string[] = []
+    if (data.employee.jobTitle) ee.push(data.employee.jobTitle)
+    if (data.employee.category) ee.push(`Catégorie : ${data.employee.category}`)
+    if (data.employee.cnpsNumber) ee.push(`N° CNPS : ${data.employee.cnpsNumber}`)
+    if (data.employee.nni) ee.push(`NNI : ${data.employee.nni}`)
+    if (data.employee.hireDate) {
+      const anc = seniorityAt(data.employee.hireDate, data.month)
+      ee.push(`Embauche : ${formatDateFr(data.employee.hireDate)}${anc ? ` · ancienneté ${anc}` : ''}`)
+    }
+    ee.slice(0, 6).forEach((l, i) => text(l, x2, y0 + 46 + i * lineH, 8, { color: SLATE }))
+
+    let yy = y0 + boxH + 6
+    const period: string[] = []
+    if (data.worked) {
+      period.push(`Temps de travail de la période : ${formatDays(data.worked.days)} jours · ${formatDays(data.worked.hours)} heures`)
+    }
+    if (data.leaveBalance) {
+      const lb = data.leaveBalance
+      period.push(`Congés payés ${lb.year} : acquis ${formatDays(lb.acquired)} j · pris ${formatDays(lb.taken)} j · restant ${formatDays(lb.remaining)} j`)
+    }
+    for (const l of period) { text(l, ML + 6, yy + 10, 8, { color: SLATE }); yy += 12 }
+    return yy + 14
   }
   // Bloc tableau des rubriques
   function drawTable(y0: number): number {
@@ -267,7 +344,7 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
   function drawPayment(y0: number): number {
     if (!data.paymentMethod) return y0
     const ref = data.paymentReference ? ` · réf. ${data.paymentReference}` : ''
-    text(`Mode de paiement : ${data.paymentMethod}${ref}`, cLabel, y0 + 10, 8.5, { color: SLATE })
+    text(`Mode de paiement : ${paymentMethodLabel(data.paymentMethod)}${ref}`, cLabel, y0 + 10, 8.5, { color: SLATE })
     return y0 + 16
   }
   // Bloc cumuls annuels (YTD) — PAY-025
@@ -324,7 +401,18 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     Array.isArray(cfg.blocks) && cfg.blocks.length ? cfg.blocks : DEFAULT_BLOCKS
 
   let y = 96
-  for (const blk of blocks) {
+  // Aperçu RH : mentions obligatoires manquantes signalées en rouge, au-dessus
+  // du bulletin. Jamais imprimé sur l'exemplaire remis au salarié.
+  if (data.hrPreview && !data.employer?.cnpsNumber) {
+    page.drawRectangle({ x: ML, y: toY(y + 18), width: contentW, height: 18, color: rgb(0xfe / 255, 0xe2 / 255, 0xe2 / 255) })
+    text(`ATTENTION (aperçu RH) : N° ${caisseShort} employeur non renseigné — mention obligatoire du bulletin (Paramètres > Général).`,
+      ML + 6, y + 12.5, 7.5, { bold: true, color: rgb(0x91 / 255, 0x20 / 255, 0x18 / 255) })
+    y += 26
+  }
+  // Le bloc identité porte les mentions légales : présent même si la config l'omet.
+  const legalBlocks = blocks.some(b => b.id === 'identity' && b.enabled !== false)
+    ? blocks : [{ id: 'identity', enabled: true }, ...blocks.filter(b => b.id !== 'identity')]
+  for (const blk of legalBlocks) {
     if (blk.enabled === false) continue
     switch (blk.id) {
       case 'identity':     y = drawIdentity(y); break

@@ -13,6 +13,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import {
   hrCanSee, isHrDecisionRole, loadManagerMap, loadWorkflowSettings, summarize,
@@ -47,7 +48,7 @@ async function actorOf(schema: string, user: { sub: string; role: string; employ
   if (!employeeId && user.email) {
     try {
       const r = await pool.query<{ id: string }>(
-        `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+        actorEmployeeSql(schema), [user.email],
       )
       employeeId = r?.rows?.[0]?.id ?? null
     } catch { employeeId = null }

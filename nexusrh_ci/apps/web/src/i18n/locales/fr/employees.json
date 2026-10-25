@@ -16,7 +16,8 @@
     "grossSalary": "Salaire brut",
     "mobileMoney": "Mobile Money",
     "contract": "Contrat",
-    "hireDate": "Date d'embauche"
+    "hireDate": "Date d'embauche",
+    "paymentMethod": "Mode de paiement"
   },
   "form": {
     "title": "Nouvel employé",
@@ -159,5 +160,19 @@
     "section": "Informations complémentaires",
     "yes": "Oui",
     "no": "Non"
+  },
+  "access": {
+    "badge": "Accès : {{role}}",
+    "none": "Aucun accès",
+    "grant": "Donner un accès",
+    "title": "Donner un accès à {{name}}",
+    "submit": "Créer le compte",
+    "creating": "Création…",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "created": "Compte créé et lié à la fiche.",
+    "emailSent": "Un email d'invitation a été envoyé avec les instructions de connexion.",
+    "emailNotSent": "L'email d'invitation n'a pas pu être envoyé : communiquez ce mot de passe temporaire de façon sécurisée (changement exigé à la première connexion).",
+    "error": "Impossible de créer le compte."
   }
 }

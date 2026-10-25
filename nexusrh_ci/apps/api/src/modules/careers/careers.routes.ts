@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
@@ -248,7 +249,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
       let idx = 1
       if (request.user.role === 'manager') {
         const mgr = await pool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         // OWASP A01 — fail-closed : sans dossier employé, aucune évaluation
         // (auparavant le filtre sautait et le manager voyait tout le tenant).
@@ -290,7 +291,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
       }
       try {
         const evaluatorRes = await pool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         const evaluatorId = evaluatorRes.rows[0]?.id || null
         const res = await pool.query(`
