@@ -16,7 +16,8 @@
     "grossSalary": "Gross salary",
     "mobileMoney": "Mobile Money",
     "contract": "Contract",
-    "hireDate": "Hire date"
+    "hireDate": "Hire date",
+    "paymentMethod": "Payment method"
   },
   "form": {
     "title": "New employee",
@@ -159,5 +160,19 @@
     "section": "Additional information",
     "yes": "Yes",
     "no": "No"
+  },
+  "access": {
+    "badge": "Access: {{role}}",
+    "none": "No access",
+    "grant": "Grant access",
+    "title": "Grant access to {{name}}",
+    "submit": "Create account",
+    "creating": "Creating…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "created": "Account created and linked to the record.",
+    "emailSent": "An invitation email with sign-in instructions has been sent.",
+    "emailNotSent": "The invitation email could not be sent: share this temporary password securely (a change is required at first sign-in).",
+    "error": "Unable to create the account."
   }
 }

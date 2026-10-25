@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import { api, formatDate, formatFCFA } from '@/lib/api'
+import { canonicalMmProvider, paymentMethodLabel } from '@/lib/payment'
 import { useAuthStore } from '@/stores/authStore'
 import { User, Smartphone, ShieldCheck, KeyRound, Loader2 } from 'lucide-react'
 
@@ -30,9 +31,6 @@ interface ProfileData {
   marital_status: string; children_count: number; city: string
 }
 
-const PROVIDER_LABEL: Record<string, string> = {
-  wave: 'Wave', mtn_momo: 'MTN MoMo', orange_money: 'Orange Money',
-}
 
 export default function MonProfil() {
   const { t } = useTranslation('monEspace')
@@ -53,7 +51,12 @@ export default function MonProfil() {
       return
     }
     setMmError(null)
-    updateMut.mutate({ mobile_money_provider: newMMProvider, mobile_money_phone: clean })
+    // PATCH /employees/:id : schéma strict en camelCase (les clés snake_case
+    // étaient rejetées en 400) ; opérateur toujours sous forme canonique.
+    updateMut.mutate({
+      ...(newMMProvider ? { mobileMoneyProvider: canonicalMmProvider(newMMProvider) } : {}),
+      ...(clean ? { mobileMoneyPhone: clean } : {}),
+    })
   }
 
   // ── Sécurité : changement de mot de passe ──────────────────────────────────
@@ -245,9 +248,9 @@ export default function MonProfil() {
               <select value={newMMProvider} onChange={e => setNewMMProvider(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
                 <option value="">{t('profile.selectPlaceholder')}</option>
-                <option value="wave">Wave</option>
-                <option value="mtn_momo">MTN MoMo</option>
-                <option value="orange_money">Orange Money</option>
+                {(['wave', 'mtn', 'orange', 'cofina'] as const).map(p => (
+                  <option key={p} value={p}>{paymentMethodLabel(p)}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -273,7 +276,7 @@ export default function MonProfil() {
           <div className="flex items-center justify-between">
             {emp.mobile_money_provider ? (
               <div>
-                <p className="text-sm font-medium">{PROVIDER_LABEL[emp.mobile_money_provider] ?? emp.mobile_money_provider}</p>
+                <p className="text-sm font-medium">{paymentMethodLabel(emp.mobile_money_provider)}</p>
                 <p className="text-sm text-muted-foreground font-mono">{emp.mobile_money_phone}</p>
               </div>
             ) : (
@@ -282,7 +285,7 @@ export default function MonProfil() {
             <button
               onClick={() => {
                 setEditMM(true)
-                setNewMMProvider(emp.mobile_money_provider ?? '')
+                setNewMMProvider(canonicalMmProvider(emp.mobile_money_provider))
                 setNewMMPhone(emp.mobile_money_phone ?? '')
               }}
               className="text-sm text-primary hover:underline">

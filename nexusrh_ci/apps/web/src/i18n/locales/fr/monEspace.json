@@ -67,7 +67,31 @@
     "noAbsence": "Aucune absence",
     "accessLog": "Journal d'accès — Conformité ARTCI",
     "accessLogIntro": "Conformément à la loi CI 2013-450, vous pouvez consulter qui a accédé à vos données RH.",
-    "noAccessLog": "Aucun accès enregistré récemment"
+    "noAccessLog": "Aucun accès enregistré récemment",
+    "accessActorSelf": "Vous",
+    "accessActorSystem": "Système",
+    "accessEntities": {
+      "employee": "Fiche",
+      "absence": "Absence",
+      "expense_report": "Note de frais",
+      "payslip": "Bulletin",
+      "pay_slip": "Bulletin",
+      "contract": "Contrat",
+      "contrat": "Contrat",
+      "disciplinary_action": "Sanction",
+      "offboarding_case": "Dossier de sortie",
+      "career": "Carrière"
+    },
+    "accessRoles": {
+      "admin": "Administrateur",
+      "hr_manager": "Responsable RH",
+      "hr_officer": "Gestionnaire RH",
+      "manager": "Manager",
+      "employee": "Salarié",
+      "readonly": "Lecture seule",
+      "dg": "Direction générale",
+      "raf_site": "RAF de site"
+    }
   },
   "absences": {
     "title": "Mes absences",

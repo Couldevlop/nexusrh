@@ -9,7 +9,7 @@ import {
   Settings, Users, Building2, Save, Plus, ShieldCheck, ShieldOff, Trash2,
   FileText, Layers, GitBranch, Banknote, Edit2, X, Check,
   Download, Upload, AlertCircle, CheckCircle2, Database, Mail, KeyRound,
-  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic, ListPlus,
+  Users2, CalendarDays, Smartphone, Receipt, RefreshCw, Copy, Lock, Bot, Plug, Globe, Send, Mic, ListPlus, AlertTriangle, Link2,
 } from 'lucide-react'
 import MfaSettingsPage from './MfaSettingsPage'
 import ConnectivityTab from './ConnectivityTab'
@@ -18,6 +18,8 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
+import { EmployeeLinkPicker } from '@/components/employees/EmployeeLinkPicker'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface TenantSettings {
@@ -33,7 +35,11 @@ interface TenantSettings {
 interface TenantUser {
   id: string; email: string; first_name: string; last_name: string
   role: string; is_active: boolean; last_login_at: string | null; job_title: string | null
+  // Fiche employé liée : lien explicite (users.employee_id) ou repli historique par email
+  employee_id?: string | null; employee_first_name?: string | null; employee_last_name?: string | null
+  employee_link?: 'explicit' | 'email' | null
 }
+interface UnlinkedManager { id: string; first_name: string; last_name: string; email: string | null; reports_count: number }
 interface Department {
   id: string; name: string; code: string | null; employees_count: number; manager_name: string | null
 }
@@ -660,7 +666,7 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
-                if (file.size > 1_000_000) { window.alert(t('general.logoTooLarge', { defaultValue: 'Image trop volumineuse (max 1 Mo).' })); return }
+                if (file.size > 1_000_000) { void alertDialog({ message: t('general.logoTooLarge', { defaultValue: 'Image trop volumineuse (max 1 Mo).' }) }); return }
                 const reader = new FileReader()
                 reader.onload = () => setForm(p => ({ ...p, logo_url: String(reader.result) }))
                 reader.readAsDataURL(file)
@@ -827,7 +833,7 @@ function EmailSmtpCard() {
 }
 
 // ── Tab: Utilisateurs ─────────────────────────────────────────────────────────
-const EMPTY_USER_FORM = { email: '', first_name: '', last_name: '', role: 'employee', department_id: '', is_active: true }
+const EMPTY_USER_FORM = { email: '', first_name: '', last_name: '', role: 'employee', department_id: '', employee_id: '', is_active: true }
 
 // Exporté pour les tests de composant (users-tab.test.tsx).
 export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
@@ -853,7 +859,9 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const [mfaResetError, setMfaResetError] = useState<string | null>(null)
 
   const create = useMutation({
-    mutationFn: (d: typeof form) => api.post('/settings/users', { ...d, department_id: d.department_id || undefined }),
+    mutationFn: (d: typeof form) => api.post('/settings/users', {
+      ...d, department_id: d.department_id || undefined, employee_id: d.employee_id || undefined,
+    }),
     onSuccess: (res) => {
       setTempPwd({ pwd: res.data.tempPassword, emailSent: !!res.data.emailSent })
     },
@@ -881,6 +889,17 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/users/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-users'] }),
+  })
+  // Rattachement explicite compte ↔ fiche employé (modification).
+  const [linkEdit, setLinkEdit] = useState<{ user: TenantUser; employeeId: string } | null>(null)
+  const relink = useMutation({
+    mutationFn: ({ id, employeeId }: { id: string; employeeId: string }) =>
+      api.patch(`/settings/users/${id}`, { employee_id: employeeId || null }),
+    onSuccess: () => setLinkEdit(null),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['settings-users'] })
+      void qc.invalidateQueries({ queryKey: ['employees-link-picker'] })
+    },
   })
   const resetPwd = useMutation({
     mutationFn: ({ id }: { id: string }) => api.post<{ tempPassword: string; emailSent: boolean }>(`/settings/users/${id}/reset-password`, {}),
@@ -926,6 +945,7 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
               <th className="p-4">{t('users.table.user')}</th>
               <th className="p-4">{t('users.table.role')}</th>
+              <th className="p-4">{t('users.table.employee')}</th>
               <th className="p-4">{t('users.table.jobTitle')}</th>
               <th className="p-4">{t('users.table.lastLogin')}</th>
               <th className="p-4">{t('users.table.status')}</th>
@@ -948,9 +968,9 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   ) : (
                     <select value={u.role} aria-label={t('users.roleChange.label', { name: `${u.first_name} ${u.last_name}` })}
                       disabled={changeRole.isPending}
-                      onChange={e => {
+                      onChange={async e => {
                         const role = e.target.value
-                        if (confirm(t('users.roleChange.confirm', { name: `${u.first_name} ${u.last_name}`, role: t(`roles.${role}`) }))) {
+                        if (await confirmDialog({ message: t('users.roleChange.confirm', { name: `${u.first_name} ${u.last_name}`, role: t(`roles.${role}`) }), danger: false })) {
                           changeRole.mutate({ id: u.id, role })
                         }
                       }}
@@ -959,6 +979,24 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       {ROLE_KEYS.map(v => <option key={v} value={v}>{t(`roles.${v}`)}</option>)}
                     </select>
                   )}
+                </td>
+                <td className="p-4">
+                  <div className="flex items-center gap-1.5">
+                    {u.employee_id ? (
+                      <span className={u.employee_link === 'email' ? 'text-amber-700' : ''}
+                        title={u.employee_link === 'email' ? t('users.employeeLink.implicitHint') : undefined}>
+                        {u.employee_first_name} {u.employee_last_name}
+                        {u.employee_link === 'email' && <span className="ml-1 text-xs">({t('users.employeeLink.implicit')})</span>}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        <AlertTriangle className="h-3 w-3" /> {t('users.employeeLink.missing')}
+                      </span>
+                    )}
+                    <button type="button" onClick={() => setLinkEdit({ user: u, employeeId: u.employee_id ?? '' })}
+                      title={t('users.employeeLink.edit')} aria-label={t('users.employeeLink.edit')}
+                      className="text-muted-foreground hover:text-foreground"><Link2 className="h-3.5 w-3.5" /></button>
+                  </div>
                 </td>
                 <td className="p-4 text-muted-foreground">{u.job_title ?? '—'}</td>
                 <td className="p-4 text-xs text-muted-foreground">
@@ -976,27 +1014,27 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       {u.is_active ? t('users.deactivate') : t('users.activate')}
                     </button>
                     <button
-                      onClick={() => { if (confirm(t('users.confirmReset', { name: `${u.first_name} ${u.last_name}` }))) resetPwd.mutate({ id: u.id }) }}
+                      onClick={async () => { if (await confirmDialog({ message: t('users.confirmReset', { name: `${u.first_name} ${u.last_name}` }), danger: true })) resetPwd.mutate({ id: u.id }) }}
                       disabled={resetPwd.isPending}
                       title={t('users.resetPasswordTitle')}
                       className="text-blue-500 hover:text-blue-700 disabled:opacity-40">
                       <RefreshCw className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      onClick={() => { if (confirm(t('users.confirmResetMfa', { name: `${u.first_name} ${u.last_name}` }))) resetMfa.mutate({ id: u.id }) }}
+                      onClick={async () => { if (await confirmDialog({ message: t('users.confirmResetMfa', { name: `${u.first_name} ${u.last_name}` }), danger: true })) resetMfa.mutate({ id: u.id }) }}
                       disabled={resetMfa.isPending}
                       title={t('users.resetMfaTitle')}
                       className="text-amber-600 hover:text-amber-700 disabled:opacity-40">
                       <ShieldOff className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => { if (confirm(t('users.confirmDelete'))) remove.mutate(u.id) }}
+                    <button onClick={async () => { if (await confirmDialog({ message: t('users.confirmDelete'), danger: true })) remove.mutate(u.id) }}
                       className="text-red-500 hover:text-red-700"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </td>
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">
+              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">
                 <Users className="mx-auto mb-2 h-8 w-8 opacity-30" />{t('users.empty')}
               </td></tr>
             )}
@@ -1023,6 +1061,44 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       )}
       {mfaResetError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{mfaResetError}</div>
+      )}
+
+      {/* Modification de la fiche employé liée au compte */}
+      {linkEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setLinkEdit(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="link-edit-title"
+            className="w-full max-w-md space-y-3 rounded-xl border border-border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 id="link-edit-title" className="font-semibold">
+                {t('users.employeeLink.editTitle', { name: `${linkEdit.user.first_name} ${linkEdit.user.last_name}` })}
+              </h3>
+              <button type="button" onClick={() => setLinkEdit(null)} aria-label={t('users.form.cancel')}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('users.employeeLink.help')}</p>
+            <EmployeeLinkPicker
+              value={linkEdit.employeeId}
+              currentUserId={linkEdit.user.id}
+              currentEmployee={linkEdit.user.employee_id
+                ? { id: linkEdit.user.employee_id, label: `${linkEdit.user.employee_last_name ?? ''} ${linkEdit.user.employee_first_name ?? ''}`.trim() }
+                : null}
+              onChange={(employeeId) => setLinkEdit(p => p && ({ ...p, employeeId }))}
+            />
+            {relink.isError && (
+              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {(relink.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('users.form.error')}
+              </p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setLinkEdit(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t('users.form.cancel')}</button>
+              <button type="button" disabled={relink.isPending}
+                onClick={() => relink.mutate({ id: linkEdit.user.id, employeeId: linkEdit.employeeId })}
+                className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {t('users.employeeLink.save')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Popup résultat reset mot de passe */}
@@ -1076,6 +1152,21 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <button onClick={() => setShowNew(false)}><X className="h-4 w-4" /></button>
                 </div>
                 <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">{t('users.form.employee')}</label>
+                    <div className="mt-1">
+                      <EmployeeLinkPicker
+                        value={form.employee_id}
+                        onChange={(employeeId, emp) => setForm(p => ({
+                          ...p, employee_id: employeeId,
+                          // Pré-remplissage depuis la fiche (sans écraser une saisie)
+                          email: p.email || emp?.email || '',
+                          first_name: p.first_name || emp?.first_name || '',
+                          last_name: p.last_name || emp?.last_name || '',
+                        }))}
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">{t('users.form.email')}</label>
                     <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
@@ -1162,7 +1253,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/departments/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-departments'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
+    onError: (e: { response?: { data?: { error?: string } } }) => void alertDialog({ message: e.response?.data?.error ?? t('error') }),
   })
 
   return (
@@ -1203,7 +1294,7 @@ function DepartmentsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   </span>
                   <button onClick={() => setEditing({ id: d.id, name: d.name, code: d.code ?? '' })}
                     className="text-muted-foreground hover:text-foreground"><Edit2 className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => { if (confirm(t('departments.confirmDelete'))) remove.mutate(d.id) }}
+                  <button onClick={async () => { if (await confirmDialog({ message: t('departments.confirmDelete'), danger: true })) remove.mutate(d.id) }}
                     className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
@@ -1273,7 +1364,7 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/absence-types/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-absence-types'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
+    onError: (e: { response?: { data?: { error?: string } } }) => void alertDialog({ message: e.response?.data?.error ?? t('error') }),
   })
 
   return (
@@ -1317,7 +1408,7 @@ function AbsenceTypesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <td className="p-4 flex items-center gap-2">
                   <button onClick={() => toggleActive.mutate({ id: at.id, is_active: !at.is_active })}
                     className="text-xs text-muted-foreground hover:text-foreground">{at.is_active ? t('absenceTypes.deactivate') : t('absenceTypes.activate')}</button>
-                  <button onClick={() => { if (confirm(t('absenceTypes.confirmDelete'))) remove.mutate(at.id) }}
+                  <button onClick={async () => { if (await confirmDialog({ message: t('absenceTypes.confirmDelete'), danger: true })) remove.mutate(at.id) }}
                     className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </td>
               </tr>
@@ -1469,7 +1560,7 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       className="text-xs text-muted-foreground hover:text-foreground">
                       {r.is_active ? t('payrollRules.deactivate') : t('payrollRules.activate')}
                     </button>
-                    <button onClick={() => { if (confirm(t('payrollRules.confirmDelete'))) remove.mutate(r.id) }}
+                    <button onClick={async () => { if (await confirmDialog({ message: t('payrollRules.confirmDelete'), danger: true })) remove.mutate(r.id) }}
                       className="text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                   </td>
                 </tr>
@@ -1621,12 +1712,12 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       setEditingId(null)
       qc.invalidateQueries({ queryKey: ['settings-legal-entities'] })
     },
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
+    onError: (e: { response?: { data?: { error?: string } } }) => void alertDialog({ message: e.response?.data?.error ?? t('error') }),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/legal-entities/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-legal-entities'] }),
-    onError: (e: { response?: { data?: { error?: string } } }) => alert(e.response?.data?.error ?? t('error')),
+    onError: (e: { response?: { data?: { error?: string } } }) => void alertDialog({ message: e.response?.data?.error ?? t('error') }),
   })
 
   const LEGAL_FORMS = ['SARL', 'SA', 'SAS', 'SASU', 'SNC', 'GIE', 'Association', 'ONG', 'Établissement public']
@@ -1694,7 +1785,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     className="text-muted-foreground hover:text-primary" title={t('legalEntities.edit')}>
                     <Settings className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => { if (confirm(t('legalEntities.confirmDelete'))) remove.mutate(e.id) }}
+                  <button onClick={async () => { if (await confirmDialog({ message: t('legalEntities.confirmDelete'), danger: true })) remove.mutate(e.id) }}
                     className="text-red-400 hover:text-red-600" title={t('legalEntities.delete')}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -2484,6 +2575,12 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     queryKey: ['settings-workflow-hr-team'],
     queryFn: () => api.get('/settings/workflow/hr-team').then(r => r.data),
   })
+  // Responsables hiérarchiques sans compte lié : leurs validations N+1 bloqueraient.
+  const { data: unlinkedData } = useQuery<{ data: UnlinkedManager[] }>({
+    queryKey: ['settings-workflow-unlinked-managers'],
+    queryFn: () => api.get('/settings/workflow/unlinked-managers').then(r => r.data),
+  })
+  const unlinkedManagers = unlinkedData?.data ?? []
   // Délai de prévenance : types d'absence concernés (codes).
   const { data: typesData } = useQuery<{ data: AbsenceTypeOption[] }>({
     queryKey: ['absence-types'],
@@ -2542,6 +2639,25 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             {t('workflow.description')}
           </p>
         </div>
+
+        {unlinkedManagers.length > 0 && (
+          <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <p className="flex items-center gap-2 font-medium">
+              <AlertTriangle className="h-4 w-4" /> {t('workflow.unlinkedManagers.title', { count: unlinkedManagers.length })}
+            </p>
+            <p className="mt-1 text-xs">{t('workflow.unlinkedManagers.description')}</p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+              {unlinkedManagers.slice(0, 10).map(m => (
+                <li key={m.id}>
+                  {m.first_name} {m.last_name} — {t('workflow.unlinkedManagers.reports', { count: m.reports_count })}
+                </li>
+              ))}
+            </ul>
+            {unlinkedManagers.length > 10 && (
+              <p className="mt-1 text-xs">{t('workflow.unlinkedManagers.more', { count: unlinkedManagers.length - 10 })}</p>
+            )}
+          </div>
+        )}
 
         {allModules.map(module => {
           const meta = MODULE_META[module]!

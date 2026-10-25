@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { paymentMethodLabel } from '@/lib/payment'
 import { FileText, Download, Eye, X, ChevronDown, ChevronUp, Calculator } from 'lucide-react'
 import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
 
@@ -13,9 +14,6 @@ interface PaySlip {
   viewed_by_employee_at: string | null; currency: string
 }
 
-const PROVIDER_LABEL: Record<string, string> = {
-  wave: 'Wave', mtn_momo: 'MTN MoMo', orange_money: 'Orange Money',
-}
 
 // Récupère le PDF du bulletin via axios (header Authorization auto) en blob.
 // On évite l'iframe directe sur l'API : la réponse porte X-Frame-Options: DENY
@@ -176,7 +174,7 @@ export default function MesBulletins() {
                       </div>
                       {slip.payment_method && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {PROVIDER_LABEL[slip.payment_method] ?? (slip.payment_method === 'bank_transfer' ? t('payslips.providers.bankTransfer') : slip.payment_method)}
+                          {paymentMethodLabel(slip.payment_method)}
                           {slip.payment_reference && (
                             <span className="font-mono ml-1">· {slip.payment_reference}</span>
                           )}
