@@ -142,6 +142,9 @@ const createPayrollRuleSchema = z.object({
   is_active:    z.boolean().optional(),
   order:        z.number().int().min(0).max(9999).optional(),
   description:  z.string().max(1000).optional().nullable(),
+  // Assujettissement CNPS / ITS de la rubrique (null = règle du pack législatif)
+  subject_social: z.boolean().optional().nullable(),
+  subject_tax:    z.boolean().optional().nullable(),
 }).strict()
 
 const patchPayrollRuleSchema = createPayrollRuleSchema.omit({ code: true, type: true }).partial().strict()
@@ -1565,10 +1568,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const formula = body.formula ?? (body.rate != null ? `BRUT * ${body.rate}` : '0')
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".payroll_rules
-            (code, label, type, formula, "order", is_active)
-          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *, label AS name
+            (code, label, type, formula, "order", is_active, subject_social, subject_tax)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *, label AS name
         `, [body.code, body.name, body.type, formula,
-            body.order ?? 99, body.is_active ?? true])
+            body.order ?? 99, body.is_active ?? true,
+            body.subject_social ?? null, body.subject_tax ?? null])
         const created = res.rows[0]
         // OWASP A09 — création règle de paie = action critique (taux cotisation)
         auditLogSettings(
@@ -1603,7 +1607,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       // Mappe le modèle API (name/rate/formula) vers les colonnes réelles
       // (label/formula). 'rate' seul devient une formule "BRUT * <taux>".
       // ceiling_type/description ne sont pas stockés (colonnes absentes).
-      const colMap: Record<string, string> = { name: 'label', formula: 'formula', is_active: 'is_active', order: '"order"' }
+      const colMap: Record<string, string> = {
+        name: 'label', formula: 'formula', is_active: 'is_active', order: '"order"',
+        subject_social: 'subject_social', subject_tax: 'subject_tax',
+      }
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}

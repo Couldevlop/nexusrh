@@ -1,6 +1,6 @@
 {
   "id": "32-heures-supp-jour-ferie-100pct",
-  "description": "Salarié appelé un jour férié CI (ex: 7 août Fête Nationale ou 25 décembre Noël) — majoration +100 % prévue par le Code du Travail CI. Le moteur expose la rubrique HEURES_SUPP_FERIE (code 1550) qui s'agrège au grossSalary sans entrer dans la baseImposable ITS (comportement primes hors imposition)",
+  "description": "Salarié appelé un jour férié CI (ex: 7 août Fête Nationale ou 25 décembre Noël) — majoration +100 % prévue par le Code du Travail CI. Le moteur expose la rubrique HEURES_SUPP_FERIE (code 1550) qui s'agrège au grossSalary et entre dans les bases CNPS et ITS",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -19,6 +19,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 157400 → 200000 ; its 1235 → 20000 ; totalDeductions 13835 → 32600 ; netPayable 216165 → 197400"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 12600 → 14490 ; cnpsRetraitePat 15400 → 17710 ; totalCnpsSal 12600 → 14490 ; totalCnpsPat 20825 → 23135 ; baseImposable 200000 → 230000 ; its 20000 → 24800 ; totalDeductions 32600 → 39290 ; netPayable 197400 → 190710 ; employerCost 250825 → 253135 ; ligne 2000 12600 → 14490 ; ligne 2100 20000 → 24800 ; ligne 3000 15400 → 17710"
       }
     ]
   },
@@ -37,17 +43,17 @@
     "baseSalary": 200000,
     "brutProrata": 200000,
     "grossSalary": 230000,
-    "cnpsRetraiteSal": 12600,
-    "cnpsRetraitePat": 15400,
+    "cnpsRetraiteSal": 14490,
+    "cnpsRetraitePat": 17710,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 12600,
-    "totalCnpsPat": 20825,
-    "baseImposable": 200000,
-    "its": 20000,
-    "totalDeductions": 32600,
-    "netPayable": 197400,
-    "employerCost": 250825,
+    "totalCnpsSal": 14490,
+    "totalCnpsPat": 23135,
+    "baseImposable": 230000,
+    "its": 24800,
+    "totalDeductions": 39290,
+    "netPayable": 190710,
+    "employerCost": 253135,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -64,17 +70,17 @@
       {
         "code": "2000",
         "type": "employee_contribution",
-        "amount": 12600
+        "amount": 14490
       },
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 20000
+        "amount": 24800
       },
       {
         "code": "3000",
         "type": "employer_contribution",
-        "amount": 15400
+        "amount": 17710
       },
       {
         "code": "3100",

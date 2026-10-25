@@ -70,7 +70,7 @@ Exemples (célibataire, 0 enfant) :
 
 ```
 SMIG mensuel (35h)             : 60 000 FCFA
-Congés annuels                 : 2,5 jours ouvrables / mois travaillé
+Congés annuels                 : 2,2 jours ouvrables / mois travaillé (CT art. 25.1)
 Heures supplémentaires         :
   41–48h / semaine             : +15 % du taux horaire normal
   Nuit (20h–5h) & dimanche     : +50 % du taux horaire normal
@@ -103,12 +103,19 @@ PayrollEngineCi.calculate(ctx) :
 ÉTAPE 1 — buildVariables()
   BRUT_MENSUEL = salaire brut mensuel contractuel (FCFA)
   BRUT_PRORATA = BRUT_MENSUEL * (jours_travaillés / jours_ouvrables_mois)
-  SMIG = 70_000 FCFA  (vérification plancher)
+  SMIG = 75_000 FCFA  (vérification plancher)
   PLAFOND_CNPS_AT_PF = 70_000 FCFA / mois
   PLAFOND_CNPS_RETRAITE = 1_647_315 FCFA / mois
-  BASE_AT_PF = min(BRUT_PRORATA, PLAFOND_CNPS_AT_PF)
-  BASE_RETRAITE = min(BRUT_PRORATA, PLAFOND_CNPS_RETRAITE)
-  + variableElements (primes, heures supp majorées, IJSS CNPS si applicable)
+  ELEMENTS_SOUMIS = primes (ancienneté, rendement), heures supp., ICP,
+                    gratifications, avantages en nature, excédent de la prime
+                    de transport au-delà de 30 000 F (Abidjan) / 24 000 F
+                    (Bouaké) / 20 000 F (autres villes)
+                    — CGI art. 116 al. 10 ; arrêté n° 2020-012/MEPS/CAB
+                    — traitement paramétrable par rubrique (pack ou tenant)
+  BASE_AT_PF = min(BRUT_PRORATA + ELEMENTS_SOUMIS, PLAFOND_CNPS_AT_PF)
+  BASE_RETRAITE = min(BRUT_PRORATA + ELEMENTS_SOUMIS, PLAFOND_CNPS_RETRAITE)
+  Hors bases : remboursements de frais (ligne 6000), indemnité de licenciement
+  dans la limite légale, indemnités maternité et accident du travail.
 
 ÉTAPE 2 — Calcul cotisations CNPS
   cotisation_retraite_sal  = BASE_RETRAITE × 0.063
@@ -119,8 +126,9 @@ PayrollEngineCi.calculate(ctx) :
   total_cotisations_pat    = cotisation_retraite_pat + cotisation_pf_mat_pat + cotisation_at_pat
 
 ÉTAPE 3 — Calcul ITS (réforme 2024)
-  brut_imposable           = brut soumis à l'ITS (100 %, sans abattement,
-                             cotisations CNPS salariales NON déduites)
+  brut_imposable           = BRUT_PRORATA + ELEMENTS_SOUMIS (+ indemnité
+                             maladie) — 100 %, sans abattement,
+                             cotisations CNPS salariales NON déduites
   its_brut                 = appliquer_bareme_ITS(brut_imposable)   [0/16/21/24/28/32 %]
   parts                    = nombre_de_parts(statut_marital, nb_enfants)  [plafond 5]
   ricf                     = 5 500 × (parts − 1) / 0,5             [0 → 44 000]
@@ -128,10 +136,11 @@ PayrollEngineCi.calculate(ctx) :
 
 ÉTAPE 4 — computeTotals()
   salaire_brut             = BRUT_PRORATA + primes + heures_supp + autres_gains
-  total_retenues_sal       = total_cotisations_sal + ITS
+  total_retenues_sal       = total_cotisations_sal + ITS (+ avance, mutuelle,
+                             avantage en nature repris en retenue)
   salaire_net              = salaire_brut - total_retenues_sal
   cout_employeur           = salaire_brut + total_cotisations_pat
-  VÉRIFICATION             : salaire_net >= SMIG (60 000 FCFA) si temps plein
+  VÉRIFICATION             : salaire_net >= SMIG (75 000 FCFA) si temps plein
 
 ÉTAPE 5 — Génération bulletin PDF
   Mentions légales CI obligatoires :
@@ -206,7 +215,7 @@ streamChat(messages, context) : SSE via anthropic.messages.stream()
      de Côte d'Ivoire, la réglementation CNPS 2024, les barèmes ITS/DGI, le droit OHADA.
      Tu réponds TOUJOURS en français. Tu cites les articles du Code du Travail CI, les
      circulaires CNPS et les textes DGI pertinents. Tes réponses sont adaptées au contexte
-     ivoirien (SMIG 60 000 FCFA, FCFA comme devise, Mobile Money, FDFP…).
+     ivoirien (SMIG 75 000 FCFA, FCFA comme devise, Mobile Money, FDFP…).
      Contexte tenant : {name} · {ville} · {secteur} · CCN applicable : {convention}"
 
 Exemples de questions CI :

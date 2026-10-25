@@ -36,6 +36,8 @@ export interface PendingApproval {
   module: PendingModule
   /** Clôture de paie : mois concerné (AAAA-MM). */
   month?: string
+  /** Clôture de paie : flux mono-entité, ou paie multi-filiales (id = période parente). */
+  scope?: 'single' | 'multi_sites'
   id: string
   employeeId: string
   employeeName: string

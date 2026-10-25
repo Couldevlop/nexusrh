@@ -66,7 +66,7 @@ openlabconsulting.com et relayé sur LinkedIn, avec un lien vers la vitrine :
 | « calcul ITS Côte d'Ivoire » | Réforme 2024 : barème 0 à 32 % sur 100 % du brut (abattement supprimé), puis RICF selon les parts, exemple chiffré |
 | « cotisations CNPS 2024 taux plafond » | Le double plafond (70 000 / 1 647 315 FCFA) expliqué |
 | « DISA Côte d'Ivoire » | Qui, quand (janvier N+1), quoi déclarer |
-| « calcul congés payés Côte d'Ivoire » | 2,5 jours ouvrables par mois, jours fériés, ancienneté |
+| « calcul congés payés Côte d'Ivoire » | 2,2 jours ouvrables par mois, jours fériés, ancienneté |
 | « indemnité de licenciement Côte d'Ivoire » | 30 / 35 / 40 % du salaire moyen par année, fraction d'année au prorata des mois, préavis, solde de tout compte |
 | « payer les salaires par Mobile Money » | Wave / Orange / MTN, contrôles, traçabilité |
 | « SMIG Côte d'Ivoire » | Montant en vigueur et impact sur la paie |

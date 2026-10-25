@@ -1,6 +1,11 @@
 /**
- * Circuit de validation NOMINATIF de la clôture de paie (périodes mono-pays :
- * open → pending_validation → N validations → closed).
+ * Circuit de validation NOMINATIF de la clôture de paie, commun aux deux flux :
+ *  - mono-entité : open → pending_validation → N validations → closed ;
+ *  - multi-filiales (période parente) : … → completed_by_site (toutes les
+ *    filles) → validated_central (consolidation = INITIATION du circuit)
+ *    → N validations → closed (parente ET filles). Le flux multi-filiales
+ *    projette 'validated_central' sur 'pending_validation' pour réutiliser
+ *    payrollLevelState / decidePayrollActor tels quels.
  *
  * Paramétrage (Paramètres → Workflow, module `payroll`) :
  *  - workflow_configs.levels_count = nombre de validations requises (1 à 10,
@@ -253,6 +258,20 @@ export function decidePayrollActor(state: PayrollLevelState, actor: { userId: st
   return { allowed: false, reason: 'role' }
 }
 
+/**
+ * Droit d'agir sur une période en validation (valider / rejeter). Sans niveau
+ * courant (tous les niveaux déjà validés après une réduction du circuit),
+ * l'équipe RH hors initiateur finalise la clôture.
+ */
+export function decideOnPayrollPeriod(
+  state: PayrollLevelState | null, initiatorId: string | null, user: { sub: string; role: string },
+): PayrollDecision {
+  if (state) return decidePayrollActor(state, { userId: user.sub, role: user.role })
+  if (initiatorId && initiatorId === user.sub) return { allowed: false, reason: 'initiator' }
+  if (isTeamRole(user.role)) return { allowed: true, escalated: false }
+  return { allowed: false, reason: 'role' }
+}
+
 function roleLabel(role: string | null | undefined): string {
   return (role && ROLE_LABELS[role]) || 'équipe RH'
 }
@@ -357,6 +376,119 @@ export async function describePendingPeriods(
     if (w) out.set(String(p.id), w)
   }
   return out
+}
+
+export interface PayrollApprovalView {
+  level: number
+  approverId: string
+  approverRole: string | null
+  approverName: string | null
+  approvedAt: string
+  notes: string | null
+}
+
+/** État complet du circuit exposé à l'UI (niveaux, valideur attendu, droits du lecteur). */
+export interface PayrollCircuitView {
+  requiredLevels: number
+  currentLevel: number
+  isComplete: boolean
+  approvals: PayrollApprovalView[]
+  levels: Array<{
+    level: number
+    status: 'approved' | 'current' | 'upcoming'
+    validator: { userId: string; name: string | null; role: string | null; available: boolean } | null
+    functionLabel: string | null
+    slaDays: number
+    dueAt: string | null
+    overdue: boolean
+    teamCanAct: boolean
+    approval: (PayrollApprovalView & { escalated: boolean }) | null
+  }>
+  pendingWith: PendingWith | null
+  viewer: {
+    canApprove: boolean
+    canReject: boolean
+    canCancel: boolean
+    escalated: boolean
+    deniedReason: PayrollDenial | null
+    deniedMessage: string | null
+  }
+}
+
+/**
+ * Vue du circuit d'une période (mono-entité ou période parente multi-filiales) :
+ * niveaux validés (qui, quand), niveau courant (valideur attendu + échéance) et
+ * droits du lecteur (valider / rejeter / annuler), calculés ici — l'UI n'en
+ * duplique rien. `period.status` vaut 'pending_validation' quand la période
+ * attend une validation (le flux multi-filiales y projette 'validated_central').
+ */
+export async function buildPayrollCircuitView(
+  db: Queryable, schema: string, period: PeriodForValidation, viewer: { sub: string; role: string }, now: Date = new Date(),
+): Promise<PayrollCircuitView> {
+  const circuit = await loadPayrollCircuit(db, schema)
+  const approvals = await db.query<{
+    level: number; approver_id: string; approver_role: string | null
+    approved_at: string; notes: string | null
+    first_name: string | null; last_name: string | null
+  }>(
+    `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
+            u.first_name, u.last_name
+       FROM "${schema}".pay_period_approvals a
+       LEFT JOIN "${schema}".users u ON u.id = a.approver_id
+      WHERE a.period_id = $1
+      ORDER BY a.level ASC`,
+    [period.id],
+  )
+  const approvalRowsRaw = approvals?.rows ?? []
+  const users = await loadPayrollUsers(db, schema, circuit.steps.map(s => s.userId))
+  const state = payrollLevelState(circuit, period, approvalRowsRaw, users, now)
+  const decision = decideOnPayrollPeriod(state, period.initiated_by ? String(period.initiated_by) : null, viewer)
+  const approvalRows: PayrollApprovalView[] = approvalRowsRaw.map(a => ({
+    level: a.level,
+    approverId: a.approver_id,
+    approverRole: a.approver_role,
+    approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
+    approvedAt: a.approved_at,
+    notes: a.notes,
+  }))
+  const levels = circuit.steps.map(step => {
+    const done = approvalRows.find(a => a.level === step.level) ?? null
+    const designatedUser = step.userId ? users.get(step.userId) : undefined
+    const isCurrent = state?.level === step.level
+    return {
+      level: step.level,
+      status: (done ? 'approved' : isCurrent ? 'current' : 'upcoming') as 'approved' | 'current' | 'upcoming',
+      validator: step.userId ? {
+        userId: step.userId,
+        name: userDisplayName(designatedUser),
+        role: designatedUser?.role ?? null,
+        available: isCurrent ? state?.designatedAvailable ?? false : !!designatedUser && designatedUser.isActive,
+      } : null,
+      functionLabel: step.functionLabel,
+      slaDays: step.slaDays,
+      dueAt: isCurrent ? state?.dueAt ?? null : null,
+      overdue: isCurrent ? state?.overdue ?? false : false,
+      teamCanAct: isCurrent ? state?.teamCanAct ?? false : false,
+      approval: done ? { ...done, escalated: !!step.userId && done.approverId !== step.userId } : null,
+    }
+  })
+  const pending = period.status === 'pending_validation'
+  return {
+    requiredLevels: circuit.levels,
+    currentLevel: approvalRowsRaw.length,
+    isComplete: approvalRowsRaw.length >= circuit.levels,
+    approvals: approvalRows,
+    levels,
+    pendingWith: pendingWithOf(state),
+    viewer: {
+      canApprove: pending && decision.allowed,
+      canReject: pending && decision.allowed,
+      canCancel: pending && !!period.initiated_by && String(period.initiated_by) === viewer.sub && approvalRowsRaw.length === 0,
+      escalated: pending && decision.allowed && decision.escalated,
+      deniedReason: pending && !decision.allowed ? decision.reason : null,
+      deniedMessage: pending && !decision.allowed ? payrollDenialMessage(decision.reason, state) : null,
+    },
+  }
 }
 
 /** Notification non bloquante (table notifications). */
@@ -476,6 +608,99 @@ export async function resetPendingPeriod(
     await client.query(`DELETE FROM "${schema}".pay_period_approvals WHERE period_id = $1`, [periodId])
     await client.query('COMMIT')
     return revert
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+/** Résultat du renvoi en préparation d'une paie multi-filiales. */
+export interface MultiSiteResetResult {
+  deletedPaySlips: number
+  restoredExpenses: number
+  restoredSettlements: number
+  /** Filiales (périodes filles) rouvertes à la soumission de leur RAF. */
+  sitesReopened: number
+  /** RAF des filiales rouvertes (à prévenir). */
+  rafUserIds: string[]
+}
+
+/**
+ * Renvoie une paie MULTI-FILIALES consolidée « en validation »
+ * (validated_central) en préparation, dans UNE transaction :
+ *  - période parente → sent_to_sites (initiation, consolidation et totaux effacés) ;
+ *  - toutes ses filles → sent_to_sites : bulletins générés supprimés
+ *    (revertPeriodPayslips sur la parente ET chaque fille : notes de frais
+ *    remises « approuvées », solde de tout compte démarqué) ; chaque RAF
+ *    re-soumet sa filiale, ce qui regénère ses bulletins ;
+ *  - validations partielles purgées.
+ * Refus (PayrollResetConflict, rien n'est modifié — ROLLBACK) si la paie n'est
+ * plus en validation (clôturée / traitée entre-temps), si un niveau a déjà
+ * validé alors que `requireNoApproval`, ou si un bulletin est payé / en paiement.
+ * `reason` = motif du rejet (null pour une annulation de l'initiation).
+ */
+export async function resetMultiSitePeriod(
+  schema: string, parentId: string, reason: string | null, opts: { requireNoApproval?: boolean } = {},
+): Promise<MultiSiteResetResult> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Verrou + garde de concurrence : seule une parente encore en validation est rouverte.
+    const upd = await client.query<{ id: string }>(
+      `UPDATE "${schema}".pay_periods
+          SET status = 'sent_to_sites', rejection_reason = $2, initiated_at = NULL, initiated_by = NULL,
+              validated_central_at = NULL, validated_by = NULL,
+              total_gross = NULL, total_net = NULL, total_cnps = NULL, total_its = NULL
+        WHERE id = $1 AND parent_period_id IS NULL AND status = 'validated_central'
+        RETURNING id`,
+      [parentId, reason],
+    )
+    if (!upd?.rows?.[0]) throw new PayrollResetConflict('La paie n\'est plus en validation (déjà clôturée ou traitée entre-temps). Rechargez la page.')
+    if (opts.requireNoApproval) {
+      const cnt = await client.query<{ cnt: number }>(
+        `SELECT count(*)::int AS cnt FROM "${schema}".pay_period_approvals WHERE period_id = $1`, [parentId],
+      )
+      if (Number(cnt?.rows?.[0]?.cnt ?? 0) > 0) {
+        throw new PayrollResetConflict('Un niveau a déjà été validé : l\'initiation ne peut plus être annulée. Demandez au valideur de renvoyer la paie en préparation.')
+      }
+    }
+    const children = await client.query<{ id: string; raf_user_id: string | null }>(
+      `SELECT id, raf_user_id FROM "${schema}".pay_periods WHERE parent_period_id = $1 ORDER BY id FOR UPDATE`,
+      [parentId],
+    )
+    const childRows = children?.rows ?? []
+    const totals = { deletedPaySlips: 0, restoredExpenses: 0, restoredSettlements: 0 }
+    let locked = 0
+    for (const periodId of [parentId, ...childRows.map(c => String(c.id))]) {
+      const revert = await revertPeriodPayslips(client, schema, periodId)
+      if (!revert.ok) { locked += revert.lockedPaySlips; continue }
+      totals.deletedPaySlips += revert.deletedPaySlips
+      totals.restoredExpenses += revert.restoredExpenses
+      totals.restoredSettlements += revert.restoredSettlements
+    }
+    if (locked > 0) {
+      throw new PayrollResetConflict(
+        `${locked} bulletin(s) de cette paie sont déjà payés ou en cours de paiement : elle ne peut plus être renvoyée en préparation.`,
+        locked,
+      )
+    }
+    await client.query(
+      `UPDATE "${schema}".pay_periods
+          SET status = 'sent_to_sites', rejection_reason = $2, completed_by_site_at = NULL,
+              validated_central_at = NULL, validated_by = NULL,
+              total_gross = NULL, total_net = NULL, total_cnps = NULL, total_its = NULL
+        WHERE parent_period_id = $1`,
+      [parentId, reason],
+    )
+    await client.query(`DELETE FROM "${schema}".pay_period_approvals WHERE period_id = $1`, [parentId])
+    await client.query('COMMIT')
+    return {
+      ...totals,
+      sitesReopened: childRows.length,
+      rafUserIds: [...new Set(childRows.map(c => c.raf_user_id).filter((x): x is string => !!x).map(String))],
+    }
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined)
     throw err

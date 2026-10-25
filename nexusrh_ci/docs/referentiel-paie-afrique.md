@@ -42,7 +42,7 @@ L'activation par pays se fait après implémentation des règles fines + validat
 - **Cotisations** : retraite sal 6,30 % / pat 7,70 % · PF pat 5,00 % · maternité pat 0,75 % · AT 2-5 % (secteur)
 - **Impôt** : ITS (réforme au 01/01/2024, Ordonnance n° 2023-719 — remplace IS/CN/IGR), **sans abattement** (100 % du brut imposable, cotisations CNPS salariales non déduites), barème **mensuel** 0/16/21/24/28/32 % (0-75k / 75k-240k / 240k-800k / 800k-2,4M / 2,4M-8M / >8M)
 - **RICF** (réduction pour charges de famille, imputée sur l'impôt brut) : 5 500 FCFA par demi-part au-delà de 1 part, de 0 (1 part) à 44 000 (5 parts) · parts : célibataire 1, marié 2, +0,5/enfant, parent isolé 1,5 + 0,5/enfant, plafond 5
-- **Congés** : maternité 14 sem. (6+8, CNPS), paternité 10 j, CP 2,5 j/mois, 6 j/sem.
+- **Congés** : maternité 14 sem. (6+8, CNPS), paternité 10 j, CP 2,2 j ouvrables/mois (art. 25.1), 6 j/sem.
 - **Sources** : CNPS CI, DGI CI (impots.gouv.ci), Code du travail CI. Réf. moteur (validé).
 
 ### Sénégal 🟡 — pack `SEN-2024` · stub

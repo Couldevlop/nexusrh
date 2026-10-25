@@ -1,13 +1,14 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
-import { calculatePayrollCI, type AbsencePayrollInfo, type PayrollContext } from '../../services/payroll-engine-ci.js'
+import { calculatePayrollCI, transportZoneFromCity, type AbsencePayrollInfo, type PayrollContext, type VariableTreatmentOverride } from '../../services/payroll-engine-ci.js'
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
   loadPayrollPopulation, markExpensesPaid, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
+import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } from '../../services/payroll-variable-elements.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { getPackByCountry } from '../../services/legislation-packs.js'
 import { encodeField } from '../sage/sage.service.js'
@@ -15,10 +16,10 @@ import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
 import {
-  decidePayrollActor, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers, loadPeriodApprovals,
+  buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers, loadPeriodApprovals,
   notifyPayrollUser, payrollDenialMessage, payrollLevelState, pendingValidationMessage, pendingWithOf,
-  resetPendingPeriod, userDisplayName, PayrollResetConflict,
-  type ApprovalForValidation, type PayrollCircuit, type PayrollDecision, type PayrollLevelState,
+  resetPendingPeriod, PayrollResetConflict,
+  type ApprovalForValidation, type PayrollCircuit, type PayrollLevelState,
   type PayrollUser, type PeriodForValidation,
 } from '../../services/payroll-validation.service.js'
 
@@ -114,18 +115,11 @@ async function loadPendingPeriod(schema: string, month: string): Promise<
   return { period, circuit, approvals, users, state: payrollLevelState(circuit, period, approvals, users) }
 }
 
-/**
- * Droit d'agir sur une période en validation. Sans niveau courant (tous les
- * niveaux déjà validés après une réduction du circuit), l'équipe RH hors
- * initiateur finalise la clôture.
- */
+/** Droit d'agir sur une période en validation (règles communes : service du circuit). */
 function decideOnPeriod(
   state: PayrollLevelState | null, period: { initiated_by: string | null }, user: { sub: string; role: string },
-): PayrollDecision {
-  if (state) return decidePayrollActor(state, { userId: user.sub, role: user.role })
-  if (period.initiated_by && period.initiated_by === user.sub) return { allowed: false, reason: 'initiator' }
-  if (user.role === 'admin' || user.role === 'hr_manager') return { allowed: true, escalated: false }
-  return { allowed: false, reason: 'role' }
+) {
+  return decideOnPayrollPeriod(state, period.initiated_by, user)
 }
 
 const payrollRoutes: FastifyPluginAsync = async (fastify) => {
@@ -193,8 +187,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       const tenantRes = await rawPool.query<{
         id: string; at_rate: string; has_subsidiaries: boolean; default_country_code: string | null
+        city: string | null
       }>(
-        `SELECT id, at_rate, has_subsidiaries, default_country_code
+        `SELECT id, at_rate, has_subsidiaries, default_country_code, city
          FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
       const tenantRow = tenantRes.rows[0]
@@ -204,15 +199,18 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       let legalEntityInfo: {
         id: string; atRate: number | null; legislationPackCode: string | null; countryCode: string | null
       } | null = null
+      let workCity: string | null = tenantRow?.city ?? null
       if (emp.legal_entity_id) {
         const leRes = await rawPool.query<{
           id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null
+          city: string | null
         }>(
-          `SELECT id, at_rate, legislation_pack_code, country_code
+          `SELECT id, at_rate, legislation_pack_code, country_code, city
            FROM "${schema}".legal_entities WHERE id = $1 LIMIT 1`,
           [emp.legal_entity_id],
-        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null }> }))
+        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; city: string | null }> }))
         const le = leRes.rows[0]
+        if (le?.city) workCity = le.city
         if (le) legalEntityInfo = {
           id: le.id,
           atRate: le.at_rate ? parseFloat(le.at_rate) : null,
@@ -239,13 +237,15 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       const periodId = periodRes.rows[0]?.id
 
       const varEls: Record<string, number> = {}
+      let variableTreatment: VariableTreatmentOverride | undefined
       if (periodId) {
-        const velRes = await rawPool.query<{ rule_code: string; amount: string }>(
-          `SELECT rule_code, amount FROM "${schema}".variable_elements
-           WHERE employee_id = $1 AND period_id = $2`,
+        const velRes = await rawPool.query<VariableElementRow>(
+          `${VARIABLE_ELEMENTS_SQL(schema)}
+           WHERE ve.employee_id = $1 AND ve.period_id = $2`,
           [employeeId, periodId]
         )
         for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
+        variableTreatment = treatmentFromRows(velRes.rows)
       }
 
       const parsed = parseMonth(month)
@@ -273,6 +273,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         settlementEarnings: monthInputs.settlementEarnings,
         expenseReimbursement: monthInputs.expenses.total,
         legislationPack:  resolved.legislationPack,
+        // Plafond d'exonération transport selon le lieu de travail
+        transportZone:    transportZoneFromCity(workCity),
+        variableTreatment,
       })
 
       return reply.send({
@@ -357,9 +360,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       const tenantRes = await rawPool.query<{
         id: string; has_subsidiaries: boolean; at_rate: string
-        default_country_code: string | null
+        default_country_code: string | null; city: string | null
       }>(
-        `SELECT id, has_subsidiaries, at_rate, default_country_code
+        `SELECT id, has_subsidiaries, at_rate, default_country_code, city
          FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
       const tenant = tenantRes.rows[0]
@@ -373,16 +376,16 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Si filiale fournie, valide qu'elle existe et appartient au tenant
-      let legalEntity: { id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string } | null = null
+      let legalEntity: { id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string; city?: string | null } | null = null
       if (legalEntityId) {
         const leRes = await rawPool.query<{
           id: string; at_rate: string | null; legislation_pack_code: string | null
-          country_code: string | null; name: string
+          country_code: string | null; name: string; city: string | null
         }>(
-          `SELECT id, at_rate, legislation_pack_code, country_code, name
+          `SELECT id, at_rate, legislation_pack_code, country_code, name, city
            FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
           [legalEntityId],
-        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string }> }))
+        ).catch(() => ({ rows: [] as Array<{ id: string; at_rate: string | null; legislation_pack_code: string | null; country_code: string | null; name: string; city: string | null }> }))
         if (!leRes.rows[0]) {
           return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
         }
@@ -463,11 +466,12 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       for (const emp of emps.rows) {
         const varEls: Record<string, number> = {}
-        const velRes = await rawPool.query<{ rule_code: string; amount: string }>(
-          `SELECT rule_code, amount FROM "${schema}".variable_elements
-           WHERE employee_id = $1 AND period_id = $2`, [emp.id, periodId]
+        const velRes = await rawPool.query<VariableElementRow>(
+          `${VARIABLE_ELEMENTS_SQL(schema)}
+           WHERE ve.employee_id = $1 AND ve.period_id = $2`, [emp.id, periodId]
         )
         for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
+        const variableTreatment = treatmentFromRows(velRes.rows)
 
         // Prorata entrée / sortie, absences, pointage et solde de tout compte
         const monthInputs = await resolveEmployeeMonth(schema, emp, month, attendanceSettings)
@@ -495,6 +499,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           settlementEarnings: monthInputs.settlementEarnings,
           expenseReimbursement: monthInputs.expenses.total,
           legislationPack:  resolved.legislationPack,
+          // Plafond d'exonération transport selon le lieu de travail
+          transportZone:    transportZoneFromCity(legalEntity?.city || tenant.city),
+          variableTreatment,
         })
 
         totalGross += result.grossSalary
@@ -657,58 +664,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         )
         if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
         const p = period.rows[0]
-
-        const circuit = await loadPayrollCircuit(rawPool, schema)
-        const requiredLevels = circuit.levels
-
-        const approvals = await rawPool.query<{
-          level: number; approver_id: string; approver_role: string | null
-          approved_at: string; notes: string | null
-          first_name: string | null; last_name: string | null
-        }>(
-          `SELECT a.level, a.approver_id, a.approver_role, a.approved_at, a.notes,
-                  u.first_name, u.last_name
-             FROM "${schema}".pay_period_approvals a
-             LEFT JOIN "${schema}".users u ON u.id = a.approver_id
-            WHERE a.period_id = $1
-            ORDER BY a.level ASC`,
-          [p.id],
-        )
-        const users = await loadPayrollUsers(rawPool, schema, circuit.steps.map(s => s.userId))
-        const state = payrollLevelState(circuit, p, approvals.rows, users)
-        const decision = decideOnPeriod(state, p, request.user)
-        const approvalRows = approvals.rows.map(a => ({
-          level: a.level,
-          approverId: a.approver_id,
-          approverRole: a.approver_role,
-          approverName: [a.first_name, a.last_name].filter(Boolean).join(' ') || null,
-          approvedAt: a.approved_at,
-          notes: a.notes,
-        }))
-
-        const levels = circuit.steps.map(step => {
-          const done = approvalRows.find(a => a.level === step.level) ?? null
-          const designatedUser = step.userId ? users.get(step.userId) : undefined
-          const isCurrent = state?.level === step.level
-          return {
-            level: step.level,
-            status: done ? 'approved' : isCurrent ? 'current' : 'upcoming',
-            validator: step.userId ? {
-              userId: step.userId,
-              name: userDisplayName(designatedUser),
-              role: designatedUser?.role ?? null,
-              available: isCurrent ? state?.designatedAvailable ?? false : !!designatedUser && designatedUser.isActive,
-            } : null,
-            functionLabel: step.functionLabel,
-            slaDays: step.slaDays,
-            dueAt: isCurrent ? state?.dueAt ?? null : null,
-            overdue: isCurrent ? state?.overdue ?? false : false,
-            teamCanAct: isCurrent ? state?.teamCanAct ?? false : false,
-            approval: done ? { ...done, escalated: !!step.userId && done.approverId !== step.userId } : null,
-          }
-        })
-
-        const pending = p.status === 'pending_validation'
+        const view = await buildPayrollCircuitView(rawPool, schema, p, request.user)
         return reply.send({
           period: {
             id: p.id, month: p.month, status: p.status,
@@ -717,20 +673,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             rejectionReason: p.rejection_reason,
             closedAt: p.closed_at, closedBy: p.closed_by,
           },
-          requiredLevels,
-          currentLevel: approvals.rows.length,
-          isComplete: approvals.rows.length >= requiredLevels,
-          approvals: approvalRows,
-          levels,
-          pendingWith: pendingWithOf(state),
-          viewer: {
-            canApprove: pending && decision.allowed,
-            canReject: pending && decision.allowed,
-            canCancel: pending && p.initiated_by === request.user.sub && approvals.rows.length === 0,
-            escalated: pending && decision.allowed && decision.escalated,
-            deniedReason: pending && !decision.allowed ? decision.reason : null,
-            deniedMessage: pending && !decision.allowed ? payrollDenialMessage(decision.reason, state) : null,
-          },
+          ...view,
         })
       } catch (err) {
         request.log.error({ err, schema, month }, 'payroll workflow state failed')

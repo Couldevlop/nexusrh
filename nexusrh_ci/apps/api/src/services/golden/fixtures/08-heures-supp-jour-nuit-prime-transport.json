@@ -1,6 +1,6 @@
 {
   "id": "08-heures-supp-jour-nuit-prime-transport",
-  "description": "Salarié avec heures supp +15% (jour) + heures supp +50% (nuit/dimanche) + prime transport. Vérifie l'agrégation des variableElements dans grossSalary et l'exclusion correcte des primes de la base imposable ITS.",
+  "description": "Salarié avec heures supp +15% (jour) + heures supp +50% (nuit/dimanche) + prime transport. Vérifie l'agrégation des variableElements dans grossSalary et l'assujettissement des heures supp. aux bases CNPS et ITS ; transport exonéré dans la limite de 30 000 F/mois.",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -13,6 +13,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 141660 → 180000 ; its 999 → 16800 ; totalDeductions 12339 → 28140 ; netPayable 209661 → 193860"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 11340 → 12411 ; cnpsRetraitePat 13860 → 15169 ; totalCnpsSal 11340 → 12411 ; totalCnpsPat 19285 → 20594 ; baseImposable 180000 → 197000 ; its 16800 → 19520 ; totalDeductions 28140 → 31931 ; netPayable 193860 → 190069 ; employerCost 241285 → 242594 ; ligne 2000 11340 → 12411 ; ligne 2100 16800 → 19520 ; ligne 3000 13860 → 15169"
       }
     ]
   },
@@ -33,17 +39,17 @@
     "baseSalary": 180000,
     "brutProrata": 180000,
     "grossSalary": 222000,
-    "cnpsRetraiteSal": 11340,
-    "cnpsRetraitePat": 13860,
+    "cnpsRetraiteSal": 12411,
+    "cnpsRetraitePat": 15169,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 11340,
-    "totalCnpsPat": 19285,
-    "baseImposable": 180000,
-    "its": 16800,
-    "totalDeductions": 28140,
-    "netPayable": 193860,
-    "employerCost": 241285,
+    "totalCnpsSal": 12411,
+    "totalCnpsPat": 20594,
+    "baseImposable": 197000,
+    "its": 19520,
+    "totalDeductions": 31931,
+    "netPayable": 190069,
+    "employerCost": 242594,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -51,9 +57,9 @@
       { "code": "1300", "type": "earning",                 "amount":  25000 },
       { "code": "1400", "type": "earning",                 "amount":  12000 },
       { "code": "1500", "type": "earning",                 "amount":   5000 },
-      { "code": "2000", "type": "employee_contribution",   "amount":  11340 },
-      { "code": "2100", "type": "employee_contribution",   "amount":  16800 },
-      { "code": "3000", "type": "employer_contribution",   "amount":  13860 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  12411 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  19520 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  15169 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },
       { "code": "3300", "type": "employer_contribution",   "amount":   1400 }

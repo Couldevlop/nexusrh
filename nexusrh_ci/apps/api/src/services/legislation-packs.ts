@@ -148,6 +148,24 @@ export interface LegislationPack {
    */
   settlementTreatment?: Record<'conges' | 'preavis' | 'licenciement', { social: boolean; tax: boolean }>
 
+  /**
+   * Assujettissement des éléments variables (clé = code d'élément variable,
+   * ex. PRIME_RENDEMENT) aux cotisations sociales (`social`) et à l'impôt sur
+   * les salaires (`tax`). Fusionné sur le défaut du moteur
+   * (DEFAULT_VARIABLE_TREATMENT : primes, heures supplémentaires, congés,
+   * gratifications et avantages en nature assujettis ; prime de transport
+   * exonérée dans la limite de `primeTransportExoneree`).
+   */
+  traitementElementsVariables?: Readonly<Record<string, { social: boolean; tax: boolean }>>
+
+  /**
+   * Plafond mensuel exonéré (cotisations + impôt) de la prime de transport,
+   * éventuellement par zone de travail (clé libre, ex. abidjan / bouake /
+   * autres). La fraction au-delà du plafond est assujettie. Absent = prime de
+   * transport entièrement exonérée (aucun plafond paramétré pour le pays).
+   */
+  primeTransportExoneree?: { defaut: number; parZone?: Readonly<Record<string, number>> }
+
   /** Note pour les administrateurs */
   notes?: string
 }
@@ -375,6 +393,29 @@ export const CIV_2024: LegislationPack = {
     conges:       { social: true,  tax: true },
     preavis:      { social: true,  tax: true },
     licenciement: { social: false, tax: false },
+  },
+  // Primes, heures supplémentaires, indemnité de congés, gratifications et
+  // avantages en nature font partie du brut soumis à CNPS et ITS (CGI art. 116
+  // et s. ; assiette CNPS = rémunération totale). Seule l'indemnité de
+  // transport est exonérée, dans la limite du montant fixé par arrêté conjoint
+  // Emploi / Budget (CGI art. 116 al. 10 modifié par l'annexe fiscale 2023,
+  // art. 1 ; arrêté n° 2020-012/MEPS/CAB du 30/01/2020) : Abidjan 30 000,
+  // Bouaké 24 000, autres villes 20 000 FCFA/mois. La CNPS exclut l'indemnité
+  // de transport de l'assiette dans la même limite (guide employeur CNPS) ;
+  // l'excédent est cotisable et imposable.
+  traitementElementsVariables: {
+    PRIME_ANCIENNETE:  { social: true, tax: true },
+    PRIME_RENDEMENT:   { social: true, tax: true },
+    HEURES_SUPP_NORM:  { social: true, tax: true },
+    HEURES_SUPP_NUIT:  { social: true, tax: true },
+    HEURES_SUPP_FERIE: { social: true, tax: true },
+    ICP:               { social: true, tax: true },
+    GRATIFICATION:     { social: true, tax: true },
+    AVANTAGE_NATURE:   { social: true, tax: true },
+  },
+  primeTransportExoneree: {
+    defaut: 30_000,
+    parZone: { abidjan: 30_000, bouake: 24_000, autres: 20_000 },
   },
   terminationRules: {
     noticeByCategory: [

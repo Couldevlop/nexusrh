@@ -1,6 +1,6 @@
 {
   "id": "10-prime-rendement-mois-complet",
-  "description": "Salarié avec prime de rendement seule (PRIME_RENDEMENT 50 000) — vérifie que la prime est dans grossSalary mais hors base imposable ITS",
+  "description": "Salarié avec prime de rendement seule (PRIME_RENDEMENT 50 000) — vérifie que la prime est dans grossSalary ET dans les bases CNPS et ITS",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -13,6 +13,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 157400 → 200000 ; its 1235 → 20000 ; totalDeductions 13835 → 32600 ; netPayable 236165 → 217400"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 12600 → 15750 ; cnpsRetraitePat 15400 → 19250 ; totalCnpsSal 12600 → 15750 ; totalCnpsPat 20825 → 24675 ; baseImposable 200000 → 250000 ; its 20000 → 28500 ; totalDeductions 32600 → 44250 ; netPayable 217400 → 205750 ; employerCost 270825 → 274675 ; ligne 2000 12600 → 15750 ; ligne 2100 20000 → 28500 ; ligne 3000 15400 → 19250"
       }
     ]
   },
@@ -31,25 +37,25 @@
     "baseSalary": 200000,
     "brutProrata": 200000,
     "grossSalary": 250000,
-    "cnpsRetraiteSal": 12600,
-    "cnpsRetraitePat": 15400,
+    "cnpsRetraiteSal": 15750,
+    "cnpsRetraitePat": 19250,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 12600,
-    "totalCnpsPat": 20825,
-    "baseImposable": 200000,
-    "its": 20000,
-    "totalDeductions": 32600,
-    "netPayable": 217400,
-    "employerCost": 270825,
+    "totalCnpsSal": 15750,
+    "totalCnpsPat": 24675,
+    "baseImposable": 250000,
+    "its": 28500,
+    "totalDeductions": 44250,
+    "netPayable": 205750,
+    "employerCost": 274675,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 200000 },
       { "code": "1200", "type": "earning",                 "amount":  50000 },
-      { "code": "2000", "type": "employee_contribution",   "amount":  12600 },
-      { "code": "2100", "type": "employee_contribution",   "amount":  20000 },
-      { "code": "3000", "type": "employer_contribution",   "amount":  15400 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  15750 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  28500 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  19250 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },
       { "code": "3300", "type": "employer_contribution",   "amount":   1400 }

@@ -115,7 +115,7 @@ readonly     → Consultation seule, aucune modification.
 ```typescript
 export const CI_LEGAL_CONSTANTS_2024 = {
   // SMIG
-  SMIG_MENSUEL: 60_000, SMIG_HORAIRE: 345, // FCFA
+  SMIG_MENSUEL: 75_000, SMIG_HORAIRE: 433, // FCFA (en vigueur depuis le 01/01/2023)
 
   // CNPS — DOUBLE PLAFOND (ne jamais confondre)
   PLAFOND_CNPS_AT_PF_MENSUEL: 70_000,        // AT, Prestations familiales, Maternité
@@ -141,9 +141,18 @@ export const CI_LEGAL_CONSTANTS_2024 = {
   RICF_PAR_PARTS: { 1: 0, 1.5: 5_500, 2: 11_000, 2.5: 16_500, 3: 22_000, 3.5: 27_500, 4: 33_000, 4.5: 38_500, 5: 44_000 },
   // Exemples célibataire 0 enfant : brut 200 000 → 20 000 · 450 000 → 70 500 · 1 500 000 → 312 000
 
-  // Congés (jours OUVRABLES)
-  JOURS_CONGES_PAR_MOIS: 2.5,
-  ANCIENNETE_BONUS_JOURS: [ { annees: 5, joursSupp: 1 }, { annees: 10, joursSupp: 2 }, { annees: 15, joursSupp: 3 } ],
+  // Congés (jours OUVRABLES) — CT art. 25.1 / CCI art. 69 : 2,2 j par mois de service
+  CONGES_JOURS_PAR_MOIS: 2.2,
+  // CT art. 25.2 (ordonnance 2021-902) : jours supplémentaires selon l'ancienneté
+  ANCIENNETE_BONUS_JOURS: [ { annees: 5, joursSupp: 1 }, { annees: 10, joursSupp: 2 }, { annees: 15, joursSupp: 3 },
+                            { annees: 20, joursSupp: 5 }, { annees: 25, joursSupp: 7 }, { annees: 30, joursSupp: 8 } ],
+
+  // Assiette CNPS + ITS : primes (ancienneté, rendement), heures supp., ICP, gratifications et
+  // avantages en nature SONT soumis. Prime de transport exonérée jusqu'à 30 000 F/mois (Abidjan),
+  // 24 000 (Bouaké), 20 000 (autres villes) — CGI art. 116 al. 10, arrêté n° 2020-012/MEPS/CAB ;
+  // excédent soumis. Hors bases : frais remboursés (6000), licenciement dans la limite légale,
+  // indemnités maternité / AT. Paramétrable par rubrique (pack `traitementElementsVariables`,
+  // tenant `payroll_rules.subject_social/subject_tax`).
 
   // Heures supplémentaires (majorations)
   MAJORATIONS_HEURES_SUPP: { normal: 0.15 /*41–48h*/, nuit: 0.5 /*20h–5h*/, dimanche: 0.5, ferie: 1.0 },
@@ -153,7 +162,7 @@ export const CI_LEGAL_CONSTANTS_2024 = {
 }
 ```
 
-**Préavis** : essai employé 15j · essai cadre 1 mois · ancienneté <1 an 1 mois · 1–5 ans 2 mois · >5 ans 3 mois.
+**Préavis** (décret n° 96-200 du 7/03/1996, art. 18.4 CT / art. 34 CCI ; source de vérité = `terminationRules` du pack CIV_2024) : catégories 1–5 payées au mois : ≤ 6 ans 1 mois · ≤ 11 ans 2 mois · ≤ 16 ans 3 mois · > 16 ans 4 mois ; catégories 1–5 non mensualisées : ≤ 6 mois 8 j · ≤ 1 an 15 j, puis comme ci-dessus ; 6e catégorie et au-delà (maîtrise, cadres) : ≤ 16 ans 3 mois · > 16 ans 4 mois.
 **Congés spéciaux** : maternité 14 sem. (6+8) · paternité 10j · deuil familial 3j.
 **Plafonds CNPS, barème ITS détaillé, taux AT par secteur, jours fériés CI 2024, DISA (Loi 99-477)** → `docs/reference/paie-mobile-money-ia.md`.
 
@@ -247,11 +256,11 @@ pnpm run dev
 
 - [ ] Architecture multi-tenant (schema-per-tenant) comprise
 - [ ] Moteur de paie CI : CNPS (double plafond) + ITS (barème 2024 0–32 % sur 100 % du brut → RICF par parts)
-- [ ] SMIG 60 000 FCFA vérifié sur chaque bulletin · FCFA entiers partout (zéro décimale)
+- [ ] SMIG 75 000 FCFA vérifié sur chaque bulletin · FCFA entiers partout (zéro décimale)
 - [ ] Mobile Money : Wave + MTN + Orange (format +225, regex validée)
 - [ ] Modules CI : CNPS/DISA, OHADA contrats, FDFP formation
 - [ ] DISA agrégation annuelle (12 mois), génération janvier N+1
-- [ ] Jours fériés CI 2024 dans le calcul congés (jours ouvrables) · 2,5 j/mois travaillé
+- [ ] Jours fériés CI 2024 dans le calcul congés (jours ouvrables) · 2,2 j ouvrables / mois de service (CT art. 25.1)
 - [ ] `findTenantAndUser` passe le mot de passe ET itère tous les candidats
 - [ ] `max_users` / `max_employees` selon plan CI dans l'INSERT tenant
 - [ ] `ensureSchemaMigrated` dans chaque handler absences/expenses/careers

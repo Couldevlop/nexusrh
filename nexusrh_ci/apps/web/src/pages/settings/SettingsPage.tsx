@@ -52,6 +52,7 @@ interface PayrollRule {
   id: string; code: string; name: string; type: string
   formula: string | null; rate: string | null; ceiling_type: string | null
   is_active: boolean; order: number; description: string | null
+  subject_social?: boolean | null; subject_tax?: boolean | null
 }
 interface LegalEntity {
   id: string; name: string; rccm: string | null; cnps_number: string | null
@@ -1509,6 +1510,14 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     mutationFn: (id: string) => api.delete(`/settings/payroll-rules/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-payroll-rules'] }),
   })
+  // Assujettissement CNPS / ITS d'une rubrique de gain : null = règle du pack
+  const setSubject = useMutation({
+    mutationFn: ({ id, field, value }: { id: string; field: 'subject_social' | 'subject_tax'; value: boolean | null }) =>
+      api.patch(`/settings/payroll-rules/${id}`, { [field]: value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings-payroll-rules'] }),
+  })
+  const subjectValue = (v: boolean | null | undefined) => (v === true ? 'yes' : v === false ? 'no' : 'pack')
+  const parseSubject = (v: string): boolean | null => (v === 'yes' ? true : v === 'no' ? false : null)
 
   return (
     <div className="space-y-4">
@@ -1530,6 +1539,8 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <th className="p-3">{t('payrollRules.table.label')}</th>
               <th className="p-3">{t('payrollRules.table.type')}</th>
               <th className="p-3">{t('payrollRules.table.formulaOrRate')}</th>
+              <th className="p-3">{t('payrollRules.table.subjectSocial')}</th>
+              <th className="p-3">{t('payrollRules.table.subjectTax')}</th>
               <th className="p-3">{t('payrollRules.table.status')}</th>
               <th className="p-3">{t('payrollRules.table.actions')}</th>
             </tr>
@@ -1553,6 +1564,20 @@ function PayrollRulesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <td className="p-3 font-mono text-xs">
                     {r.formula ?? (r.rate ? `${(parseFloat(r.rate) * 100).toFixed(2)} %` : '—')}
                   </td>
+                  {(['subject_social', 'subject_tax'] as const).map(field => (
+                    <td key={field} className="p-3">
+                      {r.type === 'earning' && r.formula?.startsWith('VAR:') ? (
+                        <select aria-label={t(field === 'subject_social' ? 'payrollRules.table.subjectSocial' : 'payrollRules.table.subjectTax')}
+                          value={subjectValue(r[field])}
+                          onChange={e => setSubject.mutate({ id: r.id, field, value: parseSubject(e.target.value) })}
+                          className="rounded-md border border-input bg-background px-2 py-1 text-xs outline-none">
+                          <option value="pack">{t('payrollRules.subject.pack')}</option>
+                          <option value="yes">{t('payrollRules.subject.yes')}</option>
+                          <option value="no">{t('payrollRules.subject.no')}</option>
+                        </select>
+                      ) : <span className="text-xs text-muted-foreground">—</span>}
+                    </td>
+                  ))}
                   <td className="p-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
                       {r.is_active ? t('payrollRules.active') : t('payrollRules.inactive')}

@@ -15,7 +15,7 @@ Propulsé par **Claude AI** (Anthropic)
 | **CNPS 2024**    | Retraite 6,3% sal. / 7,7% pat. · PF 5,75% pat. · AT 2–5% selon secteur |
 | **ITS / DGI**    | Réforme 2024 : barème 0–32% sur 100% du brut (sans abattement) · RICF par parts |
 | **SMIG**         | 75 000 FCFA / mois                                                     |
-| **Congés**       | 2,5 jours ouvrables / mois travaillé (Code du Travail CI)              |
+| **Congés**       | 2,2 jours ouvrables / mois travaillé (Code du Travail CI, art. 25.1)  |
 | **DISA**         | Génération automatique (loi 99-477)                                    |
 | **e-CNPS**       | Export compatible plateforme e-CNPS · avant le 15/mois                 |
 | **Mobile Money** | Wave · MTN MoMo · Orange Money CI · COFINA                             |

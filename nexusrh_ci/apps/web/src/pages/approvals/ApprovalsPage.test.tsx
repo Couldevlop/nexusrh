@@ -51,4 +51,30 @@ describe('ApprovalsPage — clôture de paie', () => {
     expect(screen.queryByText('actions.approve')).toBeNull()
     expect(patchMock).not.toHaveBeenCalled()
   })
+
+  it('paie multi-filiales : une seule ligne (période parente) ouvrant le circuit de l’écran multi-filiales', async () => {
+    const PARENT = '11111111-1111-4111-8111-111111111111'
+    getMock.mockResolvedValue({ data: {
+      data: [{
+        module: 'payroll', scope: 'multi_sites', id: PARENT, month: '2026-11', employeeId: 'u-init', employeeName: 'Awa Koné',
+        label: '2026-11', detail: '', submittedAt: '2026-11-25T10:00:00Z', dueSoon: false,
+        workflow: {
+          totalSteps: 2, doneSteps: 1, dueAt: '2026-11-27T10:00:00Z', overdue: false, canAct: true, designated: true,
+          next: { kind: 'payroll', level: 2, validatorName: 'Fanta Traoré', functionLabel: 'DRH' },
+        },
+      }],
+      summary: { actionable: 1, overdue: 0, dueSoon: 0, readOnly: 0 },
+    } })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter><ApprovalsPage /></MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText(/payrollLabel.*mois 2026-11/)).toBeTruthy()
+    expect(screen.getByText('Fanta Traoré (DRH)')).toBeTruthy()
+    const links = screen.getAllByText('actions.open')
+    expect(links).toHaveLength(1)
+    expect(links[0]!.closest('a')!.getAttribute('href')).toBe(`/payroll/multi-filiales?validate=${PARENT}`)
+  })
 })

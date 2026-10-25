@@ -531,6 +531,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     is_active  boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
+  // Assujettissement CNPS / ITS paramétrable par rubrique (NULL = règle du pack)
+  await q(`ALTER TABLE ${s}.payroll_rules ADD COLUMN IF NOT EXISTS subject_social boolean`)
+  await q(`ALTER TABLE ${s}.payroll_rules ADD COLUMN IF NOT EXISTS subject_tax boolean`)
 
   // NB : pas de contrainte UNIQUE(month) inline. L'unicité réelle est portée par
   // un index (month, legal_entity_id) NULLS NOT DISTINCT créé plus bas, qui
@@ -1633,9 +1636,12 @@ export async function seedPayrollRulesCI(schemaName: string, atRate: number = 0.
     { code: '1000', label: 'Salaire de base', type: 'earning', formula: 'BRUT_PRORATA', order: 10 },
     { code: '1100', label: "Prime d'ancienneté", type: 'earning', formula: 'VAR:PRIME_ANCIENNETE', order: 20 },
     { code: '1200', label: 'Prime de rendement', type: 'earning', formula: 'VAR:PRIME_RENDEMENT', order: 30 },
+    { code: '1250', label: 'Gratification', type: 'earning', formula: 'VAR:GRATIFICATION', order: 32 },
+    { code: '1260', label: 'Avantage en nature', type: 'earning', formula: 'VAR:AVANTAGE_NATURE', order: 34 },
     { code: '1300', label: 'Prime de transport', type: 'earning', formula: 'VAR:PRIME_TRANSPORT', order: 40 },
     { code: '1400', label: 'Heures supplémentaires (+15%)', type: 'earning', formula: 'VAR:HEURES_SUPP_NORM', order: 50 },
     { code: '1500', label: 'Heures supplémentaires (+50%)', type: 'earning', formula: 'VAR:HEURES_SUPP_NUIT', order: 60 },
+    { code: '1550', label: 'Heures supplémentaires (+100%)', type: 'earning', formula: 'VAR:HEURES_SUPP_FERIE', order: 65 },
     { code: '1600', label: 'Indemnité de congés payés', type: 'earning', formula: 'VAR:ICP', order: 70 },
     { code: '2000', label: 'CNPS Retraite salarié (6,3%)', type: 'employee_contribution', formula: 'BASE_RETRAITE * 0.063', order: 100 },
     { code: '2100', label: 'ITS - Impôt sur Traitements et Salaires', type: 'employee_contribution', formula: 'ITS', order: 110 },
@@ -1647,6 +1653,7 @@ export async function seedPayrollRulesCI(schemaName: string, atRate: number = 0.
     { code: '4100', label: 'Mutuelle santé patronal', type: 'employer_contribution', formula: 'VAR:MUTUELLE_PAT', order: 310 },
     { code: '5000', label: 'Avance sur salaire', type: 'deduction', formula: 'VAR:AVANCE', order: 400 },
     { code: '5100', label: 'Retenue absence non justifiée', type: 'deduction', formula: 'VAR:RETENUE_ABSENCE', order: 410 },
+    { code: '5200', label: 'Avantage en nature (fourni en nature)', type: 'deduction', formula: 'VAR:AVANTAGE_NATURE', order: 420 },
   ]
 
   for (const r of rules) {

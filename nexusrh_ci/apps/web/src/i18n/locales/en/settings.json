@@ -310,8 +310,15 @@
       "label": "Label",
       "type": "Type",
       "formulaOrRate": "Formula / Rate",
+      "subjectSocial": "Subject to CNPS",
+      "subjectTax": "Subject to ITS",
       "status": "Status",
       "actions": "Actions"
+    },
+    "subject": {
+      "pack": "Per legislation pack",
+      "yes": "Yes",
+      "no": "No (exempt)"
     },
     "active": "Active",
     "inactive": "Inactive",

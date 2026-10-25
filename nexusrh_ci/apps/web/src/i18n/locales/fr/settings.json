@@ -310,8 +310,15 @@
       "label": "Libellé",
       "type": "Type",
       "formulaOrRate": "Formule / Taux",
+      "subjectSocial": "Soumis CNPS",
+      "subjectTax": "Imposable ITS",
       "status": "Statut",
       "actions": "Actions"
+    },
+    "subject": {
+      "pack": "Selon le pack",
+      "yes": "Oui",
+      "no": "Non (exonéré)"
     },
     "active": "Active",
     "inactive": "Inactive",

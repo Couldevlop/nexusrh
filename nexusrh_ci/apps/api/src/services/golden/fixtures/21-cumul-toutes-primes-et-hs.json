@@ -13,6 +13,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 275450 → 350000 ; its 4247 → 49500 ; totalDeductions 26297 → 71550 ; netPayable 435703 → 390450"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 22050 → 27216 ; cnpsRetraitePat 26950 → 33264 ; totalCnpsSal 22050 → 27216 ; totalCnpsPat 32375 → 38689 ; baseImposable 350000 → 432000 ; its 49500 → 66720 ; totalDeductions 71550 → 93936 ; netPayable 390450 → 368064 ; employerCost 494375 → 500689 ; ligne 2000 22050 → 27216 ; ligne 2100 49500 → 66720 ; ligne 3000 26950 → 33264"
       }
     ]
   },
@@ -36,17 +42,17 @@
     "baseSalary": 350000,
     "brutProrata": 350000,
     "grossSalary": 462000,
-    "cnpsRetraiteSal": 22050,
-    "cnpsRetraitePat": 26950,
+    "cnpsRetraiteSal": 27216,
+    "cnpsRetraitePat": 33264,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 22050,
-    "totalCnpsPat": 32375,
-    "baseImposable": 350000,
-    "its": 49500,
-    "totalDeductions": 71550,
-    "netPayable": 390450,
-    "employerCost": 494375,
+    "totalCnpsSal": 27216,
+    "totalCnpsPat": 38689,
+    "baseImposable": 432000,
+    "its": 66720,
+    "totalDeductions": 93936,
+    "netPayable": 368064,
+    "employerCost": 500689,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -57,9 +63,9 @@
       { "code": "1400", "type": "earning",                 "amount":  20000 },
       { "code": "1500", "type": "earning",                 "amount":  10000 },
       { "code": "1600", "type": "earning",                 "amount":  12000 },
-      { "code": "2000", "type": "employee_contribution",   "amount":  22050 },
-      { "code": "2100", "type": "employee_contribution",   "amount":  49500 },
-      { "code": "3000", "type": "employer_contribution",   "amount":  26950 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  27216 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  66720 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  33264 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },
       { "code": "3300", "type": "employer_contribution",   "amount":   1400 }

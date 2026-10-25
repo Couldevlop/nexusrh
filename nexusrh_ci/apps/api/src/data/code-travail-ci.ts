@@ -650,7 +650,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-its-2', article_numero: 'CGI Art. 117',
     livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
     titre_article: 'ITS — Revenus exonérés',
-    texte: 'Sont exonérés d\'ITS : les indemnités journalières d\'accident du travail (AT), les indemnités de maternité versées par la CNPS, les allocations familiales CNPS, les remboursements de frais professionnels sur justificatifs, les indemnités de licenciement dans la limite légale.',
+    texte: 'Sont exonérés d\'ITS : les indemnités journalières d\'accident du travail (AT), les indemnités de maternité versées par la CNPS, les allocations familiales CNPS, les remboursements de frais professionnels sur justificatifs, les indemnités de licenciement dans la limite légale, la prime de transport dans la limite de 30 000 F par mois (Abidjan). Les primes (ancienneté, rendement), heures supplémentaires, indemnité de congés payés, gratifications et avantages en nature sont en revanche soumis à l\'ITS et aux cotisations CNPS.',
     keywords: ['exonération ITS', 'AT exonéré', 'maternité exonérée', 'allocations familiales'], payroll_codes: ['1700', '1900'] },
 
   { ...P, source: CT, article_id: 'art-its-3', article_numero: 'CGI Art. 118',
@@ -757,7 +757,7 @@ export const CONVENTIONS_COLLECTIVES: ArticleDroit[] = [
     article_id: 'cc-ip-3', article_numero: 'Art. 15',
     livre: 'Convention Collective Interprofessionnelle CI', titre: 'Indemnités',
     titre_article: 'Indemnité de transport interprofessionnelle CI',
-    texte: 'Tout salarié dont le lieu de travail est situé à plus de 3 km de son domicile a droit à une indemnité de transport. Le montant est fixé par arrêté conjoint des ministres du Travail et des Transports. Elle est exonérée d\'ITS et de CNPS dans la limite du plafond légal.',
+    texte: 'Tout salarié dont le lieu de travail est situé à plus de 3 km de son domicile a droit à une indemnité de transport. Le montant est fixé par arrêté conjoint des ministres du Travail et des Transports. Elle est exonérée d\'ITS et de cotisations CNPS dans la limite de 30 000 F par mois à Abidjan, 24 000 F à Bouaké et 20 000 F dans les autres villes (CGI art. 116 al. 10 ; arrêté n° 2020-012/MEPS/CAB du 30/01/2020) ; l\'excédent est soumis.',
     keywords: ['indemnité transport', 'domicile travail', 'exonérée ITS', 'CNPS transport'], payroll_codes: ['1300'] },
 
   { ...P, source: 'convention_collective', convention_slug: 'interprofessionnelle_ci',

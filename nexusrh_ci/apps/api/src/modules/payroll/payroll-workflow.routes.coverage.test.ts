@@ -399,9 +399,13 @@ describe('POST /payroll-workflow/periods/:id/close', () => {
 
   it('clôture validated_central → 200 + audit', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ status: 'validated_central' }] }) // parent
-      .mockResolvedValueOnce({ rows: [] })                                // UPDATE
-      .mockResolvedValueOnce({ rows: [] })                                // audit
+      .mockResolvedValueOnce({ rows: [{ id: PARENT, month: '2024-12', status: 'validated_central', parent_period_id: null, initiated_by: 'u-init' }] }) // parent
+      .mockResolvedValueOnce({ rows: [{ levels_count: 1, config: {} }] }) // circuit paie : 1 niveau
+      .mockResolvedValueOnce({ rows: [] })                                // validations existantes
+      .mockResolvedValueOnce({ rows: [] })                                // INSERT validation
+      .mockResolvedValueOnce({ rows: [] })                                // audit approve
+      .mockResolvedValueOnce({ rows: [] })                                // UPDATE closed
+      .mockResolvedValueOnce({ rows: [] })                                // audit close
     const res = await app.inject({
       method: 'POST', url: `/payroll-workflow/periods/${PARENT}/close`,
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },

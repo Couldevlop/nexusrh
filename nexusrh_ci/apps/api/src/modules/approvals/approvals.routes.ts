@@ -52,6 +52,8 @@ interface PendingApproval {
   dueSoon: boolean
   /** Clôture de paie : mois concerné (AAAA-MM). */
   month?: string
+  /** Clôture de paie : flux mono-entité ou paie multi-filiales (id = période parente). */
+  scope?: 'single' | 'multi_sites'
 }
 
 interface PendingRow {
@@ -138,13 +140,26 @@ async function pendingPayroll(schema: string, actor: Actor, now: Date = new Date
       id: string; month: string; status: string; initiated_by: string | null; initiated_at: string | null
       first_name: string | null; last_name: string | null
     }>(
-      `SELECT p.id, p.month, p.status, p.initiated_by, p.initiated_at, u.first_name, u.last_name
+      // Mono-entité : pending_validation. Multi-filiales : la PÉRIODE PARENTE
+      // consolidée (validated_central) porte seule le circuit — les filles
+      // (parent_period_id non nul) sont exclues, donc jamais de doublon.
+      // Initiateur = auteur de la consolidation (repli validated_by / validated_central_at).
+      `SELECT p.id, p.month, p.status,
+              COALESCE(p.initiated_by, CASE WHEN p.status = 'validated_central' THEN p.validated_by END) AS initiated_by,
+              COALESCE(p.initiated_at, CASE WHEN p.status = 'validated_central' THEN p.validated_central_at END) AS initiated_at,
+              u.first_name, u.last_name
          FROM "${schema}".pay_periods p
-         LEFT JOIN "${schema}".users u ON u.id = p.initiated_by
-        WHERE p.status = 'pending_validation' AND p.parent_period_id IS NULL
+         LEFT JOIN "${schema}".users u
+           ON u.id = COALESCE(p.initiated_by, CASE WHEN p.status = 'validated_central' THEN p.validated_by END)
+        WHERE p.status IN ('pending_validation', 'validated_central') AND p.parent_period_id IS NULL
         ORDER BY p.month LIMIT ${MAX_PENDING}`,
     )
-    const periods = res?.rows ?? []
+    // Le flux multi-filiales projette « consolidée » sur « en validation ».
+    const periods = (res?.rows ?? []).map((p) => ({
+      ...p,
+      scope: p.status === 'validated_central' ? 'multi_sites' as const : 'single' as const,
+      status: p.status === 'validated_central' ? 'pending_validation' : p.status,
+    }))
     if (periods.length === 0) return []
     const circuit = await loadPayrollCircuit(pool, schema)
     const approvals = await loadPeriodApprovals(pool, schema, periods.map((p) => String(p.id)))
@@ -160,7 +175,7 @@ async function pendingPayroll(schema: string, actor: Actor, now: Date = new Date
       out.push({
         module: 'payroll', id: String(p.id), employeeId: p.initiated_by ?? '',
         employeeName: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(),
-        label: p.month, detail: '', month: p.month,
+        label: p.month, detail: '', month: p.month, scope: p.scope,
         submittedAt: new Date(p.initiated_at ?? now).toISOString(),
         workflow: {
           totalSteps: state.requiredLevels,

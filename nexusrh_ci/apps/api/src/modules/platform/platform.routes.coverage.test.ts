@@ -602,6 +602,12 @@ describe('GET /platform/legal-constants', () => {
     expect(its.TRANCHES_ITS.map(t => t.taux)).toEqual([0, 0.16, 0.21, 0.24, 0.28, 0.32])
     expect(its.RICF_MAX).toBe(44_000)
     expect(params[0]).not.toContain('CREDIT_IMPOT')
+    // Congés : 2,2 j ouvrables / mois (CT art. 25.1) au seed, et migration
+    // ciblée d'une ligne encore à 2,5 (les autres clés sont conservées).
+    expect((JSON.parse(params[0]!) as { CONGES_JOURS_PAR_MOIS: number }).CONGES_JOURS_PAR_MOIS).toBe(2.2)
+    expect(JSON.parse(params[2]!)).toEqual({ CONGES_JOURS_PAR_MOIS: 2.2 })
+    expect(String(seed?.[0])).toContain("constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb")
+    expect(String(seed?.[0])).toContain('ELSE platform.legal_constants.constants')
   })
   it('SELECT échoue → data vide (catch)', async () => {
     queryMock

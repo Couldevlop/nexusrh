@@ -221,28 +221,34 @@ describe('Workflow — validation centrale', () => {
   })
 })
 
-describe('Workflow — clôture', () => {
+describe('Workflow — clôture (dernier niveau du circuit de validation)', () => {
+  const PP = '0f0f0f0f-0000-4000-8000-000000000001'
+
   it('refuse si pas en validated_central', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ status: 'sent_to_sites' }] })
+    queryMock.mockResolvedValueOnce({ rows: [{ id: PP, month: '2024-12', status: 'sent_to_sites', parent_period_id: null }] })
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/payroll-workflow/periods/pp-1/close',
+      method: 'POST', url: `/payroll-workflow/periods/${PP}/close`,
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(409)
   })
 
-  it('clôture une période validated_central', async () => {
+  it('clôture une période validated_central (circuit à 1 niveau, validée par un autre que l’initiateur) : parente ET filles', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ status: 'validated_central' }] })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: PP, month: '2024-12', status: 'validated_central', parent_period_id: null, initiated_by: 'u-init', initiated_at: new Date().toISOString() }] })
+      .mockResolvedValueOnce({ rows: [{ levels_count: 1, config: {} }] }) // circuit paie : 1 niveau
+      .mockResolvedValueOnce({ rows: [] })                                  // validations déjà enregistrées
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/payroll-workflow/periods/pp-1/close',
+      method: 'POST', url: `/payroll-workflow/periods/${PP}/close`,
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data.status).toBe('closed')
+    const closing = queryMock.mock.calls.find(c => /status = 'closed'/.test(String(c[0])))
+    expect(String(closing?.[0])).toMatch(/id = \$2 OR parent_period_id = \$2/)
+    expect(closing?.[1]).toEqual(['u-admin', PP])
   })
 })
 

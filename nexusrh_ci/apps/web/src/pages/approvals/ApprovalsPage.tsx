@@ -68,9 +68,12 @@ export default function ApprovalsPage() {
         <td className="p-4"><SlaBadge workflow={item.workflow} dueSoon={item.dueSoon} /></td>
         <td className="p-4">
           {module === 'payroll' ? (
-            // La clôture de paie se valide / se renvoie depuis l'écran Paie (circuit complet)
+            // La clôture de paie se valide / se renvoie depuis l'écran Paie (circuit complet) ;
+            // paie multi-filiales : circuit de la période parente, écran Paie multi-filiales.
             <Link
-              to={`/payroll?validate=${encodeURIComponent(item.month ?? item.label)}`}
+              to={item.scope === 'multi_sites'
+                ? `/payroll/multi-filiales?validate=${encodeURIComponent(item.id)}`
+                : `/payroll?validate=${encodeURIComponent(item.month ?? item.label)}`}
               className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200">
               {t('actions.open')} <ChevronRight className="h-3 w-3" />
             </Link>

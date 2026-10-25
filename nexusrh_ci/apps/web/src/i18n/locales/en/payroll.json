@@ -6,7 +6,7 @@
     "draft_central": "Draft",
     "sent_to_sites": "To complete",
     "completed_by_site": "Submitted",
-    "validated_central": "Consolidated"
+    "validated_central": "Consolidated — pending validation"
   },
   "page": {
     "title": "CI Payroll — Monthly closing",
@@ -121,6 +121,10 @@
     "consolidate": "Consolidate payroll",
     "consolidatePartial": "Consolidate ({{submitted}}/{{total}} submitted)",
     "closePayroll": "Close payroll",
+    "openCircuit": "Validation workflow",
+    "circuitHint": "Consolidation starts the validation workflow (Settings → Workflow): each level's designated validator approves; the last approval closes the payroll of every subsidiary and publishes the payslips to employees.",
+    "consolidatedNotice": "Payroll {{month}} consolidated.",
+    "rejected": "Sent back for preparation: \"{{reason}}\" — each subsidiary must be resubmitted.",
     "track": "Tracking",
     "trackTitle": "View the draft's history (who did what, when)",
     "submissions": "Subsidiary submissions",
@@ -146,6 +150,13 @@
       "sendToSites": "Failed to cascade to subsidiaries",
       "consolidate": "Consolidation failed",
       "close": "Closing failed"
+    },
+    "workflow": {
+      "initiated": "Payroll consolidated (workflow started)",
+      "rejectHint": "The payslips of every subsidiary will be deleted, expense reports and final settlements restored: the payroll goes back to the subsidiaries, and each RAF must resubmit their subsidiary before a new consolidation.",
+      "cancelHint": "The payslips of every subsidiary will be deleted and the payroll will go back to the subsidiaries (possible as long as no level has approved).",
+      "rejectedNotice": "Payroll sent back for preparation: the initiator and the subsidiaries' RAFs have been notified.",
+      "cancelledNotice": "Initiation cancelled: the payroll went back to the subsidiaries."
     },
     "timeline": {
       "heading": "Draft history",

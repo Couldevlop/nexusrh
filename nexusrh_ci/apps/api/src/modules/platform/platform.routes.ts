@@ -1156,18 +1156,29 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         RICF_PLAFOND_PARTS: 5,
         RICF_MAX: 44000,
       }
-      // Seed CI 2024 si absent ; une ligne encore à l'ancien régime ITS
-      // (abattement 15 %, crédits marié/enfants) est migrée — les autres
-      // constantes éventuellement surchargées par le super_admin sont gardées.
+      // Seed CI 2024 si absent. Migrations idempotentes d'une ligne existante,
+      // chacune limitée aux clés erronées — les autres constantes éventuellement
+      // surchargées par le super_admin sont gardées :
+      //  - ancien régime ITS (abattement 15 %, crédits marié/enfants) → ITS 2024 ;
+      //  - congés à 2,5 j/mois → 2,2 j ouvrables / mois (CT art. 25.1).
       await pool.query(`
         INSERT INTO platform.legal_constants (country, version, effective, constants, notes)
         VALUES ('CI', '2024', '2024-01-01', $1, 'Constantes légales CI 2024 — CNPS + ITS/DGI + Code du Travail')
         ON CONFLICT (country, version) DO UPDATE
-          SET constants = (platform.legal_constants.constants
-                - 'CREDIT_IMPOT_MARIE' - 'CREDIT_IMPOT_1ENFANT'
-                - 'CREDIT_IMPOT_2ENFANTS' - 'CREDIT_IMPOT_3ENFANTS_PLUS') || $2::jsonb,
+          SET constants = CASE
+                  WHEN platform.legal_constants.constants->>'ABATTEMENT_ITS' = '0.15'
+                  THEN (platform.legal_constants.constants
+                    - 'CREDIT_IMPOT_MARIE' - 'CREDIT_IMPOT_1ENFANT'
+                    - 'CREDIT_IMPOT_2ENFANTS' - 'CREDIT_IMPOT_3ENFANTS_PLUS') || $2::jsonb
+                  ELSE platform.legal_constants.constants
+                END
+                || CASE
+                  WHEN platform.legal_constants.constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb
+                  THEN $3::jsonb ELSE '{}'::jsonb
+                END,
               updated_at = NOW()
           WHERE platform.legal_constants.constants->>'ABATTEMENT_ITS' = '0.15'
+             OR platform.legal_constants.constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb
       `, [JSON.stringify({
           SMIG_MENSUEL: 75000,
           SMIG_HORAIRE: 433,
@@ -1181,10 +1192,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           TAUX_CNPS_AT_BTP: 0.030,
           TAUX_CNPS_AT_INDUSTRIE: 0.040,
           TAUX_CNPS_AT_EXTRACTION: 0.050,
-          CONGES_JOURS_PAR_MOIS: 2.5,
+          CONGES_JOURS_PAR_MOIS: 2.2,   // CT art. 25.1 : 2,2 j ouvrables / mois
           CONTRIBUTION_FDFP: 0.004,
           ...itsConstants2024,
-        }), JSON.stringify(itsConstants2024)]).catch(() => null)
+        }), JSON.stringify(itsConstants2024), JSON.stringify({ CONGES_JOURS_PAR_MOIS: 2.2 })]).catch(() => null)
 
       const res = await pool.query(
         `SELECT * FROM platform.legal_constants ORDER BY country, version DESC`

@@ -130,6 +130,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS total_cnps_pat numeric(10,0) DEFAULT 0`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS its numeric(10,0) DEFAULT 0`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_method varchar(30) DEFAULT 'mobile_money'`,
+    // Assujettissement CNPS / ITS paramétrable par rubrique (NULL = règle du pack)
+    `ALTER TABLE "${schemaName}".payroll_rules ADD COLUMN IF NOT EXISTS subject_social boolean`,
+    `ALTER TABLE "${schemaName}".payroll_rules ADD COLUMN IF NOT EXISTS subject_tax boolean`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_status varchar(20) DEFAULT 'pending'`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS payment_reference varchar(100)`,
     `ALTER TABLE "${schemaName}".pay_slips ADD COLUMN IF NOT EXISTS indemnite_absence numeric(12,0) DEFAULT 0`,

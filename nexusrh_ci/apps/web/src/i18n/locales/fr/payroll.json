@@ -6,7 +6,7 @@
     "draft_central": "Brouillon",
     "sent_to_sites": "À compléter",
     "completed_by_site": "Soumise",
-    "validated_central": "Consolidée"
+    "validated_central": "Consolidée — en validation"
   },
   "page": {
     "title": "Paie CI — Clôture mensuelle",
@@ -121,6 +121,10 @@
     "consolidate": "Consolider la paie",
     "consolidatePartial": "Consolider ({{submitted}}/{{total}} soumises)",
     "closePayroll": "Clôturer la paie",
+    "openCircuit": "Circuit de validation",
+    "circuitHint": "La consolidation lance le circuit de validation (Paramètres → Workflow) : le valideur désigné de chaque niveau valide ; la dernière validation clôture la paie de toutes les filiales et publie les bulletins aux salariés.",
+    "consolidatedNotice": "Paie {{month}} consolidée.",
+    "rejected": "Renvoyée en préparation : « {{reason}} » — chaque filiale doit être re-soumise.",
     "track": "Suivi",
     "trackTitle": "Voir l'évolution du draft (qui a fait quoi, quand)",
     "submissions": "Soumissions des filiales",
@@ -146,6 +150,13 @@
       "sendToSites": "Échec de la déclinaison aux filiales",
       "consolidate": "Échec de la consolidation",
       "close": "Échec de la clôture"
+    },
+    "workflow": {
+      "initiated": "Paie consolidée (initiation du circuit)",
+      "rejectHint": "Les bulletins de toutes les filiales seront supprimés, les notes de frais et soldes de tout compte rétablis : la paie revient aux filiales, chaque RAF devra re-soumettre sa filiale avant une nouvelle consolidation.",
+      "cancelHint": "Les bulletins de toutes les filiales seront supprimés et la paie reviendra aux filiales (possible tant qu'aucun niveau n'a validé).",
+      "rejectedNotice": "Paie renvoyée en préparation : l'initiateur et les RAF des filiales ont été prévenus.",
+      "cancelledNotice": "Initiation annulée : la paie est revenue aux filiales."
     },
     "timeline": {
       "heading": "Évolution du draft",
