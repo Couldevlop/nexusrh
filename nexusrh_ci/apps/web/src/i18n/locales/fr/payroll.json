@@ -238,6 +238,7 @@
       "earnings": "Gains · {{amount}}",
       "employeeDeductions": "Retenues salarié · −{{amount}}",
       "employerContributions": "Cotisations employeur (informatif) · {{amount}}",
+      "reimbursements": "Remboursement de frais (hors brut) · {{amount}}",
       "grossSalary": "Salaire brut",
       "totalDeductions": "− Retenues totales",
       "netPayable": "Net à payer",

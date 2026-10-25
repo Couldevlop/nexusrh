@@ -90,6 +90,11 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     legalReference: 'Décret n° 2017-210 du 30 mars 2017 (indemnité de licenciement)',
     category: 'leave',
   },
+  '6000': {
+    formulaHuman: () => 'Remboursement des notes de frais approuvées (frais professionnels réels justifiés) — hors brut, ni CNPS ni ITS, ajouté au net à payer',
+    legalReference: 'CGI CI - frais professionnels remboursés sur justificatifs (non imposables)',
+    category: 'other',
+  },
 
   // ─── COTISATIONS SALARIÉ ─────────────────────────────────────────────────
   '2000': {
