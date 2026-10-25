@@ -211,7 +211,9 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
         legal_entity_id: null, professional_category: 'Cadre (C2)',
       }] })
       .mockResolvedValueOnce({ rows: [] }) // contexte tenant → pack CI
-      .mockResolvedValueOnce({ rows: [{ avg: '400000', n: '12' }] }) // moyenne des bulletins
+    const pl = await import('../../services/paid-leave.service.js')
+    vi.mocked(pl.averageRemuneration).mockResolvedValueOnce({ total: 400_000, exclFrais: 400_000, months: 12 })
+    queryMock
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit
     const res = await app.inject({
@@ -230,8 +232,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
     expect(body.data.severanceBaseMonths).toBe(12)
     expect(body.data.indemniteLicenciement).toBe(2 * 120_000)
     expect(body.data.warnings).toEqual([])
-    const avg = queryMock.mock.calls.find((c) => String(c[0]).includes('AVG(gross_salary)'))
-    expect(avg?.[1]).toEqual(['e1', '2026-03'])
+    expect(vi.mocked(pl.averageRemuneration).mock.calls.at(-1)?.slice(2)).toEqual(['e1', '2026-03'])
   })
 })
 
