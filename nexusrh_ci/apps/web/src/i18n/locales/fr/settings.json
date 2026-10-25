@@ -375,7 +375,7 @@
       "rccm": "RCCM : ",
       "atRate": "Taux AT : ",
       "legislationPack": "Pack législatif : ",
-      "collectiveAgreement": "CCN : "
+      "collectiveAgreement": "CCN : ", "raf": "RAF : ","rafMissing": "non désigné — requis pour décliner la paie"
     },
     "empty": "Aucune entité juridique — créez votre première entité (siège social ou filiale).",
     "modal": {
@@ -398,7 +398,7 @@
       "dgiNumber": "N° DGI",
       "rccm": "RCCM",
       "atRate": "Taux AT CNPS (0.02 = 2%)",
-      "collectiveAgreement": "Convention collective applicable",
+      "collectiveAgreement": "Convention collective applicable", "raf": "RAF (responsable paie de la filiale)", "rafNone": "— Aucun —", "rafHint": "Reçoit la paie déclinée de la filiale et la soumet. Rôle RAF filiale, admin ou DRH.",
       "collectiveAgreementPlaceholder": "Ex: Convention Transport Urbain CI",
       "address": "Adresse",
       "cancel": "Annuler",
