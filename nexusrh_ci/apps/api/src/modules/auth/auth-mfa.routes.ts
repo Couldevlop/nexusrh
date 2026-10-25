@@ -23,6 +23,7 @@ import { AUTH_COOKIE_NAME, withJti } from '../../plugins/auth.js'
 import { sendPasswordResetLinkEmail } from '../../services/email.js'
 import { consumeTotpStep, setTokenEpoch } from '../../services/redis.js'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { encrypt, decrypt, isEncryptionConfigured } from '@nexusrhci/shared/crypto'
 import { revokeAllRefreshTokensForUser } from '../../services/refresh-token.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
@@ -749,7 +750,7 @@ async function loadUserForToken(
   if (!t) return null
 
   const empR = await pool.query<{ id: string }>(
-    `SELECT id FROM "${schemaName}".employees WHERE email = $1 LIMIT 1`, [u.email])
+    actorEmployeeSql(schemaName), [u.email])
   const employeeId = empR.rows[0]?.id ?? null
 
   return {

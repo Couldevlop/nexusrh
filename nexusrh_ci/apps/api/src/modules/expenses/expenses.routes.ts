@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-money-providers.js'
@@ -152,7 +153,7 @@ async function actorOf(schema: string, user: { sub: string; role: string; employ
   if (!employeeId && user.email) {
     try {
       const r = await pool.query<{ id: string }>(
-        `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+        actorEmployeeSql(schema), [user.email],
       )
       employeeId = r?.rows?.[0]?.id ?? null
     } catch { employeeId = null }
@@ -211,7 +212,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       let managerEmpId: string | null = null
       if (request.user.role === 'manager') {
         const emp = await pool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         // OWASP A01 — fail-closed : manager sans dossier employé → aucune note.
         if (!emp.rows[0]) return reply.send({ data: [] })
@@ -264,7 +265,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         let employeeId = request.user.employeeId
         if (!employeeId) {
           const emp = await pool.query(
-            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+            actorEmployeeSql(schema), [request.user.email]
           )
           if (!emp.rows[0]) return reply.send({ data: [] })
           employeeId = emp.rows[0].id as string
@@ -359,7 +360,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         }
         if (!employeeId) {
           const emp = await pool.query(
-            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+            actorEmployeeSql(schema), [request.user.email]
           )
           if (emp.rows[0]) {
             employeeId = emp.rows[0].id as string
@@ -693,7 +694,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
           let employeeId = request.user.employeeId
           if (!employeeId) {
             const emp = await pool.query<{ id: string }>(
-              `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`,
+              actorEmployeeSql(schema),
               [request.user.email],
             )
             if (!emp.rows[0]) return reply.status(403).send({ error: 'Accès interdit' })

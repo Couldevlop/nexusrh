@@ -69,7 +69,7 @@ export async function seedDemoTenant(pool: Pool, schemaName: string, atRate: num
         deptIds[e.dept],
         e.salary, `${hireDate.year}-${String(hireDate.month).padStart(2,'0')}-01`,
         'married', randInt(0, 3),
-        ['wave','mtn_momo','orange_money'][randInt(0,2)],
+        ['wave','mtn','orange'][randInt(0,2)],
         `+225 07 ${randInt(10,99)} ${randInt(10,99)} ${randInt(10,99)} ${randInt(10,99)}`,
         `CI${randInt(10000000, 99999999)}A`,
         `CI${randInt(100000000, 999999999)}`,

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { emitIntegrationEvent } from '../../services/integrations.service.js'
 import { decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { sendAbsenceRequestEmail } from '../../services/email.js'
@@ -91,7 +92,7 @@ async function actorEmployeeId(schema: string, user: { employeeId?: string | nul
   if (!user.email) return null
   try {
     const r = await rawPool.query<{ id: string }>(
-      `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+      actorEmployeeSql(schema), [user.email],
     )
     return r?.rows?.[0]?.id ?? null
   } catch { return null }
@@ -139,7 +140,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let managerEmpId: string | null = null
       if (request.user.role === 'manager') {
         const emp = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         // OWASP A01 — fail-closed : un manager sans dossier employé associé ne
         // doit voir AUCUNE absence (jamais toutes celles du tenant).
@@ -194,7 +195,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let employeeId: string | null = request.user.employeeId ?? null
       if (!employeeId) {
         const r = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         employeeId = r.rows[0]?.id ?? null
       }
@@ -234,7 +235,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         let managerEmpId: string | null = request.user.employeeId ?? null
         if (!managerEmpId) {
           const m = await rawPool.query(
-            `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+            actorEmployeeSql(schema), [request.user.email]
           )
           managerEmpId = m.rows[0]?.id ?? null
         }
@@ -251,7 +252,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!empId) {
         const r = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         empId = r.rows[0]?.id ?? null
       }
@@ -326,7 +327,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (!employeeId) {
         const r = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         if (r.rows[0]) {
           employeeId = r.rows[0].id as string
@@ -616,7 +617,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let employeeId: string | null = request.user.employeeId ?? null
       if (!employeeId) {
         const r = await rawPool.query(
-          `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
+          actorEmployeeSql(schema), [request.user.email]
         )
         employeeId = r.rows[0]?.id ?? null
       }
