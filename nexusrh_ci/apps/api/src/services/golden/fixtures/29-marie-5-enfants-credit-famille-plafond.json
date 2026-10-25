@@ -1,6 +1,6 @@
 {
   "id": "29-marie-5-enfants-credit-famille-plafond",
-  "description": "Cadre marié avec 5 enfants — vérifie que le crédit d'impôt famille reste plafonné à 14 500 FCFA (5 500 marié + 9 000 pour 3 enfants et plus). Au-delà de 3 enfants, le crédit ne progresse plus (childrenCount >= 3 dans le moteur). Cas fréquent dans les familles ivoiriennes nombreuses",
+  "description": "Cadre marié avec 5 enfants — vérifie la RICF par parts : marié + 5 enfants = 4,5 parts → 38 500 FCFA (plafond 5 parts = 44 000). Cas fréquent dans les familles ivoiriennes nombreuses",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 9 — fixture initiale, capture sortie moteur",
         "deltaSummary": "baseSalary 0 → 800000 ; brutProrata 0 → 800000 ; grossSalary 0 → 800000 ; cnpsRetraiteSal 0 → 50400 ; cnpsRetraitePat 0 → 61600 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 50400 ; totalCnpsPat 0 → 67025 ; baseImposable 0 → 629600 ; its 0 → 7454 ; totalDeductions 0 → 57854 ; netPayable 0 → 742146 ; employerCost 0 → 867025 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 7"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 629600 → 800000 ; its 7454 → 105500 ; totalDeductions 57854 → 155900 ; netPayable 742146 → 644100"
       }
     ]
   },
@@ -35,10 +41,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 50400,
     "totalCnpsPat": 67025,
-    "baseImposable": 629600,
-    "its": 7454,
-    "totalDeductions": 57854,
-    "netPayable": 742146,
+    "baseImposable": 800000,
+    "its": 105500,
+    "totalDeductions": 155900,
+    "netPayable": 644100,
     "employerCost": 867025,
     "workingDays": 26,
     "smigCompliant": true,
@@ -56,7 +62,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 7454
+        "amount": 105500
       },
       {
         "code": "3000",

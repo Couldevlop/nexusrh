@@ -48,6 +48,29 @@ export function normalizeMmProvider(raw: string | null | undefined): MmProvider 
   }
 }
 
+/**
+ * Codes opérateur CANONIQUES stockés sur la fiche employé
+ * (`employees.mobile_money_provider`) — ceux du formulaire RH.
+ * Les formes historiques `mtn_momo` / `orange_money` (seed, import CSV,
+ * self-service) sont acceptées en lecture et réécrites sous cette forme
+ * (migration lazy `normalize_employee_mm_provider` dans schema-migrations).
+ * La chaîne de paiement, elle, continue de parler `mtn_momo`/`orange_money`
+ * via normalizeMmProvider().
+ */
+const EMPLOYEE_MM_PROVIDERS = ['wave', 'mtn', 'orange', 'cofina'] as const
+type EmployeeMmProvider = typeof EMPLOYEE_MM_PROVIDERS[number]
+
+export function canonicalEmployeeMmProvider(raw: string | null | undefined): EmployeeMmProvider | null {
+  if (!raw) return null
+  switch (raw.trim().toLowerCase()) {
+    case 'wave': return 'wave'
+    case 'mtn': case 'mtn_momo': case 'momo': return 'mtn'
+    case 'orange': case 'orange_money': case 'om': return 'orange'
+    case 'cofina': return 'cofina'
+    default: return null
+  }
+}
+
 export interface MmCreds {
   apiKey: string | null
   apiUrl: string

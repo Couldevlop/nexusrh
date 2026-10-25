@@ -357,7 +357,7 @@ MODULES = {
         "label": "Gestion des Absences",
         "color": "B45309",
         "cases": [
-            ("P1","Soldes congés affichés — /mon-espace/absences","2.5 jours ouvrables/mois CI",
+            ("P1","Soldes congés affichés — /mon-espace/absences","2,2 jours ouvrables/mois CI (CT art. 25.1)",
              "employe@sotra.ci connecté","1. /mon-espace/absences\n2. Observer les barres de soldes",
              "CP affiché avec acquired, taken, remaining. Barres de progression colorées"),
             ("P1","Nouvelle demande absence — formulaire complet","",

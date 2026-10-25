@@ -1,13 +1,20 @@
 {
   "id": "03-cadre-haut-salaire-2-5m",
-  "description": "Cadre célibataire, brut 2 500 000 FCFA — test des tranches ITS hautes (10% + 15%) et plafond retraite CNPS (1 647 315)",
+  "description": "Cadre célibataire, brut 2 500 000 FCFA — test des tranches ITS hautes (24 % + 28 %, ITS 556 000) et plafond retraite CNPS (1 647 315)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
     "period": "2024-11",
     "createdAt": "2026-05-19",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 2021220 → 2500000 ; its 153657 → 556000 ; totalDeductions 257437 → 659780 ; netPayable 2242563 → 1840220"
+      }
+    ]
   },
   "input": {
     "baseSalary": 2500000,
@@ -28,17 +35,17 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 103780,
     "totalCnpsPat": 132268,
-    "baseImposable": 2021220,
-    "its": 153657,
-    "totalDeductions": 257437,
-    "netPayable": 2242563,
+    "baseImposable": 2500000,
+    "its": 556000,
+    "totalDeductions": 659780,
+    "netPayable": 1840220,
     "employerCost": 2632268,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 2500000 },
       { "code": "2000", "type": "employee_contribution",   "amount":  103780 },
-      { "code": "2100", "type": "employee_contribution",   "amount":  153657 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  556000 },
       { "code": "3000", "type": "employer_contribution",   "amount":  126843 },
       { "code": "3100", "type": "employer_contribution",   "amount":    3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":     525 },

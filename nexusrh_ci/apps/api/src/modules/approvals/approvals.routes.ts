@@ -13,27 +13,47 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import {
   hrCanSee, isHrDecisionRole, loadManagerMap, loadWorkflowSettings, summarize,
   type Actor, type ApprovalModule, type ApprovalTrailEntry, type WorkflowSummary,
 } from '../../services/approval-workflow.service.js'
+import {
+  decidePayrollActor, loadPayrollCircuit, loadPayrollUsers, loadPeriodApprovals, payrollLevelState, pendingWithOf,
+  PAYROLL_DESIGNABLE_ROLES,
+} from '../../services/payroll-validation.service.js'
 
 /** Une échéance « proche » : moins de 12 h avant son terme. */
 const DUE_SOON_MS = 12 * 3_600_000
 /** Borne du nombre de demandes en attente lues par module. */
 const MAX_PENDING = 500
 
+/** Étape d'une clôture de paie en validation (circuit nominatif). */
+interface PayrollPendingSummary {
+  totalSteps: number
+  doneSteps: number
+  next: { kind: 'payroll'; level: number; validatorName: string | null; functionLabel: string | null }
+  dueAt: string | null
+  overdue: boolean
+  canAct: boolean
+  designated: boolean
+}
+
 interface PendingApproval {
-  module: ApprovalModule
+  module: ApprovalModule | 'payroll'
   id: string
   employeeId: string
   employeeName: string
   label: string
   detail: string
   submittedAt: string
-  workflow: WorkflowSummary
+  workflow: WorkflowSummary | PayrollPendingSummary
   dueSoon: boolean
+  /** Clôture de paie : mois concerné (AAAA-MM). */
+  month?: string
+  /** Clôture de paie : flux mono-entité ou paie multi-filiales (id = période parente). */
+  scope?: 'single' | 'multi_sites'
 }
 
 interface PendingRow {
@@ -47,7 +67,7 @@ async function actorOf(schema: string, user: { sub: string; role: string; employ
   if (!employeeId && user.email) {
     try {
       const r = await pool.query<{ id: string }>(
-        `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+        actorEmployeeSql(schema), [user.email],
       )
       employeeId = r?.rows?.[0]?.id ?? null
     } catch { employeeId = null }
@@ -107,12 +127,81 @@ async function pendingFor(
   return out
 }
 
+/**
+ * Clôtures de paie en validation que l'utilisateur peut traiter : le valideur
+ * désigné du niveau courant, ou — sans désignation, désigné indisponible ou
+ * échéance dépassée — l'équipe RH (admin / hr_manager) hors initiateur et
+ * approbateurs précédents. Jamais visible des autres rôles.
+ */
+async function pendingPayroll(schema: string, actor: Actor, now: Date = new Date()): Promise<PendingApproval[]> {
+  if (!(PAYROLL_DESIGNABLE_ROLES as readonly string[]).includes(actor.role)) return []
+  try {
+    const res = await pool.query<{
+      id: string; month: string; status: string; initiated_by: string | null; initiated_at: string | null
+      first_name: string | null; last_name: string | null
+    }>(
+      // Mono-entité : pending_validation. Multi-filiales : la PÉRIODE PARENTE
+      // consolidée (validated_central) porte seule le circuit — les filles
+      // (parent_period_id non nul) sont exclues, donc jamais de doublon.
+      // Initiateur = auteur de la consolidation (repli validated_by / validated_central_at).
+      `SELECT p.id, p.month, p.status,
+              COALESCE(p.initiated_by, CASE WHEN p.status = 'validated_central' THEN p.validated_by END) AS initiated_by,
+              COALESCE(p.initiated_at, CASE WHEN p.status = 'validated_central' THEN p.validated_central_at END) AS initiated_at,
+              u.first_name, u.last_name
+         FROM "${schema}".pay_periods p
+         LEFT JOIN "${schema}".users u
+           ON u.id = COALESCE(p.initiated_by, CASE WHEN p.status = 'validated_central' THEN p.validated_by END)
+        WHERE p.status IN ('pending_validation', 'validated_central') AND p.parent_period_id IS NULL
+        ORDER BY p.month LIMIT ${MAX_PENDING}`,
+    )
+    // Le flux multi-filiales projette « consolidée » sur « en validation ».
+    const periods = (res?.rows ?? []).map((p) => ({
+      ...p,
+      scope: p.status === 'validated_central' ? 'multi_sites' as const : 'single' as const,
+      status: p.status === 'validated_central' ? 'pending_validation' : p.status,
+    }))
+    if (periods.length === 0) return []
+    const circuit = await loadPayrollCircuit(pool, schema)
+    const approvals = await loadPeriodApprovals(pool, schema, periods.map((p) => String(p.id)))
+    const users = await loadPayrollUsers(pool, schema, circuit.steps.map((s) => s.userId))
+    const out: PendingApproval[] = []
+    for (const p of periods) {
+      const state = payrollLevelState(circuit, p, approvals.get(String(p.id)) ?? [], users, now)
+      if (!state) continue
+      const decision = decidePayrollActor(state, { userId: actor.userId, role: actor.role })
+      if (!decision.allowed) continue
+      const pendingWith = pendingWithOf(state)
+      const dueMs = state.dueAt ? Date.parse(state.dueAt) - now.getTime() : Number.POSITIVE_INFINITY
+      out.push({
+        module: 'payroll', id: String(p.id), employeeId: p.initiated_by ?? '',
+        employeeName: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(),
+        label: p.month, detail: '', month: p.month, scope: p.scope,
+        submittedAt: new Date(p.initiated_at ?? now).toISOString(),
+        workflow: {
+          totalSteps: state.requiredLevels,
+          doneSteps: state.level - 1,
+          next: { kind: 'payroll', level: state.level, validatorName: pendingWith?.name ?? null, functionLabel: pendingWith?.functionLabel ?? null },
+          dueAt: state.dueAt,
+          overdue: state.overdue,
+          canAct: true,
+          designated: !decision.escalated,
+        },
+        dueSoon: !state.overdue && dueMs <= DUE_SOON_MS,
+      })
+    }
+    return out
+  } catch {
+    // Tenant sans circuit paie (colonnes absentes) : rien à valider côté paie.
+    return []
+  }
+}
+
 const approvalsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
 
   fastify.get('/pending', {
     preHandler: [fastify.authenticate],
-    schema: { tags: ['approvals'], summary: 'Mes validations en attente (absences, notes de frais) et leurs échéances' },
+    schema: { tags: ['approvals'], summary: 'Mes validations en attente (absences, notes de frais, clôtures de paie) et leurs échéances' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       if (!schema || request.user.role === 'super_admin') return reply.send({ data: [], summary: emptySummary() })
@@ -122,6 +211,7 @@ const approvalsRoutes: FastifyPluginAsync = async (fastify) => {
         const items = [
           ...await pendingFor(schema, 'absences', actor, managerOf),
           ...await pendingFor(schema, 'expenses', actor, managerOf),
+          ...await pendingPayroll(schema, actor),
         ].sort((a, b) => Date.parse(a.workflow.dueAt ?? a.submittedAt) - Date.parse(b.workflow.dueAt ?? b.submittedAt))
         const actionable = items.filter((i) => i.workflow.canAct)
         return reply.send({

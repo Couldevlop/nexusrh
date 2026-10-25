@@ -168,7 +168,8 @@
       "jobTitle": "Job title",
       "lastLogin": "Last login",
       "status": "Status",
-      "actions": "Actions"
+      "actions": "Actions",
+      "employee": "Employee record"
     },
     "never": "Never",
     "active": "Active",
@@ -208,7 +209,8 @@
       "cancel": "Cancel",
       "create": "Create",
       "creating": "Creating...",
-      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error."
+      "error": "Creation failed. If the problem persists, refresh the list: the account may have been created despite the error.",
+      "employee": "Linked employee record (optional)"
     },
     "confirmResetMfa": "Reset two-factor authentication for {{name}}? Their current authenticator and backup codes will stop working; a new QR code will be shown at their next sign-in.",
     "resetMfaTitle": "Reset two-factor authentication (MFA)",
@@ -223,6 +225,19 @@
       "title": "Two-factor authentication reset",
       "description": "<0>{{name}}</0> will get a new QR code and new backup codes at their next sign-in.",
       "error": "Resetting two-factor authentication failed."
+    },
+    "employeeLink": {
+      "searchPlaceholder": "Search a record (name, CNPS no.)…",
+      "none": "No linked record",
+      "alreadyLinked": "already linked to an account",
+      "loading": "Searching…",
+      "implicit": "by email",
+      "implicitHint": "Implicit link through matching email: link the record explicitly to make approvals reliable.",
+      "missing": "No record",
+      "edit": "Change linked record",
+      "editTitle": "Employee record of {{name}}",
+      "help": "The account acts on behalf of this record (leave, expense reports, line-manager approvals). A record can only be linked to one account. The user's sessions are closed after the change.",
+      "save": "Save link"
     }
   },
   "departments": {
@@ -295,8 +310,15 @@
       "label": "Label",
       "type": "Type",
       "formulaOrRate": "Formula / Rate",
+      "subjectSocial": "Subject to CNPS",
+      "subjectTax": "Subject to ITS",
       "status": "Status",
       "actions": "Actions"
+    },
+    "subject": {
+      "pack": "Per legislation pack",
+      "yes": "Yes",
+      "no": "No (exempt)"
     },
     "active": "Active",
     "inactive": "Inactive",
@@ -524,8 +546,8 @@
       "retirementCeilingValue": "1 647 315 FCFA",
       "atPfCeiling": "AT/PF ceiling / month",
       "atPfCeilingValue": "70 000 FCFA",
-      "itsAbatement": "ITS — Standard allowance",
-      "itsAbatementValue": "15 % of gross",
+      "itsAbatement": "ITS — Tax base (2024 reform)",
+      "itsAbatementValue": "100 % of taxable gross, no standard deduction · 0 to 32 % scale",
       "fdfpContribution": "FDFP contribution",
       "fdfpContributionValue": "0.4 % of payroll"
     },
@@ -545,6 +567,17 @@
       "wholeHrTeam": "Whole HR team",
       "hrValidatorHint": "Once their deadline has passed, any HR team member (admin, HR manager, HR officer) can decide."
     },
+    "payrollCircuit": {
+      "intro": "Name the approver (an HR team member) and their position for each level. Without a designation, any administrator or HR manager other than the initiator can approve.",
+      "level": "Level {{level}}",
+      "validator": "Approver",
+      "anyHr": "HR team (administrator or HR manager)",
+      "functionLabel": "Position",
+      "functionPlaceholder": "E.g.: Payroll supervisor, HR Director",
+      "sla": "Deadline (days)",
+      "sodHint": "The initiator never approves their own closing: if designated, the level is immediately open to the rest of the HR team. Once the deadline has passed, any administrator or HR manager (other than the initiator) can take over.",
+      "duplicate": "The same person cannot be designated at two levels."
+    },
     "notice": {
       "enabled": "Notice period for planned absences",
       "hint": "Requests entered too late are refused on entry (HR roles are exempt).",
@@ -560,6 +593,15 @@
       "longNoticeDays": "Long notice (days)",
       "invalidRange": "The minimum duration must be less than or equal to the maximum duration.",
       "hrExempt": "Absences shorter than the minimum duration are not subject to notice."
+    },
+    "unlinkedManagers": {
+      "title_one": "{{count}} line manager without a user account",
+      "title_other": "{{count}} line managers without a user account",
+      "description": "Their reports have them as line manager: without an account linked to their record, line-manager approvals will stay blocked. Grant them access from their employee record or link their account in Settings → Users.",
+      "reports_one": "{{count}} report",
+      "reports_other": "{{count}} reports",
+      "more_one": "… and {{count}} more",
+      "more_other": "… and {{count}} more"
     }
   },
   "connectivity": {

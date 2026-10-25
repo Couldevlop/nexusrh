@@ -11,7 +11,6 @@
  *   - GET /payslips (liste + filtres month/employeeId)
  *   - GET /payslips/:id/transparency (admin, employee IDOR, rôle interdit, 404)
  *   - GET /my-payslips (self-service + lookup email + sans employé)
- *   - GET /my-access-log
  *   - GET /periods
  *   - POST /simulate : branche absence + erreur moteur (422)
  *   - RBAC : hr_officer ne clôture pas, manager/employee refusés
@@ -564,7 +563,7 @@ describe('GET /payroll/payslips/:id/transparency — drill-down complet', () => 
       if (q.includes('FROM "tenant_sotra".pay_slips ps') && q.includes('JOIN "tenant_sotra".employees')) {
         return { rows: slip ? [slip] : [] }
       }
-      if (q.includes('ORDER BY month DESC LIMIT 3')) return { rows: [
+      if (q.includes('ORDER BY ps.month DESC LIMIT 3')) return { rows: [
         { month: '2024-11', gross_salary: '300000', net_payable: '270000', total_cnps_sal: '18900', its: '4200' },
       ] }
       if (q.includes('.audit_log')) return { rows: [
@@ -645,7 +644,7 @@ describe('GET /payroll/my-payslips — self-service', () => {
     queryMock.mockImplementation(async (sql: unknown) => {
       const q = String(sql)
       if (/^\s*UPDATE/i.test(q)) return { rows: [] }
-      if (q.includes('ORDER BY month DESC LIMIT 24')) return { rows: [
+      if (q.includes('ORDER BY ps.month DESC LIMIT 24')) return { rows: [
         { id: SLIP_ID, month: MONTH, net_payable: '270000' },
       ] }
       return { rows: [] }
@@ -665,7 +664,7 @@ describe('GET /payroll/my-payslips — self-service', () => {
       const q = String(sql)
       if (q.includes('WHERE email')) return { rows: [{ id: EMP_A }] }
       if (/^\s*UPDATE/i.test(q)) return { rows: [] }
-      if (q.includes('ORDER BY month DESC LIMIT 24')) return { rows: [] }
+      if (q.includes('ORDER BY ps.month DESC LIMIT 24')) return { rows: [] }
       return { rows: [] }
     })
     const res = await app.inject({
@@ -688,27 +687,6 @@ describe('GET /payroll/my-payslips — self-service', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data).toEqual([])
-  })
-})
-
-// ════════════════════════════════════════════════════════════════════════════════
-describe('GET /payroll/my-access-log — journal ARTCI', () => {
-  it('renvoie le journal d\'accès (avec lookup email)', async () => {
-    queryMock.mockImplementation(async (sql: unknown) => {
-      const q = String(sql)
-      if (q.includes('WHERE email')) return { rows: [{ id: EMP_A }] }
-      if (/^\s*INSERT/i.test(q)) return { rows: [] }
-      if (q.includes('ORDER BY al.created_at DESC LIMIT 20')) return { rows: [
-        { id: 'a1', user_id: 'u-employee', action: 'READ', entity: 'payslip', entity_id: null, changes: {}, ip_address: '1.2.3.4', created_at: '2024-12-31T12:00:00Z' },
-      ] }
-      return { rows: [] }
-    })
-    const res = await app.inject({
-      method: 'GET', url: '/payroll/my-access-log',
-      headers: { authorization: `Bearer ${tokenFor(app, 'employee', { email: 'employe@sotra.ci' })}` },
-    })
-    expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).data).toHaveLength(1)
   })
 })
 

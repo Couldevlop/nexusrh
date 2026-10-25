@@ -1,13 +1,26 @@
 {
   "id": "11-indemnite-conges-payes-icp",
-  "description": "Salarié recevant l'Indemnité Compensatrice de Congés Payés (ICP 35 000 FCFA) — ligne earning dédiée code 1600, hors base imposable ITS",
+  "description": "Salarié recevant l'Indemnité Compensatrice de Congés Payés (ICP 35 000 FCFA) — ligne earning dédiée code 1600, soumise CNPS + ITS",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 220360 → 280000 ; its 2180 → 34800 ; totalDeductions 19820 → 52440 ; netPayable 295180 → 262560"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 17640 → 19845 ; cnpsRetraitePat 21560 → 24255 ; totalCnpsSal 17640 → 19845 ; totalCnpsPat 26985 → 29680 ; baseImposable 280000 → 315000 ; its 34800 → 42150 ; totalDeductions 52440 → 61995 ; netPayable 262560 → 253005 ; employerCost 341985 → 344680 ; ligne 2000 17640 → 19845 ; ligne 2100 34800 → 42150 ; ligne 3000 21560 → 24255"
+      }
+    ]
   },
   "input": {
     "baseSalary": 280000,
@@ -24,25 +37,25 @@
     "baseSalary": 280000,
     "brutProrata": 280000,
     "grossSalary": 315000,
-    "cnpsRetraiteSal": 17640,
-    "cnpsRetraitePat": 21560,
+    "cnpsRetraiteSal": 19845,
+    "cnpsRetraitePat": 24255,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 17640,
-    "totalCnpsPat": 26985,
-    "baseImposable": 220360,
-    "its": 2180,
-    "totalDeductions": 19820,
-    "netPayable": 295180,
-    "employerCost": 341985,
+    "totalCnpsSal": 19845,
+    "totalCnpsPat": 29680,
+    "baseImposable": 315000,
+    "its": 42150,
+    "totalDeductions": 61995,
+    "netPayable": 253005,
+    "employerCost": 344680,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 280000 },
       { "code": "1600", "type": "earning",                 "amount":  35000 },
-      { "code": "2000", "type": "employee_contribution",   "amount":  17640 },
-      { "code": "2100", "type": "employee_contribution",   "amount":   2180 },
-      { "code": "3000", "type": "employer_contribution",   "amount":  21560 },
+      { "code": "2000", "type": "employee_contribution",   "amount":  19845 },
+      { "code": "2100", "type": "employee_contribution",   "amount":  42150 },
+      { "code": "3000", "type": "employer_contribution",   "amount":  24255 },
       { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
       { "code": "3200", "type": "employer_contribution",   "amount":    525 },
       { "code": "3300", "type": "employer_contribution",   "amount":   1400 }

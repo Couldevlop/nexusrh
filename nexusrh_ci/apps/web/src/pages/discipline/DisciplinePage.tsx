@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Gavel, Plus, ShieldAlert, Trash2 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 interface EmployeeRow { id: string; first_name: string; last_name: string; employee_number: string | null }
 interface DisciplineRow {
@@ -197,7 +198,7 @@ export default function DisciplinePage() {
                 <tr key={d.id} className="border-b border-border/60 last:border-0">
                   <td className="px-3 py-2 font-medium">{d.first_name} {d.last_name}</td>
                   <td className="px-3 py-2">{t(`types.${d.type}`)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{d.action_date}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{formatDate(d.action_date)}</td>
                   <td className="px-3 py-2 max-w-[18rem] truncate" title={d.reason}>{d.reason}</td>
                   <td className="px-3 py-2">
                     <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLE[d.status] ?? 'bg-muted')}>
@@ -220,7 +221,7 @@ export default function DisciplinePage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => { if (window.confirm(t('actions.deleteConfirm'))) deleteMut.mutate(d.id) }}
+                        onClick={async () => { if (await confirmDialog({ message: t('actions.deleteConfirm'), danger: true })) deleteMut.mutate(d.id) }}
                         className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         title={t('actions.delete')}
                       >

@@ -16,10 +16,12 @@
  *  - Une période parente porte legal_entity_id=NULL ; chaque déclinaison
  *    site porte parent_period_id + legal_entity_id + raf_user_id + pack.
  */
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { LEGISLATION_PACKS, getLegislationPack } from '../../services/legislation-packs.js'
-import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
+import { calculatePayrollCI, transportZoneFromCity } from '../../services/payroll-engine-ci.js'
+import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } from '../../services/payroll-variable-elements.js'
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
@@ -27,6 +29,12 @@ import {
 } from '../../services/final-payslip.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import {
+  buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers,
+  loadPeriodApprovals, notifyPayrollUser, payrollDenialMessage, payrollLevelState, pendingValidationMessage,
+  pendingWithOf, resetMultiSitePeriod, userDisplayName, PayrollResetConflict,
+  type ApprovalForValidation, type PayrollCircuit, type PayrollLevelState, type PayrollUser, type PeriodForValidation,
+} from '../../services/payroll-validation.service.js'
 
 /**
  * OWASP A09 — Trace structurée pour chaque transition d'état du workflow
@@ -105,7 +113,102 @@ const WORKFLOW_EVENT_LABELS: Record<string, string> = {
   'workflow.send_to_sites':    'Décliné aux filiales',
   'workflow.submit_by_raf':    'Filiale soumise par le RAF',
   'workflow.validate_central': 'Consolidé par la RH centrale',
+  'workflow.approve':          'Niveau de validation approuvé',
+  'workflow.reject':           'Renvoyée en préparation',
+  'workflow.cancel_initiation': 'Initiation annulée',
   'workflow.close':            'Paie clôturée',
+}
+
+// OWASP A03 — corps des actions du circuit de validation
+const approveBodySchema = z.object({ notes: z.string().trim().max(2000).optional() }).strict()
+const rejectBodySchema = z.object({
+  reason: z.string().trim().min(10, 'Commentaire obligatoire (10 caractères minimum)').max(2000),
+}).strict()
+const cancelBodySchema = z.object({ comment: z.string().trim().max(2000).optional() }).strict()
+
+/**
+ * CIRCUIT DE VALIDATION NOMINATIF (mêmes règles que la paie mono-entité,
+ * service payroll-validation) — où il s'applique dans le flux multi-filiales :
+ *
+ *   completed_by_site (toutes les filles)
+ *     → POST validate-central : la RH centrale CONSOLIDE = INITIE le circuit
+ *       (initiated_by / initiated_at posés sur la parente ; parente et filles
+ *       passent en validated_central = « en attente de validation ») ;
+ *     → POST approve (ou close, alias historique) : le valideur désigné de
+ *       chaque niveau (puis l'équipe RH après l'échéance) valide ; l'initiateur
+ *       ne valide jamais (SoD) ; le DERNIER niveau clôture la parente ET toutes
+ *       ses filles (closed) — c'est seulement là que les bulletins deviennent
+ *       visibles en self-service ;
+ *     → POST reject (commentaire obligatoire) / cancel (initiateur, avant toute
+ *       validation) : retour arrière transactionnel, parente et filles en
+ *       sent_to_sites, bulletins de toutes les filles supprimés, chaque RAF
+ *       re-soumet sa filiale.
+ *
+ * Le circuit porte sur la PÉRIODE PARENTE uniquement (pay_period_approvals,
+ * « Mes validations ») : jamais de doublon parent / filles.
+ */
+interface MultiParentRow {
+  id: string; month: string; status: string; parent_period_id: string | null
+  initiated_by: string | null; initiated_at: string | Date | null
+  validated_by: string | null; validated_central_at: string | Date | null
+  rejection_reason: string | null; closed_at: string | null; closed_by: string | null
+}
+
+async function loadMultiParent(schema: string, id: string): Promise<MultiParentRow | null> {
+  const r = await pool.query<MultiParentRow>(
+    `SELECT id, month, status, parent_period_id, initiated_by, initiated_at, validated_by, validated_central_at,
+            rejection_reason, closed_at, closed_by
+       FROM "${schema}".pay_periods WHERE id = $1 LIMIT 1`,
+    [id],
+  )
+  const row = r?.rows?.[0]
+  return row && !row.parent_period_id ? row : null
+}
+
+/**
+ * Projection de la parente sur le modèle du circuit : 'validated_central' =
+ * en attente de validation. Initiateur = celui qui a consolidé (repli
+ * validated_by pour une paie consolidée avant l'introduction du circuit).
+ */
+function asValidationPeriod(p: Pick<MultiParentRow, 'id' | 'status' | 'initiated_by' | 'initiated_at' | 'validated_by' | 'validated_central_at'>): PeriodForValidation {
+  return {
+    id: String(p.id),
+    status: p.status === 'validated_central' ? 'pending_validation' : p.status,
+    initiated_by: p.initiated_by ? String(p.initiated_by) : p.validated_by ? String(p.validated_by) : null,
+    initiated_at: p.initiated_at ?? p.validated_central_at ?? null,
+  }
+}
+
+type LoadedPending =
+  | { status: 400 | 404 | 409; error: string }
+  | {
+      parent: MultiParentRow; period: PeriodForValidation; circuit: PayrollCircuit
+      approvals: ApprovalForValidation[]; users: Map<string, PayrollUser>; state: PayrollLevelState | null
+    }
+
+/** Parente « consolidée, en attente de validation » + état de son circuit, ou l'erreur HTTP. */
+async function loadPendingParent(schema: string, id: string): Promise<LoadedPending> {
+  if (!UUID_RE.test(id)) return { status: 400, error: 'Identifiant de période invalide' }
+  const parent = await loadMultiParent(schema, id)
+  if (!parent) return { status: 404, error: 'Période parente introuvable' }
+  if (parent.status === 'closed') {
+    return { status: 409, error: 'Paie clôturée : elle est immuable (ni validation, ni rejet, ni annulation).' }
+  }
+  if (parent.status !== 'validated_central') {
+    return {
+      status: 409,
+      error: 'Cette paie n\'est pas en attente de validation : consolidez-la d\'abord, une fois toutes les filiales soumises.',
+    }
+  }
+  const period = asValidationPeriod(parent)
+  const circuit = await loadPayrollCircuit(pool, schema)
+  const approvals = (await loadPeriodApprovals(pool, schema, [period.id])).get(period.id) ?? []
+  const users = await loadPayrollUsers(pool, schema, circuit.steps.map(s => s.userId))
+  return { parent, period, circuit, approvals, users, state: payrollLevelState(circuit, period, approvals, users) }
+}
+
+function actorName(user: { firstName?: string; lastName?: string }): string {
+  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || 'un valideur'
 }
 
 async function assertMultiCountryTenant(
@@ -128,8 +231,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /payroll-workflow/periods ─────────────────────────────────────────
   // Liste les périodes parentes + leurs déclinaisons site.
+  // hr_officer : lecture (il peut être valideur désigné d'un niveau du circuit).
   fastify.get('/periods', {
-    preHandler: [fastify.authorize('admin', 'hr_manager', 'raf_site', 'readonly')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'raf_site', 'readonly')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       try {
@@ -143,7 +247,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           params.push(request.user.sub)
         }
         sql += ` ORDER BY pp.month DESC, pp.parent_period_id NULLS FIRST, pp.created_at`
-        const res = await pool.query(sql, params)
+        const res = await pool.query<MultiParentRow & Record<string, unknown>>(sql, params)
+        // Valideur attendu + échéance des paies consolidées en attente de validation
+        const pendingParents = res.rows.filter(r => !r.parent_period_id && r.status === 'validated_central')
+        if (pendingParents.length > 0) {
+          const pendingWith = await describePendingPeriods(pool, schema, pendingParents.map(asValidationPeriod))
+            .catch(() => new Map<string, ReturnType<typeof pendingWithOf>>())
+          for (const r of pendingParents) r.pending_with = pendingWith.get(String(r.id)) ?? null
+        }
         return reply.send({ data: res.rows })
       } catch (err) {
         fastify.log.error({ err }, 'payroll-workflow operation failed')
@@ -162,8 +273,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const { hasSubsidiaries } = await assertMultiCountryTenant(schema)
       if (!hasSubsidiaries) {
         return reply.status(400).send({
-          error: 'Ce tenant n\'a pas activé la gestion multi-pays. ' +
-                 'Utilisez /payroll/periods pour une paie mono-pays.',
+          error: 'La gestion multi-pays (multi-filiales) n\'est pas activée pour votre entreprise. ' +
+                 'Utilisez l\'écran Paie (clôture mensuelle) pour une paie mono-pays.',
         })
       }
       const body = request.body as { month: string }
@@ -339,13 +450,19 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         // On lit les paramètres de calcul depuis legal_entities + on applique
         // le pack législatif stocké sur la période enfant (résolu au send-to-sites).
         const leRes = await pool.query<{
-          at_rate: string | null; name: string
+          at_rate: string | null; name: string; city: string | null
         }>(
-          `SELECT at_rate, name FROM "${schema}".legal_entities WHERE id = $1`,
-          [period.legal_entity_id],
+          // Lieu de travail (plafond exonéré de la prime de transport) : ville de
+          // la filiale, sinon celle du tenant — même règle que la paie mono-filiale.
+          `SELECT le.at_rate, le.name, COALESCE(NULLIF(le.city, ''), t.city) AS city
+             FROM "${schema}".legal_entities le
+             LEFT JOIN platform.tenants t ON t.schema_name = $2
+            WHERE le.id = $1`,
+          [period.legal_entity_id, schema],
         )
         const le = leRes.rows[0]
         if (!le) return reply.status(500).send({ error: 'Filiale introuvable' })
+        const transportZone = transportZoneFromCity(le.city)
 
         const pack = getLegislationPack(period.legislation_pack_code)
         if (pack.status === 'stub') {
@@ -371,13 +488,15 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         for (const emp of emps.rows) {
           // Variables locales (heures supp, primes, avances) — saisies par le RAF
           // dans la table variable_elements, scope (employé, période enfant).
+          // Assujettissement CNPS / ITS paramétré par rubrique (payroll_rules).
           const varEls: Record<string, number> = {}
-          const velRes = await pool.query<{ rule_code: string; amount: string }>(
-            `SELECT rule_code, amount FROM "${schema}".variable_elements
-             WHERE employee_id = $1 AND period_id = $2`,
+          const velRes = await pool.query<VariableElementRow>(
+            `${VARIABLE_ELEMENTS_SQL(schema)}
+             WHERE ve.employee_id = $1 AND ve.period_id = $2`,
             [emp.id, id],
-          ).catch(() => ({ rows: [] as Array<{ rule_code: string; amount: string }> }))
+          ).catch(() => ({ rows: [] as VariableElementRow[] }))
           for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
+          const variableTreatment = treatmentFromRows(velRes.rows)
 
           const baseSalary = parseInt(emp.base_salary)
           // Prorata entrée / sortie, absences, pointage et solde de tout compte
@@ -397,6 +516,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             settlementEarnings: monthInputs.settlementEarnings,
             expenseReimbursement: monthInputs.expenses.total,
             legislationPack:  pack,
+            transportZone,
+            variableTreatment,
           })
           totalGross += result.grossSalary
           totalNet   += result.netPayable
@@ -456,8 +577,10 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // ── POST /payroll-workflow/periods/:id/validate-central ───────────────────
-  // Direction centrale valide la période parente une fois tous les sites
-  // remontés en completed_by_site. Verrouille le passage à 'closed'.
+  // Direction centrale CONSOLIDE la période parente une fois tous les sites
+  // remontés en completed_by_site : c'est l'INITIATION du circuit de
+  // validation nominatif (l'auteur de la consolidation = initiateur, qui ne
+  // pourra ni valider ni rejeter). Parente et filles → validated_central.
   fastify.post('/periods/:id/validate-central', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     handler: async (request, reply) => {
@@ -465,14 +588,22 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       try {
         const parent = await pool.query<{
-          status: string; parent_period_id: string | null
+          status: string; parent_period_id: string | null; month?: string
         }>(
-          `SELECT status, parent_period_id FROM "${schema}".pay_periods WHERE id = $1`,
+          `SELECT status, parent_period_id, month FROM "${schema}".pay_periods WHERE id = $1`,
           [id],
         )
         if (!parent.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
         if (parent.rows[0].parent_period_id) {
           return reply.status(400).send({ error: 'La validation s\'applique à la période parente' })
+        }
+        // Une consolidation ne se rejoue pas : la paie est déjà en validation ou clôturée.
+        if (parent.rows[0].status === 'validated_central' || parent.rows[0].status === 'closed') {
+          return reply.status(409).send({
+            error: parent.rows[0].status === 'closed'
+              ? 'Paie clôturée : elle est immuable.'
+              : 'Paie déjà consolidée et en attente de validation. Pour la recalculer, le valideur doit la renvoyer en préparation, ou l\'initiateur annuler son initiation tant qu\'aucun niveau n\'a validé.',
+          })
         }
         // Vérifier que toutes les filles sont completed_by_site et consolider
         const children = await pool.query<{
@@ -484,6 +615,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
            FROM "${schema}".pay_periods WHERE parent_period_id = $1`,
           [id],
         )
+        if (children.rows.length === 0) {
+          return reply.status(409).send({
+            error: 'Aucune filiale n\'a encore été déclinée pour ce mois : déclinez la paie aux filiales avant de la consolider.',
+          })
+        }
         const pending = children.rows.filter(r => r.status !== 'completed_by_site')
         if (pending.length > 0) {
           return reply.status(409).send({
@@ -500,10 +636,12 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           sumIts   += parseInt(c.total_its   ?? '0')
         }
 
+        // Consolidation = initiation du circuit de validation (SoD : l'initiateur
+        // ne valide jamais) ; un éventuel motif de rejet précédent est effacé.
         await pool.query(
           `UPDATE "${schema}".pay_periods
              SET status = 'validated_central', validated_central_at = now(),
-                 validated_by = $1,
+                 validated_by = $1, initiated_by = $1, initiated_at = now(), rejection_reason = NULL,
                  total_gross = $3, total_net = $4, total_cnps = $5, total_its = $6
            WHERE id = $2`,
           [request.user.sub, id, sumGross, sumNet, sumCnps, sumIts],
@@ -521,9 +659,27 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           changes: { sitesCount: children.rows.length, sumGross, sumNet, sumCnps, sumIts },
           ipAddress: request.ip,
         })
+
+        // Valideur attendu du 1er niveau (circuit nominatif, Paramètres → Workflow)
+        const month = parent.rows[0].month ?? ''
+        let firstLevel: PayrollLevelState | null = null
+        try {
+          const circuit = await loadPayrollCircuit(pool, schema)
+          const users = await loadPayrollUsers(pool, schema, [circuit.steps[0]?.userId])
+          firstLevel = payrollLevelState(circuit,
+            { id, status: 'pending_validation', initiated_by: request.user.sub, initiated_at: new Date() }, [], users)
+        } catch { firstLevel = null }
+        const pendingWith = pendingWithOf(firstLevel)
+        if (pendingWith?.userId) {
+          notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
+            `La paie multi-filiales ${month} attend votre validation (niveau 1/${pendingWith.requiredLevels}).`,
+            { month, periodId: id, level: 1, scope: 'multi_sites' })
+        }
         return reply.send({
           data: { id, status: 'validated_central' },
           consolidated: { sites: children.rows.length, sumGross, sumNet, sumCnps, sumIts },
+          pendingWith,
+          message: pendingValidationMessage(month, firstLevel),
         })
       } catch (err) {
         fastify.log.error({ err }, 'payroll-workflow operation failed')
@@ -533,40 +689,253 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
-  // ── POST /payroll-workflow/periods/:id/close ──────────────────────────────
-  // Clôture finale après génération bulletins. Statut terminal.
+  // ── POST /payroll-workflow/periods/:id/approve (alias historique : /close) ─
+  // Validation du niveau courant par le valideur désigné (ou, échéance
+  // dépassée / désigné indisponible, par l'équipe RH hors initiateur et
+  // approbateurs précédents). Le DERNIER niveau clôture la parente ET toutes
+  // ses filles (statut terminal, bulletins publiés en self-service).
+  const approveHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const schema = request.user.schemaName
+    const { id } = request.params as { id: string }
+    const body = approveBodySchema.safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
+    const notes = body.data.notes || null
+    try {
+      const loaded = await loadPendingParent(schema, id)
+      if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+      const { parent, period, circuit, approvals, users, state } = loaded
+
+      const decision = decideOnPayrollPeriod(state, period.initiated_by, request.user)
+      if (!decision.allowed) {
+        return reply.status(403).send({ error: payrollDenialMessage(decision.reason, state) })
+      }
+      const requiredLevels = circuit.levels
+      const level = state?.level ?? approvals.length + 1
+
+      if (state) {
+        try {
+          await pool.query(
+            `INSERT INTO "${schema}".pay_period_approvals
+               (period_id, level, approver_id, approver_role, notes)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [period.id, level, request.user.sub, request.user.role, notes],
+          )
+        } catch (err) {
+          if ((err as { code?: string } | null)?.code === '23505') {
+            return reply.status(409).send({ error: 'Ce niveau vient d\'être validé par quelqu\'un d\'autre. Rechargez la page.' })
+          }
+          throw err
+        }
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.approve', entity: 'pay_period', entityId: period.id,
+          changes: { month: parent.month, level, requiredLevels, escalated: decision.escalated },
+          ipAddress: request.ip,
+        })
+      }
+
+      // Dernier niveau requis atteint → clôture définitive de la parente ET des filles
+      if (level >= requiredLevels) {
+        await pool.query(
+          `UPDATE "${schema}".pay_periods
+             SET status = 'closed', closed_at = now(), closed_by = $1
+           WHERE (id = $2 OR parent_period_id = $2) AND status = 'validated_central'`,
+          [String(request.user.sub), period.id],
+        )
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.close', entity: 'pay_period', entityId: period.id,
+          changes: { month: parent.month, finalLevel: level, requiredLevels, escalated: decision.escalated },
+          ipAddress: request.ip,
+        })
+        notifyPayrollUser(schema, period.initiated_by, 'payroll_closed', 'Paie clôturée',
+          `La paie multi-filiales ${parent.month} a été validée à tous les niveaux et clôturée.`,
+          { month: parent.month, periodId: period.id, scope: 'multi_sites' })
+        return reply.send({
+          data: { id: period.id, status: 'closed', level, requiredLevels, escalated: decision.escalated },
+          message: `Paie ${parent.month} validée à tous les niveaux requis et clôturée : les bulletins de toutes les filiales sont publiés.`,
+        })
+      }
+
+      const next = payrollLevelState(circuit, period,
+        [...approvals, { level, approver_id: request.user.sub, approved_at: new Date() }], users)
+      const pendingWith = pendingWithOf(next)
+      if (pendingWith?.userId) {
+        notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
+          `La paie multi-filiales ${parent.month} attend votre validation (niveau ${pendingWith.level}/${requiredLevels}).`,
+          { month: parent.month, periodId: period.id, level: pendingWith.level, scope: 'multi_sites' })
+      }
+      return reply.send({
+        data: { id: period.id, status: 'validated_central', level, requiredLevels, escalated: decision.escalated },
+        pendingWith,
+        message: `Validation niveau ${level}/${requiredLevels} enregistrée. ${pendingValidationMessage(parent.month, next)}.`,
+      })
+    } catch (err) {
+      fastify.log.error({ err }, 'payroll-workflow approve failed')
+      const { status, error } = describeWorkflowError(err)
+      return reply.status(status).send({ error })
+    }
+  }
+  fastify.post('/periods/:id/approve', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: approveHandler,
+  })
+  // Compatibilité : « Clôturer » = valider le niveau courant (mêmes règles).
   fastify.post('/periods/:id/close', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: approveHandler,
+  })
+
+  // ── POST /payroll-workflow/periods/:id/reject ─────────────────────────────
+  // Rejet / renvoi en préparation par le valideur attendu (ou l'équipe RH
+  // après échéance). Commentaire obligatoire. Transaction : bulletins de
+  // toutes les filiales supprimés, notes de frais et soldes de tout compte
+  // rétablis, parente et filles → sent_to_sites (chaque RAF re-soumet).
+  fastify.post('/periods/:id/reject', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      const body = rejectBodySchema.safeParse(request.body ?? {})
+      if (!body.success) {
+        return reply.status(400).send({ error: 'Commentaire obligatoire : expliquez le motif du renvoi en préparation (10 caractères minimum).' })
+      }
+      const reason = body.data.reason
+      try {
+        const loaded = await loadPendingParent(schema, id)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { parent, period, state } = loaded
+        const decision = decideOnPayrollPeriod(state, period.initiated_by, request.user)
+        if (!decision.allowed) {
+          return reply.status(403).send({ error: payrollDenialMessage(decision.reason, state) })
+        }
+        let reverted
+        try {
+          reverted = await resetMultiSitePeriod(schema, period.id, reason)
+        } catch (err) {
+          if (err instanceof PayrollResetConflict) return reply.status(409).send({ error: err.message })
+          throw err
+        }
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'workflow.reject', entity: 'pay_period', entityId: period.id,
+          changes: {
+            month: parent.month, reason, level: state?.level ?? null, escalated: decision.escalated,
+            deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses,
+            restoredSettlements: reverted.restoredSettlements, sitesReopened: reverted.sitesReopened,
+          },
+          ipAddress: request.ip,
+        })
+        const who = actorName(request.user)
+        notifyPayrollUser(schema, period.initiated_by, 'payroll_rejected', 'Paie renvoyée en préparation',
+          `La paie multi-filiales ${parent.month} a été renvoyée en préparation par ${who}. Motif : ${reason}`,
+          { month: parent.month, periodId: period.id, scope: 'multi_sites' })
+        for (const rafId of reverted.rafUserIds) {
+          if (rafId === period.initiated_by) continue
+          notifyPayrollUser(schema, rafId, 'payroll_rejected', 'Paie de votre filiale à re-soumettre',
+            `La paie ${parent.month} a été renvoyée en préparation par ${who}. Motif : ${reason}. Vérifiez puis re-soumettez votre filiale.`,
+            { month: parent.month, periodId: period.id, scope: 'multi_sites' })
+        }
+        return reply.send({
+          data: {
+            id: period.id, status: 'sent_to_sites',
+            deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses,
+            restoredSettlements: reverted.restoredSettlements, sitesReopened: reverted.sitesReopened,
+          },
+          message: 'Paie renvoyée en préparation : les bulletins générés ont été supprimés et chaque filiale doit être re-soumise par son RAF.',
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow reject failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── POST /payroll-workflow/periods/:id/cancel ─────────────────────────────
+  // L'INITIATEUR (auteur de la consolidation) annule son initiation tant
+  // qu'aucun niveau n'a validé : mêmes effets que le rejet, sans motif imposé.
+  fastify.post('/periods/:id/cancel', {
     preHandler: [fastify.authorize('admin', 'hr_manager')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      const body = cancelBodySchema.safeParse(request.body ?? {})
+      if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
       try {
-        const parent = await pool.query<{ status: string }>(
-          `SELECT status FROM "${schema}".pay_periods WHERE id = $1 AND parent_period_id IS NULL`,
-          [id],
-        )
-        if (!parent.rows[0]) return reply.status(404).send({ error: 'Période parente introuvable' })
-        if (parent.rows[0].status !== 'validated_central') {
-          return reply.status(409).send({
-            error: `Période non éligible à clôture (status=${parent.rows[0].status}, attendu=validated_central)`,
-          })
+        const loaded = await loadPendingParent(schema, id)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { parent, period, approvals } = loaded
+        if (period.initiated_by !== request.user.sub) {
+          return reply.status(403).send({ error: 'Seul l\'initiateur (auteur de la consolidation) peut annuler son initiation.' })
         }
-        await pool.query(
-          `UPDATE "${schema}".pay_periods
-             SET status = 'closed', closed_at = now(), closed_by = $1
-           WHERE id = $2 OR parent_period_id = $2`,
-          [String(request.user.sub), id],
-        )
+        if (approvals.length > 0) {
+          return reply.status(409).send({ error: 'Un niveau a déjà été validé : l\'initiation ne peut plus être annulée. Demandez au valideur de renvoyer la paie en préparation.' })
+        }
+        let reverted
+        try {
+          reverted = await resetMultiSitePeriod(schema, period.id, null, { requireNoApproval: true })
+        } catch (err) {
+          if (err instanceof PayrollResetConflict) return reply.status(409).send({ error: err.message })
+          throw err
+        }
         await auditWorkflow({
           schema, userId: request.user.sub,
-          action: 'workflow.close', entity: 'pay_period', entityId: id,
+          action: 'workflow.cancel_initiation', entity: 'pay_period', entityId: period.id,
+          changes: {
+            month: parent.month, comment: body.data.comment || null,
+            deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses,
+            restoredSettlements: reverted.restoredSettlements, sitesReopened: reverted.sitesReopened,
+          },
           ipAddress: request.ip,
         })
-        return reply.send({ data: { id, status: 'closed' } })
+        return reply.send({
+          data: {
+            id: period.id, status: 'sent_to_sites',
+            deletedPaySlips: reverted.deletedPaySlips, restoredExpenses: reverted.restoredExpenses,
+            restoredSettlements: reverted.restoredSettlements, sitesReopened: reverted.sitesReopened,
+          },
+          message: 'Initiation annulée : la paie est revenue en préparation et les bulletins générés ont été supprimés.',
+        })
       } catch (err) {
-        fastify.log.error({ err }, 'payroll-workflow operation failed')
+        fastify.log.error({ err }, 'payroll-workflow cancel failed')
         const { status, error } = describeWorkflowError(err)
         return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── GET /payroll-workflow/periods/:id/workflow ────────────────────────────
+  // État du circuit de la paie consolidée : niveaux validés (qui, quand),
+  // niveau courant (valideur attendu + échéance) et droits du lecteur
+  // (valider / rejeter / annuler) — même contrat que GET /payroll/periods/:month/workflow.
+  fastify.get('/periods/:id/workflow', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant de période invalide' })
+      try {
+        const parent = await loadMultiParent(schema, id)
+        if (!parent) return reply.status(404).send({ error: 'Période parente introuvable' })
+        const period = asValidationPeriod(parent)
+        const view = await buildPayrollCircuitView(pool, schema, period, request.user)
+        const initiator = period.initiated_by
+          ? (await loadPayrollUsers(pool, schema, [period.initiated_by])).get(period.initiated_by)
+          : undefined
+        return reply.send({
+          period: {
+            id: parent.id, month: parent.month, status: parent.status,
+            initiatedAt: period.initiated_at, initiatedBy: period.initiated_by,
+            initiatorName: userDisplayName(initiator),
+            rejectionReason: parent.rejection_reason,
+            closedAt: parent.closed_at, closedBy: parent.closed_by,
+          },
+          ...view,
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow circuit state failed')
+        return reply.status(500).send({ error: 'Impossible de charger le circuit de validation de la paie. Réessayez.' })
       }
     },
   })
@@ -578,7 +947,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
   // RBAC (OWASP A01) : admin/hr_manager/readonly voient tout le draft ; raf_site
   // n'y accède que s'il pilote au moins une filiale de ce draft.
   fastify.get('/periods/:id/timeline', {
-    preHandler: [fastify.authorize('admin', 'hr_manager', 'raf_site', 'readonly')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'raf_site', 'readonly')],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }

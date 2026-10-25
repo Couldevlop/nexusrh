@@ -5,9 +5,10 @@ import {
   Clock, Plus, Trash2, Pencil, RefreshCw, Zap, CheckCircle2, XCircle,
   LayoutDashboard, ListChecks, AlertTriangle, Settings as SettingsIcon, LogIn,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import AttendancePayrollLinkCard from './AttendancePayrollLinkCard'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Tab = 'dashboard' | 'punches' | 'days' | 'warnings' | 'config'
 
@@ -544,7 +545,7 @@ export default function AttendancePage() {
                   {(daysQ.data ?? []).map((d) => (
                     <tr key={d.id} className="border-b border-border/60 last:border-0">
                       <td className="px-3 py-2 font-medium">{employeeName(d.employee_id)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{d.work_date.slice(0, 10)}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{formatDate(d.work_date)}</td>
                       <td className="px-3 py-2">
                         <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', DAY_STATUS_STYLE[d.status] ?? 'bg-muted')}>
                           {t(`statuses.${d.status}`)}
@@ -815,7 +816,7 @@ export default function AttendancePage() {
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button type="button"
-                                onClick={() => { if (window.confirm(t('config.devices.deleteConfirm'))) deleteDeviceMut.mutate(d.id) }}
+                                onClick={async () => { if (await confirmDialog({ message: t('config.devices.deleteConfirm'), danger: true })) deleteDeviceMut.mutate(d.id) }}
                                 title={t('config.devices.delete')} className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -937,7 +938,7 @@ export default function AttendancePage() {
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                             <button type="button"
-                              onClick={() => { if (window.confirm(t('config.schedules.deleteConfirm'))) deleteScheduleMut.mutate(s.id) }}
+                              onClick={async () => { if (await confirmDialog({ message: t('config.schedules.deleteConfirm'), danger: true })) deleteScheduleMut.mutate(s.id) }}
                               title={t('config.schedules.delete')} className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
                               <Trash2 className="h-4 w-4" />
                             </button>

@@ -20,9 +20,15 @@ interface Absence {
   start_date: string; end_date: string; days: number; status: string
 }
 
+// Journal ARTCI : accès aux données DU salarié connecté, avec l'auteur.
 interface AccessLog {
   id: string; action: string; entity: string; ip_address: string | null; created_at: string
+  actor_first_name: string | null; actor_last_name: string | null
+  actor_role: string | null; actor_is_self: boolean | null
 }
+
+const ACCESS_ENTITIES = ['employee', 'absence', 'expense_report', 'payslip', 'pay_slip', 'contract', 'contrat',
+  'disciplinary_action', 'offboarding_case', 'career'] as const
 
 interface TrainingReco {
   id: string; title: string; duration: number | null; duration_unit: string
@@ -51,7 +57,7 @@ export default function MonEspace() {
 
   const { data: accessLogData } = useQuery<{ data: AccessLog[] }>({
     queryKey: ['my-access-log'],
-    queryFn: () => api.get('/payroll/my-access-log').then(r => r.data),
+    queryFn: () => api.get('/employees/me/access-log').then(r => r.data),
   })
 
   // ESP-007 — formations recommandées (2 cards) sur le dashboard
@@ -213,11 +219,23 @@ export default function MonEspace() {
           <div className="space-y-1.5">
             {accessLogs.slice(0, 5).map(log => (
               <div key={log.id} className="flex items-center justify-between text-xs py-1 border-b border-border last:border-0">
-                <div className="flex items-center gap-2">
-                  <span className={`rounded px-1.5 py-0.5 font-mono ${log.action === 'READ' ? 'bg-blue-100 text-blue-700' : log.action === 'UPDATE' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-gray-600">
                     {log.action}
                   </span>
-                  <span className="text-muted-foreground capitalize">{log.entity.replace('_', ' ')}</span>
+                  <span className="text-muted-foreground">
+                    {(ACCESS_ENTITIES as readonly string[]).includes(log.entity) ? t(`dashboard.accessEntities.${log.entity}`) : log.entity}
+                  </span>
+                  <span className="truncate font-medium">
+                    {log.actor_is_self
+                      ? t('dashboard.accessActorSelf')
+                      : log.actor_first_name
+                        ? `${log.actor_first_name} ${log.actor_last_name ?? ''}`.trim()
+                        : t('dashboard.accessActorSystem')}
+                    {!log.actor_is_self && log.actor_role && (
+                      <span className="ml-1 font-normal text-muted-foreground">({t(`dashboard.accessRoles.${log.actor_role}`, { defaultValue: log.actor_role })})</span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   {log.ip_address && <span className="font-mono">{log.ip_address}</span>}

@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
+import { PayrollWorkflowModal, formatDateTime as formatDueDate, type PendingWith } from './PayrollWorkflowModal'
 import {
   Building2, Send, Loader2, CheckCircle2, Lock, Layers,
   PlayCircle, ShieldCheck, ChevronRight, AlertTriangle,
-  History, ChevronDown, Clock, User,
+  History, ChevronDown, Clock, User, UserCheck, XCircle, Undo2, X,
 } from 'lucide-react'
 
 /**
@@ -19,9 +22,14 @@ import {
  *   3. Suivre la PROGRESSION : chaque RAF soumet sa filiale (completed_by_site).
  *      La frise montre en temps réel quelle filiale a soumis / reste en attente.
  *   4. Consolider (POST .../validate-central) quand toutes les filiales ont
- *      soumis → validated_central + somme des totaux
- *   5. Clôturer (POST .../close) → closed (terminal)
+ *      soumis → validated_central + somme des totaux. La consolidation INITIE
+ *      le circuit de validation nominatif (mêmes règles que la paie
+ *      mono-entité : valideur désigné par niveau, échéance, escalade, SoD).
+ *   5. Circuit de validation (modale commune, pilotée par `viewer` de l'API) :
+ *      valider le niveau courant, rejeter (commentaire obligatoire) ou annuler
+ *      l'initiation ; la dernière validation clôture la parente ET les filles.
  *
+ * « Mes validations » ouvre directement le circuit : ?validate=<id parente>.
  * Les RAF, eux, utilisent /raf/periods (soumission de leur filiale uniquement).
  */
 
@@ -42,7 +50,14 @@ interface WfPeriod {
   completed_by_site_at: string | null
   validated_central_at: string | null
   closed_at: string | null
+  rejection_reason?: string | null
+  /** Paie consolidée en attente de validation : valideur attendu (calculé par l'API). */
+  pending_with?: PendingWith | null
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Rôles qui pilotent la paie centrale (initier, décliner, consolider). */
+const CENTRAL_ROLES = ['admin', 'hr_manager']
 
 const STATUS_COLOR: Record<string, string> = {
   draft_central:     'bg-slate-100 text-slate-700 border-slate-200',
@@ -78,6 +93,25 @@ export default function PayrollMultiSitesPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // Suivi transparent : id du draft dont la chronologie est dépliée (null = aucune)
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const role = useAuthStore(s => s.user?.role)
+  const canManage = !!role && CENTRAL_ROLES.includes(role)
+
+  // Circuit de validation ouvert (période parente) ; « Mes validations » → ?validate=<id>
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [circuitId, setCircuitId] = useState<string | null>(null)
+  useEffect(() => {
+    const id = searchParams.get('validate')
+    if (id && UUID_RE.test(id)) setCircuitId(id)
+  }, [searchParams])
+  const closeCircuit = () => {
+    setCircuitId(null)
+    if (searchParams.has('validate')) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('validate')
+      setSearchParams(next, { replace: true })
+    }
+  }
 
   const { data, isLoading } = useQuery<{ data: WfPeriod[] }>({
     queryKey: ['wf-periods'],
@@ -86,6 +120,9 @@ export default function PayrollMultiSitesPage() {
 
   const invalidate = () => { setErrorMsg(null); qc.invalidateQueries({ queryKey: ['wf-periods'] }) }
   const onError = (fallback: string) => (err: unknown) => setErrorMsg(apiError(err, fallback))
+  const pendingText = (month: string, pw: PendingWith | null | undefined) => pw?.name
+    ? t('close.pendingWithNamed', { month, name: pw.name, fn: pw.functionLabel ?? '' })
+    : t('close.pendingWithTeam', { month })
 
   const createDraft = useMutation({
     mutationFn: (m: string) => api.post('/payroll-workflow/periods', { month: m }),
@@ -97,23 +134,26 @@ export default function PayrollMultiSitesPage() {
     onSuccess: invalidate,
     onError: onError(t('multiSites.errors.sendToSites')),
   })
+  // Consolidation = initiation du circuit : message « Période … en attente de validation de … »
   const validateCentral = useMutation({
-    mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/validate-central`),
-    onSuccess: invalidate,
+    mutationFn: (p: { id: string; month: string }) =>
+      api.post(`/payroll-workflow/periods/${p.id}/validate-central`)
+        .then(r => ({ month: p.month, pendingWith: (r.data as { pendingWith?: PendingWith | null }).pendingWith ?? null })),
+    onSuccess: ({ month: m, pendingWith }) => {
+      invalidate()
+      qc.invalidateQueries({ queryKey: ['approvals-pending'] })
+      setNotice(`${t('multiSites.consolidatedNotice', { month: m })} ${pendingText(m, pendingWith)}.`)
+    },
     onError: onError(t('multiSites.errors.consolidate')),
   })
-  const closePeriod = useMutation({
-    mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/close`),
-    onSuccess: invalidate,
-    onError: onError(t('multiSites.errors.close')),
-  })
-  const busy = createDraft.isPending || sendToSites.isPending || validateCentral.isPending || closePeriod.isPending
+  const busy = createDraft.isPending || sendToSites.isPending || validateCentral.isPending
 
   const periods = data?.data ?? []
   const parents = periods
     .filter(p => !p.parent_period_id)
     .sort((a, b) => b.month.localeCompare(a.month))
   const childrenOf = (parentId: string) => periods.filter(p => p.parent_period_id === parentId)
+  const circuitParent = circuitId ? parents.find(p => p.id === circuitId) : undefined
 
   return (
     <div className="p-6 space-y-6">
@@ -127,8 +167,21 @@ export default function PayrollMultiSitesPage() {
         </p>
       </div>
 
-      {/* Initier le draft du mois */}
-      <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-end gap-3">
+      <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+        <ShieldCheck className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {t('multiSites.circuitHint')}
+      </p>
+
+      {notice && (
+        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-2">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} aria-label={t('workflow.cancel')} className="opacity-70 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Initier le draft du mois (RH centrale) */}
+      {canManage && <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-end gap-3">
         <div className="flex-1">
           <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('multiSites.monthLabel')}</label>
           <input
@@ -146,7 +199,7 @@ export default function PayrollMultiSitesPage() {
           {createDraft.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
           {t('multiSites.initDraft')}
         </button>
-      </div>
+      </div>}
 
       {errorMsg && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-start gap-2">
@@ -196,31 +249,58 @@ export default function PayrollMultiSitesPage() {
                     {t('multiSites.track')}
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTimelineId === parent.id ? 'rotate-180' : ''}`} />
                   </button>
-                  {parent.status === 'draft_central' && (
+                  {canManage && parent.status === 'draft_central' && (
                     <ActionBtn
                       onClick={() => sendToSites.mutate(parent.id)}
                       loading={sendToSites.isPending} disabled={busy}
                       icon={Send} label={t('multiSites.sendToSites')}
                     />
                   )}
-                  {parent.status === 'sent_to_sites' && (
+                  {canManage && parent.status === 'sent_to_sites' && (
                     <ActionBtn
-                      onClick={() => validateCentral.mutate(parent.id)}
+                      onClick={() => validateCentral.mutate({ id: parent.id, month: parent.month })}
                       loading={validateCentral.isPending}
                       disabled={busy || !allSubmitted}
                       icon={ShieldCheck}
                       label={allSubmitted ? t('multiSites.consolidate') : t('multiSites.consolidatePartial', { submitted, total })}
                     />
                   )}
-                  {parent.status === 'validated_central' && (
+                  {/* Circuit de validation : droits (valider / rejeter / annuler) calculés par l'API */}
+                  {(parent.status === 'validated_central' || parent.status === 'closed') && (
                     <ActionBtn
-                      onClick={() => closePeriod.mutate(parent.id)}
-                      loading={closePeriod.isPending} disabled={busy}
-                      icon={Lock} label={t('multiSites.closePayroll')}
+                      onClick={() => setCircuitId(parent.id)}
+                      loading={false} disabled={false}
+                      icon={parent.status === 'closed' ? Lock : UserCheck} label={t('multiSites.openCircuit')}
                     />
                   )}
                 </div>
               </div>
+
+              {/* Paie consolidée : valideur attendu + échéance */}
+              {parent.status === 'validated_central' && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                  <span className="inline-flex items-center gap-1.5 font-medium">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    {parent.pending_with?.name
+                      ? t('history.pendingWith', { name: parent.pending_with.name, fn: parent.pending_with.functionLabel ?? '' })
+                      : t('history.pendingWithTeam')}
+                  </span>
+                  {parent.pending_with && (
+                    <span>{t('history.levelProgress', { level: parent.pending_with.level, total: parent.pending_with.requiredLevels })}</span>
+                  )}
+                  {parent.pending_with?.dueAt && (
+                    <span className={parent.pending_with.overdue ? 'font-medium text-red-600' : ''}>
+                      {t('history.dueAt', { date: formatDueDate(parent.pending_with.dueAt) })}
+                      {parent.pending_with.overdue ? ` · ${t('history.overdue')}` : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+              {parent.status === 'sent_to_sites' && parent.rejection_reason && (
+                <p className="border-b border-border bg-destructive/5 px-4 py-2 text-xs italic text-destructive">
+                  {t('multiSites.rejected', { reason: parent.rejection_reason })}
+                </p>
+              )}
 
               {/* Frise d'étapes parent */}
               <div className="flex items-center gap-1 px-4 py-3 overflow-x-auto">
@@ -326,6 +406,14 @@ export default function PayrollMultiSitesPage() {
           )
         })}
       </div>
+
+      {circuitParent && (
+        <PayrollWorkflowModal
+          target={{ kind: 'multi', periodId: circuitParent.id, month: circuitParent.month }}
+          onClose={closeCircuit}
+          onDone={(message) => { setNotice(message); closeCircuit() }}
+        />
+      )}
     </div>
   )
 }
@@ -375,6 +463,9 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   'workflow.send_to_sites':    Send,
   'workflow.submit_by_raf':    Building2,
   'workflow.validate_central': ShieldCheck,
+  'workflow.approve':          UserCheck,
+  'workflow.reject':           XCircle,
+  'workflow.cancel_initiation': Undo2,
   'workflow.close':            Lock,
 }
 

@@ -5,6 +5,7 @@ import { Route as RouteIcon, Plus, Trash2, CheckCircle2, AlertTriangle } from 'l
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 type Tab = 'requests' | 'assessments'
 const BLOOM = [1, 2, 3, 4, 5, 6] as const
@@ -143,7 +144,7 @@ export default function MobilityPage() {
                         <button type="button" onClick={() => patchReq.mutate({ id: r.id, body: { status: 'rejected' } })} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('requests.reject')}</button>
                       </>
                     )}
-                    <button type="button" onClick={() => { if (window.confirm(t('requests.deleteConfirm'))) deleteReq.mutate(r.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" onClick={async () => { if (await confirmDialog({ message: t('requests.deleteConfirm'), danger: true })) deleteReq.mutate(r.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
 

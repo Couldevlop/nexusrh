@@ -14,6 +14,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import {
   SURVEY_STATUSES,
   QUESTION_TYPES,
@@ -66,7 +67,7 @@ async function resolveEmployeeId(
 ): Promise<string | null> {
   if (user.employeeId) return user.employeeId
   const r = await rawPool.query<{ id: string }>(
-    `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+    actorEmployeeSql(schema), [user.email],
   )
   return r.rows[0]?.id ?? null
 }

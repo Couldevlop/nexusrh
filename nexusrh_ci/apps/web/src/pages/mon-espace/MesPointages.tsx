@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Clock, LogIn } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -71,7 +71,7 @@ export default function MesPointages() {
                   <tbody>
                     {meQ.data.days.map((d) => (
                       <tr key={d.id} className="border-b border-border/60 last:border-0">
-                        <td className="px-3 py-2 font-medium">{d.work_date}</td>
+                        <td className="px-3 py-2 font-medium">{formatDate(d.work_date)}</td>
                         <td className="px-3 py-2">
                           <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', DAY_STATUS_STYLE[d.status] ?? 'bg-muted')}>
                             {t(`statuses.${d.status}`, { defaultValue: d.status })}

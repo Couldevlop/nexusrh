@@ -25,7 +25,9 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
-import { categoryLevel, effectiveTerminationRules } from '../../services/termination-rules.service.js'
+import {
+  categoryLevel, completedSeniorityMonths, effectiveTerminationRules,
+} from '../../services/termination-rules.service.js'
 import {
   averageRemuneration, loadLeavePolicy, paidLeaveAllowance, refreshPaidLeaveBalance,
 } from '../../services/paid-leave.service.js'
@@ -73,15 +75,6 @@ function audit(
   id: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
   auditTenant(schema, { userId: userId ?? null, action: action, entity: 'offboarding_case', entityId: id, changes: changes, ip: ip })
-}
-
-/** Ancienneté en mois entre l'embauche et la date de départ (>= 0). */
-function seniorityMonthsBetween(hireDate: string | Date, departureDate: string | Date): number {
-  const h = new Date(hireDate)
-  const d = new Date(departureDate)
-  let months = (d.getFullYear() - h.getFullYear()) * 12 + (d.getMonth() - h.getMonth())
-  if (d.getDate() < h.getDate()) months -= 1
-  return Math.max(0, months)
 }
 
 /**
@@ -262,8 +255,9 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const pack = ctx.legislation.legislationPack
       const { rules, source } = effectiveTerminationRules(ctx.tenantTerminationRules, pack)
 
+      // Mois complets, jour de sortie inclus (01/10/2025 → 31/10/2026 = 13 mois).
       const seniorityMonths = row.hire_date
-        ? seniorityMonthsBetween(row.hire_date, row.departure_date) : 0
+        ? completedSeniorityMonths(row.hire_date, row.departure_date) : 0
       const average = await averageMonthlyGross(schema, row.employee_id, row.departure_date)
       const baseSalary = parseInt(row.base_salary, 10) || 0
 

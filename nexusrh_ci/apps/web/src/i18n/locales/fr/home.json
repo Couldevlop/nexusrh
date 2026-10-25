@@ -35,7 +35,7 @@
       "accident": "CNPS Accidents du travail",
       "accidentNote": "Plafond AT / PF / Maternité : 70 000 FCFA",
       "family": "CNPS Prestations familiales",
-      "its": "ITS (abattement 15 %, puis barème DGI)"
+      "its": "ITS (barème progressif sur 100 % du brut, 1 part)"
     },
     "note": "Les mêmes 2 000 000 FCFA produisent trois bases de calcul différentes. NexusRH CI applique la bonne à chaque ligne, et le bulletin est en FCFA entiers — jamais de centimes."
   },
@@ -69,7 +69,7 @@
     },
     "its": {
       "title": "ITS et DGI",
-      "text": "Abattement de 15 % appliqué avant le barème, déduction des cotisations salariales, tranches mensuelles, crédits d'impôt selon la situation familiale."
+      "text": "Réforme 2024 : barème mensuel progressif de 0 à 32 % appliqué sur 100 % du brut imposable, sans abattement, puis réduction d'impôt pour charges de famille (RICF) selon le nombre de parts."
     },
     "labour": {
       "title": "Code du travail",

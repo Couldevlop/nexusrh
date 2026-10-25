@@ -69,8 +69,9 @@ const NAV_GROUPS: NavGroup[] = [
     //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
     //  - RAF site : son unique point d'accès (soumission de SA filiale, filtré
     //    server-side sur raf_user_id = user.sub) → /raf/periods
+    //  - hr_officer / readonly : consultation et circuit de validation (valideur désigné)
     { to: '/payroll/multi-filiales', labelKey: 'payrollMulti', icon: Layers, end: true,
-      roles: ['admin','hr_manager'], requiresSubsidiaries: true, moduleKey: 'payroll' },
+      roles: ['admin','hr_manager','hr_officer','readonly'], requiresSubsidiaries: true, moduleKey: 'payroll' },
     { to: '/raf/periods',   labelKey: 'payrollRaf', icon: ClipboardList, end: true,
       roles: ['raf_site'], requiresSubsidiaries: true, moduleKey: 'payroll' },
     { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'payroll' },

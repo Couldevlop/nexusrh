@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { blacklistTokenSafe, setTokenEpoch } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
 import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME, withJti, tokenBlacklistKey } from '../../plugins/auth.js'
@@ -618,7 +619,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         let employeeId: string | null = null
         try {
           const empRes = await pool.query<{ id: string }>(
-            `SELECT id FROM "${tenant.schema_name}".employees WHERE email = $1 LIMIT 1`,
+            actorEmployeeSql(tenant.schema_name),
             [email],
           )
           employeeId = empRes.rows[0]?.id ?? null

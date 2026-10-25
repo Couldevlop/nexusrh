@@ -1,13 +1,20 @@
 {
   "id": "14-maternite-partielle-15j",
-  "description": "Congé maternité de 15 jours dans le mois (pas le mois complet). Marié 1 enfant — vérifie le calcul mixte présence + indemnité avec crédit famille",
+  "description": "Congé maternité de 15 jours dans le mois (pas le mois complet). Marié 1 enfant — vérifie le calcul mixte présence + indemnité avec RICF 2,5 parts (16 500) ; indemnité = complément exact base − prorata",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
     "period": "2024-11",
     "createdAt": "2026-05-20",
     "validatedBy": "fixture initiale — sortie capturée depuis le moteur calculatePayrollCI, à faire valider par un expert paie ivoirien avant verrouillage en production",
-    "changelog": []
+    "changelog": [
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 116536 → 148076 ; netPayable 340671 → 340672 ; grossSalary 349999 → 350000 ; employerCost 366825 → 366826 ; indemniteAbsence 201923 → 201924"
+      }
+    ]
   },
   "input": {
     "baseSalary": 350000,
@@ -25,28 +32,28 @@
   "expected": {
     "baseSalary": 350000,
     "brutProrata": 148076,
-    "grossSalary": 349999,
+    "grossSalary": 350000,
     "cnpsRetraiteSal": 9328,
     "cnpsRetraitePat": 11401,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
     "totalCnpsSal": 9328,
     "totalCnpsPat": 16826,
-    "baseImposable": 116536,
+    "baseImposable": 148076,
     "its": 0,
     "totalDeductions": 9328,
-    "netPayable": 340671,
-    "employerCost": 366825,
+    "netPayable": 340672,
+    "employerCost": 366826,
     "workingDays": 11,
     "smigCompliant": true,
-    "indemniteAbsence": 201923,
+    "indemniteAbsence": 201924,
     "bordereauCnps": {
       "motif": "maternite",
-      "montant": 201923
+      "montant": 201924
     },
     "lines": [
       { "code": "1000", "type": "earning",                 "amount": 148076 },
-      { "code": "1700", "type": "earning",                 "amount": 201923 },
+      { "code": "1700", "type": "earning",                 "amount": 201924 },
       { "code": "2000", "type": "employee_contribution",   "amount":   9328 },
       { "code": "2100", "type": "employee_contribution",   "amount":      0 },
       { "code": "3000", "type": "employer_contribution",   "amount":  11401 },

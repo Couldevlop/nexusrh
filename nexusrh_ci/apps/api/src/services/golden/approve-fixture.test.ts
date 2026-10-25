@@ -109,6 +109,8 @@ function makeResult(over: Partial<PayrollResult> = {}): PayrollResult {
     totalCnpsSal: 12600,
     totalCnpsPat: 20825,
     baseImposable: 157400,
+    itsBrut: 1235,
+    reductionImpot: 0,
     its: 1235,
     totalDeductions: 13835,
     netPayable: 186165,

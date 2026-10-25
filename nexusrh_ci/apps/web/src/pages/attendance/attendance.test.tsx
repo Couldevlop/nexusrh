@@ -19,6 +19,7 @@ const { getMock, postMock, putMock, patchMock, deleteMock } = vi.hoisted(() => (
 }))
 vi.mock('@/lib/api', () => ({
   api: { get: getMock, post: postMock, put: putMock, patch: patchMock, delete: deleteMock },
+  formatDate: (d: string) => d,
 }))
 // i18n : t() renvoie la clé — les assertions ciblent les clés, stables quelle
 // que soit la langue.

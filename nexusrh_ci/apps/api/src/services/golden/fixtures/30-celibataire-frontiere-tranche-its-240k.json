@@ -1,6 +1,6 @@
 {
   "id": "30-celibataire-frontiere-tranche-its-240k",
-  "description": "Salaire pile à 240 000 FCFA — point exact de bascule entre la tranche ITS 1,5 % (0–240 000) et la tranche 5 % (240 001–800 000). Vérifie que le moteur calcule correctement à la frontière (aucun débordement dans la tranche supérieure). Cas critique de non-régression pour les ajustements à venir du barème DGI",
+  "description": "Salaire pile à 240 000 FCFA — point exact de bascule entre la tranche ITS 16 % (75 001–240 000) et la tranche 21 % (240 001–800 000) : ITS = 165 000 × 16 % = 26 400. Vérifie que le moteur calcule correctement à la frontière (aucun débordement dans la tranche supérieure). Cas critique de non-régression pour les ajustements à venir du barème DGI",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -13,6 +13,12 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 9 — fixture initiale, capture sortie moteur",
         "deltaSummary": "baseSalary 0 → 240000 ; brutProrata 0 → 240000 ; grossSalary 0 → 240000 ; cnpsRetraiteSal 0 → 15120 ; cnpsRetraitePat 0 → 18480 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 15120 ; totalCnpsPat 0 → 23905 ; baseImposable 0 → 188880 ; its 0 → 1708 ; totalDeductions 0 → 16828 ; netPayable 0 → 223172 ; employerCost 0 → 263905 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 7"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 188880 → 240000 ; its 1708 → 26400 ; totalDeductions 16828 → 41520 ; netPayable 223172 → 198480"
       }
     ]
   },
@@ -35,10 +41,10 @@
     "cnpsAtPat": 1400,
     "totalCnpsSal": 15120,
     "totalCnpsPat": 23905,
-    "baseImposable": 188880,
-    "its": 1708,
-    "totalDeductions": 16828,
-    "netPayable": 223172,
+    "baseImposable": 240000,
+    "its": 26400,
+    "totalDeductions": 41520,
+    "netPayable": 198480,
     "employerCost": 263905,
     "workingDays": 26,
     "smigCompliant": true,
@@ -56,7 +62,7 @@
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 1708
+        "amount": 26400
       },
       {
         "code": "3000",

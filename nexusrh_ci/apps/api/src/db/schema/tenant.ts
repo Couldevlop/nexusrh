@@ -128,6 +128,9 @@ export function createTenantSchema(schemaName: string) {
     formula:       varchar('formula', { length: 500 }).notNull(),
     order:         integer('order').notNull().default(0),
     isActive:      boolean('is_active').notNull().default(true),
+    // Assujettissement CNPS / ITS de la rubrique (NULL = règle du pack)
+    subjectSocial: boolean('subject_social'),
+    subjectTax:    boolean('subject_tax'),
     createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   })
 

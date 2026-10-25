@@ -11,6 +11,8 @@ import { encodeField } from '../sage/sage.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
+import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
@@ -82,6 +84,12 @@ const mmPhoneField = z.preprocess(emptyToUndef,
     'Numéro Mobile Money invalide : indicatif africain attendu (ex : +225, +226, +223, +235, +242…) suivi du numéro').optional())
 
 // OWASP A03 — validation Zod du body POST /employees
+// Opérateur Mobile Money : formes historiques (mtn_momo/orange_money) acceptées,
+// toujours ÉCRITES sous la forme canonique du formulaire (wave|mtn|orange|cofina).
+const mmProviderField = z.enum(['wave', 'mtn', 'mtn_momo', 'orange', 'orange_money', 'cofina'])
+  .transform((v) => canonicalEmployeeMmProvider(v) ?? v)
+  .optional()
+
 const createEmployeeSchema = z.object({
   firstName:           z.string().min(1).max(100).trim(),
   lastName:            z.string().min(1).max(100).trim(),
@@ -91,7 +99,7 @@ const createEmployeeSchema = z.object({
   gender:              z.enum(['M', 'F', 'X']).optional(),
   nni:                 nniField,
   cnpsNumber:          cnpsField,
-  mobileMoneyProvider: z.enum(['wave', 'mtn', 'mtn_momo', 'orange', 'orange_money', 'cofina']).optional(),
+  mobileMoneyProvider: mmProviderField,
   mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().optional(),
   managerId:           z.string().uuid().optional(),
@@ -128,7 +136,7 @@ const patchEmployeeSchema = z.object({
   gender:              z.enum(['M', 'F', 'X']).optional(),
   nni:                 nniField,
   cnpsNumber:          cnpsField,
-  mobileMoneyProvider: z.enum(['wave', 'mtn', 'mtn_momo', 'orange', 'orange_money', 'cofina']).optional(),
+  mobileMoneyProvider: mmProviderField,
   mobileMoneyPhone:    mmPhoneField,
   departmentId:        z.string().uuid().nullable().optional(),
   managerId:           z.string().uuid().nullable().optional(),
@@ -166,6 +174,52 @@ function auditLogEmployee(
   employeeId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
   auditTenant(schema, { userId: userId, action: action, entity: 'employee', entityId: employeeId, changes: changes, ip: ip })
+}
+
+/** Rôles d'un utilisateur de tenant (tout sauf la plateforme). */
+const TENANT_USER_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg'] as const
+
+/**
+ * Objets d'audit rattachés à un salarié : entité d'audit → table portant
+ * `employee_id`. L'entrée d'audit vise l'id de la ligne (absence, bulletin…).
+ */
+const ACCESS_LOG_SOURCES: ReadonlyArray<{ entities: readonly string[]; table: string }> = [
+  { entities: ['absence'], table: 'absences' },
+  { entities: ['expense_report'], table: 'expense_reports' },
+  { entities: ['payslip', 'pay_slip'], table: 'pay_slips' },
+  { entities: ['contract', 'contrat'], table: 'contracts' },
+  { entities: ['disciplinary_action'], table: 'disciplinary_actions' },
+  { entities: ['offboarding_case'], table: 'offboarding_cases' },
+  { entities: ['career'], table: 'evaluations' },
+]
+
+/**
+ * SQL du journal d'accès d'UN salarié ($1 = employee_id, $2 = user connecté). Seules les tables
+ * présentes dans le schéma (`present`) sont interrogées : un tenant ancien sans
+ * table de sanctions/sorties ne fait pas échouer la requête.
+ */
+function accessLogSql(schema: string, present: ReadonlySet<string>): string {
+  const clauses = [
+    // La fiche elle-même, et les actions « carrière » ciblant directement la fiche.
+    `(al.entity IN ('employee', 'career') AND al.entity_id = $1)`,
+    ...ACCESS_LOG_SOURCES.filter(s => present.has(s.table)).map(s =>
+      `(al.entity IN (${s.entities.map(e => `'${e}'`).join(', ')})
+         AND al.entity_id IN (SELECT id FROM "${schema}".${s.table} WHERE employee_id = $1))`),
+  ]
+  return `SELECT al.id, al.action, al.entity, al.entity_id, al.ip_address, al.created_at,
+                 u.first_name AS actor_first_name, u.last_name AS actor_last_name,
+                 u.role AS actor_role, (al.user_id = $2::uuid) AS actor_is_self
+            FROM "${schema}".audit_log al
+            LEFT JOIN "${schema}".users u ON u.id = al.user_id
+           WHERE ${clauses.join(' OR ')}
+           ORDER BY al.created_at DESC
+           LIMIT 20`
+}
+
+/** RIB masqué pour l'affichage en liste : « •••• 1234 » (jamais le RIB complet). */
+function maskIban(iban: string): string {
+  const compact = iban.replace(/\s/g, '')
+  return compact.length <= 4 ? '••••' : `•••• ${compact.slice(-4)}`
 }
 
 const employeesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -210,21 +264,76 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const countRes = await pool.query(`SELECT count(*)::int AS c FROM "${schema}".employees e ${where}`, params)
       const total = countRes.rows[0]?.c ?? 0
 
-      const listSql = `SELECT e.*, d.name AS department_name
+      // Compte utilisateur lié : lien explicite users.employee_id d'abord,
+      // repli sur l'égalité d'email pour les comptes non encore rattachés.
+      const listSql = `SELECT e.*, d.name AS department_name,
+                              lu.id AS linked_user_id, lu.role AS linked_user_role
                        FROM "${schema}".employees e
                        LEFT JOIN "${schema}".departments d ON d.id = e.department_id
+                       LEFT JOIN LATERAL (
+                         SELECT u.id, u.role FROM "${schema}".users u
+                          WHERE u.employee_id = e.id
+                             OR (u.employee_id IS NULL AND e.email IS NOT NULL AND lower(u.email) = lower(e.email))
+                          ORDER BY (u.employee_id = e.id) DESC NULLS LAST
+                          LIMIT 1
+                       ) lu ON true
                        ${where}
                        ORDER BY e.last_name, e.first_name
                        LIMIT $${idx++} OFFSET $${idx++}`
       const res = await pool.query(listSql, [...params, limit, offset])
 
+      // RIB : jamais le chiffré dans la liste ; RH → RIB MASQUÉ (4 derniers
+      // caractères) pour l'affichage du mode de paiement. Compte lié : RH only.
+      const isHr = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
+      for (const row of res.rows as Array<Record<string, unknown>>) {
+        const iban = isHr && typeof row.iban === 'string' ? decryptIfPresent(row.iban) : null
+        row.iban_masked = iban ? maskIban(iban) : null
+        delete row.iban
+        if (!isHr) { row.linked_user_id = null; row.linked_user_role = null }
+      }
+
       // Champs personnalisés sensibles : réservés aux rôles RH (A01).
-      if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) && res.rows.length) {
+      if (!isHr && res.rows.length) {
         const defs = await loadCustomFieldDefinitions(schema)
         for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
       }
 
       return reply.send({ data: res.rows, total, page, limit })
+    },
+  })
+
+  // GET /employees/me/access-log — journal d'accès ARTCI (loi CI 2013-450) :
+  // « qui a accédé à VOS données RH ». Ne liste QUE les entrées d'audit dont
+  // l'objet concerne la fiche du salarié connecté (sa fiche, ses absences,
+  // bulletins, notes de frais, contrats, sanctions, dossier de sortie,
+  // évaluations) — jamais les actions que l'utilisateur a faites sur les
+  // données d'AUTRES salariés. Auteur (nom + rôle) joint pour la transparence.
+  fastify.get('/me/access-log', {
+    preHandler: [fastify.authorize(...TENANT_USER_ROLES)],
+    schema: { tags: ['employees'], summary: 'Journal des accès à mes données personnelles (ARTCI)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        let employeeId = request.user.employeeId ?? null
+        if (!employeeId) {
+          const r = await pool.query<{ id: string | null }>(actorEmployeeSql(schema), [request.user.email])
+          employeeId = r.rows[0]?.id ?? null
+        }
+        // Sans fiche employé liée, aucune donnée RH personnelle : liste vide
+        // (fail-closed — surtout pas un repli sur les actions de l'utilisateur).
+        if (!employeeId) return reply.send({ data: [] })
+        const tables = await pool.query<{ table_name: string }>(
+          `SELECT table_name FROM information_schema.tables
+            WHERE table_schema = $1 AND table_name = ANY($2::text[])`,
+          [schema, ACCESS_LOG_SOURCES.map(s => s.table)],
+        )
+        const present = new Set(tables.rows.map(r => r.table_name))
+        const res = await pool.query(accessLogSql(schema, present), [employeeId, request.user.sub])
+        return reply.send({ data: res.rows })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
     },
   })
 
@@ -239,10 +348,18 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const res = await pool.query(
         `SELECT e.*, d.name AS department_name,
-                m.first_name AS manager_first_name, m.last_name AS manager_last_name
+                m.first_name AS manager_first_name, m.last_name AS manager_last_name,
+                lu.id AS linked_user_id, lu.role AS linked_user_role
          FROM "${schema}".employees e
          LEFT JOIN "${schema}".departments d ON d.id = e.department_id
          LEFT JOIN "${schema}".employees m ON m.id = e.manager_id
+         LEFT JOIN LATERAL (
+           SELECT u.id, u.role FROM "${schema}".users u
+            WHERE u.employee_id = e.id
+               OR (u.employee_id IS NULL AND e.email IS NOT NULL AND lower(u.email) = lower(e.email))
+            ORDER BY (u.employee_id = e.id) DESC NULLS LAST
+            LIMIT 1
+         ) lu ON true
          WHERE e.id = $1 AND e.deleted_at IS NULL LIMIT 1`,
         [id]
       )
@@ -279,6 +396,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         delete emp.nni
         delete emp.iban
         emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
+      }
+      // Compte utilisateur lié : information d'administration, rôles RH seulement.
+      if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)) {
+        emp.linked_user_id = null
+        emp.linked_user_role = null
       }
 
       // EMP-009 — ancienneté CALCULÉE depuis la date d'embauche.

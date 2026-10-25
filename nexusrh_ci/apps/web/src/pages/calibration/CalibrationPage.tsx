@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Grid3x3, Plus, Trash2 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 const SCALE = [1, 2, 3] as const
 
@@ -136,12 +137,12 @@ export default function CalibrationPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button type="button" className="text-left" onClick={() => setOpen(o => o === s.id ? null : s.id)}>
                 <p className="font-semibold">{s.title}</p>
-                <p className="text-xs text-muted-foreground">{s.session_date ?? '—'} · {s.scope ?? '—'} · {t('session.count', { count: Number(s.entry_count) })}</p>
+                <p className="text-xs text-muted-foreground">{s.session_date ? formatDate(s.session_date) : '—'} · {s.scope ?? '—'} · {t('session.count', { count: Number(s.entry_count) })}</p>
               </button>
               <div className="flex items-center gap-2">
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLE[s.status] ?? 'bg-muted')}>{t(`statuses.${s.status}`)}</span>
                 {s.status !== 'closed' && <button type="button" onClick={() => closeSession.mutate(s.id)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('session.close')}</button>}
-                <button type="button" onClick={() => { if (window.confirm(t('session.deleteConfirm'))) deleteSession.mutate(s.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={async () => { if (await confirmDialog({ message: t('session.deleteConfirm'), danger: true })) deleteSession.mutate(s.id) }} className="rounded-md p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
 

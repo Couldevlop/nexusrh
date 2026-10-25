@@ -72,7 +72,7 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       expect(r.cnpsRetraiteSal).toBe(11_340)
     })
 
-    it('ITS = 0 grâce au crédit famille (marié + 3 enfants = 14 500 FCFA)', () => {
+    it('ITS = 0 grâce à la RICF (marié + 3 enfants = 3,5 parts = 27 500 FCFA ≥ impôt brut 16 800)', () => {
       expect(r.its).toBe(0)
     })
 
@@ -102,8 +102,8 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       expect(r.cnpsRetraiteSal).toBe(Math.floor(950_000 * 0.063))  // 59 850
     })
 
-    it('ITS > 0 sans crédit familial (passage en tranche 5%)', () => {
-      expect(r.its).toBeGreaterThan(20_000)
+    it('ITS = 180 000 sans RICF (1 part ; tranche 24 %)', () => {
+      expect(r.its).toBe(180_000) // 26 400 + 117 600 + (950 000 − 800 000) × 24 %
     })
 
     it('net à payer cohérent', () => {
@@ -119,12 +119,12 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       marital: 'married', children: 2,
     }))
 
-    it('crédit impôt = 11 500 FCFA (5 500 marié + 6 000 pour 2 enfants)', () => {
+    it('RICF = 22 000 FCFA (marié + 2 enfants = 3 parts)', () => {
       // Indirect : ITS doit être plus bas que pour un célibataire à même salaire
       const rSingle = calculatePayrollCI(ctx({
         salary: 1_050_000, workedDays: 26, marital: 'single', children: 0,
       }))
-      expect(rSingle.its - r.its).toBeGreaterThanOrEqual(11_500)
+      expect(rSingle.its - r.its).toBe(22_000)
     })
 
     it('net à payer cohérent', () => {
@@ -146,19 +146,19 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       expect(r.brutProrata).toBe(553_846)
     })
 
-    it('indemnité maternité = tauxJour × 14 jours ≈ 646 153 FCFA', () => {
-      // tauxJour = 1 200 000 / 26 = 46 153,84... × 14 = 646 153,8 → floor
-      expect(r.indemniteAbsence).toBe(646_153)
+    it('indemnité maternité = complément exact du prorata = 646 154 FCFA', () => {
+      // présence 12 j + maternité 14 j = mois complet → 1 200 000 − 553 846
+      expect(r.indemniteAbsence).toBe(646_154)
     })
 
     it('bordereau CNPS généré pour la maternité', () => {
       expect(r.bordereauCnps).toBeDefined()
       expect(r.bordereauCnps?.motif).toBe('maternite')
-      expect(r.bordereauCnps?.montant).toBe(646_153)
+      expect(r.bordereauCnps?.montant).toBe(646_154)
     })
 
     it('grossSalary cumule présence + indemnité maternité ≈ 1 200 000', () => {
-      expect(r.grossSalary).toBe(553_846 + 646_153)  // = 1 199 999
+      expect(r.grossSalary).toBe(1_200_000)  // plus de franc perdu à l'arrondi
     })
 
     it('indemnité maternité EXONÉRÉE d\'ITS (base imposable = présence seule)', () => {
@@ -172,7 +172,7 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
     it('ligne "1700 Indemnités de congé maternité" présente dans le bulletin', () => {
       const line = r.lines.find(l => l.code === '1700')
       expect(line).toBeDefined()
-      expect(line?.amount).toBe(646_153)
+      expect(line?.amount).toBe(646_154)
     })
 
     it('net à payer ≥ SMIG (75 000)', () => {

@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import { PayrollStatusBadge, PayrollWorkflowModal, formatDateTime, type PendingWith } from './PayrollWorkflowModal'
 import {
-  Loader2, Lock, Calculator, Download, BookOpen, CheckCircle2, XCircle,
-  Clock, Shield, ShieldAlert, Users, AlertCircle, ChevronRight, X, CalendarPlus
+  Loader2, Lock, Calculator, Download, BookOpen, ShieldAlert, ChevronRight, X, CalendarPlus,
 } from 'lucide-react'
 
 interface PayPeriod {
@@ -14,291 +16,20 @@ interface PayPeriod {
   employees_count: string; closed_at: string | null
   initiated_at: string | null; initiated_by: string | null
   rejection_reason: string | null
+  pending_with?: PendingWith | null
 }
 
-interface WorkflowApproval {
-  level: number
-  approverId: string
-  approverRole: string | null
-  approverName: string | null
-  approvedAt: string
-  notes: string | null
+/** « Prénom Nom (fonction) » ou équipe RH : libellé du valideur attendu. */
+function pendingWithText(pw: PendingWith | null | undefined, t: TFunction): string {
+  if (pw?.name) return t('history.pendingWith', { name: pw.name, fn: pw.functionLabel ?? '' })
+  return t('history.pendingWithTeam')
 }
 
-interface WorkflowState {
-  period: { id: string; month: string; status: string; initiatedBy: string | null; initiatedAt: string | null; initiatorName: string | null }
-  requiredLevels: number
-  currentLevel: number
-  isComplete: boolean
-  approvals: WorkflowApproval[]
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation('payroll')
-  const map: Record<string, { cls: string; Icon: typeof Lock }> = {
-    open: { cls: 'bg-gray-100 text-gray-700', Icon: Clock },
-    pending_validation: { cls: 'bg-amber-100 text-amber-800', Icon: ShieldAlert },
-    closed: { cls: 'bg-green-100 text-green-700', Icon: CheckCircle2 },
-  }
-  const cfg = map[status] ?? map.open
-  const { Icon, cls } = cfg!
-  const label = map[status] ? t(`statuses.${status}`) : t('statuses.open')
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      <Icon className="h-3 w-3" /> {label}
-    </span>
-  )
-}
-
-function WorkflowModal({ month, onClose }: { month: string; onClose: () => void }) {
-  const { t } = useTranslation('payroll')
-  const queryClient = useQueryClient()
-  const user = useAuthStore(s => s.user)
-  const [notes, setNotes] = useState('')
-  const [rejectMode, setRejectMode] = useState(false)
-  const [reason, setReason] = useState('')
-
-  const { data, isLoading } = useQuery<WorkflowState>({
-    queryKey: ['payroll-workflow', month],
-    queryFn: () => api.get(`/payroll/periods/${month}/workflow`).then(r => r.data as WorkflowState),
-  })
-
-  const approveMut = useMutation({
-    mutationFn: () => api.post(`/payroll/periods/${month}/approve`, { notes: notes || undefined }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payroll-workflow', month] })
-      queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
-      setNotes('')
-    },
-  })
-
-  const rejectMut = useMutation({
-    mutationFn: () => api.post(`/payroll/periods/${month}/reject`, { reason }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payroll-workflow', month] })
-      queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
-      setRejectMode(false); setReason('')
-      onClose()
-    },
-  })
-
-  const canActOnRole = user?.role === 'admin' || user?.role === 'hr_manager'
-  const isInitiator = data?.period.initiatedBy === user?.sub
-  const alreadyApproved = data?.approvals.some(a => a.approverId === user?.sub) ?? false
-  const periodStatus = data?.period.status
-  const canApprove = canActOnRole && !isInitiator && !alreadyApproved && periodStatus === 'pending_validation'
-  const canReject = canActOnRole && !isInitiator && periodStatus === 'pending_validation'
-
-  const approveError = (approveMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error
-  const rejectError = (rejectMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div>
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              {t('workflow.title', { month: formatMonth(month) })}
-            </h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t('workflow.subtitle')}
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 hover:bg-accent"><X className="h-5 w-5" /></button>
-        </div>
-
-        {isLoading || !data ? (
-          <div className="flex items-center justify-center p-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="p-6 space-y-5">
-            {/* Statut global */}
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('workflow.currentStatus')}</p>
-                  <div className="mt-1"><StatusBadge status={data.period.status} /></div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">{t('workflow.requiredLevels')}</p>
-                  <p className="text-xl font-bold text-primary">{data.currentLevel} / {data.requiredLevels}</p>
-                </div>
-              </div>
-              {/* Barre de progression */}
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary transition-all"
-                  style={{ width: `${Math.min(100, (data.currentLevel / Math.max(1, data.requiredLevels)) * 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Timeline */}
-            <div>
-              <h4 className="mb-3 text-sm font-semibold">{t('workflow.timeline')}</h4>
-              <ol className="space-y-3">
-                {/* Étape 0 : Initiation */}
-                <li className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 rounded-lg border border-border bg-card p-3">
-                    <p className="text-sm font-medium">{t('workflow.initiated')}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {data.period.initiatorName ?? (data.period.initiatedBy ? t('workflow.unknownUser', { id: data.period.initiatedBy.slice(0, 8) }) : t('workflow.unknown'))}
-                      {' · '}
-                      {data.period.initiatedAt ? new Date(data.period.initiatedAt).toLocaleString('fr-FR') : '—'}
-                    </p>
-                  </div>
-                </li>
-
-                {/* Approbations */}
-                {data.approvals.map(a => (
-                  <li key={a.level} className="flex gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
-                      <CheckCircle2 className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 rounded-lg border border-green-200 bg-green-50 p-3">
-                      <p className="text-sm font-medium text-green-900">{t('workflow.levelApproved', { level: a.level })}</p>
-                      <p className="text-xs text-green-700 mt-0.5">
-                        {a.approverName ?? t('workflow.unknownUser', { id: a.approverId.slice(0, 8) })}
-                        {a.approverRole ? ` (${a.approverRole})` : ''}
-                        {' · '}
-                        {new Date(a.approvedAt).toLocaleString('fr-FR')}
-                      </p>
-                      {a.notes && <p className="mt-1 text-xs italic text-green-800">"{a.notes}"</p>}
-                    </div>
-                  </li>
-                ))}
-
-                {/* Niveaux restants */}
-                {!data.isComplete && Array.from({ length: data.requiredLevels - data.currentLevel }).map((_, i) => (
-                  <li key={`pending-${i}`} className="flex gap-3 opacity-60">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40 bg-card">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 rounded-lg border border-dashed border-border p-3">
-                      <p className="text-sm text-muted-foreground">{t('workflow.levelPending', { level: data.currentLevel + i + 1 })}</p>
-                    </div>
-                  </li>
-                ))}
-
-                {/* Clôture finale */}
-                {data.isComplete && (
-                  <li className="flex gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600 text-white">
-                      <Lock className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 rounded-lg border border-green-300 bg-green-100 p-3">
-                      <p className="text-sm font-semibold text-green-900">{t('workflow.finalClosed')}</p>
-                    </div>
-                  </li>
-                )}
-              </ol>
-            </div>
-
-            {/* Bandeau SoD */}
-            {periodStatus === 'pending_validation' && (isInitiator || alreadyApproved || !canActOnRole) && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <div>
-                  {!canActOnRole && <p>{t('workflow.sodRoleForbidden')}</p>}
-                  {isInitiator && <p>{t('workflow.sodInitiator')}</p>}
-                  {alreadyApproved && <p>{t('workflow.sodAlreadyApproved')}</p>}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            {periodStatus === 'pending_validation' && canActOnRole && !isInitiator && !alreadyApproved && !rejectMode && (
-              <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                <label className="block text-xs font-medium">{t('workflow.notesLabel')}</label>
-                <textarea
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder={t('workflow.notesPlaceholder')}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
-                />
-                {approveError && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {approveError}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => approveMut.mutate()}
-                    disabled={approveMut.isPending}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    {t('workflow.approveLevel', { level: data.currentLevel + 1 })}
-                  </button>
-                  <button
-                    onClick={() => setRejectMode(true)}
-                    className="flex items-center gap-2 rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
-                  >
-                    <XCircle className="h-4 w-4" /> {t('workflow.reject')}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Mode rejet */}
-            {rejectMode && (
-              <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-                <label className="block text-xs font-medium text-destructive">{t('workflow.rejectReasonLabel')}</label>
-                <textarea
-                  value={reason}
-                  onChange={e => setReason(e.target.value)}
-                  rows={3}
-                  placeholder={t('workflow.rejectReasonPlaceholder')}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
-                />
-                {rejectError && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {rejectError}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => rejectMut.mutate()}
-                    disabled={rejectMut.isPending || reason.trim().length < 5}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {rejectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                    {t('workflow.confirmReject')}
-                  </button>
-                  <button
-                    onClick={() => { setRejectMode(false); setReason('') }}
-                    className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent"
-                  >
-                    {t('workflow.cancel')}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Rejet précédent */}
-            {data.period.status === 'open' && (
-              <RejectionHistoryBanner month={month} />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function RejectionHistoryBanner({ month: _month }: { month: string }) {
-  // L'API renvoie rejection_reason sur pay_periods. On l'affiche si présent.
-  // Note : le bandeau est géré côté liste (period.rejection_reason), pas besoin ici.
-  return null
+/** Message de clôture : « Période 2026-10 en attente de validation de … ». */
+function closeMessage(month: string, pw: PendingWith | null | undefined, t: TFunction): string {
+  return pw?.name
+    ? t('close.pendingWithNamed', { month, name: pw.name, fn: pw.functionLabel ?? '' })
+    : t('close.pendingWithTeam', { month })
 }
 
 interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
@@ -314,11 +45,26 @@ export default function PayrollPage() {
   const [selectedEntityId, setSelectedEntityId] = useState<string>('')
   const [closingResult, setClosingResult] = useState<{
     status?: string; message?: string; employeesCount?: number; bulletinsDeSolde?: number
-    totals?: Record<string, number>
+    totals?: Record<string, number>; pendingWith?: PendingWith | null; month?: string
   } | null>(null)
   const [livreYear, setLivreYear] = useState(new Date().getFullYear().toString())
   const [livreLoading, setLivreLoading] = useState(false)
+  // « Mes validations » ouvre directement le circuit d'une période : /payroll?validate=AAAA-MM
+  const [searchParams, setSearchParams] = useSearchParams()
   const [workflowMonth, setWorkflowMonth] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  useEffect(() => {
+    const m = searchParams.get('validate')
+    if (m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m)) setWorkflowMonth(m)
+  }, [searchParams])
+  const closeWorkflow = () => {
+    setWorkflowMonth(null)
+    if (searchParams.has('validate')) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('validate')
+      setSearchParams(next, { replace: true })
+    }
+  }
 
   // Charge les filiales SEULEMENT si tenant multi-filiales (évite query inutile)
   const { data: entitiesData } = useQuery<{ data: LegalEntity[] }>({
@@ -337,10 +83,14 @@ export default function PayrollPage() {
     mutationFn: (month: string) => api.post(`/payroll/periods/${month}/close`,
       hasSubsidiaries && selectedEntityId ? { legalEntityId: selectedEntityId } : {},
     ),
-    onSuccess: (res) => {
-      setClosingResult(res.data as {
-        status?: string; message?: string; employeesCount?: number; bulletinsDeSolde?: number
-        totals?: Record<string, number>
+    onSuccess: (res, month) => {
+      setNotice(null)
+      setClosingResult({
+        ...(res.data as {
+          status?: string; message?: string; employeesCount?: number; bulletinsDeSolde?: number
+          totals?: Record<string, number>; pendingWith?: PendingWith | null
+        }),
+        month,
       })
       queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
     },
@@ -394,6 +144,15 @@ export default function PayrollPage() {
           </div>
         )}
       </div>
+
+      {notice && (
+        <div role="status" className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} aria-label={t('workflow.cancel')} className="ml-3 opacity-70 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Clôture */}
       <div className="rounded-xl border border-border bg-card p-6">
@@ -477,7 +236,9 @@ export default function PayrollPage() {
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <p className="font-medium text-amber-900 mb-2 flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />
-              {closingResult.message ?? t('close.resultDefault', { count: closingResult.employeesCount ?? 0 })}
+              {closingResult.month
+                ? `${closeMessage(closingResult.month, closingResult.pendingWith, t)}. ${t('close.generated', { count: closingResult.employeesCount ?? 0 })}`
+                : closingResult.message ?? t('close.resultDefault', { count: closingResult.employeesCount ?? 0 })}
             </p>
             {(closingResult.bulletinsDeSolde ?? 0) > 0 && (
               <p className="mb-2 text-sm text-amber-800">
@@ -561,7 +322,11 @@ export default function PayrollPage() {
             <tbody className="divide-y divide-border">
               {periods.map(p => {
                 const isInitiator = p.initiated_by === user?.sub
-                const canValidate = (user?.role === 'admin' || user?.role === 'hr_manager') && !isInitiator
+                const pw = p.pending_with ?? null
+                // Indicatif (libellé du bouton) : les droits réels sont calculés par l'API dans la modale.
+                const canValidate = !isInitiator && (pw
+                  ? pw.userId === user?.sub || (pw.teamCanAct && (user?.role === 'admin' || user?.role === 'hr_manager'))
+                  : (user?.role === 'admin' || user?.role === 'hr_manager'))
                 return (
                   <tr key={p.id} className="hover:bg-muted/30">
                     <td className="p-4 font-medium capitalize">
@@ -574,7 +339,21 @@ export default function PayrollPage() {
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(p.total_net ?? '0'))}</td>
                     <td className="p-4 text-right font-mono text-orange-600">{formatFCFA(parseInt(p.total_cnps ?? '0'))}</td>
                     <td className="p-4 text-right font-mono text-blue-600">{formatFCFA(parseInt(p.total_its ?? '0'))}</td>
-                    <td className="p-4"><StatusBadge status={p.status} /></td>
+                    <td className="p-4">
+                      <PayrollStatusBadge status={p.status} />
+                      {p.status === 'pending_validation' && (
+                        <div className="mt-1 space-y-0.5 text-xs">
+                          <p className="font-medium text-amber-900">{pendingWithText(pw, t)}</p>
+                          {pw && (
+                            <p className="text-muted-foreground">
+                              {t('history.levelProgress', { level: pw.level, total: pw.requiredLevels })}
+                              {pw.dueAt ? ` · ${t('history.dueAt', { date: formatDateTime(pw.dueAt) })}` : ''}
+                            </p>
+                          )}
+                          {pw?.overdue && <p className="text-red-600">{t('history.overdue')}</p>}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-4 text-right">
                       {p.status === 'pending_validation' && (
                         <button
@@ -615,7 +394,11 @@ export default function PayrollPage() {
       </div>
 
       {workflowMonth && (
-        <WorkflowModal month={workflowMonth} onClose={() => setWorkflowMonth(null)} />
+        <PayrollWorkflowModal
+          target={{ kind: 'single', month: workflowMonth }}
+          onClose={closeWorkflow}
+          onDone={(message) => { setNotice(message); setClosingResult(null); closeWorkflow() }}
+        />
       )}
     </div>
   )

@@ -26,7 +26,8 @@ import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  // connect() : transaction du renvoi en préparation (même routeur SQL)
+  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn(), connect: vi.fn(async () => ({ query: queryMock, release: vi.fn() })) })),
 }))
 
 vi.mock('../../services/redis.js', () => ({
@@ -90,21 +91,21 @@ describe('Validation 2-yeux — Segregation of Duties (OWASP A04)', () => {
     currentApprovals?: number
     approversSoFar?: string[]   // approbateurs ayant déjà validé un niveau
   }) {
-    queryMock.mockImplementation(async (sql: unknown, params?: unknown) => {
+    queryMock.mockImplementation(async (sql: unknown) => {
       const q = String(sql)
-      const p = (params as unknown[]) ?? []
       if (q.includes('.workflow_configs')) return { rows: [{ levels_count: opts.levels ?? 2 }] }
       if (q.includes('.pay_period_approvals')) {
         if (/^\s*INSERT/i.test(q)) return { rows: [] }
         if (/^\s*DELETE/i.test(q)) return { rows: [] }
         if (q.includes('count(')) return { rows: [{ cnt: opts.currentApprovals ?? 0 }] }
-        // dup check : SELECT 1 ... WHERE period_id=$1 AND approver_id=$2
-        const dup = (opts.approversSoFar ?? []).includes(String(p[1]))
-        return { rows: dup ? [{ ok: 1 }] : [] }
+        // Validations déjà enregistrées (une par approbateur, niveaux 1..n)
+        return { rows: (opts.approversSoFar ?? []).map((id, i) => ({
+          period_id: opts.period?.id, level: i + 1, approver_id: id, approved_at: '2024-12-31T11:00:00Z',
+        })) }
       }
       if (q.includes('.audit_log')) return { rows: [] }
       if (q.includes('.pay_periods')) {
-        if (/^\s*UPDATE/i.test(q)) return { rows: [] }
+        if (/^\s*UPDATE/i.test(q)) return { rows: opts.period ? [{ id: opts.period.id }] : [] }
         return { rows: opts.period ? [opts.period] : [] }
       }
       return { rows: [] }

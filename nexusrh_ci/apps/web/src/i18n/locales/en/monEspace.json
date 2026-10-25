@@ -67,7 +67,31 @@
     "noAbsence": "No absence",
     "accessLog": "Access log — ARTCI compliance",
     "accessLogIntro": "In accordance with Côte d'Ivoire law 2013-450, you can review who has accessed your HR data.",
-    "noAccessLog": "No access recorded recently"
+    "noAccessLog": "No access recorded recently",
+    "accessActorSelf": "You",
+    "accessActorSystem": "System",
+    "accessEntities": {
+      "employee": "Record",
+      "absence": "Leave",
+      "expense_report": "Expense report",
+      "payslip": "Payslip",
+      "pay_slip": "Payslip",
+      "contract": "Contract",
+      "contrat": "Contract",
+      "disciplinary_action": "Sanction",
+      "offboarding_case": "Exit file",
+      "career": "Career"
+    },
+    "accessRoles": {
+      "admin": "Administrator",
+      "hr_manager": "HR manager",
+      "hr_officer": "HR officer",
+      "manager": "Manager",
+      "employee": "Employee",
+      "readonly": "Read-only",
+      "dg": "General management",
+      "raf_site": "Site finance officer"
+    }
   },
   "absences": {
     "title": "My absences",

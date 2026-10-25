@@ -16,6 +16,7 @@ import {
   Filter, FileText, ExternalLink, Loader2, Wand2, Send,
   ChevronRight, Eye, Plus,
 } from 'lucide-react'
+import { alertDialog } from '@/components/shared/ConfirmDialog'
 
 type Status = 'pending' | 'approved' | 'rejected' | 'superseded' | 'all'
 type Risk = 'low' | 'medium' | 'high'
@@ -400,12 +401,12 @@ function ProposalReviewModal({ id, onClose, onReviewed }: {
   const approve = useMutation({
     mutationFn: () => api.post(`/platform/legal-watch/proposals/${id}/approve`, { notes: notes || undefined }),
     onSuccess: onReviewed,
-    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error')),
+    onError: (e) => void alertDialog({ message: (e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error') }),
   })
   const reject = useMutation({
     mutationFn: () => api.post(`/platform/legal-watch/proposals/${id}/reject`, { notes: notes || undefined }),
     onSuccess: onReviewed,
-    onError: (e) => alert((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error')),
+    onError: (e) => void alertDialog({ message: (e as { response?: { data?: { error?: string } } }).response?.data?.error ?? t('legalWatch.review.error') }),
   })
 
   const p = data?.data

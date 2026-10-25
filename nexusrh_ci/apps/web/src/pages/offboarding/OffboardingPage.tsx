@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { DoorOpen, Plus, Calculator, Trash2, AlertCircle } from 'lucide-react'
-import { api, formatMoney } from '@/lib/api'
+import { api, formatDate, formatMoney } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { confirmDialog } from '@/components/shared/ConfirmDialog'
 
 interface EmployeeRow { id: string; first_name: string; last_name: string }
 interface ChecklistItem { key: string; label: string; done: boolean }
@@ -195,7 +196,7 @@ export default function OffboardingPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="font-semibold">{c.first_name} {c.last_name}</p>
-                <p className="text-sm text-muted-foreground">{t(`types.${c.departure_type}`)} · {c.departure_date}</p>
+                <p className="text-sm text-muted-foreground">{t(`types.${c.departure_type}`)} · {formatDate(c.departure_date)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLE[c.status] ?? 'bg-muted')}>{t(`statuses.${c.status}`)}</span>
@@ -207,7 +208,7 @@ export default function OffboardingPage() {
                   <button type="button" onClick={() => patchMut.mutate({ id: c.id, body: { status: 'closed' } })}
                     className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('actions.close')}</button>
                 )}
-                <button type="button" onClick={() => { if (window.confirm(t('actions.deleteConfirm'))) deleteMut.mutate(c.id) }}
+                <button type="button" onClick={async () => { if (await confirmDialog({ message: t('actions.deleteConfirm'), danger: true })) deleteMut.mutate(c.id) }}
                   className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title={t('actions.delete')}>
                   <Trash2 className="h-4 w-4" />
                 </button>

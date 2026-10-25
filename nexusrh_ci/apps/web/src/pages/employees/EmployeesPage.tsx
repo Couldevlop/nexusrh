@@ -5,6 +5,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil, Download, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { canonicalMmProvider, paymentMethodLabel } from '@/lib/payment'
 import {
   CustomFieldsFieldset, useEmployeeFieldDefinitions, type CustomFieldValue, type CustomFieldValues,
 } from '@/components/employees/CustomFields'
@@ -13,6 +14,8 @@ interface Employee {
   id: string; first_name: string; last_name: string; email: string
   job_title: string; department_name: string; base_salary: string
   mobile_money_provider: string; mobile_money_phone: string
+  // Mode de réception du salaire : RIB jamais renvoyé par la liste, seulement masqué (RH)
+  payment_method?: string | null; bank_name?: string | null; iban_masked?: string | null
   contract_type: string; hire_date: string; is_active: boolean
   cnps_number: string; nni: string
 }
@@ -20,9 +23,6 @@ interface Employee {
 interface PendingAction { type: string; label: string; path: string; count: number }
 interface CheckDeleteResult { canDelete: boolean; pendingActions: PendingAction[] }
 
-const PROVIDER_LABEL: Record<string, string> = {
-  wave: 'Wave', mtn_momo: 'MTN MoMo', orange_money: 'Orange Money',
-}
 
 // Catégories professionnelles usuelles (convention collective interprofessionnelle CI).
 // Saisie libre possible (datalist) : chaque CCN sectorielle a sa grille.
@@ -283,7 +283,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
             </div>
           </fieldset>
 
-          {/* Situation familiale (crédit d'impôt ITS) */}
+          {/* Situation familiale (parts ITS / RICF) */}
           <fieldset className="space-y-3">
             <legend className="text-sm font-semibold mb-1">{t('form.sections.familySituation')} <span className="font-normal text-xs text-muted-foreground">{t('form.sections.familySituationHint')}</span></legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -518,7 +518,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       jobLevel: emp.job_level ?? '', professionalCategory: emp.professional_category ?? '',
       contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
       weeklyHours: emp.weekly_hours ?? '', baseSalary: emp.base_salary ?? '',
-      mobileMoneyProvider: emp.mobile_money_provider ?? '', mobileMoneyPhone: emp.mobile_money_phone ?? '',
+      mobileMoneyProvider: canonicalMmProvider(emp.mobile_money_provider), mobileMoneyPhone: emp.mobile_money_phone ?? '',
       iban: emp.iban ?? '', bankName: emp.bank_name ?? '', paymentMethod: emp.payment_method ?? 'mobile_money',
       maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
     }
@@ -667,7 +667,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   </div>
                 </div>
                 <div><label className={labelCls}>{t('form.fields.mobileMoneyProvider')}</label>
-                  <select className={inputCls} value={val('mobileMoneyProvider', emp.mobile_money_provider)} onChange={set('mobileMoneyProvider')}>
+                  <select className={inputCls} value={val('mobileMoneyProvider', canonicalMmProvider(emp.mobile_money_provider))} onChange={set('mobileMoneyProvider')}>
                     <option value="">—</option><option value="wave">{t('form.providers.wave')}</option>
                     <option value="mtn">{t('form.providers.mtn')}</option><option value="orange">{t('form.providers.orange')}</option>
                     <option value="cofina">{t('form.providers.cofina')}</option>
@@ -844,7 +844,7 @@ export default function EmployeesPage() {
                   <th className="p-4">{t('table.employee')}</th>
                   <th className="p-4">{t('table.jobAndDepartment')}</th>
                   <th className="p-4 text-right">{t('table.grossSalary')}</th>
-                  <th className="p-4">{t('table.mobileMoney')}</th>
+                  <th className="p-4">{t('table.paymentMethod')}</th>
                   <th className="p-4">{t('table.contract')}</th>
                   <th className="p-4">{t('table.hireDate')}</th>
                   <th className="p-4 w-12" />
@@ -872,9 +872,14 @@ export default function EmployeesPage() {
                       {formatFCFA(parseInt(emp.base_salary ?? '0'))}
                     </td>
                     <td className="p-4">
-                      {emp.mobile_money_provider ? (
+                      {emp.payment_method === 'bank_transfer' ? (
                         <div>
-                          <p className="text-xs font-medium">{PROVIDER_LABEL[emp.mobile_money_provider] ?? emp.mobile_money_provider}</p>
+                          <p className="text-xs font-medium">{paymentMethodLabel('bank_transfer')}</p>
+                          <p className="text-xs text-muted-foreground">{emp.bank_name || emp.iban_masked || '—'}</p>
+                        </div>
+                      ) : emp.mobile_money_provider ? (
+                        <div>
+                          <p className="text-xs font-medium">{paymentMethodLabel(emp.mobile_money_provider)}</p>
                           <p className="text-xs text-muted-foreground font-mono">{emp.mobile_money_phone}</p>
                         </div>
                       ) : <span className="text-muted-foreground">—</span>}

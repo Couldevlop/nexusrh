@@ -75,7 +75,7 @@ function grossUp(targetNet: number, maritalStatus: string, childrenCount: number
 
 const fmt = (n: number): string => n.toLocaleString('fr-FR').replace(/ /g, ' ') + ' FCFA'
 
-const CP_PAR_MOIS = 2.5 // jours ouvrables acquis / mois travaillé (Code du Travail CI)
+const CP_PAR_MOIS = 2.2 // jours ouvrables acquis / mois de service (CT art. 25.1)
 
 /** Solde de congés payés (acquis/pris/restant) à la fin du mois donné. */
 function congesAsOf(e: Emp, year: number, month1to12: number): { acquired: number; taken: number; remaining: number } {
@@ -231,9 +231,9 @@ export async function seedWoyaa(opts: { drop?: boolean; report?: boolean } = {})
   // Maternité secrétaire : 16/03/2026, 98 jours calendaires
   const matStart = new Date(2026, 2, 16)
   const matEnd = new Date(matStart); matEnd.setDate(matEnd.getDate() + 98 - 1)
-  // CP acquis par la secrétaire (jamais pris) : 2,5 j ouvrables / mois depuis 05/04/2025 → 28/02/2026
+  // CP acquis par la secrétaire (jamais pris) : 2,2 j ouvrables / mois (CT art. 25.1) depuis 05/04/2025 → 28/02/2026
   const moisAcquis = 11 // avr 2025 → fév 2026 inclus (≈ 11 mois)
-  const cpAcquisJours = Math.round(moisAcquis * 2.5) // ≈ 28 jours ouvrables
+  const cpAcquisJours = Math.round(moisAcquis * 2.2) // ≈ 24 jours ouvrables
   // CP posés par la secrétaire avec la maternité (affichés sur le bulletin)
   employees.find((e) => e.key === 'sec')!.cpPosed = cpAcquisJours
 

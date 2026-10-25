@@ -4,9 +4,11 @@ import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
 import { Calculator, Loader2, Info, TrendingDown, TrendingUp } from 'lucide-react'
 
+type MaritalStatus = 'single' | 'married' | 'divorced' | 'widowed'
+
 interface ApiPayload {
   baseSalary: number
-  maritalStatus: 'single' | 'married'
+  maritalStatus: MaritalStatus
   childrenCount: number
   atRate: number
   primes: number
@@ -15,7 +17,7 @@ interface ApiPayload {
 interface ApiResult {
   input: ApiPayload & { brut: number }
   cnps: { salarial: number; patronal: number }
-  its: { base: number; brut: number; credit: number; net: number }
+  its: { base: number; brut: number; credit: number; parts: number; net: number }
   net: { payable: number; smigCompliant: boolean }
   employerCost: number
   simulation: {
@@ -24,6 +26,22 @@ interface ApiResult {
     }
   }
   currency: string
+}
+
+// Barème ITS mensuel — ordonnance n° 2023-719 (en vigueur au 01/01/2024).
+// Affichage seul : le calcul est fait par l'API (moteur de paie, pack CIV-2024).
+const BAREME_ITS_2024 = [
+  { tranche: '0 – 75 000 FCFA', taux: '0 %' },
+  { tranche: '75 001 – 240 000 FCFA', taux: '16 %' },
+  { tranche: '240 001 – 800 000 FCFA', taux: '21 %' },
+  { tranche: '800 001 – 2 400 000 FCFA', taux: '24 %' },
+  { tranche: '2 400 001 – 8 000 000 FCFA', taux: '28 %' },
+  { tranche: '> 8 000 000 FCFA', taux: '32 %' },
+] as const
+
+const SITUATIONS: readonly MaritalStatus[] = ['single', 'married', 'divorced', 'widowed']
+const SITUATION_KEYS: Record<MaritalStatus, string> = {
+  single: 'maritalSingle', married: 'maritalMarried', divorced: 'maritalDivorced', widowed: 'maritalWidowed',
 }
 
 const SECTEURS = [
@@ -36,7 +54,7 @@ const SECTEURS = [
 export default function ItsSimulatorPage() {
   const { t } = useTranslation('payroll')
   const [brutMensuel, setBrutMensuel] = useState(250000)
-  const [situation, setSituation] = useState<'single' | 'married'>('married')
+  const [situation, setSituation] = useState<MaritalStatus>('married')
   const [enfants, setEnfants] = useState(2)
   const [atRate, setAtRate] = useState(0.020)
   const [primes, setPrimes] = useState(0)
@@ -92,9 +110,8 @@ export default function ItsSimulatorPage() {
           <div className="space-y-1.5">
             <label className="text-sm font-medium">{t('simulator.maritalLabel')}</label>
             <select className={inputCls} value={situation}
-              onChange={e => setSituation(e.target.value as 'single' | 'married')}>
-              <option value="single">{t('simulator.maritalSingle')}</option>
-              <option value="married">{t('simulator.maritalMarried')}</option>
+              onChange={e => setSituation(e.target.value as MaritalStatus)}>
+              {SITUATIONS.map(s => <option key={s} value={s}>{t(`simulator.${SITUATION_KEYS[s]}`)}</option>)}
             </select>
           </div>
 
@@ -139,13 +156,7 @@ export default function ItsSimulatorPage() {
             <p className="text-xs font-semibold text-blue-800 flex items-center gap-1.5">
               <Info className="h-3.5 w-3.5" /> {t('simulator.scaleTitle')}
             </p>
-            {[
-              { tranche: '0 – 75 000 FCFA', taux: '0 %' },
-              { tranche: '75 001 – 240 000 FCFA', taux: '1,5 %' },
-              { tranche: '240 001 – 800 000 FCFA', taux: '5 %' },
-              { tranche: '800 001 – 2 000 000 FCFA', taux: '10 %' },
-              { tranche: '> 2 000 000 FCFA', taux: '15 %' },
-            ].map(({ tranche, taux }) => (
+            {BAREME_ITS_2024.map(({ tranche, taux }) => (
               <div key={tranche} className="flex justify-between text-xs text-blue-700">
                 <span>{tranche}</span>
                 <span className="font-mono font-semibold">{taux}</span>
@@ -214,11 +225,9 @@ export default function ItsSimulatorPage() {
               <div className="space-y-1.5 text-sm">
                 {[
                   { label: t('simulator.its.gross'),             value: formatFCFA(brut) },
-                  { label: t('simulator.its.abatement'),         value: `−${formatFCFA(Math.floor(brut * 0.15))}` },
-                  { label: t('simulator.its.taxableBeforeCnps'), value: formatFCFA(Math.floor(brut * 0.85)) },
-                  { label: t('simulator.its.minusCnps'),         value: `−${formatFCFA(result.cnps.salarial)}` },
-                  { label: t('simulator.its.taxableNet'),        value: formatFCFA(result.its.base) },
+                  { label: t('simulator.its.taxable'),           value: formatFCFA(result.its.base) },
                   { label: t('simulator.its.itsGross'),          value: formatFCFA(result.its.brut) },
+                  { label: t('simulator.its.parts'),             value: result.its.parts.toLocaleString('fr-FR') },
                   { label: t('simulator.its.familyCredit'),      value: `−${formatFCFA(result.its.credit)}` },
                   { label: t('simulator.its.itsFinal'),          value: formatFCFA(result.its.net), bold: true },
                 ].map(({ label, value, bold }) => (

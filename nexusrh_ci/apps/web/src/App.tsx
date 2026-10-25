@@ -5,6 +5,7 @@ import { useAuthStore, useMfaPending } from '@/stores/authStore'
 import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard, RhDashboardGuard } from '@/guards/RoleGuard'
 import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
+import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 const MainLayout       = lazy(() => import('@/components/layout/MainLayout'))
@@ -279,7 +280,9 @@ export default function App() {
               </RoleGuard>
             } />
             <Route path="payroll/multi-filiales" element={
-              <RoleGuard allowedRoles={['admin','hr_manager']}>
+              // hr_officer / readonly : consultation (un hr_officer peut être valideur désigné
+              // du circuit de paie) — les actions de pilotage restent admin / hr_manager.
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','readonly']}>
                 <ModuleGuard moduleKey="payroll">
                   <PayrollMultiSitesPage />
                 </ModuleGuard>
@@ -543,6 +546,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <ConfirmDialogHost />
       </ChunkLoadErrorBoundary>
     </BrowserRouter>
   )

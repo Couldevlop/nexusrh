@@ -13,6 +13,18 @@
         "author": "Couldevlop <coulwao@gmail.com>",
         "reason": "Sprint 12 — cumul mutuelle + ancienneté + avance",
         "deltaSummary": "baseSalary 0 → 600000 ; brutProrata 0 → 600000 ; grossSalary 0 → 660000 ; cnpsRetraiteSal 0 → 37800 ; cnpsRetraitePat 0 → 46200 ; cnpsPfPat 0 → 4025 ; cnpsAtPat 0 → 1400 ; totalCnpsSal 0 → 37800 ; totalCnpsPat 0 → 51625 ; baseImposable 0 → 472200 ; its 0 → 2584 ; totalDeductions 0 → 132384 ; netPayable 0 → 527616 ; employerCost 0 → 735625 ; workingDays 0 → 26 ; smigCompliant false → true ; lines count 0 → 11"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
+        "deltaSummary": "baseImposable 472200 → 600000 ; its 2584 → 80000 ; totalDeductions 132384 → 209800 ; netPayable 527616 → 450200"
+      },
+      {
+        "date": "2026-10-25",
+        "author": "Couldevlop",
+        "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
+        "deltaSummary": "cnpsRetraiteSal 37800 → 41580 ; cnpsRetraitePat 46200 → 50820 ; totalCnpsSal 37800 → 41580 ; totalCnpsPat 51625 → 56245 ; baseImposable 600000 → 660000 ; its 80000 → 92600 ; totalDeductions 209800 → 226180 ; netPayable 450200 → 433820 ; employerCost 735625 → 740245 ; ligne 2000 37800 → 41580 ; ligne 2100 80000 → 92600 ; ligne 3000 46200 → 50820"
       }
     ]
   },
@@ -34,17 +46,17 @@
     "baseSalary": 600000,
     "brutProrata": 600000,
     "grossSalary": 660000,
-    "cnpsRetraiteSal": 37800,
-    "cnpsRetraitePat": 46200,
+    "cnpsRetraiteSal": 41580,
+    "cnpsRetraitePat": 50820,
     "cnpsPfPat": 4025,
     "cnpsAtPat": 1400,
-    "totalCnpsSal": 37800,
-    "totalCnpsPat": 51625,
-    "baseImposable": 472200,
-    "its": 2584,
-    "totalDeductions": 132384,
-    "netPayable": 527616,
-    "employerCost": 735625,
+    "totalCnpsSal": 41580,
+    "totalCnpsPat": 56245,
+    "baseImposable": 660000,
+    "its": 92600,
+    "totalDeductions": 226180,
+    "netPayable": 433820,
+    "employerCost": 740245,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -61,12 +73,12 @@
       {
         "code": "2000",
         "type": "employee_contribution",
-        "amount": 37800
+        "amount": 41580
       },
       {
         "code": "2100",
         "type": "employee_contribution",
-        "amount": 2584
+        "amount": 92600
       },
       {
         "code": "4000",
@@ -81,7 +93,7 @@
       {
         "code": "3000",
         "type": "employer_contribution",
-        "amount": 46200
+        "amount": 50820
       },
       {
         "code": "3100",

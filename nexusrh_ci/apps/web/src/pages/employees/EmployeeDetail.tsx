@@ -6,6 +6,8 @@ import { api, formatFCFA, formatDate } from '@/lib/api'
 import { ArrowLeft, Camera, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
+import { EmployeeAccess } from '@/components/employees/EmployeeAccess'
+import { paymentMethodLabel } from '@/lib/payment'
 import {
   formatCustomFieldValue, useEmployeeFieldDefinitions, type CustomFieldValues,
 } from '@/components/employees/CustomFields'
@@ -16,7 +18,9 @@ interface EmployeeDetails {
   cnps_number: string; job_title: string; job_level: string
   contract_type: string; hire_date: string; base_salary: string
   weekly_hours: string | null; professional_category: string | null
-  iban: string | null; bank_name: string | null
+  iban: string | null; bank_name: string | null; payment_method?: string | null
+  // Compte utilisateur lié (rôles RH seulement — null sinon)
+  linked_user_id?: string | null; linked_user_role?: string | null
   department_name: string; manager_first_name: string; manager_last_name: string
   mobile_money_provider: string; mobile_money_phone: string
   marital_status: string; children_count: number; city: string
@@ -95,10 +99,6 @@ export default function EmployeeDetail() {
   if (isLoading) return <div className="p-6 text-center text-muted-foreground">{t('loadingEmployee')}</div>
   if (!emp) return <div className="p-6 text-center text-destructive">{t('employeeNotFound')}</div>
 
-  const PROVIDER_LABEL: Record<string, string> = {
-    wave: 'Wave', mtn_momo: 'MTN MoMo', orange_money: 'Orange Money',
-  }
-
   const MARITAL_LABEL: Record<string, string> = {
     single: t('detail.maritalValues.single'), married: t('detail.maritalValues.married'),
     divorced: t('detail.maritalValues.divorced'), widowed: t('detail.maritalValues.widowed'),
@@ -148,6 +148,7 @@ export default function EmployeeDetail() {
         <div>
           <h1 className="text-2xl font-bold">{emp.first_name} {emp.last_name}</h1>
           <p className="text-muted-foreground">{emp.job_title ?? '—'} · {emp.department_name ?? '—'}</p>
+          {canEditPhoto && <div className="mt-1.5"><EmployeeAccess employee={emp} /></div>}
         </div>
       </div>
 
@@ -195,9 +196,13 @@ export default function EmployeeDetail() {
 
           <div className="mt-4 pt-4 border-t border-border">
             <h3 className="text-sm font-semibold mb-2">{t('detail.payment')}</h3>
+            <div className="mb-2 flex justify-between text-sm">
+              <span className="text-muted-foreground">{t('table.paymentMethod')}</span>
+              <span className="font-medium">{paymentMethodLabel(emp.payment_method === 'bank_transfer' ? 'bank_transfer' : 'mobile_money')}</span>
+            </div>
             {emp.mobile_money_provider ? (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{PROVIDER_LABEL[emp.mobile_money_provider] ?? emp.mobile_money_provider}</span>
+                <span className="text-muted-foreground">{paymentMethodLabel(emp.mobile_money_provider)}</span>
                 <span className="font-mono">{emp.mobile_money_phone}</span>
               </div>
             ) : (

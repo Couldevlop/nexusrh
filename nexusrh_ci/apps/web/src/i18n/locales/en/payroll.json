@@ -6,7 +6,7 @@
     "draft_central": "Draft",
     "sent_to_sites": "To complete",
     "completed_by_site": "Submitted",
-    "validated_central": "Consolidated"
+    "validated_central": "Consolidated — pending validation"
   },
   "page": {
     "title": "CI Payroll — Monthly closing",
@@ -16,7 +16,7 @@
   },
   "close": {
     "title": "Initiate the closing of a period",
-    "intro": "Closing first moves to <strong>\"Pending validation\"</strong>. Another approver (admin / hr_manager) must confirm to finalize the period (mandatory separation of duties).",
+    "intro": "Closing first moves to <strong>\"Pending validation\"</strong>. The designated approver of each level (Settings → Workflow) — or, failing that, an administrator or HR manager other than you — must confirm to finalize the period (mandatory separation of duties).",
     "monthLabel": "Month to close",
     "monthPlaceholder": "-- Select --",
     "monthLocked": " (locked)",
@@ -31,7 +31,11 @@
     "resultNet": "Net pay:",
     "resultCnps": "CNPS:",
     "resultIts": "ITS:",
-    "resultHint": "→ Ask another admin/hr_manager to validate from the table below."
+    "resultHint": "→ The expected approver has been notified; follow progress in the history below.",
+    "pendingWithNamed": "Period {{month}} awaiting validation by {{name}} ({{fn}})",
+    "pendingWithTeam": "Period {{month}} awaiting validation by an administrator or HR manager other than the initiator",
+    "generated_one": "{{count}} payslip generated.",
+    "generated_other": "{{count}} payslips generated."
   },
   "livre": {
     "title": "Digital payroll register",
@@ -56,7 +60,12 @@
     "validate": "Validate",
     "viewWorkflow": "View workflow",
     "audit": "Audit",
-    "empty": "No payroll period"
+    "empty": "No payroll period",
+    "pendingWith": "Awaiting {{name}} ({{fn}})",
+    "pendingWithTeam": "Awaiting an administrator or HR manager",
+    "levelProgress": "Level {{level}}/{{total}}",
+    "dueAt": "Deadline: {{date}}",
+    "overdue": "Deadline passed — the HR team can take over"
   },
   "workflow": {
     "title": "Validation workflow — {{month}}",
@@ -70,16 +79,33 @@
     "levelApproved": "Level {{level}} approved",
     "levelPending": "Level {{level}} pending",
     "finalClosed": "Period definitively closed",
-    "sodRoleForbidden": "Your role does not allow payroll validation (admin or hr_manager required).",
+    "sodRoleForbidden": "Your role does not allow payroll validation (administrator, HR manager or designated approver).",
+    "sodAwaitingDesignated": "This level is assigned to {{name}} ({{fn}}): you can act after the {{date}} deadline.",
+    "expectedValidator": "Expected approver: {{name}} ({{fn}})",
+    "expectedTeam": "Expected approver: an administrator or HR manager other than the initiator",
+    "dueAt": "Deadline: {{date}}",
+    "overdue": "Deadline passed — the HR team can take over",
+    "byEscalation": "by escalation",
+    "escalatedNotice": "Deadline passed or designated approver unavailable: you are acting by escalation (recorded in the audit trail).",
+    "levelDesignated": "{{fn}}: {{name}}",
+    "levelTeam": "HR team (administrator or HR manager)",
+    "cancelInitiation": "Cancel initiation",
+    "cancelHint": "Generated payslips will be deleted and the period will return to preparation (possible as long as no level has approved).",
+    "cancelCommentLabel": "Comment (optional)",
+    "confirmCancel": "Confirm cancellation",
+    "cancelError": "Error during cancellation",
+    "rejectHint": "Generated payslips will be deleted, expense reports and final settlements restored: the period returns to preparation to be recalculated.",
+    "cancelledNotice": "Initiation cancelled: the period is back in preparation.",
+    "rejectedNotice": "Period sent back to preparation: the initiator has been notified.",
     "sodInitiator": "You initiated this closing — another approver must validate (separation of duties).",
     "sodAlreadyApproved": "You have already approved a level — another approver must take over.",
     "notesLabel": "Notes (optional)",
     "notesPlaceholder": "Checked the totals, consistent with the previous month…",
     "approveLevel": "Approve level {{level}}",
-    "reject": "Reject",
-    "rejectReasonLabel": "Rejection reason (required, min. 5 characters)",
+    "reject": "Reject / send back to preparation",
+    "rejectReasonLabel": "Comment (required, at least 10 characters)",
     "rejectReasonPlaceholder": "E.g.: unexplained variance on CNPS retirement, to be recalculated…",
-    "confirmReject": "Confirm rejection (reopens the period)",
+    "confirmReject": "Confirm sending back to preparation",
     "cancel": "Cancel",
     "approveError": "Error during approval",
     "rejectError": "Error during rejection"
@@ -95,6 +121,10 @@
     "consolidate": "Consolidate payroll",
     "consolidatePartial": "Consolidate ({{submitted}}/{{total}} submitted)",
     "closePayroll": "Close payroll",
+    "openCircuit": "Validation workflow",
+    "circuitHint": "Consolidation starts the validation workflow (Settings → Workflow): each level's designated validator approves; the last approval closes the payroll of every subsidiary and publishes the payslips to employees.",
+    "consolidatedNotice": "Payroll {{month}} consolidated.",
+    "rejected": "Sent back for preparation: \"{{reason}}\" — each subsidiary must be resubmitted.",
     "track": "Tracking",
     "trackTitle": "View the draft's history (who did what, when)",
     "submissions": "Subsidiary submissions",
@@ -120,6 +150,13 @@
       "sendToSites": "Failed to cascade to subsidiaries",
       "consolidate": "Consolidation failed",
       "close": "Closing failed"
+    },
+    "workflow": {
+      "initiated": "Payroll consolidated (workflow started)",
+      "rejectHint": "The payslips of every subsidiary will be deleted, expense reports and final settlements restored: the payroll goes back to the subsidiaries, and each RAF must resubmit their subsidiary before a new consolidation.",
+      "cancelHint": "The payslips of every subsidiary will be deleted and the payroll will go back to the subsidiaries (possible as long as no level has approved).",
+      "rejectedNotice": "Payroll sent back for preparation: the initiator and the subsidiaries' RAFs have been notified.",
+      "cancelledNotice": "Initiation cancelled: the payroll went back to the subsidiaries."
     },
     "timeline": {
       "heading": "Draft history",
@@ -153,8 +190,8 @@
     "empty": "No payslip for this period"
   },
   "simulator": {
-    "title": "ITS / IGR Simulator — Côte d'Ivoire",
-    "subtitle": "CNPS 2024 calculation + CI ITS/DGI scale · Family quotient · All amounts in FCFA",
+    "title": "ITS Simulator — Côte d'Ivoire",
+    "subtitle": "CNPS 2024 calculation + ITS scale (2024 reform) · Shares and family-charges tax reduction (RICF) · All amounts in FCFA",
     "paramsTitle": "Simulation parameters",
     "baseSalaryLabel": "Monthly base salary (FCFA)",
     "smigHint": "Minimum SMIG: 75,000 FCFA (2026)",
@@ -162,6 +199,8 @@
     "maritalLabel": "Marital status",
     "maritalSingle": "Single",
     "maritalMarried": "Married",
+    "maritalDivorced": "Divorced",
+    "maritalWidowed": "Widowed",
     "childrenLabel": "Number of dependent children",
     "sectorLabel": "Business sector (CNPS AT rate)",
     "sectors": {
@@ -173,8 +212,8 @@
     "calculate": "Calculate",
     "simulateOneChild": "Simulate +1 child",
     "simulationError": "Simulation error",
-    "scaleTitle": "CI ITS/DGI scale 2024 (monthly)",
-    "scaleNote": "15% deduction applied to gross before computing the brackets",
+    "scaleTitle": "Monthly ITS scale (Ordinance 2023-719, in force since 01/01/2024)",
+    "scaleNote": "Scale applied to 100% of taxable gross: no standard deduction, employee CNPS contributions not deducted. The RICF is then deducted from the gross tax.",
     "kpiGross": "Gross salary",
     "kpiNetPayable": "Net pay",
     "kpiCnpsSal": "Employee CNPS",
@@ -197,12 +236,10 @@
     "itsDetailTitle": "ITS/DGI breakdown",
     "its": {
       "gross": "Gross salary",
-      "abatement": "15% deduction",
-      "taxableBeforeCnps": "Taxable base before CNPS",
-      "minusCnps": "− Employee CNPS",
-      "taxableNet": "Net taxable base",
       "itsGross": "Gross ITS (scale)",
-      "familyCredit": "Family tax credit",
+      "taxable": "Taxable base (100% of gross)",
+      "parts": "Number of tax shares",
+      "familyCredit": "Family-charges tax reduction (RICF)",
       "itsFinal": "Final ITS due"
     },
     "childSimTitle": "Impact of an additional child",
