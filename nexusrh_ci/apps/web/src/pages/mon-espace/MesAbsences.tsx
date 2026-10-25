@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api, formatDate } from '@/lib/api'
 import { Plus, Calendar, Loader2, X } from 'lucide-react'
+import { addDays, maternityTotalDays, type AbsenceType } from '@/lib/absence-maternity'
 
 const schema = z.object({
   absenceTypeId: z.string().min(1, 'absences.validation.typeRequired'),
@@ -24,16 +25,6 @@ const schema = z.object({
 })
 type FormData = z.infer<typeof schema>
 
-interface MaternityRule {
-  legalDays: number; multipleBirthDays: number; illnessDays: number; maxHospitalizationDays: number
-}
-interface AbsenceType { id: string; label: string; code: string; color: string; maternity_rule?: MaternityRule }
-
-/** Date + n jours (YYYY-MM-DD, sans décalage de fuseau). */
-function addDays(ymd: string, n: number): string {
-  const [y, m, d] = ymd.split('-').map(Number) as [number, number, number]
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
-}
 interface Absence {
   id: string; type_label: string; type_color: string
   start_date: string; end_date: string; days: number
@@ -139,8 +130,7 @@ export default function MesAbsences() {
   const illnessExtension = watch('illnessExtension')
   const hospitalized = Number(watch('childHospitalizedDays') || 0)
   const maternityDays = maternity
-    ? maternity.legalDays + (multipleBirth ? maternity.multipleBirthDays : 0) + (illnessExtension ? maternity.illnessDays : 0)
-      + Math.min(Math.max(0, hospitalized), maternity.maxHospitalizationDays)
+    ? maternityTotalDays(maternity, { multipleBirth, illnessExtension, hospitalizedDays: hospitalized })
     : 0
   useEffect(() => {
     if (maternity && startDate) setValue('endDate', addDays(startDate, maternityDays - 1), { shouldValidate: true })

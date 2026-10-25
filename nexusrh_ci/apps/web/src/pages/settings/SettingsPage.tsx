@@ -54,7 +54,15 @@ interface LegalEntity {
   country_code: string | null; legislation_pack_code: string | null
   is_active: boolean
 }
-interface WorkflowConfig { id: string; module: string; levels_count: number }
+// Circuit N+1 … N+n → RH (absences, notes de frais) : échéances, valideur RH, prévenance.
+interface NoticeConfig {
+  enabled?: boolean; typeCodes?: string[]
+  shortMinDays?: number; shortMaxDays?: number; shortNoticeDays?: number; longNoticeDays?: number
+}
+interface CircuitConfig {
+  managerSlaDays?: number; hrSlaDays?: number; hrValidatorUserId?: string | null; notice?: NoticeConfig
+}
+interface WorkflowConfig { id: string; module: string; levels_count: number; config?: CircuitConfig | null }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Rôles disponibles (clé technique = valeur API ; libellé traduit via roles.<key>).
@@ -2411,7 +2419,7 @@ function DataImportTab() {
 }
 
 // ── Tab: Workflow ─────────────────────────────────────────────────────────────
-// Clés de traduction des niveaux d'approbation (libellés via workflow.levelNames.<key>).
+// Clés de traduction des niveaux d'approbation de la clôture de paie (libellés via workflow.levelNames.<key>).
 const LEVEL_NAME_KEYS = ['directManager', 'hrManager', 'accounting', 'generalManagement', 'ceo'] as const
 
 // Icône + couleur par module ; libellé/description traduits via workflow.modules.<module>.*
@@ -2421,29 +2429,109 @@ const MODULE_META: Record<string, { icon: React.ElementType; color: string }> = 
   payroll:  { icon: Banknote,     color: 'bg-green-100 text-green-600' },
 }
 
+// Absences et notes de frais : circuit hiérarchique N+1 … N+n (1–10 niveaux, les
+// niveaux absents de l'organigramme sont sautés), puis décision finale de la RH.
+const CIRCUIT_MODULES = new Set(['absences', 'expenses'])
+const MAX_CIRCUIT_LEVELS = 10
+// Valeurs appliquées par l'API quand le tenant n'a rien paramétré.
+const DEFAULT_NOTICE: Required<NoticeConfig> = {
+  enabled: true, typeCodes: ['CP', 'SANS_SOLDE'], shortMinDays: 2, shortMaxDays: 5, shortNoticeDays: 7, longNoticeDays: 30,
+}
+
+interface EffectiveCircuit {
+  managerSlaDays: number; hrSlaDays: number; hrValidatorUserId: string | null; notice: Required<NoticeConfig>
+}
+interface HrTeamMember { id: string; first_name: string; last_name: string; email: string; role: string }
+interface AbsenceTypeOption { id: string; code: string; label: string }
+
+/** Réglages effectifs : saisie locale > configuration enregistrée > défauts API. */
+function effectiveCircuit(server: CircuitConfig | null | undefined, local: CircuitConfig | undefined): EffectiveCircuit {
+  return {
+    managerSlaDays: local?.managerSlaDays ?? server?.managerSlaDays ?? 1,
+    hrSlaDays: local?.hrSlaDays ?? server?.hrSlaDays ?? 2,
+    hrValidatorUserId: local && 'hrValidatorUserId' in local ? local.hrValidatorUserId ?? null : server?.hrValidatorUserId ?? null,
+    notice: { ...DEFAULT_NOTICE, ...(server?.notice ?? {}), ...(local?.notice ?? {}) },
+  }
+}
+
+/** « N+1 → RH », « N+1 → N+2 → RH »… ; au-delà de 3 niveaux « N+1 → … → N+n → RH ». */
+function circuitChain(levels: number, hrLabel: string): string {
+  const steps = levels <= 3
+    ? Array.from({ length: levels }, (_, i) => `N+${i + 1}`)
+    : ['N+1', '…', `N+${levels}`]
+  return [...steps, hrLabel].join(' → ')
+}
+
+/** Entier borné (saisie numérique) : valeur vide ou invalide → minimum. */
+function clampInt(raw: string, min: number, max: number): number {
+  const n = Number.parseInt(raw, 10)
+  return Number.isNaN(n) ? min : Math.min(max, Math.max(min, n))
+}
+
+const numberCls = 'w-20 rounded-lg border border-input bg-background px-2 py-1 text-sm focus:ring-2 focus:ring-ring outline-none'
+
 function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const { t } = useTranslation('settings')
-  const [localConfigs, setLocalConfigs] = useState<Record<string, number>>({})
+  const [localLevels, setLocalLevels] = useState<Record<string, number>>({})
+  const [localCircuit, setLocalCircuit] = useState<Record<string, CircuitConfig>>({})
 
   const { data } = useQuery<{ data: WorkflowConfig[] }>({
     queryKey: ['settings-workflow'],
     queryFn: () => api.get('/settings/workflow').then(r => r.data),
   })
+  // Valideur RH désigné : choisi parmi l'équipe RH (admin, RH manager, gestionnaire RH).
+  const { data: hrTeamData } = useQuery<{ data: HrTeamMember[] }>({
+    queryKey: ['settings-workflow-hr-team'],
+    queryFn: () => api.get('/settings/workflow/hr-team').then(r => r.data),
+  })
+  // Délai de prévenance : types d'absence concernés (codes).
+  const { data: typesData } = useQuery<{ data: AbsenceTypeOption[] }>({
+    queryKey: ['absence-types'],
+    queryFn: () => api.get('/absences/types').then(r => r.data),
+  })
 
   const configs = data?.data ?? []
+  const hrTeam = hrTeamData?.data ?? []
+  const absenceTypes = typesData?.data ?? []
   // Ensure payroll module exists locally
   const allModules = ['absences', 'expenses', 'payroll']
   const configMap = Object.fromEntries(configs.map(c => [c.module, c]))
 
+  const levelsOf = (module: string) => localLevels[module] ?? configMap[module]?.levels_count ?? 1
+  const circuitOf = (module: string) => effectiveCircuit(configMap[module]?.config, localCircuit[module])
+  const updateCircuit = (module: string, patch: CircuitConfig) =>
+    setLocalCircuit(p => ({ ...p, [module]: { ...p[module], ...patch } }))
+  const updateNotice = (patch: NoticeConfig) =>
+    setLocalCircuit(p => ({ ...p, absences: { ...p.absences, notice: { ...p.absences?.notice, ...patch } } }))
+
+  const notice = circuitOf('absences').notice
+  const noticeInvalid = notice.shortMinDays > notice.shortMaxDays
+
   const save = useMutation({
     mutationFn: () => api.patch('/settings/workflow',
-      allModules.map(m => ({
-        module: m,
-        levels_count: localConfigs[m] ?? configMap[m]?.levels_count ?? 1,
-      }))
+      allModules.map(m => {
+        const levels_count = Math.min(levelsOf(m), CIRCUIT_MODULES.has(m) ? MAX_CIRCUIT_LEVELS : LEVEL_NAME_KEYS.length)
+        if (!CIRCUIT_MODULES.has(m)) return { module: m, levels_count }
+        const c = circuitOf(m)
+        // La fusion côté API est superficielle : le bloc « notice » est envoyé complet.
+        return {
+          module: m,
+          levels_count,
+          config: {
+            managerSlaDays: c.managerSlaDays,
+            hrSlaDays: c.hrSlaDays,
+            hrValidatorUserId: c.hrValidatorUserId,
+            ...(m === 'absences' ? { notice: c.notice } : {}),
+          },
+        }
+      })
     ),
-    onSuccess: () => { setLocalConfigs({}); qc.invalidateQueries({ queryKey: ['settings-workflow'] }) },
+    onSuccess: () => {
+      setLocalLevels({}); setLocalCircuit({})
+      qc.invalidateQueries({ queryKey: ['settings-workflow'] })
+    },
   })
+  const saveError = (save.error as { response?: { data?: { error?: string } } } | null)?.response?.data?.error
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -2457,8 +2545,14 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
         {allModules.map(module => {
           const meta = MODULE_META[module]!
-          const current = localConfigs[module] ?? configMap[module]?.levels_count ?? 1
-          const chainFor = (count: number) => LEVEL_NAME_KEYS.slice(0, count).map(k => t(`workflow.levelNames.${k}`)).join(' → ')
+          const current = levelsOf(module)
+          const isCircuit = CIRCUIT_MODULES.has(module)
+          const hrLabel = t('workflow.circuit.hr')
+          const chainFor = (count: number) => isCircuit
+            ? circuitChain(count, hrLabel)
+            : LEVEL_NAME_KEYS.slice(0, count).map(k => t(`workflow.levelNames.${k}`)).join(' → ')
+          const choices = Array.from({ length: isCircuit ? MAX_CIRCUIT_LEVELS : LEVEL_NAME_KEYS.length }, (_, i) => i + 1)
+          const circuit = isCircuit ? circuitOf(module) : null
           return (
             <div key={module} className="rounded-lg border border-border p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -2470,13 +2564,18 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   <p className="text-xs text-muted-foreground">{t(`workflow.modules.${module}.desc`)}</p>
                 </div>
                 <span className="ml-auto rounded-full bg-primary/10 text-primary text-xs font-bold px-2 py-0.5">
-                  {t('workflow.levelBadge', { count: current })}
+                  {isCircuit
+                    ? t('workflow.circuit.levelBadge', { count: current })
+                    : t('workflow.levelBadge', { count: current })}
                 </span>
               </div>
+              {isCircuit && (
+                <p className="text-xs text-muted-foreground mb-2">{t('workflow.circuit.levelsHint')}</p>
+              )}
               <div className="flex gap-1.5 flex-wrap">
-                {[1, 2, 3, 4, 5].map(n => (
+                {choices.map(n => (
                   <button key={n}
-                    onClick={() => setLocalConfigs(p => ({ ...p, [module]: n }))}
+                    onClick={() => setLocalLevels(p => ({ ...p, [module]: n }))}
                     title={chainFor(n)}
                     className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       current === n
@@ -2490,18 +2589,111 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <p className="text-xs text-muted-foreground mt-2">
                 {t('workflow.chain', { chain: chainFor(current) })}
               </p>
+
+              {circuit && (
+                <div className="mt-4 space-y-3 border-t border-border pt-3">
+                  <p className="text-xs text-muted-foreground">{t(`workflow.circuit.visibility.${module}`)}</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex items-center justify-between gap-2 text-sm">
+                      <span>{t('workflow.circuit.managerSla')}</span>
+                      <input type="number" min={1} max={30} value={circuit.managerSlaDays}
+                        aria-label={t('workflow.circuit.managerSla')}
+                        onChange={e => updateCircuit(module, { managerSlaDays: clampInt(e.target.value, 1, 30) })}
+                        className={numberCls} />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-sm">
+                      <span>{t('workflow.circuit.hrSla')}</span>
+                      <input type="number" min={1} max={30} value={circuit.hrSlaDays}
+                        aria-label={t('workflow.circuit.hrSla')}
+                        onChange={e => updateCircuit(module, { hrSlaDays: clampInt(e.target.value, 1, 30) })}
+                        className={numberCls} />
+                    </label>
+                  </div>
+                  <div>
+                    <label htmlFor={`hr-validator-${module}`} className="text-sm">{t('workflow.circuit.hrValidator')}</label>
+                    <select id={`hr-validator-${module}`} value={circuit.hrValidatorUserId ?? ''}
+                      onChange={e => updateCircuit(module, { hrValidatorUserId: e.target.value || null })}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
+                      <option value="">{t('workflow.circuit.wholeHrTeam')}</option>
+                      {hrTeam.map(u => (
+                        <option key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.email})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">{t('workflow.circuit.hrValidatorHint')}</p>
+                  </div>
+
+                  {module === 'absences' && (
+                    <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input type="checkbox" checked={notice.enabled}
+                          onChange={e => updateNotice({ enabled: e.target.checked })} className="rounded" />
+                        {t('workflow.notice.enabled')}
+                      </label>
+                      <p className="text-xs text-muted-foreground">{t('workflow.notice.hint')}</p>
+                      {notice.enabled && (
+                        <>
+                          <div>
+                            <p className="text-sm mb-1">{t('workflow.notice.types')}</p>
+                            <div className="flex flex-wrap gap-3">
+                              {/* Codes enregistrés absents du référentiel actuel : conservés et décochables */}
+                              {[...new Set([...absenceTypes.map(at => at.code), ...notice.typeCodes])].map(code => {
+                                const label = absenceTypes.find(at => at.code === code)?.label ?? code
+                                const checked = notice.typeCodes.includes(code)
+                                return (
+                                  <label key={code} className="flex items-center gap-1.5 text-sm">
+                                    <input type="checkbox" checked={checked} className="rounded"
+                                      onChange={() => updateNotice({
+                                        typeCodes: checked ? notice.typeCodes.filter(c => c !== code) : [...notice.typeCodes, code],
+                                      })} />
+                                    {label}
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span>{t('workflow.notice.shortFrom')}</span>
+                            <input type="number" min={1} max={365} value={notice.shortMinDays}
+                              aria-label={t('workflow.notice.shortMinDays')}
+                              onChange={e => updateNotice({ shortMinDays: clampInt(e.target.value, 1, 365) })} className={numberCls} />
+                            <span>{t('workflow.notice.shortTo')}</span>
+                            <input type="number" min={1} max={365} value={notice.shortMaxDays}
+                              aria-label={t('workflow.notice.shortMaxDays')}
+                              onChange={e => updateNotice({ shortMaxDays: clampInt(e.target.value, 1, 365) })} className={numberCls} />
+                            <span>{t('workflow.notice.shortArrow')}</span>
+                            <input type="number" min={0} max={365} value={notice.shortNoticeDays}
+                              aria-label={t('workflow.notice.shortNoticeDays')}
+                              onChange={e => updateNotice({ shortNoticeDays: clampInt(e.target.value, 0, 365) })} className={numberCls} />
+                            <span>{t('workflow.notice.daysAhead')}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span>{t('workflow.notice.longFrom', { days: notice.shortMaxDays })}</span>
+                            <input type="number" min={0} max={365} value={notice.longNoticeDays}
+                              aria-label={t('workflow.notice.longNoticeDays')}
+                              onChange={e => updateNotice({ longNoticeDays: clampInt(e.target.value, 0, 365) })} className={numberCls} />
+                            <span>{t('workflow.notice.daysAhead')}</span>
+                          </div>
+                          {noticeInvalid && <p className="text-xs text-destructive">{t('workflow.notice.invalidRange')}</p>}
+                          <p className="text-xs text-muted-foreground">{t('workflow.notice.hrExempt')}</p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => save.mutate()}
-            disabled={save.isPending}
+            disabled={save.isPending || noticeInvalid}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             <Save className="h-4 w-4" />
             {save.isPending ? t('workflow.saving') : t('workflow.save')}
           </button>
           {save.isSuccess && <span className="text-xs text-green-600">✓ {t('workflow.saved')}</span>}
+          {save.isError && <span role="alert" className="text-xs text-destructive">{saveError ?? t('workflow.saveError')}</span>}
         </div>
       </div>
 

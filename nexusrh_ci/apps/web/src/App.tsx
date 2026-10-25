@@ -61,6 +61,8 @@ const ItsSimulatorPage = lazy(() => import('@/pages/payroll/ItsSimulatorPage'))
 
 // ── Absences ──────────────────────────────────────────────────────────────────
 const AbsencesPage     = lazy(() => import('@/pages/absences/AbsencesPage'))
+// « Mes validations » (circuit N+1 … N+n → RH) — servie dans l'espace RH et dans Mon espace
+const ApprovalsPage    = lazy(() => import('@/pages/approvals/ApprovalsPage'))
 
 // ── Expenses (RH) ─────────────────────────────────────────────────────────────
 const ExpensesPage     = lazy(() => import('@/pages/expenses/ExpensesPage'))
@@ -313,6 +315,13 @@ export default function App() {
               </RoleGuard>
             } />
 
+            {/* Mes validations — un employé (chef d'équipe N+1) la retrouve dans Mon espace */}
+            <Route path="approvals" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly']} redirectTo="/mon-espace/validations">
+                <ApprovalsPage />
+              </RoleGuard>
+            } />
+
             <Route path="expenses-rh" element={
               <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager']}>
                 <ModuleGuard moduleKey="expenses">
@@ -527,6 +536,7 @@ export default function App() {
             <Route path="pointages"    element={<MesPointages />} />
             <Route path="avertissements" element={<MesAvertissements />} />
             <Route path="profil"       element={<MonProfil />} />
+            <Route path="validations"  element={<ApprovalsPage />} />
           </Route>
 
           {/* 404 */}

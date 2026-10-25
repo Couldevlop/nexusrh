@@ -14,7 +14,9 @@
     "days": "Jours",
     "reason": "Motif",
     "status": "Statut",
-    "actions": "Actions"
+    "actions": "Actions",
+    "step": "Étape",
+    "sla": "Échéance"
   },
   "halfDay": "½j",
   "fullDays": "{{count}}j",
@@ -29,5 +31,38 @@
     "placeholder": "Expliquer la raison du refus (optionnel)...",
     "cancel": "Annuler",
     "confirm": "Confirmer le refus"
+  },
+  "entry": {
+    "open": "Saisir une absence",
+    "title": "Saisir une absence pour un collaborateur",
+    "subtitle": "Saisie par un responsable de sa chaîne hiérarchique : vaut visa. Saisie RH : possible pour tout salarié.",
+    "employee": "Collaborateur",
+    "employeeFilter": "Filtrer par nom…",
+    "selectEmployee": "Sélectionner un collaborateur",
+    "type": "Type d'absence",
+    "selectType": "Sélectionner un type",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "halfDay": "Demi-journée",
+    "reason": "Motif",
+    "reasonPlaceholder": "Motif (optionnel)",
+    "submit": "Enregistrer l'absence",
+    "cancel": "Annuler",
+    "created": "Absence enregistrée.",
+    "error": "Enregistrement impossible. Réessayez.",
+    "maternity": {
+      "legal": "Durée légale : {{days}} jours calendaires ({{weeks}} semaines consécutives). La date de fin est proposée automatiquement.",
+      "multipleBirth": "Naissance multiple (+{{weeks}} semaines)",
+      "illness": "Maladie liée à la grossesse ou aux couches, constatée médicalement (+{{weeks}} semaines)",
+      "hospitalized": "Jours d'hospitalisation de l'enfant (prolongation)",
+      "total": "Durée totale : {{days}} jours calendaires"
+    },
+    "validation": {
+      "employeeRequired": "Collaborateur requis",
+      "typeRequired": "Type requis",
+      "startRequired": "Date début requise",
+      "endRequired": "Date fin requise",
+      "endBeforeStart": "La date de fin doit être postérieure ou égale au début"
+    }
   }
 }

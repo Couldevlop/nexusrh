@@ -1,0 +1,77 @@
+{
+  "title": "Mes validations",
+  "subtitle": "Demandes d'absence et notes de frais en attente de votre décision",
+  "groups": {
+    "actionable": "À traiter",
+    "readOnly": "Pour information"
+  },
+  "groupsHint": {
+    "readOnly": "Demandes visibles en lecture seule : elles ne sont pas encore à votre étape du circuit."
+  },
+  "empty": "Aucune validation en attente",
+  "emptyGroup": "Rien à traiter pour le moment",
+  "modules": {
+    "absences": "Absence",
+    "expenses": "Note de frais"
+  },
+  "step": {
+    "manager": "Visa N+{{level}}",
+    "hr": "Validation RH",
+    "done": "Circuit terminé"
+  },
+  "progress": "Étape {{done}}/{{total}} validée(s)",
+  "sla": {
+    "overdue": "En retard",
+    "dueSoon": "Échéance proche"
+  },
+  "waitingOther": "En attente d'un autre valideur",
+  "readOnlyWaiting": "Lecture seule — en attente du visa N+{{level}}",
+  "readOnlyWaitingHr": "Lecture seule — en attente de la validation RH",
+  "actions": {
+    "approve": "Approuver",
+    "reject": "Refuser",
+    "close": "Fermer",
+    "processNow": "Traiter maintenant",
+    "remindLater": "Me le rappeler plus tard"
+  },
+  "rejectModal": {
+    "title": "Motif du refus",
+    "placeholder": "Expliquer la raison du refus (optionnel)...",
+    "cancel": "Annuler",
+    "confirm": "Confirmer le refus"
+  },
+  "table": {
+    "employee": "Collaborateur",
+    "request": "Demande",
+    "step": "Étape",
+    "sla": "Échéance",
+    "actions": "Actions"
+  },
+  "banner": {
+    "overdue_one": "{{count}} validation en retard",
+    "overdue_other": "{{count}} validations en retard",
+    "dueSoon_one": "{{count}} arrive à échéance",
+    "dueSoon_other": "{{count}} arrivent à échéance",
+    "view": "Voir"
+  },
+  "reminder": {
+    "title": "Validations à traiter",
+    "intro": "Ces demandes ont dépassé ou approchent de leur échéance de validation :"
+  },
+  "summary": {
+    "actionable": "À traiter",
+    "overdue": "En retard",
+    "dueSoon": "Échéance proche",
+    "readOnly": "Pour information"
+  },
+  "widget": {
+    "title": "Mes validations",
+    "viewAll": "Tout voir"
+  },
+  "approved": "Demande validée",
+  "rejected": "Demande refusée",
+  "errors": {
+    "generic": "Action impossible. Réessayez.",
+    "load": "Impossible de charger les validations en attente."
+  }
+}

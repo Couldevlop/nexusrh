@@ -1002,6 +1002,42 @@ describe('PATCH /settings/workflow', () => {
     expect(res.statusCode).toBe(500)
   })
 
+  it('circuit : SLA, valideur RH et prévenance enregistrés (fusion jsonb)', async () => {
+    const validator = '11111111-1111-4111-8111-111111111111'
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })                     // valideur ∈ équipe RH
+      .mockResolvedValueOnce({ rows: [] })                                       // UPSERT
+      .mockResolvedValueOnce({ rows: [{ module: 'absences', levels_count: 3 }] }) // SELECT final
+    const config = { managerSlaDays: 1, hrSlaDays: 2, hrValidatorUserId: validator,
+      notice: { enabled: true, typeCodes: ['CP'], shortNoticeDays: 7, longNoticeDays: 30 } }
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'absences', levels_count: 3, config }],
+    })
+    expect(res.statusCode).toBe(200)
+    const upsert = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO'))
+    expect(String(upsert?.[0])).toContain('|| EXCLUDED.config')
+    expect(JSON.parse(upsert?.[1]?.[2] as string)).toEqual(config)
+  })
+
+  it('400 si le valideur RH désigné n’est pas de l’équipe RH', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'expenses', levels_count: 1, config: { hrValidatorUserId: '11111111-1111-4111-8111-111111111111' } }],
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toContain('équipe RH')
+  })
+
+  it('400 si config contient un champ inconnu (strict)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'admin')),
+      payload: [{ module: 'absences', levels_count: 1, config: { managerSlaDays: 1, autoApprove: true } }],
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it('403 si rôle hr_manager', async () => {
     const res = await app.inject({
       method: 'PATCH', url: '/settings/workflow', headers: auth(tokenFor(app, 'hr_manager')),

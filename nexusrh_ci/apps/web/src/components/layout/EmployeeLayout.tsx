@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare, Clock, AlertTriangle } from 'lucide-react'
+import { Outlet, NavLink, Link, useLocation } from 'react-router-dom'
+import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare, Clock, AlertTriangle, ListChecks, LayoutDashboard } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
+import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
+import { usePendingApprovals } from '@/components/approvals/workflow'
 
 interface EmployeeNavItem {
   to: string
@@ -31,6 +33,12 @@ const NAV: EmployeeNavItem[] = [
   { to: '/mon-espace/profil',       labelKey: 'nav.profile',     icon: User },
 ]
 
+// « Mes validations » pour un chef d'équipe au rôle employé (valideur N+1/N+2) :
+// entrée affichée seulement s'il a des demandes à suivre. Les rôles RH/manager
+// valident depuis l'espace RH (/approvals).
+const VALIDATIONS_ROUTE = '/mon-espace/validations'
+const VALIDATIONS_ITEM: EmployeeNavItem = { to: VALIDATIONS_ROUTE, labelKey: 'nav.validations', icon: ListChecks }
+
 const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/mon-espace': 'nav.titles.home',
   '/mon-espace/integration': 'nav.titles.integration',
@@ -44,6 +52,7 @@ const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/mon-espace/offres': 'nav.titles.offers',
   '/mon-espace/climat': 'nav.titles.climate',
   '/mon-espace/profil': 'nav.titles.profile',
+  '/mon-espace/validations': 'nav.titles.validations',
 }
 
 export default function EmployeeLayout() {
@@ -57,7 +66,16 @@ export default function EmployeeLayout() {
     : 'RH'
   // Module activable (ex. Badgeuse/Pointage, désactivé par défaut) : entrée
   // masquée si le tenant n'a pas activé le module — piloté par le super_admin.
-  const visibleNav = NAV.filter((item) => !item.moduleKey || isModuleEnabled(tenantConfig, item.moduleKey))
+  const moduleNav = NAV.filter((item) => !item.moduleKey || isModuleEnabled(tenantConfig, item.moduleKey))
+  const isEmployee = user?.role === 'employee'
+  const { data: pending } = usePendingApprovals(!!user)
+  const pendingCount = (pending?.summary?.actionable ?? 0) + (pending?.summary?.readOnly ?? 0)
+  // Inséré juste après « Accueil » : reste visible dans la barre mobile (5 premières entrées).
+  const visibleNav = isEmployee && pendingCount > 0
+    ? [...moduleNav.slice(0, 1), VALIDATIONS_ITEM, ...moduleNav.slice(1)]
+    : moduleNav
+  // Lien de la bannière d'échéances : page servie dans l'espace où l'utilisateur valide.
+  const approvalsHref = isEmployee ? VALIDATIONS_ROUTE : '/approvals'
 
   return (
     <div className="flex h-screen overflow-hidden flex-col">
@@ -101,6 +119,17 @@ export default function EmployeeLayout() {
 
           {/* Nav */}
           <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+            {/* RH / managers : retour à l'espace RH (ils sont aussi salariés) */}
+            {!isEmployee && (
+              <Link
+                to="/dashboard"
+                onClick={() => setSidebarOpen(false)}
+                className="mb-2 flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-accent-foreground"
+              >
+                <LayoutDashboard className="h-4 w-4 shrink-0" />
+                {t('nav.backToRh')}
+              </Link>
+            )}
             {visibleNav.map(({ to, labelKey, icon: Icon, end }) => (
               <NavLink
                 key={to}
@@ -142,9 +171,13 @@ export default function EmployeeLayout() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-auto bg-background pb-16 lg:pb-0">
-          <Outlet />
-        </main>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Échéances de validation : un chef d'équipe au rôle employé peut être valideur N+1 */}
+          <ApprovalAlerts href={approvalsHref} />
+          <main className="flex-1 overflow-auto bg-background pb-16 lg:pb-0">
+            <Outlet />
+          </main>
+        </div>
       </div>
 
       {/* Bottom tab bar — mobile uniquement */}

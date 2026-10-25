@@ -15,7 +15,9 @@
     "amount": "Montant",
     "status": "Statut",
     "submittedAt": "Date soumission",
-    "actions": "Actions"
+    "actions": "Actions",
+    "step": "Étape",
+    "sla": "Échéance"
   },
   "noDate": "—",
   "actions": {

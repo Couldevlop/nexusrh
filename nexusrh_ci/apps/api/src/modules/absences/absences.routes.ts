@@ -9,6 +9,11 @@ import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
+import {
+  checkNotice, denialMessage, evaluateRequest, hrCanSee, initialValidationLevel, isHrDecisionRole, loadManagerMap,
+  loadWorkflowSettings, managerChain, stepLabel, stepsFor, summarize, trailEntry,
+  type Actor, type ApprovalTrailEntry,
+} from '../../services/approval-workflow.service.js'
 import { isMaternityCode, maternityRule, resolveAbsenceRequest } from '../../services/absence-duration.service.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { checkPaidLeaveRequest, loadLeavePolicyForEmployee, refreshPaidLeaveBalance } from '../../services/paid-leave.service.js'
@@ -62,19 +67,6 @@ async function userIdOfEmployee(schema: string, employeeId: string | null | unde
 }
 
 /**
- * OWASP A01 — un manager ne peut approuver/rejeter que les absences des
- * employés de son périmètre (équipe directe, ou branche selon le réglage
- * tenant). Auto-approbation interdite (isInManagerScope est faux sur soi).
- */
-async function managerCanActOnAbsence(
-  schema: string,
-  managerEmployeeId: string | null | undefined,
-  absenceEmployeeId: string,
-): Promise<boolean> {
-  return isInManagerScope(rawPool, schema, managerEmployeeId, absenceEmployeeId)
-}
-
-/**
  * OWASP A01 — portée de CONSULTATION d'un manager : son périmètre, et
  * lui-même. Fail-closed (manager sans dossier employé → aucun accès).
  * Distinct de `managerCanActOnAbsence` qui interdit volontairement l'auto-action
@@ -88,6 +80,25 @@ async function managerCanViewEmployee(
   if (!managerEmployeeId) return false
   if (managerEmployeeId === targetEmployeeId) return true
   return isInManagerScope(rawPool, schema, managerEmployeeId, targetEmployeeId)
+}
+
+/** Statuts « en attente de validation » (création = 'pending', circuit = 'submitted'). */
+const PENDING_STATUSES = ['pending', 'submitted']
+
+/** Dossier employé de l'utilisateur connecté (token, sinon email). */
+async function actorEmployeeId(schema: string, user: { employeeId?: string | null; email?: string }): Promise<string | null> {
+  if (user.employeeId) return user.employeeId
+  if (!user.email) return null
+  try {
+    const r = await rawPool.query<{ id: string }>(
+      `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [user.email],
+    )
+    return r?.rows?.[0]?.id ?? null
+  } catch { return null }
+}
+
+async function actorOf(schema: string, user: { sub: string; role: string; employeeId?: string | null; email?: string }): Promise<Actor> {
+  return { role: user.role, userId: user.sub, employeeId: await actorEmployeeId(schema, user) }
 }
 
 function auditLogAbsence(
@@ -116,13 +127,16 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const params: unknown[] = []
       let idx = 1
       if (employeeId) { sql += ` AND a.employee_id = $${idx++}`; params.push(employeeId) }
-      if (status)     { sql += ` AND a.status = $${idx++}`; params.push(status) }
+      if (status === 'submitted' || status === 'pending') {
+        sql += ` AND a.status = ANY($${idx++}::text[])`; params.push(PENDING_STATUSES)
+      } else if (status) { sql += ` AND a.status = $${idx++}`; params.push(status) }
       if (year)       { sql += ` AND EXTRACT(YEAR FROM a.start_date) = $${idx++}`; params.push(parseInt(year)) }
       // REP — "Absences aujourd'hui" : ne compter que les absences en cours ce
       // jour (la date du jour est dans l'intervalle start_date..end_date).
       if (today === 'true' || today === '1') {
         sql += ` AND CURRENT_DATE BETWEEN a.start_date AND a.end_date`
       }
+      let managerEmpId: string | null = null
       if (request.user.role === 'manager') {
         const emp = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
@@ -130,11 +144,44 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A01 — fail-closed : un manager sans dossier employé associé ne
         // doit voir AUCUNE absence (jamais toutes celles du tenant).
         if (!emp.rows[0]) return reply.send({ data: [] })
-        sql += ` AND ${managerScopeSql(schema, 'e', `$${idx++}`)}`; params.push(emp.rows[0].id)
+        managerEmpId = emp.rows[0].id as string
+        // Son périmètre, plus les demandes de sa branche en attente (visa N+2,
+        // N+3… quand le tenant a plusieurs niveaux) — filtrées ci-dessous.
+        const p = `$${idx++}`; params.push(managerEmpId)
+        sql = sql.replace('SELECT a.*,', `SELECT a.*, (${managerScopeSql(schema, 'e', p)}) AS in_scope,`)
+        sql += ` AND (${managerScopeSql(schema, 'e', p)}
+                 OR (a.status IN ('pending','submitted') AND ${managerScopeSql(schema, 'e', p, { forceHierarchy: true })}))`
       }
       sql += ` ORDER BY a.created_at DESC`
       const res = await rawPool.query(sql, params)
-      return reply.send({ data: res.rows })
+      const rows = (res?.rows ?? []) as Array<Record<string, unknown>>
+      if (rows.length === 0) return reply.send({ data: rows })
+
+      // Circuit de validation : étape courante, échéance, droit d'agir.
+      const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
+      const managerOf = await loadManagerMap(rawPool, schema)
+      const actor = managerEmpId
+        ? { role: request.user.role, userId: request.user.sub, employeeId: managerEmpId }
+        : await actorOf(schema, request.user)
+      const data = rows
+        .map(({ in_scope: inScope, ...row }) => ({
+          ...row,
+          inScope: inScope !== false,
+          workflow: summarize(settings, managerOf, {
+            employeeId: String(row.employee_id),
+            validationLevel: Number(row.validation_level ?? 0),
+            status: PENDING_STATUSES.includes(String(row.status)) ? 'submitted' : String(row.status),
+            submittedAt: new Date(String(row.created_at ?? new Date().toISOString())),
+            trail: Array.isArray(row.approval_trail) ? row.approval_trail as ApprovalTrailEntry[] : [],
+          }, actor),
+        }))
+        // Manager : son périmètre + ce qui attend son visa. RH : une absence en
+        // attente ne lui apparaît qu'une fois les visas hiérarchiques obtenus.
+        .filter((row) => managerEmpId !== null
+          ? row.inScope || row.workflow.canAct
+          : hrCanSee('absences', row.workflow))
+        .map(({ inScope: _inScope, ...row }) => row)
+      return reply.send({ data })
     },
   })
 
@@ -259,13 +306,24 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
 
-      // OWASP A01 (IDOR) — un employee ne peut créer une absence QUE pour
-      // lui-même : on ignore body.employeeId et on force son propre dossier.
-      // Seuls les rôles RH (admin/hr_manager/hr_officer) peuvent saisir pour autrui.
-      const isHrRole = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
-      let employeeId = isHrRole
-        ? (body.employeeId ?? request.user.employeeId ?? null)
-        : (request.user.employeeId ?? null)
+      // OWASP A01 (IDOR) — saisie pour autrui : l'équipe RH pour tout salarié,
+      // un responsable pour son équipe (sa branche). Les autres saisissent pour
+      // eux-mêmes (body.employeeId ignoré).
+      const isHrRole = isHrDecisionRole(request.user.role)
+      let employeeId: string | null = request.user.employeeId ?? null
+      if (body.employeeId && body.employeeId !== employeeId) {
+        if (isHrRole) {
+          employeeId = body.employeeId
+        } else {
+          const creatorEmp = await actorEmployeeId(schema, request.user)
+          const chain = creatorEmp ? managerChain(body.employeeId, await loadManagerMap(rawPool, schema), 10) : []
+          if (creatorEmp && chain.includes(creatorEmp)) {
+            employeeId = body.employeeId
+          } else if (request.user.role === 'manager') {
+            return reply.status(403).send({ error: 'Vous ne pouvez saisir une absence que pour vous-même ou votre équipe' })
+          }
+        }
+      }
       if (!employeeId) {
         const r = await rawPool.query(
           `SELECT id FROM "${schema}".employees WHERE email = $1 LIMIT 1`, [request.user.email]
@@ -288,6 +346,13 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let days = rules.days
       if (body.halfDay && rules.mode === 'working_days') days = 0.5
 
+      // Délai de prévenance (absences planifiables) — la RH peut régulariser.
+      const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
+      if (!isHrRole) {
+        const noticeError = checkNotice(settings.notice, rules.code, days, body.startDate, new Date())
+        if (noticeError) return reply.status(422).send({ error: noticeError, code: 'NOTICE_TOO_SHORT' })
+      }
+
       // Congés payés : contrôle du solde acquis à date (paramétrable par tenant)
       const leaveCheck = await checkPaidLeaveRequest(rawPool, schema, employeeId, body.absenceTypeId, days)
       if (leaveCheck?.blocked) {
@@ -297,11 +362,23 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Saisie par un responsable de la chaîne : vaut visa jusqu'à son niveau.
+      let validationLevel = 0
+      const trail: ApprovalTrailEntry[] = []
+      if (employeeId !== (request.user.employeeId ?? null)) {
+        const creator = await actorOf(schema, request.user)
+        const steps = stepsFor(settings.levels, await loadManagerMap(rawPool, schema), employeeId)
+        validationLevel = initialValidationLevel(steps, creator.employeeId, employeeId)
+        for (let i = 0; i < validationLevel; i++) trail.push({ ...trailEntry(i, steps[i]!, creator, false), onCreation: true })
+      }
+
       const res = await rawPool.query(
         `INSERT INTO "${schema}".absences
-           (employee_id, absence_type_id, start_date, end_date, days, half_day, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [employeeId, body.absenceTypeId, body.startDate, body.endDate, days, body.halfDay ?? false, body.reason ?? null]
+           (employee_id, absence_type_id, start_date, end_date, days, half_day, reason,
+            status, created_by, validation_level, approval_trail)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'submitted',$8,$9,$10::jsonb) RETURNING *`,
+        [employeeId, body.absenceTypeId, body.startDate, body.endDate, days, body.halfDay ?? false, body.reason ?? null,
+         request.user.sub, validationLevel, JSON.stringify(trail)]
       )
 
       // Incrémenter pending dans absence_balances
@@ -376,13 +453,13 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const schema = request.user.schemaName
 
-      const cfgRes = await rawPool.query<{ levels_count: number }>(
-        `SELECT levels_count FROM "${schema}".workflow_configs WHERE module = 'absences' LIMIT 1`
-      )
-      const levelsCount = cfgRes.rows[0]?.levels_count ?? 1
+      const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
 
-      const cur = await rawPool.query<{ validation_level: number; status: string; employee_id: string; days: number; absence_type_id: string }>(
-        `SELECT validation_level, status, employee_id, days, absence_type_id
+      const cur = await rawPool.query<{
+        validation_level: number; status: string; employee_id: string; days: number; absence_type_id: string
+        created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
+      }>(
+        `SELECT validation_level, status, employee_id, days, absence_type_id, created_at, approval_trail
          FROM "${schema}".absences WHERE id = $1`, [id]
       )
       const absence = cur.rows[0]
@@ -390,26 +467,30 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       if (absence.status === 'approved') return reply.status(422).send({ error: 'Déjà approuvée' })
       if (absence.status === 'rejected') return reply.status(422).send({ error: 'Déjà rejetée' })
 
-      // OWASP A01 : un manager ne peut approuver que SES subordonnés directs.
-      // admin/hr_manager/hr_officer ont la portée globale du tenant.
-      if (request.user.role === 'manager') {
-        const allowed = await managerCanActOnAbsence(schema, request.user.employeeId, absence.employee_id)
-        if (!allowed) {
-          return reply.status(403).send({ error: 'Vous ne pouvez approuver que les absences de votre équipe directe' })
-        }
+      // Circuit N+1 … N+n → RH (OWASP A01) : le valideur de l'étape agit ;
+      // l'équipe RH prend la main une fois l'échéance dépassée. Jamais sur soi.
+      const actor = await actorOf(schema, request.user)
+      const ev = evaluateRequest(settings, await loadManagerMap(rawPool, schema), {
+        employeeId: absence.employee_id, validationLevel: absence.validation_level, status: 'submitted',
+        submittedAt: new Date(absence.created_at ?? Date.now()), trail: absence.approval_trail ?? [],
+      }, actor)
+      if (!ev.decision.allowed) {
+        return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'absence') })
       }
-
-      const nextLevel = absence.validation_level + 1
-      const isApproved = nextLevel >= levelsCount
+      const { steps, index, step } = ev
+      const override = ev.decision.override
+      const isApproved = step.kind === 'hr'
+      const nextLevel = index + 1
 
       const res = await rawPool.query(
         `UPDATE "${schema}".absences SET
            validation_level = $1, status = $2,
-           approved_by = $3, approved_at = $4, updated_at = now()
+           approved_by = $3, approved_at = $4, updated_at = now(),
+           approval_trail = COALESCE(approval_trail, '[]'::jsonb) || $6::jsonb
          WHERE id = $5 RETURNING *`,
         [nextLevel, isApproved ? 'approved' : 'submitted',
          isApproved ? request.user.sub : null,
-         isApproved ? new Date() : null, id]
+         isApproved ? new Date() : null, id, JSON.stringify([trailEntry(index, step, actor, override)])]
       )
 
       if (isApproved) {
@@ -426,7 +507,8 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       auditLogAbsence(schema, request.user.sub,
         isApproved ? 'absence.approved' : 'absence.approval_step',
         id,
-        { level: nextLevel, totalLevels: levelsCount, fullyApproved: isApproved,
+        { level: nextLevel, totalLevels: steps.length, fullyApproved: isApproved,
+          step: step.kind === 'hr' ? 'hr' : `n+${step.level}`, escalated: override,
           employeeId: absence.employee_id },
         request.ip ?? null)
 
@@ -440,9 +522,19 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
           `Votre demande d'absence (${absence.days} j) a été approuvée.`, { absenceId: id }))
       }
 
+      const next = steps[nextLevel]
+      if (!isApproved && next?.kind === 'manager') {
+        // Étape suivante hiérarchique : prévenir le responsable (la RH voit la file).
+        void userIdOfEmployee(schema, next.approverEmployeeId).then(uid => notifyUser(
+          schema, uid, 'absence_request', 'Absence à viser',
+          `Une demande d'absence (${absence.days} j) attend votre visa (N+${next.level}).`, { absenceId: id }))
+      }
+
       return reply.send({
         data: res.rows[0],
-        message: isApproved ? 'Absence approuvée' : `Niveau ${nextLevel}/${levelsCount} validé`,
+        message: isApproved
+          ? 'Absence approuvée'
+          : `Étape ${nextLevel}/${steps.length} validée — suite : ${next ? stepLabel(next) : 'validation RH'}`,
         fullyApproved: isApproved,
       })
     },
@@ -457,18 +549,29 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       const { reason } = (request.body as { reason?: string }) ?? {}
       const schema = request.user.schemaName
 
-      const cur = await rawPool.query<{ employee_id: string; days: number; absence_type_id: string; start_date: string }>(
-        `SELECT employee_id, days, absence_type_id, start_date FROM "${schema}".absences WHERE id = $1`, [id]
+      const cur = await rawPool.query<{
+        employee_id: string; days: number; absence_type_id: string; start_date: string
+        validation_level?: number; status?: string; created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
+      }>(
+        `SELECT employee_id, days, absence_type_id, start_date, validation_level, status, created_at, approval_trail
+         FROM "${schema}".absences WHERE id = $1`, [id]
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
+      if (absence.status && !PENDING_STATUSES.includes(absence.status)) {
+        return reply.status(422).send({ error: 'Seule une demande en attente peut être refusée' })
+      }
 
-      // OWASP A01 : un manager ne peut rejeter que les absences de son équipe directe
-      if (request.user.role === 'manager') {
-        const allowed = await managerCanActOnAbsence(schema, request.user.employeeId, absence.employee_id)
-        if (!allowed) {
-          return reply.status(403).send({ error: 'Vous ne pouvez rejeter que les absences de votre équipe directe' })
-        }
+      // OWASP A01 : refus par le valideur de l'étape (ou la RH après échéance),
+      // jamais par le demandeur lui-même.
+      const actor = await actorOf(schema, request.user)
+      const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
+      const ev = evaluateRequest(settings, await loadManagerMap(rawPool, schema), {
+        employeeId: absence.employee_id, validationLevel: absence.validation_level ?? 0, status: 'submitted',
+        submittedAt: new Date(absence.created_at ?? Date.now()), trail: absence.approval_trail ?? [],
+      }, actor)
+      if (!ev.decision.allowed) {
+        return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'absence') })
       }
 
       const res = await rawPool.query(
