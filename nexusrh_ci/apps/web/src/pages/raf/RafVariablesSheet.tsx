@@ -143,7 +143,9 @@ export default function RafVariablesSheet({ periodId, onSubmitted }: { periodId:
           <ListChecks className="h-4 w-4" />
           {t('sheet.validatedCounter', { validated: readiness.validatedCount, total: readiness.totalEmployees })}
         </span>
-        {readiness.ready ? (
+        {!editable ? (
+          <span className="inline-flex items-center gap-1 text-muted-foreground"><Send className="h-4 w-4" />{t('sheet.locked')}</span>
+        ) : readiness.ready ? (
           <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="h-4 w-4" />{t('sheet.ready')}</span>
         ) : (
           <span className="inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="h-4 w-4" />{t('sheet.notReady')}</span>

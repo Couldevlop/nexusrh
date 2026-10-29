@@ -61,7 +61,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
     baseSalary: '', weeklyHours: '40',
     mobileMoneyProvider: '', mobileMoneyPhone: '',
     iban: '', bankName: '', paymentMethod: 'mobile_money',
-    city: 'Abidjan', maritalStatus: '', childrenCount: '0',
+    city: 'Abidjan', maritalStatus: '', childrenCount: '0', nationality: '',
   })
   const [custom, setCustom] = useState<CustomFieldValues>({})
   const fieldDefs = useEmployeeFieldDefinitions()
@@ -133,6 +133,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         city: form.city || 'Abidjan',
         ...(form.maritalStatus ? { maritalStatus: form.maritalStatus } : {}),
         childrenCount: parseInt(form.childrenCount, 10) || 0,
+        ...(form.nationality.trim() ? { nationality: form.nationality.trim() } : {}),
         ...(Object.keys(customFields).length ? { customFields } : {}),
       })
       onCreated(`${form.firstName} ${form.lastName}`)
@@ -296,6 +297,9 @@ function CreateEmployeeModal({ onClose, onCreated }: {
               <div><label className={labelCls}>{t('form.fields.childrenCount')}</label>
                 <input type="number" min={0} max={30} className={inputCls}
                   value={form.childrenCount} onChange={set('childrenCount')} /></div>
+              <div><label className={labelCls}>{t('form.fields.nationality')}</label>
+                <input className={inputCls} placeholder={t('form.fields.nationalityPlaceholder')}
+                  value={form.nationality} onChange={set('nationality')} /></div>
             </div>
           </fieldset>
 
@@ -457,7 +461,7 @@ interface EmployeeDetail {
   contract_type: string | null; hire_date: string | null; weekly_hours: string | null
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
   iban: string | null; bank_name: string | null; payment_method: string | null
-  marital_status: string | null; children_count: number | null
+  marital_status: string | null; children_count: number | null; nationality?: string | null
   custom_fields?: CustomFieldValues | null
 }
 
@@ -521,6 +525,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       mobileMoneyProvider: canonicalMmProvider(emp.mobile_money_provider), mobileMoneyPhone: emp.mobile_money_phone ?? '',
       iban: emp.iban ?? '', bankName: emp.bank_name ?? '', paymentMethod: emp.payment_method ?? 'mobile_money',
       maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
+      nationality: emp.nationality ?? '',
     }
     const numericKeys = new Set(['baseSalary', 'weeklyHours', 'childrenCount'])
     const payload: Record<string, unknown> = {}
@@ -693,6 +698,8 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   </select></div>
                 <div><label className={labelCls}>{t('form.fields.childrenCount')}</label>
                   <input type="number" min={0} max={30} className={inputCls} value={val('childrenCount', emp.children_count)} onChange={set('childrenCount')} /></div>
+                <div><label className={labelCls}>{t('form.fields.nationality')}</label>
+                  <input className={inputCls} placeholder={t('form.fields.nationalityPlaceholder')} value={val('nationality', emp.nationality)} onChange={set('nationality')} /></div>
               </div>
             </fieldset>
 

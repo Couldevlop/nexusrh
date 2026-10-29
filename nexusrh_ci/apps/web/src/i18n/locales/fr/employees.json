@@ -55,6 +55,8 @@
       "bankName": "Banque",
       "maritalStatus": "Statut marital",
       "childrenCount": "Enfants à charge",
+      "nationality": "Nationalité",
+      "nationalityPlaceholder": "Ex : Ivoirienne, Béninoise",
       "paymentMethod": "Mode de réception du salaire"
     },
     "placeholders": {

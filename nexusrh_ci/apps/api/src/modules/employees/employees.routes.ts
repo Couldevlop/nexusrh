@@ -12,6 +12,7 @@ import { parseInterviewFocus } from '../../services/interview-focus.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
+import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import {
@@ -68,13 +69,8 @@ export const employeePhotoUrl = (employeeId: string) => `/employees/${employeeId
 const emptyToUndef = (v: unknown) => (v === '' || v === null ? undefined : v)
 const nniField = z.preprocess(emptyToUndef,
   z.string().regex(/^CI\d{9,13}$/, 'NNI invalide : format attendu CI suivi de 9 à 13 chiffres (ex : CI123456789)').optional())
-// N° de sécurité sociale : format CNPS ivoirien strict pour un numéro préfixé
-// CI ; pour une filiale hors CI (CNSS Bénin/Burkina, IPRES…), le numéro est
-// préfixé du code pays ISO à 2 lettres (BJ-…, BF-…) puis 4 à 20 caractères.
-export const CNPS_CI_RE = /^CI\d{8}[A-Z]$/
-export const SOCIAL_ID_FOREIGN_RE = /^(?!CI)[A-Z]{2}-?[A-Z0-9-]{4,20}$/
 const cnpsField = z.preprocess(emptyToUndef,
-  z.string().refine((v) => CNPS_CI_RE.test(v) || SOCIAL_ID_FOREIGN_RE.test(v),
+  z.string().refine(isValidSocialId,
     'Numéro de sécurité sociale invalide : CNPS CI = CI + 8 chiffres + 1 lettre (ex : CI12345678A) ; hors Côte d\'Ivoire = code pays + numéro (ex : BJ-1234567)').optional())
 // Téléphone Mobile Money : les employés peuvent venir de toute la zone (CI,
 // Burkina, Mali, Niger, Sénégal, Tchad, Congo, RDC, Cameroun…). On valide donc
@@ -126,6 +122,7 @@ const createEmployeeSchema = z.object({
   paymentMethod:       z.enum(['mobile_money', 'bank_transfer']).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
+  nationality:         z.string().trim().min(2).max(100).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
   // Champs personnalisés du tenant — validés contre leur définition au handler.
   customFields:        z.record(z.unknown()).optional(),
@@ -160,6 +157,7 @@ const patchEmployeeSchema = z.object({
   paymentMethod:       z.enum(['mobile_money', 'bank_transfer']).optional(),
   city:                z.string().max(100).optional(),
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
+  nationality:         z.string().trim().min(2).max(100).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
   isActive:            z.boolean().optional(),
   profilePhotoUrl:     z.string().max(2000).optional(),
@@ -454,8 +452,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
               nni, cnps_number, mobile_money_provider, mobile_money_phone,
               department_id, manager_id, legal_entity_id, job_title, job_level, contract_type,
               hire_date, base_salary, weekly_hours, professional_category,
-              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb)
+              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields, nationality)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,COALESCE($28,'Ivoirienne'))
            RETURNING *`,
           [
             body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
@@ -471,7 +469,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             encryptIfPresent(body.iban), body.bankName ?? null,
             body.paymentMethod ?? 'mobile_money',
             body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
-            JSON.stringify(custom.values),
+            JSON.stringify(custom.values), body.nationality ?? null,
           ]
         )
       } catch (err) {

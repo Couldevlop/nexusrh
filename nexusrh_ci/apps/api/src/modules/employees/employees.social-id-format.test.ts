@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CNPS_CI_RE, SOCIAL_ID_FOREIGN_RE } from './employees.routes.js'
-
-const valid = (v: string) => CNPS_CI_RE.test(v) || SOCIAL_ID_FOREIGN_RE.test(v)
+import { isValidSocialId as valid } from './social-id.js'
 
 describe('format du n° de sécurité sociale (multi-pays)', () => {
   it('accepte le format CNPS ivoirien strict', () => {

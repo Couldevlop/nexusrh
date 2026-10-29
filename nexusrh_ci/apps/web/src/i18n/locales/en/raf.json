@@ -29,6 +29,7 @@
     "validatedCounter": "{{validated}}/{{total}} employees validated",
     "ready": "Ready to submit",
     "notReady": "Submission blocked: complete the employee records and validate each employee",
+    "locked": "Payroll submitted — read-only sheet",
     "smigHint": "Minimum wage of pack {{pack}}: {{smig}} per month",
     "incompleteTitle_one": "{{count}} incomplete or non-compliant employee record",
     "incompleteTitle_other": "{{count}} incomplete or non-compliant employee records",
