@@ -459,6 +459,12 @@ describe('POST /platform/tenants/:id/reset-admin', () => {
     expect(seedRulesMock).toHaveBeenCalled()
     expect(seedAbsenceMock).toHaveBeenCalled()
     expect(sendResetEmailMock).toHaveBeenCalledTimes(1)
+    // Fiche employé « à compléter » liée à l'admin recréé (lien par email puis création)
+    const calls = queryMock.mock.calls.map(c => ({ sql: String(c[0]).replace(/\s+/g, ' '), params: c[1] }))
+    const create = calls.find(c => c.sql.includes('INSERT INTO "tenant_newco".employees'))
+    expect(calls.some(c => c.sql.includes('UPDATE "tenant_newco".users u SET employee_id = e.id'))).toBe(true)
+    expect(create?.sql).toContain("'Administrateur RH', CURRENT_DATE, 0, true")
+    expect(create?.params).toEqual(['newadmin@newco.ci'])
   })
 
   it('erreur interne (SELECT tenant rejette) → 500', async () => {

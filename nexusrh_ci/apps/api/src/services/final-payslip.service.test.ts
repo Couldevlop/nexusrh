@@ -161,6 +161,15 @@ describe('accès base', () => {
     expect(String(sql)).not.toContain('offboarding_cases')
     expect(params).toEqual(['2026-10-01', '2026-10-31', 'e2'])
   })
+  it('population : fiche « à compléter » (salaire 0) jamais payée — requête principale ET repli', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    await loadPayrollPopulation('tenant_x', '2026-10')
+    expect(String(queryMock.mock.calls[0]![0])).toContain('COALESCE(e.base_salary, 0) > 0')
+    queryMock.mockReset()
+    queryMock.mockRejectedValueOnce(new Error('relation does not exist')).mockResolvedValueOnce({ rows: [] })
+    await loadPayrollPopulation('tenant_x', '2026-10')
+    expect(String(queryMock.mock.calls[1]![0])).toContain('COALESCE(e.base_salary, 0) > 0')
+  })
   it('marque le solde payé', async () => {
     await markSettlementPaid('tenant_x', 'o1', '2026-10', 'ps1')
     const [sql, params] = queryMock.mock.calls[0]!

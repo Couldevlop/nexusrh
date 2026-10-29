@@ -48,5 +48,9 @@
   "approvals": "Mes validations",
   "mySpace": "Mon espace",
   "approvalsBadge_one": "{{count}} demande à traiter",
-  "approvalsBadge_other": "{{count}} demandes à traiter"
+  "approvalsBadge_other": "{{count}} demandes à traiter",
+  "incompleteProfile": {
+    "message": "Complétez votre fiche employé (poste, salaire) pour apparaître en paie.",
+    "cta": "Compléter ma fiche"
+  }
 }
