@@ -577,6 +577,8 @@
       "functionLabel": "Fonction",
       "functionPlaceholder": "Ex. : Chef de service paie, DRH",
       "sla": "Échéance (jours)",
+      "notEnoughApproversTitle": "Pas assez d'approbateurs pour ce circuit",
+      "notEnoughApprovers": "Un circuit à {{levels}} niveau(x) exige {{required}} personnes distinctes : l'initiateur de la clôture, puis un approbateur différent par niveau. Seules {{available}} personne(s) active(s) peuvent y participer (administrateurs, responsables RH et gestionnaires RH désignés valideurs). La paie resterait bloquée en validation : réduisez le nombre de niveaux ou créez des comptes administrateur / responsable RH.",
       "sodHint": "L'initiateur ne valide jamais sa propre clôture : s'il est désigné, le niveau est ouvert d'emblée au reste de l'équipe RH. Une fois l'échéance dépassée, tout administrateur ou responsable RH (hors initiateur) peut reprendre la main.",
       "duplicate": "Une même personne ne peut pas être désignée à deux niveaux."
     },

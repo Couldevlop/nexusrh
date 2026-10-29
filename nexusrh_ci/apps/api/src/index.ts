@@ -3,6 +3,7 @@ import { config } from './config.js'
 import { createPlatformSchema, createDroitCiSchema } from './db/provisioning.js'
 import { countArticles } from './modules/referentiels/legal-articles.repository.js'
 import { seedReferentiel } from './modules/referentiels/referentiels.service.js'
+import { startPayrollReminderScheduler } from './modules/payroll/payroll-reminder.scheduler.js'
 
 async function main() {
   // ── Initialiser le schéma platform si absent ───────────────────────────────
@@ -48,7 +49,11 @@ async function main() {
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
+  // Relance planifiée des valideurs de paie (BullMQ, non bloquant, jamais fatal)
+  const stopPayrollReminders = await startPayrollReminderScheduler(app.log)
+
   const shutdown = async (signal: string) => {
+    await stopPayrollReminders()
     app.log.info(`Signal ${signal} reçu — arrêt gracieux...`)
     await app.close()
     process.exit(0)

@@ -428,6 +428,10 @@
     "previous": "Previous application",
     "next": "Next application",
     "empty": "No application pending",
-    "emptyHint": "Every application for this job has been decided. Kept candidates are in the pipeline."
+    "emptyHint": "Every application for this job has been decided. Kept candidates are in the pipeline.",
+    "selectJob": "Job to screen",
+    "selectJobPlaceholder": "— Choose a job —",
+    "selectJobHint": "Choose a job to review the applications awaiting screening.",
+    "noJobs": "No jobs yet: create a job in the Jobs tab first."
   }
 }

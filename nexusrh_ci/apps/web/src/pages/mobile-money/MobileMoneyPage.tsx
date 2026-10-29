@@ -2,6 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { recentMonths } from '@/lib/months'
 import { useAuthStore } from '@/stores/authStore'
 import BankFormatsSection from './BankFormatsSection'
 import { Smartphone, Loader2, Send, ArrowLeftRight, Landmark, Download, CheckCircle2, AlertCircle } from 'lucide-react'
@@ -105,12 +106,7 @@ export default function MobileMoneyPage() {
             <select value={month} onChange={e => setMonth(e.target.value)}
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
               <option value="">{t('campaign.selectMonth')}</option>
-              {Array.from({ length: 12 }, (_, i) => {
-                const d = new Date()
-                d.setMonth(d.getMonth() - i)
-                const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-                return <option key={m} value={m}>{formatMonth(m)}</option>
-              })}
+              {recentMonths(12).map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
             </select>
           </div>
           <button
@@ -310,11 +306,7 @@ function BankTransferSection() {
           <select value={month} onChange={e => { setMonth(e.target.value); setResult(null) }}
             className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
             <option value="">{t('campaign.selectMonth')}</option>
-            {Array.from({ length: 12 }, (_, i) => {
-              const d = new Date(); d.setMonth(d.getMonth() - i)
-              const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-              return <option key={m} value={m}>{formatMonth(m)}</option>
-            })}
+            {recentMonths(12).map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
           </select>
         </div>
       </div>

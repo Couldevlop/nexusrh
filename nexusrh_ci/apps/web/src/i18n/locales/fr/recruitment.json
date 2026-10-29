@@ -428,6 +428,10 @@
     "previous": "Dossier précédent",
     "next": "Dossier suivant",
     "empty": "Aucun dossier en attente",
-    "emptyHint": "Toutes les candidatures de cette offre ont été tranchées. Les candidats retenus sont dans le pipeline."
+    "emptyHint": "Toutes les candidatures de cette offre ont été tranchées. Les candidats retenus sont dans le pipeline.",
+    "selectJob": "Offre à pré-trier",
+    "selectJobPlaceholder": "— Choisir une offre —",
+    "selectJobHint": "Choisissez une offre pour revoir les candidatures en attente de pré-tri.",
+    "noJobs": "Aucune offre : créez d'abord une offre dans l'onglet Offres."
   }
 }

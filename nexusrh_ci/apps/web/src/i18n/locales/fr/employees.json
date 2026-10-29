@@ -36,6 +36,7 @@
       "email": "Email",
       "phone": "Téléphone",
       "birthDate": "Date de naissance",
+      "employeeNumber": "Matricule",
       "nni": "NNI (chiffré)",
       "cnpsNumber": "N° CNPS",
       "city": "Ville",
@@ -60,6 +61,7 @@
       "paymentMethod": "Mode de réception du salaire"
     },
     "placeholders": {
+      "employeeNumber": "Automatique si vide (MAT00001…)",
       "phone": "+225 07 XX XX XX XX",
       "professionalCategory": "ex. 3ème catégorie",
       "baseSalary": "≥ 75 000",
@@ -131,6 +133,7 @@
       "phone": "Téléphone",
       "gender": "Genre",
       "birthDate": "Date de naissance",
+      "employeeNumber": "Matricule",
       "nni": "NNI",
       "cnpsNumber": "N° CNPS",
       "familySituation": "Situation familiale",
