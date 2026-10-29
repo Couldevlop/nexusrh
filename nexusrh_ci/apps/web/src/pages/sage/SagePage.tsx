@@ -10,6 +10,8 @@ const MATRICULE_SOURCES = ['employee_number', 'id'] as const
 
 interface SageConfig { enabled: boolean; separator: string; include_header: boolean; matricule_source: string }
 type ExportKind = 'employees' | 'variable_elements' | 'payroll'
+interface SageEntity { id: string; name: string; cnps_number: string | null }
+interface SageEntityScope { multiEntity: boolean; entities: SageEntity[] }
 
 async function downloadCsv(url: string, filename: string): Promise<void> {
   const res = await api.get(url, { responseType: 'blob' })
@@ -43,6 +45,15 @@ export default function SagePage() {
     onError: () => setFlash({ ok: false, msg: t('saveError') }),
   })
 
+  // Filiales : sélecteur affiché seulement pour un tenant multi-filiales (même
+  // règle que les colonnes Societe / NumeroEmployeur ajoutées côté API).
+  const entitiesQ = useQuery({
+    queryKey: ['sage', 'legal-entities'],
+    queryFn: async () => (await api.get('/sage/legal-entities')).data.data as SageEntityScope,
+  })
+  const entities = entitiesQ.data?.multiEntity ? entitiesQ.data.entities : []
+  const [legalEntityId, setLegalEntityId] = useState('')
+
   const [period, setPeriod] = useState('')
   const [busy, setBusy] = useState<ExportKind | null>(null)
   async function runExport(kind: ExportKind) {
@@ -50,10 +61,14 @@ export default function SagePage() {
       setFlash({ ok: false, msg: t('exports.periodRequired') }); return
     }
     setBusy(kind)
+    const params = new URLSearchParams()
+    if (kind !== 'employees') params.set('period', period)
+    if (legalEntityId) params.set('legalEntityId', legalEntityId)
+    const qs = params.toString() ? `?${params.toString()}` : ''
     try {
-      if (kind === 'employees') await downloadCsv('/sage/export/employees.csv', 'sage_employees.csv')
-      else if (kind === 'variable_elements') await downloadCsv(`/sage/export/variable-elements.csv?period=${period}`, `sage_variable_elements_${period}.csv`)
-      else await downloadCsv(`/sage/export/payroll.csv?period=${period}`, `sage_payroll_${period}.csv`)
+      if (kind === 'employees') await downloadCsv(`/sage/export/employees.csv${qs}`, 'sage_employees.csv')
+      else if (kind === 'variable_elements') await downloadCsv(`/sage/export/variable-elements.csv${qs}`, `sage_variable_elements_${period}.csv`)
+      else await downloadCsv(`/sage/export/payroll.csv${qs}`, `sage_payroll_${period}.csv`)
     } catch { setFlash({ ok: false, msg: t('saveError') }) } finally { setBusy(null) }
   }
 
@@ -112,11 +127,23 @@ export default function SagePage() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">{t('exports.title')}</h2>
-          <div>
-            <label className="mr-2 text-xs text-muted-foreground">{t('exports.period')}</label>
-            <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 text-sm" />
+          <div className="flex flex-wrap items-center gap-3">
+            {entities.length > 0 && (
+              <div>
+                <label htmlFor="sage-legal-entity" className="mr-2 text-xs text-muted-foreground">{t('exports.legalEntity')}</label>
+                <select id="sage-legal-entity" value={legalEntityId} onChange={(e) => setLegalEntityId(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                  <option value="">{t('exports.allEntities')}</option>
+                  {entities.map((le) => <option key={le.id} value={le.id}>{le.name}{le.cnps_number ? ` (${le.cnps_number})` : ''}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="mr-2 text-xs text-muted-foreground">{t('exports.period')}</label>
+              <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 text-sm" />
+            </div>
           </div>
         </div>
+        {entities.length > 0 && <p className="text-xs text-muted-foreground">{t('exports.entityColumnsNote')}</p>}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map(({ kind, icon: Icon, needsPeriod }) => (
             <div key={kind} className="flex flex-col rounded-xl border border-border bg-card p-4">

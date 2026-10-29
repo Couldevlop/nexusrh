@@ -64,6 +64,32 @@ export const SAGE_COLUMNS: Record<ExportKind, SageColumn[]> = {
   ],
 }
 
+/**
+ * Colonnes d'identification de la filiale (société + n° employeur CNPS de
+ * legal_entities), AJOUTÉES EN FIN de ligne pour les tenants multi-filiales :
+ * les positions des colonnes existantes ne bougent pas.
+ */
+export const SAGE_ENTITY_COLUMNS: SageColumn[] = [
+  { header: 'Societe', field: 'entity_name' },
+  { header: 'NumeroEmployeur', field: 'entity_employer_number' },
+]
+
+/**
+ * Le tenant est-il multi-filiales au sens de l'export SAGE ? Oui s'il a au
+ * moins deux entités juridiques, ou une seule mais déclarée « à filiales ».
+ * Un tenant mono-entité garde le format historique (aucune colonne en plus)
+ * pour ne pas casser les imports SAGE déjà paramétrés.
+ */
+export function isMultiEntityTenant(hasSubsidiaries: boolean, entityCount: number): boolean {
+  if (entityCount <= 0) return false
+  return hasSubsidiaries || entityCount >= 2
+}
+
+/** Colonnes d'un export, complétées des colonnes filiale si multi-filiales. */
+export function sageColumnsFor(kind: ExportKind, multiEntity: boolean): SageColumn[] {
+  return multiEntity ? [...SAGE_COLUMNS[kind], ...SAGE_ENTITY_COLUMNS] : SAGE_COLUMNS[kind]
+}
+
 /** Neutralise une injection de formule CSV (OWASP CSV/Formula Injection). */
 export function sanitizeCsvField(value: unknown): string {
   if (value === null || value === undefined) return ''

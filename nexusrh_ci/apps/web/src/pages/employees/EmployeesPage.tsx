@@ -18,6 +18,8 @@ interface Employee {
   payment_method?: string | null; bank_name?: string | null; iban_masked?: string | null
   contract_type: string; hire_date: string; is_active: boolean
   cnps_number: string; nni: string
+  // Matricule (généré automatiquement à la création si non saisi)
+  employee_number?: string | null
 }
 
 interface PendingAction { type: string; label: string; path: string; count: number }
@@ -55,7 +57,7 @@ function CreateEmployeeModal({ onClose, onCreated }: {
 }) {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', gender: '',
-    birthDate: '', nni: '', cnpsNumber: '',
+    birthDate: '', nni: '', cnpsNumber: '', employeeNumber: '',
     departmentId: '', managerId: '', legalEntityId: '', jobTitle: '', jobLevel: '', professionalCategory: '',
     contractType: 'cdi', hireDate: new Date().toISOString().slice(0, 10),
     baseSalary: '', weeklyHours: '40',
@@ -115,6 +117,8 @@ function CreateEmployeeModal({ onClose, onCreated }: {
         ...(form.birthDate ? { birthDate: form.birthDate } : {}),
         ...(form.nni ? { nni: form.nni.trim() } : {}),
         ...(form.cnpsNumber ? { cnpsNumber: form.cnpsNumber.trim() } : {}),
+        // Matricule vide → généré par le serveur (MAT00001…)
+        ...(form.employeeNumber.trim() ? { employeeNumber: form.employeeNumber.trim() } : {}),
         ...(form.departmentId ? { departmentId: form.departmentId } : {}),
         ...(form.managerId ? { managerId: form.managerId } : {}),
         ...(form.legalEntityId ? { legalEntityId: form.legalEntityId } : {}),
@@ -182,6 +186,9 @@ function CreateEmployeeModal({ onClose, onCreated }: {
                 <input className={inputCls} value={form.nni} onChange={set('nni')} maxLength={50} /></div>
               <div><label className={labelCls}>{t('form.fields.cnpsNumber')}</label>
                 <input className={inputCls} value={form.cnpsNumber} onChange={set('cnpsNumber')} maxLength={30} /></div>
+              <div><label className={labelCls} htmlFor="create-employee-number">{t('form.fields.employeeNumber')}</label>
+                <input id="create-employee-number" className={inputCls} value={form.employeeNumber} onChange={set('employeeNumber')}
+                  maxLength={50} placeholder={t('form.placeholders.employeeNumber')} /></div>
               <div><label className={labelCls}>{t('form.fields.city')}</label>
                 <input className={inputCls} value={form.city} onChange={set('city')} maxLength={100} /></div>
             </div>
@@ -456,6 +463,7 @@ function DeleteModal({
 interface EmployeeDetail {
   id: string; first_name: string; last_name: string; email: string | null
   phone: string | null; gender: string | null; nni: string | null; cnps_number: string | null
+  employee_number?: string | null
   city: string | null; department_id: string | null; manager_id: string | null; legal_entity_id: string | null; job_title: string | null
   job_level: string | null; professional_category: string | null
   contract_type: string | null; hire_date: string | null; weekly_hours: string | null
@@ -518,6 +526,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     const orig: Record<string, string> = {
       firstName: emp.first_name ?? '', lastName: emp.last_name ?? '', email: emp.email ?? '',
       phone: emp.phone ?? '', gender: emp.gender ?? '', nni: emp.nni ?? '', cnpsNumber: emp.cnps_number ?? '',
+      employeeNumber: emp.employee_number ?? '',
       city: emp.city ?? '', departmentId: emp.department_id ?? '', managerId: emp.manager_id ?? '', legalEntityId: emp.legal_entity_id ?? '', jobTitle: emp.job_title ?? '',
       jobLevel: emp.job_level ?? '', professionalCategory: emp.professional_category ?? '',
       contractType: emp.contract_type ?? '', hireDate: (emp.hire_date ?? '').slice(0, 10),
@@ -595,6 +604,9 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                 <div><label className={labelCls}>{t('form.fields.cnpsNumber')}</label>
                   <input className={inputCls} value={val('cnpsNumber', emp.cnps_number)} onChange={set('cnpsNumber')} maxLength={30}
                     placeholder={t('edit.cnpsPlaceholder')} /></div>
+                <div><label className={labelCls} htmlFor="edit-employee-number">{t('form.fields.employeeNumber')}</label>
+                  <input id="edit-employee-number" className={inputCls} value={val('employeeNumber', emp.employee_number)}
+                    onChange={set('employeeNumber')} maxLength={50} placeholder={t('form.placeholders.employeeNumber')} /></div>
                 <div><label className={labelCls}>{t('form.fields.city')}</label>
                   <input className={inputCls} value={val('city', emp.city)} onChange={set('city')} maxLength={100} /></div>
               </div>
@@ -867,6 +879,9 @@ export default function EmployeesPage() {
                         </div>
                         <div>
                           <p className="font-medium">{emp.first_name} {emp.last_name}</p>
+                          {emp.employee_number && (
+                            <p className="text-[11px] font-mono text-muted-foreground" title={t('form.fields.employeeNumber')}>{emp.employee_number}</p>
+                          )}
                           <p className="text-xs text-muted-foreground">{emp.email ?? '—'}</p>
                         </div>
                       </div>
