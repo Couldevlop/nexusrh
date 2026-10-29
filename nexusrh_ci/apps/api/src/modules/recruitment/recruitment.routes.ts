@@ -601,6 +601,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data
+      if (!body.email && !body.phone) {
+        return reply.status(400).send({ error: 'Renseignez au moins un email ou un téléphone pour joindre le candidat.' })
+      }
       try {
         const res = await pool.query(`
           INSERT INTO "${schema}".applications
