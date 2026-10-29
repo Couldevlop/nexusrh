@@ -3,6 +3,7 @@ import { onboardingTableStatements } from '../db/onboarding-tables.js'
 import { jobLevelBackfillSql } from '../db/job-level.js'
 import { classificationTableStatements } from '../db/classification-defaults.js'
 import { pool } from '../db/pool.js'
+import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -847,6 +848,13 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // Unicité 1 compte ↔ 1 fiche (après la reprise ; filet en plus du contrôle applicatif).
     `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_users_employee_id_uniq"
        ON "${schemaName}".users(employee_id) WHERE employee_id IS NOT NULL`,
+    // ── Reprise : fiche employé de l'ADMIN du tenant ─────────────────────────
+    // Les tenants créés avant ce correctif ont un admin sans fiche employees
+    // (absent de la liste, pas de bulletin ni de soldes, Mon espace vide).
+    // Pour chaque admin non lié : lien vers la fiche non supprimée de même
+    // email, sinon création d'une fiche « à compléter » (salaire 0 → hors
+    // paie). Idempotent : ne vise que role='admin' AND employee_id IS NULL.
+    ...adminEmployeeLinkStatements(schemaName),
   ]
 
   for (const sql of alters) {

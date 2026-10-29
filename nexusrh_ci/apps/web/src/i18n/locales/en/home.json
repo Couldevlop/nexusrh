@@ -4,7 +4,7 @@
   },
   "hero": {
     "eyebrow": "HR system · Côte d'Ivoire",
-    "title": "Ivorian payroll, right the first time",
+    "title": "Côte d'Ivoire HRIS: payroll right the first time",
     "lead": "NexusRH CI runs your payroll and HR under Ivorian law: CNPS, ITS, Labour Code, FDFP, DISA. Not a foreign product bent into shape — a system written for Côte d'Ivoire.",
     "editor": "Published by OpenLab Consulting, Abidjan",
     "ctaApp": "Go to NexusRH",
@@ -140,7 +140,7 @@
     },
     "packs": {
       "title": "Country packs",
-      "text": "Six ready-made UEMOA and CEMAC rule sets, each with its own contributions and brackets."
+      "text": "Sixteen ready-made UEMOA and CEMAC rule sets, each with its own contributions and brackets."
     },
     "consolidation": {
       "title": "Consolidation",
@@ -275,6 +275,20 @@
     "terms": "Terms of use",
     "cookies": "Cookie policy",
     "dataRights": "Your data rights",
-    "hosting": "Hosting and security"
+    "hosting": "Hosting and security",
+    "resources": "Solutions and guides",
+    "payrollCi": "Payroll software, Côte d'Ivoire (FR)",
+    "leaveCi": "Leave management (FR)",
+    "mobileMoney": "Salaries via Mobile Money (FR)",
+    "westAfrica": "HRIS & payroll for West Africa",
+    "guideIts": "Guide: ITS 2024 calculation (FR)",
+    "guideCnps": "Guide: CNPS 2024 contributions (FR)"
+  },
+  "links": {
+    "payroll": "Payroll software in detail (CNPS, ITS, DISA) — in French",
+    "its": "How is ITS 2024 calculated? — in French",
+    "cnps": "CNPS 2024 contributions, branch by branch — in French",
+    "mobileMoney": "Paying salaries via Mobile Money — in French",
+    "westAfrica": "Countries supported across West Africa"
   }
 }

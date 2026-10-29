@@ -136,3 +136,39 @@ describe('createTenantWithSchema — slug avec tiret et échec de provisionnemen
     expect(query.mock.calls.some(c => String(c[0]).includes('DELETE FROM platform.tenants'))).toBe(true)
   })
 })
+
+describe('createTenantWithSchema — fiche employé « à compléter » de l\'admin', () => {
+  function routedPool(failOnEmployee = false) {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('FROM platform.tenants WHERE slug')) return { rows: [] }
+      if (sql.includes('INSERT INTO platform.tenants')) return { rows: [{ id: 'tenant-uuid-3' }] }
+      if (failOnEmployee && sql.includes('INSERT INTO "tenant_acme".employees')) throw new Error('employees KO')
+      return { rows: [] }
+    })
+    return { pool: { query } as never, query }
+  }
+  const norm = (s: string) => s.replace(/\s+/g, ' ')
+
+  it('crée la fiche (salaire 0, poste Administrateur RH) et la lie au compte admin, après l\'INSERT users', async () => {
+    const { pool, query } = routedPool()
+    await createTenantWithSchema(pool, baseInput)
+    const sqls = query.mock.calls.map(c => norm(String(c[0])))
+    const userIdx = sqls.findIndex(s => s.includes('INSERT INTO "tenant_acme".users'))
+    const linkIdx = sqls.findIndex(s => s.includes('UPDATE "tenant_acme".users u SET employee_id = e.id'))
+    const createIdx = sqls.findIndex(s => s.includes('INSERT INTO "tenant_acme".employees'))
+    expect(userIdx).toBeGreaterThanOrEqual(0)
+    expect(linkIdx).toBeGreaterThan(userIdx)
+    expect(createIdx).toBeGreaterThan(linkIdx)
+    expect(sqls[createIdx]).toContain("'Administrateur RH', CURRENT_DATE, 0, true")
+    expect(sqls[createIdx]).toContain('SET employee_id = ins.id')
+    // Scopé à l'admin créé (email), schéma du tenant — jamais en dur.
+    expect(query.mock.calls[createIdx]![1]).toEqual(['admin@acme.ci'])
+  })
+
+  it('échec de création de la fiche : tenant annulé (atomicité), erreur relancée', async () => {
+    const { pool, query } = routedPool(true)
+    await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('employees KO')
+    expect(query.mock.calls.some(c => String(c[0]).includes('DELETE FROM platform.tenants'))).toBe(true)
+    expect(sendWelcomeMock).not.toHaveBeenCalled()
+  })
+})

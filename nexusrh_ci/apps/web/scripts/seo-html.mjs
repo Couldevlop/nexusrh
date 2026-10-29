@@ -20,9 +20,15 @@ function replaceOnce(html, pattern, replacement, label) {
   return html.replace(pattern, replacement)
 }
 
+const IMAGE_ALT = {
+  fr: "NexusRH CI — logiciel de paie et SIRH pour la Côte d'Ivoire",
+  en: 'NexusRH CI — HRIS and payroll software for West Africa',
+}
+
 /**
  * @param {string} template  dist/index.html
- * @param {{path:string,title:string,description:string,jsonLd?:object}} page
+ * @param {{path:string,title:string,description:string,lang?:'fr'|'en',ogType?:string,
+ *          alternates?:{hreflang:string,path:string}[],jsonLd?:object}} page
  * @param {string} bodyHtml  rendu React de la page (contenu de #root)
  * @param {{siteUrl:string, preload?:string[]}} opts
  */
@@ -30,8 +36,10 @@ export function buildPageHtml(template, page, bodyHtml, { siteUrl, preload = [] 
   const url = `${siteUrl}${page.path}`
   const title = escapeAttr(page.title)
   const description = escapeAttr(page.description)
+  const lang = page.lang === 'en' ? 'en' : 'fr'
 
   let html = template
+  html = replaceOnce(html, /<html lang="[^"]*">/, `<html lang="${lang}">`, '<html lang>')
   html = replaceOnce(html, /<meta name="robots"[^>]*>/,
     '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />', 'meta robots')
   html = replaceOnce(html, /<title>[^<]*<\/title>/, `<title>${title}</title>`, '<title>')
@@ -40,16 +48,18 @@ export function buildPageHtml(template, page, bodyHtml, { siteUrl, preload = [] 
 
   const head = [
     `<link rel="canonical" href="${escapeAttr(url)}" />`,
-    '<meta property="og:type" content="website" />',
+    ...(page.alternates ?? []).map((a) =>
+      `<link rel="alternate" hreflang="${escapeAttr(a.hreflang)}" href="${escapeAttr(`${siteUrl}${a.path}`)}" />`),
+    `<meta property="og:type" content="${page.ogType === 'article' ? 'article' : 'website'}" />`,
     '<meta property="og:site_name" content="NexusRH CI" />',
-    '<meta property="og:locale" content="fr_CI" />',
+    `<meta property="og:locale" content="${lang === 'en' ? 'en_GB' : 'fr_CI'}" />`,
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
     `<meta property="og:url" content="${escapeAttr(url)}" />`,
     `<meta property="og:image" content="${escapeAttr(`${siteUrl}/og-image.png`)}" />`,
     '<meta property="og:image:width" content="1200" />',
     '<meta property="og:image:height" content="630" />',
-    '<meta property="og:image:alt" content="NexusRH CI — logiciel de paie et SIRH pour la Côte d\'Ivoire" />',
+    `<meta property="og:image:alt" content="${escapeAttr(IMAGE_ALT[lang])}" />`,
     '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
@@ -62,14 +72,24 @@ export function buildPageHtml(template, page, bodyHtml, { siteUrl, preload = [] 
   return html
 }
 
-/** robots.txt : seules la vitrine, les pages légales et leurs ressources sont explorables. */
-export function buildRobotsTxt(siteUrl) {
+/**
+ * robots.txt : seules la vitrine, les pages de contenu, les pages légales et
+ * leurs ressources sont explorables. Chaque page de contenu est autorisée par
+ * son chemin exact (`$`) : le reste de l'application reste fermé.
+ * @param {string} siteUrl
+ * @param {{path:string}[]} [pages]
+ */
+export function buildRobotsTxt(siteUrl, pages = []) {
+  const contentPaths = pages
+    .map((p) => p.path)
+    .filter((p) => p !== '/' && !p.startsWith('/legal/'))
   return [
     '# NexusRH CI — seules les pages publiques sont explorables.',
     "# L'application (espaces RH, paie, offres des tenants…) reste hors index.",
     'User-agent: *',
     'Allow: /$',
     'Allow: /legal/',
+    ...contentPaths.map((p) => `Allow: ${p}$`),
     'Allow: /assets/',
     'Allow: /openlab.png',
     'Allow: /logo.svg',
@@ -86,19 +106,21 @@ export function buildRobotsTxt(siteUrl) {
   ].join('\n')
 }
 
-/** sitemap.xml des pages pré-générées. */
+/** sitemap.xml des pages pré-générées (avec leurs variantes hreflang). */
 export function buildSitemap(siteUrl, pages, lastmod) {
   const urls = pages.map((p) => [
     '  <url>',
     `    <loc>${escapeAttr(`${siteUrl}${p.path}`)}</loc>`,
-    `    <lastmod>${lastmod}</lastmod>`,
+    ...(p.alternates ?? []).map((a) =>
+      `    <xhtml:link rel="alternate" hreflang="${escapeAttr(a.hreflang)}" href="${escapeAttr(`${siteUrl}${a.path}`)}" />`),
+    `    <lastmod>${p.lastmod ?? lastmod}</lastmod>`,
     `    <changefreq>${p.changefreq}</changefreq>`,
     `    <priority>${p.priority}</priority>`,
     '  </url>',
   ].join('\n'))
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
     ...urls,
     '</urlset>',
     '',
