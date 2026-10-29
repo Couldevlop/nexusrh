@@ -281,9 +281,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       try {
-        let sql = `SELECT pp.*, le.name AS legal_entity_name
+        let sql = `SELECT pp.*, le.name AS legal_entity_name,
+                          NULLIF(trim(concat_ws(' ', ru.first_name, ru.last_name)), '') AS raf_name
                      FROM "${schema}".pay_periods pp
-                     LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id`
+                     LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id
+                     LEFT JOIN "${schema}".users ru ON ru.id = pp.raf_user_id`
         const params: unknown[] = []
         // Un RAF site ne voit que les périodes de son entité. `?scope=raf` (page
         // « Paie de ma filiale ») : uniquement les périodes-FILLES dont

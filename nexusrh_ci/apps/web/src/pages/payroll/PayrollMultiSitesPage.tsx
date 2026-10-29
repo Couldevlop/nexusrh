@@ -42,6 +42,8 @@ interface WfPeriod {
   legal_entity_name: string | null
   legislation_pack_code: string | null
   raf_user_id: string | null
+  /** Nom du RAF désigné (jointure users côté API). */
+  raf_name?: string | null
   total_gross: string | null
   total_net: string | null
   total_cnps: string | null
@@ -369,7 +371,7 @@ export default function PayrollMultiSitesPage() {
                       <td className="px-4 py-2.5 text-xs font-mono">{k.legislation_pack_code ?? '—'}</td>
                       <td className="px-4 py-2.5">
                         {k.raf_user_id
-                          ? <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3 w-3" /> {t('multiSites.rafAssigned')}</span>
+                          ? <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3 w-3" /> {k.raf_name || t('multiSites.rafAssigned')}</span>
                           : <span className="inline-flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3 w-3" /> {t('multiSites.rafUnassigned')}</span>}
                       </td>
                       <td className="px-4 py-2.5"><StatusBadge status={k.status} /></td>
