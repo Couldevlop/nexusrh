@@ -24,7 +24,7 @@ describe('pré-rendu des pages publiques', () => {
 
   it('rend la vitrine EN FRANÇAIS même si l’environnement est en anglais', () => {
     const html = renderPage('/')
-    expect(html).toContain('La paie ivoirienne, juste du premier coup')
+    expect(html).toContain('la paie juste du premier coup')
     expect(html).not.toContain('Request a demo')
   })
 
