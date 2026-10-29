@@ -4,6 +4,7 @@ import { jobLevelBackfillSql } from '../db/job-level.js'
 import { classificationTableStatements } from '../db/classification-defaults.js'
 import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
+import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -855,6 +856,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // email, sinon création d'une fiche « à compléter » (salaire 0 → hors
     // paie). Idempotent : ne vise que role='admin' AND employee_id IS NULL.
     ...adminEmployeeLinkStatements(schemaName),
+    // ── Relances des valideurs de la paie (idempotence par niveau / fenêtre) ──
+    ...payrollReminderTableStatements(schemaName),
   ]
 
   for (const sql of alters) {

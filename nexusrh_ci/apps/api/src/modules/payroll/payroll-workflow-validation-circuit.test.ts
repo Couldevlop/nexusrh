@@ -168,6 +168,11 @@ function route() {
     }
     if (q.includes('.expense_reports')) { db.log.push(`expenses:${(p[0] as string[]).join(',')}`); return { rows: [], rowCount: 1 } }
     if (q.includes('.offboarding_cases')) { db.log.push(`settlement:${(p[0] as string[]).join(',')}`); return { rows: [], rowCount: 0 } }
+    // Valideurs candidats aux alertes : équipe RH active + valideur désigné
+    if (q.includes('.users') && q.includes('role = ANY')) {
+      const roles = p[0] as string[]
+      return { rows: USERS.filter(u => u.is_active && (roles.includes(u.role) || u.id === p[1])).map(u => ({ ...u, email: `${u.id}@sotra.ci` })) }
+    }
     if (q.includes('.users') && !q.includes('.pay_periods')) {
       const ids = (p[0] as string[] | undefined) ?? []
       return { rows: USERS.filter(u => ids.includes(u.id)) }
@@ -273,7 +278,16 @@ describe('Consolidation = initiation du circuit', () => {
     expect(body.pendingWith).toMatchObject({ level: 1, requiredLevels: 2, userId: 'u-paie', name: 'Yao Brou' })
     expect(parentOf()).toMatchObject({ status: 'validated_central', initiated_by: 'u-init' })
     expect(childrenOf(PARENT).every(c => c.status === 'validated_central')).toBe(true)
-    expect(db.log).toContain('notify:u-paie:payroll_validation_requested')
+    await vi.waitFor(() => expect(db.log).toContain('notify:u-paie:payroll_validation_requested'))
+  })
+
+  it('niveau 1 sans valideur désigné : toute l’équipe RH hors initiateur est alertée (in-app)', async () => {
+    db.validators = [{ userId: null }, { userId: null }]
+    const res = await call('POST', 'validate-central', 'u-init')
+    expect(res.statusCode).toBe(200)
+    await vi.waitFor(() => expect(db.log.filter(l => l.endsWith(':payroll_validation_requested')).length).toBe(2))
+    expect(db.log.filter(l => l.endsWith(':payroll_validation_requested')).sort())
+      .toEqual(['notify:u-admin:payroll_validation_requested', 'notify:u-drh:payroll_validation_requested'])
   })
 
   it('les filles ne sont PAS clôturées à la consolidation (bulletins encore invisibles)', async () => {
@@ -336,7 +350,7 @@ describe('Valideur désigné, SoD, escalade', () => {
     expect(l1.statusCode).toBe(200)
     expect(json(l1).data).toMatchObject({ status: 'validated_central', level: 1, requiredLevels: 2, escalated: false })
     expect(json(l1).message).toContain('Période 2026-10 en attente de validation par Fanta Traoré (DRH)')
-    expect(db.log).toContain('notify:u-drh:payroll_validation_requested')
+    await vi.waitFor(() => expect(db.log).toContain('notify:u-drh:payroll_validation_requested'))
     expect(db.periods.every(p => p.status === 'validated_central')).toBe(true)
 
     // Le valideur du niveau 1 ne valide pas un second niveau

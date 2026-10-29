@@ -18,6 +18,7 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
 import { EmployeeLinkPicker } from '@/components/employees/EmployeeLinkPicker'
 
@@ -2685,6 +2686,8 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     setLocalValidators(payrollValidators.map((v, i) => (i === index ? { ...v, ...patch } : v)))
   const designatedIds = payrollValidators.map(v => v.userId).filter((x): x is string => !!x)
   const validatorsDuplicate = new Set(designatedIds).size !== designatedIds.length
+  // SoD : N niveaux + initiateur = N + 1 personnes distinctes (sinon paie bloquée).
+  const approverCapacity = payrollApproverCapacity(payrollLevels, hrTeam, designatedIds)
 
   const save = useMutation({
     mutationFn: () => api.patch('/settings/workflow',
@@ -2843,6 +2846,16 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   ))}
                   {validatorsDuplicate && (
                     <p role="alert" className="text-xs text-destructive">{t('workflow.payrollCircuit.duplicate')}</p>
+                  )}
+                  {hrTeamData && !approverCapacity.sufficient && (
+                    <div role="alert" data-testid="payroll-approvers-warning" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p className="flex items-center gap-2 font-medium">
+                        <AlertTriangle className="h-4 w-4" /> {t('workflow.payrollCircuit.notEnoughApproversTitle')}
+                      </p>
+                      <p className="mt-1">{t('workflow.payrollCircuit.notEnoughApprovers', {
+                        levels: payrollLevels, required: approverCapacity.required, available: approverCapacity.available,
+                      })}</p>
+                    </div>
                   )}
                   <p className="text-xs text-muted-foreground">{t('workflow.payrollCircuit.sodHint')}</p>
                 </div>

@@ -15,6 +15,7 @@ import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
+import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
   buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers, loadPeriodApprovals,
   notifyPayrollUser, payrollDenialMessage, payrollLevelState, pendingValidationMessage, pendingWithOf,
@@ -606,9 +607,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           { id: periodId, status: 'pending_validation', initiated_by: request.user.sub, initiated_at: new Date() }, [], users)
       } catch { firstLevel = null }
       const pendingWith = pendingWithOf(firstLevel)
-      if (pendingWith?.userId) {
-        notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
-          `La paie ${month} attend votre validation (niveau 1/${pendingWith.requiredLevels}).`, { month, periodId, level: 1 })
+      // Alerte TOUS les valideurs éligibles du niveau 1 (désigné, sinon équipe
+      // RH hors initiateur) : in-app + email SMTP tenant, non bloquant.
+      if (firstLevel) {
+        notifyPayrollValidators({ schema, periodId, month, scope: 'mono', kind: 'requested', state: firstLevel })
       }
 
       return reply.send({
@@ -742,9 +744,8 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         const next = payrollLevelState(circuit, p,
           [...approvals, { level, approver_id: request.user.sub, approved_at: new Date() }], users)
         const pendingWith = pendingWithOf(next)
-        if (pendingWith?.userId) {
-          notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
-            `La paie ${month} attend votre validation (niveau ${pendingWith.level}/${requiredLevels}).`, { month, periodId: p.id, level: pendingWith.level })
+        if (next) {
+          notifyPayrollValidators({ schema, periodId: p.id, month, scope: 'mono', kind: 'requested', state: next })
         }
         return reply.send({
           data: { status: 'pending_validation', level, requiredLevels, escalated: decision.escalated },
