@@ -8,6 +8,7 @@
  * caractère hors plage (pdfSafe) pour éviter une exception d'encodage.
  */
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf-lib'
+import { shortCaisseLabel, shortImpotLabel } from '../../services/payslip-labels.service.js'
 
 export interface PayslipPdfLine {
   code?:  string | null
@@ -194,9 +195,9 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
   const showCode = cfg.showCodeColumn !== false
   // Libellés locaux (multi-pays) ; version courte pour les champs compacts.
   const caisse = data.caisseLabel || 'CNPS'
-  const caisseShort = (caisse.split(/[ +]/)[0] || 'CNPS')
+  const caisseShort = shortCaisseLabel(caisse)
   const impotLbl = data.impotLabel || 'ITS'
-  const impotShort = (impotLbl.split(/[ —-]/)[0] || 'ITS').trim()
+  const impotShort = shortImpotLabel(impotLbl)
   let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null
   if (cfg.logo?.bytes?.length) {
     try {
@@ -266,7 +267,7 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     const ee: string[] = []
     if (data.employee.jobTitle) ee.push(data.employee.jobTitle)
     if (data.employee.category) ee.push(`Catégorie : ${data.employee.category}`)
-    if (data.employee.cnpsNumber) ee.push(`N° CNPS : ${data.employee.cnpsNumber}`)
+    if (data.employee.cnpsNumber) ee.push(`N° ${caisseShort} : ${data.employee.cnpsNumber}`)
     if (data.employee.nni) ee.push(`NNI : ${data.employee.nni}`)
     if (data.employee.hireDate) {
       const anc = seniorityAt(data.employee.hireDate, data.month)

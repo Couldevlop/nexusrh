@@ -55,6 +55,17 @@ describe('Bulletin PDF — mentions obligatoires', () => {
     expect(txt).toContain('N° CNPS : CI-7654321')
   })
 
+  it('caisse sociale du pack côté salarié ET employeur (Burkina : CNSS, Sénégal : IPRES)', async () => {
+    const bf = pdfText(await renderPayslipPdf({
+      ...base, caisseLabel: 'CNSS', impotLabel: 'IUTS — Impôt Unique sur Traitements et Salaires',
+    }))
+    expect(bf).toContain('N° CNSS employeur : CI-0123456')
+    expect(bf).toContain('N° CNSS : CI-7654321')
+    expect(bf).not.toContain('N° CNPS')
+    const sn = pdfText(await renderPayslipPdf({ ...base, caisseLabel: 'IPRES + CSS', impotLabel: 'IR — Impôt sur le Revenu' }))
+    expect(sn).toContain('N° IPRES : CI-7654321')
+  })
+
   it('mode de paiement : libellé lisible, jamais le code brut', async () => {
     const t1 = pdfText(await renderPayslipPdf(base))
     expect(t1).toContain('Mode de paiement : Virement bancaire')

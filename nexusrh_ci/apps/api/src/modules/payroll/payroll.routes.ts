@@ -11,6 +11,7 @@ import { resolvePayrollContext } from '../../services/payroll-context-resolver.j
 import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } from '../../services/payroll-variable-elements.js'
 import { renderPayslipPdf, resolvePayslipTemplateConfig, type PayslipPdfLine } from './payslip-pdf.js'
 import { getPackByCountry } from '../../services/legislation-packs.js'
+import { createPayslipLabelResolver, loadPayslipCountryLabels } from '../../services/payslip-labels.service.js'
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
@@ -865,8 +866,15 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       if (month)      { sql += ` AND ps.month = $${idx++}`; params.push(month) }
       if (employeeId) { sql += ` AND ps.employee_id = $${idx++}`; params.push(employeeId) }
       sql += ` ORDER BY ps.month DESC, e.last_name`
-      const res = await rawPool.query(sql, params)
-      return reply.send({ data: res.rows })
+      const res = await rawPool.query<Record<string, unknown> & { legal_entity_id?: string | null }>(sql, params)
+      // Libellés courts caisse/impôt du pack de chaque bulletin (multi-pays) :
+      // la liste affiche « CNSS sal. » / « IUTS » au lieu de « CNPS » / « ITS » en dur.
+      const labelsFor = await createPayslipLabelResolver(rawPool, schema, res.rows.map(r => r.legal_entity_id))
+      const data = res.rows.map(r => {
+        const l = labelsFor(r.legal_entity_id)
+        return { ...r, country_code: l.countryCode, caisse_short: l.caisseShort, impot_short: l.impotShort }
+      })
+      return reply.send({ data })
     },
   })
 
@@ -983,6 +991,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         [id, slip.period_id],
       )
 
+      // Libellés du pack du bulletin (caisse / impôt / pays) pour le bandeau et les en-têtes.
+      const labels = await loadPayslipCountryLabels(rawPool, schema, id)
+
       // Totaux gains / cotisations / retenues
       const totals = {
         earnings: explained.filter(l => l.type === 'earning').reduce((s, l) => s + Number(l.amount), 0),
@@ -1030,6 +1041,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           initiatedAt: slip.initiated_at,
           closedAt: slip.closed_at,
         },
+        labels,
         lines: explained,
         totals,
         comparison: compRes.rows.map(r => ({
