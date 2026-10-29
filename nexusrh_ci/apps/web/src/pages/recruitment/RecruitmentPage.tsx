@@ -1388,6 +1388,9 @@ function AddCandidateModal({ job, submitting, error, onClose, onSubmit }: {
       setLocalError(t('addCandidate.nameRequired', 'Prénom et nom requis.')); return
     }
     const cleanPhone = phone.replace(/\s/g, '')
+    if (!email.trim() && !cleanPhone) {
+      setLocalError(t('addCandidate.contactRequired', 'Renseignez au moins un email ou un téléphone.')); return
+    }
     if (cleanPhone && !CI_PHONE.test(cleanPhone)) {
       setLocalError(t('addCandidate.phoneInvalid', 'Téléphone CI invalide : +225 suivi de 8 à 10 chiffres.')); return
     }
