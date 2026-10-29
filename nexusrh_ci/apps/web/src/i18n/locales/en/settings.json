@@ -203,6 +203,7 @@
       "role": "Role",
       "department": "Department",
       "noDepartment": "— None —",
+      "noDepartmentsHint": "No department exists yet: create them in the Departments tab (optional).",
       "status": "Status",
       "active": "Active",
       "inactive": "Inactive",
