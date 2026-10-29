@@ -5,7 +5,23 @@ import { api, formatFCFA } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { FileText, Download, Loader2, Send, ShieldCheck, AlertTriangle, CheckCircle, XCircle, ClipboardList, Building2, RefreshCw } from 'lucide-react'
 
-interface LegalEntity { id: string; name: string; city?: string | null; cnps_number?: string | null }
+interface LegalEntity {
+  id: string; name: string; city?: string | null; cnps_number?: string | null
+  country_code?: string | null; legislation_pack_code?: string | null
+}
+
+/**
+ * Les déclarations sociales ne couvrent que la CNPS Côte d'Ivoire : une filiale
+ * d'un autre pays (CNSS Burkina, Bénin…) ne peut pas être déclarée ici.
+ * Même règle que l'API : pack explicite CIV-* prioritaire, sinon pays (défaut CIV).
+ */
+function isCivEntity(le: Pick<LegalEntity, 'country_code' | 'legislation_pack_code'>): boolean {
+  const pack = le.legislation_pack_code?.trim()
+  if (pack) return pack.toUpperCase().startsWith('CIV-')
+  return (le.country_code?.trim() || 'CIV').toUpperCase() === 'CIV'
+}
+
+type ApiError = { response?: { data?: { error?: string } } }
 
 interface CnpsDeclaration {
   id: string; year: number; quarter: number; months: string[]
@@ -47,6 +63,7 @@ export default function CnpsPage() {
   const [legalEntityId, setLegalEntityId] = useState<string>('')
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [validating, setValidating] = useState(false)
+  const [validateError, setValidateError] = useState<string | null>(null)
   const [rnsYear, setRnsYear] = useState(currentYear)
   const [rnsLoading, setRnsLoading] = useState<'pdf' | 'csv' | null>(null)
   // CNP-004/005 — DISA annuelle (génération + export CSV)
@@ -61,24 +78,32 @@ export default function CnpsPage() {
     enabled: hasSubsidiaries,
   })
   const legalEntities = entitiesData?.data ?? []
+  // Filiale sélectionnée retenue seulement si elle relève de la CNPS CI.
+  const selectedEntity = legalEntities.find(le => le.id === legalEntityId)
+  const scopedEntityId = hasSubsidiaries && selectedEntity && isCivEntity(selectedEntity) ? selectedEntity.id : ''
+  const monthValue = `${year}-${String(declMonth).padStart(2, '0')}`
 
   const { data: declsData, isLoading } = useQuery<{ data: CnpsDeclaration[] }>({
     queryKey: ['cnps-declarations', year],
     queryFn: () => api.get(`/cnps/declarations?year=${year}`).then(r => r.data),
   })
 
+  // Tuiles : périmètre CNPS CI (filiales étrangères exclues côté API), filtrées
+  // sur la filiale choisie le cas échéant.
   const { data: summaryData } = useQuery<{ data: unknown[]; totals: Record<string, number>; year: number }>({
-    queryKey: ['cnps-summary', year],
-    queryFn: () => api.get(`/cnps/summary?year=${year}`).then(r => r.data),
+    queryKey: ['cnps-summary', year, scopedEntityId],
+    queryFn: () => api.get('/cnps/summary', {
+      params: scopedEntityId ? { year, legalEntityId: scopedEntityId } : { year },
+    }).then(r => r.data),
   })
 
   const generateMut = useMutation({
     mutationFn: () => {
       const period = declPeriod === 'monthly'
-        ? { year, month: `${year}-${String(declMonth).padStart(2, '0')}` }
+        ? { year, month: monthValue }
         : { year, quarter }
       return api.post('/cnps/declarations/generate',
-        hasSubsidiaries && legalEntityId ? { ...period, legalEntityId } : period)
+        scopedEntityId ? { ...period, legalEntityId: scopedEntityId } : period)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cnps-declarations'] })
@@ -94,17 +119,25 @@ export default function CnpsPage() {
   const decls = declsData?.data ?? []
   const totals = summaryData?.totals
 
+  // Valide EXACTEMENT la période et la filiale qui seront générées :
+  // mois choisi en mensuel (prioritaire côté API), filiale en multi-filiales.
   const handleValidate = async () => {
     setValidating(true)
+    setValidateError(null)
     try {
-      const res = await api.get<ValidationResult>(`/cnps/validate/${year}/${quarter}`)
+      const params: Record<string, string> = {}
+      if (declPeriod === 'monthly') params.month = monthValue
+      if (scopedEntityId) params.legalEntityId = scopedEntityId
+      const res = await api.get<ValidationResult>(`/cnps/validate/${year}/${quarter}`, { params })
       setValidation(res.data)
-    } catch {
-      // ignore
+    } catch (e) {
+      setValidation(null)
+      setValidateError((e as ApiError)?.response?.data?.error ?? t('validator.validateError', 'Échec de la validation des données.'))
     } finally {
       setValidating(false)
     }
   }
+  const subsidiaryMissing = hasSubsidiaries && !scopedEntityId
 
   const handleExport = async (id: string, qtr: number, format: 'csv' | 'neva' = 'csv') => {
     const url = format === 'neva' ? `/cnps/declarations/${id}/neva` : `/cnps/declarations/${id}/export`
@@ -142,7 +175,7 @@ export default function CnpsPage() {
     setDisaLoading('generate'); setDisaMsg(null)
     try {
       const res = await api.post('/cnps/disa/generate',
-        hasSubsidiaries && legalEntityId ? { year: disaYear, legalEntityId } : { year: disaYear })
+        scopedEntityId ? { year: disaYear, legalEntityId: scopedEntityId } : { year: disaYear })
       const n = (res.data as { data?: { employeesCount?: number } })?.data?.employeesCount
       setDisaMsg(t('disa.generated', { count: n ?? 0, year: disaYear, defaultValue: `DISA ${disaYear} générée (${n ?? 0} salariés).` }))
     } catch (e) {
@@ -326,7 +359,7 @@ export default function CnpsPage() {
           {declPeriod === 'monthly' ? (
             <div>
               <label className="text-sm font-medium mb-1 block">{t('validator.month', 'Mois')}</label>
-              <select value={declMonth} onChange={e => { setDeclMonth(parseInt(e.target.value)); setValidation(null) }}
+              <select aria-label={t('validator.month', 'Mois')} value={declMonth} onChange={e => { setDeclMonth(parseInt(e.target.value)); setValidation(null) }}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none">
                 {['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'].map((m, i) => (
                   <option key={i} value={i + 1}>{m}</option>
@@ -352,35 +385,48 @@ export default function CnpsPage() {
                 <Building2 className="h-3 w-3" /> {t('validator.subsidiary')} <span className="text-red-500">*</span>
               </label>
               <select
-                value={legalEntityId}
-                onChange={e => { setLegalEntityId(e.target.value); setValidation(null) }}
+                aria-label={t('validator.subsidiary')}
+                value={scopedEntityId}
+                onChange={e => { setLegalEntityId(e.target.value); setValidation(null); setValidateError(null) }}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[220px]"
               >
                 <option value="">{t('validator.chooseSubsidiary')}</option>
-                {legalEntities.map(le => (
-                  <option key={le.id} value={le.id}>
-                    {le.name}{le.cnps_number ? ` ${t('validator.subsidiaryCnps', { number: le.cnps_number })}` : ''}
-                  </option>
-                ))}
+                {legalEntities.map(le => {
+                  const civ = isCivEntity(le)
+                  return (
+                    <option key={le.id} value={le.id} disabled={!civ}>
+                      {le.name}
+                      {civ
+                        ? (le.cnps_number ? ` ${t('validator.subsidiaryCnps', { number: le.cnps_number })}` : '')
+                        : ` — ${t('validator.countryNotSupported', 'déclaration non prise en charge pour ce pays')}`}
+                    </option>
+                  )
+                })}
               </select>
             </div>
           )}
 
           <button
             onClick={handleValidate}
-            disabled={validating}
+            disabled={validating || subsidiaryMissing}
             className="flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-50">
             {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             {t('validator.validateData')}
           </button>
           <button
             onClick={() => generateMut.mutate()}
-            disabled={generateMut.isPending || (validation !== null && !validation.valid) || (hasSubsidiaries && !legalEntityId)}
+            disabled={generateMut.isPending || (validation !== null && !validation.valid) || subsidiaryMissing}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {generateMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {t('validator.generateDeclaration')}
           </button>
         </div>
+
+        {validateError && (
+          <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {validateError}
+          </p>
+        )}
 
         {/* Résultats de validation */}
         {validation && (

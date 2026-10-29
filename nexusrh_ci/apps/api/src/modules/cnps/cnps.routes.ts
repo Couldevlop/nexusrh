@@ -8,8 +8,60 @@ import { loadEmployeeTenantContext } from '../../services/employee-tenant-contex
 import {
   categoryLevel, completedSeniorityMonths, effectiveTerminationRules, resolveNotice, severanceAmount,
 } from '../../services/termination-rules.service.js'
+import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
+import { currencyLabel } from '../../services/legislation-packs.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+
+// ── Périmètre CNPS Côte d'Ivoire ─────────────────────────────────────────────
+// Les déclarations sociales (pré-DSN, e-CNPS, DISA, RNS) ne couvrent QUE la
+// CNPS ivoirienne. En multi-filiales, une filiale d'un autre pays (BFA, BEN…)
+// relève de sa propre caisse (CNSS) et ne doit jamais être déclarée ici.
+interface CnpsEntityRow {
+  id: string
+  name?: string | null
+  cnps_number?: string | null
+  dgi_number?: string | null
+  rccm?: string | null
+  city?: string | null
+  address?: string | null
+  country_code?: string | null
+  legislation_pack_code?: string | null
+  at_rate?: string | null
+}
+
+/** Pack législatif explicite (CIV-*) prioritaire, sinon pays (défaut CIV). */
+function isCivEntity(le: Pick<CnpsEntityRow, 'country_code' | 'legislation_pack_code'>): boolean {
+  const pack = le.legislation_pack_code?.trim()
+  if (pack) return pack.toUpperCase().startsWith('CIV-')
+  return (le.country_code?.trim() || 'CIV').toUpperCase() === 'CIV'
+}
+
+/** Même règle qu'isCivEntity, en SQL, pour l'alias d'une ligne legal_entities. */
+function civEntitySql(alias: 'le' | 'pse'): string {
+  return `(CASE WHEN NULLIF(TRIM(${alias}.legislation_pack_code), '') IS NOT NULL
+                THEN UPPER(${alias}.legislation_pack_code) LIKE 'CIV-%'
+                ELSE UPPER(COALESCE(NULLIF(TRIM(${alias}.country_code), ''), 'CIV')) = 'CIV' END)`
+}
+
+/** Bulletin rattaché à aucune filiale (tenant mono-entité CI) ou à une filiale CI. */
+const CIV_PAYSLIP_SQL = `(ps.legal_entity_id IS NULL OR EXISTS (
+  SELECT 1 FROM "__SCHEMA__".legal_entities pse
+   WHERE pse.id = ps.legal_entity_id AND ${civEntitySql('pse')}))`
+function civPayslipFilter(schema: string): string {
+  return CIV_PAYSLIP_SQL.replace('__SCHEMA__', schema)
+}
+
+function nonCivError(name: string | null | undefined): string {
+  return `La filiale « ${name ?? ''} » ne relève pas de la CNPS Côte d'Ivoire — déclaration non prise en charge pour ce pays`
+}
+
+// Séparateur de milliers = espace simple (pas l'espace fine de toLocaleString).
+const fmtAmount = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+
+const ENTITY_COLUMNS = `id, name, cnps_number, dgi_number, rccm, city, address,
+                        country_code, legislation_pack_code, at_rate::text AS at_rate`
 // CNP-002 — anti-injection CSV (OWASP A03) : neutralise +/-/=/@ et quote.
 const csvCell = (v: unknown) => encodeField(v, ';')
 
@@ -138,11 +190,13 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       if (legalEntityId) {
-        const le = await rawPool.query(
-          `SELECT id FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+        const le = await rawPool.query<CnpsEntityRow>(
+          `SELECT ${ENTITY_COLUMNS} FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
           [legalEntityId],
-        ).catch(() => ({ rows: [] }))
-        if (!le.rows[0]) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
+        const entity = le.rows[0]
+        if (!entity) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
       }
 
       // Mois couverts : le mois seul (mensuel) ou les 3 mois du trimestre
@@ -415,11 +469,13 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       if (legalEntityId) {
-        const le = await rawPool.query(
-          `SELECT id FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+        const le = await rawPool.query<CnpsEntityRow>(
+          `SELECT ${ENTITY_COLUMNS} FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
           [legalEntityId],
-        ).catch(() => ({ rows: [] }))
-        if (!le.rows[0]) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
+        const entity = le.rows[0]
+        if (!entity) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
       }
 
       // Récupérer tous les bulletins de l'année (scope filiale si applicable)
@@ -703,13 +759,25 @@ ${salaries}
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly')],
     schema: { tags: ['cnps'], summary: 'Récapitulatif annuel CNPS' },
     handler: async (request, reply) => {
-      const { year: yearRaw } = request.query as Record<string, string>
+      const { year: yearRaw, legalEntityId } = request.query as Record<string, string | undefined>
       // OWASP A03 — validation stricte (regex + plage) au lieu de parseInt brut
       const yearNum = parseYearParam(yearRaw)
       if (yearNum === null) return reply.status(400).send({ error: 'year hors plage' })
+      if (legalEntityId !== undefined && legalEntityId !== '' && !UUID_RE.test(legalEntityId)) {
+        return reply.status(400).send({ error: 'legalEntityId invalide (UUID requis)' })
+      }
       const year = String(yearNum)
       const schema = request.user.schemaName
 
+      // Périmètre CNPS CI : seuls les bulletins sans filiale (tenant mono-entité)
+      // ou d'une filiale ivoirienne entrent dans les tuiles — les CNSS
+      // étrangères (Burkina, Bénin…) en sont exclues. Filtrable par filiale.
+      const params: unknown[] = [`${year}-%`]
+      let entityFilter = ''
+      if (legalEntityId) {
+        params.push(legalEntityId)
+        entityFilter = ` AND ps.legal_entity_id = $${params.length}`
+      }
       const res = await rawPool.query<{
         month: string
         gross: string; cnps_sal: string; cnps_pat: string; its: string; net: string
@@ -722,9 +790,10 @@ ${salaries}
                 SUM(ps.net_payable)::text AS net
          FROM "${schema}".pay_slips ps
          WHERE ps.month LIKE $1
+           AND ${civPayslipFilter(schema)}${entityFilter}
          GROUP BY ps.month
          ORDER BY ps.month`,
-        [`${year}-%`]
+        params,
       )
 
       const rows = res.rows
@@ -749,49 +818,118 @@ ${salaries}
     schema: { tags: ['cnps'], summary: 'Validateur pré-DSN : contrôle intégrité avant soumission CNPS' },
     handler: async (request, reply) => {
       const { year, quarter } = request.params as { year: string; quarter: string }
+      const { month, legalEntityId } = request.query as { month?: string; legalEntityId?: string }
       const schema = request.user.schemaName
 
       // OWASP A03 — validation stricte (regex + plage)
       const yr  = parseYearParam(year)
-      const qtr = parseInt(quarter)
-      if (yr === null || !qtr || qtr < 1 || qtr > 4) {
+      const qtrParam = parseInt(quarter)
+      if (yr === null || !qtrParam || qtrParam < 1 || qtrParam > 4) {
         return reply.status(400).send({ error: 'year et quarter (1-4) requis' })
       }
+      // Périodicité mensuelle (e-CNPS) : ?month=YYYY-MM prioritaire sur le trimestre.
+      const monthParam = month !== undefined && month !== '' ? month : null
+      if (monthParam !== null && (!MONTH_RE.test(monthParam) || monthParam.slice(0, 4) !== String(yr))) {
+        return reply.status(400).send({ error: `month invalide (format AAAA-MM, année ${yr} attendue)` })
+      }
+      const entityParam = legalEntityId !== undefined && legalEntityId !== '' ? legalEntityId : null
+      if (entityParam !== null && !UUID_RE.test(entityParam)) {
+        return reply.status(400).send({ error: 'legalEntityId invalide (UUID requis)' })
+      }
+      const isMonthly = monthParam !== null
+      const qtr = isMonthly ? Math.ceil(parseInt(monthParam.slice(5, 7), 10) / 3) : qtrParam
+      const periodLabel = isMonthly ? monthParam : `${yr} T${qtr}`
 
       const months: string[] = []
-      for (let m = (qtr - 1) * 3 + 1; m <= qtr * 3; m++) {
-        months.push(`${yr}-${String(m).padStart(2, '0')}`)
+      if (isMonthly) {
+        months.push(monthParam)
+      } else {
+        for (let m = (qtr - 1) * 3 + 1; m <= qtr * 3; m++) {
+          months.push(`${yr}-${String(m).padStart(2, '0')}`)
+        }
       }
 
       const errors:   Array<{ code: string; severity: 'blocking' | 'warning'; message: string; employeeId?: string; employeeName?: string }> = []
       const warnings: Array<{ code: string; message: string }> = []
 
-      // 1. Vérifier numéro CNPS employeur
-      const tenantRes = await rawPool.query<{ cnps_number: string; name: string }>(
-        `SELECT name, cnps_number FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
+      // 1. Tenant + périmètre filiale
+      const tenantRes = await rawPool.query<{
+        cnps_number: string | null; name: string
+        has_subsidiaries?: boolean | null; default_country_code?: string | null; at_rate?: string | null
+      }>(
+        `SELECT name, cnps_number, has_subsidiaries, default_country_code, at_rate::text AS at_rate
+         FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
       const tenant = tenantRes.rows[0]
-      if (!tenant?.cnps_number) {
-        errors.push({ code: 'CNPS_EMPLOYER_MISSING', severity: 'blocking', message: 'Numéro CNPS employeur manquant — à renseigner dans Paramètres → Entreprise' })
+      const hasSubs = tenant?.has_subsidiaries === true
+      // Comme pour la génération : chaque filiale a son propre n° CNPS employeur.
+      if (hasSubs && !entityParam) {
+        return reply.status(400).send({
+          error: 'Ce tenant a plusieurs filiales — choisissez la filiale à valider (chaque numéro CNPS a sa propre déclaration)',
+        })
+      }
+      let entity: CnpsEntityRow | null = null
+      if (entityParam) {
+        const le = await rawPool.query<CnpsEntityRow>(
+          `SELECT ${ENTITY_COLUMNS} FROM "${schema}".legal_entities WHERE id = $1 AND is_active = true LIMIT 1`,
+          [entityParam],
+        ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
+        entity = le.rows[0] ?? null
+        if (!entity) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
       }
 
-      // 2. Vérifier bulletins du trimestre existent
+      // SMIG du pack applicable (filiale, sinon pays du tenant) — pas de 75 000 en dur.
+      const pack = resolvePayrollContext({
+        tenant: {
+          id: '', hasSubsidiaries: hasSubs,
+          atRate: parseFloat(tenant?.at_rate ?? '0.020'),
+          defaultCountryCode: tenant?.default_country_code ?? null,
+        },
+        employee: { id: '', legalEntityId: entity?.id ?? null },
+        legalEntity: entity ? {
+          id: entity.id,
+          atRate: entity.at_rate ? parseFloat(entity.at_rate) : null,
+          legislationPackCode: entity.legislation_pack_code ?? null,
+          countryCode: entity.country_code ?? null,
+        } : null,
+      }).legislationPack
+
+      // 2. Numéro CNPS employeur : celui de la filiale en multi-filiales
+      const employerCnps = entity ? (entity.cnps_number?.trim() || null) : (tenant?.cnps_number?.trim() || null)
+      if (!employerCnps) {
+        errors.push(entity
+          ? { code: 'CNPS_EMPLOYER_MISSING', severity: 'blocking', message: `Numéro CNPS employeur de la filiale « ${entity.name ?? ''} » manquant — à renseigner dans Paramètres → Entités juridiques` }
+          : { code: 'CNPS_EMPLOYER_MISSING', severity: 'blocking', message: 'Numéro CNPS employeur manquant — à renseigner dans Paramètres → Entreprise' })
+      }
+
+      // Filtre bulletins : filiale choisie, sinon périmètre CI (tenant mono-entité)
+      const slipParams: unknown[] = [months]
+      let slipFilter: string
+      if (entity) {
+        slipParams.push(entity.id)
+        slipFilter = ` AND ps.legal_entity_id = $2`
+      } else {
+        slipFilter = ` AND ${civPayslipFilter(schema)}`
+      }
+
+      // 3. Vérifier bulletins de la période existent
       const slipCountRes = await rawPool.query<{ cnt: string }>(
-        `SELECT COUNT(*)::text AS cnt FROM "${schema}".pay_slips WHERE month = ANY($1::text[])`, [months]
+        `SELECT COUNT(*)::text AS cnt FROM "${schema}".pay_slips ps WHERE ps.month = ANY($1::text[])${slipFilter}`, slipParams
       )
       const slipCount = parseInt(slipCountRes.rows[0]?.cnt ?? '0')
       if (slipCount === 0) {
-        errors.push({ code: 'NO_PAYSLIPS', severity: 'blocking', message: `Aucun bulletin de paie trouvé pour ${yr} T${qtr} — clôturez d'abord la paie` })
+        errors.push({ code: 'NO_PAYSLIPS', severity: 'blocking', message: `Aucun bulletin de paie trouvé pour ${periodLabel}${entity ? ` (filiale « ${entity.name ?? ''} »)` : ''} — clôturez d'abord la paie` })
       }
 
-      // 3. Employés sans numéro CNPS avec bulletins ce trimestre
+      // 4. Employés sans numéro CNPS avec bulletins sur la période
       const noCnpsRes = await rawPool.query<{ id: string; first_name: string; last_name: string }>(
         `SELECT DISTINCT e.id, e.first_name, e.last_name
          FROM "${schema}".employees e
          JOIN "${schema}".pay_slips ps ON ps.employee_id = e.id
-         WHERE ps.month = ANY($1::text[])
+         WHERE ps.month = ANY($1::text[])${slipFilter}
            AND (e.cnps_number IS NULL OR e.cnps_number = '')
-           AND e.is_active = true`, [months]
+           AND e.is_active = true`, slipParams
       )
       for (const emp of noCnpsRes.rows) {
         errors.push({
@@ -803,14 +941,14 @@ ${salaries}
         })
       }
 
-      // 4. Employés sans NNI (matricule salarié)
+      // 5. Employés sans NNI (matricule salarié)
       const noNniRes = await rawPool.query<{ id: string; first_name: string; last_name: string }>(
         `SELECT DISTINCT e.id, e.first_name, e.last_name
          FROM "${schema}".employees e
          JOIN "${schema}".pay_slips ps ON ps.employee_id = e.id
-         WHERE ps.month = ANY($1::text[])
+         WHERE ps.month = ANY($1::text[])${slipFilter}
            AND (e.nni IS NULL OR e.nni = '')
-           AND e.is_active = true`, [months]
+           AND e.is_active = true`, slipParams
       )
       for (const emp of noNniRes.rows) {
         errors.push({
@@ -822,19 +960,41 @@ ${salaries}
         })
       }
 
-      // 5. Salaires inférieurs au SMIG
-      const belowSmigRes = await rawPool.query<{ id: string; first_name: string; last_name: string; net: string }>(
-        `SELECT DISTINCT e.id, e.first_name, e.last_name, ps.net_payable::text AS net
+      // 6. Salaire de base inférieur au SMIG du pack. Le SMIG est un minimum
+      // de salaire de base à temps plein : on ramène le base d'un temps partiel
+      // à 40 h/semaine (durée légale) avant comparaison — jamais le net, qui
+      // dépend des retenues et des absences.
+      const smig = pack.smigMensuel
+      const smigLabel = `${fmtAmount(smig)} ${currencyLabel(pack.currency)}`
+      const smigParams: unknown[] = [...slipParams, smig]
+      const belowSmigRes = await rawPool.query<{
+        id: string; first_name: string; last_name: string; month: string
+        base: string; full_time_base: string; weekly_hours: string | null
+      }>(
+        `SELECT e.id, e.first_name, e.last_name, ps.month,
+                ps.base_salary::text AS base,
+                ROUND(ps.base_salary * 40.0 / LEAST(GREATEST(COALESCE(e.weekly_hours, 40), 1), 40))::text AS full_time_base,
+                e.weekly_hours::text AS weekly_hours
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
-         WHERE ps.month = ANY($1::text[])
-           AND ps.net_payable < 75000`, [months]
+         WHERE ps.month = ANY($1::text[])${slipFilter}
+           AND COALESCE(ps.base_salary, 0) > 0
+           AND ps.base_salary * 40.0 / LEAST(GREATEST(COALESCE(e.weekly_hours, 40), 1), 40) < $${smigParams.length}
+         ORDER BY e.last_name, e.first_name, ps.month`, smigParams
       )
       for (const emp of belowSmigRes.rows) {
-        warnings.push({ code: 'BELOW_SMIG', message: `${emp.first_name} ${emp.last_name} — net ${parseInt(emp.net ?? '0').toLocaleString('fr-FR')} FCFA < SMIG 75 000 FCFA` })
+        const base = parseInt(emp.base ?? '0')
+        const fullTime = parseInt(emp.full_time_base ?? emp.base ?? '0')
+        const partTime = fullTime !== base
+        warnings.push({
+          code: 'BELOW_SMIG',
+          message: `${emp.first_name} ${emp.last_name} (${emp.month}) — salaire de base ${fmtAmount(base)} ${currencyLabel(pack.currency)}`
+            + (partTime ? ` (soit ${fmtAmount(fullTime)} à temps plein)` : '')
+            + ` < SMIG ${smigLabel} (pack ${pack.code})`,
+        })
       }
 
-      // 6. Vérifier délai de dépôt (avant le 15 du mois M+1)
+      // 7. Vérifier délai de dépôt (avant le 15 du mois M+1)
       const lastMonthOfQtr = months[months.length - 1]!
       const [qtrYear, qtrMonth] = lastMonthOfQtr.split('-').map(Number) as [number, number]
       let deadlineMonth = qtrMonth + 1
@@ -857,7 +1017,13 @@ ${salaries}
       return reply.send({
         valid: isValid,
         year: yr, quarter: qtr, months,
-        employerCnps: tenant?.cnps_number ?? null,
+        periodType: isMonthly ? 'monthly' : 'quarterly',
+        month: monthParam,
+        legalEntityId: entity?.id ?? null,
+        legalEntityName: entity?.name ?? null,
+        employerCnps,
+        smigReference: smig,
+        legislationPackCode: pack.code,
         totalPayslips: totalEmps,
         errors,
         warnings,
@@ -895,12 +1061,24 @@ ${salaries}
     schema: { tags: ['cnps'], summary: 'Générer le RNS en PDF (formulaire officiel CNPS EN-GDAV-06 v03)' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
-      const { employeeId } = request.query as { employeeId?: string }
+      const { employeeId, legalEntityId } = request.query as { employeeId?: string; legalEntityId?: string }
       const schema = request.user.schemaName
       // OWASP A03 — validation stricte year + UUID employeeId si fourni
       const yr = parseYearParam(year)
       if (yr === null) return reply.status(400).send({ error: 'year hors plage' })
       if (employeeId && !UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'employeeId invalide (UUID requis)' })
+      if (legalEntityId && !UUID_RE.test(legalEntityId)) return reply.status(400).send({ error: 'legalEntityId invalide (UUID requis)' })
+
+      // Filiale optionnelle : RNS d'un seul n° CNPS employeur (filiale CI uniquement)
+      let entity: CnpsEntityRow | null = null
+      if (legalEntityId) {
+        const le = await rawPool.query<CnpsEntityRow>(
+          `SELECT ${ENTITY_COLUMNS} FROM "${schema}".legal_entities WHERE id = $1 LIMIT 1`, [legalEntityId],
+        ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
+        entity = le.rows[0] ?? null
+        if (!entity) return reply.status(404).send({ error: 'Filiale introuvable' })
+        if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
+      }
 
       const tenantRes = await rawPool.query<{
         name: string; cnps_number: string; city: string
@@ -918,6 +1096,15 @@ ${salaries}
 
       const months = Array.from({ length: 12 }, (_, i) => `${yr}-${String(i + 1).padStart(2, '0')}`)
       const params: unknown[] = [months]
+      // Bulletins retenus : ceux de la filiale demandée, sinon ceux du périmètre
+      // CI (sans filiale ou filiale ivoirienne) — jamais une paie CNSS étrangère.
+      let slipScope: string
+      if (entity) {
+        params.push(entity.id)
+        slipScope = `ps.legal_entity_id = $${params.length}`
+      } else {
+        slipScope = civPayslipFilter(schema)
+      }
       let empSql = `
         SELECT e.id, e.first_name, e.last_name,
                COALESCE(e.cnps_number,'') AS cnps_number,
@@ -929,6 +1116,7 @@ ${salaries}
         LEFT JOIN "${schema}".legal_entities le ON le.id = e.legal_entity_id
         LEFT JOIN "${schema}".pay_slips ps
                ON ps.employee_id = e.id AND ps.month = ANY($1::text[])
+              AND ${slipScope}
         WHERE ((e.is_active = true AND e.deleted_at IS NULL
                 AND COALESCE(e.base_salary, 0) > 0) -- fiche « à compléter » (salaire 0) : hors paie, hors RNS
                OR ps.id IS NOT NULL) -- sortis dans l'année inclus
@@ -936,9 +1124,9 @@ ${salaries}
           -- salariés relevant de la réglementation ivoirienne. La maison mère est
           -- en CI mais peut avoir des filiales à l'étranger : on inclut donc les
           -- employés du tenant mono-pays (legal_entity_id NULL) ou rattachés à une
-          -- entité juridique ivoirienne (country_code = 'CIV'), et on exclut les
-          -- filiales étrangères.
-          AND (e.legal_entity_id IS NULL OR le.country_code = 'CIV')`
+          -- entité juridique ivoirienne (pack CIV-* ou pays CIV), et on exclut les
+          -- filiales étrangères (et leurs bulletins, cf. slipScope).
+          AND ${entity ? `e.legal_entity_id = $${params.length}` : `(e.legal_entity_id IS NULL OR ${civEntitySql('le')})`}`
       if (employeeId) { params.push(employeeId); empSql += ` AND e.id = $${params.length}` }
       empSql += ` GROUP BY e.id ORDER BY e.last_name, e.first_name`
 
@@ -955,7 +1143,14 @@ ${salaries}
       let pdfBuffer: Buffer
       try {
         pdfBuffer = await generateRnsPdf(
-          {
+          // Filiale demandée : son identité et SON n° CNPS employeur.
+          entity ? {
+            name:            entity.name ?? tenant.name,
+            address:         entity.address?.trim() || `${entity.city?.trim() || tenant.city}, Côte d'Ivoire`,
+            cnpsNumber:      entity.cnps_number ?? '',
+            affiliationDate: tenant.cnps_affiliation_date,
+            city:            entity.city?.trim() || tenant.city,
+          } : {
             name:            tenant.name,
             address:         tenant.address,
             cnpsNumber:      tenant.cnps_number,
@@ -982,7 +1177,7 @@ ${salaries}
       // OWASP A09 — traçabilité téléchargement RNS (relevé nominatif officiel CNPS)
       auditLogCnps(
         schema, request.user.sub, 'cnps.rns_pdf_exported', null,
-        { year: yr, employeeId: employeeId ?? null, employeesCount: empsRes.rows.length, format: 'pdf' },
+        { year: yr, employeeId: employeeId ?? null, legalEntityId: entity?.id ?? null, employeesCount: empsRes.rows.length, format: 'pdf' },
         request.ip ?? null,
       )
 
@@ -1000,17 +1195,45 @@ ${salaries}
     schema: { tags: ['cnps'], summary: 'Export RNS — Relevé Nominatif des Salaires (CNPS officiel)' },
     handler: async (request, reply) => {
       const { year } = request.params as { year: string }
+      const { legalEntityId } = request.query as { legalEntityId?: string }
       const schema = request.user.schemaName
       // OWASP A03 — validation stricte year
       const yr = parseYearParam(year)
       if (yr === null) return reply.status(400).send({ error: 'year hors plage' })
+      if (legalEntityId && !UUID_RE.test(legalEntityId)) return reply.status(400).send({ error: 'legalEntityId invalide (UUID requis)' })
+
+      // Filiale optionnelle (CI uniquement) : en-tête + bulletins de cette filiale
+      let entity: CnpsEntityRow | null = null
+      if (legalEntityId) {
+        const le = await rawPool.query<CnpsEntityRow>(
+          `SELECT ${ENTITY_COLUMNS} FROM "${schema}".legal_entities WHERE id = $1 LIMIT 1`, [legalEntityId],
+        ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
+        entity = le.rows[0] ?? null
+        if (!entity) return reply.status(404).send({ error: 'Filiale introuvable' })
+        if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
+      }
 
       const tenantRes = await rawPool.query<{ name: string; cnps_number: string; rccm: string; dgi_number: string }>(
         `SELECT name, cnps_number, rccm, dgi_number FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]
       )
-      const tenant = tenantRes.rows[0]
+      const tenantRow = tenantRes.rows[0]
+      const tenant = entity ? {
+        name: entity.name ?? tenantRow?.name ?? '',
+        cnps_number: entity.cnps_number ?? '',
+        rccm: entity.rccm ?? '',
+        dgi_number: entity.dgi_number ?? '',
+      } : tenantRow
 
       const months = Array.from({ length: 12 }, (_, i) => `${yr}-${String(i + 1).padStart(2, '0')}`)
+      const rnsParams: unknown[] = [months]
+      let rnsScope: string
+      if (entity) {
+        rnsParams.push(entity.id)
+        rnsScope = `ps.legal_entity_id = $2`
+      } else {
+        // Périmètre CNPS CI : bulletins sans filiale ou d'une filiale ivoirienne.
+        rnsScope = civPayslipFilter(schema)
+      }
 
       const empsRes = await rawPool.query<{
         employee_id: string; first_name: string; last_name: string
@@ -1030,9 +1253,10 @@ ${salaries}
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
          WHERE ps.month = ANY($1::text[])
+           AND ${rnsScope}
          GROUP BY e.id, e.first_name, e.last_name, e.cnps_number, e.nni, e.job_title
          ORDER BY e.last_name, e.first_name`,
-        [months]
+        rnsParams,
       )
 
       const employees = empsRes.rows

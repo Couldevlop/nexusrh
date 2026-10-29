@@ -30,6 +30,8 @@
     "subsidiary": "Subsidiary",
     "chooseSubsidiary": "-- Choose --",
     "subsidiaryCnps": "(CNPS {{number}})",
+    "countryNotSupported": "filing not supported for this country",
+    "validateError": "Data validation failed.",
     "validateData": "Validate data",
     "generateDeclaration": "Generate declaration",
     "employerCnpsOk": "✓ Employer CNPS no.: {{number}}",
