@@ -180,8 +180,10 @@
     "colPeriod": "Période",
     "colGross": "Brut",
     "colNet": "Net à payer",
-    "colCnps": "CNPS sal.",
-    "colIts": "ITS",
+    "colCnps": "{{caisse}} sal.",
+    "colIts": "{{impot}}",
+    "colCnpsMixed": "Cotis. sal.",
+    "colItsMixed": "Impôt",
     "colPayment": "Paiement",
     "payStatus": {
       "paid": "Payé",
@@ -252,11 +254,11 @@
   },
   "transparency": {
     "title": "Bulletin transparent",
-    "headerSuffixCnps": "CNPS {{number}}",
+    "headerSuffixCnps": "N° {{caisse}} {{number}}",
     "employerPart": "part employeur",
     "kpiGross": "Brut",
-    "kpiCnpsSal": "CNPS sal.",
-    "kpiIts": "ITS",
+    "kpiCnpsSal": "{{caisse}} sal.",
+    "kpiIts": "{{impot}}",
     "kpiNet": "Net à payer",
     "tabs": {
       "detail": "Détail",
@@ -271,7 +273,7 @@
       "result": "Résultat"
     },
     "detail": {
-      "intro": "Chaque ligne est dépliable. Cliquez pour voir la formule, la base, le taux et la référence légale CI.",
+      "intro": "Chaque ligne est dépliable. Cliquez pour voir la formule, la base, le taux et la référence légale ({{country}}).",
       "earnings": "Gains · {{amount}}",
       "employeeDeductions": "Retenues salarié · −{{amount}}",
       "employerContributions": "Cotisations employeur (informatif) · {{amount}}",
@@ -286,8 +288,8 @@
       "empty": "Pas d'historique disponible pour cet employé",
       "colMonth": "Mois",
       "colGross": "Brut",
-      "colCnps": "CNPS sal.",
-      "colIts": "ITS",
+      "colCnps": "{{caisse}} sal.",
+      "colIts": "{{impot}}",
       "colNet": "Net",
       "current": "{{month}} (actuel)"
     },

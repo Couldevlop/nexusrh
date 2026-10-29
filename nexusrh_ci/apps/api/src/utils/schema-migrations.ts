@@ -4,6 +4,8 @@ import { jobLevelBackfillSql } from '../db/job-level.js'
 import { classificationTableStatements } from '../db/classification-defaults.js'
 import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
+import { employeeNumberStatements } from '../db/employee-number.js'
+import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -848,6 +850,13 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // Unicité 1 compte ↔ 1 fiche (après la reprise ; filet en plus du contrôle applicatif).
     `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_users_employee_id_uniq"
        ON "${schemaName}".users(employee_id) WHERE employee_id IS NOT NULL`,
+    // ── Matricule salarié généré automatiquement ─────────────────────────────
+    // employee_number restait NULL pour toutes les fiches (l'export SAGE sortait
+    // l'UUID). Séquence par schéma + trigger (toutes les voies d'insertion) +
+    // index UNIQUE partiel, puis reprise des fiches sans matricule par ordre
+    // d'embauche. Idempotent (ne vise que les matricules NULL/vides). Placé
+    // AVANT la fiche admin ci-dessous pour qu'elle reçoive aussi un matricule.
+    ...employeeNumberStatements(schemaName),
     // ── Reprise : fiche employé de l'ADMIN du tenant ─────────────────────────
     // Les tenants créés avant ce correctif ont un admin sans fiche employees
     // (absent de la liste, pas de bulletin ni de soldes, Mon espace vide).
@@ -855,6 +864,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // email, sinon création d'une fiche « à compléter » (salaire 0 → hors
     // paie). Idempotent : ne vise que role='admin' AND employee_id IS NULL.
     ...adminEmployeeLinkStatements(schemaName),
+    // ── Relances des valideurs de la paie (idempotence par niveau / fenêtre) ──
+    ...payrollReminderTableStatements(schemaName),
   ]
 
   for (const sql of alters) {

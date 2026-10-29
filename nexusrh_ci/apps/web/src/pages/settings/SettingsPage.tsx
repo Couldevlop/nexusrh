@@ -18,6 +18,7 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
 import { EmployeeLinkPicker } from '@/components/employees/EmployeeLinkPicker'
 
@@ -2028,10 +2029,10 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
     icon: Users2,
     color: 'bg-blue-100 text-blue-600',
     endpoint: '/settings/import/employees',
-    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville'],
+    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville','matricule'],
     example: [
-      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan'],
-      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan'],
+      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan','MAT00101'],
+      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan',''],
     ],
   },
   {
@@ -2685,6 +2686,8 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     setLocalValidators(payrollValidators.map((v, i) => (i === index ? { ...v, ...patch } : v)))
   const designatedIds = payrollValidators.map(v => v.userId).filter((x): x is string => !!x)
   const validatorsDuplicate = new Set(designatedIds).size !== designatedIds.length
+  // SoD : N niveaux + initiateur = N + 1 personnes distinctes (sinon paie bloquée).
+  const approverCapacity = payrollApproverCapacity(payrollLevels, hrTeam, designatedIds)
 
   const save = useMutation({
     mutationFn: () => api.patch('/settings/workflow',
@@ -2843,6 +2846,16 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   ))}
                   {validatorsDuplicate && (
                     <p role="alert" className="text-xs text-destructive">{t('workflow.payrollCircuit.duplicate')}</p>
+                  )}
+                  {hrTeamData && !approverCapacity.sufficient && (
+                    <div role="alert" data-testid="payroll-approvers-warning" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p className="flex items-center gap-2 font-medium">
+                        <AlertTriangle className="h-4 w-4" /> {t('workflow.payrollCircuit.notEnoughApproversTitle')}
+                      </p>
+                      <p className="mt-1">{t('workflow.payrollCircuit.notEnoughApprovers', {
+                        levels: payrollLevels, required: approverCapacity.required, available: approverCapacity.available,
+                      })}</p>
+                    </div>
                   )}
                   <p className="text-xs text-muted-foreground">{t('workflow.payrollCircuit.sodHint')}</p>
                 </div>

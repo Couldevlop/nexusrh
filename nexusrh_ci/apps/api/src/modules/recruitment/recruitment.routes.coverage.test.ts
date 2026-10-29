@@ -567,6 +567,21 @@ describe('POST /recruitment/applications', () => {
     expect(res.statusCode).toBe(201)
   })
 
+  it('refuse en 409 un doublon (même offre + même téléphone)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'Koffi', last_name: 'Yao', phone: '+2250701020304' },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toMatch(/déjà postulé/)
+    const sql = String(queryMock.mock.calls.at(-1)?.[0])
+    expect(sql).toMatch(/WHERE NOT EXISTS/)
+  })
+
   it('refuse en 400 un candidat sans email ni téléphone', async () => {
     const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({

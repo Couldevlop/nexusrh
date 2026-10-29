@@ -36,10 +36,22 @@ interface TransparencyData {
     id: string; status: string
     initiatedAt: string | null; closedAt: string | null
   }
+  /** Libellés du pack législatif du bulletin (absent sur une ancienne API → CI). */
+  labels?: PayslipLabels
   lines: ExplainedLine[]
   totals: { earnings: number; employeeContributions: number; employerContributions: number; reimbursements?: number }
   comparison: Array<{ month: string; grossSalary: number; netPayable: number; totalCnpsSal: number; its: number }>
   audit: Array<{ action: string; entity: string; createdAt: string; actorName: string | null; changes: unknown }>
+}
+
+interface PayslipLabels {
+  packCode: string; countryCode: string; countryName: string
+  caisse: string; caisseShort: string; impot: string; impotShort: string
+}
+
+const CI_LABELS: PayslipLabels = {
+  packCode: 'CIV-2024', countryCode: 'CIV', countryName: 'Côte d\'Ivoire',
+  caisse: 'CNPS', caisseShort: 'CNPS', impot: 'ITS — Impôt sur Traitements et Salaires', impotShort: 'ITS',
 }
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -151,6 +163,8 @@ export default function PaySlipTransparentModal({
   })
 
   const errorMsg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+  const labels = data?.labels ?? CI_LABELS
+  const lbl = { caisse: labels.caisseShort, impot: labels.impotShort, country: labels.countryName }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -170,7 +184,7 @@ export default function PaySlipTransparentModal({
                 {data.employee.jobTitle && ` · ${data.employee.jobTitle}`}
                 {' · '}
                 <span className="capitalize">{formatMonth(data.slip.month)}</span>
-                {data.employee.cnpsNumber && ` · ${t('transparency.headerSuffixCnps', { number: data.employee.cnpsNumber })}`}
+                {data.employee.cnpsNumber && ` · ${t('transparency.headerSuffixCnps', { ...lbl, number: data.employee.cnpsNumber })}`}
               </p>
             )}
           </div>
@@ -194,11 +208,11 @@ export default function PaySlipTransparentModal({
                 <p className="text-lg font-bold font-mono mt-0.5">{formatFCFA(data.slip.grossSalary)}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiCnpsSal')}</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiCnpsSal', lbl)}</p>
                 <p className="text-lg font-bold font-mono mt-0.5 text-orange-600">−{formatFCFA(data.slip.totalCnpsSal)}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiIts')}</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiIts', lbl)}</p>
                 <p className="text-lg font-bold font-mono mt-0.5 text-rose-600">−{formatFCFA(data.slip.its)}</p>
               </div>
               <div>
@@ -230,7 +244,7 @@ export default function PaySlipTransparentModal({
               {tab === 'detail' && (
                 <div className="space-y-4">
                   <p className="text-xs text-muted-foreground">
-                    {t('transparency.detail.intro')}
+                    {t('transparency.detail.intro', lbl)}
                   </p>
 
                   {/* Gains */}
@@ -323,8 +337,8 @@ export default function PaySlipTransparentModal({
                         <tr className="border-b border-border text-left text-muted-foreground text-xs uppercase tracking-wider">
                           <th className="py-2">{t('transparency.comparison.colMonth')}</th>
                           <th className="py-2 text-right">{t('transparency.comparison.colGross')}</th>
-                          <th className="py-2 text-right">{t('transparency.comparison.colCnps')}</th>
-                          <th className="py-2 text-right">{t('transparency.comparison.colIts')}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colCnps', lbl)}</th>
+                          <th className="py-2 text-right">{t('transparency.comparison.colIts', lbl)}</th>
                           <th className="py-2 text-right">{t('transparency.comparison.colNet')}</th>
                         </tr>
                       </thead>

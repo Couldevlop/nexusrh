@@ -639,6 +639,68 @@ export async function sendAbsenceRequestEmail(params: {
   })
 }
 
+// Circuit de validation de la paie — alerte (niveau en attente) ou relance
+// (échéance proche / dépassée) d'un valideur éligible. AUCUNE donnée salariale
+// nominative : mois, niveau, échéance et lien vers l'écran de validation.
+export async function sendPayrollValidationEmail(params: {
+  to: string; firstName?: string | null; tenantName: string; primaryColor?: string | null
+  monthLabel: string; level: number; requiredLevels: number
+  dueLabel?: string | null; overdue: boolean; kind: 'requested' | 'reminder'; multiSites: boolean
+  actionUrl: string
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, firstName, tenantName, primaryColor, monthLabel, level, requiredLevels,
+    dueLabel, overdue, kind, multiSites, actionUrl, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const scope = multiSites ? 'multi-filiales ' : ''
+  const subject = kind === 'reminder'
+    ? (overdue
+      ? `Relance : validation de la paie ${scope}${monthLabel} en retard (niveau ${level}/${requiredLevels})`
+      : `Relance : paie ${scope}${monthLabel} à valider avant échéance (niveau ${level}/${requiredLevels})`)
+    : `Paie ${scope}${monthLabel} à valider (niveau ${level}/${requiredLevels})`
+  const intro = kind === 'reminder'
+    ? (overdue
+      ? `L'échéance de validation de la paie ${scope}<strong>${escapeHtml(monthLabel)}</strong> est dépassée.`
+      : `La paie ${scope}<strong>${escapeHtml(monthLabel)}</strong> attend toujours une validation et son échéance approche.`)
+    : `La paie ${scope}<strong>${escapeHtml(monthLabel)}</strong> attend une validation.`
+  const dueRow = dueLabel
+    ? `<tr><td style="padding:6px 0;color:#6b7280;">Échéance</td><td style="padding:6px 0;text-align:right;font-weight:600;${overdue ? 'color:#b91c1c;' : ''}">${escapeHtml(dueLabel)}${overdue ? ' (dépassée)' : ''}</td></tr>`
+    : ''
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(escapeHtml(tenantName), 'Validation de la paie', color, null)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>Bonjour ${escapeHtml(firstName || '')},</p>
+        <p>${intro}</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:6px 0;color:#6b7280;">Mois</td><td style="padding:6px 0;text-align:right;font-weight:600;">${escapeHtml(monthLabel)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">Niveau en attente</td><td style="padding:6px 0;text-align:right;font-weight:600;">${level}/${requiredLevels}</td></tr>
+          ${dueRow}
+        </table>
+        <p style="text-align:center;margin:24px 0;">
+          <a href="${escapeHtml(actionUrl)}" style="background:${color};color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;display:inline-block;">Examiner la paie</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;">Vous recevez cet email car vous pouvez valider ce niveau du circuit de paie (séparation des tâches : l'initiateur et les approbateurs des niveaux précédents ne sont pas sollicités).</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  const text = `Bonjour ${firstName || ''},\n\n${intro.replace(/<[^>]+>/g, '')}\n\nMois : ${monthLabel}\nNiveau en attente : ${level}/${requiredLevels}\n`
+    + (dueLabel ? `Échéance : ${dueLabel}${overdue ? ' (dépassée)' : ''}\n` : '')
+    + `\nExaminer la paie : ${actionUrl}\n`
+  await assertTenantSmtpSafe(smtp)
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject,
+    html,
+    text,
+  })
+}
+
 // Email de TEST de la configuration d'envoi (Paramètres → Email). Permet à
 // l'admin de vérifier immédiatement ses identifiants SMTP : l'envoi passe par
 // le serveur du tenant si `smtp` est fourni, sinon par la plateforme (repli).

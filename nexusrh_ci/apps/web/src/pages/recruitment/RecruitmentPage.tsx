@@ -367,7 +367,7 @@ export default function RecruitmentPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{t('header.title')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('header.subtitle', { jobs: jobs.length, applications: applications.length })}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t('header.subtitle', { jobs: jobs.length, applications: jobs.reduce((n, j) => n + Number(j.applications_count ?? 0), 0) })}</p>
         </div>
         <button
           onClick={() => setShowNewJob(true)}
@@ -391,11 +391,27 @@ export default function RecruitmentPage() {
       </div>
 
       {tab === 'screening' && (
-        selectedJob
-          ? <ScreeningReview jobId={selectedJob.id} />
-          : <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-              {t('pipeline.selectJob')}
-            </p>
+        <div className="space-y-4">
+          <label className="flex flex-col gap-1 text-sm w-fit min-w-[18rem]">
+            <span className="text-muted-foreground">{t('screening.selectJob')}</span>
+            <select
+              aria-label={t('screening.selectJob')}
+              value={selectedJob?.id ?? ''}
+              onChange={(e) => setSelectedJob(jobs.find(j => j.id === e.target.value) ?? null)}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            >
+              <option value="">{t('screening.selectJobPlaceholder')}</option>
+              {jobs.map(j => (
+                <option key={j.id} value={j.id}>{j.title} ({j.applications_count})</option>
+              ))}
+            </select>
+          </label>
+          {selectedJob
+            ? <ScreeningReview jobId={selectedJob.id} />
+            : <p className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
+                {jobs.length === 0 ? t('screening.noJobs') : t('screening.selectJobHint')}
+              </p>}
+        </div>
       )}
 
       {tab === 'jobs' && (() => {
@@ -1260,7 +1276,9 @@ export default function RecruitmentPage() {
         <AddCandidateModal
           job={addCandidateJob}
           submitting={createApplication.isPending}
-          error={createApplication.isError}
+          error={createApplication.isError
+            ? ((createApplication.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '')
+            : null}
           onClose={() => setAddCandidateJob(null)}
           onSubmit={(payload) => createApplication.mutate(payload)}
         />
@@ -1370,7 +1388,7 @@ export default function RecruitmentPage() {
 function AddCandidateModal({ job, submitting, error, onClose, onSubmit }: {
   job: Job
   submitting: boolean
-  error: boolean
+  error: string | null
   onClose: () => void
   onSubmit: (payload: Record<string, unknown>) => void
 }) {
@@ -1444,8 +1462,8 @@ function AddCandidateModal({ job, submitting, error, onClose, onSubmit }: {
             <textarea value={coverLetter} onChange={e => setCoverLetter(e.target.value)} rows={3}
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </div>
-          {(localError || error) && (
-            <p className="text-xs text-destructive">{localError ?? t('addCandidate.serverError', 'Échec de la création — vérifiez les champs.')}</p>
+          {(localError || error !== null) && (
+            <p className="text-xs text-destructive">{localError ?? (error || t('addCandidate.serverError', 'Échec de la création — vérifiez les champs.'))}</p>
           )}
         </div>
         <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-border bg-card px-5 py-3">

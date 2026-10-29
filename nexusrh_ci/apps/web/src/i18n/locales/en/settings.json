@@ -577,6 +577,8 @@
       "functionLabel": "Position",
       "functionPlaceholder": "E.g.: Payroll supervisor, HR Director",
       "sla": "Deadline (days)",
+      "notEnoughApproversTitle": "Not enough approvers for this circuit",
+      "notEnoughApprovers": "A {{levels}}-level circuit requires {{required}} distinct people: the person who initiates the closing, then a different approver for each level. Only {{available}} active person(s) can take part (administrators, HR managers and HR officers designated as approvers). Payroll would stay stuck in validation: reduce the number of levels or create administrator / HR manager accounts.",
       "sodHint": "The initiator never approves their own closing: if designated, the level is immediately open to the rest of the HR team. Once the deadline has passed, any administrator or HR manager (other than the initiator) can take over.",
       "duplicate": "The same person cannot be designated at two levels."
     },

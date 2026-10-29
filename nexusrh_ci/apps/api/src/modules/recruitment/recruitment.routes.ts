@@ -605,11 +605,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Renseignez au moins un email ou un téléphone pour joindre le candidat.' })
       }
       try {
+        // Anti-doublon atomique : même offre + même email ou même téléphone →
+        // aucune ligne insérée (double clic, réseau lent, ressaisie).
         const res = await pool.query(`
           INSERT INTO "${schema}".applications
             (job_id, first_name, last_name, email, phone, cover_letter,
              cv_text, stage, source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,'new',$8)
+          SELECT $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, 'new', $8::text
+          WHERE NOT EXISTS (
+            SELECT 1 FROM "${schema}".applications d
+            WHERE d.job_id = $1::uuid
+              AND ((d.email IS NOT NULL AND lower(d.email) = lower($4::text))
+                OR (d.phone IS NOT NULL AND d.phone = $5::text))
+          )
           RETURNING *
         `, [
           body.job_id, body.first_name, body.last_name, body.email ?? null,
@@ -617,6 +625,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           body.cv_text ?? null,
           body.source ?? 'manual',
         ])
+        if (res.rows.length === 0) {
+          return reply.status(409).send({ error: 'Ce candidat a déjà postulé à cette offre (même email ou même téléphone).' })
+        }
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)

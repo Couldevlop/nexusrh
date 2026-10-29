@@ -36,6 +36,7 @@
       "email": "Email",
       "phone": "Phone",
       "birthDate": "Date of birth",
+      "employeeNumber": "Staff number",
       "nni": "NNI (encrypted)",
       "cnpsNumber": "CNPS no.",
       "city": "City",
@@ -60,6 +61,7 @@
       "paymentMethod": "Salary payment method"
     },
     "placeholders": {
+      "employeeNumber": "Automatic if empty (MAT00001…)",
       "phone": "+225 07 XX XX XX XX",
       "professionalCategory": "e.g. 3rd category",
       "baseSalary": "≥ 75,000",
@@ -131,6 +133,7 @@
       "phone": "Phone",
       "gender": "Gender",
       "birthDate": "Date of birth",
+      "employeeNumber": "Staff number",
       "nni": "NNI",
       "cnpsNumber": "CNPS no.",
       "familySituation": "Family situation",

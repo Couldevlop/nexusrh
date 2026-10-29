@@ -1,7 +1,9 @@
 import { assertValidSchemaName } from '../utils/schema-name.js'
 import { onboardingTableStatements } from './onboarding-tables.js'
 import { classificationTableStatements } from './classification-defaults.js'
+import { payrollReminderTableStatements } from './payroll-reminders.js'
 import { pool } from './pool.js'
+import { employeeNumberSetupStatements } from './employee-number.js'
 
 /**
  * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
@@ -481,6 +483,10 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at            timestamptz NOT NULL DEFAULT now(),
     UNIQUE (email)
   )`)
+  // Matricule généré automatiquement (séquence par schéma + trigger) et unique.
+  for (const stmt of employeeNumberSetupStatements(schemaName)) {
+    await q(stmt)
+  }
 
   // A08-2 — Photos de profil (PII) : TENANT-SCOPÉES, jamais dans le bucket
   // public cross-tenant platform.brand_assets (réservé aux logos publics).
@@ -1332,6 +1338,10 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     UNIQUE (period_id, approver_id)  -- même approver ne peut pas valider 2 niveaux
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_ppa_period ON ${s}.pay_period_approvals(period_id, level)`)
+  // Relances des valideurs (une par période × niveau × entrée dans le niveau)
+  for (const stmt of payrollReminderTableStatements(schemaName)) {
+    await q(stmt)
+  }
 
   // Workflow par défaut pour 'payroll' : 2 niveaux (initiateur + N+1)
   await q(`

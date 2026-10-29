@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
 import { paymentMethodLabel } from '@/lib/payment'
+import { recentMonths } from '@/lib/months'
+import { payslipColumnLabels } from '@/lib/payslip-labels'
 import { FileText, Eye } from 'lucide-react'
 import PaySlipTransparentModal from '@/components/payroll/PaySlipTransparentModal'
 
@@ -12,6 +14,7 @@ interface PaySlip {
   gross_salary: string; net_payable: string; its: string; total_cnps_sal: string
   status: string; payment_method: string; payment_status: string
   generated_at: string
+  country_code?: string; caisse_short?: string; impot_short?: string
 }
 
 export default function PaySlipsPage() {
@@ -25,6 +28,7 @@ export default function PaySlipsPage() {
   })
 
   const slips = data?.data ?? []
+  const cols = payslipColumnLabels(slips)
 
   const payStatusColor: Record<string, string> = {
     paid: 'bg-green-100 text-green-700',
@@ -45,12 +49,7 @@ export default function PaySlipsPage() {
           className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"
         >
           <option value="">{t('payslips.allMonths')}</option>
-          {Array.from({ length: 12 }, (_, i) => {
-            const d = new Date()
-            d.setMonth(d.getMonth() - i)
-            const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-            return <option key={m} value={m}>{formatMonth(m)}</option>
-          })}
+          {recentMonths(12).map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
         </select>
       </div>
 
@@ -68,8 +67,8 @@ export default function PaySlipsPage() {
                   <th className="p-4">{t('payslips.colPeriod')}</th>
                   <th className="p-4 text-right">{t('payslips.colGross')}</th>
                   <th className="p-4 text-right">{t('payslips.colNet')}</th>
-                  <th className="p-4 text-right">{t('payslips.colCnps')}</th>
-                  <th className="p-4 text-right">{t('payslips.colIts')}</th>
+                  <th className="p-4 text-right">{cols.mixed ? t('payslips.colCnpsMixed') : t('payslips.colCnps', { caisse: cols.caisse })}</th>
+                  <th className="p-4 text-right">{cols.mixed ? t('payslips.colItsMixed') : t('payslips.colIts', { impot: cols.impot })}</th>
                   <th className="p-4">{t('payslips.colPayment')}</th>
                   <th className="p-4 text-right"></th>
                 </tr>
@@ -88,8 +87,14 @@ export default function PaySlipsPage() {
                     <td className="p-4 capitalize">{formatMonth(slip.month)}</td>
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(slip.gross_salary ?? '0'))}</td>
                     <td className="p-4 text-right font-mono font-semibold">{formatFCFA(parseInt(slip.net_payable ?? '0'))}</td>
-                    <td className="p-4 text-right font-mono text-orange-600">{formatFCFA(parseInt(slip.total_cnps_sal ?? '0'))}</td>
-                    <td className="p-4 text-right font-mono text-blue-600">{formatFCFA(parseInt(slip.its ?? '0'))}</td>
+                    <td className="p-4 text-right font-mono text-orange-600">
+                      {formatFCFA(parseInt(slip.total_cnps_sal ?? '0'))}
+                      {cols.mixed && slip.caisse_short && <span className="block text-[10px] text-muted-foreground">{slip.caisse_short}</span>}
+                    </td>
+                    <td className="p-4 text-right font-mono text-blue-600">
+                      {formatFCFA(parseInt(slip.its ?? '0'))}
+                      {cols.mixed && slip.impot_short && <span className="block text-[10px] text-muted-foreground">{slip.impot_short}</span>}
+                    </td>
                     <td className="p-4">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${payStatusColor[slip.payment_status] ?? 'bg-muted text-muted-foreground'}`}>
                         {slip.payment_status === 'paid' ? t('payslips.payStatus.paid') : slip.payment_status === 'pending' ? t('payslips.payStatus.pending') : slip.payment_status}

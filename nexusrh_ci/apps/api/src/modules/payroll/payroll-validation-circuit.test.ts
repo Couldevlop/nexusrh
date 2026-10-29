@@ -96,6 +96,11 @@ function route() {
     }
     if (q.includes('.expense_reports')) { db.log.push(`expenses:${(p[0] as string[]).join(',')}`); return { rows: [], rowCount: 2 } }
     if (q.includes('.offboarding_cases')) { db.log.push(`settlement:${(p[0] as string[]).join(',')}`); return { rows: [], rowCount: 1 } }
+    // Valideurs candidats aux alertes : équipe RH active + valideur désigné
+    if (q.includes('.users') && q.includes('role = ANY')) {
+      const roles = p[0] as string[]
+      return { rows: USERS.filter(u => u.is_active && (roles.includes(u.role) || u.id === p[1])).map(u => ({ ...u, email: `${u.id}@sotra.ci` })) }
+    }
     if (q.includes('.users') && !q.includes('.pay_periods')) {
       const ids = (p[0] as string[] | undefined) ?? []
       return { rows: USERS.filter(u => ids.includes(u.id)) }
@@ -175,7 +180,19 @@ describe('Valideur désigné par niveau', () => {
     expect(body.message).toContain('en attente de validation par Fanta Traoré (DRH)')
     expect(body.message).not.toMatch(/POST|\/payroll|hr_manager/)
     expect(db.log).toContain('audit:payroll.approved')
-    expect(db.log).toContain('notify:u-drh:payroll_validation_requested')
+    // Alerte asynchrone (non bloquante) : seul le valideur désigné du niveau 2
+    await vi.waitFor(() => expect(db.log).toContain('notify:u-drh:payroll_validation_requested'))
+    expect(db.log.filter(l => l.endsWith(':payroll_validation_requested'))).toEqual(['notify:u-drh:payroll_validation_requested'])
+  })
+
+  it('niveau sans valideur désigné : TOUTE l’équipe RH éligible est alertée (hors initiateur et approbateur précédent)', async () => {
+    db.validators = [{ userId: 'u-paie', functionLabel: 'Chef de service paie', slaDays: 2 }, { userId: null }]
+    const res = await call('POST', '/approve', 'u-paie', {})
+    expect(res.statusCode).toBe(200)
+    await vi.waitFor(() => expect(db.log.filter(l => l.endsWith(':payroll_validation_requested')).length).toBe(2))
+    const alerted = db.log.filter(l => l.endsWith(':payroll_validation_requested')).sort()
+    // u-init (initiateur), u-paie (a validé le niveau 1) et u-off (inactif) exclus
+    expect(alerted).toEqual(['notify:u-admin:payroll_validation_requested', 'notify:u-drh:payroll_validation_requested'])
   })
 
   it('un autre membre RH ne peut pas agir avant l’échéance (403 nominatif)', async () => {

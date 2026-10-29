@@ -30,6 +30,8 @@
     "subsidiary": "Filiale",
     "chooseSubsidiary": "-- Choisir --",
     "subsidiaryCnps": "(CNPS {{number}})",
+    "countryNotSupported": "déclaration non prise en charge pour ce pays",
+    "validateError": "Échec de la validation des données.",
     "validateData": "Valider les données",
     "generateDeclaration": "Générer la déclaration",
     "employerCnpsOk": "✓ N° CNPS employeur : {{number}}",

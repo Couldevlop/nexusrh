@@ -34,8 +34,9 @@ import {
 } from '../../services/raf-readiness.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
-  buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers,
+  asValidationPeriod, buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers,
   loadPeriodApprovals, notifyPayrollUser, payrollDenialMessage, payrollLevelState, pendingValidationMessage,
   pendingWithOf, resetMultiSitePeriod, userDisplayName, PayrollResetConflict,
   type ApprovalForValidation, type PayrollCircuit, type PayrollLevelState, type PayrollUser, type PeriodForValidation,
@@ -168,20 +169,6 @@ async function loadMultiParent(schema: string, id: string): Promise<MultiParentR
   )
   const row = r?.rows?.[0]
   return row && !row.parent_period_id ? row : null
-}
-
-/**
- * Projection de la parente sur le modèle du circuit : 'validated_central' =
- * en attente de validation. Initiateur = celui qui a consolidé (repli
- * validated_by pour une paie consolidée avant l'introduction du circuit).
- */
-function asValidationPeriod(p: Pick<MultiParentRow, 'id' | 'status' | 'initiated_by' | 'initiated_at' | 'validated_by' | 'validated_central_at'>): PeriodForValidation {
-  return {
-    id: String(p.id),
-    status: p.status === 'validated_central' ? 'pending_validation' : p.status,
-    initiated_by: p.initiated_by ? String(p.initiated_by) : p.validated_by ? String(p.validated_by) : null,
-    initiated_at: p.initiated_at ?? p.validated_central_at ?? null,
-  }
 }
 
 type LoadedPending =
@@ -917,10 +904,10 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             { id, status: 'pending_validation', initiated_by: request.user.sub, initiated_at: new Date() }, [], users)
         } catch { firstLevel = null }
         const pendingWith = pendingWithOf(firstLevel)
-        if (pendingWith?.userId) {
-          notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
-            `La paie multi-filiales ${month} attend votre validation (niveau 1/${pendingWith.requiredLevels}).`,
-            { month, periodId: id, level: 1, scope: 'multi_sites' })
+        // Alerte TOUS les valideurs éligibles du niveau 1 (désigné, sinon équipe
+        // RH hors initiateur) : in-app + email SMTP tenant, non bloquant.
+        if (firstLevel) {
+          notifyPayrollValidators({ schema, periodId: id, month, scope: 'multi_sites', kind: 'requested', state: firstLevel })
         }
         return reply.send({
           data: { id, status: 'validated_central' },
@@ -1007,10 +994,8 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const next = payrollLevelState(circuit, period,
         [...approvals, { level, approver_id: request.user.sub, approved_at: new Date() }], users)
       const pendingWith = pendingWithOf(next)
-      if (pendingWith?.userId) {
-        notifyPayrollUser(schema, pendingWith.userId, 'payroll_validation_requested', 'Paie à valider',
-          `La paie multi-filiales ${parent.month} attend votre validation (niveau ${pendingWith.level}/${requiredLevels}).`,
-          { month: parent.month, periodId: period.id, level: pendingWith.level, scope: 'multi_sites' })
+      if (next) {
+        notifyPayrollValidators({ schema, periodId: period.id, month: parent.month, scope: 'multi_sites', kind: 'requested', state: next })
       }
       return reply.send({
         data: { id: period.id, status: 'validated_central', level, requiredLevels, escalated: decision.escalated },
