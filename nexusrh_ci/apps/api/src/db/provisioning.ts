@@ -586,7 +586,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id uuid NOT NULL,
     period_id   uuid NOT NULL,
-    rule_code   varchar(10) NOT NULL,
+    rule_code   varchar(30) NOT NULL,
     label       varchar(200),
     amount      numeric(12,0) NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now()
@@ -1251,6 +1251,20 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
       END IF;
     END $$
   `)
+  // Clés du moteur de paie (HEURES_SUPP_FERIE = 17 car.) : varchar(10) trop court.
+  await q(`ALTER TABLE ${s}.variable_elements ALTER COLUMN rule_code TYPE varchar(30)`)
+  // Feuille de variables RAF : validation explicite par salarié et par période-
+  // filiale ; variables_hash = empreinte des variables au moment de la validation
+  // (toute modification ultérieure l'invalide). Aligné sur ensureTenantSchema.
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.payroll_variable_validations (
+    period_id      uuid NOT NULL,
+    employee_id    uuid NOT NULL,
+    mode           varchar(10) NOT NULL CHECK (mode IN ('entered','none')),
+    variables_hash varchar(64) NOT NULL,
+    validated_by   uuid,
+    validated_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (period_id, employee_id)
+  )`)
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
 

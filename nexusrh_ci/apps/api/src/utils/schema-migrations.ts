@@ -272,6 +272,34 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // (même mois). Mono-pays : comportement inchangé (legal_entity_id NULL unique/mois).
     `ALTER TABLE "${schemaName}".pay_periods DROP CONSTRAINT IF EXISTS pay_periods_month_key`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_${schemaName}_pp_month_le ON "${schemaName}".pay_periods (month, legal_entity_id) NULLS NOT DISTINCT`,
+    // ── Feuille de variables RAF (soumission contrôlée d'une période-filiale) ──
+    // rule_code porte les clés du moteur (HEURES_SUPP_FERIE = 17 car.) : varchar(10)
+    // les tronquait. Élargissement varchar = catalogue seul, no-op si déjà fait.
+    `ALTER TABLE "${schemaName}".variable_elements ADD COLUMN IF NOT EXISTS month varchar(7)`,
+    `ALTER TABLE "${schemaName}".variable_elements ADD COLUMN IF NOT EXISTS description text`,
+    `ALTER TABLE "${schemaName}".variable_elements ALTER COLUMN rule_code TYPE varchar(30)`,
+    `DO $$ BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conname = 'variable_elements_emp_code_month_unique'
+            AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = '${schemaName}')
+       ) THEN
+         ALTER TABLE "${schemaName}".variable_elements
+           ADD CONSTRAINT variable_elements_emp_code_month_unique UNIQUE (employee_id, rule_code, month);
+       END IF;
+     END $$`,
+    // Validation explicite des variables du mois par salarié (« variables saisies »
+    // ou « aucune variable ») ; variables_hash = empreinte au moment de la
+    // validation → toute modification ultérieure l'invalide.
+    `CREATE TABLE IF NOT EXISTS "${schemaName}".payroll_variable_validations (
+      period_id      uuid NOT NULL,
+      employee_id    uuid NOT NULL,
+      mode           varchar(10) NOT NULL CHECK (mode IN ('entered','none')),
+      variables_hash varchar(64) NOT NULL,
+      validated_by   uuid,
+      validated_at   timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (period_id, employee_id)
+    )`,
 
     // ── Auth : reset password tokens (TTL 15 min, usage unique) ──
     `CREATE TABLE IF NOT EXISTS "${schemaName}".password_reset_tokens (

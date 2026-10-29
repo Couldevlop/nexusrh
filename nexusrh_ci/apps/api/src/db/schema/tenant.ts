@@ -191,7 +191,7 @@ export function createTenantSchema(schemaName: string) {
     id:         uuid('id').primaryKey().defaultRandom(),
     employeeId: uuid('employee_id').notNull(),
     periodId:   uuid('period_id').notNull(),
-    ruleCode:   varchar('rule_code', { length: 10 }).notNull(),
+    ruleCode:   varchar('rule_code', { length: 30 }).notNull(),
     label:      varchar('label', { length: 200 }),
     amount:     numeric('amount', { precision: 12, scale: 0 }).notNull(),
     createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

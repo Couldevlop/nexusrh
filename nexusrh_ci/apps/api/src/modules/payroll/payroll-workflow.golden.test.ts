@@ -46,6 +46,7 @@ vi.mock('../../config.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import payrollWorkflowRoutes from './payroll-workflow.routes.js'
+import { variablesFingerprint } from '../../services/raf-readiness.service.js'
 
 const TENANT = 'tenant_groupe_ci'
 const PARENT_ID  = '11111111-1111-1111-1111-000000000001'
@@ -136,7 +137,11 @@ describe('Workflow paie multi-pays end-to-end (Palier 3)', () => {
       }] })                                                            // SELECT period
       .mockResolvedValueOnce({ rows: [{ at_rate: '0.020', name: 'Filiale CI' }] }) // SELECT legal_entity
       .mockResolvedValueOnce({ rows: [{ id: EMP_CI, base_salary: '500000',
-        marital_status: 'married', children_count: 2, hire_date: null }] }) // SELECT employees
+        marital_status: 'married', children_count: 2, hire_date: null,
+        cnps_number: 'CNPS-CI-01', payment_method: 'mobile_money', mobile_money_phone: '+2250701020304' }] }) // SELECT employees
+      .mockResolvedValueOnce({ rows: [] })                              // contrôle RAF : variable_elements de la période
+      .mockResolvedValueOnce({ rows: [{ employee_id: EMP_CI, mode: 'none',
+        variables_hash: variablesFingerprint({}), validated_at: null, validated_by: RAF_CI }] }) // contrôle RAF : ligne validée
       .mockResolvedValueOnce({ rows: [] })                              // attendance_config.payroll_link (désactivé)
       .mockResolvedValueOnce({ rows: [] })                              // SELECT variable_elements (vide)
       .mockResolvedValueOnce({ rows: [] })                              // SELECT absences du mois (aucune)
