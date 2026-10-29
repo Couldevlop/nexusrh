@@ -27,6 +27,11 @@ import { loadEffectiveAttendancePayrollSettings } from '../../services/attendanc
 import {
   loadPayrollPopulation, markExpensesPaid, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
+import {
+  loadRafReadiness, readinessRefusalMessage, takeUnjustifiedAbsenceDays, withUnjustifiedAbsence,
+  variablesFingerprint, groupVariables, RAF_VARIABLE_CODES, RAF_VARIABLE_LABELS,
+  MAX_UNJUSTIFIED_ABSENCE_DAYS, MAX_VARIABLE_AMOUNT, UNJUSTIFIED_ABSENCE_CODE,
+} from '../../services/raf-readiness.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import {
@@ -211,6 +216,45 @@ function actorName(user: { firstName?: string; lastName?: string }): string {
   return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || 'un valideur'
 }
 
+// ── Feuille de variables RAF + contrôle avant soumission ────────────────────
+interface RafChildPeriod {
+  id: string; month: string; status: string
+  raf_user_id: string | null; parent_period_id: string | null
+  legal_entity_id: string | null; legislation_pack_code: string | null
+}
+
+/**
+ * Période-FILLE accessible à l'utilisateur. OWASP A01 (IDOR) : un raf_site
+ * n'accède qu'aux filiales dont il est le RAF ; admin / hr_manager à toutes
+ * celles de leur tenant (schéma du token). Une période mère est refusée.
+ */
+async function loadRafChildPeriod(
+  schema: string, id: string, user: { role: string; sub: string },
+): Promise<{ period: RafChildPeriod } | { status: 400 | 403 | 404; error: string }> {
+  if (!UUID_RE.test(id)) return { status: 400, error: 'Identifiant de période invalide' }
+  const r = await pool.query<RafChildPeriod>(
+    `SELECT id, month, status, raf_user_id, parent_period_id, legal_entity_id, legislation_pack_code
+       FROM "${schema}".pay_periods WHERE id = $1`,
+    [id],
+  )
+  const period = r?.rows?.[0]
+  if (!period) return { status: 404, error: 'Période introuvable' }
+  if (!period.parent_period_id || !period.legal_entity_id) {
+    return { status: 400, error: 'La période mère du groupe ne se complète pas ici : ouvrez la période de votre filiale.' }
+  }
+  if (user.role === 'raf_site' && period.raf_user_id !== user.sub) {
+    return { status: 403, error: 'Vous n\'êtes pas le RAF de cette filiale' }
+  }
+  return { period }
+}
+
+const variableValuesSchema = z.object(Object.fromEntries(RAF_VARIABLE_CODES.map(code => [
+  code,
+  z.number().int().min(0).max(code === UNJUSTIFIED_ABSENCE_CODE ? MAX_UNJUSTIFIED_ABSENCE_DAYS : MAX_VARIABLE_AMOUNT).optional(),
+]))).strict()
+const variablesBodySchema = z.object({ values: variableValuesSchema }).strict()
+const validateBodySchema = z.object({ mode: z.enum(['entered', 'none']) }).strict()
+
 async function assertMultiCountryTenant(
   schemaName: string,
 ): Promise<{ hasSubsidiaries: boolean }> {
@@ -241,9 +285,13 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
                      FROM "${schema}".pay_periods pp
                      LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id`
         const params: unknown[] = []
-        // Un RAF site ne voit que les périodes de son entité
-        if (request.user.role === 'raf_site') {
-          sql += ` WHERE pp.raf_user_id = $1`
+        // Un RAF site ne voit que les périodes de son entité. `?scope=raf` (page
+        // « Paie de ma filiale ») : uniquement les périodes-FILLES dont
+        // l'utilisateur est le RAF — jamais la période mère du groupe, même pour
+        // un admin / hr_manager désigné RAF d'une filiale.
+        const { scope } = (request.query ?? {}) as { scope?: string }
+        if (request.user.role === 'raf_site' || scope === 'raf') {
+          sql += ` WHERE pp.raf_user_id = $1 AND pp.legal_entity_id IS NOT NULL AND pp.parent_period_id IS NOT NULL`
           params.push(request.user.sub)
         }
         sql += ` ORDER BY pp.month DESC, pp.parent_period_id NULLS FIRST, pp.created_at`
@@ -476,6 +524,13 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         // Employés de la filiale : actifs + sortants du mois (bulletin de solde)
         const emps = { rows: await loadPayrollPopulation(schema, month, { legalEntityId: period.legal_entity_id }) }
 
+        // Contrôle OBLIGATOIRE avant soumission (même service que GET /readiness) :
+        // dossiers salariés complets + variables du mois validées ligne à ligne.
+        const readiness = await loadRafReadiness(schema, id, pack, emps.rows)
+        if (!readiness.ready) {
+          return reply.status(400).send({ error: readinessRefusalMessage(readiness), code: 'RAF_NOT_READY', readiness })
+        }
+
         const [yearStr, monthNumStr] = month.split('-')
         const year = parseInt(yearStr!, 10)
         const monthNum = parseInt(monthNumStr!, 10)
@@ -497,11 +552,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           ).catch(() => ({ rows: [] as VariableElementRow[] }))
           for (const v of velRes.rows) varEls[v.rule_code] = parseInt(v.amount)
           const variableTreatment = treatmentFromRows(velRes.rows)
+          // Absences injustifiées saisies par le RAF : des JOURS, retenus sur la base
+          const unjustifiedDays = takeUnjustifiedAbsenceDays(varEls)
 
           const baseSalary = parseInt(emp.base_salary)
           // Prorata entrée / sortie, absences, pointage et solde de tout compte
           const monthInputs = await resolveEmployeeMonth(schema, emp, month, attendanceSettings)
-          const { absenceCtx, attendance } = monthInputs
+          const { absenceCtx } = monthInputs
+          const attendance = { deductions: withUnjustifiedAbsence(monthInputs.attendance?.deductions, unjustifiedDays, baseSalary, workingDaysMonth) }
 
           const result = calculatePayrollCI({
             baseSalary,
@@ -570,6 +628,193 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         })
       } catch (err) {
         fastify.log.error({ err }, 'payroll-workflow operation failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── GET /payroll-workflow/periods/:id/readiness ───────────────────────────
+  // Contrôle avant soumission RAF (même fonction que submit-by-raf) : manques
+  // par salarié + état de validation des variables du mois.
+  fastify.get('/periods/:id/readiness', {
+    preHandler: [fastify.authorize('raf_site', 'admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      try {
+        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period } = loaded
+        const pack = getLegislationPack(period.legislation_pack_code)
+        const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id })
+        const readiness = await loadRafReadiness(schema, period.id, pack, population)
+        return reply.send({ data: readiness })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow readiness failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── GET /payroll-workflow/periods/:id/variables ───────────────────────────
+  // Feuille de variables de la période-filiale : une ligne par salarié payé,
+  // valeurs saisies (stockage variable_elements) + validation de la ligne.
+  fastify.get('/periods/:id/variables', {
+    preHandler: [fastify.authorize('raf_site', 'admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      try {
+        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period } = loaded
+        const pack = getLegislationPack(period.legislation_pack_code)
+        const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id })
+        const readiness = await loadRafReadiness(schema, period.id, pack, population)
+        return reply.send({
+          data: {
+            period: { id: period.id, month: period.month, status: period.status, legislationPackCode: pack.code },
+            codes: RAF_VARIABLE_CODES.map(code => ({ code, label: RAF_VARIABLE_LABELS[code], unit: code === UNJUSTIFIED_ABSENCE_CODE ? 'days' : 'fcfa' })),
+            editable: period.status === 'sent_to_sites',
+            rows: readiness.employees,
+            readiness: { ...readiness, employees: undefined },
+          },
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow variables sheet failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── PUT /payroll-workflow/periods/:id/variables/:employeeId ───────────────
+  // Saisie des variables usuelles d'un salarié (montants FCFA entiers, absences
+  // injustifiées en jours). 0 = suppression. Toute modification INVALIDE la
+  // validation de la ligne.
+  fastify.put('/periods/:id/variables/:employeeId', {
+    preHandler: [fastify.authorize('raf_site', 'admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id, employeeId } = request.params as { id: string; employeeId: string }
+      if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant de salarié invalide' })
+      const body = variablesBodySchema.safeParse(request.body ?? {})
+      if (!body.success) {
+        return reply.status(400).send({
+          error: `Valeurs invalides : montants en FCFA entiers positifs, absences injustifiées entre 0 et ${MAX_UNJUSTIFIED_ABSENCE_DAYS} jours.`,
+        })
+      }
+      try {
+        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period } = loaded
+        if (period.status !== 'sent_to_sites') {
+          return reply.status(409).send({ error: 'Période déjà soumise : les variables ne sont plus modifiables.' })
+        }
+        const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id, employeeId })
+        const emp = population.find(e => e.id === employeeId && parseInt(e.base_salary) > 0)
+        if (!emp) return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+
+        const entries = RAF_VARIABLE_CODES.map(code => ({ code, amount: body.data.values[code] ?? 0 }))
+        const toDelete = entries.filter(e => e.amount === 0).map(e => e.code)
+        const toUpsert = entries.filter(e => e.amount > 0)
+        if (toDelete.length > 0) {
+          await pool.query(
+            `DELETE FROM "${schema}".variable_elements
+              WHERE employee_id = $1 AND rule_code = ANY($2::text[]) AND (period_id = $3 OR month = $4)`,
+            [employeeId, toDelete, period.id, period.month],
+          )
+        }
+        if (toUpsert.length > 0) {
+          await pool.query(
+            `INSERT INTO "${schema}".variable_elements (employee_id, period_id, rule_code, label, amount, month)
+             SELECT $1, $2, t.code, t.label, t.amount, $3
+               FROM unnest($4::text[], $5::text[], $6::bigint[]) AS t(code, label, amount)
+             ON CONFLICT (employee_id, rule_code, month)
+               DO UPDATE SET amount = EXCLUDED.amount, period_id = EXCLUDED.period_id, label = EXCLUDED.label`,
+            [employeeId, period.id, period.month,
+              toUpsert.map(e => e.code), toUpsert.map(e => RAF_VARIABLE_LABELS[e.code]), toUpsert.map(e => e.amount)],
+          )
+        }
+        // Toute modification invalide la validation de la ligne (à revalider)
+        await pool.query(
+          `DELETE FROM "${schema}".payroll_variable_validations WHERE period_id = $1 AND employee_id = $2`,
+          [period.id, employeeId],
+        ).catch(() => undefined)
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'payroll_variables.update', entity: 'pay_period', entityId: period.id,
+          changes: { employeeId, values: Object.fromEntries(toUpsert.map(e => [e.code, e.amount])) },
+          ipAddress: request.ip,
+        })
+        return reply.send({
+          data: { employeeId, values: Object.fromEntries(toUpsert.map(e => [e.code, e.amount])), validationReset: true },
+        })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow variables update failed')
+        const { status, error } = describeWorkflowError(err)
+        return reply.status(status).send({ error })
+      }
+    },
+  })
+
+  // ── POST /payroll-workflow/periods/:id/variables/:employeeId/validate ─────
+  // Validation explicite d'une ligne : « variables saisies » (entered) ou
+  // « aucune variable ce mois » (none). L'empreinte des variables est mémorisée.
+  fastify.post('/periods/:id/variables/:employeeId/validate', {
+    preHandler: [fastify.authorize('raf_site', 'admin', 'hr_manager')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id, employeeId } = request.params as { id: string; employeeId: string }
+      if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant de salarié invalide' })
+      const body = validateBodySchema.safeParse(request.body ?? {})
+      if (!body.success) return reply.status(400).send({ error: 'Mode de validation invalide (entered ou none).' })
+      try {
+        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
+        const { period } = loaded
+        if (period.status !== 'sent_to_sites') {
+          return reply.status(409).send({ error: 'Période déjà soumise : la validation n\'est plus modifiable.' })
+        }
+        const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id, employeeId })
+        const emp = population.find(e => e.id === employeeId && parseInt(e.base_salary) > 0)
+        if (!emp) return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+
+        const vars = await pool.query<{ employee_id: string; rule_code: string; amount: string }>(
+          `SELECT employee_id, rule_code, amount FROM "${schema}".variable_elements
+            WHERE period_id = $1 AND employee_id = $2`,
+          [period.id, employeeId],
+        )
+        const values = groupVariables(vars?.rows ?? []).get(employeeId) ?? {}
+        const hasAny = Object.values(values).some(v => v !== 0)
+        const mode = body.data.mode
+        if (mode === 'none' && hasAny) {
+          return reply.status(409).send({ error: 'Des variables sont saisies pour ce salarié : validez « variables saisies » ou remettez-les à zéro.' })
+        }
+        if (mode === 'entered' && !hasAny) {
+          return reply.status(409).send({ error: 'Aucune variable saisie pour ce salarié : validez « aucune variable ce mois ».' })
+        }
+        const hash = variablesFingerprint(values)
+        await pool.query(
+          `INSERT INTO "${schema}".payroll_variable_validations
+             (period_id, employee_id, mode, variables_hash, validated_by, validated_at)
+           VALUES ($1, $2, $3, $4, $5, now())
+           ON CONFLICT (period_id, employee_id)
+             DO UPDATE SET mode = EXCLUDED.mode, variables_hash = EXCLUDED.variables_hash,
+                           validated_by = EXCLUDED.validated_by, validated_at = now()`,
+          [period.id, employeeId, mode, hash, request.user.sub],
+        )
+        await auditWorkflow({
+          schema, userId: request.user.sub,
+          action: 'payroll_variables.validate', entity: 'pay_period', entityId: period.id,
+          changes: { employeeId, mode },
+          ipAddress: request.ip,
+        })
+        return reply.send({ data: { employeeId, mode, valid: true } })
+      } catch (err) {
+        fastify.log.error({ err }, 'payroll-workflow variables validation failed')
         const { status, error } = describeWorkflowError(err)
         return reply.status(status).send({ error })
       }

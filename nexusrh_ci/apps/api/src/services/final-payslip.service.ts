@@ -39,6 +39,8 @@ export interface PayrollEmployeeRow {
   nni: string
   hire_date: string | null
   legal_entity_id: string | null
+  /** RIB / IBAN renseigné (valeur chiffrée jamais lue ici) — contrôle avant soumission RAF */
+  has_iban?: boolean | null
   exit_date: string | null
   offboarding_id: string | null
   departure_type: string | null
@@ -151,7 +153,8 @@ function defaultSettlementLabel(key: (typeof SETTLEMENT_KEYS)[number]): string {
 const EMPLOYEE_COLUMNS = `e.id, e.base_salary, e.marital_status, e.children_count,
   e.mobile_money_provider, e.mobile_money_phone, e.payment_method,
   e.first_name, e.last_name, e.cnps_number, e.nni,
-  e.hire_date::text AS hire_date, e.legal_entity_id`
+  e.hire_date::text AS hire_date, e.legal_entity_id,
+  (e.iban IS NOT NULL AND e.iban <> '') AS has_iban`
 
 /** Mode de paiement porté sur le bulletin : virement, sinon l'opérateur Mobile Money. */
 export function slipPaymentMethod(emp: Pick<PayrollEmployeeRow, 'payment_method' | 'mobile_money_provider'>): string {

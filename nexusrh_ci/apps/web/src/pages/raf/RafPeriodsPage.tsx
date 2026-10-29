@@ -1,8 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Fragment, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation, Trans } from 'react-i18next'
 import { api, formatFCFA } from '@/lib/api'
-import { Send, Loader2, CheckCircle2, ClipboardList, Building2 } from 'lucide-react'
-import { confirmDialog } from '@/components/shared/ConfirmDialog'
+import { CheckCircle2, ClipboardList, Building2, ChevronDown, ChevronRight } from 'lucide-react'
+import RafVariablesSheet from './RafVariablesSheet'
 
 /**
  * Page RAF site — chaque RAF voit UNIQUEMENT les périodes qui lui sont
@@ -11,10 +12,13 @@ import { confirmDialog } from '@/components/shared/ConfirmDialog'
  * Workflow attendu :
  *   1. La RH centrale crée la période parente + décline aux sites
  *      (legal_entities.raf_user_id auto-assigne le RAF)
- *   2. Le RAF voit ici sa période (status = sent_to_sites)
- *   3. Il saisit les variables locales (heures supp, primes, absences)
- *      dans les pages dédiées employees / payroll-variables
- *   4. Quand il a complété → clic "Soumettre" → API génère les bulletins
+ *   2. Le RAF voit ici sa période (status = sent_to_sites) — uniquement les
+ *      périodes-FILLES dont il est le RAF (`?scope=raf`), jamais la période
+ *      mère du groupe, même pour un admin / hr_manager désigné RAF
+ *   3. Il ouvre la feuille de la période : saisit les variables locales (heures
+ *      supp, primes, absences injustifiées) et valide chaque ligne ; les
+ *      dossiers salariés incomplets sont listés (contrôle obligatoire)
+ *   4. Quand tout est prêt → « Soumettre » (désactivé sinon) → API génère les bulletins
  *      via calculatePayrollCI (pack législatif filiale appliqué)
  *      → status passe à completed_by_site
  *   5. La RH centrale consolide → validated_central → closed
@@ -43,9 +47,11 @@ export default function RafPeriodsPage() {
   const { t } = useTranslation('raf')
   const qc = useQueryClient()
 
-  const { data, isLoading } = useQuery<{ data: RafPeriod[] }>({
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const { data, isLoading, error } = useQuery<{ data: RafPeriod[] }>({
     queryKey: ['raf-periods'],
-    queryFn: () => api.get('/payroll-workflow/periods').then(r => r.data),
+    queryFn: () => api.get('/payroll-workflow/periods', { params: { scope: 'raf' } }).then(r => r.data),
   })
 
   // Charge les filiales pour résoudre nom → legal_entity_id (un RAF peut avoir
@@ -56,13 +62,10 @@ export default function RafPeriodsPage() {
   })
   const entityMap = new Map((entitiesData?.data ?? []).map(e => [e.id, e]))
 
-  const submitMut = useMutation({
-    mutationFn: (id: string) => api.post(`/payroll-workflow/periods/${id}/submit-by-raf`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['raf-periods'] }),
-  })
-
-  const periods = data?.data ?? []
-  const toSubmit = periods.filter(p => p.status === 'sent_to_sites' && p.parent_period_id)
+  // Défense en profondeur : seules les périodes-filles (jamais la mère du groupe)
+  const periods = (data?.data ?? []).filter(p => p.parent_period_id && p.legal_entity_id)
+  const toSubmit = periods.filter(p => p.status === 'sent_to_sites')
+  const loadError = (error as { response?: { data?: { error?: unknown } } } | null)?.response?.data?.error
 
   return (
     <div className="p-6 space-y-6">
@@ -103,14 +106,21 @@ export default function RafPeriodsPage() {
                 {t('empty')}
               </td></tr>
             )}
+            {!isLoading && error && (
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-destructive">
+                {typeof loadError === 'string' && loadError ? loadError : t('loadError')}
+              </td></tr>
+            )}
             {periods.map(p => {
               const meta = {
                 label: STATUS_COLOR[p.status] ? t(`statuses.${p.status}`) : p.status,
                 color: STATUS_COLOR[p.status] ?? 'bg-muted text-foreground',
               }
               const entity = p.legal_entity_id ? entityMap.get(p.legal_entity_id) : null
+              const open = openId === p.id
               return (
-                <tr key={p.id} className="hover:bg-muted/30">
+                <Fragment key={p.id}>
+                <tr className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium">{p.month}</td>
                   <td className="px-4 py-3">
                     {entity ? (
@@ -137,35 +147,35 @@ export default function RafPeriodsPage() {
                     {p.total_net ? formatFCFA(parseInt(p.total_net)) : <span className="text-muted-foreground">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {p.status === 'sent_to_sites' ? (
-                      <button
-                        onClick={async () => {
-                          if (await confirmDialog({ message: t('submitConfirm', { month: p.month }), danger: false })) {
-                            submitMut.mutate(p.id)
-                          }
-                        }}
-                        disabled={submitMut.isPending}
-                        className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                      >
-                        {submitMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                        {t('submit')}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(open ? null : p.id)}
+                      aria-expanded={open}
+                      className={p.status === 'sent_to_sites'
+                        ? 'inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90'
+                        : 'inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted'}
+                    >
+                      {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      {p.status === 'sent_to_sites' ? t('prepare') : t('viewSheet')}
+                    </button>
                   </td>
                 </tr>
+                {open && (
+                  <tr className="bg-muted/10">
+                    <td colSpan={7} className="p-0">
+                      <RafVariablesSheet
+                        periodId={p.id}
+                        onSubmitted={() => qc.invalidateQueries({ queryKey: ['raf-periods'] })}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               )
             })}
           </tbody>
         </table>
       </div>
-
-      {submitMut.isError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {(submitMut.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('submitError')}
-        </div>
-      )}
     </div>
   )
 }

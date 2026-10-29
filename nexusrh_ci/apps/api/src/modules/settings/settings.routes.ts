@@ -2042,7 +2042,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   const VARIABLE_ELEMENT_AMOUNT_MAX = 100_000_000
   const variableElementSchema = z.object({
     employee_id: z.string().uuid(),
-    rule_code:   z.string().min(1).max(10).regex(/^[A-Z0-9_]+$/, 'Code rubrique invalide (majuscules/chiffres/_)'),
+    rule_code:   z.string().min(1).max(30).regex(/^[A-Z0-9_]+$/, 'Code rubrique invalide (majuscules/chiffres/_)'),
     month:       z.string().regex(/^\d{4}-\d{2}$/, 'Format mois invalide (YYYY-MM)'),
     amount:      z.number().int().min(VARIABLE_ELEMENT_AMOUNT_MIN).max(VARIABLE_ELEMENT_AMOUNT_MAX),
     description: z.string().max(500).optional(),
