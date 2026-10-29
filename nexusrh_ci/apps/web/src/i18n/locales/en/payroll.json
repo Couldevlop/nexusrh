@@ -180,8 +180,10 @@
     "colPeriod": "Period",
     "colGross": "Gross",
     "colNet": "Net pay",
-    "colCnps": "CNPS emp.",
-    "colIts": "ITS",
+    "colCnps": "{{caisse}} emp.",
+    "colIts": "{{impot}}",
+    "colCnpsMixed": "Emp. contrib.",
+    "colItsMixed": "Tax",
     "colPayment": "Payment",
     "payStatus": {
       "paid": "Paid",
@@ -252,11 +254,11 @@
   },
   "transparency": {
     "title": "Transparent payslip",
-    "headerSuffixCnps": "CNPS {{number}}",
+    "headerSuffixCnps": "{{caisse}} No. {{number}}",
     "employerPart": "employer share",
     "kpiGross": "Gross",
-    "kpiCnpsSal": "CNPS emp.",
-    "kpiIts": "ITS",
+    "kpiCnpsSal": "{{caisse}} emp.",
+    "kpiIts": "{{impot}}",
     "kpiNet": "Net pay",
     "tabs": {
       "detail": "Detail",
@@ -271,7 +273,7 @@
       "result": "Result"
     },
     "detail": {
-      "intro": "Each line is expandable. Click to view the formula, base, rate and CI legal reference.",
+      "intro": "Each line is expandable. Click to view the formula, base, rate and legal reference ({{country}}).",
       "earnings": "Earnings · {{amount}}",
       "employeeDeductions": "Employee deductions · −{{amount}}",
       "employerContributions": "Employer contributions (informational) · {{amount}}",
@@ -286,8 +288,8 @@
       "empty": "No history available for this employee",
       "colMonth": "Month",
       "colGross": "Gross",
-      "colCnps": "CNPS emp.",
-      "colIts": "ITS",
+      "colCnps": "{{caisse}} emp.",
+      "colIts": "{{impot}}",
       "colNet": "Net",
       "current": "{{month}} (current)"
     },

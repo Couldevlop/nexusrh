@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { api, formatFCFA, formatMonth } from '@/lib/api'
+import { recentMonths } from '@/lib/months'
 import { useAuthStore } from '@/stores/authStore'
 import { PayrollStatusBadge, PayrollWorkflowModal, formatDateTime, type PendingWith } from './PayrollWorkflowModal'
 import {
@@ -119,11 +120,7 @@ export default function PayrollPage() {
     }
   }
 
-  const availableMonths = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date()
-    d.setMonth(d.getMonth() - i)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  })
+  const availableMonths = recentMonths(12)
 
   const monthIsLocked = (m: string) => periods.some(p => p.month === m && (p.status === 'closed' || p.status === 'pending_validation'))
   const pendingCount = periods.filter(p => p.status === 'pending_validation').length
