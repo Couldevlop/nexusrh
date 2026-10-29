@@ -153,6 +153,13 @@ const EMPLOYEE_COLUMNS = `e.id, e.base_salary, e.marital_status, e.children_coun
   e.first_name, e.last_name, e.cnps_number, e.nni,
   e.hire_date::text AS hire_date, e.legal_entity_id`
 
+/**
+ * Fiche « à compléter » (salaire de base 0 — ex. fiche auto-créée de l'admin
+ * du tenant) : jamais de bulletin tant que la rémunération n'est pas
+ * renseignée. Le salarié reste visible partout ailleurs (liste des employés…).
+ */
+export const PAYABLE_SALARY_FILTER = `COALESCE(e.base_salary, 0) > 0`
+
 /** Mode de paiement porté sur le bulletin : virement, sinon l'opérateur Mobile Money. */
 export function slipPaymentMethod(emp: Pick<PayrollEmployeeRow, 'payment_method' | 'mobile_money_provider'>): string {
   if (emp.payment_method === 'bank_transfer') return 'bank_transfer'
@@ -191,6 +198,7 @@ export async function loadPayrollPopulation(
       ORDER BY o.departure_date DESC LIMIT 1
     ) oc ON true
     WHERE (e.hire_date IS NULL OR e.hire_date <= $2)
+      AND ${PAYABLE_SALARY_FILTER}
       AND (
         (e.is_active = true AND e.deleted_at IS NULL AND (${exitExpr} IS NULL OR ${exitExpr} >= $1))
         OR ${exitExpr} BETWEEN $1 AND $2
@@ -212,6 +220,7 @@ export async function loadPayrollPopulation(
               NULL::uuid AS offboarding_id, NULL::text AS departure_type, NULL::jsonb AS settlement
        FROM "${schema}".employees e
        WHERE (e.hire_date IS NULL OR e.hire_date <= $2)
+         AND ${PAYABLE_SALARY_FILTER}
          AND ((e.is_active = true AND e.deleted_at IS NULL AND (e.exit_date IS NULL OR e.exit_date >= $1))
               OR e.exit_date BETWEEN $1 AND $2)${legacyScope}`,
       legacyParams,

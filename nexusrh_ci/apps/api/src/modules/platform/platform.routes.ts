@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto'
 import { config } from '../../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../../db/provisioning.js'
 import { sendPasswordResetEmail } from '../../services/email.js'
+import { ensureAdminEmployeeRecord } from '../../db/admin-employee.js'
 import { maintenanceCache } from '../../cache.js'
 import {
   getOfflineMessagePolicy,
@@ -885,6 +886,8 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           )
           admin = inserted.rows[0]!
           request.log.warn({ tenantId: id, email: admin.email }, 'reset-admin: admin créé via mode réparation')
+          // Fiche employé « à compléter » liée (ou fiche existante de même email).
+          await ensureAdminEmployeeRecord(pool, schemaName, admin.email)
 
           sendPasswordResetEmail({
             to: admin.email, firstName: body.firstName!, tempPassword,

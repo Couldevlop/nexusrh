@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 import { isModuleEnabled } from '@/lib/modules'
 import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
+import IncompleteProfileBanner from './IncompleteProfileBanner'
 
 /** Route → clé du namespace `nav` (libellés traduits FR/EN). */
 const ROUTE_LABEL_KEYS: Record<string, string> = {
@@ -78,6 +79,9 @@ export default function MainLayout() {
 
           {/* Échéances de validation (N+1… / RH) en retard ou proches */}
           <ApprovalAlerts href="/approvals" />
+
+          {/* Admin dont la fiche employé auto-créée n'a pas encore de salaire */}
+          <IncompleteProfileBanner />
 
           <main className="flex-1 overflow-auto bg-background">
             <Outlet />

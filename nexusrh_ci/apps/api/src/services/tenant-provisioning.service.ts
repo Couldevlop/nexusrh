@@ -5,6 +5,7 @@ import { config } from '../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../db/provisioning.js'
 import { sendWelcomeTenantEmail, type TenantSmtp } from './email.js'
 import { seedDemoTenant } from '../db/seed-demo.js'
+import { ensureAdminEmployeeRecord } from '../db/admin-employee.js'
 
 /**
  * Service de provisionnement d'un tenant — pipeline UNIQUE réutilisé par :
@@ -182,6 +183,11 @@ export async function createTenantWithSchema(
        VALUES ($1, $2, $3, $4, 'admin', true)`,
       [input.adminEmail, passwordHash, input.adminFirstName, input.adminLastName],
     )
+
+    // 4b. Fiche employé « à compléter » liée à l'admin (salaire 0 → hors paie
+    // tant qu'elle n'est pas complétée). Dans le bloc atomique : un tenant
+    // n'est jamais créé à moitié.
+    await ensureAdminEmployeeRecord(pool, schemaName, input.adminEmail)
   } catch (err) {
     if (!schemaPreexisted) {
       await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined)
