@@ -16,6 +16,7 @@ interface EmployeeDetails {
   id: string; first_name: string; last_name: string; email: string
   phone: string; gender: string; birth_date: string; nni: string
   cnps_number: string; job_title: string; job_level: string
+  employee_number?: string | null
   contract_type: string; hire_date: string; base_salary: string
   weekly_hours: string | null; professional_category: string | null
   iban: string | null; bank_name: string | null; payment_method?: string | null
@@ -158,6 +159,7 @@ export default function EmployeeDetail() {
         <div className="rounded-xl border border-border bg-card p-5 space-y-3">
           <h2 className="font-semibold border-b border-border pb-2">{t('detail.personalInfo')}</h2>
           {[
+            [t('detail.fields.employeeNumber'), emp.employee_number ?? '—'],
             [t('detail.fields.email'), emp.email],
             [t('detail.fields.phone'), emp.phone],
             [t('detail.fields.gender'), emp.gender === 'F' ? t('detail.genderValues.female') : emp.gender === 'M' ? t('detail.genderValues.male') : '—'],

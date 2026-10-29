@@ -15,6 +15,7 @@ import { canonicalEmployeeMmProvider } from '../../services/mobile-money-provide
 import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { EMPLOYEE_NUMBER_MAX_LENGTH } from '../../db/employee-number.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
   wouldCreateManagerCycle,
@@ -85,6 +86,39 @@ const mmPhoneField = z.preprocess(emptyToUndef,
   z.string().refine((v) => AFRICA_MM_PHONE_RE.test(String(v).replace(/\s/g, '')),
     'Numéro Mobile Money invalide : indicatif africain attendu (ex : +225, +226, +223, +235, +242…) suivi du numéro').optional())
 
+// Matricule saisi à la main (sinon généré par la base : MAT00001…). Caractères
+// limités à ce qu'acceptent les imports SAGE / fichiers bancaires.
+const EMPLOYEE_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+const employeeNumberField = z.preprocess(
+  (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim()) : emptyToUndef(v)),
+  z.string()
+    .max(EMPLOYEE_NUMBER_MAX_LENGTH, `Matricule trop long (${EMPLOYEE_NUMBER_MAX_LENGTH} caractères maximum)`)
+    .regex(EMPLOYEE_NUMBER_RE, 'Matricule invalide : lettres, chiffres, point, tiret, slash ou souligné uniquement (ex : MAT00012)')
+    .optional())
+
+const EMPLOYEE_NUMBER_TAKEN_MESSAGE = 'Ce matricule est déjà attribué à un autre employé.'
+
+/**
+ * Matricule déjà porté par une AUTRE fiche active du tenant ? Contrôle
+ * applicatif (message clair) ; l'index UNIQUE partiel reste le filet en cas
+ * de course entre deux saisies simultanées.
+ */
+async function employeeNumberTaken(schema: string, employeeNumber: string, excludeId: string | null): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT 1 FROM "${schema}".employees
+      WHERE employee_number = $1 AND deleted_at IS NULL
+        AND ($2::uuid IS NULL OR id <> $2::uuid)
+      LIMIT 1`,
+    [employeeNumber, excludeId],
+  )
+  return (r?.rows?.length ?? 0) > 0
+}
+
+const EMPLOYEE_UNIQUE_MESSAGES = {
+  email: 'Un employé avec cet email existe déjà.',
+  employee_number: EMPLOYEE_NUMBER_TAKEN_MESSAGE,
+}
+
 // OWASP A03 — validation Zod du body POST /employees
 // Opérateur Mobile Money : formes historiques (mtn_momo/orange_money) acceptées,
 // toujours ÉCRITES sous la forme canonique du formulaire (wave|mtn|orange|cofina).
@@ -126,6 +160,8 @@ const createEmployeeSchema = z.object({
   childrenCount:       z.number().int().min(0).max(30).optional(),
   // Champs personnalisés du tenant — validés contre leur définition au handler.
   customFields:        z.record(z.unknown()).optional(),
+  // Matricule : facultatif, généré automatiquement (MAT00001…) si absent.
+  employeeNumber:      employeeNumberField,
 })
 
 // OWASP A03 — validation Zod du body PATCH /employees/:id
@@ -163,6 +199,8 @@ const patchEmployeeSchema = z.object({
   profilePhotoUrl:     z.string().max(2000).optional(),
   address:             z.string().max(500).optional(),
   customFields:        z.record(z.unknown()).optional(),
+  // Matricule modifiable par les RH (vide = inchangé : un matricule ne s'efface pas).
+  employeeNumber:      employeeNumberField,
 }).strict()
 
 // Champs qu'un employee a le droit de modifier sur son propre profil (subset
@@ -249,7 +287,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (isActive === 'true') { where += ` AND e.is_active = true` }
       if (departmentId) { where += ` AND e.department_id = $${idx++}`; params.push(departmentId) }
       if (search) {
-        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx})`
+        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx} OR lower(e.employee_number) LIKE $${idx})`
         params.push(`%${search.toLowerCase()}%`); idx++
       }
       // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
@@ -444,6 +482,21 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const custom = validateCustomFieldValues(ctx.customFields, body.customFields, 'create')
       if (!custom.ok) return reply.status(400).send(customFieldsError(custom.errors))
 
+      // Matricule saisi : unicité vérifiée avant l'INSERT (message clair). Non
+      // fourni → NULL, la base attribue le prochain matricule (trigger).
+      if (body.employeeNumber) {
+        try {
+          if (await employeeNumberTaken(schema, body.employeeNumber, null)) {
+            return reply.status(409).send({ error: EMPLOYEE_NUMBER_TAKEN_MESSAGE, code: 'EMPLOYEE_NUMBER_TAKEN' })
+          }
+        } catch (err) {
+          request.log.error({ err, schema, action: 'employee.create' }, 'Échec contrôle matricule')
+          return reply.status(500).send({
+            error: "Impossible d'enregistrer l'employé pour le moment. Réessayez ou contactez le support.",
+          })
+        }
+      }
+
       let res
       try {
         res = await pool.query(
@@ -452,8 +505,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
               nni, cnps_number, mobile_money_provider, mobile_money_phone,
               department_id, manager_id, legal_entity_id, job_title, job_level, contract_type,
               hire_date, base_salary, weekly_hours, professional_category,
-              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields, nationality)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,COALESCE($28,'Ivoirienne'))
+              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields, nationality,
+              employee_number)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,COALESCE($28,'Ivoirienne'),$29)
            RETURNING *`,
           [
             body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
@@ -470,13 +524,14 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             body.paymentMethod ?? 'mobile_money',
             body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
             JSON.stringify(custom.values), body.nationality ?? null,
+            body.employeeNumber ?? null,
           ]
         )
       } catch (err) {
         // Aucune erreur technique brute ne doit remonter : message personnalisé.
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+          uniqueMessages: EMPLOYEE_UNIQUE_MESSAGES,
         })
         request.log.error({ err, schema, action: 'employee.create' }, 'Échec création employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })
@@ -585,6 +640,21 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // Matricule : vide = inchangé ; sinon unicité vérifiée (hors fiche courante).
+      if (body.employeeNumber === undefined) delete body.employeeNumber
+      if (typeof body.employeeNumber === 'string') {
+        try {
+          if (await employeeNumberTaken(schema, body.employeeNumber, id)) {
+            return reply.status(409).send({ error: EMPLOYEE_NUMBER_TAKEN_MESSAGE, code: 'EMPLOYEE_NUMBER_TAKEN' })
+          }
+        } catch (err) {
+          request.log.error({ err, schema, action: 'employee.update', id }, 'Échec contrôle matricule')
+          return reply.status(500).send({
+            error: "Impossible de modifier l'employé pour le moment. Réessayez ou contactez le support.",
+          })
+        }
+      }
+
       // Zod a déjà filtré les champs autorisés. On convertit juste camelCase
       // → snake_case pour l'UPDATE SQL et on chiffre le NNI sensible.
       const sets: string[] = []
@@ -617,7 +687,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         const mapped = describeDbError(err, {
           entity: 'employé',
-          uniqueMessages: { email: 'Un employé avec cet email existe déjà.' },
+          uniqueMessages: EMPLOYEE_UNIQUE_MESSAGES,
         })
         request.log.error({ err, schema, action: 'employee.update', id }, 'Échec modification employé')
         if (mapped) return reply.status(mapped.statusCode).send({ error: mapped.error, code: mapped.code })

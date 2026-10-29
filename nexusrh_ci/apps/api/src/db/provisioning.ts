@@ -2,6 +2,7 @@ import { assertValidSchemaName } from '../utils/schema-name.js'
 import { onboardingTableStatements } from './onboarding-tables.js'
 import { classificationTableStatements } from './classification-defaults.js'
 import { pool } from './pool.js'
+import { employeeNumberSetupStatements } from './employee-number.js'
 
 /**
  * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
@@ -481,6 +482,10 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at            timestamptz NOT NULL DEFAULT now(),
     UNIQUE (email)
   )`)
+  // Matricule généré automatiquement (séquence par schéma + trigger) et unique.
+  for (const stmt of employeeNumberSetupStatements(schemaName)) {
+    await q(stmt)
+  }
 
   // A08-2 — Photos de profil (PII) : TENANT-SCOPÉES, jamais dans le bucket
   // public cross-tenant platform.brand_assets (réservé aux logos publics).

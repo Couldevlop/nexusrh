@@ -2423,8 +2423,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 INSERT INTO "${schema}".employees
                   (first_name, last_name, email, birth_date, phone, job_title, department_id,
                    hire_date, base_salary, contract_type, is_active, gender, cnps_number, city,
-                   weekly_hours, professional_category, iban, bank_name)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                   weekly_hours, professional_category, iban, bank_name, employee_number)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NULLIF($19, ''))
                 ON CONFLICT (email) DO UPDATE SET
                   first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
                   birth_date=EXCLUDED.birth_date, phone=EXCLUDED.phone,
@@ -2437,6 +2437,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   professional_category=COALESCE(EXCLUDED.professional_category, "${schema}".employees.professional_category),
                   iban=COALESCE(EXCLUDED.iban, "${schema}".employees.iban),
                   bank_name=COALESCE(EXCLUDED.bank_name, "${schema}".employees.bank_name),
+                  employee_number=COALESCE(NULLIF($19, ''), "${schema}".employees.employee_number),
                   updated_at=now()
               `, [
                 get(row, 'prenom'), get(row, 'nom'), email,
@@ -2455,6 +2456,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
                 encryptIfPresent(get(row, 'iban') || undefined),
                 get(row, 'banque') || null,
+                // Matricule facultatif (colonne « matricule ») : vide → généré par la base.
+                get(row, 'matricule').slice(0, 50),
               ])
               inserted++
             } catch (e) { errors.push(`Ligne ${i + 2} (${email}): ${(e as Error).message}`); skipped++ }

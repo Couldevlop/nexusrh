@@ -2028,10 +2028,10 @@ const IMPORT_TEMPLATES: ImportTemplate[] = [
     icon: Users2,
     color: 'bg-blue-100 text-blue-600',
     endpoint: '/settings/import/employees',
-    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville'],
+    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville','matricule'],
     example: [
-      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan'],
-      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan'],
+      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan','MAT00101'],
+      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan',''],
     ],
   },
   {
