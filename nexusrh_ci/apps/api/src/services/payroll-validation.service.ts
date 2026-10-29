@@ -51,7 +51,7 @@ export const DEFAULT_PAYROLL_SLA_DAYS = 2
 /** Rôles pouvant être désignés valideurs de la paie. */
 export const PAYROLL_DESIGNABLE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
 /** Rôles de l'équipe RH qui prennent la main sans désignation / après échéance. */
-const PAYROLL_TEAM_ROLES = ['admin', 'hr_manager'] as const
+export const PAYROLL_TEAM_ROLES = ['admin', 'hr_manager'] as const
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', hr_manager: 'Responsable RH', hr_officer: 'Gestionnaire RH',
@@ -144,6 +144,31 @@ export interface PeriodForValidation {
   status: string
   initiated_by: string | null
   initiated_at: string | Date | null
+}
+
+/** Ligne pay_periods utile au circuit (mono-entité ou parente multi-filiales). */
+export interface PeriodValidationRow {
+  id: string
+  status: string
+  initiated_by: string | null
+  initiated_at: string | Date | null
+  validated_by?: string | null
+  validated_central_at?: string | Date | null
+}
+
+/**
+ * Projection d'une période sur le modèle du circuit. Multi-filiales :
+ * 'validated_central' = en attente de validation ; initiateur = celui qui a
+ * consolidé (repli validated_by pour une paie consolidée avant le circuit).
+ * Mono-entité : inchangée ('pending_validation').
+ */
+export function asValidationPeriod(p: PeriodValidationRow): PeriodForValidation {
+  return {
+    id: String(p.id),
+    status: p.status === 'validated_central' ? 'pending_validation' : p.status,
+    initiated_by: p.initiated_by ? String(p.initiated_by) : p.validated_by ? String(p.validated_by) : null,
+    initiated_at: p.initiated_at ?? p.validated_central_at ?? null,
+  }
 }
 
 export interface ApprovalForValidation {
