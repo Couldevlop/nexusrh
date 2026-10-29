@@ -275,6 +275,20 @@
     "terms": "Conditions générales d'utilisation",
     "cookies": "Politique cookies",
     "dataRights": "Vos droits sur vos données",
-    "hosting": "Hébergement et sécurité"
+    "hosting": "Hébergement et sécurité",
+    "resources": "Solutions et guides",
+    "payrollCi": "Logiciel de paie Côte d'Ivoire",
+    "leaveCi": "Gestion des congés",
+    "mobileMoney": "Salaires par Mobile Money",
+    "westAfrica": "SIRH Afrique de l'Ouest",
+    "guideIts": "Guide : calcul de l'ITS 2024",
+    "guideCnps": "Guide : cotisations CNPS 2024"
+  },
+  "links": {
+    "payroll": "Le logiciel de paie en détail (CNPS, ITS, DISA)",
+    "its": "Comment se calcule l'ITS 2024 ?",
+    "cnps": "Les cotisations CNPS 2024, branche par branche",
+    "mobileMoney": "Payer les salaires par Mobile Money",
+    "westAfrica": "Les pays pris en charge en Afrique de l'Ouest"
   }
 }

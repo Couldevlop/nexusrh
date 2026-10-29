@@ -107,6 +107,19 @@ function Card({ title, text, i = 0, invert = false }: { title: string; text: str
   )
 }
 
+/** Liens internes vers les pages de contenu détaillées (maillage SEO). */
+function MoreLinks({ items }: { items: { to: string; label: string }[] }) {
+  return (
+    <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold">
+      {items.map(l => (
+        <li key={l.to}>
+          <Link to={l.to} className="text-[#C43C08] underline-offset-4 hover:underline">{l.label} <span aria-hidden>→</span></Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function HomePage() {
   const { t } = useTranslation('home')
 
@@ -287,6 +300,11 @@ export default function HomePage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {compliance.map((k, i) => <Card key={k} i={i} title={t(`compliance.${k}.title`)} text={t(`compliance.${k}.text`)} />)}
             </div>
+            <MoreLinks items={[
+              { to: '/logiciel-paie-cote-divoire', label: t('links.payroll') },
+              { to: '/guides/calcul-its-2024-cote-divoire', label: t('links.its') },
+              { to: '/guides/cotisations-cnps-2024', label: t('links.cnps') },
+            ]} />
           </div>
         </section>
 
@@ -322,6 +340,7 @@ export default function HomePage() {
             <Card title={t('pay.mobile.title')} text={t('pay.mobile.text')} />
             <Card title={t('pay.bank.title')} text={t('pay.bank.text')} i={1} />
           </div>
+          <MoreLinks items={[{ to: '/paiement-salaires-mobile-money', label: t('links.mobileMoney') }]} />
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-20">
@@ -331,6 +350,7 @@ export default function HomePage() {
             <Card title={t('multi.packs.title')} text={t('multi.packs.text')} i={1} />
             <Card title={t('multi.consolidation.title')} text={t('multi.consolidation.text')} i={2} />
           </div>
+          <MoreLinks items={[{ to: '/sirh-afrique-ouest', label: t('links.westAfrica') }]} />
         </section>
 
         {/* ── IA ──────────────────────────────────────────────────────── */}
@@ -387,7 +407,7 @@ export default function HomePage() {
       {/* ── Pied de page ────────────────────────────────────────────── */}
       <footer className="border-t-2 border-[#0F1214] bg-[#F7F8F9]">
         <div className="mx-auto max-w-6xl px-6 py-14">
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <div className="flex items-center gap-2.5">
                 <img src="/logo.svg" alt="" className="h-7 w-7" />
@@ -405,6 +425,18 @@ export default function HomePage() {
                 <li><a href="#conformite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.complianceLink')}</a></li>
                 <li><a href="#securite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.securityLink')}</a></li>
                 <li><Link to="/login" className="transition-colors hover:text-[#F04E10]">{t('footerNav.signIn')}</Link></li>
+              </ul>
+            </nav>
+
+            <nav aria-label={t('footerNav.resources')}>
+              <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.resources')}</p>
+              <ul className="space-y-2.5 text-sm text-[#5A6672]">
+                <li><Link to="/logiciel-paie-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.payrollCi')}</Link></li>
+                <li><Link to="/gestion-conges-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.leaveCi')}</Link></li>
+                <li><Link to="/paiement-salaires-mobile-money" className="transition-colors hover:text-[#F04E10]">{t('footerNav.mobileMoney')}</Link></li>
+                <li><Link to="/sirh-afrique-ouest" className="transition-colors hover:text-[#F04E10]">{t('footerNav.westAfrica')}</Link></li>
+                <li><Link to="/guides/calcul-its-2024-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideIts')}</Link></li>
+                <li><Link to="/guides/cotisations-cnps-2024" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideCnps')}</Link></li>
               </ul>
             </nav>
 

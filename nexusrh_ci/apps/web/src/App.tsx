@@ -6,6 +6,7 @@ import { AuthGuard, PlatformGuard, RoleGuard, AgencyGuard, RhDashboardGuard } fr
 import { ModuleGuard } from '@/guards/ModuleGuard'
 import { RedirectIfSubsidiaries } from '@/components/guards/RedirectIfSubsidiaries'
 import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
+import { SEO_PATHS } from '@/pages/public/seo/paths'
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 const MainLayout       = lazy(() => import('@/components/layout/MainLayout'))
@@ -21,6 +22,7 @@ const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
 const HomePage           = lazy(() => import('@/pages/public/HomePage'))
 const LegalPage          = lazy(() => import('@/pages/public/LegalPage'))
+const SeoContentPage     = lazy(() => import('@/pages/public/SeoContentPage'))
 const PublicCareersPage  = lazy(() => import('@/pages/public/PublicCareersPage'))
 const PublicInterviewSimPage = lazy(() => import('@/pages/public/PublicInterviewSimPage'))
 
@@ -202,6 +204,8 @@ export default function App() {
 
           {/* ── Pages légales publiques (sans auth) ────────────────── */}
           <Route path="/legal/:doc" element={<LegalPage />} />
+          {/* ── Pages de contenu publiques (pré-générées, indexables) ── */}
+          {SEO_PATHS.map((p) => <Route key={p} path={p} element={<SeoContentPage />} />)}
 
           {/* ── Page carrières publique (sans auth) ───────────────── */}
           <Route path="/careers/:tenantSlug" element={<PublicCareersPage />} />
