@@ -68,8 +68,14 @@ export const employeePhotoUrl = (employeeId: string) => `/employees/${employeeId
 const emptyToUndef = (v: unknown) => (v === '' || v === null ? undefined : v)
 const nniField = z.preprocess(emptyToUndef,
   z.string().regex(/^CI\d{9,13}$/, 'NNI invalide : format attendu CI suivi de 9 à 13 chiffres (ex : CI123456789)').optional())
+// N° de sécurité sociale : format CNPS ivoirien strict pour un numéro préfixé
+// CI ; pour une filiale hors CI (CNSS Bénin/Burkina, IPRES…), le numéro est
+// préfixé du code pays ISO à 2 lettres (BJ-…, BF-…) puis 4 à 20 caractères.
+export const CNPS_CI_RE = /^CI\d{8}[A-Z]$/
+export const SOCIAL_ID_FOREIGN_RE = /^(?!CI)[A-Z]{2}-?[A-Z0-9-]{4,20}$/
 const cnpsField = z.preprocess(emptyToUndef,
-  z.string().regex(/^CI\d{8}[A-Z]$/, 'Numéro CNPS invalide : format attendu CI + 8 chiffres + 1 lettre (ex : CI12345678A)').optional())
+  z.string().refine((v) => CNPS_CI_RE.test(v) || SOCIAL_ID_FOREIGN_RE.test(v),
+    'Numéro de sécurité sociale invalide : CNPS CI = CI + 8 chiffres + 1 lettre (ex : CI12345678A) ; hors Côte d\'Ivoire = code pays + numéro (ex : BJ-1234567)').optional())
 // Téléphone Mobile Money : les employés peuvent venir de toute la zone (CI,
 // Burkina, Mali, Niger, Sénégal, Tchad, Congo, RDC, Cameroun…). On valide donc
 // un indicatif AFRICAIN supporté (CEDEAO + CEMAC + RDC), suivi de 6 à 10 chiffres,
