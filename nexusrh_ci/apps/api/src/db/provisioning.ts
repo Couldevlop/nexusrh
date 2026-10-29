@@ -1356,6 +1356,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
 
   // Candidatures : enrichissement scoring IA + source + lien employé interne
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
+  // Candidature saisie par la RH avec un téléphone seul : l'email est facultatif
+  // (contrôle « email ou téléphone » côté API). Idempotent.
+  await q(`ALTER TABLE ${s}.applications ALTER COLUMN email DROP NOT NULL`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_match_percentage int`)
@@ -1564,6 +1567,9 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`ALTER TABLE ${s}.recruitment_jobs ADD COLUMN IF NOT EXISTS recruitment_process text`)
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${schemaName}_jobs_reference ON ${s}.recruitment_jobs(reference) WHERE reference IS NOT NULL`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS source varchar(30) DEFAULT 'manual'`)
+  // Candidature saisie par la RH avec un téléphone seul : l'email est facultatif
+  // (contrôle « email ou téléphone » côté API). Idempotent.
+  await q(`ALTER TABLE ${s}.applications ALTER COLUMN email DROP NOT NULL`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS internal_employee_id uuid`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_recommendation varchar(20)`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS ai_match_percentage int`)
