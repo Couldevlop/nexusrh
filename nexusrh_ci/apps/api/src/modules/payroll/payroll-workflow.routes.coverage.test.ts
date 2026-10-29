@@ -48,6 +48,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import workflowRoutes from './payroll-workflow.routes.js'
+import { variablesFingerprint } from '../../services/raf-readiness.service.js'
 
 const SCHEMA   = 'tenant_multi'
 const PARENT   = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -229,6 +230,12 @@ describe('POST /payroll-workflow/periods/:id/send-to-sites', () => {
 
 // ════════════════════════════════════════════════════════════════════════════════
 describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
+  // Contrôle obligatoire avant soumission : dossier salarié complet + ligne de variables validée
+  const COMPLETE = { first_name: 'Awa', last_name: 'Koné', cnps_number: 'CNPS-01', payment_method: 'mobile_money', mobile_money_phone: '+2250701020304' }
+  const validated = (employeeId: string, values: Record<string, number>) => ({
+    employee_id: employeeId, mode: Object.keys(values).length ? 'entered' : 'none',
+    variables_hash: variablesFingerprint(values), validated_at: null, validated_by: RAF_SUB,
+  })
   function periodRow(over: Record<string, unknown> = {}) {
     return {
       id: CHILD, month: '2024-12', status: 'sent_to_sites',
@@ -303,13 +310,14 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
   })
 
   it('génère les bulletins de la filiale (1 employé, at_rate null → défaut 2%)', async () => {
-    const employee = { id: 'emp-1', base_salary: '300000', marital_status: 'married', children_count: 2 }
+    const employee = { id: 'emp-1', base_salary: '300000', marital_status: 'married', children_count: 2, ...COMPLETE }
     queryMock.mockImplementation(async (sql: unknown) => {
       const q = String(sql)
       if (q.includes('FROM "tenant_multi".pay_periods WHERE id = $1') && !/UPDATE/i.test(q)) {
         return { rows: [periodRow()] }
       }
       if (q.includes('.legal_entities')) return { rows: [{ at_rate: null, name: 'Filiale CIV' }] }
+      if (q.includes('payroll_variable_validations')) return { rows: [validated('emp-1', {})] }
       if (q.includes('.employees'))      return { rows: [employee] }
       if (q.includes('.variable_elements')) return { rows: [] }
       if (q.includes('.pay_slips'))      return { rows: [] }
@@ -331,7 +339,7 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
   })
 
   it('prime de transport : plafond exonéré de la ville de la filiale (Bouaké 24 000) et paramétrage des rubriques', async () => {
-    const employee = { id: 'emp-1', base_salary: '300000', marital_status: 'single', children_count: 0 }
+    const employee = { id: 'emp-1', base_salary: '300000', marital_status: 'single', children_count: 0, ...COMPLETE }
     const run = async (city: string): Promise<{ totalCnps: number; totalIts: number; veSql: string }> => {
       let veSql = ''
       queryMock.mockReset()
@@ -341,10 +349,12 @@ describe('POST /payroll-workflow/periods/:id/submit-by-raf', () => {
           return { rows: [periodRow()] }
         }
         if (q.includes('.legal_entities')) return { rows: [{ at_rate: null, name: 'Filiale CIV', city }] }
+        if (q.includes('payroll_variable_validations')) return { rows: [validated('emp-1', { PRIME_TRANSPORT: 30000 })] }
         if (q.includes('.employees'))      return { rows: [employee] }
         if (q.includes('.variable_elements')) {
-          veSql = q
-          return { rows: [{ rule_code: 'PRIME_TRANSPORT', amount: '30000', subject_social: null, subject_tax: null }] }
+          // Lecture du calcul (rubriques jointes) ; l'autre lecture = contrôle RAF
+          if (q.includes('subject_social')) veSql = q
+          return { rows: [{ employee_id: 'emp-1', rule_code: 'PRIME_TRANSPORT', amount: '30000', subject_social: null, subject_tax: null }] }
         }
         if (/UPDATE/i.test(q) && q.includes('.pay_periods')) {
           return { rows: [{ id: CHILD, status: 'completed_by_site', total_gross: 330000 }] }

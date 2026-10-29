@@ -48,5 +48,9 @@
   "approvals": "My approvals",
   "mySpace": "My space",
   "approvalsBadge_one": "{{count}} request to process",
-  "approvalsBadge_other": "{{count}} requests to process"
+  "approvalsBadge_other": "{{count}} requests to process",
+  "incompleteProfile": {
+    "message": "Complete your employee record (job title, salary) to be included in payroll.",
+    "cta": "Complete my record"
+  }
 }
