@@ -203,6 +203,7 @@
       "role": "Rôle",
       "department": "Département",
       "noDepartment": "— Aucun —",
+      "noDepartmentsHint": "Aucun département n'existe encore : créez-les dans l'onglet Départements (facultatif).",
       "status": "Statut",
       "active": "Actif",
       "inactive": "Inactif",

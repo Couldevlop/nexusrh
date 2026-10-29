@@ -1200,6 +1200,9 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       <option value="">{t('users.form.noDepartment')}</option>
                       {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
+                    {depts.length === 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">{t('users.form.noDepartmentsHint')}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">{t('users.form.status')}</label>
