@@ -125,5 +125,30 @@
     "smigWarning": "The salary must be greater than or equal to the minimum wage (75,000 FCFA — 2026 revaluation)",
     "submit": "Create contract",
     "submitting": "Creating…"
+  },
+  "signed": {
+    "title": "Signed contract",
+    "hint": "Upload the signed employment contract (PDF, 10 MB max). A new upload creates a new version: previous ones are kept.",
+    "employeeAccessOn": "The employee is notified and can view it in their space.",
+    "employeeAccessOff": "Employee access is disabled (Settings → General).",
+    "file": "PDF file",
+    "docTitle": "Title (optional)",
+    "contract": "Related contract (optional)",
+    "noContract": "— None —",
+    "upload": "Upload",
+    "uploading": "Uploading…",
+    "uploaded": "Signed contract uploaded (version {{version}}).",
+    "uploadError": "Upload failed.",
+    "pdfOnly": "Only PDF files are accepted.",
+    "tooLarge": "File too large (10 MB maximum).",
+    "empty": "No signed contract uploaded.",
+    "loadError": "Unable to load signed contracts.",
+    "current": "Current",
+    "archived": "Replaced",
+    "version": "v{{version}}",
+    "depositedOn": "uploaded on {{date}}",
+    "signedElectronically": "electronically signed on {{date}}",
+    "download": "Download",
+    "noFile": "Electronic signature without uploaded document"
   }
 }

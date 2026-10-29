@@ -27,10 +27,12 @@
       "attendanceWarnings": "My warnings",
       "profile": "My profile",
       "default": "My space",
-      "validations": "My approvals"
+      "validations": "My approvals",
+      "contract": "My contract"
     },
     "validations": "My approvals",
-    "backToRh": "HR space"
+    "backToRh": "HR space",
+    "contract": "My contract"
   },
   "common": {
     "status": {
@@ -389,5 +391,25 @@
       "it": "IT",
       "buddy": "Your buddy"
     }
+  },
+  "contract": {
+    "title": "My employment contract",
+    "subtitle": "Your signed contract, uploaded by your employer. Only you and HR can see it.",
+    "loading": "Loading…",
+    "loadError": "Unable to load your contract.",
+    "disabled": "Access to the signed contract is not enabled by your company.",
+    "empty": "No signed contract has been uploaded to your space yet. Please contact HR.",
+    "current": "Current version",
+    "history": "Previous versions",
+    "version": "Version {{version}}",
+    "depositedOn": "Uploaded on {{date}}",
+    "signedElectronically": "Electronically signed on {{date}}",
+    "noFile": "Electronic signature recorded — HR has not uploaded the signed document yet.",
+    "view": "View",
+    "download": "Download",
+    "close": "Close",
+    "viewError": "Unable to open the document.",
+    "defaultTitle": "Employment contract",
+    "contractLabel": "{{type}} contract — starts {{date}}"
   }
 }

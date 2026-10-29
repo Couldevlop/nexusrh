@@ -775,6 +775,43 @@ export async function sendBankTransferEmail(params: {
   })
 }
 
+// Contrat de travail signé déposé dans l'espace employé. AUCUNE pièce jointe ni
+// donnée contractuelle dans l'email (salaire, clauses) : seulement un lien vers
+// /mon-espace, où le document n'est servi qu'après authentification.
+export async function sendSignedContractAvailableEmail(params: {
+  to: string; firstName?: string | null; tenantName: string; primaryColor?: string | null
+  actionUrl: string
+  from?: string | null; replyTo?: string | null; smtp?: TenantSmtp | null
+}): Promise<void> {
+  const { to, firstName, tenantName, primaryColor, actionUrl, from, replyTo, smtp } = params
+  const color = primaryColor || '#E85D04'
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+    <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+      <tr>${brandHeader(escapeHtml(tenantName), 'Votre contrat de travail', color, null)}</tr>
+      <tr><td style="padding:32px 40px;color:#1f2937;">
+        <p>Bonjour ${escapeHtml(firstName || '')},</p>
+        <p>Votre contrat de travail signé a été déposé dans votre espace personnel par <strong>${escapeHtml(tenantName)}</strong>. Vous pouvez le consulter et le télécharger à tout moment.</p>
+        <p style="text-align:center;margin:24px 0;">
+          <a href="${escapeHtml(actionUrl)}" style="background:${color};color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;display:inline-block;">Consulter mon contrat</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;">Pour des raisons de confidentialité, le document n'est pas joint à cet email : il n'est accessible qu'après connexion à votre espace.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+  await assertTenantSmtpSafe(smtp)
+  await transporterFor(smtp).sendMail({
+    from: from || smtp?.user || config.smtp.from,
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject: `Votre contrat de travail signé est disponible — ${tenantName}`,
+    html,
+    text: `Bonjour ${firstName || ''},\n\nVotre contrat de travail signé a été déposé dans votre espace personnel par ${tenantName}.\n\nConsulter mon contrat : ${actionUrl}\n\nPour des raisons de confidentialité, le document n'est pas joint à cet email.`,
+  })
+}
+
 /**
  * Échappe une valeur avant insertion dans le HTML d'un courriel. Le contenu
  * vient d'un formulaire PUBLIC : sans cela, un `<script>` ou une balise

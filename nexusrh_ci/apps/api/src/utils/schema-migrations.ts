@@ -6,6 +6,7 @@ import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
+import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -52,6 +53,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // Filet si la table préexistait sans la contrainte (ON CONFLICT en dépend).
     `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_employee_photos_emp_idx"
        ON "${schemaName}".employee_photos(employee_id)`,
+    // ── Documents du dossier salarié (contrat signé, …) — TENANT-SCOPÉS ──────
+    // Même stockage que les photos/CV (bytea dans le schéma du tenant, jamais
+    // dans un bucket public). Une nouvelle version n'écrase rien : l'ancienne
+    // passe is_current = false (historique conservé).
+    ...employeeDocumentsTableStatements(schemaName),
     // Rétro-compat : RAPATRIEMENT des photos déjà publiées dans le bucket public.
     // 1) copie des octets depuis platform.brand_assets vers le schéma du tenant.
     `INSERT INTO "${schemaName}".employee_photos (employee_id, mime, bytes, size_bytes)
@@ -972,6 +978,14 @@ export async function ensurePlatformSchema(): Promise<void> {
     // 'direct' (défaut, comportement historique) = subordonnés directs ;
     // 'hierarchy' = toute la branche. Cf. services/manager-scope.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_scope varchar(20) NOT NULL DEFAULT 'direct' CHECK (manager_scope IN ('direct', 'hierarchy'))`,
+
+    // ── Contrat signé dans l'espace employé (admin tenant) ──────────────────
+    // employee_contract_access : l'employé consulte son contrat signé dans
+    // /mon-espace. manager_contract_upload : le manager peut déposer le contrat
+    // signé d'un membre de son périmètre. DEFAULT false = comportement inchangé
+    // pour les tenants existants. Cf. modules/contracts/signed-contracts.routes.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_contract_access boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`,
 
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,
