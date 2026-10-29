@@ -89,10 +89,12 @@ describe('Migration multi-pays — backward-compat sur données existantes', () 
 
   it('les DROP CONSTRAINT sont des bascules de clé sûres (IF EXISTS uniquement)', () => {
     const drops = flat.filter((s) => /\bDROP\s+CONSTRAINT\b/i.test(s))
-    // 2 bascules de clé légitimes : pay_periods (multi-pays) + cnps_declarations (mode mensuel)
-    expect(drops.length).toBe(2)
+    // 3 bascules de clé légitimes : pay_periods (multi-pays) + cnps_declarations
+    // (mode mensuel) + disa_records (DISA par filiale)
+    expect(drops.length).toBe(3)
     expect(drops.some((d) => /DROP CONSTRAINT IF EXISTS pay_periods_month_key/i.test(d))).toBe(true)
     expect(drops.some((d) => /DROP CONSTRAINT IF EXISTS cnps_declarations_year_quarter_key/i.test(d))).toBe(true)
+    expect(drops.some((d) => /DROP CONSTRAINT IF EXISTS disa_records_year_key/i.test(d))).toBe(true)
     // jamais un DROP "sec" sans IF EXISTS (sinon échec sur tenant sans la contrainte)
     for (const d of drops) expect(d).toMatch(/IF EXISTS/i)
   })
@@ -145,6 +147,24 @@ describe('Migration multi-pays — backward-compat sur données existantes', () 
     const idx = flat.find((s) => /pp_month_le/i.test(s) && /CREATE UNIQUE INDEX/i.test(s))
     expect(idx).toBeDefined()
     expect(idx).toMatch(/NULLS NOT DISTINCT/i)
+  })
+
+  it('DISA : index unique (year, legal_entity_id) NULLS NOT DISTINCT créé APRÈS le retrait de UNIQUE(year)', () => {
+    // Sans cela, la DISA d'une filiale écrasait celle d'une autre la même année ;
+    // NULLS NOT DISTINCT garde une seule DISA/an pour un tenant mono-entité.
+    const dropIdx = flat.findIndex((s) => /DROP CONSTRAINT IF EXISTS disa_records_year_key/i.test(s))
+    const idxIdx = flat.findIndex((s) =>
+      new RegExp(`CREATE UNIQUE INDEX IF NOT EXISTS \\S*disa_year_le\\S* ON\\s+"?${SCHEMA}"?\\.disa_records \\(year, legal_entity_id\\) NULLS NOT DISTINCT`, 'i').test(s))
+    expect(dropIdx).toBeGreaterThanOrEqual(0)
+    expect(idxIdx).toBeGreaterThan(dropIdx)
+    // Clé étrangère idempotente (DO … IF NOT EXISTS) et NOT VALID (historique non revalidé)
+    const fk = flat.find((s) => /disa_records_legal_entity_fk/i.test(s))
+    expect(fk).toMatch(/IF NOT EXISTS/i)
+    expect(fk).toMatch(/REFERENCES "?tenant_legacy_monopays"?\.legal_entities\(id\) ON DELETE RESTRICT NOT VALID/i)
+    // Plus aucune contrainte UNIQUE sur year seul à la création de la table
+    const create = flat.find((s) => /CREATE TABLE IF NOT EXISTS \S+\.disa_records/i.test(s))
+    expect(create).toBeDefined()
+    expect(create).not.toMatch(/year int NOT NULL UNIQUE/i)
   })
 
   // ── 4. IDEMPOTENT (rejouable sur un schéma déjà existant / déjà migré) ──────

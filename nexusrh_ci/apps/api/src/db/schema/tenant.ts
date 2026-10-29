@@ -214,11 +214,13 @@ export function createTenantSchema(schemaName: string) {
   })
 
   // ── DISA RECORDS ──────────────────────────────────────────────────────────
-  // DISA : shape AGRÉGÉE (1 ligne/année) — cohérente avec provisioning.ts,
-  // schema-migrations.ts et les handlers cnps. (Pas de shape par-employé.)
+  // DISA : shape AGRÉGÉE (1 ligne/année et par filiale) — cohérente avec
+  // provisioning.ts, schema-migrations.ts et les handlers cnps. Unicité
+  // (year, legal_entity_id) NULLS NOT DISTINCT : cf. db/disa-records.ts.
   const disaRecords = schema.table('disa_records', {
     id:             uuid('id').primaryKey().defaultRandom(),
-    year:           integer('year').notNull().unique(),
+    year:           integer('year').notNull(),
+    legalEntityId:  uuid('legal_entity_id'),
     employeesCount: integer('employees_count').default(0),
     masseSalariale: numeric('masse_salariale', { precision: 14, scale: 0 }).default('0'),
     totalCnps:      numeric('total_cnps', { precision: 14, scale: 0 }).default('0'),

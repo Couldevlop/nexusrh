@@ -3,7 +3,12 @@
     "title": "CNPS & DISA",
     "subtitle": "Déclarations trimestrielles e-CNPS · DISA annuelle (loi 99-477)"
   },
+  "scope": {
+    "hint": "Chaque numéro CNPS employeur a ses propres déclarations, fichiers NEVA, RNS et DISA : choisissez la filiale concernée.",
+    "chooseFirst": "Choisissez une filiale pour afficher ses déclarations."
+  },
   "rns": {
+    "error": "Échec du téléchargement du RNS.",
     "title": "Relevé Nominatif des Salaires",
     "intro": "Formulaire officiel CNPS <code>EN-GDAV-06 v03</code> — pré-rempli avec vos données de paie. À déposer sur <strong>e-CNPS</strong> (<link>ecnps.ci</link>) avant le <strong>15 du mois M+1</strong>.",
     "downloadPdf": "Télécharger PDF",
@@ -56,7 +61,8 @@
     "statusSubmitted": "Soumise",
     "statusDraft": "Brouillon",
     "submit": "Soumettre",
-    "empty": "Aucune déclaration pour {{year}}"
+    "empty": "Aucune déclaration pour {{year}}",
+    "exportError": "Échec de l'export de la déclaration."
   },
   "audit": {
     "title": "Audit de conformité sociale",
@@ -66,6 +72,26 @@
     "refresh": "Actualiser",
     "analyzing": "Analyse en cours…",
     "noData": "Aucune donnée disponible",
+    "scope": {
+      "label": "Filiale",
+      "all": "Toutes les filiales",
+      "nonCiv": "Filiale « {{name}} » hors Côte d'Ivoire : les contrôles CNPS (immatriculation, déclarations, plafonds) ne s'appliquent pas. SMIG du pack {{pack}}."
+    },
+    "filiales": {
+      "title": "Ventilation par filiale",
+      "subtitle": "SMIG du pack de chaque filiale ; contrôles CNPS réservés aux filiales ivoiriennes.",
+      "name": "Filiale",
+      "pack": "Pays / pack",
+      "employees": "Salariés",
+      "withoutCnps": "Sans NNI / CNPS",
+      "belowSmig": "Sous SMIG",
+      "smigOf": "SMIG {{value}}",
+      "grossPayroll": "Masse salariale",
+      "blockers": "Bloquants",
+      "notApplicable": "n/a",
+      "unassigned": "Salariés non rattachés",
+      "audit": "Auditer"
+    },
     "tabs": {
       "overview": "Vue d'ensemble",
       "salaries": "Salariés",
@@ -83,7 +109,7 @@
       "blockers": "{{count}} bloquant(s)",
       "warnings": "{{count}} avertissement(s)",
       "activeEmployees": "{{count}} employés actifs",
-      "smig": "SMIG {{value}} FCFA",
+      "smig": "SMIG {{value}}",
       "cnpsRegistration": "Immatriculation CNPS",
       "smigCompliant": "Conformes SMIG",
       "mobileMoney": "Mobile Money",
@@ -169,7 +195,8 @@
       "checkCnpsLabel": "Immatriculation CNPS",
       "checkCnpsDesc": "NNI et matricule CNPS de chaque salarié",
       "checkSmigLabel": "Conformité SMIG",
-      "checkSmigDesc": "Net payable ≥ {{value}} FCFA",
+      "checkSmigDesc": "Salaire de base (temps plein) ≥ {{value}}",
+      "smigByCountry": "SMIG du pays du salarié",
       "checkDeclLabel": "Déclarations mensuelles",
       "checkDeclDesc": "Présence et statut e-CNPS",
       "checkMobileLabel": "Mobile Money",

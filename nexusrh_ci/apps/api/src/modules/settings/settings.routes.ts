@@ -1864,6 +1864,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         await pool.query(`DELETE FROM "${schema}".legal_entities WHERE id = $1`, [id])
         return reply.send({ success: true })
       } catch (err) {
+        // FK disa_records → legal_entities (ON DELETE RESTRICT) : une DISA est une
+        // pièce légale, la filiale qui en porte une n'est pas supprimable.
+        if ((err as { code?: string }).code === '23503') {
+          return reply.status(409).send({ error: 'Cette entité porte des déclarations (DISA) — désactivez-la plutôt que de la supprimer' })
+        }
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
