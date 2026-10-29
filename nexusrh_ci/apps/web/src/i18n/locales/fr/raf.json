@@ -29,6 +29,7 @@
     "validatedCounter": "{{validated}}/{{total}} salariés validés",
     "ready": "Prête à soumettre",
     "notReady": "Soumission bloquée : complétez les dossiers et validez chaque salarié",
+    "locked": "Paie soumise — feuille en lecture seule",
     "smigHint": "SMIG du pack {{pack}} : {{smig}} par mois",
     "incompleteTitle_one": "{{count}} dossier salarié incomplet ou non conforme",
     "incompleteTitle_other": "{{count}} dossiers salariés incomplets ou non conformes",

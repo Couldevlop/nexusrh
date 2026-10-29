@@ -165,7 +165,7 @@ export default function RafPeriodsPage() {
                     <td colSpan={7} className="p-0">
                       <RafVariablesSheet
                         periodId={p.id}
-                        onSubmitted={() => qc.invalidateQueries({ queryKey: ['raf-periods'] })}
+                        onSubmitted={() => { setOpenId(null); qc.invalidateQueries({ queryKey: ['raf-periods'] }) }}
                       />
                     </td>
                   </tr>

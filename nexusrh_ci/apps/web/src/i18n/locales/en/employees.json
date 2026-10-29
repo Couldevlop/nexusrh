@@ -55,6 +55,8 @@
       "bankName": "Bank",
       "maritalStatus": "Marital status",
       "childrenCount": "Dependent children",
+      "nationality": "Nationality",
+      "nationalityPlaceholder": "e.g. Ivorian, Beninese",
       "paymentMethod": "Salary payment method"
     },
     "placeholders": {
