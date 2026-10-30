@@ -16,7 +16,8 @@ describe('hr-document-generator (AI-006/007)', () => {
     expect(doc.markdown).toContain('CI123')              // NNI
     expect(doc.markdown).toContain('A789')               // CNPS salarié
     expect(doc.markdown).toContain('Période d\'essai')
-    expect(doc.markdown).toContain('250 000 FCFA') // salaire formaté FR (espace insécable)
+    expect(doc.markdown).toContain('250 000 FCFA') // espace simple : U+202F de toLocaleString deviendrait « ? » dans le PDF
+    expect(doc.markdown).not.toMatch(/[\u202F\u00A0]/)
   })
 
   it('cadre → période d\'essai 3 mois', () => {

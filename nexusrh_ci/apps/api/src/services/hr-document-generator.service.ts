@@ -24,7 +24,9 @@ export interface HrDocumentInput {
   isCadre?: boolean
 }
 
-const fmtFcfa = (n?: number) => (typeof n === 'number' ? n.toLocaleString('fr-FR') + ' FCFA' : '__________ FCFA')
+// Séparateur de milliers = espace simple (toLocaleString('fr-FR') produit U+202F,
+// absent des polices PDF standard et pénible à éditer dans la proposition).
+const fmtFcfa = (n?: number) => (typeof n === 'number' ? n.toLocaleString('fr-FR').replace(/[\u202F\u00A0]/g, ' ') + ' FCFA' : '__________ FCFA')
 const fmtDate = (d?: string) => {
   if (!d) return '__________'
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d)
