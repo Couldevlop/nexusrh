@@ -20,10 +20,12 @@
  *      conditions du dernier contrat généré (`offer_details`). Ce qui manque
  *      (salaire, CNPS, date de naissance…) est signalé « fiche à compléter ».
  */
+import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { describeDbError } from '../../utils/db-error.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { CI_MM_PHONE_RE } from '../../services/mobile-money-providers.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { validateCustomFieldValues } from '../../services/employee-custom-fields.service.js'
 import {
@@ -44,6 +46,41 @@ export interface HireOverrides {
   contractType?: EmployeeContractType
   jobTitle?: string
   professionalCategory?: string
+  /** Mode de paiement (facultatif) — mêmes champs que la fiche employé. */
+  paymentMethod?: 'mobile_money' | 'bank_transfer'
+  mobileMoneyProvider?: 'wave' | 'mtn' | 'orange'
+  mobileMoneyPhone?: string
+  iban?: string
+  bankName?: string
+}
+
+/** Opérateurs Mobile Money acceptés à l'embauche (codes canoniques de la fiche employé). */
+export const HIRE_MM_PROVIDERS = ['wave', 'mtn', 'orange'] as const
+
+/**
+ * Cohérence du mode de paiement saisi à l'embauche (retourne un message FR ou null).
+ *  - Mobile Money : opérateur + numéro CI (+2250[57]XXXXXXXX) ;
+ *  - virement : banque obligatoire (règle du formulaire employé), RIB facultatif.
+ * Rien de saisi ⇒ comportement historique (aucun mode, « à renseigner dans la fiche »).
+ */
+export function paymentOverridesError(o: HireOverrides): string | null {
+  const any = o.paymentMethod || o.mobileMoneyProvider || o.mobileMoneyPhone || o.iban || o.bankName
+  if (!any) return null
+  if (!o.paymentMethod) return 'Choisissez le mode de paiement (Mobile Money ou virement bancaire).'
+  if (o.paymentMethod === 'mobile_money') {
+    if (!o.mobileMoneyProvider) return 'Choisissez l’opérateur Mobile Money.'
+    if (!o.mobileMoneyPhone || !CI_MM_PHONE_RE.test(o.mobileMoneyPhone.replace(/\s/g, ''))) {
+      return 'Numéro Mobile Money invalide : format +225 suivi de 07 ou 05 puis 8 chiffres (ex : +2250712345678).'
+    }
+    return null
+  }
+  if (!o.bankName?.trim()) return 'Renseignez la banque pour un paiement par virement.'
+  return null
+}
+
+/** Même règle que l'API de signature et de création d'employé (z.string().email()). */
+export function isValidEmail(email: string): boolean {
+  return z.string().email().max(255).safeParse(email).success
 }
 
 /** Conditions mémorisées à la génération du contrat (POST /applications/:id/contract). */
@@ -75,6 +112,11 @@ export interface HireResult {
    * figurait déjà (idempotence) ou si la fiche reliée préexistait.
    */
   contractDocumentId: string | null
+  /**
+   * Email de la candidature invalide (ex. accent) : la fiche est créée SANS
+   * email (jamais réécrit en silence) ; message FR à afficher à l'utilisateur.
+   */
+  emailWarning: string | null
 }
 
 export class HireError extends Error {
@@ -228,6 +270,7 @@ export async function hireApplication(
   let employee: EmployeeLite
   let created: { row: Record<string, unknown> & { id: string }; body: NewEmployee } | null = null
   const toComplete: string[] = []
+  let emailWarning: string | null = null
   try {
     await client.query('BEGIN')
     const app = await loadApplication(client, schema, applicationId, true)
@@ -257,6 +300,14 @@ export async function hireApplication(
       // Fiche archivée portant le même email : l'email est unique en base, la
       // nouvelle fiche est créée sans (à compléter) plutôt que d'échouer.
       if (sameEmail?.deleted_at) { email = null; toComplete.push('email') }
+      // Email non conforme (accent, espace…) : refusé plus tard par la signature
+      // électronique. On ne le « corrige » pas : fiche créée sans email + alerte.
+      if (email && !isValidEmail(email)) {
+        emailWarning = `L’email du candidat (« ${email} ») n’est pas valide : la fiche a été créée sans email. Saisissez une adresse valide dans la fiche employé.`
+        email = null; toComplete.push('email')
+      }
+      const payErr = paymentOverridesError(overrides)
+      if (payErr) throw new HireError(400, payErr, 'PAYMENT_INVALID')
       if (!email && !toComplete.includes('email')) toComplete.push('email')
 
       const prefill = buildHirePrefill(app, overrides)
@@ -292,6 +343,16 @@ export async function hireApplication(
         contractType: prefill.contractType,
         hireDate: prefill.hireDate,
         baseSalary,
+        // Mode de paiement saisi à l'embauche (facultatif) — absent ⇒ défaut historique.
+        ...(overrides.paymentMethod ? { paymentMethod: overrides.paymentMethod } : {}),
+        ...(overrides.paymentMethod === 'mobile_money' ? {
+          mobileMoneyProvider: overrides.mobileMoneyProvider,
+          mobileMoneyPhone: overrides.mobileMoneyPhone?.replace(/\s/g, ''),
+        } : {}),
+        ...(overrides.paymentMethod === 'bank_transfer' ? {
+          bankName: overrides.bankName?.trim().slice(0, 100),
+          ...(overrides.iban?.trim() ? { iban: overrides.iban.replace(/\s+/g, '').slice(0, 50) } : {}),
+        } : {}),
       }
       let row: Record<string, unknown> & { id: string }
       try {
@@ -371,7 +432,7 @@ export async function hireApplication(
 
   return {
     status, employeeId: employee.id, employeeNumber: employee.employee_number,
-    toComplete, onboarding, onboardingError, contractDocumentId,
+    toComplete, onboarding, onboardingError, contractDocumentId, emailWarning,
   }
 }
 

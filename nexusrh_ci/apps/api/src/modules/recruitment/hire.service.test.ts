@@ -227,6 +227,54 @@ describe('hireApplication — fiche employé', () => {
     expect(state.inserts.employees[0]![2]).toBeNull()
   })
 
+  it('email accentué (non valide z.email) : fiche créée SANS email + avertissement', async () => {
+    state.application = application({ email: 'serge.dème@email.com' })
+    const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(r?.status).toBe('created')
+    expect(state.inserts.employees[0]![2]).toBeNull()
+    expect(r?.toComplete).toContain('email')
+    expect(r?.emailWarning).toContain('serge.dème@email.com')
+  })
+
+  it('email valide : aucun avertissement', async () => {
+    const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(r?.emailWarning).toBeNull()
+    expect(state.inserts.employees[0]![2]).toBe('koffi.yao@mail.ci')
+  })
+
+  it('mode de paiement Mobile Money saisi : recopié sur la fiche', async () => {
+    await hireApplication(SCHEMA, APP_ID, { paymentMethod: 'mobile_money', mobileMoneyProvider: 'wave', mobileMoneyPhone: '+225 07 12 34 56 78' }, ACTOR)
+    const p = state.inserts.employees[0]!
+    expect(p[22]).toBe('mobile_money')
+    expect(p[8]).toBe('wave')
+    expect(p[9]).toBe('+2250712345678')
+  })
+
+  it('mode de paiement virement : banque sur la fiche (RIB facultatif)', async () => {
+    await hireApplication(SCHEMA, APP_ID, { paymentMethod: 'bank_transfer', bankName: 'SGBCI' }, ACTOR)
+    const p = state.inserts.employees[0]!
+    expect(p[22]).toBe('bank_transfer')
+    expect(p[21]).toBe('SGBCI')
+    expect(p[20]).toBeNull()
+  })
+
+  it('mode de paiement absent : comportement historique (aucun opérateur)', async () => {
+    await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    const p = state.inserts.employees[0]!
+    expect(p[8]).toBeNull()
+    expect(p[9]).toBeNull()
+  })
+
+  it('Mobile Money : numéro invalide ou opérateur manquant → 400, aucune écriture', async () => {
+    await expect(hireApplication(SCHEMA, APP_ID, { paymentMethod: 'mobile_money', mobileMoneyProvider: 'wave', mobileMoneyPhone: '+22512345' }, ACTOR))
+      .rejects.toMatchObject({ statusCode: 400, code: 'PAYMENT_INVALID' })
+    await expect(hireApplication(SCHEMA, APP_ID, { paymentMethod: 'mobile_money', mobileMoneyPhone: '+2250712345678' }, ACTOR))
+      .rejects.toMatchObject({ statusCode: 400 })
+    await expect(hireApplication(SCHEMA, APP_ID, { paymentMethod: 'bank_transfer' }, ACTOR))
+      .rejects.toMatchObject({ statusCode: 400 })
+    expect(state.inserts.employees).toHaveLength(0)
+  })
+
   it('fiche active portant le même email : liée, pas de doublon', async () => {
     state.employees = [{ id: 'emp-existing', email: 'koffi.yao@mail.ci', deleted_at: null, employee_number: 'MAT00007' }]
     const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
