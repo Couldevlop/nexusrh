@@ -3,6 +3,7 @@ import { onboardingTableStatements } from './onboarding-tables.js'
 import { classificationTableStatements } from './classification-defaults.js'
 import { payrollReminderTableStatements } from './payroll-reminders.js'
 import { disaPerEntityStatements } from './disa-records.js'
+import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 
@@ -181,6 +182,11 @@ export async function createPlatformSchema(): Promise<void> {
   // colonne, l'activation dg_view de la démo échouerait en silence.
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS enabled_modules jsonb NOT NULL DEFAULT '{}'`)
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_scope varchar(20) NOT NULL DEFAULT 'direct' CHECK (manager_scope IN ('direct', 'hierarchy'))`)
+  // Contrat signé consultable par l'employé + dépôt par le manager (admin tenant).
+  // DEFAULT false : aucun changement pour les tenants existants ; les nouveaux
+  // tenants sont créés avec employee_contract_access = true (tenant-provisioning).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_contract_access boolean NOT NULL DEFAULT false`)
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
@@ -503,6 +509,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()
   )`)
+
+  // Documents du dossier salarié (contrat signé…) — cf. db/employee-documents.ts
+  for (const stmt of employeeDocumentsTableStatements(schemaName)) {
+    await q(stmt)
+  }
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.contracts (
     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, formatFCFA, formatDate } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import { SignedContractsPanel } from '@/components/contracts/SignedContractsPanel'
 import {
   FileText, Plus, Eye, CheckCircle, XCircle,
   RefreshCw, AlertTriangle, Building2, User,
@@ -178,6 +179,9 @@ function ContractDetailModal({ contract, onClose, canManage }: {
               </p>
             </div>
           </div>
+
+          {/* Contrat signé (PDF) rattaché à ce contrat — dépôt RH, consultation */}
+          <SignedContractsPanel employeeId={contract.employee_id} contractId={contract.id} />
 
           {/* Actions */}
           {canManage && contract.status === 'active' && (

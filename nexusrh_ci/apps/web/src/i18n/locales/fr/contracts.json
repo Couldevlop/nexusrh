@@ -125,5 +125,30 @@
     "smigWarning": "Le salaire doit être supérieur ou égal au SMIG (75 000 FCFA — revalorisation 2026)",
     "submit": "Créer le contrat",
     "submitting": "Création en cours…"
+  },
+  "signed": {
+    "title": "Contrat signé",
+    "hint": "Déposez le contrat de travail signé (PDF, 10 Mo max). Un nouveau dépôt crée une nouvelle version : les précédentes sont conservées.",
+    "employeeAccessOn": "L'employé est notifié et peut le consulter dans son espace.",
+    "employeeAccessOff": "La consultation par l'employé est désactivée (Paramètres → Général).",
+    "file": "Fichier PDF",
+    "docTitle": "Intitulé (facultatif)",
+    "contract": "Contrat rattaché (facultatif)",
+    "noContract": "— Aucun —",
+    "upload": "Déposer",
+    "uploading": "Envoi…",
+    "uploaded": "Contrat signé déposé (version {{version}}).",
+    "uploadError": "Échec du dépôt.",
+    "pdfOnly": "Seuls les fichiers PDF sont acceptés.",
+    "tooLarge": "Fichier trop volumineux (10 Mo maximum).",
+    "empty": "Aucun contrat signé déposé.",
+    "loadError": "Impossible de charger les contrats signés.",
+    "current": "En vigueur",
+    "archived": "Remplacé",
+    "version": "v{{version}}",
+    "depositedOn": "déposé le {{date}}",
+    "signedElectronically": "signé électroniquement le {{date}}",
+    "download": "Télécharger",
+    "noFile": "Signature électronique sans document déposé"
   }
 }

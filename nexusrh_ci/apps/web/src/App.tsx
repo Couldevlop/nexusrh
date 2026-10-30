@@ -146,6 +146,7 @@ const MonEspace        = lazy(() => import('@/pages/mon-espace/MonEspace'))
 const MonIntegration   = lazy(() => import('@/pages/mon-espace/MonIntegration'))
 const MesAbsences      = lazy(() => import('@/pages/mon-espace/MesAbsences'))
 const MesBulletins     = lazy(() => import('@/pages/mon-espace/MesBulletins'))
+const MonContrat       = lazy(() => import('@/pages/mon-espace/MonContrat'))
 const MesNotesDesFrais = lazy(() => import('@/pages/mon-espace/MesNotesDesFrais'))
 const MaFormation      = lazy(() => import('@/pages/mon-espace/MaFormation'))
 const MaCarriere       = lazy(() => import('@/pages/mon-espace/MaCarriere'))
@@ -535,6 +536,7 @@ export default function App() {
             <Route path="integration"  element={<MonIntegration />} />
             <Route path="absences"     element={<MesAbsences />} />
             <Route path="bulletins"    element={<MesBulletins />} />
+            <Route path="contrat"      element={<MonContrat />} />
             <Route path="frais"        element={<MesNotesDesFrais />} />
             <Route path="formation"    element={<MaFormation />} />
             <Route path="carriere"     element={<MaCarriere />} />

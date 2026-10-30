@@ -120,6 +120,9 @@ const patchTenantSchema = z.object({
   mfa_required:    z.boolean().optional(),
   // Périmètre des managers : équipe directe ou toute la branche hiérarchique.
   manager_scope:   z.enum(MANAGER_SCOPES).optional(),
+  // Contrat signé : consultable par l'employé (/mon-espace) / déposable par le manager.
+  employee_contract_access: z.boolean().optional(),
+  manager_contract_upload:  z.boolean().optional(),
   // Expéditeur email configurable par le tenant : adresse "From" des emails
   // envoyés aux membres de la société (création d'accès, réinitialisation).
   // '' / null → repli sur l'expéditeur plateforme.
@@ -247,6 +250,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   primary_color, secondary_color, logo_url, trial_ends_at,
                   COALESCE(mfa_required, false) AS mfa_required,
                   COALESCE(manager_scope, 'direct') AS manager_scope,
+                  COALESCE(employee_contract_access, false) AS employee_contract_access,
+                  COALESCE(manager_contract_upload, false) AS manager_contract_upload,
                   sender_email, sender_name,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
@@ -274,7 +279,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','sender_email','sender_name']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','sender_email','sender_name']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}

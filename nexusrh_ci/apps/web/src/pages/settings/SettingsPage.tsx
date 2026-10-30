@@ -31,6 +31,8 @@ interface TenantSettings {
   max_users: number; max_employees: number
   mfa_required?: boolean
   manager_scope?: 'direct' | 'hierarchy'
+  employee_contract_access?: boolean
+  manager_contract_upload?: boolean
   sender_email?: string | null; sender_name?: string | null
 }
 interface TenantUser {
@@ -583,6 +585,8 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     mutationFn: (d: Partial<TenantSettings>) => api.patch('/settings/tenant', d),
     onSuccess: (_res, vars) => {
       qc.invalidateQueries({ queryKey: ['settings-tenant'] })
+      // Options du contrat signé (menu « Mon contrat », dépôt manager)
+      qc.invalidateQueries({ queryKey: ['contracts', 'signed', 'settings'] })
       // Reflète immédiatement l'apparence/le nom dans l'UI (thème + sidebar)
       // sans nécessiter une reconnexion (le bug : la couleur ne changeait pas).
       const patch: Partial<TenantConfig> = {}
@@ -708,6 +712,28 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           <span className="text-sm">
             <span className="font-medium">{t('general.managerHierarchyLabel')}</span>
             <span className="block text-xs text-muted-foreground">{t('general.managerHierarchyHint')}</span>
+          </span>
+        </label>
+
+        <h2 className="font-semibold pt-2">{t('general.contractAccess')}</h2>
+        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+          <input type="checkbox"
+            defaultChecked={!!s.employee_contract_access}
+            onChange={e => setForm(p => ({ ...p, employee_contract_access: e.target.checked }))}
+            className="mt-0.5 h-4 w-4" />
+          <span className="text-sm">
+            <span className="font-medium">{t('general.employeeContractAccessLabel')}</span>
+            <span className="block text-xs text-muted-foreground">{t('general.employeeContractAccessHint')}</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+          <input type="checkbox"
+            defaultChecked={!!s.manager_contract_upload}
+            onChange={e => setForm(p => ({ ...p, manager_contract_upload: e.target.checked }))}
+            className="mt-0.5 h-4 w-4" />
+          <span className="text-sm">
+            <span className="font-medium">{t('general.managerContractUploadLabel')}</span>
+            <span className="block text-xs text-muted-foreground">{t('general.managerContractUploadHint')}</span>
           </span>
         </label>
 

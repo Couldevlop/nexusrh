@@ -135,15 +135,19 @@ export async function createTenantWithSchema(
       ? JSON.stringify(input.modules)
       : null
 
+  // employee_contract_access = true : un NOUVEAU tenant donne d'emblée à chaque
+  // employé l'accès à son contrat signé (la colonne vaut false par défaut pour
+  // ne rien changer aux tenants existants) ; l'admin peut le désactiver.
   const tenantRes = await pool.query<{ id: string }>(
     `INSERT INTO platform.tenants
        (name, slug, schema_name, plan_type, status, sector, city,
         cnps_number, dgi_number, rccm, at_rate,
         max_users, max_employees, primary_color, secondary_color, logo_url,
         trial_ends_at,
-        has_subsidiaries, payroll_mode, default_country_code, enabled_modules)
+        has_subsidiaries, payroll_mode, default_country_code, enabled_modules,
+        employee_contract_access)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-             COALESCE($21::jsonb, '{}'::jsonb))
+             COALESCE($21::jsonb, '{}'::jsonb), true)
      RETURNING id`,
     [
       input.name, slug, schemaName, planType,
