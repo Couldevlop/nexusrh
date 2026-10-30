@@ -480,7 +480,8 @@
       "apprentissage": "Apprenticeship",
       "stage": "Internship",
       "mise_a_disposition": "Secondment"
-    }
+    },
+    "contractFiled": "The generated contract was filed in the employee record."
   },
   "rejectionReason": {
     "declined_by_candidate_salary": "Declined by candidate — compensation",

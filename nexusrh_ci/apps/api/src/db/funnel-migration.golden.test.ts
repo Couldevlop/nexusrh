@@ -35,7 +35,7 @@ describe('Migration entonnoir', () => {
   it('ajoute hired_at, rejection_reason (liste fermée), rejection_note, offer_details, employee_id', async () => {
     await ensureRecruitmentSchemaMigrated('tenant_demo')
     const sql = sqlOf(queryMock.mock.calls).join(' | ')
-    for (const col of ['hired_at timestamptz', 'rejection_reason varchar(50)', 'rejection_note varchar(500)', 'offer_details jsonb', 'employee_id uuid']) {
+    for (const col of ['hired_at timestamptz', 'rejection_reason varchar(50)', 'rejection_note varchar(500)', 'offer_details jsonb', 'employee_id uuid', 'contract_pdf bytea', 'contract_pdf_name varchar(255)']) {
       expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${col}`)
     }
     expect(sql).toContain("'declined_by_candidate_salary'")

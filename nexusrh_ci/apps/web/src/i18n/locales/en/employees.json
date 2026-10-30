@@ -64,7 +64,7 @@
       "employeeNumber": "Automatic if empty (MAT00001…)",
       "phone": "+225 07 XX XX XX XX",
       "professionalCategory": "e.g. 3rd category",
-      "baseSalary": "≥ 75,000",
+      "baseSalary": "≥ minimum wage",
       "mobileMoneyPhone": "+2250XXXXXXXXX",
       "iban": "CIxx xxxx xxxx xxxx xxxx xxxx xxxx"
     },
@@ -95,7 +95,7 @@
     },
     "onboardingHint": "An <strong>onboarding journey</strong> will be created automatically based on seniority and role (templates configured in Onboarding → Templates).",
     "errors": {
-      "salaryBelowSmig": "The gross salary must be ≥ 75,000 FCFA (minimum wage).",
+      "salaryBelowSmig": "The gross salary must be ≥ {{smig}} (minimum wage).",
       "createGeneric": "Error while creating",
       "salaryRequired": "Enter a base salary.",
       "bankNameRequired": "Bank transfer requires the bank name."

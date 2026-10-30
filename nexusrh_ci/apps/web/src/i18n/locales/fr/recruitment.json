@@ -480,7 +480,8 @@
       "apprentissage": "Apprentissage",
       "stage": "Stage",
       "mise_a_disposition": "Mise à disposition"
-    }
+    },
+    "contractFiled": "Le contrat généré a été versé au dossier salarié."
   },
   "rejectionReason": {
     "declined_by_candidate_salary": "Décliné par le candidat — rémunération",

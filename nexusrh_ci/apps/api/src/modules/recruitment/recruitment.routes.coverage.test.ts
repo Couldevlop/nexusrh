@@ -667,7 +667,7 @@ describe('PATCH /recruitment/applications/:id/stage', () => {
       method: 'PATCH',
       url: '/recruitment/applications/app-1/stage',
       headers: { authorization: `Bearer ${token}` },
-      payload: { stage: 'rejected' },
+      payload: { stage: 'rejected', rejection_reason: 'rejected_profile' },
     })
     expect(res.statusCode).toBe(200)
     expect(queryMock.mock.calls[2]![1]![1]).toBe('recruitment.rejected')

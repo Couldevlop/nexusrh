@@ -122,7 +122,7 @@
       "ohadaClause": "Clause OHADA (droit applicable)",
       "nonCompetition": "Clause de non-concurrence"
     },
-    "smigWarning": "Le salaire doit être supérieur ou égal au SMIG (75 000 FCFA — revalorisation 2026)",
+    "smigWarning": "Le salaire doit être supérieur ou égal au SMIG applicable ({{smig}})",
     "submit": "Créer le contrat",
     "submitting": "Création en cours…"
   },

@@ -13,7 +13,7 @@ import { maskKey, isEncryptionAvailable } from '../../services/ai-credentials.se
 import { loadAiModels } from '../../services/sourcing-config.service.js'
 import { buildLegislationConfig } from '../../services/legislation-config.service.js'
 import { renderPayslipPdf } from '../payroll/payslip-pdf.js'
-import { isSupportedCountry, getLegislationPack, getPackByCountry } from '../../services/legislation-packs.js'
+import { isSupportedCountry, getLegislationPack, getPackByCountry, DEFAULT_LEGISLATION_PACK } from '../../services/legislation-packs.js'
 import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@nexusrhci/shared/ssrf-guard'
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
@@ -197,6 +197,21 @@ const IMPORT_TYPES = [
   'employees', 'departments', 'absences',
   'pay-slips', 'mobile-money', 'contracts', 'expenses',
 ] as const
+
+/**
+ * SMIG mensuel du pays par défaut du tenant (pack législatif résolu comme la
+ * paie). Sert de salaire plancher aux dossiers créés sans salaire (squelette à
+ * la création d'un compte, import CSV sans colonne salaire) : 75 000 FCFA n'est
+ * valable qu'en Côte d'Ivoire. Repli pack par défaut si la lecture échoue.
+ */
+async function tenantDefaultSmig(schema: string): Promise<number> {
+  try {
+    const ctx = await loadEmployeeTenantContext(pool, schema, null)
+    return ctx.legislation.legislationPack.smigMensuel
+  } catch {
+    return DEFAULT_LEGISLATION_PACK.smigMensuel
+  }
+}
 
 function generateTempPassword(): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -1325,13 +1340,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             )
           } else {
             // Squelette d'employé aligné sur le plancher SMIG contrôlé par
-            // POST/PATCH /employees (75 000 FCFA) — l'ancien 60 000 créait un
-            // dossier invalide impossible à re-sauvegarder.
+            // POST/PATCH /employees (SMIG du pack du pays du tenant) — un salaire
+            // sous ce plancher créait un dossier impossible à re-sauvegarder.
+            const smig = await tenantDefaultSmig(schema)
             const emp = await pool.query(`
               INSERT INTO "${schema}".employees
                 (first_name, last_name, email, hire_date, is_active, job_title, base_salary, contract_type, department_id)
-              VALUES ($1,$2,$3,NOW(),$4,'Employé',75000,'cdi',$5) RETURNING id
-            `, [body.first_name, body.last_name, body.email, isActive, body.department_id])
+              VALUES ($1,$2,$3,NOW(),$4,'Employé',$6,'cdi',$5) RETURNING id
+            `, [body.first_name, body.last_name, body.email, isActive, body.department_id, smig])
             employeeId = emp.rows[0].id as string
           }
         }
@@ -2487,6 +2503,15 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         if (type === 'employees') {
+          // SMIG du pays du tenant, lu une seule fois et seulement si une ligne
+          // n'a pas de salaire exploitable.
+          let defaultSalary: number | null = null
+          const salaryOrSmig = async (raw: string): Promise<number> => {
+            const v = parseInt(raw)
+            if (v) return v
+            if (defaultSalary === null) defaultSalary = await tenantDefaultSmig(schema)
+            return defaultSalary
+          }
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i]!
             const email = get(row, 'email')
@@ -2498,6 +2523,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               deptId = d.rows[0]?.id ?? null
             }
             try {
+              const baseSalary = await salaryOrSmig(get(row, 'salaire_brut'))
               await pool.query(`
                 INSERT INTO "${schema}".employees
                   (first_name, last_name, email, birth_date, phone, job_title, department_id,
@@ -2523,7 +2549,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 toDate(get(row, 'date_naissance')), get(row, 'telephone') || null,
                 get(row, 'poste') || 'Employé', deptId,
                 toDate(get(row, 'date_embauche')) || new Date().toISOString().slice(0, 10),
-                parseInt(get(row, 'salaire_brut')) || 75000,
+                baseSalary,
                 (get(row, 'type_contrat') || 'cdi').toLowerCase(),
                 get(row, 'statut') !== 'inactive',
                 get(row, 'sexe') || null,

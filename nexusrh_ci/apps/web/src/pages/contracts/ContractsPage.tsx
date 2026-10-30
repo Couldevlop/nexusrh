@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { api, formatFCFA, formatDate } from '@/lib/api'
+import { api, formatFCFA, formatDate, formatMoney } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { SignedContractsPanel } from '@/components/contracts/SignedContractsPanel'
 import {
@@ -292,6 +292,17 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
     telecommuting_days: '0',
   })
 
+  // SMIG applicable au salarié choisi (pack de sa filiale, sinon pays du
+  // tenant). Repli 75 000 (CI) uniquement tant qu'il est inconnu.
+  const { data: smigData } = useQuery<{ data: { smig: number; currency: string } }>({
+    queryKey: ['employee-smig', form.employee_id],
+    queryFn: () => api.get(`/employees/${form.employee_id}/smig`).then(r => r.data),
+    enabled: !!form.employee_id,
+    staleTime: 5 * 60_000,
+  })
+  const smig = smigData?.data.smig ?? 75000
+  const smigCurrency = smigData?.data.currency
+
   const createMut = useMutation({
     mutationFn: () => api.post('/contracts', {
       ...form,
@@ -429,10 +440,10 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
             ))}
           </div>
 
-          {form.base_salary && parseInt(form.base_salary) < 75000 && (
+          {form.base_salary && parseInt(form.base_salary) < smig && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-center gap-2 text-sm text-red-700">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              {t('new.smigWarning')}
+              {t('new.smigWarning', { smig: formatMoney(smig, smigCurrency ?? 'XOF') })}
             </div>
           )}
 

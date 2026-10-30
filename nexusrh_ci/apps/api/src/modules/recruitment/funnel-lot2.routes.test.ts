@@ -102,9 +102,23 @@ describe('PATCH /applications/:id/stage — historique + motifs', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('rejet sans motif reste accepté côté API (intégrations existantes)', async () => {
+  it('rejet sans motif refusé (400) — aucune écriture', async () => {
     queryMock.mockResolvedValue({ rows: [{ id: APP_ID, job_id: 'j', stage: 'rejected' }] })
     const res = await patchStage({ stage: 'rejected' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).code).toBe('REJECTION_REASON_REQUIRED')
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('UPDATE'))).toBe(false)
+  })
+
+  it('motif rejected_auto_screening réservé au pré-tri (400)', async () => {
+    const res = await patchStage({ stage: 'rejected', rejection_reason: 'rejected_auto_screening' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).code).toBe('REJECTION_REASON_RESERVED')
+  })
+
+  it('motif inutile hors rejet : non exigé pour les autres étapes', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: APP_ID, stage: 'interview' }] })
+    const res = await patchStage({ stage: 'interview' })
     expect(res.statusCode).toBe(200)
   })
 

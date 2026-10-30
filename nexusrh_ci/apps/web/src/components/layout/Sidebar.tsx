@@ -245,7 +245,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <>
               {/* Tableau de bord — épinglé en haut, hors groupe */}
               {renderLink(PINNED)}
-              {isVisible(PINNED_SELF) && renderLink(PINNED_SELF)}
+              {/* Mon espace n'a de sens qu'avec une fiche employé : jamais pour un cabinet
+                  qui agit pour le tenant, ni pour un compte RH sans fiche. */}
+              {isVisible(PINNED_SELF) && Boolean(user?.employeeId) && user?.actorType !== 'agency' && renderLink(PINNED_SELF)}
 
               {groups.map(group => {
                 const isOpen = expanded[group.key] ?? false

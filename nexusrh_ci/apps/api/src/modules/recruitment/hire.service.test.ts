@@ -15,6 +15,7 @@ interface FakeState {
   builtinExists: boolean
   inserts: { employees: unknown[][]; journeys: unknown[][]; builtin: number; steps: number }
   appUpdates: unknown[][]
+  documents: Array<{ id: string; employee_id: string; bytes: string; params: unknown[] }>
 }
 
 const { state, queryMock, auditMock, emitMock } = vi.hoisted(() => {
@@ -49,6 +50,15 @@ const { state, queryMock, auditMock, emitMock } = vi.hoisted(() => {
       state.appUpdates.push(params)
       if (state.application) state.application.employee_id = params[1]
       return { rows: [] }
+    }
+    // ── Contrat généré → dossier salarié (une seule instruction, idempotente) ──
+    if (sql.startsWith('WITH src AS (') && sql.includes('employee_documents')) {
+      const pdf = state.application?.contract_pdf as string | undefined
+      const employeeId = String(params[1])
+      if (!pdf || state.documents.some((d) => d.employee_id === employeeId && d.bytes === pdf)) return { rows: [] }
+      const id = `doc-${state.documents.length + 1}`
+      state.documents.push({ id, employee_id: employeeId, bytes: pdf, params })
+      return { rows: [{ id }] }
     }
     // ── Onboarding ──
     if (sql.startsWith('SELECT id, template_name FROM "tenant_sotra".onboarding_journeys WHERE application_id')) {
@@ -140,6 +150,7 @@ beforeEach(() => {
   state.builtinExists = false
   state.inserts = { employees: [], journeys: [], builtin: 0, steps: 0 }
   state.appUpdates = []
+  state.documents = []
   queryMock.mockClear()
   auditMock.mockClear()
   emitMock.mockClear()
@@ -321,5 +332,72 @@ describe('buildHirePrefill', () => {
   it('date d’embauche par défaut = aujourd’hui', () => {
     const app = application() as unknown as Parameters<typeof buildHirePrefill>[0]
     expect(buildHirePrefill(app).hireDate).toBe(new Date().toISOString().slice(0, 10))
+  })
+})
+
+describe('hireApplication — niveau de poste et contrat généré', () => {
+  it('recopie le job_level de l’offre sur la fiche créée (lecture tolérante de la colonne)', async () => {
+    state.application = application({ job_level: 'cadre' })
+    await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    const p = state.inserts.employees[0]!
+    expect(p[14]).toBe('cadre')
+    const select = queryMock.mock.calls.find((c) => String(c[0]).includes('FROM "tenant_sotra".applications a'))!
+    expect(String(select[0])).toContain("to_jsonb(rj) ->> 'job_level'")
+  })
+
+  it('offre sans niveau : job_level NULL', async () => {
+    await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(state.inserts.employees[0]![14]).toBeNull()
+  })
+
+  it('verse le contrat généré au dossier salarié (version courante), une seule fois', async () => {
+    state.application = application({ contract_pdf: '%PDF-1.4 contrat' })
+    const first = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(first?.contractDocumentId).toBe('doc-1')
+    expect(state.documents).toHaveLength(1)
+    const params = state.documents[0]!.params
+    expect(params[0]).toBe(APP_ID)
+    expect(params[1]).toBe('emp-1')
+    expect(params[2]).toBe('signed_contract')
+    const sql = String(queryMock.mock.calls.find((c) => String(c[0]).includes('employee_documents'))![0])
+    expect(sql).toContain('is_current = false')
+    expect(sql).toContain('COALESCE(MAX(version), 0) + 1')
+    expect(auditMock).toHaveBeenCalledWith(SCHEMA, expect.objectContaining({ action: 'recruitment.contract_filed' }))
+
+    const second = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(second?.status).toBe('already_linked')
+    expect(second?.contractDocumentId).toBeNull()
+    expect(state.documents).toHaveLength(1)
+  })
+
+  it('sans contrat généré : aucun document', async () => {
+    const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(r?.contractDocumentId).toBeNull()
+    expect(state.documents).toHaveLength(0)
+  })
+
+  it('fiche préexistante reliée (même email) : son contrat courant n’est pas remplacé', async () => {
+    state.application = application({ contract_pdf: '%PDF-1.4 contrat' })
+    state.employees = [{ id: 'emp-old', email: 'koffi.yao@mail.ci', deleted_at: null, employee_number: 'MAT00001' }]
+    const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+    expect(r?.status).toBe('linked_existing')
+    expect(r?.contractDocumentId).toBeNull()
+    expect(state.documents).toHaveLength(0)
+  })
+
+  it('échec de l’écriture du document : embauche maintenue', async () => {
+    state.application = application({ contract_pdf: '%PDF-1.4 contrat' })
+    const impl = queryMock.getMockImplementation()!
+    queryMock.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (String(sql).includes('employee_documents')) throw new Error('db down')
+      return impl(sql, params)
+    })
+    try {
+      const r = await hireApplication(SCHEMA, APP_ID, {}, ACTOR)
+      expect(r?.status).toBe('created')
+      expect(r?.contractDocumentId).toBeNull()
+    } finally {
+      queryMock.mockImplementation(impl)
+    }
   })
 })

@@ -134,9 +134,9 @@ describe('GET /offboarding/reason-stats', () => {
   it('agrège par catégorie (libellés du tenant) et par type de départ', async () => {
     routeQueries({
       stats: [
-        { reason_category: 'remuneration', departure_type: 'demission', count: 3 },
-        { reason_category: 'management', departure_type: 'demission', count: 1 },
-        { reason_category: null, departure_type: 'licenciement', count: 1 },
+        { reason_category: 'remuneration', departure_type: 'demission', count: 6 },
+        { reason_category: 'management', departure_type: 'demission', count: 2 },
+        { reason_category: null, departure_type: 'licenciement', count: 7 },
       ],
     })
     const res = await app.inject({
@@ -145,12 +145,31 @@ describe('GET /offboarding/reason-stats', () => {
     })
     expect(res.statusCode).toBe(200)
     const d = JSON.parse(res.body).data
-    expect(d.total).toBe(5)
-    expect(d.byCategory[0]).toEqual({ key: 'remuneration', label: 'Rémunération', count: 3, share: 60 })
-    expect(d.byCategory.find((c: { key: string }) => c.key === 'unspecified').count).toBe(1)
-    expect(d.byDepartureType[0]).toEqual({ type: 'demission', count: 4, share: 80 })
+    expect(d.total).toBe(15)
+    expect(d.byCategory[0]).toEqual({ key: 'unspecified', label: null, count: 7, share: 46.7 })
+    expect(d.byCategory[1]).toEqual({ key: 'remuneration', label: 'Rémunération', count: 6, share: 40 })
+    expect(d.byDepartureType[0]).toEqual({ type: 'demission', count: 8, share: 53.3 })
     // Agrégats uniquement : aucun identifiant nominatif
     expect(res.body).not.toContain('employee_id')
+  })
+
+  it('anonymat : les catégories de moins de 5 départs sont regroupées (« Autres »)', async () => {
+    routeQueries({
+      stats: [
+        { reason_category: 'remuneration', departure_type: 'demission', count: 5 },
+        { reason_category: 'management', departure_type: 'demission', count: 2 },
+        { reason_category: 'personal', departure_type: 'demission', count: 1 },
+      ],
+    })
+    const res = await app.inject({
+      method: 'GET', url: '/offboarding/reason-stats',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    const d = JSON.parse(res.body).data
+    expect(d.minGroupSize).toBe(5)
+    expect(d.byCategory.map((c: { key: string }) => c.key)).toEqual(['remuneration', 'others_small'])
+    expect(d.byCategory[1]).toEqual({ key: 'others_small', label: 'Autres (effectif < 5)', count: 3, share: 37.5 })
+    expect(JSON.stringify(d.byCategory)).not.toContain('management')
   })
 
   it('refuse une date mal formée (400)', async () => {
