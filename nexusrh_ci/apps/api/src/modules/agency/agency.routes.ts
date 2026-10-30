@@ -330,11 +330,16 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
       const target = await pool.query<{ id: string }>(
         `SELECT id FROM platform.agency_users WHERE id = $1 AND agency_id = $2 LIMIT 1`, [id, agencyId])
       if (!target.rows[0]) return reply.status(404).send({ error: 'Membre introuvable' })
+      const b = parsed.data
+      // Un propriétaire ne peut ni se désactiver ni se rétrograder : il perdrait
+      // l'accès à la gestion du cabinet (et le cabinet pourrait rester sans propriétaire).
+      if (id === request.user.sub && (b.isActive === false || b.role === 'agency_member')) {
+        return reply.status(409).send({ error: 'Vous ne pouvez pas désactiver ni rétrograder votre propre compte.' })
+      }
 
       const sets: string[] = []
       const vals: unknown[] = []
       let i = 1
-      const b = parsed.data
       if (b.firstName !== undefined) { sets.push(`first_name = $${i++}`); vals.push(b.firstName) }
       if (b.lastName !== undefined) { sets.push(`last_name = $${i++}`); vals.push(b.lastName) }
       if (b.role !== undefined) { sets.push(`role = $${i++}`); vals.push(b.role) }
@@ -344,6 +349,8 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
       vals.push(id, agencyId)
       await pool.query(
         `UPDATE platform.agency_users SET ${sets.join(', ')} WHERE id = $${i++} AND agency_id = $${i}`, vals)
+      // Désactivation ou changement de rôle : les sessions en cours du membre sont révoquées.
+      if (b.isActive === false || b.role !== undefined) await setTokenEpoch(id)
       auditLogPlatform(request.user.sub, 'agency.member.updated', 'agency_user', id, { agencyId, ...b }, request.ip ?? null)
       return reply.send({ data: { id, updated: true } })
     },
