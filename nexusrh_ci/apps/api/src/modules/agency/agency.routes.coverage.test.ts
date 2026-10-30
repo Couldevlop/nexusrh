@@ -253,6 +253,25 @@ describe('PATCH /agency/members/:id', () => {
       payload: { firstName: 'A', lastName: 'B', role: 'agency_member', isActive: false } })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data.updated).toBe(true)
+    expect(setTokenEpochMock).toHaveBeenCalledWith(T1)
+  })
+
+  it('renommage seul → sessions du membre conservées', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: T1 }] }).mockResolvedValueOnce({ rows: [] })
+    const res = await app.inject({ method: 'PATCH', url: `/agency/members/${T1}`,
+      headers: { authorization: `Bearer ${ownerToken()}` }, payload: { firstName: 'A' } })
+    expect(res.statusCode).toBe(200)
+    expect(setTokenEpochMock).not.toHaveBeenCalled()
+  })
+
+  it('le propriétaire ne peut pas se désactiver ni se rétrograder → 409', async () => {
+    const SELF = '33333333-3333-3333-3333-333333333333'
+    for (const payload of [{ isActive: false }, { role: 'agency_member' }]) {
+      queryMock.mockResolvedValueOnce({ rows: [{ id: SELF }] })
+      const res = await app.inject({ method: 'PATCH', url: `/agency/members/${SELF}`,
+        headers: { authorization: `Bearer ${ownerToken({ sub: SELF })}` }, payload })
+      expect(res.statusCode).toBe(409)
+    }
   })
 })
 

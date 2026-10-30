@@ -76,7 +76,12 @@
       "role": "Role",
       "status": "Status"
     },
-    "empty": "No members."
+    "empty": "No members.",
+    "actions": "Actions",
+    "deactivate": "Deactivate",
+    "activate": "Reactivate",
+    "you": "You",
+    "updateError": "Update failed"
   },
   "settings": {
     "title": "Agency settings",

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Loader2, UserCircle } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 
 interface Member {
   id: string; email: string; first_name: string; last_name: string
@@ -16,6 +17,8 @@ export default function AgencyMembers() {
   const [form, setForm] = useState({ email: '', firstName: '', lastName: '', role: 'agency_member' })
   const [result, setResult] = useState<{ tempPassword: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
+  const me = useAuthStore((s) => s.user?.sub)
 
   const { data, isLoading } = useQuery<{ data: Member[] }>({
     queryKey: ['agency-members'],
@@ -32,6 +35,16 @@ export default function AgencyMembers() {
     onError: (err: unknown) => {
       const ax = err as { response?: { data?: { error?: string } } }
       setError(ax.response?.data?.error ?? t('common.createError'))
+    },
+  })
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { role?: string; isActive?: boolean } }) =>
+      api.patch(`/agency/members/${id}`, body).then((r) => r.data),
+    onSuccess: () => { setRowError(null); qc.invalidateQueries({ queryKey: ['agency-members'] }) },
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { error?: string } } }
+      setRowError(ax.response?.data?.error ?? t('members.updateError'))
     },
   })
 
@@ -86,23 +99,46 @@ export default function AgencyMembers() {
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}</div>
       ) : (
+        <div className="space-y-2">
+        {rowError && <p className="text-sm text-red-600">{rowError}</p>}
         <div className="overflow-hidden rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="px-4 py-3">{t('members.table.member')}</th><th className="px-4 py-3">{t('members.table.email')}</th><th className="px-4 py-3">{t('members.table.role')}</th><th className="px-4 py-3">{t('members.table.status')}</th></tr>
+              <tr><th className="px-4 py-3">{t('members.table.member')}</th><th className="px-4 py-3">{t('members.table.email')}</th><th className="px-4 py-3">{t('members.table.role')}</th><th className="px-4 py-3">{t('members.table.status')}</th><th className="px-4 py-3 text-right">{t('members.actions')}</th></tr>
             </thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id} className="border-t border-border">
                   <td className="px-4 py-3"><div className="flex items-center gap-2"><UserCircle className="h-5 w-5 text-muted-foreground" /> {m.first_name} {m.last_name}</div></td>
                   <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                  <td className="px-4 py-3">{m.role === 'agency_owner' ? t('members.roleOwner') : t('members.roleMember')}</td>
+                  <td className="px-4 py-3">
+                    {m.id === me ? (
+                      <>{m.role === 'agency_owner' ? t('members.roleOwner') : t('members.roleMember')} <span className="text-xs text-muted-foreground">({t('members.you')})</span></>
+                    ) : (
+                      <select aria-label={t('members.fields.role')} value={m.role} disabled={update.isPending}
+                        onChange={(e) => update.mutate({ id: m.id, body: { role: e.target.value } })}
+                        className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-sm">
+                        <option value="agency_member">{t('members.roleMember')}</option>
+                        <option value="agency_owner">{t('members.roleOwner')}</option>
+                      </select>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{m.is_active ? <span className="text-emerald-600">{t('common.active')}</span> : <span className="text-red-500">{t('common.inactive')}</span>}</td>
+                  <td className="px-4 py-3 text-right">
+                    {m.id !== me && (
+                      <button type="button" disabled={update.isPending}
+                        onClick={() => update.mutate({ id: m.id, body: { isActive: !m.is_active } })}
+                        className={`text-sm font-medium hover:underline disabled:opacity-60 ${m.is_active ? 'text-red-600' : 'text-emerald-700'}`}>
+                        {m.is_active ? t('members.deactivate') : t('members.activate')}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
-              {members.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">{t('members.empty')}</td></tr>}
+              {members.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">{t('members.empty')}</td></tr>}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </div>

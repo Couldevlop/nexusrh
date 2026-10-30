@@ -76,7 +76,12 @@
       "role": "Rôle",
       "status": "Statut"
     },
-    "empty": "Aucun membre."
+    "empty": "Aucun membre.",
+    "actions": "Actions",
+    "deactivate": "Désactiver",
+    "activate": "Réactiver",
+    "you": "Vous",
+    "updateError": "Modification impossible"
   },
   "settings": {
     "title": "Paramètres du cabinet",
