@@ -229,9 +229,20 @@ describe('GET /training/sessions', () => {
     })
     expect(res.statusCode).toBe(200)
     const call = queryMock.mock.calls[0]!
-    expect(String(call[0])).toContain('ts.status = $1')
+    expect(String(call[0])).toContain('ELSE ts.status END = $1')
     expect(String(call[0])).toContain('ts.training_id = $2')
     expect(call[1]).toEqual(['planned', UUID_A])
+  })
+
+  it('statut effectif : planned échue → completed (CASE à la lecture, annulée inchangée)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    await app.inject({
+      method: 'GET', url: '/training/sessions',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const sql = String(queryMock.mock.calls[0]![0]).replace(/\s+/g, ' ')
+    expect(sql).toContain("CASE WHEN ts.status = 'planned' AND COALESCE(ts.end_date, ts.start_date) < CURRENT_DATE THEN 'completed' ELSE ts.status END AS status")
   })
 
   it('erreur DB → 500', async () => {

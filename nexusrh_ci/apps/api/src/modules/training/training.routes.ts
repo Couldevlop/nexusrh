@@ -84,6 +84,10 @@ interface BulkEnrollResult {
   skippedInvalid: number
 }
 
+/** Statut effectif d'une session (lecture seule, aucune donnée modifiée en base). */
+export const EFFECTIVE_SESSION_STATUS_SQL = `CASE WHEN ts.status = 'planned'
+    AND COALESCE(ts.end_date, ts.start_date) < CURRENT_DATE THEN 'completed' ELSE ts.status END`
+
 // Inscrit en masse des employés SÉLECTIONNÉS à une session (action RH). Réutilisé
 // par la planification de session ET l'ajout de participants à une session
 // existante. Sûr : ne garde que les employee_ids appartenant au tenant (OWASP A01
@@ -245,12 +249,15 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /training/sessions
+// (le « status » de ts.* est écrasé par le statut effectif : pg garde la dernière colonne)
   fastify.get('/sessions', {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { status, training_id } = request.query as Record<string, string>
-      let sql = `SELECT ts.*, t.title AS training_title, t.duration, t.duration_unit,
+      // Statut effectif calculé à la lecture : une session « planned » dont la fin
+      // (à défaut, le début) est passée est « completed » ; annulée = inchangé.
+      let sql = `SELECT ts.*, ${EFFECTIVE_SESSION_STATUS_SQL} AS status, t.title AS training_title, t.duration, t.duration_unit,
                    t.is_fdfp_eligible, t.category, t.format,
                    COUNT(te.id)::int AS enrolled_count
                  FROM "${schema}".training_sessions ts
@@ -259,7 +266,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
                  WHERE 1=1`
       const params: unknown[] = []
       let idx = 1
-      if (status)      { sql += ` AND ts.status = $${idx++}`; params.push(status) }
+      if (status)      { sql += ` AND ${EFFECTIVE_SESSION_STATUS_SQL} = $${idx++}`; params.push(status) }
       if (training_id) { sql += ` AND ts.training_id = $${idx++}`; params.push(training_id) }
       sql += ` GROUP BY ts.id, t.id ORDER BY ts.start_date DESC`
       try {
