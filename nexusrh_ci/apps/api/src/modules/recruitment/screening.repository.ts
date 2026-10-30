@@ -152,13 +152,37 @@ export function screeningRepo(schema: string) {
       userId: string,
     ): Promise<DecideResult | null> {
       const stage = decision === 'kept' ? 'screening' : 'rejected'
+      // Changement d'étape + historique dans la même instruction. Un dossier
+      // écarté reçoit son motif structuré : signalé par les règles du pré-tri
+      // → `rejected_auto_screening`, conforme mais écarté par l'humain →
+      // `rejected_profile` ; le motif saisi devient la note.
       const r = await pool.query<DecideResult>(
-        `UPDATE ${s}.applications
-            SET screening_decision = $1, screening_reason = $2,
-                screening_decided_by = $3, screening_decided_at = now(),
-                stage = $4, updated_at = now()
-          WHERE id = $5 AND screening_decision IS NULL
-          RETURNING id, screening_verdict`,
+        `WITH prev AS (
+           SELECT id, stage FROM ${s}.applications
+            WHERE id = $5 AND screening_decision IS NULL
+            FOR UPDATE
+         ),
+         upd AS (
+           UPDATE ${s}.applications a
+              SET screening_decision = $1, screening_reason = $2,
+                  screening_decided_by = $3, screening_decided_at = now(),
+                  stage = $4::text,
+                  rejection_reason = CASE WHEN $4::text = 'rejected'
+                    THEN (CASE WHEN a.screening_verdict = 'flagged' THEN 'rejected_auto_screening' ELSE 'rejected_profile' END)
+                    ELSE a.rejection_reason END,
+                  rejection_note = CASE WHEN $4::text = 'rejected' THEN left($2::text, 500) ELSE a.rejection_note END,
+                  updated_at = now()
+             FROM prev
+            WHERE a.id = prev.id AND screening_decision IS NULL
+           RETURNING a.id, a.screening_verdict, a.stage
+         ),
+         stage_hist AS (
+           INSERT INTO ${s}.application_stage_history (application_id, from_stage, to_stage, changed_by)
+           SELECT upd.id, prev.stage, upd.stage, $3::uuid
+             FROM upd JOIN prev ON prev.id = upd.id
+            WHERE prev.stage IS DISTINCT FROM upd.stage
+         )
+         SELECT id, screening_verdict FROM upd`,
         [decision, reason, userId, stage, appId],
       )
       return r.rows[0] ?? null

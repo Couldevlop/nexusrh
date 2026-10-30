@@ -25,6 +25,11 @@ import screeningRoutes from './screening.routes.js'
 import { extractCvText, isMagicByteConsistent } from '../../services/cv-extraction.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import {
+  REJECTION_REASONS, REJECTION_NOTE_MAX, actorUuid, withInitialStageHistory,
+} from './stage-history.js'
+import { hireApplication, getHirePrefill, HireError, type HireResult } from './hire.service.js'
+import funnelStatsRoutes from './funnel-stats.routes.js'
 
 // `extractCvText` et `isMagicByteConsistent` viennent de
 // services/cv-extraction.service.ts. Ce fichier en hébergeait une COPIE locale
@@ -87,8 +92,30 @@ type JobBody = {
   recruitment_process?: string | null
 }
 
-const STAGES = ['new', 'screening', 'interview', 'test', 'offer', 'hired', 'rejected']
+const STAGES = ['new', 'screening', 'interview', 'test', 'offer', 'hired', 'rejected'] as const
 const VISIBILITIES = ['external', 'internal', 'both']
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// PATCH /applications/:id/stage — OWASP A03 : motif de rejet en liste fermée,
+// note bornée, valeurs de la fiche employé (embauche) validées.
+const stageBodySchema = z.object({
+  stage: z.enum(STAGES),
+  notes: z.string().max(5000).optional(),
+  rejection_reason: z.enum(REJECTION_REASONS).optional(),
+  rejection_note: z.string().max(REJECTION_NOTE_MAX).optional(),
+  employee: z.object({
+    hireDate: z.string().regex(ISO_DATE_RE, 'Date attendue au format YYYY-MM-DD').optional(),
+    departmentId: z.string().uuid().nullable().optional(),
+    legalEntityId: z.string().uuid().nullable().optional(),
+    baseSalary: z.number().int().min(0).max(100_000_000).optional(),
+    contractType: z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
+    jobTitle: z.string().trim().min(1).max(100).optional(),
+    professionalCategory: z.string().trim().max(50).optional(),
+  }).strict().optional(),
+})
+
+const UUID_PARAM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ── Énumérations standard APEC (whitelist de validation) ──────────────────────
 const EXPERIENCE_LEVELS = ['debutant_accepte', 'min_1_an', '1_3_ans', '3_7_ans', 'min_7_ans']
@@ -523,18 +550,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.status(409).send({ error: 'Vous avez déjà postulé à cette offre' })
         }
 
-        const res = await pool.query(`
+        const res = await pool.query(withInitialStageHistory(schema, `
           INSERT INTO "${schema}".applications
             (job_id, first_name, last_name, email, phone, cover_letter,
              stage, source, internal_employee_id)
           VALUES ($1,$2,$3,$4,$5,$6,'new','internal',$7)
           RETURNING *
-        `, [
+        `, '$8'), [
           id, emp.first_name, emp.last_name,
           emp.email ?? request.user.email,
           body.phone ?? emp.phone,
           body.cover_letter ?? null,
           emp.id,
+          actorUuid(request.user.sub),
         ])
         return reply.status(201).send({ data: res.rows[0] })
       } catch (err) {
@@ -607,7 +635,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         // Anti-doublon atomique : même offre + même email ou même téléphone →
         // aucune ligne insérée (double clic, réseau lent, ressaisie).
-        const res = await pool.query(`
+        const res = await pool.query(withInitialStageHistory(schema, `
           INSERT INTO "${schema}".applications
             (job_id, first_name, last_name, email, phone, cover_letter,
              cv_text, stage, source)
@@ -619,11 +647,12 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                 OR (d.phone IS NOT NULL AND d.phone = $5::text))
           )
           RETURNING *
-        `, [
+        `, '$9'), [
           body.job_id, body.first_name, body.last_name, body.email ?? null,
           body.phone ? body.phone.replace(/\s/g, '') : null, body.cover_letter ?? null,
           body.cv_text ?? null,
           body.source ?? 'manual',
+          actorUuid(request.user.sub),
         ])
         if (res.rows.length === 0) {
           return reply.status(409).send({ error: 'Ce candidat a déjà postulé à cette offre (même email ou même téléphone).' })
@@ -642,14 +671,59 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
-      const { stage, notes } = request.body as { stage: string; notes?: string }
-      if (!STAGES.includes(stage)) return reply.status(400).send({ error: 'Stage invalide' })
+      const parsedBody = stageBodySchema.safeParse(request.body ?? {})
+      if (!parsedBody.success) {
+        const stageIssue = parsedBody.error.issues.some((i) => i.path[0] === 'stage')
+        return reply.status(400).send({
+          error: stageIssue ? 'Stage invalide' : 'Données invalides',
+          details: parsedBody.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const { stage, notes, rejection_reason: rejectionReason, rejection_note: rejectionNote, employee } = parsedBody.data
       try {
+        // Embauche : la fiche employé (et son parcours d'intégration) est créée
+        // AVANT le changement d'étape — si elle échoue, l'étape ne bouge pas.
+        let hire: HireResult | null = null
+        if (stage === 'hired') {
+          try {
+            hire = await hireApplication(schema, id, employee ?? {}, { userId: request.user.sub, ip: request.ip ?? null })
+          } catch (err) {
+            if (err instanceof HireError) {
+              return reply.status(err.statusCode).send({ error: err.message, code: err.code })
+            }
+            throw err
+          }
+          if (!hire) return reply.status(404).send({ error: 'Candidature introuvable' })
+        }
+
+        // Changement d'étape + historique dans la MÊME instruction (CTE).
         const res = await pool.query(`
-          UPDATE "${schema}".applications
-          SET stage = $1, notes = COALESCE($2, notes), updated_at = now()
-          WHERE id = $3 RETURNING *
-        `, [stage, notes || null, id])
+          WITH prev AS (
+            SELECT id, stage FROM "${schema}".applications WHERE id = $3 FOR UPDATE
+          ),
+          upd AS (
+            UPDATE "${schema}".applications a
+               SET stage = $1::text, notes = COALESCE($2::text, a.notes),
+                   hired_at = CASE WHEN $1::text = 'hired' THEN COALESCE(a.hired_at, now()) ELSE NULL END,
+                   rejection_reason = CASE WHEN $1::text = 'rejected' THEN COALESCE($4::text, a.rejection_reason) ELSE NULL END,
+                   rejection_note = CASE WHEN $1::text = 'rejected' THEN COALESCE($5::text, a.rejection_note) ELSE NULL END,
+                   updated_at = now()
+              FROM prev
+             WHERE a.id = prev.id
+            RETURNING a.*
+          ),
+          stage_hist AS (
+            INSERT INTO "${schema}".application_stage_history (application_id, from_stage, to_stage, changed_by)
+            SELECT upd.id, prev.stage, upd.stage, $6::uuid
+              FROM upd JOIN prev ON prev.id = upd.id
+             WHERE prev.stage IS DISTINCT FROM upd.stage
+          )
+          SELECT * FROM upd
+        `, [
+          stage, notes || null, id,
+          rejectionReason ?? null, rejectionNote?.trim() || null,
+          actorUuid(request.user.sub),
+        ])
         const app = res.rows[0]
 
         // Feedback loop IA : on snapshot la décision pour alimenter le few-shot des
@@ -692,9 +766,32 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               }, ip: request.ip ?? null })
         }
 
-        return reply.send({ data: app })
+        return reply.send({ data: app, ...(hire ? { hire } : {}) })
       } catch (err) {
         fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PRÉ-REMPLISSAGE DE LA FICHE EMPLOYÉ À L'EMBAUCHE ───────────────────────
+  // Lu par la modale « Créer la fiche employé » avant le passage en `hired` :
+  // valeurs issues de la candidature, de l'offre et du dernier contrat généré,
+  // plus la fiche existante qui serait reliée (même email / candidat interne).
+  // RBAC : celui de la création d'employé (admin / hr_manager / hr_officer).
+  fastify.get('/applications/:id/hire-prefill', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_PARAM_RE.test(id)) return reply.status(400).send({ error: 'application id invalide (UUID requis)' })
+      try {
+        await ensureRecruitmentSchemaMigrated(schema)
+        const prefill = await getHirePrefill(schema, id)
+        if (!prefill) return reply.status(404).send({ error: 'Candidature introuvable' })
+        return reply.send({ data: prefill })
+      } catch (err) {
+        fastify.log.error({ err }, 'hire-prefill failed')
         return reply.status(500).send({ error: 'Erreur serveur' })
       }
     },
@@ -783,6 +880,24 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const pdf = await renderHrDocumentPdf(markdown)
+
+        // Conditions de l'offre mémorisées pour pré-remplir la fiche employé à
+        // l'embauche (type, salaire, dates, catégorie). Le NNI n'est PAS stocké
+        // ici (donnée sensible, chiffrée sur la fiche uniquement).
+        const offerDetails = {
+          type: body.type,
+          ...(typeof salary === 'number' ? { salary } : {}),
+          ...(body.startDate ? { startDate: body.startDate } : {}),
+          ...(body.endDate ? { endDate: body.endDate } : {}),
+          ...(body.isCadre !== undefined ? { isCadre: body.isCadre } : {}),
+          ...(body.category ? { category: body.category } : {}),
+          ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
+          generatedAt: new Date().toISOString(),
+        }
+        await Promise.resolve(pool.query(
+          `UPDATE "${schema}".applications SET offer_details = $2::jsonb WHERE id = $1`,
+          [app.id, JSON.stringify(offerDetails)],
+        )).catch((err: unknown) => { fastify.log.warn({ err }, 'offer_details non mémorisé') })
 
         // OWASP A09 : trace la génération du contrat (acte RH significatif)
         auditTenant(schema, { userId: request.user.sub, action: 'recruitment.contract_generated', entity: 'application', entityId: app.id, changes: { type: body.type, title }, ip: request.ip ?? null })
@@ -1040,7 +1155,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const model: AiModelChoice = body.model === 'mistral' ? 'mistral' : 'claude'
       const requestedStages = Array.isArray(body.stages) && body.stages.length > 0
         ? body.stages : ['new']
-      const invalidStage = requestedStages.find((s) => !STAGES.includes(s))
+      const invalidStage = requestedStages.find((s) => !(STAGES as readonly string[]).includes(s))
       if (invalidStage) {
         return reply.status(400).send({ error: `Stage invalide : ${invalidStage}` })
       }
@@ -1594,7 +1709,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       // (stage 'new', screening_decision NULL). Il n'est jamais auto-rejeté.
       const screening = combineVerdicts(evaluateQuestions(questions, answers), null)
 
-      const res = await pool.query<{ id: string }>(`
+      // Candidature anonyme : entrée initiale de l'historique sans auteur.
+      const res = await pool.query<{ id: string }>(withInitialStageHistory(schema, `
         INSERT INTO "${schema}".applications
           (job_id, first_name, last_name, email, phone, cover_letter, cv_text,
            cv_blob, cv_mime_type, cv_filename, cv_size_bytes, cv_url, expected_salary,
@@ -1602,8 +1718,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
            screening_answers, screening_verdict, screening_failed_rules, screened_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'new','careers_page',
                 $14,$15,$16,now())
-        RETURNING id
-      `, [
+        RETURNING id, stage
+      `, 'NULL'), [
         jobId, body.first_name, body.last_name, body.email,
         body.phone ?? null, body.cover_letter ?? null, cvText,
         cvBlob, cvMime, cvFilename, cvSize, cvUrl, expectedSalary,
@@ -1857,18 +1973,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           (profile.current_company ? ` chez ${profile.current_company}` : '')
 
         const appRes = await client.query<{ id: string }>(
-          `INSERT INTO "${schema}".applications
+          withInitialStageHistory(schema, `INSERT INTO "${schema}".applications
              (job_id, first_name, last_name, email, phone, stage, source,
               ai_score, ai_recommendation, ai_match_percentage, ai_summary,
               ai_strengths, ai_model_used, ai_analyzed_at)
            VALUES ($1, $2, $3, $4, $5, 'new', 'sourced_ai',
                    $6, $7, $6, $8,
                    $9, 'sourced', now())
-           RETURNING id`,
+           RETURNING id, stage`, '$10'),
           [
             profile.job_id, profile.first_name, profile.last_name, email, profile.phone,
             profile.match_score, scoreToRecommendation(profile.match_score), summary,
             JSON.stringify(Array.isArray(profile.key_skills) ? profile.key_skills : []),
+            actorUuid(request.user.sub),
           ],
         )
         const applicationId = appRes.rows[0]!.id
@@ -1933,18 +2050,19 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             (profile.current_company ? ` chez ${profile.current_company}` : '')
 
           const appRes = await client.query<{ id: string }>(
-            `INSERT INTO "${schema}".applications
+            withInitialStageHistory(schema, `INSERT INTO "${schema}".applications
                (job_id, first_name, last_name, email, phone, stage, source,
                 ai_score, ai_recommendation, ai_match_percentage, ai_summary,
                 ai_strengths, ai_model_used, ai_analyzed_at)
              VALUES ($1, $2, $3, $4, $5, 'new', 'sourced_ai',
                      $6, $7, $6, $8,
                      $9, 'sourced', now())
-             RETURNING id`,
+             RETURNING id, stage`, '$10'),
             [
               id, profile.first_name, profile.last_name, email, profile.phone,
               profile.match_score, scoreToRecommendation(profile.match_score), summary,
               JSON.stringify(Array.isArray(profile.key_skills) ? profile.key_skills : []),
+              actorUuid(request.user.sub),
             ],
           )
           const applicationId = appRes.rows[0]!.id
@@ -2097,6 +2215,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   // Pré-tri des candidatures — fichier séparé (ce module dépasse 2 000 lignes).
   // Le préfixe /recruitment est déjà appliqué par app.ts au plugin parent.
   await fastify.register(screeningRoutes)
+  // Indicateurs d'entonnoir (agrégats) — fichier séparé, même préfixe.
+  await fastify.register(funnelStatsRoutes)
 }
 
 export default recruitmentRoutes

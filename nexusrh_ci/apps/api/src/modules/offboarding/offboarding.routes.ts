@@ -31,22 +31,32 @@ import {
 import {
   averageRemuneration, loadLeavePolicy, paidLeaveAllowance, refreshPaidLeaveBalance,
 } from '../../services/paid-leave.service.js'
+import {
+  DEPARTURE_REASON_KEY_RE, loadDepartureReasonCategories,
+} from '../../services/departure-reasons.service.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
 const DELETE_ROLES = ['admin', 'hr_manager'] as const
+// Tableau de bord marque employeur : agrégats uniquement, jamais de dossier nominatif.
+const STATS_ROLES = ['admin', 'hr_manager', 'dg', 'readonly'] as const
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const reasonCategoryField = z.string().regex(DEPARTURE_REASON_KEY_RE, 'Catégorie de motif invalide')
 
 const createSchema = z.object({
   employeeId: z.string().uuid(),
   departureType: z.enum(DEPARTURE_TYPES),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
   reason: z.string().max(2000).optional(),
+  reasonCategory: reasonCategoryField.optional(),
   noticeServed: z.boolean().optional(),
 })
 
 const updateSchema = z.object({
   status: z.enum(OFFBOARDING_STATUSES).optional(),
   reason: z.string().max(2000).optional(),
+  reasonCategory: reasonCategoryField.nullable().optional(),
   noticeServed: z.boolean().optional(),
   checklist: z.array(z.object({
     key: z.string().max(50),
@@ -77,8 +87,76 @@ function audit(
   auditTenant(schema, { userId: userId ?? null, action: action, entity: 'offboarding_case', entityId: id, changes: changes, ip: ip })
 }
 
+/**
+ * La catégorie doit appartenir à la liste du tenant (sinon 400). Lue seulement
+ * quand une catégorie est fournie : les appels sans catégorie restent inchangés.
+ */
+async function unknownReasonCategory(schema: string, key: string | null | undefined): Promise<boolean> {
+  if (key === undefined || key === null) return false
+  const categories = await loadDepartureReasonCategories(rawPool, schema)
+  return !categories.some((c) => c.key === key)
+}
+
+const UNKNOWN_CATEGORY = { error: 'Catégorie de motif de départ inconnue pour ce tenant', code: 'UNKNOWN_REASON_CATEGORY' }
+
 const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
+
+  // GET /offboarding/reason-stats — répartition des motifs de départ (agrégats)
+  fastify.get('/reason-stats', {
+    preHandler: [fastify.authorize(...STATS_ROLES)],
+    schema: { tags: ['offboarding'], summary: 'Répartition des motifs de départ (agrégats)' },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { from, to } = request.query as { from?: string; to?: string }
+      if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
+        return reply.status(400).send({ error: 'Dates attendues au format YYYY-MM-DD' })
+      }
+      try {
+        const [categories, rows] = await Promise.all([
+          loadDepartureReasonCategories(rawPool, schema),
+          rawPool.query<{ reason_category: string | null; departure_type: string; count: string }>(
+            `SELECT reason_category, departure_type, count(*)::int AS count
+               FROM "${schema}".offboarding_cases
+              WHERE status <> 'cancelled'
+                AND ($1::date IS NULL OR departure_date >= $1::date)
+                AND ($2::date IS NULL OR departure_date <= $2::date)
+              GROUP BY reason_category, departure_type`,
+            [from ?? null, to ?? null],
+          ),
+        ])
+        const labels = new Map(categories.map((c) => [c.key, c.label]))
+        const byCategory = new Map<string, number>()
+        const byType = new Map<string, number>()
+        let total = 0
+        for (const r of rows.rows) {
+          const n = Number(r.count) || 0
+          const key = r.reason_category ?? 'unspecified'
+          byCategory.set(key, (byCategory.get(key) ?? 0) + n)
+          byType.set(r.departure_type, (byType.get(r.departure_type) ?? 0) + n)
+          total += n
+        }
+        const share = (n: number) => (total > 0 ? Math.round((n / total) * 1000) / 10 : 0)
+        return reply.send({
+          data: {
+            total,
+            from: from ?? null,
+            to: to ?? null,
+            categories,
+            byCategory: [...byCategory.entries()]
+              .map(([key, count]) => ({ key, label: labels.get(key) ?? null, count, share: share(count) }))
+              .sort((a, b) => b.count - a.count),
+            byDepartureType: [...byType.entries()]
+              .map(([type, count]) => ({ type, count, share: share(count) }))
+              .sort((a, b) => b.count - a.count),
+          },
+        })
+      } catch (err) {
+        request.log.error({ err, schema }, 'offboarding.reason-stats failed')
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
 
   // GET /offboarding — liste
   fastify.get('/', {
@@ -126,16 +204,18 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = createSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
+      if (await unknownReasonCategory(schema, b.reasonCategory)) return reply.status(400).send(UNKNOWN_CATEGORY)
       const res = await rawPool.query(
         `INSERT INTO "${schema}".offboarding_cases
-           (employee_id, departure_type, departure_date, reason, notice_served, checklist, created_by, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'open') RETURNING *`,
+           (employee_id, departure_type, departure_date, reason, notice_served, checklist, created_by, status, reason_category)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8) RETURNING *`,
         [b.employeeId, b.departureType, b.departureDate, b.reason ?? null,
-         b.noticeServed ?? true, JSON.stringify(DEFAULT_CHECKLIST), request.user.sub],
+         b.noticeServed ?? true, JSON.stringify(DEFAULT_CHECKLIST), request.user.sub,
+         b.reasonCategory ?? null],
       )
       const row = res.rows[0] as { id: string }
       audit(schema, request.user.sub, 'offboarding.created', row.id,
-        { departureType: b.departureType, employeeId: b.employeeId }, request.ip ?? null)
+        { departureType: b.departureType, employeeId: b.employeeId, reasonCategory: b.reasonCategory ?? null }, request.ip ?? null)
       return reply.status(201).send({ data: row })
     },
   })
@@ -150,6 +230,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = updateSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
+      if (await unknownReasonCategory(schema, b.reasonCategory)) return reply.status(400).send(UNKNOWN_CATEGORY)
 
       const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string; departure_date?: string | null }>(
         `SELECT status, employee_id, departure_date::text AS departure_date
@@ -167,6 +248,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       let i = 1
       if (b.status !== undefined)       { sets.push(`status = $${i++}`); params.push(b.status) }
       if (b.reason !== undefined)       { sets.push(`reason = $${i++}`); params.push(b.reason) }
+      if (b.reasonCategory !== undefined) { sets.push(`reason_category = $${i++}`); params.push(b.reasonCategory) }
       if (b.noticeServed !== undefined) { sets.push(`notice_served = $${i++}`); params.push(b.noticeServed) }
       if (b.checklist !== undefined)    { sets.push(`checklist = $${i++}`); params.push(JSON.stringify(b.checklist)) }
       if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ à mettre à jour' })

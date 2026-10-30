@@ -4,8 +4,7 @@ import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { encryptIfPresent, decryptIfPresent } from '@nexusrhci/shared/crypto'
 import { describeDbError } from '../../utils/db-error.js'
-import { emitIntegrationEvent } from '../../services/integrations.service.js'
-import { autoStartOnboarding } from '../../services/onboarding.service.js'
+import { insertEmployeeRecord, afterEmployeeCreated } from '../../services/employee-create.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
 import { encodeField } from '../sage/sage.service.js'
 import { parseInterviewFocus } from '../../services/interview-focus.service.js'
@@ -497,36 +496,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      let res
+      let created
       try {
-        res = await pool.query(
-          `INSERT INTO "${schema}".employees
-             (first_name, last_name, email, phone, birth_date, gender,
-              nni, cnps_number, mobile_money_provider, mobile_money_phone,
-              department_id, manager_id, legal_entity_id, job_title, job_level, contract_type,
-              hire_date, base_salary, weekly_hours, professional_category,
-              iban, bank_name, payment_method, city, marital_status, children_count, custom_fields, nationality,
-              employee_number)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,COALESCE($28,'Ivoirienne'),$29)
-           RETURNING *`,
-          [
-            body.firstName, body.lastName, body.email ?? null, body.phone ?? null,
-            body.birthDate ?? null, body.gender ?? null,
-            encryptIfPresent(body.nni), body.cnpsNumber ?? null,
-            body.mobileMoneyProvider ?? null, body.mobileMoneyPhone ?? null,
-            body.departmentId ?? null, body.managerId ?? null, body.legalEntityId ?? null,
-            body.jobTitle ?? null, body.jobLevel ?? null, body.contractType ?? 'cdi',
-            body.hireDate ?? null, body.baseSalary,
-            // Base légale CI : 40h hebdomadaires par défaut
-            body.weeklyHours ?? 40, body.professionalCategory ?? null,
-            // RGPD — RIB chiffré AES-256 (même traitement que le NNI)
-            encryptIfPresent(body.iban), body.bankName ?? null,
-            body.paymentMethod ?? 'mobile_money',
-            body.city ?? 'Abidjan', body.maritalStatus ?? null, body.childrenCount ?? 0,
-            JSON.stringify(custom.values), body.nationality ?? null,
-            body.employeeNumber ?? null,
-          ]
-        )
+        created = await insertEmployeeRecord(pool, schema, body, custom.values)
       } catch (err) {
         // Aucune erreur technique brute ne doit remonter : message personnalisé.
         const mapped = describeDbError(err, {
@@ -540,31 +512,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // OWASP A09 : trace de la création
-      auditLogEmployee(schema, request.user.sub, 'employee.created', res.rows[0].id, {
-        firstName: body.firstName, lastName: body.lastName,
-        email: body.email ?? null, jobTitle: body.jobTitle ?? null,
-        baseSalary: body.baseSalary,
-      }, request.ip ?? null)
+      // Audit (A09), webhooks `employee.created` et parcours d'intégration
+      // auto-démarré : voie partagée avec l'embauche depuis le recrutement.
+      afterEmployeeCreated(pool, schema, created, body,
+        { userId: request.user.sub, ip: request.ip ?? null }, { startOnboarding: true })
 
-      // Connectivité : notifie les outils externes abonnés (non bloquant).
-      emitIntegrationEvent(pool, schema, 'employee.created', {
-        id: res.rows[0].id, firstName: body.firstName, lastName: body.lastName,
-        email: body.email ?? null, jobTitle: body.jobTitle ?? null,
-      }, decryptIfPresent)
-
-      // Parcours d'intégration : auto-création depuis le modèle le plus
-      // pertinent (séniorité / type de poste). Non bloquant — la création de
-      // l'employé ne doit jamais échouer à cause de l'onboarding.
-      autoStartOnboarding(pool, schema, {
-        id: res.rows[0].id,
-        job_title: body.jobTitle ?? null,
-        job_level: body.jobLevel ?? null,
-        department_id: body.departmentId ?? null,
-        hire_date: body.hireDate ?? null,
-      }, request.user.sub).catch(() => { /* best-effort */ })
-
-      return reply.status(201).send({ data: res.rows[0] })
+      return reply.status(201).send({ data: created })
     },
   })
 
