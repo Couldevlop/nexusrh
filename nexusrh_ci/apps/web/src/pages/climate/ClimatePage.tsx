@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Plus, BarChart3, Trash2, ShieldCheck } from 'lucide-react'
+import { MessageSquare, Plus, BarChart3, Trash2, ShieldCheck, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { confirmDialog } from '@/components/shared/ConfirmDialog'
@@ -19,7 +19,20 @@ interface ScaleAgg { type: 'scale'; key: string; label: string; count: number; a
 interface BoolAgg { type: 'boolean'; key: string; label: string; count: number; yes: number; yesRate: number }
 interface TextAgg { type: 'text'; key: string; label: string; count: number; answers: string[] }
 type Agg = ScaleAgg | BoolAgg | TextAgg
-interface Results { responseCount: number; questions: Agg[] }
+type GroupBy = '' | 'department' | 'legal_entity'
+interface GroupResult { key: string; label: string | null; responseCount: number; questions: Array<ScaleAgg | BoolAgg> }
+/** Sous le seuil d'anonymat : ni score ni commentaire, uniquement le compte. */
+interface BelowThreshold { belowThreshold: true; responses: number; minResponses: number }
+interface Results {
+  belowThreshold: false
+  minResponses: number
+  responseCount: number
+  questions: Agg[]
+  groupBy: Exclude<GroupBy, ''> | null
+  groups: GroupResult[] | null
+  hiddenGroups: number
+}
+type ResultsPayload = Results | BelowThreshold
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -32,6 +45,7 @@ export default function ClimatePage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [resultsFor, setResultsFor] = useState<string | null>(null)
+  const [groupBy, setGroupBy] = useState<GroupBy>('')
   const [form, setForm] = useState<{ title: string; description: string; anonymous: boolean; questions: { label: string; type: QType }[] }>({
     title: '', description: '', anonymous: true, questions: [{ label: '', type: 'scale' }],
   })
@@ -45,11 +59,11 @@ export default function ClimatePage() {
   })
 
   const resultsQ = useQuery({
-    queryKey: ['climate', 'results', resultsFor],
+    queryKey: ['climate', 'results', resultsFor, groupBy],
     enabled: !!resultsFor,
     queryFn: async () => {
-      const res = await api.get(`/climate/surveys/${resultsFor}/results`)
-      return (res.data as { data: Results }).data
+      const res = await api.get(`/climate/surveys/${resultsFor}/results`, groupBy ? { params: { groupBy } } : undefined)
+      return (res.data as { data: ResultsPayload }).data
     },
   })
 
@@ -174,9 +188,25 @@ export default function ClimatePage() {
 
             {resultsFor === s.id && (
               <div className="mt-3 border-t border-border pt-3">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                  <label htmlFor={`climate-groupby-${s.id}`} className="text-muted-foreground">{t('results.groupBy')}</label>
+                  <select id={`climate-groupby-${s.id}`} value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-xs">
+                    <option value="">{t('results.groupByNone')}</option>
+                    <option value="department">{t('results.groupByDepartment')}</option>
+                    <option value="legal_entity">{t('results.groupByLegalEntity')}</option>
+                  </select>
+                </div>
                 {resultsQ.isLoading && <p className="text-sm text-muted-foreground">{t('loading')}</p>}
-                {resultsQ.data && resultsQ.data.responseCount === 0 && <p className="text-sm text-muted-foreground">{t('results.noData')}</p>}
-                {resultsQ.data && resultsQ.data.responseCount > 0 && (
+                {resultsQ.isError && <p className="text-sm text-destructive">{t('results.loadError')}</p>}
+                {resultsQ.data && resultsQ.data.belowThreshold && (
+                  <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <EyeOff className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{t('results.belowThreshold', { count: resultsQ.data.responses, min: resultsQ.data.minResponses })}</span>
+                  </div>
+                )}
+                {resultsQ.data && !resultsQ.data.belowThreshold && resultsQ.data.responseCount === 0 && <p className="text-sm text-muted-foreground">{t('results.noData')}</p>}
+                {resultsQ.data && !resultsQ.data.belowThreshold && resultsQ.data.responseCount > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">{t('results.responseCount', { count: resultsQ.data.responseCount })}</p>
                     {resultsQ.data.questions.map((q) => (
@@ -192,6 +222,25 @@ export default function ClimatePage() {
                         )}
                       </div>
                     ))}
+                    {resultsQ.data.groups && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('results.groupsTitle')}</p>
+                        {resultsQ.data.groups.length === 0 && <p className="text-sm text-muted-foreground">{t('results.groupsEmpty')}</p>}
+                        {resultsQ.data.groups.map((g) => (
+                          <div key={g.key} className="rounded-lg border border-border p-2 text-sm">
+                            <p className="font-medium">{g.label ?? t('results.groupUnassigned')} <span className="text-xs font-normal text-muted-foreground">· {t('results.responseCount', { count: g.responseCount })}</span></p>
+                            {g.questions.map((q) => (
+                              <p key={q.key} className="text-xs text-muted-foreground">
+                                {q.label} : <span className="font-semibold text-foreground">{q.type === 'scale' ? `${q.average} / 5` : `${Math.round(q.yesRate * 100)}%`}</span>
+                              </p>
+                            ))}
+                          </div>
+                        ))}
+                        {resultsQ.data.hiddenGroups > 0 && (
+                          <p className="flex items-center gap-1 text-xs text-amber-800"><EyeOff className="h-3.5 w-3.5" /> {t('results.hiddenGroups', { count: resultsQ.data.hiddenGroups, min: resultsQ.data.minResponses })}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

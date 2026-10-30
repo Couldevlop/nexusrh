@@ -35,6 +35,8 @@ interface TenantSettings {
   employee_contract_access?: boolean
   manager_contract_upload?: boolean
   sender_email?: string | null; sender_name?: string | null
+  /** Seuil d'anonymat des enquêtes climat (valeur effective, défaut 5). */
+  climate_min_responses?: number
 }
 interface TenantUser {
   id: string; email: string; first_name: string; last_name: string
@@ -740,6 +742,19 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             <span className="block text-xs text-muted-foreground">{t('general.managerContractUploadHint')}</span>
           </span>
         </label>
+
+        <h2 className="font-semibold pt-2">{t('general.climateAnonymity')}</h2>
+        <div>
+          <label htmlFor="climate-min-responses" className="text-xs font-medium text-muted-foreground">{t('general.climateMinResponsesLabel')}</label>
+          <input id="climate-min-responses" type="number" min={2} max={100} step={1}
+            defaultValue={s.climate_min_responses ?? 5}
+            onChange={e => {
+              const n = Number(e.target.value)
+              setForm(p => ({ ...p, climate_min_responses: Number.isInteger(n) ? n : undefined }))
+            }}
+            className="mt-1 w-32 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          <p className="mt-1 text-xs text-muted-foreground">{t('general.climateMinResponsesHint')}</p>
+        </div>
 
         <div className="pt-2 flex items-center justify-between border-t border-border">
           <p className="text-xs text-muted-foreground">

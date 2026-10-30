@@ -432,6 +432,10 @@
         "label": "SAGE interface",
         "desc": "Export upstream payroll data to SAGE (employees, variable elements, payroll results) in a configurable delimited format, in addition to the native payroll engine."
       },
+      "employer_brand": {
+        "label": "Employer brand",
+        "desc": "Aggregated attractiveness and retention dashboard: applications by source and by job, time to fill, pipeline, new-hire retention at 3 and 12 months, early departures. No personal data."
+      },
       "dg_view": {
         "label": "CEO 360° View",
         "desc": "Cross-functional control view reserved for the Chief Executive Officer: consolidated HR, payroll and compliance indicators. Disabled by default (opt-in) — must be explicitly enabled by the super admin."

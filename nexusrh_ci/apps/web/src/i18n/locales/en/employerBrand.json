@@ -1,0 +1,83 @@
+{
+  "title": "Employer brand",
+  "subtitle": "Attractiveness, recruitment efficiency and new-hire retention — aggregated indicators.",
+  "privacyNote": "Indicators computed from data already in NexusRH (applications, job offers, hires, departures). Aggregates only: no personal data.",
+  "loading": "Loading…",
+  "loadError": "Unable to load employer brand indicators.",
+  "emptyPeriod": "No application, hire or departure in this period. Widen the period or change subsidiary.",
+  "filters": {
+    "from": "From",
+    "to": "To",
+    "legalEntity": "Subsidiary",
+    "allEntities": "All subsidiaries"
+  },
+  "kpis": {
+    "applications": "Applications",
+    "applicationsSub": "received in the period",
+    "internalRate": "Internal applications",
+    "internalRateSub": "{{count}} application(s) from employees",
+    "timeToFill": "Time to fill (median)",
+    "days": "{{count}} d",
+    "timeToFillSub": "average {{avg}} d · {{count}} job(s) filled",
+    "timeToFillNone": "no job filled in the period",
+    "hires": "New hires",
+    "hiresSub": "hires in the period",
+    "retention12m": "12-month retention",
+    "retentionSub": "{{retained}} of {{eligible}} eligible hire(s)",
+    "earlyDepartures": "Early departures (< 1 year)",
+    "earlySub": "{{rate}} % of the {{count}} departure(s) in the period",
+    "earlyNone": "no departure in the period"
+  },
+  "charts": {
+    "applications": "Applications",
+    "bySource": "Applications by source",
+    "bySourceSub": "Where candidates came from in the period.",
+    "noApplications": "No application in the period.",
+    "pipeline": "Current pipeline",
+    "pipelineSub": "Applications on open jobs, by stage (today's snapshot).",
+    "noPipeline": "No application in progress on open jobs.",
+    "retention": "New-hire retention",
+    "retentionSub": "Share of the period's hires still employed after 3 and 12 months.",
+    "retentionRate": "Retention rate",
+    "noRetention": "Not enough hindsight yet: no hire from the period has 3 months of service.",
+    "departureTypes": "Departure types",
+    "departureTypesSub": "Offboarding cases in the period, by type.",
+    "departures": "Departures",
+    "noDepartures": "No offboarding case in the period."
+  },
+  "retention": {
+    "threeMonths": "After 3 months",
+    "twelveMonths": "After 12 months"
+  },
+  "jobs": {
+    "title": "Most attractive jobs",
+    "subtitle": "The 10 jobs that received the most applications in the period.",
+    "job": "Job",
+    "applications": "Applications",
+    "internal": "Of which internal"
+  },
+  "sources": {
+    "careers_page": "Careers page",
+    "internal": "Internal application",
+    "sourced_ai": "AI sourcing",
+    "manual": "Manual entry",
+    "other": "Other"
+  },
+  "stages": {
+    "new": "New",
+    "screening": "Screening",
+    "interview": "Interview",
+    "test": "Test",
+    "offer": "Offer",
+    "hired": "Hired",
+    "rejected": "Rejected"
+  },
+  "departureTypes": {
+    "demission": "Resignation",
+    "retraite": "Retirement",
+    "licenciement": "Dismissal",
+    "fin_cdd": "End of fixed-term contract",
+    "rupture_conventionnelle": "Mutual termination",
+    "autre": "Other"
+  }
+}

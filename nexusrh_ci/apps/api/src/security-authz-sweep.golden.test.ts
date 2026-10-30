@@ -89,6 +89,7 @@ const PREFIX: Record<string, string> = {
   'signature/signature.routes.ts': '/signature',
   'security/security.routes.ts': '/security',
   'sage/sage.routes.ts': '/sage',
+  'employer-brand/employer-brand.routes.ts': '/employer-brand',
   'dg/dg.routes.ts': '/dg',
   'interview-sim/interview-sim.routes.ts': '/interview-sim',
   'public/demo.routes.ts': '/public/demo',

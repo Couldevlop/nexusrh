@@ -8,7 +8,7 @@ import {
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
   Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet, Clock,
-  ListChecks, UserCircle, FileText,
+  ListChecks, UserCircle, FileText, Megaphone,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
@@ -53,6 +53,11 @@ interface NavGroup {
 // ~30 entrées). Le filtrage rôle/module est appliqué AVANT le rendu ; un groupe
 // sans aucune entrée visible est entièrement masqué (la sidebar se raccourcit
 // donc selon le profil).
+// Marque employeur : lecture agrégée pour admin, hr_manager, readonly ET dg
+// (même entrée partagée par la navigation RH et la navigation DG — une seule
+// déclaration de route). Ni manager ni employee (RBAC aligné sur l'API).
+const EMPLOYER_BRAND_ITEM: NavItem = { to: '/employer-brand', labelKey: 'employerBrand', icon: Megaphone, end: true, roles: ['admin','hr_manager','readonly','dg'], moduleKey: 'employer_brand' }
+
 const NAV_GROUPS: NavGroup[] = [
   { key: 'collaborators', items: [
     { to: '/employees',     labelKey: 'employees',  icon: Users,      end: true },
@@ -101,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
   { key: 'analytics', items: [
     { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'reporting' },
     { to: '/referentiels',  labelKey: 'referentiels', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+    EMPLOYER_BRAND_ITEM,
   ] },
   { key: 'adminSecurity', items: [
     { to: '/classification', labelKey: 'classification', icon: Layers, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly','dg'], moduleKey: 'classification' },
@@ -114,6 +120,7 @@ const NAV_GROUPS: NavGroup[] = [
 const DG_NAV: NavItem[] = [
   { to: '/dg',          labelKey: 'dgOverview', icon: Eye,      end: true, moduleKey: 'dg_view' },
   { to: '/dg/activity', labelKey: 'dgActivity', icon: Activity, end: true, moduleKey: 'dg_view' },
+  EMPLOYER_BRAND_ITEM,
 ]
 
 interface SidebarProps {

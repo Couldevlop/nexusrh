@@ -1,0 +1,83 @@
+{
+  "title": "Marque employeur",
+  "subtitle": "Attractivité, efficacité du recrutement et fidélisation des recrues — indicateurs agrégés.",
+  "privacyNote": "Indicateurs calculés à partir des données déjà saisies (candidatures, offres, embauches, sorties). Uniquement des agrégats : aucune donnée nominative.",
+  "loading": "Chargement…",
+  "loadError": "Impossible de charger les indicateurs de marque employeur.",
+  "emptyPeriod": "Aucune candidature, embauche ni sortie sur cette période. Élargissez la période ou changez de filiale.",
+  "filters": {
+    "from": "Du",
+    "to": "Au",
+    "legalEntity": "Filiale",
+    "allEntities": "Toutes les filiales"
+  },
+  "kpis": {
+    "applications": "Candidatures",
+    "applicationsSub": "reçues sur la période",
+    "internalRate": "Candidatures internes",
+    "internalRateSub": "{{count}} candidature(s) de salariés",
+    "timeToFill": "Délai de pourvoi (médiane)",
+    "days": "{{count}} j",
+    "timeToFillSub": "moyenne {{avg}} j · {{count}} offre(s) pourvue(s)",
+    "timeToFillNone": "aucune offre pourvue sur la période",
+    "hires": "Recrues",
+    "hiresSub": "embauches sur la période",
+    "retention12m": "Rétention à 12 mois",
+    "retentionSub": "{{retained}} sur {{eligible}} recrue(s) éligible(s)",
+    "earlyDepartures": "Départs précoces (< 1 an)",
+    "earlySub": "{{rate}} % des {{count}} départ(s) de la période",
+    "earlyNone": "aucun départ sur la période"
+  },
+  "charts": {
+    "applications": "Candidatures",
+    "bySource": "Candidatures par source",
+    "bySourceSub": "D'où viennent les candidats sur la période.",
+    "noApplications": "Aucune candidature sur la période.",
+    "pipeline": "Pipeline actuel",
+    "pipelineSub": "Candidatures des offres ouvertes, par étape (photographie du jour).",
+    "noPipeline": "Aucune candidature en cours sur les offres ouvertes.",
+    "retention": "Rétention des recrues",
+    "retentionSub": "Part des recrues de la période toujours présentes à 3 et 12 mois.",
+    "retentionRate": "Taux de rétention",
+    "noRetention": "Pas encore assez de recul : aucune recrue de la période n'a 3 mois d'ancienneté.",
+    "departureTypes": "Types de départ",
+    "departureTypesSub": "Dossiers de sortie de la période, par type.",
+    "departures": "Départs",
+    "noDepartures": "Aucun dossier de sortie sur la période."
+  },
+  "retention": {
+    "threeMonths": "À 3 mois",
+    "twelveMonths": "À 12 mois"
+  },
+  "jobs": {
+    "title": "Offres les plus attractives",
+    "subtitle": "Les 10 offres ayant reçu le plus de candidatures sur la période.",
+    "job": "Offre",
+    "applications": "Candidatures",
+    "internal": "Dont internes"
+  },
+  "sources": {
+    "careers_page": "Page carrières",
+    "internal": "Candidature interne",
+    "sourced_ai": "Sourcing IA",
+    "manual": "Saisie manuelle",
+    "other": "Autre"
+  },
+  "stages": {
+    "new": "Nouveau",
+    "screening": "Présélection",
+    "interview": "Entretien",
+    "test": "Test",
+    "offer": "Offre",
+    "hired": "Embauché",
+    "rejected": "Refusé"
+  },
+  "departureTypes": {
+    "demission": "Démission",
+    "retraite": "Retraite",
+    "licenciement": "Licenciement",
+    "fin_cdd": "Fin de CDD",
+    "rupture_conventionnelle": "Rupture conventionnelle",
+    "autre": "Autre"
+  }
+}

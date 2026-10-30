@@ -4,6 +4,10 @@ import {
   canTransition,
   validateQuestions,
   aggregateResults,
+  aggregateByGroup,
+  suppressSmallGroups,
+  resolveMinResponses,
+  DEFAULT_MIN_RESPONSES,
   type SurveyQuestion,
 } from './climate.service.js'
 
@@ -78,5 +82,48 @@ describe('climate.service — agrégation (anonymat : aucune donnée nominative)
     const json = JSON.stringify(r)
     expect(json).not.toContain('secret')
     expect(json).not.toContain('employee_id')
+  })
+})
+
+describe("climate.service — seuil d'anonymat", () => {
+  it('resolveMinResponses : défaut 5, bornes 2..100, valeurs invalides → défaut', () => {
+    expect(DEFAULT_MIN_RESPONSES).toBe(5)
+    expect(resolveMinResponses(null)).toBe(5)
+    expect(resolveMinResponses(undefined)).toBe(5)
+    expect(resolveMinResponses('abc')).toBe(5)
+    expect(resolveMinResponses(3.5)).toBe(5)
+    expect(resolveMinResponses(8)).toBe(8)
+    expect(resolveMinResponses('7')).toBe(7)
+    expect(resolveMinResponses(1)).toBe(2)
+    expect(resolveMinResponses(1000)).toBe(100)
+  })
+
+  it('suppressSmallGroups : masque les petits groupes + suppression secondaire', () => {
+    const g = (k: string, n: number) => ({ key: k, responseCount: n })
+    // aucun groupe sous le seuil → rien de masqué
+    expect(suppressSmallGroups([g('a', 6), g('b', 5)], 5)).toEqual({ visible: [g('a', 6), g('b', 5)], hiddenGroups: 0 })
+    // c (1) masqué ; total masqué 1 < 5 → b (le plus petit visible) masqué aussi
+    const r = suppressSmallGroups([g('a', 9), g('b', 6), g('c', 1)], 5)
+    expect(r.visible.map((x) => x.key)).toEqual(['a'])
+    expect(r.hiddenGroups).toBe(2)
+    // masqués cumulant déjà ≥ seuil → pas de suppression secondaire
+    const r2 = suppressSmallGroups([g('a', 9), g('b', 3), g('c', 3)], 5)
+    expect(r2.visible.map((x) => x.key)).toEqual(['a'])
+    expect(r2.hiddenGroups).toBe(2)
+  })
+
+  it('aggregateByGroup : jamais de texte libre par sous-groupe', () => {
+    const qs: SurveyQuestion[] = [
+      { key: 'sat', label: 'Sat', type: 'scale' },
+      { key: 'ok', label: 'Ok', type: 'boolean' },
+      { key: 'txt', label: 'Txt', type: 'text' },
+    ]
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      groupKey: i < 5 ? 'd1' : 'd2', groupLabel: i < 5 ? 'A' : 'B', answers: { sat: 4, ok: true, txt: 'secret' },
+    }))
+    const out = aggregateByGroup(qs, rows, 5)
+    expect(out.groups).toHaveLength(2)
+    expect(JSON.stringify(out)).not.toContain('secret')
+    for (const grp of out.groups) expect(grp.questions.map((q) => q.key)).toEqual(['sat', 'ok'])
   })
 })
