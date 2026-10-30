@@ -1,5 +1,5 @@
-import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'

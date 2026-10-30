@@ -19,6 +19,11 @@ describe('assertNotSelf', () => {
   it('lève pour un id identique', () => {
     expect(() => assertNotSelf(ctx('e1'), 'e1')).toThrow(SelfActionError)
   })
+  it('insensible à la casse et aux espaces (UUID majuscules)', () => {
+    const id = '11111111-2222-4333-8444-abcdefabcdef'
+    expect(() => assertNotSelf(ctx(id), id.toUpperCase())).toThrow(SelfActionError)
+    expect(() => assertNotSelf(ctx(id.toUpperCase()), ` ${id} `)).toThrow(SelfActionError)
+  })
   it('ne lève rien pour ctx null, autre id ou sans fiche', () => {
     expect(() => assertNotSelf(null, 'e1')).not.toThrow()
     expect(() => assertNotSelf(ctx('e1'), 'e2')).not.toThrow()

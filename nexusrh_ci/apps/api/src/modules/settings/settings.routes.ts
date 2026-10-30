@@ -1,5 +1,5 @@
-import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
@@ -2222,6 +2222,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
+        // Garde « propre dossier » : on retrouve le salarié visé avant de supprimer.
+        const target = await pool.query<{ employee_id: string }>(
+          `SELECT employee_id FROM "${schema}".variable_elements WHERE id = $1`, [id])
+        const targetEmp = target.rows[0]?.employee_id
+        if (targetEmp && isSelfAction(request, targetEmp)) {
+          return reply.status(403).send({ error: SELF_ACTION_ERROR })
+        }
         await pool.query(`DELETE FROM "${schema}".variable_elements WHERE id = $1`, [id])
         return reply.send({ success: true })
       } catch (err) {

@@ -75,15 +75,23 @@ describe('PATCH /employees/:id — son propre dossier', () => {
     expect(queryMock).not.toHaveBeenCalled()
   })
 
-  it('DRH habilité modifiant un autre dossier → pas bloqué par la garde', async () => {
+  it('id en MAJUSCULES (même fiche pour PostgreSQL) → 403 aussi', async () => {
     loadHabContextMock.mockResolvedValue(hab)
-    const res = await patch(OTHER, { baseSalary: 9_000_000 })
-    expect(JSON.parse(res.body).error).not.toBe('Action interdite sur votre propre dossier')
+    const res = await patch(ME.toUpperCase(), { baseSalary: 9_000_000 })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toBe('Action interdite sur votre propre dossier')
+    expect(queryMock).not.toHaveBeenCalled()
   })
 
-  it('utilisateur hérité (sans affectation) : comportement inchangé', async () => {
+  it('DRH habilité modifiant un autre dossier → traité normalement (404, fiche absente)', async () => {
+    loadHabContextMock.mockResolvedValue(hab)
+    const res = await patch(OTHER, { firstName: 'Awa' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('utilisateur hérité (sans affectation) sur son propre id : non bloqué (404)', async () => {
     loadHabContextMock.mockResolvedValue(null)
-    const res = await patch(ME, { baseSalary: 9_000_000 })
-    expect(JSON.parse(res.body).error).not.toBe('Action interdite sur votre propre dossier')
+    const res = await patch(ME, { firstName: 'Awa' })
+    expect(res.statusCode).toBe(404)
   })
 })

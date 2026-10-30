@@ -144,7 +144,10 @@ export class SelfActionError extends Error {
  * `ctx = null` (utilisateur hérité sans affectation) : comportement inchangé.
  */
 export function assertNotSelf(ctx: HabContext | null, targetEmployeeId: string): void {
-  if (ctx && ctx.selfEmployeeId !== null && ctx.selfEmployeeId === targetEmployeeId) {
+  // PostgreSQL accepte un UUID en majuscules et cible la même ligne : on
+  // compare donc les deux côtés normalisés (trim + minuscules).
+  const norm = (v: string): string => v.trim().toLowerCase()
+  if (ctx && ctx.selfEmployeeId !== null && norm(ctx.selfEmployeeId) === norm(targetEmployeeId)) {
     throw new SelfActionError()
   }
 }

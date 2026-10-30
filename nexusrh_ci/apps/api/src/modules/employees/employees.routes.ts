@@ -1,5 +1,5 @@
-import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -801,6 +801,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) {
         return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       }
+      if (isSelfAction(request, id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const schema = request.user.schemaName
       try {
         // OWASP A09 : snapshot AVANT archivage pour la trace audit (sinon on
