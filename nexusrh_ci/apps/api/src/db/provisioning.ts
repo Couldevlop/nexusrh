@@ -187,6 +187,8 @@ export async function createPlatformSchema(): Promise<void> {
   // tenants sont créés avec employee_contract_access = true (tenant-provisioning).
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_contract_access boolean NOT NULL DEFAULT false`)
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`)
+  // Seuil d'anonymat des enquêtes climat (NULL = défaut applicatif, cf. climate.service).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS climate_min_responses int CHECK (climate_min_responses IS NULL OR climate_min_responses BETWEEN 2 AND 100)`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.

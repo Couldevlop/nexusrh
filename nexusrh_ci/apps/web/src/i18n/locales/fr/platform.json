@@ -432,6 +432,10 @@
         "label": "Interface SAGE",
         "desc": "Export des données amont-paie vers SAGE (employés, éléments variables, résultats de paie) au format délimité paramétrable, en complément du moteur de paie natif."
       },
+      "employer_brand": {
+        "label": "Marque employeur",
+        "desc": "Tableau de bord agrégé de l'attractivité et de la fidélisation : candidatures par source et par offre, délai de pourvoi, pipeline, rétention des recrues à 3 et 12 mois, départs précoces. Aucune donnée nominative."
+      },
       "dg_view": {
         "label": "Vue DG 360°",
         "desc": "Vue de contrôle transverse réservée au Directeur Général : indicateurs consolidés RH, paie et conformité. Désactivée par défaut (opt-in) — à activer explicitement par le super admin."

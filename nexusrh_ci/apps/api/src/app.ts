@@ -75,6 +75,7 @@ import securityRoutes from './modules/security/security.routes.js'
 import sageRoutes from './modules/sage/sage.routes.js'
 import interviewSimRoutes, { interviewSimPublicRoutes } from './modules/interview-sim/interview-sim.routes.js'
 import dgRoutes from './modules/dg/dg.routes.js'
+import employerBrandRoutes from './modules/employer-brand/employer-brand.routes.js'
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 
 export async function buildApp() {
@@ -433,6 +434,8 @@ export async function buildApp() {
   await fastify.register(securityRoutes, { prefix: '/security' })
   // Interface SAGE : export amont-paie (CSV paramétrable), complément du moteur natif.
   await fastify.register(sageRoutes, { prefix: '/sage' })
+  // Marque employeur : tableau de bord agrégé (attractivité, recrutement, rétention).
+  await fastify.register(employerBrandRoutes, { prefix: '/employer-brand' })
   // Vue DG 360° — module opt-in (dg_view), bloqué par le hook modules si le
   // super_admin ne l'a pas activé pour le tenant.
   await fastify.register(dgRoutes,           { prefix: '/dg' })

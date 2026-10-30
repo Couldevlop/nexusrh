@@ -49,7 +49,17 @@
     "average": "Moyenne",
     "yesRate": "Taux de oui",
     "noData": "Aucune réponse pour le moment.",
-    "answersCount": "{{count}} réponse(s) libre(s)"
+    "answersCount": "{{count}} réponse(s) libre(s)",
+    "belowThreshold": "Résultats masqués : {{count}} réponse(s) sur {{min}} minimum pour préserver l'anonymat.",
+    "loadError": "Impossible de charger les résultats.",
+    "groupBy": "Ventiler par",
+    "groupByNone": "Aucune ventilation",
+    "groupByDepartment": "Département",
+    "groupByLegalEntity": "Filiale",
+    "groupsTitle": "Résultats par sous-groupe (questions chiffrées uniquement)",
+    "groupsEmpty": "Aucun sous-groupe n'atteint le seuil d'anonymat.",
+    "groupUnassigned": "Non rattaché",
+    "hiddenGroups": "{{count}} sous-groupe(s) masqué(s) : moins de {{min}} réponses, ou masqué(s) pour empêcher de déduire un petit groupe par différence."
   },
   "self": {
     "title": "Enquêtes à compléter",
