@@ -1,3 +1,4 @@
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
@@ -536,6 +537,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (request.user.role === 'employee' && request.user.employeeId !== id) {
         return reply.status(403).send({ error: 'Vous ne pouvez modifier que votre propre profil' })
       }
+      // Habilitations : aucune action RH sur son propre dossier (le self-service
+      // du rôle effectif employee reste autorisé, filtré ci-dessous).
+      if (isSelfAction(request, id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       // OWASP A03 : Zod parse + whitelist
       const parsed = patchEmployeeSchema.safeParse(request.body)
       if (!parsed.success) {

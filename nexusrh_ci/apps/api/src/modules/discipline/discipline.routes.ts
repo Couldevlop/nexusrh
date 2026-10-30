@@ -12,6 +12,7 @@
  *  - OWASP A09 : chaque création/modification/suppression journalisée (audit_log).
  *  - Isolation tenant : schemaName du token (validé par le plugin auth).
  */
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
@@ -110,6 +111,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const body = parsed.data
+      if (isSelfAction(request, body.employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const res = await rawPool.query(
         `INSERT INTO "${schema}".disciplinary_actions
            (employee_id, type, reason, description, action_date, document_url, issued_by, status)
@@ -140,10 +142,11 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
 
-      const cur = await rawPool.query<{ status: DisciplineStatus }>(
-        `SELECT status FROM "${schema}".disciplinary_actions WHERE id = $1 LIMIT 1`, [id],
+      const cur = await rawPool.query<{ status: DisciplineStatus; employee_id: string }>(
+        `SELECT status, employee_id FROM "${schema}".disciplinary_actions WHERE id = $1 LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
+      if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
 
       // OWASP A03 — transition de statut contrôlée par le domaine.
       if (body.status && !canTransition(cur.rows[0].status, body.status)) {

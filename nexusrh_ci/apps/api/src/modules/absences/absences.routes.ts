@@ -1,3 +1,4 @@
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
@@ -465,6 +466,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
+      if (isSelfAction(request, absence.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       if (absence.status === 'approved') return reply.status(422).send({ error: 'Déjà approuvée' })
       if (absence.status === 'rejected') return reply.status(422).send({ error: 'Déjà rejetée' })
 

@@ -127,3 +127,43 @@ export function hrScopeSql(schema: string, alias: string, ctx: HabContext | null
   }
   return ctx.allEntities ? 'TRUE' : `${alias}.legal_entity_id IS NULL`
 }
+
+/** Message renvoyé (403) quand une action RH vise le dossier de l'acteur. */
+export const SELF_ACTION_ERROR = 'Action interdite sur votre propre dossier'
+
+export class SelfActionError extends Error {
+  constructor() {
+    super(SELF_ACTION_ERROR)
+    this.name = 'SelfActionError'
+  }
+}
+
+/**
+ * Garde « son propre dossier » : un habilité ne peut pas agir (salaire,
+ * approbation, sanction, variables de paie) sur sa propre fiche employé.
+ * `ctx = null` (utilisateur hérité sans affectation) : comportement inchangé.
+ */
+export function assertNotSelf(ctx: HabContext | null, targetEmployeeId: string): void {
+  if (ctx && ctx.selfEmployeeId !== null && ctx.selfEmployeeId === targetEmployeeId) {
+    throw new SelfActionError()
+  }
+}
+
+/**
+ * Variante handler : vrai si l'action doit être refusée (le handler répond
+ * alors 403 SELF_ACTION_ERROR). Ignorée pour le rôle effectif `employee`
+ * (self-service : l'utilisateur agit légitimement sur son propre profil).
+ */
+export function isSelfAction(
+  request: { hab?: HabContext | null; user: { role: string } },
+  targetEmployeeId: string,
+): boolean {
+  if (request.user.role === 'employee') return false
+  try {
+    assertNotSelf(request.hab ?? null, targetEmployeeId)
+    return false
+  } catch (err) {
+    if (err instanceof SelfActionError) return true
+    throw err
+  }
+}

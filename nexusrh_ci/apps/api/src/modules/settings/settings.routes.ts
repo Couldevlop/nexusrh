@@ -1,3 +1,4 @@
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
@@ -2186,6 +2187,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Élément variable invalide', issues: parsed.error.flatten() })
       }
       const body = parsed.data
+      if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       try {
         // Le moteur de paie lit les éléments variables par period_id (colonne
         // NOT NULL) : on résout la période depuis le mois. Sans période ouverte

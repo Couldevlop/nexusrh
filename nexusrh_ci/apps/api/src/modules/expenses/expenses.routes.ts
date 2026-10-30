@@ -1,3 +1,4 @@
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
@@ -459,6 +460,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const report = await loadReportForWorkflow(schema, id)
         if (!report) return reply.status(404).send({ error: 'Note introuvable' })
         if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non approvable' })
+        if (isSelfAction(request, report.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const actor = await actorOf(schema, request.user)
         const settings = await loadWorkflowSettings(pool, schema, 'expenses')
         const ev = evaluateRequest(settings, await loadManagerMap(pool, schema), toWorkflowRequest(report), actor)

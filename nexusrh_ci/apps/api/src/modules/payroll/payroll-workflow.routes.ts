@@ -16,6 +16,7 @@
  *  - Une période parente porte legal_entity_id=NULL ; chaque déclinaison
  *    site porte parent_period_id + legal_entity_id + raf_user_id + pack.
  */
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
@@ -689,6 +690,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id, employeeId } = request.params as { id: string; employeeId: string }
       if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant de salarié invalide' })
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const body = variablesBodySchema.safeParse(request.body ?? {})
       if (!body.success) {
         return reply.status(400).send({
@@ -758,6 +760,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id, employeeId } = request.params as { id: string; employeeId: string }
       if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant de salarié invalide' })
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const body = validateBodySchema.safeParse(request.body ?? {})
       if (!body.success) return reply.status(400).send({ error: 'Mode de validation invalide (entered ou none).' })
       try {
