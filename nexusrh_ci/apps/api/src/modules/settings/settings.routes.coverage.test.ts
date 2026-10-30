@@ -382,6 +382,7 @@ describe('POST /settings/users', () => {
   it('crée un nouvel employé squelette si department_id et pas d\'employé existant (201)', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [] })                  // SELECT employee (aucun)
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'SEN' }] }) // tenant → pack SMIG
       .mockResolvedValueOnce({ rows: [{ id: 'emp-new' }] }) // INSERT employee
       .mockResolvedValueOnce({ rows: [{ id: 'u3' }] })      // INSERT users
       .mockResolvedValueOnce({ rows: [] })                  // UPDATE users employee_id
@@ -390,6 +391,9 @@ describe('POST /settings/users', () => {
       payload: { email: 'c@d.ci', first_name: 'C', last_name: 'D', department_id: '99999999-9999-9999-9999-999999999999' },
     })
     expect(res.statusCode).toBe(201)
+    // Salaire squelette = SMIG du pays du tenant (Sénégal), pas 75 000 en dur.
+    const insertEmp = queryMock.mock.calls.find(c => String(c[0]).includes('INSERT INTO') && String(c[0]).includes('.employees'))
+    expect((insertEmp?.[1] as unknown[] | undefined)?.[5]).toBe(64_710)
   })
 
   it('500 si l\'insertion échoue', async () => {
@@ -1467,6 +1471,7 @@ describe('POST /settings/import/:type — branches complémentaires', () => {
   it('employees : INSERT échoue → erreur ligne capturée', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [] })            // SELECT department (vide, deptName fourni)
+      .mockResolvedValueOnce({ rows: [] })            // tenant (pas de salaire → SMIG du pack)
       .mockRejectedValueOnce(new Error('constraint')) // INSERT employee échoue
       .mockResolvedValueOnce({ rows: [] })            // audit_log
     const res = await app.inject({

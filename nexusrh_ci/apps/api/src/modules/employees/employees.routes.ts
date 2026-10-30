@@ -673,6 +673,33 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     },
   })
 
+  // GET /employees/:id/smig — SMIG applicable au salarié (pack législatif de sa
+  // filiale, sinon pays du tenant). Sert l'avertissement « salaire < SMIG » des
+  // formulaires (contrats) sans valeur ivoirienne en dur côté front.
+  fastify.get('/:id/smig', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
+      try {
+        const res = await pool.query<{ legal_entity_id: string | null }>(
+          `SELECT legal_entity_id FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+          [id],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
+        const ctx = await loadEmployeeTenantContext(pool, schema, res.rows[0].legal_entity_id)
+        const pack = ctx.legislation.legislationPack
+        return reply.send({
+          data: { smig: pack.smigMensuel, currency: pack.currency, legislationPackCode: pack.code },
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
   // GET /employees/:id/interview-focus — profil technique structuré (RH only,
   // PAS de self-service — contrairement à PATCH /:id, l'employé n'a jamais
   // accès à sa propre fiche ici).
