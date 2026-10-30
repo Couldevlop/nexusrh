@@ -27,6 +27,7 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { actorUuid } from './stage-history.js'
+import { fileProposalForHiredApplication } from './hire.service.js'
 import {
   CONTRACT_GENERATION_DISABLED, CONTRACT_PROPOSAL_CATEGORY, PROPOSAL_MARKDOWN_MAX,
   getProposalPdf, isContractGenerationEnabled, listProposalVersions, loadContractEmployer,
@@ -153,6 +154,8 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
           offerDetails: null, markdown, pdf, fileName: proposalFileName(row.contract_type, row.last_name),
           createdBy: actorUuid(request.user.sub),
         })
+        await fileProposalForHiredApplication(schema, row.id, { userId: request.user.sub, ip: request.ip ?? null })
+          .catch((err: unknown) => { request.log.warn({ err, id }, 'proposition non versée au dossier salarié') })
         auditTenant(schema, {
           userId: request.user.sub, action: 'recruitment.contract_proposal_edited', entity: 'application',
           entityId: row.id, changes: { version: saved.version, previousVersion: row.version, length: markdown.length },

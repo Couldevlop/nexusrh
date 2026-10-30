@@ -1275,14 +1275,15 @@ export default function RecruitmentPage() {
                         )}
                         {canMoveStage && (
                         <div className="mt-2 flex flex-wrap gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
-                          {app.stage === 'hired' ? (
-                            contractGenerationEnabled ? (
-                              <button onClick={() => setProposalApp(app)}
-                                className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
-                                <FileSignature className="h-3 w-3" /> {t('contract.generate')}
-                              </button>
-                            ) : null
-                          ) : (
+                          {/* Proposition de contrat : dès l'offre (avant signature), et encore après l'embauche. */}
+                          {contractGenerationEnabled && (app.stage === 'offer' || app.stage === 'hired') && (
+                            <button onClick={() => setProposalApp(app)}
+                              className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+                              <FileSignature className="h-3 w-3" /> {t('contract.generate')}
+                            </button>
+                          )}
+                          {contractGenerationEnabled && app.stage === 'offer' && <span className="text-muted-foreground">·</span>}
+                          {app.stage !== 'hired' && (
                             <button onClick={() => requestStage(app, 'hired')}
                               className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
                               <CheckCircle className="h-3 w-3" /> {t('pipeline.recruit')}

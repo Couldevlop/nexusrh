@@ -51,6 +51,10 @@ const { state, queryMock, auditMock, emitMock } = vi.hoisted(() => {
       if (state.application) state.application.employee_id = params[1]
       return { rows: [] }
     }
+    if (sql.startsWith(`SELECT employee_id FROM "tenant_sotra".applications WHERE id = $1 AND stage = 'hired'`)) {
+      const app = state.application
+      return { rows: app && app.stage === 'hired' && app.employee_id ? [{ employee_id: app.employee_id }] : [] }
+    }
     // ── Contrat généré → dossier salarié (une seule instruction, idempotente) ──
     if (sql.startsWith('WITH src AS (') && sql.includes('employee_documents')) {
       const pdf = state.application?.contract_pdf as string | undefined
@@ -126,7 +130,7 @@ vi.mock('../../services/employee-tenant-context.service.js', () => ({
   }),
 }))
 
-import { hireApplication, buildHirePrefill, HireError } from './hire.service.js'
+import { hireApplication, buildHirePrefill, HireError, fileProposalForHiredApplication } from './hire.service.js'
 
 const SCHEMA = 'tenant_sotra'
 const APP_ID = '11111111-1111-4111-8111-111111111111'
@@ -404,5 +408,23 @@ describe('hireApplication — niveau de poste et contrat généré', () => {
     } finally {
       queryMock.mockImplementation(impl)
     }
+  })
+})
+
+describe("fileProposalForHiredApplication — proposition modifiée après l'embauche", () => {
+  it('verse la nouvelle version au dossier de la fiche liée', async () => {
+    state.application = application({ stage: 'hired', employee_id: 'emp-7', contract_pdf: '%PDF-1.4 v2' })
+    const id = await fileProposalForHiredApplication(SCHEMA, APP_ID, ACTOR)
+    expect(id).toBe('doc-1')
+    expect(state.documents[0]!.employee_id).toBe('emp-7')
+    expect(state.documents[0]!.params[2]).toBe('contract_proposal')
+    const link = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE "tenant_sotra".contract_proposals SET employee_id'))
+    expect(link?.[1]).toEqual([APP_ID, 'emp-7'])
+  })
+
+  it("ne fait rien tant que la candidature n'est pas recrutée", async () => {
+    state.application = application({ stage: 'offer', employee_id: null, contract_pdf: '%PDF-1.4 v1' })
+    expect(await fileProposalForHiredApplication(SCHEMA, APP_ID, ACTOR)).toBeNull()
+    expect(state.documents).toHaveLength(0)
   })
 })
