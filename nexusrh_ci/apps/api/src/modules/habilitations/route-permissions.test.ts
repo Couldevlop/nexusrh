@@ -34,7 +34,7 @@ vi.mock('../../services/redis.js', () => ({
   consumeTotpStep:    vi.fn().mockResolvedValue(true),
 }))
 
-import { HR_GRID_ROLES, resolveRoutePermission } from './route-permissions.js'
+import { EXACT_ROUTES, HR_GRID_ROLES, resolveRoutePermission } from './route-permissions.js'
 import { isPermission } from './catalog.js'
 import { buildApp } from '../../app.js'
 
@@ -88,16 +88,31 @@ describe('resolveRoutePermission — règles', () => {
     expect(resolveRoutePermission('POST', '/payroll-workflow/periods/:id/submit-by-raf')).toEqual({ fn: 'payroll_multi', action: 'validate' })
     expect(resolveRoutePermission('POST', '/cnps/declarations/:id/submit')).toEqual({ fn: 'declarations', action: 'close' })
     expect(resolveRoutePermission('POST', '/ai/chat')).toEqual({ fn: 'reporting', action: 'view' })
-    expect(resolveRoutePermission('POST', '/settings/payroll-rules')?.fn).toBe('hr_settings')
+    expect(resolveRoutePermission('PATCH', '/settings/payroll-rules/:id')).toEqual({ fn: 'hr_settings', action: 'update' })
+    expect(resolveRoutePermission('PATCH', '/expenses/:id/pay')).toEqual({ fn: 'payments', action: 'pay' })
+    expect(resolveRoutePermission('PUT', '/attendance/config')).toEqual({ fn: 'hr_settings', action: 'configure' })
+    expect(resolveRoutePermission('PUT', '/interview-sim/config')).toEqual({ fn: 'hr_settings', action: 'configure' })
+    expect(resolveRoutePermission('PUT', '/bank-transfer/templates/:id')).toEqual({ fn: 'payroll', action: 'configure' })
+    expect(resolveRoutePermission('PUT', '/bank-transfer/directory')).toEqual({ fn: 'payroll', action: 'configure' })
+    expect(resolveRoutePermission('GET', '/bank-transfer/templates')).toEqual({ fn: 'payroll', action: 'view' })
+    expect(resolveRoutePermission('DELETE', '/offboarding/:id')).toEqual({ fn: 'lifecycle', action: 'delete' })
+    expect(resolveRoutePermission('DELETE', '/signature/requests/:id')).toEqual({ fn: 'signature', action: 'delete' })
+    expect(resolveRoutePermission('DELETE', '/attendance/devices/:id')).toEqual({ fn: 'attendance', action: 'delete' })
   })
   it('un GET n\'est jamais une écriture (config consultée = view)', () => {
     expect(resolveRoutePermission('GET', '/sage/config')).toEqual({ fn: 'payroll', action: 'view' })
   })
-  it('l\'action résolue est toujours une case de la grille', () => {
-    // hr_settings n'a ni create ni delete : les écritures deviennent configure.
-    const r = resolveRoutePermission('POST', '/settings/departments')
-    expect(r).not.toBeNull()
-    expect(isPermission(`${r?.fn}:${r?.action}`)).toBe(true)
+  it('pas de repli : une action absente de la grille ne se résout pas', () => {
+    // hr_settings n'a pas « Créer » : sans entrée explicite, aucune case.
+    expect(resolveRoutePermission('POST', '/settings/leave-policy')).toBeNull()
+    // Exception explicite : créer un département = paramétrer.
+    expect(resolveRoutePermission('POST', '/settings/departments')).toEqual({ fn: 'hr_settings', action: 'configure' })
+    // La paie n'a pas « Supprimer ».
+    expect(resolveRoutePermission('DELETE', '/payroll/periods/:month')).toBeNull()
+  })
+  it('export seulement en lecture : une écriture sur /export garde son action', () => {
+    expect(resolveRoutePermission('GET', '/cnps/rns/:year/export')?.action).toBe('export')
+    expect(resolveRoutePermission('POST', '/bank-transfer/export/send')).toEqual({ fn: 'payments', action: 'pay' })
   })
   it('HR_GRID_ROLES', () => {
     expect(HR_GRID_ROLES).toEqual(['hr_manager', 'hr_officer', 'raf_site'])
@@ -117,6 +132,12 @@ describe('invariant — chaque route RH de buildApp() a une case de grille', () 
 
   it('les routes authorize() sont recensées', () => {
     expect(app.authorizedRoutes.length).toBeGreaterThan(100)
+  })
+
+  it('chaque entrée de EXACT_ROUTES correspond à une route réelle', () => {
+    const registered = new Set(app.authorizedRoutes.map((r) => `${r.method} ${r.url}`))
+    const stale = Object.keys(EXACT_ROUTES).filter((k) => !registered.has(k))
+    expect(stale).toEqual([])
   })
 
   it('aucune route RH sans correspondance valide', () => {

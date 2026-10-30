@@ -27,6 +27,9 @@ describe('catalogue des habilitations', () => {
   it('« close » pour les déclarations (dépôt CNPS/DISA)', () => {
     expect(isPermission('declarations:close')).toBe(true)
   })
+  it('« delete » pour temps, intégration/sorties et signature', () => {
+    for (const f of ['attendance', 'lifecycle', 'signature'] as const) expect(HAB_GRID[f]).toContain('delete')
+  })
   it('SENSITIVE_IMPLIED', () => {
     expect(SENSITIVE_IMPLIED).toEqual(['payroll', 'declarations', 'payments'])
   })

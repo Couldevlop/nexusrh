@@ -259,8 +259,15 @@ export default fp(async (fastify) => {
   // employee, dg, readonly) passe comme avant. Pour tout autre cas, si
   // l'utilisateur a une affectation, la grille décide (fonction, action,
   // périmètre valide) ; sans affectation, contrôle hérité par rôle.
+  //
+  // Self-service préservé : un utilisateur de rôle RH (hr_*, raf_site) que la
+  // grille refuse sur une route ouverte aussi aux employés y passe EN TANT
+  // QU'EMPLOYÉ — `request.user.role` vaut 'employee' pour cette requête
+  // seulement (le JWT n'est pas modifié), afin que le handler prenne sa branche
+  // self-service (son propre dossier) et jamais une branche RH.
   fastify.decorate('authorize', (...roles: string[]) => {
     const routeAllowsHrRole = roles.some((r) => HR_GRID_ROLE_SET.has(r))
+    const routeAllowsEmployee = roles.includes('employee')
     const handler = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
       await verifyAndCheckBlacklist(request, reply)
       if (reply.sent) return
@@ -291,9 +298,12 @@ export default fp(async (fastify) => {
       }
 
       const perm = resolveRoutePermission(request.method, request.routeOptions.url ?? '')
-      if (hab.kind === 'none' || perm === null || !can(hab, perm.fn, perm.action)) {
-        return reply.status(403).send({ error: HAB_DENIED_ERROR })
+      if (hab.kind !== 'none' && perm !== null && can(hab, perm.fn, perm.action)) return
+      if (routeAllowsEmployee && HR_GRID_ROLE_SET.has(role)) {
+        request.user.role = 'employee'
+        return
       }
+      return reply.status(403).send({ error: HAB_DENIED_ERROR })
     }
     AUTHORIZE_ROLES.set(handler, roles)
     return handler

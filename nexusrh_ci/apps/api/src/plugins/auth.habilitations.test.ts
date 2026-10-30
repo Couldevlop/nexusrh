@@ -76,7 +76,7 @@ function token(role: string, extra: Record<string, unknown> = {}): string {
   })
 }
 
-async function call(method: 'GET' | 'POST', url: string, role: string, extra: Record<string, unknown> = {}) {
+async function call(method: 'GET' | 'POST' | 'PATCH', url: string, role: string, extra: Record<string, unknown> = {}) {
   return app.inject({ method, url, headers: { authorization: `Bearer ${token(role, extra)}` } })
 }
 
@@ -97,6 +97,18 @@ beforeAll(async () => {
       preHandler: [f.authorize('admin', 'hr_manager'), f.authorize('admin', 'hr_manager')],
     }, async () => ({ ok: true }))
   }, { prefix: '/settings' })
+  // Routes self-service (ouvertes aussi aux employés) : renvoient le rôle
+  // effectif vu par le handler.
+  await app.register(async (f) => {
+    f.get('/my-contract', {
+      preHandler: [f.authorize('admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly')],
+    }, async (req) => ({ role: req.user.role }))
+  }, { prefix: '/contracts' })
+  await app.register(async (f) => {
+    f.patch('/:id', {
+      preHandler: [f.authorize('admin', 'hr_manager', 'hr_officer', 'employee')],
+    }, async (req) => ({ role: req.user.role }))
+  }, { prefix: '/employees' })
   await app.register(async (f) => {
     f.get('/x', { preHandler: [f.authorize('admin', 'hr_manager')] }, async () => ({ ok: true }))
   }, { prefix: '/unmapped-module' })
@@ -206,6 +218,46 @@ describe('authorize() consulte la grille', () => {
   })
 })
 
+describe('self-service préservé pour un rôle RH refusé par la grille', () => {
+  it("hr_officer en affectation inactive (none) sur une route self-service → 200 en tant qu'employé", async () => {
+    loadHabContextMock.mockResolvedValue(ctx([], { kind: 'none' }))
+    const res = await call('GET', '/contracts/my-contract', 'hr_officer')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).role).toBe('employee')
+  })
+
+  it('hr_officer habilité sans employees:update sur PATCH /employees/:id → branche employé, pas RH', async () => {
+    loadHabContextMock.mockResolvedValue(ctx(['employees:view']))
+    const res = await call('PATCH', '/employees/e1', 'hr_officer')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).role).toBe('employee')
+  })
+
+  it('hr_officer habilité AVEC employees:update → garde son rôle RH', async () => {
+    loadHabContextMock.mockResolvedValue(ctx(['employees:update']))
+    const res = await call('PATCH', '/employees/e1', 'hr_officer')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).role).toBe('hr_officer')
+  })
+
+  it('hr_officer en affectation inactive sur une route RH seule (sans employee) → 403', async () => {
+    loadHabContextMock.mockResolvedValue(ctx([], { kind: 'none' }))
+    const res = await call('GET', '/payroll/periods', 'hr_officer')
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).error).toBe('Accès interdit — habilitation insuffisante')
+  })
+
+  it("le rôle du JWT n'est pas modifié : la requête suivante repart du rôle RH", async () => {
+    loadHabContextMock.mockResolvedValue(ctx(['employees:update']))
+    const tok = token('hr_officer')
+    loadHabContextMock.mockResolvedValueOnce(ctx([], { kind: 'none' }))
+    const first = await app.inject({ method: 'PATCH', url: '/employees/e1', headers: { authorization: `Bearer ${tok}` } })
+    expect(JSON.parse(first.body).role).toBe('employee')
+    const second = await app.inject({ method: 'PATCH', url: '/employees/e1', headers: { authorization: `Bearer ${tok}` } })
+    expect(JSON.parse(second.body).role).toBe('hr_officer')
+  })
+})
+
 describe('GET /auth/me — permissions et périmètre', () => {
   it('permissions null sans affectation', async () => {
     loadHabContextMock.mockResolvedValue(null)
@@ -228,6 +280,15 @@ describe('GET /auth/me — permissions et périmètre', () => {
   it('affectation inactive : liste vide', async () => {
     loadHabContextMock.mockResolvedValue(ctx([], { kind: 'none' }))
     const res = await call('GET', '/auth/me', 'hr_officer')
+    const body = JSON.parse(res.body)
+    expect(body.permissions).toEqual([])
+    expect(body.habScope).toEqual({ kind: 'none', legalEntityId: null, allEntities: false })
+  })
+
+  it('erreur du moteur : liste vide et périmètre none (fermé)', async () => {
+    loadHabContextMock.mockRejectedValue(new Error('db down'))
+    const res = await call('GET', '/auth/me', 'hr_officer')
+    expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.permissions).toEqual([])
     expect(body.habScope).toEqual({ kind: 'none', legalEntityId: null, allEntities: false })

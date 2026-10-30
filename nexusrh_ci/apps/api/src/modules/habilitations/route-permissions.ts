@@ -13,9 +13,11 @@
  *  2. action par verbe HTTP (GET → view, POST → create, PUT/PATCH → update,
  *     DELETE → delete) ;
  *  3. surcharges par suffixe (dernier segment littéral de l'URL) ;
- *  4. ramenée sur une case existante de la fonction (`HAB_GRID`) : la grille ne
- *     propose pas toutes les actions partout (ex. Paramétrage RH n'a ni
- *     « Créer » ni « Supprimer », ses écritures relèvent de « Paramétrer »).
+ *  4. aucune case de repli : si l'action obtenue n'existe pas dans la grille
+ *     de la fonction (`HAB_GRID`), la route n'a PAS de correspondance (`null`,
+ *     refusée aux habilités). Le test d'invariant l'interdit pour toute route
+ *     RH : chaque cas particulier est écrit explicitement (EXACT_ROUTES,
+ *     CONFIG_PREFIXES).
  */
 import { HAB_GRID, type HabAction, type HabFunction } from './catalog.js'
 
@@ -92,7 +94,7 @@ const PREFIXES: ReadonlyArray<readonly [string, HabFunction]> = [
  * de LECTURE : ouvert à qui consulte les indicateurs ; ses outils ne
  * renvoient que ce que le moteur autorise (spec §6 bis).
  */
-const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
+export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   'POST /ai/chat': { fn: 'reporting', action: 'view' },
   // Paie : annuler une demande de clôture relève du même droit que la lancer.
   'POST /payroll/periods/:month/cancel': { fn: 'payroll', action: 'close' },
@@ -121,7 +123,33 @@ const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // Signature : envoyer ou annuler une demande relève de sa gestion.
   'POST /signature/requests/:id/send': { fn: 'signature', action: 'update' },
   'POST /signature/requests/:id/cancel': { fn: 'signature', action: 'update' },
+  // Remboursement d'une note de frais = paiement.
+  'PATCH /expenses/:id/pay': { fn: 'payments', action: 'pay' },
+  // Réglages de module : paramétrage RH.
+  'PUT /attendance/config': { fn: 'hr_settings', action: 'configure' },
+  'PUT /interview-sim/config': { fn: 'hr_settings', action: 'configure' },
+  // Paramétrage RH : la grille n'a ni « Créer » ni « Supprimer » ; créer ou
+  // retirer un élément de référentiel (département, type d'absence, catégorie
+  // de classification) est un acte de paramétrage.
+  'POST /settings/departments': { fn: 'hr_settings', action: 'configure' },
+  'DELETE /settings/departments/:id': { fn: 'hr_settings', action: 'configure' },
+  'POST /settings/absence-types': { fn: 'hr_settings', action: 'configure' },
+  'POST /classification/categories': { fn: 'hr_settings', action: 'configure' },
+  'DELETE /classification/categories/:id': { fn: 'hr_settings', action: 'configure' },
+  // Élément variable du mois (saisie de paie) : la paie n'a pas « Supprimer »,
+  // retirer une saisie modifie la paie du mois.
+  'DELETE /settings/variable-elements/:id': { fn: 'payroll', action: 'update' },
 }
+
+/**
+ * Sous-arbres de configuration : toute écriture y vaut `configure` de la
+ * fonction indiquée, toute lecture `view`. Profils de fichier de virement et
+ * annuaire bancaire → paramétrage de la paie.
+ */
+const CONFIG_PREFIXES: ReadonlyArray<readonly [string, HabFunction]> = [
+  ['/bank-transfer/templates', 'payroll'],
+  ['/bank-transfer/directory', 'payroll'],
+]
 
 /** Fonction déduite d'un motif placé au milieu de l'URL (prime sur les préfixes). */
 const FUNCTION_PATTERNS: ReadonlyArray<readonly [RegExp, HabFunction]> = [
@@ -142,22 +170,6 @@ const WRITE_SUFFIX_ACTIONS: Readonly<Record<string, HabAction>> = {
   pay: 'pay',
   settings: 'configure',
   config: 'configure',
-}
-
-/**
- * Repli quand l'action n'est pas proposée pour la fonction : premier candidat
- * présent dans la grille de la fonction.
- */
-const FALLBACKS: Readonly<Record<HabAction, readonly HabAction[]>> = {
-  view: [],
-  create: ['update', 'configure'],
-  update: ['configure', 'validate'],
-  delete: ['update', 'configure'],
-  validate: ['update', 'configure'],
-  close: ['validate', 'update'],
-  export: ['view'],
-  pay: ['validate'],
-  configure: ['update'],
 }
 
 function prefixMatches(url: string, prefix: string): boolean {
@@ -201,23 +213,27 @@ export function resolveRoutePermission(method: string, routeUrl: string): RouteP
   const url = routeUrl.split('?')[0] ?? ''
   const exact = EXACT_ROUTES[`${method.toUpperCase()} ${url}`]
   if (exact) return exact
+  let action = verbAction(method)
+  if (action === null) return null
+  const isRead = action === 'view'
+
+  const config = CONFIG_PREFIXES.find(([prefix]) => prefixMatches(url, prefix))
+  if (config) return { fn: config[1], action: isRead ? 'view' : 'configure' }
+
   const fn =
     FUNCTION_PATTERNS.find(([re]) => re.test(url))?.[1] ??
     SORTED_PREFIXES.find(([prefix]) => prefixMatches(url, prefix))?.[1]
   if (!fn) return null
-  let action = verbAction(method)
-  if (action === null) return null
 
-  if (isExport(url)) {
-    action = 'export'
-  } else if (action !== 'view') {
+  if (isRead) {
+    // Un export est un téléchargement : seulement en lecture (GET/HEAD).
+    if (isExport(url)) action = 'export'
+  } else {
     // Un GET n'écrit jamais : les surcharges ne valent que pour les écritures.
     const override = WRITE_SUFFIX_ACTIONS[lastLiteralSegment(url)]
     if (override) action = override
   }
 
-  const allowed = HAB_GRID[fn]
-  if (allowed.includes(action)) return { fn, action }
-  const fallback = FALLBACKS[action].find((a) => allowed.includes(a))
-  return fallback ? { fn, action: fallback } : null
+  // Pas de repli : une action absente de la grille de la fonction = aucune case.
+  return (HAB_GRID[fn] as readonly HabAction[]).includes(action) ? { fn, action } : null
 }

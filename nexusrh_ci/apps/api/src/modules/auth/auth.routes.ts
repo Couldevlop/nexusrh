@@ -956,6 +956,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         request.log.error({ err }, 'habilitations : contexte indisponible pour /auth/me')
         permissions = []
+        habScope = { kind: 'none', legalEntityId: null, allEntities: false }
       }
 
       return reply.send({
