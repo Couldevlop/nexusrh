@@ -47,6 +47,8 @@ interface HireOutcome {
   onboardingError: boolean
   /** Contrat généré versé au dossier salarié (absent des anciennes API). */
   contractDocumentId?: string | null
+  /** Email du candidat invalide : fiche créée sans email (message FR de l'API). */
+  emailWarning?: string | null
 }
 
 interface Department { id: string; name: string }
@@ -1421,6 +1423,9 @@ export default function RecruitmentPage() {
           <p className="text-sm font-semibold text-green-700">
             {t(`transition.hireDone.${hireNotice.status}`, { name: hireNotice.name })}
           </p>
+          {hireNotice.emailWarning && (
+            <p className="mt-1 text-xs text-red-600">{hireNotice.emailWarning}</p>
+          )}
           {hireNotice.toComplete.length > 0 && (
             <p className="mt-1 text-xs text-amber-700">{t('transition.toComplete')}</p>
           )}
