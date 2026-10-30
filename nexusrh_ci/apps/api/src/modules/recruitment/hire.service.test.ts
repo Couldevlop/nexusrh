@@ -233,7 +233,7 @@ describe('hireApplication — fiche employé', () => {
     expect(r?.status).toBe('created')
     expect(state.inserts.employees[0]![2]).toBeNull()
     expect(r?.toComplete).toContain('email')
-    expect(r?.emailWarning).toContain('serge.dème@email.com')
+    expect(r?.emailWarning).toBe('invalid_email')
   })
 
   it('email valide : aucun avertissement', async () => {
@@ -273,6 +273,19 @@ describe('hireApplication — fiche employé', () => {
     await expect(hireApplication(SCHEMA, APP_ID, { paymentMethod: 'bank_transfer' }, ACTOR))
       .rejects.toMatchObject({ statusCode: 400 })
     expect(state.inserts.employees).toHaveLength(0)
+  })
+
+  it('fiche existante reliée + mode de paiement saisi : avertissement payment_not_applied', async () => {
+    state.employees = [{ id: 'emp-existing', email: 'koffi.yao@mail.ci', deleted_at: null, employee_number: 'MAT00007' }]
+    const r = await hireApplication(SCHEMA, APP_ID, { paymentMethod: 'mobile_money', mobileMoneyProvider: 'wave', mobileMoneyPhone: '+2250712345678' }, ACTOR)
+    expect(r?.status).toBe('linked_existing')
+    expect(r?.paymentWarning).toBe('payment_not_applied')
+    expect(state.inserts.employees).toHaveLength(0)
+  })
+
+  it('sans mode de paiement saisi : pas d’avertissement de paiement', async () => {
+    state.employees = [{ id: 'emp-existing', email: 'koffi.yao@mail.ci', deleted_at: null, employee_number: 'MAT00007' }]
+    expect((await hireApplication(SCHEMA, APP_ID, {}, ACTOR))?.paymentWarning).toBeNull()
   })
 
   it('fiche active portant le même email : liée, pas de doublon', async () => {

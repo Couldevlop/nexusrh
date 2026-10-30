@@ -495,6 +495,7 @@
     "paymentIban": "Bank account / IBAN (optional)",
     "paymentBankRequired": "Enter the bank name.",
     "paymentHint": "Payment method to be filled in on the employee record",
+    "warnings": { "invalid_email": "The candidate’s email is not valid: the record was created without an email. Enter a valid address on the employee record.", "payment_not_applied": "Payment method not applied: existing employee record — edit it on the record." },
     "confirmHire": "Hire and create the record",
     "confirmHireLink": "Hire and link the record",
     "viewEmployee": "View employee record",

@@ -495,6 +495,7 @@
     "paymentIban": "RIB / IBAN (facultatif)",
     "paymentBankRequired": "Renseignez la banque.",
     "paymentHint": "Mode de paiement à renseigner dans la fiche",
+    "warnings": { "invalid_email": "L’email du candidat n’est pas valide : la fiche a été créée sans email. Saisissez une adresse valide dans la fiche employé.", "payment_not_applied": "Mode de paiement non appliqué : fiche employé existante — à modifier dans la fiche." },
     "confirmHire": "Recruter et créer la fiche",
     "confirmHireLink": "Recruter et relier la fiche",
     "viewEmployee": "Voir la fiche employé",

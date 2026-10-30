@@ -114,9 +114,14 @@ export interface HireResult {
   contractDocumentId: string | null
   /**
    * Email de la candidature invalide (ex. accent) : la fiche est créée SANS
-   * email (jamais réécrit en silence) ; message FR à afficher à l'utilisateur.
+   * email (jamais réécrit en silence). Code stable, traduit par l'UI.
    */
-  emailWarning: string | null
+  emailWarning: 'invalid_email' | null
+  /**
+   * Mode de paiement saisi mais NON appliqué : la candidature a été reliée à une
+   * fiche existante (jamais modifiée par l'embauche). Code stable, traduit par l'UI.
+   */
+  paymentWarning: 'payment_not_applied' | null
 }
 
 export class HireError extends Error {
@@ -270,7 +275,7 @@ export async function hireApplication(
   let employee: EmployeeLite
   let created: { row: Record<string, unknown> & { id: string }; body: NewEmployee } | null = null
   const toComplete: string[] = []
-  let emailWarning: string | null = null
+  let emailWarning: 'invalid_email' | null = null
   try {
     await client.query('BEGIN')
     const app = await loadApplication(client, schema, applicationId, true)
@@ -303,7 +308,7 @@ export async function hireApplication(
       // Email non conforme (accent, espace…) : refusé plus tard par la signature
       // électronique. On ne le « corrige » pas : fiche créée sans email + alerte.
       if (email && !isValidEmail(email)) {
-        emailWarning = `L’email du candidat (« ${email} ») n’est pas valide : la fiche a été créée sans email. Saisissez une adresse valide dans la fiche employé.`
+        emailWarning = 'invalid_email'
         email = null; toComplete.push('email')
       }
       const payErr = paymentOverridesError(overrides)
@@ -433,6 +438,8 @@ export async function hireApplication(
   return {
     status, employeeId: employee.id, employeeNumber: employee.employee_number,
     toComplete, onboarding, onboardingError, contractDocumentId, emailWarning,
+    // Fiche existante reliée : les champs de paiement saisis ne lui sont pas appliqués.
+    paymentWarning: status !== 'created' && !!overrides.paymentMethod ? 'payment_not_applied' : null,
   }
 }
 

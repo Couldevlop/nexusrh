@@ -48,7 +48,9 @@ interface HireOutcome {
   /** Contrat généré versé au dossier salarié (absent des anciennes API). */
   contractDocumentId?: string | null
   /** Email du candidat invalide : fiche créée sans email (message FR de l'API). */
-  emailWarning?: string | null
+  emailWarning?: 'invalid_email' | null
+  /** Mode de paiement saisi mais non appliqué (fiche existante reliée). */
+  paymentWarning?: 'payment_not_applied' | null
 }
 
 interface Department { id: string; name: string }
@@ -1424,7 +1426,10 @@ export default function RecruitmentPage() {
             {t(`transition.hireDone.${hireNotice.status}`, { name: hireNotice.name })}
           </p>
           {hireNotice.emailWarning && (
-            <p className="mt-1 text-xs text-red-600">{hireNotice.emailWarning}</p>
+            <p className="mt-1 text-xs text-red-600">{t(`transition.warnings.${hireNotice.emailWarning}`)}</p>
+          )}
+          {hireNotice.paymentWarning && (
+            <p className="mt-1 text-xs text-amber-700">{t(`transition.warnings.${hireNotice.paymentWarning}`)}</p>
           )}
           {hireNotice.toComplete.length > 0 && (
             <p className="mt-1 text-xs text-amber-700">{t('transition.toComplete')}</p>
