@@ -9,6 +9,7 @@ import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
 import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
+import { habilitationTableStatements } from '../db/habilitations.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -62,6 +63,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     ...employeeDocumentsTableStatements(schemaName),
     // ── Propositions de contrat (recrutement), versionnées ──────────────────
     ...contractProposalsTableStatements(schemaName),
+    // ── Habilitations RH (groupes, fiches, délégations, règles SoD) ────────
+    ...habilitationTableStatements(schemaName),
     // Reprise : la proposition générée au recrutement avait été versée en
     // `signed_contract` → re-catégorisée `contract_proposal` (idempotent).
     ...contractProposalRecategorizeStatements(schemaName),

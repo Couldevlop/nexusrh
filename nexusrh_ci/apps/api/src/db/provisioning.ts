@@ -5,6 +5,7 @@ import { payrollReminderTableStatements } from './payroll-reminders.js'
 import { disaPerEntityStatements } from './disa-records.js'
 import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
+import { habilitationTableStatements } from './habilitations.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 
@@ -1215,6 +1216,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     user_agent text,
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
+
+  // Habilitations RH (groupes, fiches, délégations, règles SoD)
+  for (const stmt of habilitationTableStatements(schemaName)) await q(stmt)
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.refresh_tokens (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
