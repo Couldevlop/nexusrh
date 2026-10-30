@@ -11,6 +11,12 @@ interface ClientTenant {
   logo_url?: string | null
 }
 
+// « Société Test Énergie » → « societe-test-energie » (format exigé par l'API : a-z, 0-9, tirets).
+function slugify(v: string): string {
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50)
+}
+
 export default function AgencyClients() {
   const { t: tt } = useTranslation('agency')
   const qc = useQueryClient()
@@ -19,6 +25,8 @@ export default function AgencyClients() {
   const [form, setForm] = useState({ name: '', slug: '', adminEmail: '', city: 'Abidjan', sector: 'services', logoUrl: null as string | null })
   const [result, setResult] = useState<{ adminEmail: string; tempPassword: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Le slug suit le nom tant que l'utilisateur ne l'a pas saisi lui-même.
+  const [slugEdited, setSlugEdited] = useState(false)
 
   const { data, isLoading } = useQuery<{ data: ClientTenant[] }>({
     queryKey: ['agency-my-tenants'],
@@ -30,6 +38,7 @@ export default function AgencyClients() {
     onSuccess: (res: { adminEmail: string; tempPassword: string }) => {
       setResult(res); setError(null)
       setForm({ name: '', slug: '', adminEmail: '', city: 'Abidjan', sector: 'services', logoUrl: null })
+      setSlugEdited(false)
       qc.invalidateQueries({ queryKey: ['agency-my-tenants'] })
     },
     onError: (err: unknown) => {
@@ -67,8 +76,8 @@ export default function AgencyClients() {
             </div>
           ) : (
             <form onSubmit={(e) => { e.preventDefault(); create.mutate() }} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label={tt('clients.fields.name')} value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-              <Field label={tt('clients.fields.slug')} value={form.slug} onChange={(v) => setForm({ ...form, slug: v.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} required />
+              <Field label={tt('clients.fields.name')} value={form.name} onChange={(v) => setForm({ ...form, name: v, slug: slugEdited ? form.slug : slugify(v) })} required />
+              <Field label={tt('clients.fields.slug')} value={form.slug} onChange={(v) => { setSlugEdited(true); setForm({ ...form, slug: v.toLowerCase().replace(/[^a-z0-9-]/g, '-') }) }} required />
               <Field label={tt('clients.fields.adminEmail')} type="email" value={form.adminEmail} onChange={(v) => setForm({ ...form, adminEmail: v })} required />
               <Field label={tt('clients.fields.city')} value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
               <div className="sm:col-span-2">
