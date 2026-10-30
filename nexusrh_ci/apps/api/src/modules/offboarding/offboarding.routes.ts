@@ -97,6 +97,11 @@ async function unknownReasonCategory(schema: string, key: string | null | undefi
   return !categories.some((c) => c.key === key)
 }
 
+/** Seuil d'anonymat des statistiques de motifs (catégories regroupées en dessous). */
+const MIN_GROUP_SIZE = 5
+const SMALL_GROUP_KEY = 'others_small'
+const SMALL_GROUP_LABEL = `Autres (effectif < ${MIN_GROUP_SIZE})`
+
 const UNKNOWN_CATEGORY = { error: 'Catégorie de motif de départ inconnue pour ce tenant', code: 'UNKNOWN_REASON_CATEGORY' }
 
 const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
@@ -137,15 +142,25 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
           total += n
         }
         const share = (n: number) => (total > 0 ? Math.round((n / total) * 1000) / 10 : 0)
+        // Anonymat : une catégorie de moins de MIN_GROUP_SIZE départs pourrait
+        // désigner une personne → regroupée dans « Autres (effectif < 5) ».
+        const visible: Array<{ key: string; label: string | null; count: number }> = []
+        let small = 0
+        for (const [key, count] of byCategory) {
+          if (count < MIN_GROUP_SIZE) small += count
+          else visible.push({ key, label: labels.get(key) ?? null, count })
+        }
+        if (small > 0) visible.push({ key: SMALL_GROUP_KEY, label: SMALL_GROUP_LABEL, count: small })
         return reply.send({
           data: {
             total,
             from: from ?? null,
             to: to ?? null,
             categories,
-            byCategory: [...byCategory.entries()]
-              .map(([key, count]) => ({ key, label: labels.get(key) ?? null, count, share: share(count) }))
-              .sort((a, b) => b.count - a.count),
+            minGroupSize: MIN_GROUP_SIZE,
+            byCategory: visible
+              .map((c) => ({ ...c, share: share(c.count) }))
+              .sort((a, b) => (a.key === SMALL_GROUP_KEY ? 1 : b.key === SMALL_GROUP_KEY ? -1 : b.count - a.count)),
             byDepartureType: [...byType.entries()]
               .map(([type, count]) => ({ type, count, share: share(count) }))
               .sort((a, b) => b.count - a.count),

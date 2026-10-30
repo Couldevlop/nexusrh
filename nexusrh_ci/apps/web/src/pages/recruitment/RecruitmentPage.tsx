@@ -44,6 +44,8 @@ interface HireOutcome {
   toComplete: string[]
   onboarding: { journeyId: string | null; outcome: string; templateName: string | null } | null
   onboardingError: boolean
+  /** Contrat généré versé au dossier salarié (absent des anciennes API). */
+  contractDocumentId?: string | null
 }
 
 interface Department { id: string; name: string }
@@ -1404,6 +1406,9 @@ export default function RecruitmentPage() {
               ? t('transition.onboardingFailed')
               : hireNotice.onboarding ? t('transition.onboardingStarted', { template: hireNotice.onboarding.templateName ?? '' }) : ''}
           </p>
+          {hireNotice.contractDocumentId && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('transition.contractFiled')}</p>
+          )}
           <div className="mt-2 flex items-center gap-3">
             <Link to={`/employees/${hireNotice.employeeId}`} className="text-xs font-medium text-primary hover:underline">
               {t('transition.viewEmployee')}

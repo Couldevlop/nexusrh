@@ -37,7 +37,10 @@
     "noticeServed": "Notice served",
     "submit": "Open case",
     "submitting": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "reasonCategory": "Reason category",
+    "reasonCategoryPlaceholder": "— Choose a category —",
+    "error": "Could not open the case. Check the fields and try again."
   },
   "checklist": {
     "title": "Return checklist"
@@ -80,5 +83,10 @@
     "delete": "Delete",
     "deleteConfirm": "Permanently delete this case?"
   },
-  "saveError": "Error while saving"
+  "saveError": "Error while saving",
+  "reasonCategory": {
+    "label": "Reason category",
+    "none": "Unclassified",
+    "loadError": "Could not load reason categories."
+  }
 }

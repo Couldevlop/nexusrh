@@ -1716,6 +1716,11 @@ async function applyFunnelColumns(
   // Conditions saisies à la génération du contrat (type, salaire, dates,
   // catégorie) — réutilisées pour pré-remplir la fiche employé à l'embauche.
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS offer_details jsonb`)
+  // Dernier contrat PDF généré pour la candidature : recopié dans le dossier
+  // salarié (employee_documents) à l'embauche.
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS contract_pdf bytea`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS contract_pdf_name varchar(255)`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS contract_pdf_at timestamptz`)
   await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS employee_id uuid REFERENCES ${s}.employees(id) ON DELETE SET NULL`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_apps_employee ON ${s}.applications(employee_id)`)
 
