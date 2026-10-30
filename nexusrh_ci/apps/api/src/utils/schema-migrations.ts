@@ -556,6 +556,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       updated_at     timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON "${schemaName}".offboarding_cases(employee_id, departure_date DESC)`,
+    // Motif de départ STRUCTURÉ (clé de la liste paramétrable du tenant,
+    // platform.tenants.departure_reason_categories) ; `reason` reste le texte libre.
+    `ALTER TABLE "${schemaName}".offboarding_cases ADD COLUMN IF NOT EXISTS reason_category varchar(40)`,
 
     // ── Enquêtes climat social (engagement) — réponses confidentielles ────────
     // Résultats agrégés uniquement (jamais de réponse nominative exposée).
@@ -999,6 +1002,11 @@ export async function ensurePlatformSchema(): Promise<void> {
     // valeurs vivent dans <tenant>.employees.custom_fields. Cf.
     // services/employee-custom-fields.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_custom_fields jsonb NOT NULL DEFAULT '[]'`,
+
+    // ── Catégories de motifs de départ (admin tenant) ─────────────────────────
+    // [{ key, label }] ; NULL = liste par défaut. Cf.
+    // services/departure-reasons.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS departure_reason_categories jsonb`,
 
     // ── Règles de rupture propres au tenant (convention collective) ──────────
     // NULL = règles du pack législatif du pays de l'employé. Cf. offboarding.

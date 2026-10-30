@@ -945,6 +945,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     updated_at     timestamptz NOT NULL DEFAULT now()
   )`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON ${s}.offboarding_cases(employee_id, departure_date DESC)`)
+  // Motif de départ structuré (liste paramétrable du tenant) — aligné avec ensureTenantSchema.
+  await q(`ALTER TABLE ${s}.offboarding_cases ADD COLUMN IF NOT EXISTS reason_category varchar(40)`)
 
   // Enquêtes climat social (engagement) — réponses confidentielles, résultats agrégés
   await q(`CREATE TABLE IF NOT EXISTS ${s}.climate_surveys (
@@ -1464,6 +1466,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
+  await applyFunnelColumns(s, schemaName, q)
 
   // ── Cycle de vie du mot de passe (OWASP A07) ─────────────────────────────────
   // ⚠️ Doit rester aligné avec ensureTenantSchema (utils/schema-migrations.ts).
@@ -1671,6 +1674,79 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   )`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
+  await applyFunnelColumns(s, schemaName, q)
+}
+
+/**
+ * Entonnoir de recrutement fiable (marque employeur, lot 2) : historique des
+ * étapes, date d'embauche réelle, motif de rejet (liste fermée), conditions de
+ * l'offre et lien vers la fiche employée créée à l'embauche.
+ *
+ * Partagé par `provisionTenantSchema` et `ensureRecruitmentSchemaMigrated`. Les
+ * rattrapages sont rejouables sans effet : ils ne ciblent que des lignes non
+ * encore traitées et les index uniques absorbent une exécution concurrente.
+ */
+async function applyFunnelColumns(
+  s: string,
+  schemaName: string,
+  q: (sql: string) => Promise<unknown>,
+): Promise<void> {
+  await q(`CREATE TABLE IF NOT EXISTS ${s}.application_stage_history (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    application_id uuid NOT NULL REFERENCES ${s}.applications(id) ON DELETE CASCADE,
+    from_stage     varchar(30),
+    to_stage       varchar(30) NOT NULL,
+    changed_by     uuid,
+    changed_at     timestamptz NOT NULL DEFAULT now()
+  )`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_stage_hist_app ON ${s}.application_stage_history(application_id, changed_at)`)
+  // Une seule entrée initiale par candidature, et jamais deux fois la même
+  // transition au même instant (rattrapage rejoué en parallèle).
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${schemaName}_stage_hist_initial ON ${s}.application_stage_history(application_id) WHERE from_stage IS NULL`)
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS uq_${schemaName}_stage_hist_step ON ${s}.application_stage_history(application_id, to_stage, changed_at)`)
+
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS hired_at timestamptz`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS rejection_reason varchar(50)
+    CHECK (rejection_reason IS NULL OR rejection_reason IN (
+      'declined_by_candidate_salary', 'declined_by_candidate_other_offer',
+      'declined_by_candidate_delay', 'declined_by_candidate_other',
+      'rejected_profile', 'rejected_after_interview', 'rejected_auto_screening',
+      'position_closed', 'other'))`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS rejection_note varchar(500)`)
+  // Conditions saisies à la génération du contrat (type, salaire, dates,
+  // catégorie) — réutilisées pour pré-remplir la fiche employé à l'embauche.
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS offer_details jsonb`)
+  await q(`ALTER TABLE ${s}.applications ADD COLUMN IF NOT EXISTS employee_id uuid REFERENCES ${s}.employees(id) ON DELETE SET NULL`)
+  await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_apps_employee ON ${s}.applications(employee_id)`)
+
+  // Rattrapage : date d'embauche des candidatures déjà recrutées — décision
+  // tracée par la boucle de feedback IA, sinon dernière mise à jour.
+  await q(`
+    UPDATE ${s}.applications a
+       SET hired_at = COALESCE(
+             (SELECT max(d.decided_at) FROM ${s}.recruitment_decisions d
+               WHERE d.application_id = a.id AND d.decision = 'hired'),
+             a.updated_at)
+     WHERE a.stage = 'hired' AND a.hired_at IS NULL`)
+
+  // Rattrapage : historique minimal des candidatures antérieures — entrée
+  // initiale à la date de dépôt, puis l'étape courante (si différente).
+  await q(`
+    WITH legacy AS (
+      SELECT a.id, a.stage, a.created_at,
+             GREATEST(COALESCE(a.hired_at, a.updated_at), a.created_at) AS moved_at
+        FROM ${s}.applications a
+       WHERE NOT EXISTS (SELECT 1 FROM ${s}.application_stage_history h WHERE h.application_id = a.id)
+    ),
+    initial AS (
+      INSERT INTO ${s}.application_stage_history (application_id, from_stage, to_stage, changed_by, changed_at)
+      SELECT id, NULL, 'new', NULL, created_at FROM legacy
+      ON CONFLICT DO NOTHING
+    )
+    INSERT INTO ${s}.application_stage_history (application_id, from_stage, to_stage, changed_by, changed_at)
+    SELECT id, 'new', stage, NULL, moved_at FROM legacy
+     WHERE stage IS NOT NULL AND stage <> 'new'
+    ON CONFLICT DO NOTHING`)
 }
 
 /**

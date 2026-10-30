@@ -20,6 +20,31 @@ import {
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
 import ScreeningReview from './ScreeningReview'
 import { confirmDialog } from '@/components/shared/ConfirmDialog'
+import { Link } from 'react-router-dom'
+import {
+  RejectReasonModal, HireEmployeeModal, transitionErrorOf,
+  type RejectionReason, type HireEmployeeValues,
+} from './StageTransitionModals'
+
+// Seuls ces rôles déplacent une candidature (même RBAC que l'API).
+const STAGE_WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer']
+
+interface StageChange {
+  id: string
+  stage: string
+  rejection_reason?: RejectionReason
+  rejection_note?: string
+  employee?: HireEmployeeValues
+}
+
+interface HireOutcome {
+  status: 'created' | 'already_linked' | 'linked_internal' | 'linked_existing'
+  employeeId: string
+  employeeNumber: string | null
+  toComplete: string[]
+  onboarding: { journeyId: string | null; outcome: string; templateName: string | null } | null
+  onboardingError: boolean
+}
 
 interface Department { id: string; name: string }
 
@@ -68,6 +93,9 @@ interface Application {
   cv_size_bytes?: number | null
   has_cv?: boolean
   source?: string | null
+  // Entonnoir (lot 2) : fiche employé créée à l'embauche + motif de rejet
+  employee_id?: string | null
+  rejection_reason?: string | null
   created_at: string
 }
 
@@ -279,17 +307,45 @@ export default function RecruitmentPage() {
     },
   })
 
+  const role = useAuthStore((s) => s.user?.role ?? '')
+  const canMoveStage = STAGE_WRITE_ROLES.includes(role)
+  const [rejectTarget, setRejectTarget] = useState<Application | null>(null)
+  const [hireTarget, setHireTarget] = useState<Application | null>(null)
+  const [hireNotice, setHireNotice] = useState<(HireOutcome & { name: string }) | null>(null)
+
   const updateStage = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: string }) =>
-      api.patch(`/recruitment/applications/${id}/stage`, { stage }),
-    onSuccess: (_data, variables) => {
+    mutationFn: ({ id, ...body }: StageChange) =>
+      api.patch(`/recruitment/applications/${id}/stage`, body)
+        .then(r => r.data as { data: Application; hire?: HireOutcome }),
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })
       // Si le nouveau stage est hired/rejected, l'historique IA évolue
       if (variables.stage === 'hired' || variables.stage === 'rejected') {
         queryClient.invalidateQueries({ queryKey: ['recruitment-decisions-history'] })
       }
+      if (data.hire) {
+        // Fiche employé + parcours d'intégration créés côté serveur.
+        queryClient.invalidateQueries({ queryKey: ['employees'] })
+        queryClient.invalidateQueries({ queryKey: ['onboarding-journeys'] })
+        const target = hireTarget ?? applications.find(a => a.id === variables.id) ?? null
+        setHireNotice({ ...data.hire, name: target ? `${target.first_name} ${target.last_name}` : '' })
+      }
+      setRejectTarget(null)
+      setHireTarget(null)
     },
   })
+
+  /**
+   * Point d'entrée UNIQUE des changements d'étape (glisser-déposer, boutons) :
+   * « Rejeté » exige un motif, « Recruté » passe par la fiche employé.
+   */
+  const requestStage = (app: Application, stage: string) => {
+    if (!canMoveStage || app.stage === stage) return
+    updateStage.reset()
+    if (stage === 'rejected') { setRejectTarget(app); return }
+    if (stage === 'hired') { setHireTarget(app); return }
+    updateStage.mutate({ id: app.id, stage })
+  }
 
   // REC-007 — ouvre le formulaire de contrat pour une candidature recrutée,
   // pré-rempli avec le poste et une date de début au jour même.
@@ -854,7 +910,7 @@ export default function RecruitmentPage() {
                           <Eye className="h-3 w-3" /> {t('pipeline.detail')}
                         </button>
                         <button
-                          onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
+                          onClick={() => requestStage(app, 'interview')}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
                         >
                           {t('pipeline.interview')}
@@ -1092,7 +1148,7 @@ export default function RecruitmentPage() {
                           <Eye className="h-3 w-3" /> {t('pipeline.detail')}
                         </button>
                         <button
-                          onClick={() => updateStage.mutate({ id: app.id, stage: 'interview' })}
+                          onClick={() => requestStage(app, 'interview')}
                           className="flex-1 inline-flex items-center justify-center gap-1 text-xs text-blue-600 hover:bg-blue-50 font-medium rounded py-1"
                         >
                           {t('pipeline.interview')}
@@ -1119,9 +1175,8 @@ export default function RecruitmentPage() {
                     // Repli dataTransfer : si le re-render a fait perdre l'état React,
                     // l'id voyage aussi dans l'événement natif.
                     const droppedId = draggedId ?? e.dataTransfer.getData('text/plain')
-                    if (droppedId) {
-                      updateStage.mutate({ id: droppedId, stage })
-                    }
+                    const droppedApp = droppedId ? applications.find(a => a.id === droppedId) : undefined
+                    if (droppedApp) requestStage(droppedApp, stage)
                     setDraggedId(null)
                     setDragOverStage(null)
                   }}
@@ -1187,6 +1242,16 @@ export default function RecruitmentPage() {
                             <span className="text-xs font-medium text-muted-foreground">{app.ai_score}%</span>
                           </div>
                         )}
+                        {app.employee_id && (
+                          <Link to={`/employees/${app.employee_id}`} onClick={e => e.stopPropagation()}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-green-700 hover:underline">
+                            <UserPlus className="h-3 w-3" /> {t('transition.viewEmployee')}
+                          </Link>
+                        )}
+                        {app.stage === 'rejected' && app.rejection_reason && (
+                          <p className="mt-1 text-[11px] text-red-600 truncate">{t(`rejectionReason.${app.rejection_reason}`)}</p>
+                        )}
+                        {canMoveStage && (
                         <div className="mt-2 flex flex-wrap gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
                           {app.stage === 'hired' ? (
                             <button onClick={() => openContract(app)}
@@ -1194,17 +1259,18 @@ export default function RecruitmentPage() {
                               <FileSignature className="h-3 w-3" /> {t('contract.generate')}
                             </button>
                           ) : (
-                            <button onClick={() => updateStage.mutate({ id: app.id, stage: 'hired' })}
+                            <button onClick={() => requestStage(app, 'hired')}
                               className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
                               <CheckCircle className="h-3 w-3" /> {t('pipeline.recruit')}
                             </button>
                           )}
                           <span className="text-muted-foreground">·</span>
-                          <button onClick={() => updateStage.mutate({ id: app.id, stage: 'rejected' })}
+                          <button onClick={() => requestStage(app, 'rejected')}
                             className="flex items-center gap-0.5 text-xs text-red-500 hover:text-red-600 font-medium">
                             <XCircle className="h-3 w-3" /> {t('pipeline.reject')}
                           </button>
                         </div>
+                        )}
                       </div>
                     ))}
                     {stageApps.length === 0 && (
@@ -1298,6 +1364,55 @@ export default function RecruitmentPage() {
           onClose={() => setSelectedApp(null)}
           onChanged={() => queryClient.invalidateQueries({ queryKey: ['recruitment-applications'] })}
         />
+      )}
+
+      {/* Lot 2 — motif de rejet obligatoire */}
+      {rejectTarget && (
+        <RejectReasonModal
+          candidate={rejectTarget}
+          busy={updateStage.isPending}
+          error={updateStage.isError ? (transitionErrorOf(updateStage.error) ?? t('transition.genericError')) : null}
+          onCancel={() => setRejectTarget(null)}
+          onConfirm={(reason, note) => updateStage.mutate({
+            id: rejectTarget.id, stage: 'rejected', rejection_reason: reason,
+            ...(note ? { rejection_note: note } : {}),
+          })}
+        />
+      )}
+
+      {/* Lot 2 — embauche : fiche employé pré-remplie (annuler = étape inchangée) */}
+      {hireTarget && (
+        <HireEmployeeModal
+          candidate={hireTarget}
+          busy={updateStage.isPending}
+          error={updateStage.isError ? (transitionErrorOf(updateStage.error) ?? t('transition.genericError')) : null}
+          onCancel={() => setHireTarget(null)}
+          onConfirm={(employee) => updateStage.mutate({ id: hireTarget.id, stage: 'hired', employee })}
+        />
+      )}
+
+      {hireNotice && (
+        <div role="status" className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-green-200 bg-card p-4 shadow-lg">
+          <p className="text-sm font-semibold text-green-700">
+            {t(`transition.hireDone.${hireNotice.status}`, { name: hireNotice.name })}
+          </p>
+          {hireNotice.toComplete.length > 0 && (
+            <p className="mt-1 text-xs text-amber-700">{t('transition.toComplete')}</p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            {hireNotice.onboardingError
+              ? t('transition.onboardingFailed')
+              : hireNotice.onboarding ? t('transition.onboardingStarted', { template: hireNotice.onboarding.templateName ?? '' }) : ''}
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <Link to={`/employees/${hireNotice.employeeId}`} className="text-xs font-medium text-primary hover:underline">
+              {t('transition.viewEmployee')}
+            </Link>
+            <button onClick={() => setHireNotice(null)} className="text-xs text-muted-foreground hover:underline">
+              {t('transition.close')}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* REC-007 — Modal de génération du contrat OHADA à l'embauche */}

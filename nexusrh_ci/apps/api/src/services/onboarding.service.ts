@@ -88,6 +88,7 @@ export async function startOnboardingJourney(
   employee: EmployeeForOnboarding,
   template: { id: string; name: string },
   createdBy: string | null,
+  applicationId: string | null = null,
 ): Promise<string | null> {
   const steps = await pool.query<{
     title: string; description: string | null; phase: string; owner_role: string
@@ -101,9 +102,9 @@ export async function startOnboardingJourney(
   if (steps.rows.length === 0) return null
 
   const journey = await pool.query<{ id: string }>(
-    `INSERT INTO "${schema}".onboarding_journeys (employee_id, template_id, template_name, status, created_by)
-     VALUES ($1, $2, $3, 'in_progress', $4) RETURNING id`,
-    [employee.id, template.id, template.name, createdBy],
+    `INSERT INTO "${schema}".onboarding_journeys (employee_id, template_id, template_name, status, created_by, application_id)
+     VALUES ($1, $2, $3, 'in_progress', $4, $5) RETURNING id`,
+    [employee.id, template.id, template.name, createdBy, applicationId],
   )
   const journeyId = journey.rows[0]!.id
 
@@ -147,6 +148,146 @@ export async function autoStartOnboarding(
   const tpl = selectBestTemplate(templates.rows, employee)
   if (!tpl) return null
   return startOnboardingJourney(pool, schema, employee, tpl, createdBy)
+}
+
+// ─── Embauche depuis le recrutement : parcours GARANTI ───────────────────────
+
+/** Clé stable du modèle standard intégré (jamais dupliqué : index unique). */
+export const BUILTIN_ONBOARDING_TEMPLATE_KEY = 'standard_ci'
+
+export interface BuiltinTemplateStep {
+  title: string
+  description: string
+  phase: 'before_start' | 'day_one' | 'first_week' | 'first_month' | 'probation_end'
+  owner_role: 'hr' | 'manager' | 'employee' | 'it' | 'buddy'
+  due_offset_days: number
+}
+
+/**
+ * Contenu du modèle standard, écrit UNE FOIS dans le tenant comme un modèle
+ * ordinaire (éditable, désactivable depuis /onboarding) au premier besoin —
+ * jamais relu ensuite : c'est la version du tenant qui fait foi.
+ */
+export const BUILTIN_ONBOARDING_TEMPLATE: { name: string; description: string; steps: BuiltinTemplateStep[] } = {
+  name: "Parcours d'intégration standard",
+  description: 'Modèle par défaut créé automatiquement à la première embauche sans modèle applicable. Modifiable librement.',
+  steps: [
+    { title: 'Contrat de travail signé', description: 'Faire signer le contrat (CDI/CDD) et en archiver un exemplaire au dossier.', phase: 'before_start', owner_role: 'hr', due_offset_days: -7 },
+    { title: 'Pièces administratives', description: "Collecter la CNI, le numéro CNPS (ou l'immatriculation), le RIB ou le numéro Mobile Money et une photo d'identité.", phase: 'before_start', owner_role: 'hr', due_offset_days: -5 },
+    { title: 'Matériel et accès', description: 'Préparer le poste de travail, le matériel et les comptes (messagerie, applications).', phase: 'before_start', owner_role: 'it', due_offset_days: -2 },
+    { title: 'Accueil du collaborateur', description: "Accueil, visite des locaux, remise du livret d'accueil et du règlement intérieur.", phase: 'day_one', owner_role: 'hr', due_offset_days: 0 },
+    { title: "Présentation à l'équipe", description: 'Présenter le collaborateur à son équipe et à ses interlocuteurs clés.', phase: 'day_one', owner_role: 'manager', due_offset_days: 0 },
+    { title: 'Désignation du parrain', description: 'Nommer un parrain ou une marraine et planifier un premier échange.', phase: 'day_one', owner_role: 'manager', due_offset_days: 0 },
+    { title: "Objectifs de la période d'essai", description: 'Fixer et partager les objectifs des premières semaines.', phase: 'first_week', owner_role: 'manager', due_offset_days: 5 },
+    { title: "Point d'étape — 2 semaines", description: 'Faire le point sur la prise de poste et les besoins éventuels.', phase: 'first_month', owner_role: 'manager', due_offset_days: 14 },
+    { title: "Point d'étape — 1 mois", description: 'Bilan du premier mois avec le collaborateur et le parrain.', phase: 'first_month', owner_role: 'hr', due_offset_days: 30 },
+    { title: "Entretien de fin de période d'essai", description: "Entretien de validation de la période d'essai, formalisé par écrit.", phase: 'probation_end', owner_role: 'manager', due_offset_days: 90 },
+  ],
+}
+
+/**
+ * Modèle standard du tenant, créé s'il n'existe pas — en UNE instruction
+ * (modèle + étapes) pour qu'un lecteur concurrent ne voie jamais un modèle
+ * sans étapes. Il devient le modèle par défaut seulement si le tenant n'en a
+ * pas déjà un.
+ */
+export async function ensureBuiltinOnboardingTemplate(
+  pool: Pool,
+  schema: string,
+  createdBy: string | null,
+): Promise<{ id: string; name: string; created: boolean }> {
+  const inserted = await pool.query<{ id: string; name: string }>(
+    `WITH tpl AS (
+       INSERT INTO "${schema}".onboarding_templates
+         (name, description, seniority, is_active, is_default, created_by, builtin_key)
+       SELECT $1, $2, 'any', true,
+              NOT EXISTS (SELECT 1 FROM "${schema}".onboarding_templates WHERE is_default = true),
+              $3::uuid, $4
+       ON CONFLICT (builtin_key) WHERE builtin_key IS NOT NULL DO NOTHING
+       RETURNING id, name
+     ),
+     steps AS (
+       INSERT INTO "${schema}".onboarding_template_steps
+         (template_id, title, description, phase, owner_role, due_offset_days, sort_order)
+       SELECT tpl.id, s.title, s.description, s.phase, s.owner_role, s.due_offset_days, (s.ord - 1)::int
+         FROM tpl,
+              jsonb_to_recordset($5::jsonb) WITH ORDINALITY
+                AS s(title text, description text, phase text, owner_role text, due_offset_days int, ord bigint)
+     )
+     SELECT id, name FROM tpl`,
+    [
+      BUILTIN_ONBOARDING_TEMPLATE.name, BUILTIN_ONBOARDING_TEMPLATE.description, createdBy,
+      BUILTIN_ONBOARDING_TEMPLATE_KEY, JSON.stringify(BUILTIN_ONBOARDING_TEMPLATE.steps),
+    ],
+  )
+  const created = inserted.rows[0]
+  if (created) return { ...created, created: true }
+  const existing = await pool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM "${schema}".onboarding_templates WHERE builtin_key = $1 LIMIT 1`,
+    [BUILTIN_ONBOARDING_TEMPLATE_KEY],
+  )
+  const row = existing.rows[0]
+  if (!row) throw new Error("Modèle d'intégration standard introuvable après création")
+  return { ...row, created: false }
+}
+
+export interface HireOnboardingResult {
+  journeyId: string | null
+  /** 'existing' : parcours déjà présent (rejeu, ou parcours en cours de l'employé). */
+  outcome: 'existing' | 'template' | 'builtin'
+  templateName: string | null
+  builtinTemplateCreated: boolean
+}
+
+/**
+ * Parcours d'intégration d'une EMBAUCHE — toujours créé, un seul par
+ * candidature :
+ *   1. un parcours déjà lié à la candidature → rien à faire (idempotence) ;
+ *   2. un parcours en cours de l'employé (fiche existante) → on le relie ;
+ *   3. sinon le meilleur modèle actif (séniorité / mots-clés / département) ;
+ *   4. à défaut (aucun modèle, ou modèle sans étape) : le modèle standard du
+ *      tenant, créé à la première occasion.
+ */
+export async function ensureHireOnboarding(
+  pool: Pool,
+  schema: string,
+  employee: EmployeeForOnboarding,
+  applicationId: string,
+  createdBy: string | null,
+): Promise<HireOnboardingResult> {
+  const linked = await pool.query<{ id: string; template_name: string | null }>(
+    `SELECT id, template_name FROM "${schema}".onboarding_journeys WHERE application_id = $1 LIMIT 1`,
+    [applicationId],
+  )
+  if (linked.rows[0]) {
+    return { journeyId: linked.rows[0].id, outcome: 'existing', templateName: linked.rows[0].template_name, builtinTemplateCreated: false }
+  }
+
+  const running = await pool.query<{ id: string; template_name: string | null }>(
+    `UPDATE "${schema}".onboarding_journeys SET application_id = $2, updated_at = now()
+      WHERE id = (SELECT id FROM "${schema}".onboarding_journeys
+                   WHERE employee_id = $1 AND status = 'in_progress' AND application_id IS NULL
+                   ORDER BY started_at DESC LIMIT 1)
+      RETURNING id, template_name`,
+    [employee.id, applicationId],
+  )
+  if (running.rows[0]) {
+    return { journeyId: running.rows[0].id, outcome: 'existing', templateName: running.rows[0].template_name, builtinTemplateCreated: false }
+  }
+
+  const templates = await pool.query<OnboardingTemplateRow>(
+    `SELECT id, name, seniority, job_keywords, department_id, is_active, is_default
+     FROM "${schema}".onboarding_templates WHERE is_active = true`,
+  )
+  const best = selectBestTemplate(templates.rows, employee)
+  if (best) {
+    const journeyId = await startOnboardingJourney(pool, schema, employee, best, createdBy, applicationId)
+    if (journeyId) return { journeyId, outcome: 'template', templateName: best.name, builtinTemplateCreated: false }
+  }
+
+  const builtin = await ensureBuiltinOnboardingTemplate(pool, schema, createdBy)
+  const journeyId = await startOnboardingJourney(pool, schema, employee, builtin, createdBy, applicationId)
+  return { journeyId, outcome: 'builtin', templateName: builtin.name, builtinTemplateCreated: builtin.created }
 }
 
 /** Recalcule le statut d'un parcours (terminé si toutes les étapes sont done). */
