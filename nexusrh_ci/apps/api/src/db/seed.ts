@@ -33,6 +33,7 @@ import {
   seedApplicationsForJob,
   seedRetentionScoresBulk,
   seedCurrentMonthExpensesBulk,
+  asciiEmailPart,
 } from './seed-demo-data.js'
 import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
 
@@ -623,7 +624,7 @@ async function runSeed(): Promise<void> {
       const isFemale     = Math.random() > 0.65
       const firstName    = randItem(isFemale ? PRENOMS_F : PRENOMS_H)
       const lastName     = randItem(NOMS)
-      const email        = `${firstName.toLowerCase().replace(/[^a-z]/g, '')}.${lastName.toLowerCase().replace(/[^a-z]/g, '')}${empIdx}@sotra.ci`
+      const email        = `${asciiEmailPart(firstName)}.${asciiEmailPart(lastName)}${empIdx}@sotra.ci`
       const provider     = randItem(MOBILE_PROVIDERS)
       const phone        = ciPhone(provider)
       const maritalStatus = randItem(MARITAL_STATUSES)
@@ -1211,7 +1212,7 @@ async function runSeed(): Promise<void> {
               CASE WHEN $7::int IS NULL THEN NULL ELSE now() END)
       ON CONFLICT DO NOTHING
     `, [
-      jobId, fn, ln, `${fn?.toLowerCase()}.${ln?.toLowerCase()}@email.com`,
+      jobId, fn, ln, `${asciiEmailPart(fn ?? '')}.${asciiEmailPart(ln ?? '')}@email.com`,
       ciPhone('wave'), stage,
       aiScore, aiRec, aiScore,
       hasAi ? `Profil ${aiRec === 'strong_yes' ? 'très aligné' : aiRec === 'yes' ? 'aligné' : 'à étudier'} avec les prérequis du poste.` : null,
@@ -1234,7 +1235,7 @@ async function runSeed(): Promise<void> {
   }
   async function seedSourced(schema: string, jobId: string, profiles: SourcedSeed[], countries: string[]) {
     for (const p of profiles) {
-      const email = `${p.fn.toLowerCase().replace(/[^a-z]/g, '')}.${p.ln.toLowerCase().replace(/[^a-z]/g, '')}@sourcing.example`
+      const email = `${asciiEmailPart(p.fn)}.${asciiEmailPart(p.ln)}@sourcing.example`
       const linkedinSearch = `${p.fn} ${p.ln} ${p.company} ${p.pos}`
       await pool.query(`
         INSERT INTO "${schema}".sourced_profiles
@@ -1299,7 +1300,7 @@ async function runSeed(): Promise<void> {
         ON CONFLICT DO NOTHING
       `, [
         jobIds[3], emp.first_name, emp.last_name,
-        emp.email ?? `${emp.first_name.toLowerCase()}@sotra.ci`,
+        emp.email ?? `${asciiEmailPart(emp.first_name)}@sotra.ci`,
         emp.phone ?? null,
         `Bonjour, je souhaite postuler à ce poste de promotion interne. Mon expérience terrain en exploitation me permet de prendre la relève.`,
         emp.id,
@@ -1496,7 +1497,7 @@ async function runSeed(): Promise<void> {
       const isAmenan = cabEmpIdx === 0
       const email    = isAmenan
         ? 'employe2@cabinet-expertise.ci'
-        : `${firstName.toLowerCase().replace(/[^a-z]/g, '')}.${lastName.toLowerCase().replace(/[^a-z]/g, '')}${cabEmpIdx}@cabinet-expertise.ci`
+        : `${asciiEmailPart(firstName)}.${asciiEmailPart(lastName)}${cabEmpIdx}@cabinet-expertise.ci`
 
       const res = await pool.query<{ id: string }>(`
         INSERT INTO "${cabinetSchema}".employees
@@ -1843,7 +1844,7 @@ async function runSeed(): Promise<void> {
         ON CONFLICT (email) DO NOTHING RETURNING id
       `, [
         firstName, lastName,
-        `${firstName.toLowerCase().replace(/[^a-z]/g, '')}.${lastName.toLowerCase().replace(/[^a-z]/g, '')}${olEmpIdx}@openlabconsulting.com`,
+        `${asciiEmailPart(firstName)}.${asciiEmailPart(lastName)}${olEmpIdx}@openlabconsulting.com`,
         isFemale ? 'F' : 'M', nni(), cnpsNum(), provider, ciPhone(provider),
         openlabDeptIds[di] ?? null,
         di === 0 ? 'Consultant' : di === 1 ? 'Ingénieur' : 'Assistant administratif',

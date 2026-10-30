@@ -6,7 +6,7 @@
  * (doublon / aucun modèle / création), refreshJourneyStatus, et les branches
  * restantes de selectBestTemplate / computeDueDate.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Pool } from 'pg'
 
 vi.mock('../config.js', () => ({
@@ -16,6 +16,7 @@ vi.mock('../config.js', () => ({
 import {
   selectBestTemplate,
   computeDueDate,
+  clampDueDate,
   startOnboardingJourney,
   autoStartOnboarding,
   refreshJourneyStatus,
@@ -83,8 +84,40 @@ describe('computeDueDate — date invalide', () => {
   })
 })
 
+// ─── clampDueDate ────────────────────────────────────────────────────────────
+describe('clampDueDate — aucune étape en retard dès la création', () => {
+  it('échéance passée → jour de création', () => {
+    expect(clampDueDate('2026-06-08', '2026-06-15')).toBe('2026-06-15')
+  })
+  it('échéance du jour ou future → inchangée ; null → null', () => {
+    expect(clampDueDate('2026-06-15', '2026-06-15')).toBe('2026-06-15')
+    expect(clampDueDate('2026-06-20', '2026-06-15')).toBe('2026-06-20')
+    expect(clampDueDate(null, '2026-06-15')).toBeNull()
+  })
+})
+
 // ─── startOnboardingJourney ──────────────────────────────────────────────────
 describe('startOnboardingJourney', () => {
+  // Jour de création figé à une date antérieure à l'embauche (2026-06-15) : aucun bornage par défaut.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-06-01T09:00:00Z')) })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('embauche le jour même : les étapes J-7/J-3 sont bornées au jour de création', async () => {
+    vi.setSystemTime(new Date('2026-06-15T09:00:00Z'))
+    queryMock
+      .mockResolvedValueOnce({ rows: [
+        { title: 'A', description: null, phase: 'before_start', owner_role: 'hr', due_offset_days: -7, sort_order: 0, resources: [] },
+        { title: 'B', description: null, phase: 'before_start', owner_role: 'hr', due_offset_days: -3, sort_order: 1, resources: [] },
+        { title: 'C', description: null, phase: 'day_one', owner_role: 'hr', due_offset_days: 2, sort_order: 2, resources: [] },
+      ] })
+      .mockResolvedValueOnce({ rows: [{ id: 'j1' }] })
+      .mockResolvedValue({ rows: [] })
+    await startOnboardingJourney(pool, 'tenant_sotra', EMP, { id: 't', name: 'M' }, 'creator')
+    expect(queryMock.mock.calls[2]?.[1]?.[5]).toBe('2026-06-15')
+    expect(queryMock.mock.calls[3]?.[1]?.[5]).toBe('2026-06-15')
+    expect(queryMock.mock.calls[4]?.[1]?.[5]).toBe('2026-06-17')
+  })
+
   it('modèle sans étape → null (aucune insertion de parcours)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT template steps
     const id = await startOnboardingJourney(pool, 'tenant_sotra', EMP, { id: 'tpl1', name: 'M' }, 'creator')

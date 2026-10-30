@@ -42,12 +42,16 @@ import {
 // signature isMagicByteConsistent — non importé, donc jamais exécuté malgré ses
 // tests verts. Une seule implémentation désormais (OWASP A03).
 
+// Message commun aux voies d'entrée des candidatures : un email non conforme
+// (accent, espace…) serait rejeté plus tard par la signature électronique.
+const EMAIL_INVALID_MESSAGE = 'Adresse email invalide : utilisez uniquement des caractères sans accent ni espace (ex : prenom.nom@exemple.com).'
+
 // Schéma Zod pour la candidature publique — OWASP A03 (Injection) + A04
 // (Insecure Design). Limites stricts pour éviter spam et XSS.
 const publicApplySchema = z.object({
   first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
   last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
-  email:        z.string().email('Email invalide').max(255).toLowerCase(),
+  email:        z.string().email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase(),
   phone:        z.string().max(30).optional(),
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
@@ -117,6 +121,12 @@ const stageBodySchema = z.object({
     contractType: z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
     jobTitle: z.string().trim().min(1).max(100).optional(),
     professionalCategory: z.string().trim().max(50).optional(),
+    // Mode de paiement (facultatif) — cohérence vérifiée par hire.service (paymentOverridesError).
+    paymentMethod: z.enum(['mobile_money', 'bank_transfer']).optional(),
+    mobileMoneyProvider: z.enum(['wave', 'mtn', 'orange']).optional(),
+    mobileMoneyPhone: z.string().trim().max(30).optional(),
+    iban: z.string().trim().max(50).optional(),
+    bankName: z.string().trim().max(100).optional(),
   }).strict().optional(),
 })
 
@@ -621,7 +631,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         job_id:       z.string().uuid('Offre invalide'),
         first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
         last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
-        email:        z.preprocess(v => (v === '' ? undefined : v), z.string().email('Email invalide').max(255).toLowerCase().optional()),
+        email:        z.preprocess(v => (v === '' ? undefined : v), z.string().email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase().optional()),
         phone:        z.preprocess(v => (v === '' ? undefined : v),
                         z.string().refine(s => CI_PHONE_RE.test(String(s).replace(/\s/g, '')),
                           'Téléphone CI invalide : +225 suivi de 8 à 10 chiffres').optional()),
@@ -631,7 +641,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       }).strict()
       const parsed = rhApplicationSchema.safeParse(request.body)
       if (!parsed.success) {
-        return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
+        const emailIssue = parsed.error.issues.find((i) => i.path[0] === 'email')
+        return reply.status(400).send({
+          error: emailIssue ? emailIssue.message : 'Validation',
+          issues: parsed.error.flatten(),
+        })
       }
       const body = parsed.data
       if (!body.email && !body.phone) {
@@ -1670,7 +1684,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = publicApplySchema.safeParse(fields)
       if (!parsed.success) {
         return reply.status(400).send({
-          error: 'Validation échouée',
+          error: parsed.error.issues.some(i => i.path[0] === 'email') ? EMAIL_INVALID_MESSAGE : 'Validation échouée',
           issues: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
         })
       }
