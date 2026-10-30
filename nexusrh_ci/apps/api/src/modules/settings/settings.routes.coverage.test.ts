@@ -943,6 +943,17 @@ describe('DELETE /settings/legal-entities/:id', () => {
     })
     expect(res.statusCode).toBe(500)
   })
+
+  it('409 si la filiale porte une DISA (FK disa_records, 23503)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
+      .mockRejectedValueOnce(Object.assign(new Error('violates foreign key constraint "disa_records_legal_entity_fk"'), { code: '23503' }))
+    const res = await app.inject({
+      method: 'DELETE', url: `/settings/legal-entities/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toContain('DISA')
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════

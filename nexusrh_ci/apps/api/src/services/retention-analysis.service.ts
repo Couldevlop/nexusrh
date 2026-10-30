@@ -9,8 +9,8 @@
  */
 import type { Pool } from 'pg'
 import { isValidSchemaName } from '../utils/schema-name.js'
-
-const SMIG_CI = 75_000 // FCFA/mois (SMIG CI depuis le 01/01/2023)
+import { loadEmployeeTenantContext } from './employee-tenant-context.service.js'
+import { DEFAULT_LEGISLATION_PACK, currencyLabel, type LegislationPack } from './legislation-packs.js'
 
 export interface RetentionFactor { label: string; weight: number }
 export interface RetentionResult {
@@ -27,9 +27,9 @@ export async function analyzeRetentionRisk(
   if (!isValidSchemaName(schema)) return null
 
   const empRes = await pool.query<{
-    id: string; hire_date: string | null; base_salary: string | null
+    id: string; hire_date: string | null; base_salary: string | null; legal_entity_id?: string | null
   }>(
-    `SELECT id, hire_date, base_salary FROM "${schema}".employees
+    `SELECT id, hire_date, base_salary, legal_entity_id FROM "${schema}".employees
       WHERE id = $1 AND deleted_at IS NULL LIMIT 1`, [employeeId],
   )
   const emp = empRes.rows[0]
@@ -52,11 +52,16 @@ export async function analyzeRetentionRisk(
     recommendations.push('Renforcer l\'accompagnement d\'intégration et planifier un point carrière.')
   }
 
-  // 2) Salaire au niveau du SMIG (peu de marge de progression ressentie)
+  // 2) Salaire au niveau du SMIG (peu de marge de progression ressentie).
+  // SMIG du pack de l'employé (filiale, sinon pays du tenant) — pas 75 000 en dur.
+  let pack: LegislationPack = DEFAULT_LEGISLATION_PACK
+  try {
+    pack = (await loadEmployeeTenantContext(pool, schema, emp.legal_entity_id ?? null)).legislation.legislationPack
+  } catch { /* repli : pack par défaut (CIV) */ }
   const salary = Math.round(Number(emp.base_salary) || 0)
-  if (salary > 0 && salary <= SMIG_CI * 1.1) {
+  if (salary > 0 && salary <= pack.smigMensuel * 1.1) {
     score += 20
-    factors.push(`Rémunération proche du SMIG (${salary.toLocaleString('fr-FR')} FCFA)`)
+    factors.push(`Rémunération proche du SMIG (${String(salary).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currencyLabel(pack.currency)})`)
     recommendations.push('Étudier une revalorisation salariale ou une prime de fidélisation.')
   }
 

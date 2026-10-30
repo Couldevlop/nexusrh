@@ -50,6 +50,25 @@ describe('analyzeRetentionRisk (CAR-006 / AI-008)', () => {
     expect(r!.score).toBeLessThan(30)
   })
 
+  it('SMIG du pack de la filiale : 80 000 proche du SMIG CI (75 000) mais pas du SMIG Bénin (52 000)', async () => {
+    const LE = '22222222-2222-4222-8222-222222222222'
+    const poolFor = (packCode: string | null) => ({
+      query: async (sql: string) => {
+        if (sql.includes('platform.tenants'))
+          return { rows: [{ id: 't', at_rate: '0.020', has_subsidiaries: true, default_country_code: 'CIV', termination_rules: null, employee_custom_fields: null }] }
+        if (sql.includes('legal_entities'))
+          return { rows: packCode ? [{ id: LE, at_rate: null, legislation_pack_code: packCode, country_code: packCode.slice(0, 3) }] : [] }
+        if (sql.includes('FROM "tenant_sotra".employees') && sql.includes('hire_date'))
+          return { rows: [{ id: EID, hire_date: '2018-01-01', base_salary: '80000', legal_entity_id: LE }] }
+        return { rows: [] }
+      },
+    } as unknown as Parameters<typeof analyzeRetentionRisk>[0])
+    const civ = await analyzeRetentionRisk(poolFor('CIV-2024'), 'tenant_sotra', EID)
+    expect(civ!.factors.some(f => /SMIG/.test(f))).toBe(true)
+    const ben = await analyzeRetentionRisk(poolFor('BEN-2024'), 'tenant_sotra', EID)
+    expect(ben!.factors.some(f => /SMIG/.test(f))).toBe(false)
+  })
+
   it('borne le score à 100 et classe les bandes', async () => {
     const r = await analyzeRetentionRisk(fakePool({
       emp: { id: EID, hire_date: recentHire, base_salary: '60000' },

@@ -92,6 +92,16 @@ describe('screeningRepo — décision', () => {
     expect(String(queryMock.mock.calls[0]![0])).toMatch(/AND screening_decision IS NULL/)
   })
 
+  it('écarter pose le motif structuré et historise l’étape dans la même instruction', async () => {
+    queryMock.mockResolvedValue({ rows: [{ id: APP, screening_verdict: 'flagged' }] })
+    await screeningRepo('tenant_sotra').decide(APP, 'dismissed', 'Pas de permis B', USER)
+    expect(queryMock).toHaveBeenCalledTimes(1)
+    const sql = String(queryMock.mock.calls[0]![0]).replace(/\s+/g, ' ')
+    expect(sql).toContain("WHEN a.screening_verdict = 'flagged' THEN 'rejected_auto_screening' ELSE 'rejected_profile'")
+    expect(sql).toContain('INSERT INTO "tenant_sotra".application_stage_history')
+    expect(sql).toMatch(/prev\.stage IS DISTINCT FROM upd\.stage/)
+  })
+
   it('renvoie null quand rien n’a été mis à jour', async () => {
     queryMock.mockResolvedValue({ rows: [] })
     const r = await screeningRepo('tenant_sotra').decide(APP, 'kept', null, USER)

@@ -45,6 +45,7 @@ const PREFIX: Record<string, string> = {
   'careers/careers.routes.ts': '/careers',
   'settings/settings.routes.ts': '/settings',
   'contracts/contracts.routes.ts': '/contracts',
+  'contracts/signed-contracts.routes.ts': '/contracts/signed',
   'ai/ai.routes.ts': '/ai',
   'referentiels/referentiels.routes.ts': '/referentiels',
   'agency/agency.routes.ts': '/agency',

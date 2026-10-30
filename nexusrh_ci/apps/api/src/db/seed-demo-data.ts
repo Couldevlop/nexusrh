@@ -663,7 +663,7 @@ export async function seedDisaFromPayslips(
       `INSERT INTO "${schema}".disa_records
          (year, employees_count, masse_salariale, total_cnps, total_its, data, status)
        VALUES ($1,$2,$3,$4,$5,$6,'generated')
-       ON CONFLICT (year) DO NOTHING`,
+       ON CONFLICT (year, legal_entity_id) DO NOTHING`,
       [year, agg.rows.length, masse, cnps, its, JSON.stringify(agg.rows)],
     )
   } catch { /* non bloquant */ }

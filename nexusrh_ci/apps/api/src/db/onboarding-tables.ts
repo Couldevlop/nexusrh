@@ -84,5 +84,12 @@ export function onboardingTableStatements(schemaName: string): string[] {
       updated_at   timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_onb_steps_journey ON ${s}.onboarding_steps(journey_id)`,
+    // Modèle standard intégré (créé à la demande, éditable comme les autres) :
+    // `builtin_key` l'identifie de façon stable pour ne jamais le dupliquer.
+    `ALTER TABLE ${s}.onboarding_templates ADD COLUMN IF NOT EXISTS builtin_key varchar(40)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_onb_tpl_builtin ON ${s}.onboarding_templates(builtin_key) WHERE builtin_key IS NOT NULL`,
+    // Parcours issu d'une embauche (recrutement) : un seul parcours par candidature.
+    `ALTER TABLE ${s}.onboarding_journeys ADD COLUMN IF NOT EXISTS application_id uuid`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_onb_journeys_application ON ${s}.onboarding_journeys(application_id) WHERE application_id IS NOT NULL`,
   ]
 }

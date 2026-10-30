@@ -53,6 +53,7 @@ import reportingRoutes    from './modules/reporting/reporting.routes.js'
 import careersRoutes      from './modules/careers/careers.routes.js'
 import settingsRoutes     from './modules/settings/settings.routes.js'
 import contractsRoutes    from './modules/contracts/contracts.routes.js'
+import signedContractsRoutes from './modules/contracts/signed-contracts.routes.js'
 import aiRoutes           from './modules/ai/ai.routes.js'
 import { referentielsRoutes } from './modules/referentiels/referentiels.routes.js'
 import agencyRoutes       from './modules/agency/agency.routes.js'
@@ -398,6 +399,8 @@ export async function buildApp() {
   await fastify.register(careersRoutes,     { prefix: '/careers' })
   await fastify.register(settingsRoutes,    { prefix: '/settings' })
   await fastify.register(contractsRoutes,   { prefix: '/contracts' })
+  // Contrat signé : dépôt RH/manager + « Mon contrat » dans l'espace employé (option tenant).
+  await fastify.register(signedContractsRoutes, { prefix: '/contracts/signed' })
   await fastify.register(aiRoutes,          { prefix: '/ai' })
   await fastify.register(referentielsRoutes, { prefix: '/referentiels' })
   await fastify.register(agencyRoutes,       { prefix: '/agency' })

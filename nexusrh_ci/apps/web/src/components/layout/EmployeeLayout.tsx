@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom'
-import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare, Clock, AlertTriangle, ListChecks, LayoutDashboard } from 'lucide-react'
+import { Home, Calendar, FileText, User, LogOut, Receipt, BookOpen, TrendingUp, Menu, X, Briefcase, Rocket, MessageSquare, Clock, AlertTriangle, ListChecks, LayoutDashboard, FileSignature } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
 import { usePendingApprovals } from '@/components/approvals/workflow'
+import { useSignedContractOptions } from '@/lib/signed-contracts'
 
 interface EmployeeNavItem {
   to: string
@@ -16,6 +17,8 @@ interface EmployeeNavItem {
   end?: boolean
   /** Module activable : entrée MASQUÉE si le module est désactivé pour le tenant. */
   moduleKey?: ModuleKey
+  /** Option tenant (Paramètres) : entrée MASQUÉE si l'admin ne l'a pas activée. */
+  option?: 'employeeContractAccess'
 }
 
 const NAV: EmployeeNavItem[] = [
@@ -25,6 +28,7 @@ const NAV: EmployeeNavItem[] = [
   { to: '/mon-espace/pointages',    labelKey: 'nav.attendance',  icon: Clock, moduleKey: 'attendance' },
   { to: '/mon-espace/avertissements', labelKey: 'nav.attendanceWarnings', icon: AlertTriangle, moduleKey: 'attendance' },
   { to: '/mon-espace/bulletins',    labelKey: 'nav.payslips',    icon: FileText },
+  { to: '/mon-espace/contrat',      labelKey: 'nav.contract',    icon: FileSignature, moduleKey: 'contracts', option: 'employeeContractAccess' },
   { to: '/mon-espace/frais',        labelKey: 'nav.expenses',    icon: Receipt },
   { to: '/mon-espace/formation',    labelKey: 'nav.training',    icon: BookOpen },
   { to: '/mon-espace/carriere',     labelKey: 'nav.career',      icon: TrendingUp },
@@ -46,6 +50,7 @@ const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/mon-espace/pointages': 'nav.titles.attendance',
   '/mon-espace/avertissements': 'nav.titles.attendanceWarnings',
   '/mon-espace/bulletins': 'nav.titles.payslips',
+  '/mon-espace/contrat': 'nav.titles.contract',
   '/mon-espace/frais': 'nav.titles.expenses',
   '/mon-espace/formation': 'nav.titles.training',
   '/mon-espace/carriere': 'nav.titles.career',
@@ -66,7 +71,9 @@ export default function EmployeeLayout() {
     : 'RH'
   // Module activable (ex. Badgeuse/Pointage, désactivé par défaut) : entrée
   // masquée si le tenant n'a pas activé le module — piloté par le super_admin.
-  const moduleNav = NAV.filter((item) => !item.moduleKey || isModuleEnabled(tenantConfig, item.moduleKey))
+  const { data: contractOptions } = useSignedContractOptions(!!user)
+  const moduleNav = NAV.filter((item) => (!item.moduleKey || isModuleEnabled(tenantConfig, item.moduleKey))
+    && (!item.option || contractOptions?.[item.option] === true))
   const isEmployee = user?.role === 'employee'
   const { data: pending } = usePendingApprovals(!!user)
   const pendingCount = (pending?.summary?.actionable ?? 0) + (pending?.summary?.readOnly ?? 0)
