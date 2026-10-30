@@ -326,7 +326,9 @@ describe('GET /cnps/disa — liste DISA annuelles', () => {
   })
 
   it('liste DISA → 200', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ year: 2024 }] })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ has_subsidiaries: false }] }) // tenant mono-entité
+      .mockResolvedValueOnce({ rows: [{ year: 2024 }] })
     const res = await app.inject({
       method: 'GET', url: '/cnps/disa', headers: authHeaders(app, 'readonly'),
     })
@@ -992,7 +994,7 @@ describe('GET /cnps/audit-conformite — audit conformité 360°', () => {
         nni: '', cnps_number: '', hire_date: '2020-01-01', exit_date: null,
         mobile_money_provider: null, mobile_money_phone: null,
         contract_type: 'cdi', department_name: '',
-        net_payable: '50000', gross_salary: '50000', mois_ref: '2024-01',
+        net_payable: '50000', gross_salary: '50000', base_salary: '50000', mois_ref: '2024-01',
       }],
     })
     const res = await app.inject({

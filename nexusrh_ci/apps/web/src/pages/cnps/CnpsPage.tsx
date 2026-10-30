@@ -23,6 +23,31 @@ function isCivEntity(le: Pick<LegalEntity, 'country_code' | 'legislation_pack_co
 
 type ApiError = { response?: { data?: { error?: string } } }
 
+/**
+ * Message d'erreur de l'API, y compris pour un téléchargement (responseType
+ * 'blob' : le corps JSON de l'erreur arrive alors sous forme de Blob).
+ */
+async function apiErrorMessage(e: unknown, fallback: string): Promise<string> {
+  const data = (e as { response?: { data?: unknown } })?.response?.data
+  if (data instanceof Blob) {
+    try {
+      const text = typeof data.text === 'function'
+        ? await data.text()
+        : await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result ?? ''))
+            reader.onerror = () => reject(reader.error)
+            reader.readAsText(data)
+          })
+      const parsed = JSON.parse(text) as { error?: unknown }
+      if (typeof parsed.error === 'string' && parsed.error) return parsed.error
+    } catch { /* corps non JSON : message par défaut */ }
+    return fallback
+  }
+  const msg = (data as { error?: unknown } | undefined)?.error
+  return typeof msg === 'string' && msg ? msg : fallback
+}
+
 interface CnpsDeclaration {
   id: string; year: number; quarter: number; months: string[]
   total_cotisations_salariales: string; total_cotisations_patronales: string
@@ -66,6 +91,8 @@ export default function CnpsPage() {
   const [validateError, setValidateError] = useState<string | null>(null)
   const [rnsYear, setRnsYear] = useState(currentYear)
   const [rnsLoading, setRnsLoading] = useState<'pdf' | 'csv' | null>(null)
+  const [rnsError, setRnsError] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
   // CNP-004/005 — DISA annuelle (génération + export CSV)
   const [disaYear, setDisaYear] = useState(currentYear)
   const [disaLoading, setDisaLoading] = useState<'generate' | 'csv' | null>(null)
@@ -82,10 +109,15 @@ export default function CnpsPage() {
   const selectedEntity = legalEntities.find(le => le.id === legalEntityId)
   const scopedEntityId = hasSubsidiaries && selectedEntity && isCivEntity(selectedEntity) ? selectedEntity.id : ''
   const monthValue = `${year}-${String(declMonth).padStart(2, '0')}`
+  // Multi-filiales : chaque n° CNPS employeur a ses propres déclarations, NEVA,
+  // RNS et DISA → toutes les actions de la page portent sur la filiale choisie.
+  const subsidiaryMissing = hasSubsidiaries && !scopedEntityId
+  const entityParams: Record<string, string> = scopedEntityId ? { legalEntityId: scopedEntityId } : {}
 
   const { data: declsData, isLoading } = useQuery<{ data: CnpsDeclaration[] }>({
-    queryKey: ['cnps-declarations', year],
-    queryFn: () => api.get(`/cnps/declarations?year=${year}`).then(r => r.data),
+    queryKey: ['cnps-declarations', year, scopedEntityId],
+    queryFn: () => api.get('/cnps/declarations', { params: { year, ...entityParams } }).then(r => r.data),
+    enabled: !subsidiaryMissing,
   })
 
   // Tuiles : périmètre CNPS CI (filiales étrangères exclues côté API), filtrées
@@ -137,25 +169,31 @@ export default function CnpsPage() {
       setValidating(false)
     }
   }
-  const subsidiaryMissing = hasSubsidiaries && !scopedEntityId
-
   const handleExport = async (id: string, qtr: number, format: 'csv' | 'neva' = 'csv') => {
-    const url = format === 'neva' ? `/cnps/declarations/${id}/neva` : `/cnps/declarations/${id}/export`
-    const res = await api.get(url, { responseType: 'blob' })
-    const blobUrl = URL.createObjectURL(res.data as Blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = format === 'neva' ? `NEVA_CNPS_${year}_T${qtr}.xml` : `CNPS_${year}_T${qtr}.csv`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
+    setExportError(null)
+    try {
+      // NEVA : en-tête employeur = filiale choisie (son n° CNPS), vérifié côté API.
+      const res = format === 'neva'
+        ? await api.get(`/cnps/declarations/${id}/neva`, { responseType: 'blob', params: entityParams })
+        : await api.get(`/cnps/declarations/${id}/export`, { responseType: 'blob' })
+      const blobUrl = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = format === 'neva' ? `NEVA_CNPS_${year}_T${qtr}.xml` : `CNPS_${year}_T${qtr}.csv`
+      a.click()
+      URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      setExportError(await apiErrorMessage(e, t('declarations.exportError', "Échec de l'export de la déclaration.")))
+    }
   }
 
   const handleRnsDownload = async (format: 'pdf' | 'csv') => {
     setRnsLoading(format)
+    setRnsError(null)
     try {
       const res = await api.get(
         format === 'pdf' ? `/cnps/rns/${rnsYear}/pdf` : `/cnps/rns/${rnsYear}/export`,
-        { responseType: 'blob' }
+        { responseType: 'blob', params: entityParams }
       )
       const blobUrl = URL.createObjectURL(res.data as Blob)
       const a = document.createElement('a')
@@ -165,6 +203,8 @@ export default function CnpsPage() {
         : `RNS_CNPS_${rnsYear}_eCNPS.csv`
       a.click()
       URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      setRnsError(await apiErrorMessage(e, t('rns.error', 'Échec du téléchargement du RNS.')))
     } finally {
       setRnsLoading(null)
     }
@@ -179,20 +219,20 @@ export default function CnpsPage() {
       const n = (res.data as { data?: { employeesCount?: number } })?.data?.employeesCount
       setDisaMsg(t('disa.generated', { count: n ?? 0, year: disaYear, defaultValue: `DISA ${disaYear} générée (${n ?? 0} salariés).` }))
     } catch (e) {
-      setDisaMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('disa.error', 'Échec de la génération DISA.'))
+      setDisaMsg(await apiErrorMessage(e, t('disa.error', 'Échec de la génération DISA.')))
     } finally { setDisaLoading(null) }
   }
-  // CNP-005 — export DISA CSV
+  // CNP-005 — export DISA CSV (celle de la filiale choisie en multi-filiales)
   const handleDisaExport = async () => {
     setDisaLoading('csv')
     try {
-      const res = await api.get(`/cnps/disa/${disaYear}/export`, { responseType: 'blob' })
+      const res = await api.get(`/cnps/disa/${disaYear}/export`, { responseType: 'blob', params: entityParams })
       const blobUrl = URL.createObjectURL(res.data as Blob)
       const a = document.createElement('a')
       a.href = blobUrl; a.download = `DISA_${disaYear}_CNPS.csv`; a.click()
       URL.revokeObjectURL(blobUrl)
     } catch (e) {
-      setDisaMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t('disa.exportError', 'Aucune DISA pour cette année — générez-la d\'abord.'))
+      setDisaMsg(await apiErrorMessage(e, t('disa.exportError', 'Aucune DISA pour cette année — générez-la d\'abord.')))
     } finally { setDisaLoading(null) }
   }
 
@@ -204,6 +244,39 @@ export default function CnpsPage() {
           {t('page.subtitle')}
         </p>
       </div>
+
+      {/* ── Filiale (multi-filiales) : périmètre de TOUTES les actions ───────── */}
+      {hasSubsidiaries && (
+        <div className="rounded-xl border border-border bg-card p-4 flex items-end gap-4 flex-wrap">
+          <div>
+            <label className="text-sm font-medium mb-1 flex items-center gap-1">
+              <Building2 className="h-3 w-3" /> {t('validator.subsidiary')} <span className="text-red-500">*</span>
+            </label>
+            <select
+              aria-label={t('validator.subsidiary')}
+              value={scopedEntityId}
+              onChange={e => { setLegalEntityId(e.target.value); setValidation(null); setValidateError(null); setRnsError(null); setExportError(null); setDisaMsg(null) }}
+              className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[220px]"
+            >
+              <option value="">{t('validator.chooseSubsidiary')}</option>
+              {legalEntities.map(le => {
+                const civ = isCivEntity(le)
+                return (
+                  <option key={le.id} value={le.id} disabled={!civ}>
+                    {le.name}
+                    {civ
+                      ? (le.cnps_number ? ` ${t('validator.subsidiaryCnps', { number: le.cnps_number })}` : '')
+                      : ` — ${t('validator.countryNotSupported', 'déclaration non prise en charge pour ce pays')}`}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-xl pb-1">
+            {t('scope.hint', 'Chaque numéro CNPS employeur a ses propres déclarations, fichiers NEVA, RNS et DISA : choisissez la filiale concernée.')}
+          </p>
+        </div>
+      )}
 
       {/* ── Relevé Nominatif des Salaires ─────────────────────────────────── */}
       <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-5">
@@ -242,7 +315,7 @@ export default function CnpsPage() {
 
             <button
               onClick={() => void handleRnsDownload('pdf')}
-              disabled={rnsLoading !== null}
+              disabled={rnsLoading !== null || subsidiaryMissing}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {rnsLoading === 'pdf'
@@ -253,7 +326,7 @@ export default function CnpsPage() {
 
             <button
               onClick={() => void handleRnsDownload('csv')}
-              disabled={rnsLoading !== null}
+              disabled={rnsLoading !== null || subsidiaryMissing}
               className="flex items-center gap-2 rounded-lg border border-primary bg-background px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50 transition-colors"
             >
               {rnsLoading === 'csv'
@@ -263,6 +336,10 @@ export default function CnpsPage() {
             </button>
           </div>
         </div>
+
+        {rnsError && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{rnsError}</p>
+        )}
 
         {/* Rappel réglementaire */}
         <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
@@ -292,12 +369,12 @@ export default function CnpsPage() {
               className="rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-ring outline-none">
               {[currentYear, currentYear - 1, currentYear - 2].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            <button onClick={() => void handleDisaGenerate()} disabled={disaLoading !== null}
+            <button onClick={() => void handleDisaGenerate()} disabled={disaLoading !== null || subsidiaryMissing}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
               {disaLoading === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               {t('disa.generate', 'Générer la DISA')}
             </button>
-            <button onClick={() => void handleDisaExport()} disabled={disaLoading !== null}
+            <button onClick={() => void handleDisaExport()} disabled={disaLoading !== null || subsidiaryMissing}
               className="flex items-center gap-2 rounded-lg border border-primary bg-background px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50">
               {disaLoading === 'csv' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {t('disa.exportCsv', 'Exporter (CSV)')}
@@ -375,33 +452,6 @@ export default function CnpsPage() {
                 <option value={2}>{t('validator.quarterOptions.q2')}</option>
                 <option value={3}>{t('validator.quarterOptions.q3')}</option>
                 <option value={4}>{t('validator.quarterOptions.q4')}</option>
-              </select>
-            </div>
-          )}
-
-          {hasSubsidiaries && (
-            <div>
-              <label className="text-sm font-medium mb-1 flex items-center gap-1">
-                <Building2 className="h-3 w-3" /> {t('validator.subsidiary')} <span className="text-red-500">*</span>
-              </label>
-              <select
-                aria-label={t('validator.subsidiary')}
-                value={scopedEntityId}
-                onChange={e => { setLegalEntityId(e.target.value); setValidation(null); setValidateError(null) }}
-                className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none min-w-[220px]"
-              >
-                <option value="">{t('validator.chooseSubsidiary')}</option>
-                {legalEntities.map(le => {
-                  const civ = isCivEntity(le)
-                  return (
-                    <option key={le.id} value={le.id} disabled={!civ}>
-                      {le.name}
-                      {civ
-                        ? (le.cnps_number ? ` ${t('validator.subsidiaryCnps', { number: le.cnps_number })}` : '')
-                        : ` — ${t('validator.countryNotSupported', 'déclaration non prise en charge pour ce pays')}`}
-                    </option>
-                  )
-                })}
               </select>
             </div>
           )}
@@ -504,7 +554,11 @@ export default function CnpsPage() {
           </select>
         </div>
 
-        {isLoading ? (
+        {exportError && (
+          <p role="alert" className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{exportError}</p>
+        )}
+
+        {isLoading && !subsidiaryMissing ? (
           <div className="flex items-center justify-center p-8">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
@@ -562,7 +616,9 @@ export default function CnpsPage() {
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     <FileText className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    {t('declarations.empty', { year })}
+                    {subsidiaryMissing
+                      ? t('scope.chooseFirst', 'Choisissez une filiale pour afficher ses déclarations.')
+                      : t('declarations.empty', { year })}
                   </td>
                 </tr>
               )}

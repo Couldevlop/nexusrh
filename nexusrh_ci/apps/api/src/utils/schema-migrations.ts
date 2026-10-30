@@ -6,6 +6,7 @@ import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
+import { disaPerEntityStatements } from '../db/disa-records.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -231,9 +232,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // + ON CONFLICT (year)). NE PAS revenir à une shape par-employé : la
     // divergence cassait generate (42703) et l'export DISA (CSV vide) sur tout
     // tenant dont la table aurait été matérialisée par cette migration.
+    // Unicité = (year, legal_entity_id) — index créé plus bas (multi-filiales).
     `CREATE TABLE IF NOT EXISTS "${schemaName}".disa_records (
       id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      year             int NOT NULL UNIQUE,
+      year             int NOT NULL,
+      legal_entity_id  uuid,
       employees_count  int DEFAULT 0,
       masse_salariale  numeric(14,0) DEFAULT 0,
       total_cnps       numeric(14,0) DEFAULT 0,
@@ -268,6 +271,7 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON "${schemaName}".pay_slips(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON "${schemaName}".cnps_declarations(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON "${schemaName}".disa_records(legal_entity_id)`,
+    ...disaPerEntityStatements(schemaName),
     `CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON "${schemaName}".pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`,
     // Bascule de la clé d'unicité paie : UNIQUE(month) plein → (month, legal_entity_id)
     // NULLS NOT DISTINCT. Indispensable pour insérer parent + déclinaisons site

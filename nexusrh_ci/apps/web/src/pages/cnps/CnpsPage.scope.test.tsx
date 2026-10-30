@@ -144,6 +144,94 @@ describe('CnpsPage — validateur pré-DSN multi-filiales', () => {
   })
 })
 
+describe('CnpsPage — NEVA / RNS / DISA scopés sur la filiale', () => {
+  const DECL_ID = '99999999-9999-4999-8999-999999999999'
+
+  beforeEach(() => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+  })
+
+  function setupWithDeclarations() {
+    setup()
+    getMock.mockImplementation((url: string) => {
+      if (url === '/settings/legal-entities') return Promise.resolve({ data: { data: ENTITIES } })
+      if (url === '/cnps/declarations') {
+        return Promise.resolve({ data: { data: [{
+          id: DECL_ID, year: 2026, quarter: 2, months: ['2026-04', '2026-05', '2026-06'],
+          total_cotisations_salariales: '1', total_cotisations_patronales: '1', total_cotisations: '2',
+          masse_salariale: '10', employees_count: 1, status: 'draft', submitted_at: null,
+        }] } })
+      }
+      if (url === '/cnps/summary') return Promise.resolve({ data: { data: [], totals: {}, year: 2026 } })
+      return Promise.resolve({ data: new Blob(['ok']) })
+    })
+  }
+
+  it('sans filiale : RNS, DISA désactivés et liste des déclarations non chargée', async () => {
+    setupWithDeclarations()
+    await screen.findByRole('option', { name: /SOTRA Abidjan/ })
+    for (const name of [/rns.downloadPdf/, /rns.exportCsv/, /Générer la DISA/, /Exporter \(CSV\)/]) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true)
+    }
+    expect(getMock.mock.calls.some(([url]) => url === '/cnps/declarations')).toBe(false)
+    expect(screen.getByText('Choisissez une filiale pour afficher ses déclarations.')).toBeTruthy()
+  })
+
+  it('NEVA : la filiale choisie est transmise, la liste est filtrée sur elle', async () => {
+    setupWithDeclarations()
+    await screen.findByRole('option', { name: /SOTRA Abidjan/ })
+    fireEvent.change(screen.getByRole('combobox', { name: 'validator.subsidiary' }), { target: { value: ABJ } })
+
+    await waitFor(() => {
+      const list = getMock.mock.calls.find(([url]) => url === '/cnps/declarations')
+      expect(list?.[1]).toEqual({ params: { year: new Date().getFullYear(), legalEntityId: ABJ } })
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /NEVA/ }))
+    await waitFor(() => {
+      const neva = getMock.mock.calls.find(([url]) => url === `/cnps/declarations/${DECL_ID}/neva`)
+      expect(neva?.[1]).toEqual({ responseType: 'blob', params: { legalEntityId: ABJ } })
+    })
+  })
+
+  it('NEVA refusé par l’API (déclaration d’une autre filiale) : message affiché', async () => {
+    setupWithDeclarations()
+    const base = getMock.getMockImplementation()!
+    getMock.mockImplementation((url: string, opts?: unknown) => {
+      if (url.endsWith('/neva')) {
+        return Promise.reject({ response: { data: new Blob([JSON.stringify({ error: 'Cette déclaration n\'a pas été générée pour la filiale « SOTRA Abidjan »' })]) } })
+      }
+      return base(url, opts)
+    })
+    await screen.findByRole('option', { name: /SOTRA Abidjan/ })
+    fireEvent.change(screen.getByRole('combobox', { name: 'validator.subsidiary' }), { target: { value: ABJ } })
+    fireEvent.click(await screen.findByRole('button', { name: /NEVA/ }))
+    expect((await screen.findByRole('alert')).textContent).toContain('pas été générée pour la filiale')
+  })
+
+  it('RNS et DISA : téléchargements et génération pour la filiale choisie', async () => {
+    setupWithDeclarations()
+    postMock.mockResolvedValue({ data: { data: { employeesCount: 3 } } })
+    await screen.findByRole('option', { name: /SOTRA Bouaké/ })
+    fireEvent.change(screen.getByRole('combobox', { name: 'validator.subsidiary' }), { target: { value: BKE } })
+
+    fireEvent.click(screen.getByRole('button', { name: /rns.downloadPdf/ }))
+    await waitFor(() => {
+      const rns = getMock.mock.calls.find(([url]) => String(url).startsWith('/cnps/rns/') && String(url).endsWith('/pdf'))
+      expect(rns?.[1]).toEqual({ responseType: 'blob', params: { legalEntityId: BKE } })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Générer la DISA/ }))
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/cnps/disa/generate', { year: new Date().getFullYear(), legalEntityId: BKE }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Exporter \(CSV\)/ }))
+    await waitFor(() => {
+      const disa = getMock.mock.calls.find(([url]) => String(url).startsWith('/cnps/disa/') && String(url).endsWith('/export'))
+      expect(disa?.[1]).toEqual({ responseType: 'blob', params: { legalEntityId: BKE } })
+    })
+  })
+})
+
 describe('CnpsPage — tenant mono-entité', () => {
   it('valide sans filiale ni chargement des entités ; tuiles sans filtre filiale', async () => {
     setup(false)

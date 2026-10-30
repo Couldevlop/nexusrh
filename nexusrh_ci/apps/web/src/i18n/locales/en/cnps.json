@@ -3,7 +3,12 @@
     "title": "CNPS & DISA",
     "subtitle": "Quarterly e-CNPS declarations · Annual DISA (law 99-477)"
   },
+  "scope": {
+    "hint": "Each employer CNPS number has its own declarations, NEVA files, RNS and DISA: choose the relevant subsidiary.",
+    "chooseFirst": "Choose a subsidiary to display its declarations."
+  },
   "rns": {
+    "error": "RNS download failed.",
     "title": "Nominative Salary Statement",
     "intro": "Official CNPS form <code>EN-GDAV-06 v03</code> — pre-filled with your payroll data. To be filed on <strong>e-CNPS</strong> (<link>ecnps.ci</link>) before the <strong>15th of month M+1</strong>.",
     "downloadPdf": "Download PDF",
@@ -56,7 +61,8 @@
     "statusSubmitted": "Submitted",
     "statusDraft": "Draft",
     "submit": "Submit",
-    "empty": "No declaration for {{year}}"
+    "empty": "No declaration for {{year}}",
+    "exportError": "Declaration export failed."
   },
   "audit": {
     "title": "Social compliance audit",
@@ -66,6 +72,26 @@
     "refresh": "Refresh",
     "analyzing": "Analysis in progress…",
     "noData": "No data available",
+    "scope": {
+      "label": "Subsidiary",
+      "all": "All subsidiaries",
+      "nonCiv": "Subsidiary \"{{name}}\" outside Côte d'Ivoire: CNPS checks (registration, declarations, ceilings) do not apply. SMIG from pack {{pack}}."
+    },
+    "filiales": {
+      "title": "Breakdown by subsidiary",
+      "subtitle": "SMIG from each subsidiary's pack; CNPS checks apply to Ivorian subsidiaries only.",
+      "name": "Subsidiary",
+      "pack": "Country / pack",
+      "employees": "Employees",
+      "withoutCnps": "Without NNI / CNPS",
+      "belowSmig": "Below SMIG",
+      "smigOf": "SMIG {{value}}",
+      "grossPayroll": "Gross payroll",
+      "blockers": "Blockers",
+      "notApplicable": "n/a",
+      "unassigned": "Unassigned employees",
+      "audit": "Audit"
+    },
     "tabs": {
       "overview": "Overview",
       "salaries": "Employees",
@@ -83,7 +109,7 @@
       "blockers": "{{count}} blocker(s)",
       "warnings": "{{count}} warning(s)",
       "activeEmployees": "{{count}} active employees",
-      "smig": "SMIG {{value}} FCFA",
+      "smig": "SMIG {{value}}",
       "cnpsRegistration": "CNPS registration",
       "smigCompliant": "SMIG compliant",
       "mobileMoney": "Mobile Money",
@@ -169,7 +195,8 @@
       "checkCnpsLabel": "CNPS registration",
       "checkCnpsDesc": "NNI and CNPS number of each employee",
       "checkSmigLabel": "SMIG compliance",
-      "checkSmigDesc": "Net payable ≥ {{value}} FCFA",
+      "checkSmigDesc": "Base salary (full-time) ≥ {{value}}",
+      "smigByCountry": "SMIG of the employee's country",
       "checkDeclLabel": "Monthly declarations",
       "checkDeclDesc": "Presence and status of e-CNPS",
       "checkMobileLabel": "Mobile Money",

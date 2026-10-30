@@ -2,6 +2,7 @@ import { assertValidSchemaName } from '../utils/schema-name.js'
 import { onboardingTableStatements } from './onboarding-tables.js'
 import { classificationTableStatements } from './classification-defaults.js'
 import { payrollReminderTableStatements } from './payroll-reminders.js'
+import { disaPerEntityStatements } from './disa-records.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 
@@ -626,9 +627,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`ALTER TABLE ${s}.cnps_declarations ADD COLUMN IF NOT EXISTS period_month varchar(7)`)
   await q(`ALTER TABLE ${s}.cnps_declarations DROP CONSTRAINT IF EXISTS cnps_declarations_year_quarter_key`)
 
+  // Unicité = (year, legal_entity_id) — cf. disaPerEntityStatements (plus bas).
   await q(`CREATE TABLE IF NOT EXISTS ${s}.disa_records (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    year             int NOT NULL UNIQUE,
+    year             int NOT NULL,
+    legal_entity_id  uuid,
     employees_count  int DEFAULT 0,
     masse_salariale  numeric(14,0) DEFAULT 0,
     total_cnps       numeric(14,0) DEFAULT 0,
@@ -1291,6 +1294,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON ${s}.pay_slips(legal_entity_id)`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON ${s}.cnps_declarations(legal_entity_id)`)
   await q(`CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON ${s}.disa_records(legal_entity_id)`)
+  // DISA par filiale : UNIQUE(year) → (year, legal_entity_id) + FK legal_entities.
+  for (const stmt of disaPerEntityStatements(schemaName)) await q(stmt)
 
   // ── Workflow paie centralisé multi-sites (Palier 3) ──────────────────────────
   // Étend pay_periods pour supporter le cycle draft_central → sent_to_sites →
