@@ -12,7 +12,7 @@ import {
   invalidateOfflineStatusCache,
 } from '../../services/offline-status.service.js'
 import { createTenantWithSchema, TenantSlugConflictError, PLAN_DEFAULTS } from '../../services/tenant-provisioning.service.js'
-import { listLegislationPacks, LEGISLATION_PACKS, applyPackOverride, COUNTRY_LABELS } from '../../services/legislation-packs.js'
+import { listLegislationPacks, LEGISLATION_PACKS, applyPackOverride, COUNTRY_LABELS, getPackByCountry } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import {
   MODULE_KEYS,
@@ -24,6 +24,12 @@ import {
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { auditPlatform } from '../../utils/audit-log.js'
+
+// Codes pays ISO-2 de platform.country_configs → ISO-3 des packs de législation.
+const ISO2_TO_ISO3: Record<string, string> = {
+  CI: 'CIV', SN: 'SEN', BJ: 'BEN', TG: 'TGO', BF: 'BFA', ML: 'MLI',
+  NE: 'NER', CM: 'CMR', TD: 'TCD', NG: 'NGA', GH: 'GHA',
+}
 
 // ─── Schémas Zod (OWASP A03 Injection + A05 Misconfiguration) ───────────────
 // Validation systématique des bodies. Le error handler global mappe ZodError
@@ -1303,7 +1309,14 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       `).catch(() => null)
 
       const res = await pool.query(`SELECT * FROM platform.country_configs ORDER BY is_active DESC, country_name`).catch(() => ({ rows: [] }))
-      return reply.send({ data: res.rows })
+      // Le SMIG affiché vient du pack de législation (source de vérité de la paie),
+      // jamais de la valeur figée dans config : sinon la plateforme montre un SMIG
+      // différent de celui réellement appliqué (ex. SN 69 120 vs 64 710, TG 35 000 vs 52 500).
+      const rows = (res.rows as Array<{ country_code: string; config: Record<string, unknown> | null }>).map((row) => {
+        const pack = getPackByCountry(ISO2_TO_ISO3[row.country_code] ?? row.country_code)
+        return pack ? { ...row, config: { ...(row.config ?? {}), smig: pack.smigMensuel } } : row
+      })
+      return reply.send({ data: rows })
     },
   })
 
