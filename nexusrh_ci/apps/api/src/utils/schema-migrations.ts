@@ -8,6 +8,7 @@ import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
 import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
+import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -59,6 +60,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // dans un bucket public). Une nouvelle version n'écrase rien : l'ancienne
     // passe is_current = false (historique conservé).
     ...employeeDocumentsTableStatements(schemaName),
+    // ── Propositions de contrat (recrutement), versionnées ──────────────────
+    ...contractProposalsTableStatements(schemaName),
+    // Reprise : la proposition générée au recrutement avait été versée en
+    // `signed_contract` → re-catégorisée `contract_proposal` (idempotent).
+    ...contractProposalRecategorizeStatements(schemaName),
     // Rétro-compat : RAPATRIEMENT des photos déjà publiées dans le bucket public.
     // 1) copie des octets depuis platform.brand_assets vers le schéma du tenant.
     `INSERT INTO "${schemaName}".employee_photos (employee_id, mime, bytes, size_bytes)
@@ -993,6 +999,9 @@ export async function ensurePlatformSchema(): Promise<void> {
     // pour les tenants existants. Cf. modules/contracts/signed-contracts.routes.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_contract_access boolean NOT NULL DEFAULT false`,
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`,
+    // Génération de PROPOSITION de contrat au recrutement (opt-in, admin tenant).
+    // DEFAULT false + lecture fail-closed : cf. contract-proposal.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`,
 
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,

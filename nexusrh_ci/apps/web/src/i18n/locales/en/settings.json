@@ -163,6 +163,8 @@
     "climateAnonymity": "Social climate surveys — anonymity",
     "climateMinResponsesLabel": "Minimum number of responses before results are shown",
     "climateMinResponsesHint": "Below this threshold (2 to 100, default 5), no score or comment is shown, including by department or subsidiary.",
+    "contractGenerationLabel": "Contract proposal generation",
+    "contractGenerationHint": "On: HR can generate, during recruitment, a contract proposal with the company's colours, logo and legal details (or those of the job's subsidiary), edit it and keep its versions. It remains an unsigned proposal, distinct from the signed contract uploaded in the employee's file.",
     "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employees",
     "save": "Save",
     "saving": "Saving...",

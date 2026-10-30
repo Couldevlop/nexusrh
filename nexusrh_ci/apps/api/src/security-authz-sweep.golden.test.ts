@@ -66,6 +66,7 @@ const PREFIX: Record<string, string> = {
   'bank-transfer/bank-transfer.routes.ts': '/bank-transfer',
   'recruitment/recruitment.routes.ts': '/recruitment',
   'recruitment/screening.routes.ts': '/recruitment',
+  'recruitment/contract-proposal.routes.ts': '/recruitment',
   'training/training.routes.ts': '/training',
   'expenses/expenses.routes.ts': '/expenses',
   'reporting/reporting.routes.ts': '/reporting',

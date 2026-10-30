@@ -127,6 +127,8 @@ const patchTenantSchema = z.object({
   // Contrat signé : consultable par l'employé (/mon-espace) / déposable par le manager.
   employee_contract_access: z.boolean().optional(),
   manager_contract_upload:  z.boolean().optional(),
+  // Génération de proposition de contrat au recrutement (opt-in).
+  contract_generation_enabled: z.boolean().optional(),
   // Expéditeur email configurable par le tenant : adresse "From" des emails
   // envoyés aux membres de la société (création d'accès, réinitialisation).
   // '' / null → repli sur l'expéditeur plateforme.
@@ -274,6 +276,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   COALESCE(manager_scope, 'direct') AS manager_scope,
                   COALESCE(employee_contract_access, false) AS employee_contract_access,
                   COALESCE(manager_contract_upload, false) AS manager_contract_upload,
+                  COALESCE(contract_generation_enabled, false) AS contract_generation_enabled,
                   sender_email, sender_name, climate_min_responses,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
@@ -304,7 +307,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','sender_email','sender_name','climate_min_responses']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','contract_generation_enabled','sender_email','sender_name','climate_min_responses']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}

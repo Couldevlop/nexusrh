@@ -34,6 +34,7 @@ interface TenantSettings {
   manager_scope?: 'direct' | 'hierarchy'
   employee_contract_access?: boolean
   manager_contract_upload?: boolean
+  contract_generation_enabled?: boolean
   sender_email?: string | null; sender_name?: string | null
   /** Seuil d'anonymat des enquêtes climat (valeur effective, défaut 5). */
   climate_min_responses?: number
@@ -740,6 +741,16 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           <span className="text-sm">
             <span className="font-medium">{t('general.managerContractUploadLabel')}</span>
             <span className="block text-xs text-muted-foreground">{t('general.managerContractUploadHint')}</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
+          <input type="checkbox"
+            defaultChecked={!!s.contract_generation_enabled}
+            onChange={e => setForm(p => ({ ...p, contract_generation_enabled: e.target.checked }))}
+            className="mt-0.5 h-4 w-4" />
+          <span className="text-sm">
+            <span className="font-medium">{t('general.contractGenerationLabel')}</span>
+            <span className="block text-xs text-muted-foreground">{t('general.contractGenerationHint')}</span>
           </span>
         </label>
 

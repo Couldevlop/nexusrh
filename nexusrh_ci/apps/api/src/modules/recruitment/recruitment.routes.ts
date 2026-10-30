@@ -30,6 +30,11 @@ import {
 } from './stage-history.js'
 import { hireApplication, getHirePrefill, HireError, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
+import contractProposalRoutes from './contract-proposal.routes.js'
+import {
+  CONTRACT_GENERATION_DISABLED, isContractGenerationEnabled, loadContractEmployer,
+  saveContractProposal, proposalFileName,
+} from './contract-proposal.service.js'
 
 // `extractCvText` et `isMagicByteConsistent` viennent de
 // services/cv-extraction.service.ts. Ce fichier en hébergeait une COPIE locale
@@ -847,15 +852,22 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        // Candidature + offre liée (titre de poste, type de contrat)
+        // Option tenant (admin) — fail-closed : désactivée → 403 explicite.
+        if (!(await isContractGenerationEnabled(schema))) {
+          return reply.status(403).send(CONTRACT_GENERATION_DISABLED)
+        }
+
+        // Candidature + offre liée (titre de poste, type de contrat, filiale)
         const appRes = await pool.query<{
           id: string; first_name: string; last_name: string; stage: string
           job_title: string | null; job_contract_type: string | null
           salary_min: number | null; salary_max: number | null; job_location: string | null
+          job_legal_entity_id?: string | null
         }>(
           `SELECT a.id, a.first_name, a.last_name, a.stage,
                   rj.title AS job_title, rj.contract_type AS job_contract_type,
-                  rj.salary_min, rj.salary_max, rj.location AS job_location
+                  rj.salary_min, rj.salary_max, rj.location AS job_location,
+                  rj.target_legal_entity_id AS job_legal_entity_id
              FROM "${schema}".applications a
              LEFT JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
             WHERE a.id = $1`,
@@ -866,22 +878,22 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.status(404).send({ error: 'Candidature introuvable' })
         }
 
-        // Infos employeur (tenant) : raison sociale, ville, CNPS, RCCM
-        const tenantRes = await pool.query<{
-          name: string; city: string | null; cnps_number: string | null; rccm: string | null
-        }>(
-          `SELECT name, city, cnps_number, rccm FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
-          [schema],
-        )
-        const tenant = tenantRes.rows[0]
+        // Employeur : filiale de l'offre si renseignée, sinon le tenant
+        // (mentions légales + logo + couleur principale pour l'habillage).
+        const employer = await loadContractEmployer(schema, app.job_legal_entity_id ?? null)
+        const legal = employer.legal
 
         const salary = body.salary
           ?? app.salary_max ?? app.salary_min ?? undefined
         const { title, markdown } = generateHRDocument({
           type: body.type as HrDocumentType,
-          tenantName: tenant?.name,
-          city: tenant?.city ?? app.job_location ?? undefined,
-          employer: { cnpsNumber: tenant?.cnps_number ?? undefined, rccm: tenant?.rccm ?? undefined },
+          tenantName: legal.name,
+          city: legal.city ?? app.job_location ?? undefined,
+          employer: {
+            cnpsNumber: legal.cnpsNumber ?? undefined,
+            rccm: legal.rccm ?? undefined,
+            address: legal.address ? [legal.address, legal.city].filter(Boolean).join(', ') : undefined,
+          },
           employee: {
             firstName: app.first_name,
             lastName:  app.last_name,
@@ -895,7 +907,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           isCadre:   body.isCadre,
         })
 
-        const pdf = await renderHrDocumentPdf(markdown)
+        const pdf = await renderHrDocumentPdf(markdown, employer.branding)
 
         // Conditions de l'offre mémorisées pour pré-remplir la fiche employé à
         // l'embauche (type, salaire, dates, catégorie). Le NNI n'est PAS stocké
@@ -910,23 +922,30 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
           generatedAt: new Date().toISOString(),
         }
-        // Le PDF généré est conservé (dernier en date) pour être versé au
-        // dossier salarié à l'embauche (hire.service → employee_documents).
-        const fileBase = `${body.type}_${(app.last_name || 'contrat').replace(/[^a-zA-Z0-9]/g, '')}`
+        // Chaque génération = nouvelle VERSION de la proposition (historique
+        // conservé). La version courante est aussi gardée sur la candidature
+        // pour être versée au dossier salarié à l'embauche (contract_proposal).
+        const fileName = proposalFileName(body.type, app.last_name)
         const pdfBuffer = Buffer.from(pdf)
-        await Promise.resolve(pool.query(
-          `UPDATE "${schema}".applications
-              SET offer_details = $2::jsonb, contract_pdf = $3, contract_pdf_name = $4, contract_pdf_at = now()
-            WHERE id = $1`,
-          [app.id, JSON.stringify(offerDetails), pdfBuffer, `${fileBase}.pdf`],
-        )).catch((err: unknown) => { fastify.log.warn({ err }, 'offer_details / contrat PDF non mémorisés') })
+        let version: number | null = null
+        try {
+          const saved = await saveContractProposal(schema, {
+            applicationId: app.id, legalEntityId: employer.legalEntityId, contractType: body.type,
+            offerDetails, markdown, pdf: pdfBuffer, fileName, createdBy: actorUuid(request.user.sub),
+          })
+          version = saved.version
+        } catch (err) {
+          // Rétro-compatibilité : le PDF reste renvoyé même si l'historique échoue.
+          fastify.log.warn({ err }, 'proposition de contrat non mémorisée')
+        }
 
         // OWASP A09 : trace la génération du contrat (acte RH significatif)
-        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.contract_generated', entity: 'application', entityId: app.id, changes: { type: body.type, title }, ip: request.ip ?? null })
+        auditTenant(schema, { userId: request.user.sub, action: 'recruitment.contract_generated', entity: 'application', entityId: app.id, changes: { type: body.type, title, version, legalEntityId: employer.legalEntityId }, ip: request.ip ?? null })
 
+        if (version !== null) reply.header('X-Contract-Proposal-Version', String(version))
         return reply
           .header('Content-Type', 'application/pdf')
-          .header('Content-Disposition', `inline; filename="${fileBase}.pdf"`)
+          .header('Content-Disposition', `inline; filename="${fileName}"`)
           .send(pdfBuffer)
       } catch (err) {
         fastify.log.error(err)
@@ -2238,6 +2257,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(screeningRoutes)
   // Indicateurs d'entonnoir (agrégats) — fichier séparé, même préfixe.
   await fastify.register(funnelStatsRoutes)
+  // Proposition de contrat (édition versionnée, PDF) — fichier séparé, même préfixe.
+  await fastify.register(contractProposalRoutes)
 }
 
 export default recruitmentRoutes

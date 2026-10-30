@@ -150,5 +150,15 @@
     "signedElectronically": "electronically signed on {{date}}",
     "download": "Download",
     "noFile": "Electronic signature without uploaded document"
+  },
+  "proposal": {
+    "title": "Contract proposals (unsigned)",
+    "hint": "Generated during recruitment: they are not the signed contract and are not visible to the employee. Upload the signed contract above.",
+    "version": "Version {{version}}",
+    "current": "Current",
+    "archived": "Archived",
+    "generatedOn": "generated on {{date}}",
+    "download": "Download",
+    "loadError": "Unable to download the proposal. Please try again."
   }
 }

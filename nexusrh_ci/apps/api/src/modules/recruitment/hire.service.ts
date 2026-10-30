@@ -32,7 +32,8 @@ import {
 } from '../../services/employee-create.service.js'
 import { ensureHireOnboarding, type HireOnboardingResult } from '../../services/onboarding.service.js'
 import { actorUuid } from './stage-history.js'
-import { SIGNED_CONTRACT_CATEGORY } from '../contracts/signed-contracts.service.js'
+import { CONTRACT_PROPOSAL_CATEGORY, linkProposalsToEmployee } from './contract-proposal.service.js'
+import { CONTRACT_PROPOSAL_DOCUMENT_TITLE } from '../../db/contract-proposals.js'
 
 /** Valeurs saisies dans la modale « Créer la fiche employé » (toutes facultatives). */
 export interface HireOverrides {
@@ -350,6 +351,8 @@ export async function hireApplication(
   if (status === 'created' || status === 'already_linked') {
     contractDocumentId = await attachGeneratedContract(schema, applicationId, employee.id, actor)
       .catch(() => null)
+    // Historique des versions rattaché à la fiche (best-effort).
+    await linkProposalsToEmployee(schema, applicationId, employee.id).catch(() => undefined)
   }
 
   let onboarding: HireOnboardingResult | null = null
@@ -373,9 +376,11 @@ export async function hireApplication(
 }
 
 /**
- * Verse le dernier contrat PDF généré pour la candidature dans
- * `employee_documents` (catégorie du contrat de travail, nouvelle version
- * courante ; l'éventuelle version précédente est conservée en historique).
+ * Verse la PROPOSITION de contrat courante de la candidature dans
+ * `employee_documents`, catégorie `contract_proposal` — jamais
+ * `signed_contract` : un document non signé ne doit pas apparaître à
+ * l'employé comme son contrat signé (nouvelle version courante ;
+ * l'éventuelle version précédente est conservée en historique).
  * Une seule instruction SQL. Idempotent : rien n'est écrit si ce PDF exact
  * figure déjà au dossier de l'employé. Renvoie l'id du document créé, ou null.
  */
@@ -410,7 +415,7 @@ async function attachGeneratedContract(
           AND d.is_current = true AND d.id <> ins.id
      )
      SELECT id FROM ins`,
-    [applicationId, employeeId, SIGNED_CONTRACT_CATEGORY, 'Contrat de travail (généré au recrutement)', actorUuid(actor.userId)],
+    [applicationId, employeeId, CONTRACT_PROPOSAL_CATEGORY, CONTRACT_PROPOSAL_DOCUMENT_TITLE, actorUuid(actor.userId)],
   )
   const id = r.rows[0]?.id ?? null
   if (id) {

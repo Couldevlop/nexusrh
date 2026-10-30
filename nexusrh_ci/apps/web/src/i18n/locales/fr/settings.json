@@ -163,6 +163,8 @@
     "climateAnonymity": "Enquêtes climat social — anonymat",
     "climateMinResponsesLabel": "Nombre minimal de réponses avant affichage des résultats",
     "climateMinResponsesHint": "En dessous de ce seuil (2 à 100, 5 par défaut), aucun score ni commentaire n'est affiché, y compris par département ou filiale.",
+    "contractGenerationLabel": "Génération de proposition de contrat",
+    "contractGenerationHint": "Activé : la RH peut générer, au recrutement, une proposition de contrat aux couleurs, logo et mentions légales de l'entreprise (ou de la filiale de l'offre), l'éditer et en conserver les versions. Elle reste une proposition non signée, distincte du contrat signé déposé dans le dossier du salarié.",
     "planSummary": "Plan <0>{{plan}}</0> · Max {{maxUsers}} users · Max {{maxEmployees}} employés",
     "save": "Sauvegarder",
     "saving": "Sauvegarde...",
