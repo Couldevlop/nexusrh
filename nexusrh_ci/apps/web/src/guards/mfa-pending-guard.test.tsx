@@ -376,3 +376,18 @@ describe('/mfa-setup n’est PAS gardé — pas de boucle de redirection', () =>
     expect(screen.queryByText('PAGE_ENROLEMENT')).toBeNull()
   })
 })
+
+describe('AuthGuard — compte cabinet sans entreprise cliente active', () => {
+  it("renvoie vers /agency/dashboard au lieu d'afficher l'app RH vide", () => {
+    signIn(makeUser('agency_owner', { actorType: 'agency', agencyId: 'a1' }), NORMAL_TOKEN)
+    renderGuard(<AuthGuard>{PROTECTED}</AuthGuard>)
+    expect(screen.getByText('ECRAN_AGENCY')).toBeTruthy()
+    expect(screen.queryByText('CONTENU_PROTEGE')).toBeNull()
+  })
+
+  it("laisse passer un compte tenant normal", () => {
+    signIn(makeUser('admin'), NORMAL_TOKEN)
+    renderGuard(<AuthGuard>{PROTECTED}</AuthGuard>)
+    expect(screen.getByText('CONTENU_PROTEGE')).toBeTruthy()
+  })
+})

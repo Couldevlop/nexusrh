@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Building2, Plus, Loader2 } from 'lucide-react'
+import { Building2, Plus, Loader2, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { LogoUpload } from '@/components/shared/LogoUpload'
+import { useActivateClientTenant } from '@/components/agency/TenantSwitcher'
 
 interface ClientTenant {
   id: string; name: string; slug: string; city: string | null; plan_type: string; status: string
@@ -27,6 +28,7 @@ export default function AgencyClients() {
   const [error, setError] = useState<string | null>(null)
   // Le slug suit le nom tant que l'utilisateur ne l'a pas saisi lui-même.
   const [slugEdited, setSlugEdited] = useState(false)
+  const { activate, busy, error: activateError } = useActivateClientTenant()
 
   const { data, isLoading } = useQuery<{ data: ClientTenant[] }>({
     queryKey: ['agency-my-tenants'],
@@ -99,16 +101,19 @@ export default function AgencyClients() {
         <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {tt('common.loading')}</div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {activateError && <div className="sm:col-span-2 lg:col-span-3 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-700">{activateError}</div>}
           {tenants.map((t) => (
-            <div key={t.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+            <button key={t.id} type="button" onClick={() => activate(t.id)} disabled={!!busy}
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm disabled:opacity-60">
               <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
                 {t.logo_url ? <img src={t.logo_url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-5 w-5 text-muted-foreground" />}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{t.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{t.city ?? tt('common.ciShort')} · {t.plan_type}</p>
               </div>
-            </div>
+              {busy === t.id ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            </button>
           ))}
           {tenants.length === 0 && <p className="text-sm text-muted-foreground">{tt('clients.empty')}</p>}
         </div>
