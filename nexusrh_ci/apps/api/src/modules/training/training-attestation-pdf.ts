@@ -27,6 +27,11 @@ function pdfSafe(s: string): string {
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, '-')
     .replace(/€/g, 'EUR')
+    // Espaces fines/insécables de toLocaleString('fr-FR') (U+202F, U+2009…) :
+    // hors WinAnsi, elles deviendraient « ? » (« 450?000 FCFA »).
+    .replace(/[\u2000-\u200A\u202F\u205F]/g, ' ')
+    .replace(/\u2026/g, '...')
+    .replace(/\u0153/g, 'oe').replace(/\u0152/g, 'OE')
     // eslint-disable-next-line no-control-regex
     .replace(/[^\x00-\xFF]/g, '?')
 }
