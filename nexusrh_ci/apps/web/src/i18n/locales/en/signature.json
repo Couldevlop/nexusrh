@@ -3,6 +3,7 @@
   "subtitle": "Get your HR documents signed electronically with an audit trail.",
   "loading": "Loading…",
   "loadError": "Unable to load requests.",
+  "errors": { "generic": "Something went wrong. Please try again.", "dismiss": "Dismiss" },
   "tabs": { "requests": "Requests", "mine": "To sign" },
   "statuses": {
     "draft": "Draft",
