@@ -797,7 +797,7 @@ interface EmailConfig {
 }
 
 function EmailSmtpCard() {
-  const { t } = useTranslation('settings')
+  const { t } = useTranslation('settings', { keyPrefix: 'general' })
   const { data, refetch } = useQuery<{ data: EmailConfig }>({
     queryKey: ['settings-email'],
     queryFn: () => api.get('/settings/email').then(r => r.data),
@@ -878,11 +878,11 @@ function EmailSmtpCard() {
             disabled={!hasUnsaved || save.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             <Save className="h-4 w-4" />
-            {save.isPending ? t('general.saving') : t('general.save')}
+            {save.isPending ? t('saving') : t('save')}
           </button>
         </div>
       </div>
-      {save.isSuccess && <p className="text-xs text-green-600">{t('general.updated')}</p>}
+      {save.isSuccess && <p className="text-xs text-green-600">{t('updated')}</p>}
       {save.isError && <p className="text-xs text-destructive">{t('smtp.saveError')}</p>}
       {testResult && (
         <p className={`text-xs ${testResult.ok ? 'text-green-600' : 'text-destructive'} flex items-center gap-1`}>

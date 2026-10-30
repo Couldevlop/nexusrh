@@ -384,6 +384,24 @@ export async function hireApplication(
  * Une seule instruction SQL. Idempotent : rien n'est écrit si ce PDF exact
  * figure déjà au dossier de l'employé. Renvoie l'id du document créé, ou null.
  */
+/**
+ * Proposition générée ou modifiée APRÈS l'embauche : la nouvelle version est
+ * rattachée à la fiche et versée à son dossier (contract_proposal), comme à
+ * l'embauche. Sans effet tant que la candidature n'est pas recrutée.
+ */
+export async function fileProposalForHiredApplication(
+  schema: string, applicationId: string, actor: HireActor,
+): Promise<string | null> {
+  const r = await pool.query<{ employee_id: string | null }>(
+    `SELECT employee_id FROM "${schema}".applications WHERE id = $1 AND stage = 'hired'`,
+    [applicationId],
+  )
+  const employeeId = r?.rows?.[0]?.employee_id ?? null
+  if (!employeeId) return null
+  await linkProposalsToEmployee(schema, applicationId, employeeId)
+  return attachGeneratedContract(schema, applicationId, employeeId, actor)
+}
+
 async function attachGeneratedContract(
   schema: string, applicationId: string, employeeId: string, actor: HireActor,
 ): Promise<string | null> {

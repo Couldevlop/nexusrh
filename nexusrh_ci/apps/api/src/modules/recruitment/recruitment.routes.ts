@@ -28,7 +28,7 @@ import { auditTenant } from '../../utils/audit-log.js'
 import {
   REJECTION_REASONS, REJECTION_NOTE_MAX, actorUuid, withInitialStageHistory,
 } from './stage-history.js'
-import { hireApplication, getHirePrefill, HireError, type HireResult } from './hire.service.js'
+import { hireApplication, getHirePrefill, HireError, fileProposalForHiredApplication, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
 import contractProposalRoutes from './contract-proposal.routes.js'
 import {
@@ -934,6 +934,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
             offerDetails, markdown, pdf: pdfBuffer, fileName, createdBy: actorUuid(request.user.sub),
           })
           version = saved.version
+          await fileProposalForHiredApplication(schema, app.id, { userId: request.user.sub, ip: request.ip ?? null })
+            .catch((err: unknown) => { fastify.log.warn({ err }, 'proposition non versée au dossier salarié') })
         } catch (err) {
           // Rétro-compatibilité : le PDF reste renvoyé même si l'historique échoue.
           fastify.log.warn({ err }, 'proposition de contrat non mémorisée')
