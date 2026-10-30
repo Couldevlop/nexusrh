@@ -49,7 +49,17 @@
     "average": "Average",
     "yesRate": "Yes rate",
     "noData": "No response yet.",
-    "answersCount": "{{count}} free response(s)"
+    "answersCount": "{{count}} free response(s)",
+    "belowThreshold": "Results hidden: {{count}} response(s) out of a {{min}} minimum to protect anonymity.",
+    "loadError": "Unable to load results.",
+    "groupBy": "Break down by",
+    "groupByNone": "No breakdown",
+    "groupByDepartment": "Department",
+    "groupByLegalEntity": "Subsidiary",
+    "groupsTitle": "Results by sub-group (numeric questions only)",
+    "groupsEmpty": "No sub-group reaches the anonymity threshold.",
+    "groupUnassigned": "Unassigned",
+    "hiddenGroups": "{{count}} sub-group(s) hidden: fewer than {{min}} responses, or hidden to prevent inferring a small group by subtraction."
   },
   "self": {
     "title": "Surveys to complete",

@@ -1013,6 +1013,9 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS termination_rules jsonb`,
     // Politique de congés payés du tenant (paid-leave.service) : null = règles du pays
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS leave_policy jsonb`,
+    // Seuil d'anonymat des enquêtes climat social (nb minimal de réponses avant
+    // restitution des résultats). NULL = défaut applicatif (5, climate.service).
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS climate_min_responses int CHECK (climate_min_responses IS NULL OR climate_min_responses BETWEEN 2 AND 100)`,
 
     // ── IA : autorisation d'usage de la clé plateforme par tenant ─────────────
     // true (défaut) = le tenant sans sa propre clé bénéficie du repli sur la clé

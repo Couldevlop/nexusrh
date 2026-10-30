@@ -64,6 +64,7 @@ const PREFIX: Record<string, string> = {
   'signature/signature.routes.ts': '/signature',
   'security/security.routes.ts': '/security',
   'sage/sage.routes.ts': '/sage',
+  'employer-brand/employer-brand.routes.ts': '/employer-brand',
   'dg/dg.routes.ts': '/dg',
   // Simulations d'entretien : le fichier contient DEUX plugins — interne
   // (interviewSimRoutes @ /interview-sim) et public (interviewSimPublicRoutes @

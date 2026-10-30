@@ -29,6 +29,7 @@ import {
 } from '../../services/termination-rules.service.js'
 import { effectiveLeavePolicy, leavePolicySchema, parseLeavePolicy } from '../../services/paid-leave.service.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
+import { MIN_RESPONSES_CEIL, MIN_RESPONSES_FLOOR, resolveMinResponses } from '../climate/climate.service.js'
 
 // OWASP A03 — patterns de validation stricts
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -131,6 +132,9 @@ const patchTenantSchema = z.object({
   // '' / null → repli sur l'expéditeur plateforme.
   sender_email:    z.string().email('Email expéditeur invalide').max(255).optional().nullable().or(z.literal('')),
   sender_name:     z.string().max(150).optional().nullable(),
+  // Seuil d'anonymat des enquêtes climat social (nb minimal de réponses avant
+  // toute restitution). coerce : le champ du formulaire arrive en chaîne.
+  climate_min_responses: z.coerce.number().int().min(MIN_RESPONSES_FLOOR).max(MIN_RESPONSES_CEIL).optional(),
 }).strict()
 
 const createLegalEntitySchema = z.object({
@@ -270,12 +274,15 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   COALESCE(manager_scope, 'direct') AS manager_scope,
                   COALESCE(employee_contract_access, false) AS employee_contract_access,
                   COALESCE(manager_contract_upload, false) AS manager_contract_upload,
-                  sender_email, sender_name,
+                  sender_email, sender_name, climate_min_responses,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
         )
-        if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
-        return reply.send({ data: res.rows[0] })
+        const row = res.rows[0] as Record<string, unknown> | undefined
+        if (!row) return reply.status(404).send({ error: 'Tenant introuvable' })
+        // Seuil effectif (NULL en base = défaut applicatif) : l'admin voit la
+        // valeur réellement appliquée aux résultats d'enquête.
+        return reply.send({ data: { ...row, climate_min_responses: resolveMinResponses(row['climate_min_responses']) } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -297,7 +304,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','sender_email','sender_name']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','sender_email','sender_name','climate_min_responses']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}

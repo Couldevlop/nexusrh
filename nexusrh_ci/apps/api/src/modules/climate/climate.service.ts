@@ -113,9 +113,112 @@ export function aggregateResults(
       const yesRate = bools.length ? Math.round((yes / bools.length) * 100) / 100 : 0
       out.push({ type: 'boolean', key: q.key, label: q.label, count: bools.length, yes, yesRate })
     } else {
+      // Tri alphabétique : l'ordre de restitution ne doit pas refléter l'ordre
+      // (chronologique) de saisie, qui permettrait de rapprocher un commentaire
+      // de la personne qui vient de répondre.
       const texts = values.map((v) => String(v)).filter((s) => s.trim().length > 0)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
       out.push({ type: 'text', key: q.key, label: q.label, count: texts.length, answers: texts })
     }
   }
   return { responseCount: responses.length, questions: out }
+}
+
+// ── Seuil d'anonymat ──────────────────────────────────────────────────────────
+//
+// En dessous d'un nombre minimal de réponses, une moyenne ou un commentaire
+// libre permet de deviner qui a répondu (une équipe de 3 personnes, un service
+// d'une seule personne…). Le seuil est paramétrable PAR TENANT
+// (platform.tenants.climate_min_responses, éditable par l'admin dans
+// Paramètres → Général) ; ces bornes encadrent la valeur saisie.
+
+/** Seuil appliqué quand le tenant n'a rien configuré (ou lecture impossible). */
+export const DEFAULT_MIN_RESPONSES = 5
+/** Plancher : un seuil de 1 reviendrait à désactiver la protection. */
+export const MIN_RESPONSES_FLOOR = 2
+export const MIN_RESPONSES_CEIL = 100
+
+/** Valeur brute (DB, formulaire) → seuil effectif borné ; défaut si invalide. */
+export function resolveMinResponses(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN
+  if (!Number.isInteger(n)) return DEFAULT_MIN_RESPONSES
+  return Math.min(MIN_RESPONSES_CEIL, Math.max(MIN_RESPONSES_FLOOR, n))
+}
+
+/** Réponse renvoyée à la place des résultats quand le seuil n'est pas atteint. */
+export interface BelowThresholdResults {
+  belowThreshold: true
+  responses: number
+  minResponses: number
+}
+
+export const GROUP_BY_VALUES = ['department', 'legal_entity'] as const
+export type GroupBy = (typeof GROUP_BY_VALUES)[number]
+
+/** Ventilation d'un sous-groupe : jamais de texte libre, uniquement des scores. */
+export interface GroupResults {
+  key: string
+  label: string | null
+  responseCount: number
+  questions: Array<ScaleAggregate | BooleanAggregate>
+}
+
+export interface GroupedResponse {
+  groupKey: string | null
+  groupLabel: string | null
+  answers: Record<string, unknown>
+}
+
+/**
+ * Masque les sous-groupes sous le seuil, AVEC suppression secondaire : si les
+ * groupes masqués totalisent moins de `min` réponses, on masque aussi le(s) plus
+ * petit(s) groupe(s) visible(s). Sinon « total − groupes visibles » redonnerait
+ * exactement les réponses du petit groupe masqué (attaque par différence).
+ */
+export function suppressSmallGroups<T extends { responseCount: number }>(
+  groups: T[], min: number,
+): { visible: T[]; hiddenGroups: number } {
+  const sorted = [...groups].sort((a, b) => a.responseCount - b.responseCount)
+  const hidden = new Set<T>()
+  let hiddenTotal = 0
+  for (const g of sorted) {
+    if (g.responseCount < min) { hidden.add(g); hiddenTotal += g.responseCount }
+  }
+  for (const g of sorted) {
+    if (hiddenTotal === 0 || hiddenTotal >= min) break
+    if (hidden.has(g)) continue
+    hidden.add(g)
+    hiddenTotal += g.responseCount
+  }
+  return { visible: groups.filter((g) => !hidden.has(g)), hiddenGroups: hidden.size }
+}
+
+/**
+ * Agrège par sous-groupe (département / filiale) les SEULES questions chiffrées
+ * (échelle, oui/non) puis applique le seuil. Les commentaires libres ne sont
+ * jamais ventilés : rattachés à un petit groupe, ils sont trop identifiants.
+ */
+export function aggregateByGroup(
+  questions: SurveyQuestion[],
+  rows: GroupedResponse[],
+  min: number,
+): { groups: GroupResults[]; hiddenGroups: number } {
+  const numeric = questions.filter((q) => q.type !== 'text')
+  const buckets = new Map<string, { label: string | null; answers: Array<Record<string, unknown>> }>()
+  for (const r of rows) {
+    const key = r.groupKey ?? 'none'
+    const b = buckets.get(key) ?? { label: r.groupLabel, answers: [] }
+    b.answers.push(r.answers ?? {})
+    buckets.set(key, b)
+  }
+  const all: GroupResults[] = [...buckets.entries()].map(([key, b]) => ({
+    key,
+    label: b.label,
+    responseCount: b.answers.length,
+    questions: aggregateResults(numeric, b.answers).questions
+      .filter((q): q is ScaleAggregate | BooleanAggregate => q.type !== 'text'),
+  }))
+  const { visible, hiddenGroups } = suppressSmallGroups(all, min)
+  visible.sort((a, b) => b.responseCount - a.responseCount)
+  return { groups: visible, hiddenGroups }
 }

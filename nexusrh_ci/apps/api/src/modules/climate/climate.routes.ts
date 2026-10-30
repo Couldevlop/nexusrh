@@ -21,6 +21,13 @@ import {
   canTransition,
   validateQuestions,
   aggregateResults,
+  aggregateByGroup,
+  resolveMinResponses,
+  DEFAULT_MIN_RESPONSES,
+  GROUP_BY_VALUES,
+  type GroupBy,
+  type GroupResults,
+  type BelowThresholdResults,
   type SurveyStatus,
   type SurveyQuestion,
 } from './climate.service.js'
@@ -70,6 +77,21 @@ async function resolveEmployeeId(
     actorEmployeeSql(schema), [user.email],
   )
   return r.rows[0]?.id ?? null
+}
+
+/**
+ * Seuil d'anonymat du tenant (platform.tenants.climate_min_responses). Lecture
+ * impossible (colonne pas encore migrée…) → défaut : on reste protecteur.
+ */
+async function loadMinResponses(schema: string): Promise<number> {
+  try {
+    const r = await rawPool.query<{ climate_min_responses: number | null }>(
+      `SELECT climate_min_responses FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+    )
+    return resolveMinResponses(r.rows[0]?.climate_min_responses)
+  } catch {
+    return DEFAULT_MIN_RESPONSES
+  }
 }
 
 const climateRoutes: FastifyPluginAsync = async (fastify) => {
@@ -181,23 +203,86 @@ const climateRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /climate/surveys/:id/results — résultats AGRÉGÉS (jamais nominatifs)
+  //
+  // Seuil d'anonymat : sous `minResponses` réponses (paramétrable par tenant),
+  // AUCUN score ni commentaire n'est renvoyé — seulement le compte et le seuil.
+  // Même règle pour la ventilation optionnelle ?groupBy=department|legal_entity :
+  // les sous-groupes sous le seuil sont masqués (avec suppression secondaire).
   fastify.get('/surveys/:id/results', {
     preHandler: [fastify.authorize(...READ_ROLES)],
-    schema: { tags: ['climate'], summary: 'Résultats agrégés d\'une enquête' },
+    schema: { tags: ['climate'], summary: 'Résultats agrégés d\'une enquête (seuil d\'anonymat)' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const s = await rawPool.query<{ questions: SurveyQuestion[] }>(
-        `SELECT questions FROM "${schema}".climate_surveys WHERE id = $1 LIMIT 1`, [id],
-      )
-      if (!s.rows[0]) return reply.status(404).send({ error: 'Enquête introuvable' })
-      // On ne sélectionne QUE les réponses (answers), jamais employee_id : aucun
-      // lien nominatif ne quitte la base.
-      const r = await rawPool.query<{ answers: Record<string, unknown> }>(
-        `SELECT answers FROM "${schema}".climate_responses WHERE survey_id = $1`, [id],
-      )
-      const results = aggregateResults(s.rows[0].questions ?? [], r.rows.map((x) => x.answers ?? {}))
-      return reply.send({ data: results })
+      const { groupBy: rawGroupBy } = request.query as { groupBy?: string }
+      let groupBy: GroupBy | null = null
+      if (rawGroupBy !== undefined && rawGroupBy !== '') {
+        if (!(GROUP_BY_VALUES as readonly string[]).includes(rawGroupBy)) return badRequest(reply, 'Ventilation invalide')
+        groupBy = rawGroupBy as GroupBy
+      }
+      try {
+        const s = await rawPool.query<{ questions: SurveyQuestion[] }>(
+          `SELECT questions FROM "${schema}".climate_surveys WHERE id = $1 LIMIT 1`, [id],
+        )
+        if (!s.rows[0]) return reply.status(404).send({ error: 'Enquête introuvable' })
+        const questions = s.rows[0].questions ?? []
+        const minResponses = await loadMinResponses(schema)
+
+        const c = await rawPool.query<{ n: number | string }>(
+          `SELECT COUNT(*)::int AS n FROM "${schema}".climate_responses WHERE survey_id = $1`, [id],
+        )
+        const responses = Number(c.rows[0]?.n ?? 0)
+        if (responses < minResponses) {
+          const below: BelowThresholdResults = { belowThreshold: true, responses: responses, minResponses: minResponses }
+          return reply.send({ data: below })
+        }
+
+        // On ne sélectionne QUE les réponses (answers), jamais employee_id : aucun
+        // lien nominatif ne quitte la base.
+        const r = await rawPool.query<{ answers: Record<string, unknown> }>(
+          `SELECT answers FROM "${schema}".climate_responses WHERE survey_id = $1`, [id],
+        )
+        const results = aggregateResults(questions, r.rows.map((x) => x.answers ?? {}))
+
+        let groups: GroupResults[] | null = null
+        let hiddenGroups = 0
+        if (groupBy) {
+          // La jointure sur la fiche salarié reste DANS la base : seuls la clé et
+          // le libellé du groupe en sortent, jamais l'identifiant du répondant.
+          const join = groupBy === 'department'
+            ? `LEFT JOIN "${schema}".departments g ON g.id = e.department_id`
+            : `LEFT JOIN "${schema}".legal_entities g ON g.id = e.legal_entity_id`
+          const g = await rawPool.query<{ answers: Record<string, unknown>; group_key: string | null; group_label: string | null }>(
+            `SELECT r.answers, g.id::text AS group_key, g.name AS group_label
+               FROM "${schema}".climate_responses r
+               LEFT JOIN "${schema}".employees e ON e.id = r.employee_id
+               ${join}
+              WHERE r.survey_id = $1`,
+            [id],
+          )
+          const grouped = aggregateByGroup(
+            questions,
+            g.rows.map((x) => ({ groupKey: x.group_key, groupLabel: x.group_label, answers: x.answers ?? {} })),
+            minResponses,
+          )
+          groups = grouped.groups
+          hiddenGroups = grouped.hiddenGroups
+        }
+
+        return reply.send({
+          data: {
+            belowThreshold: false,
+            minResponses: minResponses,
+            ...results,
+            groupBy: groupBy,
+            groups: groups,
+            hiddenGroups: hiddenGroups,
+          },
+        })
+      } catch (err) {
+        request.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
     },
   })
 

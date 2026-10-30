@@ -135,6 +135,9 @@ const SecurityPage = lazy(() => import('@/pages/security/SecurityPage'))
 // ── Interface SAGE (export amont-paie) ────────────────────────────────────────
 const SagePage = lazy(() => import('@/pages/sage/SagePage'))
 
+// ── Marque employeur (tableau de bord agrégé) ────────────────────────────────
+const EmployerBrandPage = lazy(() => import('@/pages/employer-brand/EmployerBrandPage'))
+
 // ── Badgeuse / Pointage ────────────────────────────────────────────────────────
 const AttendancePage = lazy(() => import('@/pages/attendance/AttendancePage'))
 
@@ -513,6 +516,14 @@ export default function App() {
               <RoleGuard allowedRoles={['admin','hr_manager']}>
                 <ModuleGuard moduleKey="sage">
                   <SagePage />
+                </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            <Route path="employer-brand" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','readonly','dg']}>
+                <ModuleGuard moduleKey="employer_brand">
+                  <EmployerBrandPage />
                 </ModuleGuard>
               </RoleGuard>
             } />
