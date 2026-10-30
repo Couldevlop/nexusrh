@@ -99,7 +99,8 @@ export function RejectReasonModal({ candidate, busy, error, onCancel, onConfirm 
               ))}
             </optgroup>
             <optgroup label={t('transition.groupCompany')}>
-              {REJECTION_REASONS.filter(r => !r.startsWith('declined_by_candidate_')).map(r => (
+              {/* rejected_auto_screening : posé par le pré-tri uniquement (refusé par l'API ici). */}
+              {REJECTION_REASONS.filter(r => !r.startsWith('declined_by_candidate_') && r !== 'rejected_auto_screening').map(r => (
                 <option key={r} value={r}>{t(`rejectionReason.${r}`)}</option>
               ))}
             </optgroup>

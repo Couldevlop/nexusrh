@@ -37,7 +37,10 @@
     "noticeServed": "Préavis effectué",
     "submit": "Ouvrir le dossier",
     "submitting": "Enregistrement…",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "reasonCategory": "Catégorie de motif",
+    "reasonCategoryPlaceholder": "— Choisir une catégorie —",
+    "error": "L'ouverture du dossier a échoué. Vérifiez les champs et réessayez."
   },
   "checklist": {
     "title": "Checklist de restitution"
@@ -80,5 +83,10 @@
     "delete": "Supprimer",
     "deleteConfirm": "Supprimer définitivement ce dossier ?"
   },
-  "saveError": "Erreur lors de l'enregistrement"
+  "saveError": "Erreur lors de l'enregistrement",
+  "reasonCategory": {
+    "label": "Catégorie de motif",
+    "none": "Non classé",
+    "loadError": "Impossible de charger les catégories de motifs."
+  }
 }
