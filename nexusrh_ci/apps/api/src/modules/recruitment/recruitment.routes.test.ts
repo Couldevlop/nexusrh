@@ -28,6 +28,19 @@ vi.mock('../../db/provisioning.js', () => ({
   ensureRecruitmentSchemaMigrated: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Embauche (fiche employé + parcours) : couverte par hire.service.test.ts.
+// Mockée ici pour garder lisibles les séquences de `queryMock` du pipeline.
+vi.mock('./hire.service.js', () => ({
+  hireApplication: vi.fn().mockResolvedValue({
+    status: 'created', employeeId: 'emp-new', employeeNumber: 'MAT00042',
+    toComplete: [], onboarding: null, onboardingError: false,
+  }),
+  getHirePrefill: vi.fn().mockResolvedValue(null),
+  HireError: class HireError extends Error {
+    constructor(readonly statusCode: number, message: string, readonly code: string) { super(message) }
+  },
+}))
+
 vi.mock('../../services/recruitment-ai.service.js', () => ({
   analyzeCV: vi.fn(),
   sourceProfiles: vi.fn(),

@@ -22,6 +22,9 @@ import { canonicalEmployeeMmProvider } from '../../services/mobile-money-provide
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
 import {
+  DEFAULT_DEPARTURE_REASON_CATEGORIES, departureReasonCategoriesSchema, parseDepartureReasonCategories,
+} from '../../services/departure-reasons.service.js'
+import {
   effectiveTerminationRules, parseTerminationRules, terminationRulesSchema,
 } from '../../services/termination-rules.service.js'
 import { effectiveLeavePolicy, leavePolicySchema, parseLeavePolicy } from '../../services/paid-leave.service.js'
@@ -120,6 +123,9 @@ const patchTenantSchema = z.object({
   mfa_required:    z.boolean().optional(),
   // Périmètre des managers : équipe directe ou toute la branche hiérarchique.
   manager_scope:   z.enum(MANAGER_SCOPES).optional(),
+  // Contrat signé : consultable par l'employé (/mon-espace) / déposable par le manager.
+  employee_contract_access: z.boolean().optional(),
+  manager_contract_upload:  z.boolean().optional(),
   // Expéditeur email configurable par le tenant : adresse "From" des emails
   // envoyés aux membres de la société (création d'accès, réinitialisation).
   // '' / null → repli sur l'expéditeur plateforme.
@@ -247,6 +253,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                   primary_color, secondary_color, logo_url, trial_ends_at,
                   COALESCE(mfa_required, false) AS mfa_required,
                   COALESCE(manager_scope, 'direct') AS manager_scope,
+                  COALESCE(employee_contract_access, false) AS employee_contract_access,
+                  COALESCE(manager_contract_upload, false) AS manager_contract_upload,
                   sender_email, sender_name,
                   created_at, updated_at
            FROM platform.tenants WHERE id = $1`, [tenantId]
@@ -274,7 +282,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
-      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','sender_email','sender_name']
+      const allowed = ['name','sector','primary_color','secondary_color','logo_url','city','cnps_number','dgi_number','rccm','at_rate','mfa_required','manager_scope','employee_contract_access','manager_contract_upload','sender_email','sender_name']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -419,6 +427,72 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         after: parsed.data.fields.map((f) => f.key),
       }, request.ip ?? null)
       return reply.send({ data: parsed.data.fields })
+    },
+  })
+
+  // ── GET /settings/departure-reasons — catégories de motifs de départ ──────
+  // Liste effective (défauts si le tenant n'a rien paramétré) : le formulaire
+  // de sortie et le tableau de bord en ont besoin. `customized` indique si la
+  // liste vient du tenant.
+  fastify.get('/departure-reasons', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly', 'dg')],
+    handler: async (request, reply) => {
+      try {
+        const res = await pool.query<{ departure_reason_categories: unknown }>(
+          `SELECT departure_reason_categories FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+          [request.user.schemaName],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        const raw = res.rows[0].departure_reason_categories
+        return reply.send({
+          data: parseDepartureReasonCategories(raw),
+          customized: raw !== null && raw !== undefined,
+          defaults: DEFAULT_DEPARTURE_REASON_CATEGORIES,
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PUT /settings/departure-reasons — définit la liste (admin) ────────────
+  // OWASP A03 : clés/libellés validés, clés uniques ; A09 : audité. `reset`
+  // revient à la liste par défaut. Les dossiers déjà classés gardent leur clé.
+  fastify.put('/departure-reasons', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    handler: async (request, reply) => {
+      const parsed = z.union([
+        z.object({ categories: departureReasonCategoriesSchema }).strict(),
+        z.object({ reset: z.literal(true) }).strict(),
+      ]).safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Liste de motifs de départ invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const schema = request.user.schemaName
+      const next = 'categories' in parsed.data ? parsed.data.categories : null
+      try {
+        const before = await pool.query<{ departure_reason_categories: unknown }>(
+          `SELECT departure_reason_categories FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+        )
+        if (!before.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        await pool.query(
+          `UPDATE platform.tenants SET departure_reason_categories = $1::jsonb, updated_at = now() WHERE schema_name = $2`,
+          [next === null ? null : JSON.stringify(next), schema],
+        )
+        auditLogSettings(schema, request.user.sub, 'settings.departure_reasons_updated', request.user.tenantId ?? null, {
+          before: parseDepartureReasonCategories(before.rows[0].departure_reason_categories).map((c) => c.key),
+          after: (next ?? DEFAULT_DEPARTURE_REASON_CATEGORIES).map((c) => c.key),
+        }, request.ip ?? null)
+        return reply.send({ data: next ?? parseDepartureReasonCategories(null), customized: next !== null })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
     },
   })
 
@@ -1864,6 +1938,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         await pool.query(`DELETE FROM "${schema}".legal_entities WHERE id = $1`, [id])
         return reply.send({ success: true })
       } catch (err) {
+        // FK disa_records → legal_entities (ON DELETE RESTRICT) : une DISA est une
+        // pièce légale, la filiale qui en porte une n'est pas supprimable.
+        if ((err as { code?: string }).code === '23503') {
+          return reply.status(409).send({ error: 'Cette entité porte des déclarations (DISA) — désactivez-la plutôt que de la supprimer' })
+        }
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
       }

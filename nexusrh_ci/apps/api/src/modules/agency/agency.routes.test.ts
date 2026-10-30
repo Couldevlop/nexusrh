@@ -256,3 +256,34 @@ describe('Membres & onboarding (agency_owner)', () => {
     expect(opts.sender).toEqual({ email: 'recrut@cab.ci', name: 'Cabinet RH' })
   })
 })
+
+describe('PATCH /agency/me — le propriétaire modifie son cabinet', () => {
+  it('owner → 200, met à jour SON cabinet (id du JWT)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: AG }] })
+    const res = await app.inject({ method: 'PATCH', url: '/agency/me',
+      headers: { authorization: `Bearer ${ownerToken()}` },
+      payload: { name: 'Cabinet Talents CI', city: 'Abidjan', contactEmail: '', logoUrl: null, senderName: 'Talents' } })
+    expect(res.statusCode).toBe(200)
+    const [sql, vals] = queryMock.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('UPDATE platform.agencies')
+    expect(vals[vals.length - 1]).toBe(AG)
+  })
+
+  it('membre (non propriétaire) → 403', async () => {
+    const res = await app.inject({ method: 'PATCH', url: '/agency/me',
+      headers: { authorization: `Bearer ${memberToken()}` }, payload: { name: 'X' } })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('champ inconnu (tentative de changer le statut) → 400', async () => {
+    const res = await app.inject({ method: 'PATCH', url: '/agency/me',
+      headers: { authorization: `Bearer ${ownerToken()}` }, payload: { status: 'active' } })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('corps vide → 400', async () => {
+    const res = await app.inject({ method: 'PATCH', url: '/agency/me',
+      headers: { authorization: `Bearer ${ownerToken()}` }, payload: {} })
+    expect(res.statusCode).toBe(400)
+  })
+})

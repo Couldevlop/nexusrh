@@ -223,6 +223,7 @@ export default function LoginPage() {
           res.data.token,
           res.data.refreshToken ?? "",
           res.data.tenantConfig ?? null,
+          res.data.agencyConfig ?? null,
         );
         navigate("/mfa-setup", { replace: true });
         return;
@@ -288,6 +289,7 @@ export default function LoginPage() {
         token: string;
         user: AuthUser;
         tenantConfig: TenantConfig | null;
+        agencyConfig?: AgencyConfig | null;
         redirectTo: string;
         must_change_password?: boolean;
         passwordExpired?: boolean;
@@ -316,7 +318,7 @@ export default function LoginPage() {
         return;
       }
 
-      setAuth(res.data.user, res.data.token, "", res.data.tenantConfig);
+      setAuth(res.data.user, res.data.token, "", res.data.tenantConfig, res.data.agencyConfig ?? null);
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: string } } };

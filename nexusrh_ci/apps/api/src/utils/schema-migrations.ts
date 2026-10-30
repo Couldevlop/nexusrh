@@ -6,6 +6,8 @@ import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
+import { disaPerEntityStatements } from '../db/disa-records.js'
+import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -52,6 +54,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // Filet si la table préexistait sans la contrainte (ON CONFLICT en dépend).
     `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_employee_photos_emp_idx"
        ON "${schemaName}".employee_photos(employee_id)`,
+    // ── Documents du dossier salarié (contrat signé, …) — TENANT-SCOPÉS ──────
+    // Même stockage que les photos/CV (bytea dans le schéma du tenant, jamais
+    // dans un bucket public). Une nouvelle version n'écrase rien : l'ancienne
+    // passe is_current = false (historique conservé).
+    ...employeeDocumentsTableStatements(schemaName),
     // Rétro-compat : RAPATRIEMENT des photos déjà publiées dans le bucket public.
     // 1) copie des octets depuis platform.brand_assets vers le schéma du tenant.
     `INSERT INTO "${schemaName}".employee_photos (employee_id, mime, bytes, size_bytes)
@@ -231,9 +238,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // + ON CONFLICT (year)). NE PAS revenir à une shape par-employé : la
     // divergence cassait generate (42703) et l'export DISA (CSV vide) sur tout
     // tenant dont la table aurait été matérialisée par cette migration.
+    // Unicité = (year, legal_entity_id) — index créé plus bas (multi-filiales).
     `CREATE TABLE IF NOT EXISTS "${schemaName}".disa_records (
       id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      year             int NOT NULL UNIQUE,
+      year             int NOT NULL,
+      legal_entity_id  uuid,
       employees_count  int DEFAULT 0,
       masse_salariale  numeric(14,0) DEFAULT 0,
       total_cnps       numeric(14,0) DEFAULT 0,
@@ -268,6 +277,7 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `CREATE INDEX IF NOT EXISTS "${schemaName}_pay_slips_le_idx"    ON "${schemaName}".pay_slips(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_cnps_decl_le_idx"    ON "${schemaName}".cnps_declarations(legal_entity_id)`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_disa_records_le_idx" ON "${schemaName}".disa_records(legal_entity_id)`,
+    ...disaPerEntityStatements(schemaName),
     `CREATE INDEX IF NOT EXISTS idx_${schemaName}_pp_parent ON "${schemaName}".pay_periods(parent_period_id) WHERE parent_period_id IS NOT NULL`,
     // Bascule de la clé d'unicité paie : UNIQUE(month) plein → (month, legal_entity_id)
     // NULLS NOT DISTINCT. Indispensable pour insérer parent + déclinaisons site
@@ -546,6 +556,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
       updated_at     timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS "${schemaName}_offboarding_emp_idx" ON "${schemaName}".offboarding_cases(employee_id, departure_date DESC)`,
+    // Motif de départ STRUCTURÉ (clé de la liste paramétrable du tenant,
+    // platform.tenants.departure_reason_categories) ; `reason` reste le texte libre.
+    `ALTER TABLE "${schemaName}".offboarding_cases ADD COLUMN IF NOT EXISTS reason_category varchar(40)`,
 
     // ── Enquêtes climat social (engagement) — réponses confidentielles ────────
     // Résultats agrégés uniquement (jamais de réponse nominative exposée).
@@ -973,6 +986,14 @@ export async function ensurePlatformSchema(): Promise<void> {
     // 'hierarchy' = toute la branche. Cf. services/manager-scope.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_scope varchar(20) NOT NULL DEFAULT 'direct' CHECK (manager_scope IN ('direct', 'hierarchy'))`,
 
+    // ── Contrat signé dans l'espace employé (admin tenant) ──────────────────
+    // employee_contract_access : l'employé consulte son contrat signé dans
+    // /mon-espace. manager_contract_upload : le manager peut déposer le contrat
+    // signé d'un membre de son périmètre. DEFAULT false = comportement inchangé
+    // pour les tenants existants. Cf. modules/contracts/signed-contracts.routes.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_contract_access boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`,
+
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,
 
@@ -981,6 +1002,11 @@ export async function ensurePlatformSchema(): Promise<void> {
     // valeurs vivent dans <tenant>.employees.custom_fields. Cf.
     // services/employee-custom-fields.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS employee_custom_fields jsonb NOT NULL DEFAULT '[]'`,
+
+    // ── Catégories de motifs de départ (admin tenant) ─────────────────────────
+    // [{ key, label }] ; NULL = liste par défaut. Cf.
+    // services/departure-reasons.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS departure_reason_categories jsonb`,
 
     // ── Règles de rupture propres au tenant (convention collective) ──────────
     // NULL = règles du pack législatif du pays de l'employé. Cf. offboarding.

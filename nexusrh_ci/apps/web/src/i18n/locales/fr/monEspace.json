@@ -27,10 +27,12 @@
       "attendanceWarnings": "Mes avertissements",
       "profile": "Mon profil",
       "default": "Mon espace",
-      "validations": "Mes validations"
+      "validations": "Mes validations",
+      "contract": "Mon contrat"
     },
     "validations": "Mes validations",
-    "backToRh": "Espace RH"
+    "backToRh": "Espace RH",
+    "contract": "Mon contrat"
   },
   "common": {
     "status": {
@@ -389,5 +391,25 @@
       "it": "IT",
       "buddy": "Votre parrain"
     }
+  },
+  "contract": {
+    "title": "Mon contrat de travail",
+    "subtitle": "Votre contrat signé, déposé par votre employeur. Il n'est visible que par vous et le service RH.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger votre contrat.",
+    "disabled": "La consultation du contrat signé n'est pas activée par votre entreprise.",
+    "empty": "Aucun contrat signé n'a encore été déposé dans votre espace. Rapprochez-vous du service RH.",
+    "current": "Version en vigueur",
+    "history": "Versions précédentes",
+    "version": "Version {{version}}",
+    "depositedOn": "Déposé le {{date}}",
+    "signedElectronically": "Signé électroniquement le {{date}}",
+    "noFile": "Signature électronique enregistrée — le document signé n'a pas encore été déposé par la RH.",
+    "view": "Consulter",
+    "download": "Télécharger",
+    "close": "Fermer",
+    "viewError": "Impossible d'ouvrir le document.",
+    "defaultTitle": "Contrat de travail",
+    "contractLabel": "Contrat {{type}} — début {{date}}"
   }
 }

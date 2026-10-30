@@ -3,6 +3,7 @@ import { useTranslation, Trans } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell, Area, AreaChart,
@@ -10,8 +11,24 @@ import {
 import {
   AlertTriangle, CheckCircle, XCircle, ClipboardCheck, Download,
   RefreshCw, Users, Shield, ShieldCheck, Smartphone, TrendingUp,
-  Settings, FileText, BarChart3,
+  Settings, FileText, BarChart3, Building2,
 } from 'lucide-react'
+
+interface LegalEntityOption {
+  id: string; name: string
+  country_code?: string | null; legislation_pack_code?: string | null
+}
+
+/** Même règle que l'API : pack CIV-* prioritaire, sinon pays (défaut CIV). */
+function isCivEntity(le: Pick<LegalEntityOption, 'country_code' | 'legislation_pack_code'>): boolean {
+  const pack = le.legislation_pack_code?.trim()
+  if (pack) return pack.toUpperCase().startsWith('CIV-')
+  return (le.country_code?.trim() || 'CIV').toUpperCase() === 'CIV'
+}
+
+/** Libellé monétaire : franc CFA (XOF/XAF) affiché « FCFA », sinon code ISO. */
+const currencyLabel = (c: string | undefined): string =>
+  !c || c === 'XOF' || c === 'XAF' ? 'FCFA' : c
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,10 +59,29 @@ interface EmployeeRow {
 
 interface DeclarationRow {
   trimestre: number
-  mois: string
+  mois: string | string[]
   status: string
   totalCotisations: number
   employeesCount: number
+  legalEntityName?: string | null
+}
+
+/** Ventilation par filiale (vue tenant multi-filiales). */
+interface FilialeRow {
+  legalEntityId: string | null
+  name: string | null
+  countryCode: string | null
+  legislationPackCode: string
+  currency: string
+  cnpsApplicable: boolean
+  smigReference: number
+  totalEmployes: number
+  nbSansNni: number
+  nbSansCnps: number
+  nbSousSmig: number
+  masseSalariale: number
+  bloquants: number
+  avertissements: number
 }
 
 interface MensuelRow {
@@ -82,9 +118,14 @@ interface AuditResult {
   plafonds?: {
     plafondRetraite: number; plafondAtPf: number
     nbAuDessusRetraite: number; nbAuDessusAtPf: number
-  }
+  } | null
   smigReference: number
   currency?: string
+  legalEntityId?: string | null
+  legalEntityName?: string | null
+  legislationPackCode?: string
+  cnpsApplicable?: boolean
+  filiales?: FilialeRow[]
   anomalies: Anomalie[]
   recommandations: string[]
   generatedAt: string
@@ -184,9 +225,24 @@ export default function CnpsAuditPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [params, setParams] = useState<AuditParams>(defaultParams)
   const [draftParams, setDraftParams] = useState<AuditParams>(defaultParams)
+  // Multi-filiales : '' = tout le tenant (ventilation par filiale), sinon une filiale.
+  const hasSubsidiaries = useAuthStore(s => s.tenantConfig?.hasSubsidiaries === true)
+  const [legalEntityId, setLegalEntityId] = useState<string>('')
+
+  const { data: entitiesData } = useQuery<{ data: LegalEntityOption[] }>({
+    queryKey: ['legal-entities-for-cnps'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data),
+    enabled: hasSubsidiaries,
+  })
+  const legalEntities = entitiesData?.data ?? []
+  const selectedEntity = legalEntities.find(le => le.id === legalEntityId) ?? null
+  const scopedEntityId = hasSubsidiaries && selectedEntity ? selectedEntity.id : ''
+  // RNS : document CNPS CI — filiale ivoirienne uniquement.
+  const rnsAvailable = !selectedEntity || isCivEntity(selectedEntity)
+  const rnsQuery = scopedEntityId && rnsAvailable ? `?legalEntityId=${encodeURIComponent(scopedEntityId)}` : ''
 
   const { data, isLoading, isFetching, refetch } = useQuery<AuditResult>({
-    queryKey: ['cnps-audit', params],
+    queryKey: ['cnps-audit', params, scopedEntityId],
     queryFn: () =>
       api.get('/cnps/audit-conformite', {
         params: {
@@ -197,6 +253,7 @@ export default function CnpsAuditPage() {
           checkDecl: params.checkDecl,
           checkMobile: params.checkMobile,
           checkPlafonds: params.checkPlafonds,
+          ...(scopedEntityId ? { legalEntityId: scopedEntityId } : {}),
         },
       }).then(r => r.data),
     staleTime: 0,
@@ -227,23 +284,43 @@ export default function CnpsAuditPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <a
-            href={`/api/cnps/rns/${params.year}/pdf`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-          >
-            <Download className="h-4 w-4" />
-            {t('audit.rnsPdf', { year: params.year })}
-          </a>
-          <a
-            href={`/api/cnps/rns/${params.year}/export`}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-          >
-            <Download className="h-4 w-4" />
-            {t('audit.rnsCsv')}
-          </a>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {hasSubsidiaries && (
+            <label className="flex items-center gap-1.5 text-sm">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <select
+                aria-label={t('audit.scope.label', 'Filiale')}
+                value={scopedEntityId}
+                onChange={e => setLegalEntityId(e.target.value)}
+                className="rounded-lg border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">{t('audit.scope.all', 'Toutes les filiales')}</option>
+                {legalEntities.map(le => (
+                  <option key={le.id} value={le.id}>{le.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {rnsAvailable && (
+            <>
+              <a
+                href={`/api/cnps/rns/${params.year}/pdf${rnsQuery}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                <Download className="h-4 w-4" />
+                {t('audit.rnsPdf', { year: params.year })}
+              </a>
+              <a
+                href={`/api/cnps/rns/${params.year}/export${rnsQuery}`}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                <Download className="h-4 w-4" />
+                {t('audit.rnsCsv')}
+              </a>
+            </>
+          )}
           <button
             onClick={() => void refetch()}
             disabled={isFetching}
@@ -286,7 +363,7 @@ export default function CnpsAuditPage() {
           </div>
         ) : (
           <div className="p-6 space-y-6">
-            {activeTab === 'overview'     && <TabOverview     data={data} scoreColor={scoreColor} scoreBg={scoreBg} score={score} t={t} />}
+            {activeTab === 'overview'     && <TabOverview     data={data} scoreColor={scoreColor} scoreBg={scoreBg} score={score} t={t} onSelectEntity={setLegalEntityId} />}
             {activeTab === 'salaries'     && <TabSalaries     data={data} t={t} />}
             {activeTab === 'cotisations'  && <TabCotisations  data={data} t={t} />}
             {activeTab === 'declarations' && <TabDeclarations data={data} t={t} />}
@@ -309,14 +386,24 @@ export default function CnpsAuditPage() {
 
 // ── Tab 1 — Vue d'ensemble ───────────────────────────────────────────────────
 
-function TabOverview({ data, scoreColor, scoreBg, score, t }: {
+function TabOverview({ data, scoreColor, scoreBg, score, t, onSelectEntity }: {
   data: AuditResult; scoreColor: string; scoreBg: string; score: number; t: TFunction
+  onSelectEntity: (id: string) => void
 }) {
   const bloquants     = data.anomalies.filter(a => a.severity === 'bloquant')
   const avertissements = data.anomalies.filter(a => a.severity === 'avertissement')
 
   return (
     <div className="space-y-6">
+      {data.cnpsApplicable === false && (
+        <div role="note" className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          {t('audit.scope.nonCiv', {
+            name: data.legalEntityName ?? '',
+            pack: data.legislationPackCode ?? '',
+            defaultValue: 'Filiale « {{name}} » hors Côte d\'Ivoire : les contrôles CNPS (immatriculation, déclarations, plafonds) ne s\'appliquent pas. SMIG du pack {{pack}}.',
+          })}
+        </div>
+      )}
       {/* Score global */}
       <div className={`rounded-xl border p-6 ${scoreBg}`}>
         <div className="flex items-center gap-6">
@@ -338,7 +425,7 @@ function TabOverview({ data, scoreColor, scoreBg, score, t }: {
               <span className="text-red-600 font-medium">{t('audit.overview.blockers', { count: data.resume.bloquants })}</span>
               <span className="text-amber-600 font-medium">{t('audit.overview.warnings', { count: data.resume.avertissements })}</span>
               <span className="text-muted-foreground">{t('audit.overview.activeEmployees', { count: data.resume.employesActifs ?? data.resume.totalEmployes })}</span>
-              <span className="text-muted-foreground">{t('audit.overview.smig', { value: fmt(data.smigReference) })}</span>
+              <span className="text-muted-foreground">{t('audit.overview.smig', { value: `${fmt(data.smigReference)} ${currencyLabel(data.currency)}` })}</span>
             </div>
           </div>
           {data.kpis && (
@@ -410,6 +497,11 @@ function TabOverview({ data, scoreColor, scoreBg, score, t }: {
         </div>
       </div>
 
+      {/* Ventilation par filiale (vue tenant multi-filiales) */}
+      {(data.filiales ?? []).length > 0 && (
+        <FilialesBreakdown rows={data.filiales ?? []} t={t} onSelectEntity={onSelectEntity} />
+      )}
+
       {/* Recommandations */}
       {data.recommandations.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1">
@@ -451,6 +543,67 @@ function TabOverview({ data, scoreColor, scoreBg, score, t }: {
       <p className="text-xs text-muted-foreground text-right">
         {t('audit.overview.generatedOn', { date: new Date(data.generatedAt).toLocaleString('fr-CI') })}
       </p>
+    </div>
+  )
+}
+
+// ── Ventilation par filiale ──────────────────────────────────────────────────
+
+function FilialesBreakdown({ rows, t, onSelectEntity }: {
+  rows: FilialeRow[]; t: TFunction; onSelectEntity: (id: string) => void
+}) {
+  const na = t('audit.filiales.notApplicable', 'n/a')
+  return (
+    <div className="rounded-xl border overflow-hidden">
+      <div className="border-b px-4 py-3">
+        <p className="font-semibold">{t('audit.filiales.title', 'Ventilation par filiale')}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('audit.filiales.subtitle', 'SMIG du pack de chaque filiale ; contrôles CNPS réservés aux filiales ivoiriennes.')}
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-2 text-left font-medium">{t('audit.filiales.name', 'Filiale')}</th>
+              <th className="px-4 py-2 text-left font-medium">{t('audit.filiales.pack', 'Pays / pack')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('audit.filiales.employees', 'Salariés')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('audit.filiales.withoutCnps', 'Sans NNI / CNPS')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('audit.filiales.belowSmig', 'Sous SMIG')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('audit.filiales.grossPayroll', 'Masse salariale')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('audit.filiales.blockers', 'Bloquants')}</th>
+              <th className="px-4 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map(r => (
+              <tr key={r.legalEntityId ?? 'unassigned'} className="hover:bg-muted/30">
+                <td className="px-4 py-2 font-medium">{r.name ?? t('audit.filiales.unassigned', 'Salariés non rattachés')}</td>
+                <td className="px-4 py-2 text-xs text-muted-foreground">{[r.countryCode, r.legislationPackCode].filter(Boolean).join(' · ')}</td>
+                <td className="px-4 py-2 text-right">{r.totalEmployes}</td>
+                <td className="px-4 py-2 text-right">{r.cnpsApplicable ? `${r.nbSansNni} / ${r.nbSansCnps}` : na}</td>
+                <td className="px-4 py-2 text-right">
+                  {r.nbSousSmig}
+                  <div className="text-xs text-muted-foreground">{t('audit.filiales.smigOf', { value: `${fmt(r.smigReference)} ${currencyLabel(r.currency)}`, defaultValue: 'SMIG {{value}}' })}</div>
+                </td>
+                <td className="px-4 py-2 text-right">{fmt(r.masseSalariale)} {currencyLabel(r.currency)}</td>
+                <td className={`px-4 py-2 text-right font-semibold ${r.bloquants > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.bloquants}</td>
+                <td className="px-4 py-2 text-right">
+                  {r.legalEntityId && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectEntity(r.legalEntityId ?? '')}
+                      className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-muted"
+                    >
+                      {t('audit.filiales.audit', 'Auditer')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -787,7 +940,7 @@ function TabDeclarations({ data, t }: { data: AuditResult; t: TFunction }) {
                 {items.map((d, i) => (
                   <div key={i} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{d.mois}</p>
+                      <p className="text-sm font-medium">{d.legalEntityName ? `${d.legalEntityName} · ` : ''}{Array.isArray(d.mois) ? d.mois.join(', ') : d.mois}</p>
                       <p className="text-xs text-muted-foreground">
                         {t('audit.declarationsTab.employeesAmount', { count: d.employeesCount, amount: fmt(d.totalCotisations) })}
                       </p>
@@ -829,7 +982,10 @@ function TabParams({ draft, onChange, onApply, isFetching, result, t }: {
   const checks: { key: keyof AuditParams; label: string; desc: string }[] = [
     { key: 'checkEmployeur', label: t('audit.params.checkEmployerLabel'), desc: t('audit.params.checkEmployerDesc') },
     { key: 'checkCnps',      label: t('audit.params.checkCnpsLabel'),     desc: t('audit.params.checkCnpsDesc') },
-    { key: 'checkSmig',      label: t('audit.params.checkSmigLabel'),     desc: t('audit.params.checkSmigDesc', { value: draft.year >= 2026 ? '75 000' : '60 000' }) },
+    // SMIG du pack (filiale / pays) renvoyé par l'API — plus de montant en dur.
+    { key: 'checkSmig',      label: t('audit.params.checkSmigLabel'),     desc: t('audit.params.checkSmigDesc', {
+      value: result ? `${fmt(result.smigReference)} ${currencyLabel(result.currency)}` : t('audit.params.smigByCountry', 'SMIG du pays du salarié'),
+    }) },
     { key: 'checkDecl',      label: t('audit.params.checkDeclLabel'),     desc: t('audit.params.checkDeclDesc') },
     { key: 'checkMobile',    label: t('audit.params.checkMobileLabel'),   desc: t('audit.params.checkMobileDesc') },
     { key: 'checkPlafonds',  label: t('audit.params.checkPlafondsLabel'), desc: t('audit.params.checkPlafondsDesc') },
