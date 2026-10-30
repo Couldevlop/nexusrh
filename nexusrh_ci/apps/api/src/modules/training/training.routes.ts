@@ -84,6 +84,10 @@ interface BulkEnrollResult {
   skippedInvalid: number
 }
 
+/** Statut effectif d'une session (lecture seule, aucune donnée modifiée en base). */
+export const EFFECTIVE_SESSION_STATUS_SQL = `CASE WHEN ts.status = 'planned'
+    AND COALESCE(ts.end_date, ts.start_date) < CURRENT_DATE THEN 'completed' ELSE ts.status END`
+
 // Inscrit en masse des employés SÉLECTIONNÉS à une session (action RH). Réutilisé
 // par la planification de session ET l'ajout de participants à une session
 // existante. Sûr : ne garde que les employee_ids appartenant au tenant (OWASP A01
@@ -155,13 +159,22 @@ async function runEnroll(
     return reply.status(409).send({ error: 'Cet employé est déjà inscrit à cette session' })
   }
   // Vérifier places disponibles
-  const session = await pool.query<{ max_places: number; enrolled: number }>(`
-    SELECT ts.max_places, COUNT(te.id)::int AS enrolled
+  const session = await pool.query<{ max_places: number; enrolled: number; effective_status?: string }>(`
+    SELECT ts.max_places, ${EFFECTIVE_SESSION_STATUS_SQL} AS effective_status, COUNT(te.id)::int AS enrolled
     FROM "${schema}".training_sessions ts
     LEFT JOIN "${schema}".training_enrollments te ON te.session_id = ts.id
     WHERE ts.id = $1 GROUP BY ts.id
   `, [sessionId])
   if (!session.rows[0]) return reply.status(404).send({ error: 'Session introuvable' })
+  // Session terminée (date de fin passée) ou annulée : plus d'inscription possible.
+  const effective = session.rows[0].effective_status
+  if (effective === 'completed' || effective === 'cancelled') {
+    return reply.status(409).send({
+      error: effective === 'cancelled'
+        ? 'Cette session est annulée : inscription impossible'
+        : 'Cette session est terminée : inscription impossible',
+    })
+  }
   if (session.rows[0].enrolled >= session.rows[0].max_places) {
     return reply.status(400).send({ error: 'Session complète' })
   }
@@ -190,7 +203,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
                    COUNT(DISTINCT ts.id)::int AS sessions_count,
                    COUNT(DISTINCT te.id)::int AS enrollments_count
                  FROM "${schema}".trainings t
-                 LEFT JOIN "${schema}".training_sessions ts ON ts.training_id = t.id AND ts.status = 'planned'
+                 LEFT JOIN "${schema}".training_sessions ts ON ts.training_id = t.id AND ${EFFECTIVE_SESSION_STATUS_SQL} = 'planned'
                  LEFT JOIN "${schema}".training_enrollments te ON te.session_id = ts.id
                  WHERE t.is_active = true`
       const params: unknown[] = []
@@ -245,12 +258,15 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /training/sessions
+// (statut effectif exposé en `effective_status`, remis dans `status` à la réponse)
   fastify.get('/sessions', {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { status, training_id } = request.query as Record<string, string>
-      let sql = `SELECT ts.*, t.title AS training_title, t.duration, t.duration_unit,
+      // Statut effectif calculé à la lecture : une session « planned » dont la fin
+      // (à défaut, le début) est passée est « completed » ; annulée = inchangé.
+      let sql = `SELECT ts.*, ${EFFECTIVE_SESSION_STATUS_SQL} AS effective_status, t.title AS training_title, t.duration, t.duration_unit,
                    t.is_fdfp_eligible, t.category, t.format,
                    COUNT(te.id)::int AS enrolled_count
                  FROM "${schema}".training_sessions ts
@@ -259,12 +275,15 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
                  WHERE 1=1`
       const params: unknown[] = []
       let idx = 1
-      if (status)      { sql += ` AND ts.status = $${idx++}`; params.push(status) }
+      if (status)      { sql += ` AND ${EFFECTIVE_SESSION_STATUS_SQL} = $${idx++}`; params.push(status) }
       if (training_id) { sql += ` AND ts.training_id = $${idx++}`; params.push(training_id) }
       sql += ` GROUP BY ts.id, t.id ORDER BY ts.start_date DESC`
       try {
-        const res = await pool.query(sql, params)
-        return reply.send({ data: res.rows })
+        const res = await pool.query<Record<string, unknown> & { effective_status?: string }>(sql, params)
+        // Forme de réponse inchangée : le statut effectif remplace `status`.
+        const data = res.rows.map(({ effective_status, ...row }) => (
+          effective_status !== undefined ? { ...row, status: effective_status } : row))
+        return reply.send({ data })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

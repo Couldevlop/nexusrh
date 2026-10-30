@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 import { confirmDialog } from '@/components/shared/ConfirmDialog'
+import { apiErrorMessage } from '@/lib/signed-contracts'
 
 type Tab = 'requests' | 'mine'
 const MANAGE_ROLES = ['admin', 'hr_manager']
@@ -30,6 +31,9 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 interface EmployeeRow { id: string; first_name: string; last_name: string; email: string | null }
+/** Contrôle d'email de base (même esprit que z.string().email() de l'API : pas d'accent ni d'espace). */
+const BASIC_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/
+
 interface DraftSignatory { employeeId: string; name: string; email: string }
 
 export default function SignaturePage() {
@@ -56,6 +60,10 @@ export default function SignaturePage() {
     if (open) qc.invalidateQueries({ queryKey: ['signature', 'request', open] })
   }
 
+  // Erreur renvoyée par l'API sur une action (création, envoi, annulation, suppression).
+  const [actionError, setActionError] = useState<string | null>(null)
+  const onActionError = (err: unknown) => setActionError(apiErrorMessage(err, t('errors.generic')))
+
   // ── Création ──
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' })
@@ -72,7 +80,8 @@ export default function SignaturePage() {
         })),
       })
     },
-    onSuccess: () => { setShowForm(false); setForm({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' }); setSigns([{ employeeId: '', name: '', email: '' }]); refresh() },
+    onError: onActionError,
+    onSuccess: () => { setActionError(null); setShowForm(false); setForm({ title: '', documentType: 'contract', message: '', sequential: false, expiresAt: '' }); setSigns([{ employeeId: '', name: '', email: '' }]); refresh() },
   })
   // Sélection d'un employé : renseigne employeeId + pré-remplit nom/email (signataire externe = laisser vide)
   const pickEmployee = (idx: number, employeeId: string) => {
@@ -81,14 +90,14 @@ export default function SignaturePage() {
       if (!employeeId) return { ...x, employeeId: '' }
       const emp = empQ.data?.find((e) => e.id === employeeId)
       if (!emp) return { ...x, employeeId }
-      return { employeeId, name: `${emp.first_name} ${emp.last_name}`.trim(), email: emp.email ?? '' }
+      return { employeeId, name: `${emp.first_name} ${emp.last_name}`.trim(), email: emp.email && BASIC_EMAIL_RE.test(emp.email) ? emp.email : '' }
     }))
   }
   const validSigns = signs.filter((s) => s.name.trim()).length
 
-  const sendReq = useMutation({ mutationFn: async (id: string) => { await api.post(`/signature/requests/${id}/send`) }, onSuccess: refresh })
-  const cancelReq = useMutation({ mutationFn: async (id: string) => { await api.post(`/signature/requests/${id}/cancel`) }, onSuccess: refresh })
-  const deleteReq = useMutation({ mutationFn: async (id: string) => { await api.delete(`/signature/requests/${id}`) }, onSuccess: () => { setOpen(null); refresh() } })
+  const sendReq = useMutation({ mutationFn: async (id: string) => { await api.post(`/signature/requests/${id}/send`) }, onError: onActionError, onSuccess: () => { setActionError(null); refresh() } })
+  const cancelReq = useMutation({ mutationFn: async (id: string) => { await api.post(`/signature/requests/${id}/cancel`) }, onError: onActionError, onSuccess: () => { setActionError(null); refresh() } })
+  const deleteReq = useMutation({ mutationFn: async (id: string) => { await api.delete(`/signature/requests/${id}`) }, onError: onActionError, onSuccess: () => { setActionError(null); setOpen(null); refresh() } })
 
   // ── Signature self-service ──
   const [signing, setSigning] = useState<string | null>(null)
@@ -136,6 +145,12 @@ export default function SignaturePage() {
       {/* ── Demandes (gestion) ── */}
       {tab === 'requests' && (
         <div className="space-y-4">
+          {actionError && (
+            <div role="alert" className="flex max-w-2xl items-start justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              <span>{actionError}</span>
+              <button type="button" onClick={() => setActionError(null)} aria-label={t('errors.dismiss')}><X className="h-4 w-4" /></button>
+            </div>
+          )}
           {showForm && canWrite && (
             <div className="max-w-2xl space-y-2 rounded-xl border border-border bg-card p-4">
               <input type="text" placeholder={t('requests.title')} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}

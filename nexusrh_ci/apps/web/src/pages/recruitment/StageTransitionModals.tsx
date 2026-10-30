@@ -49,7 +49,19 @@ export interface HireEmployeeValues {
   contractType?: ContractType
   jobTitle?: string
   professionalCategory?: string
+  /** Mode de paiement (facultatif) — mêmes champs/validation que la fiche employé. */
+  paymentMethod?: PaymentMethod
+  mobileMoneyProvider?: MmProvider
+  mobileMoneyPhone?: string
+  iban?: string
+  bankName?: string
 }
+
+type PaymentMethod = 'mobile_money' | 'bank_transfer'
+const MM_PROVIDERS = ['wave', 'mtn', 'orange'] as const
+type MmProvider = typeof MM_PROVIDERS[number]
+/** Format Mobile Money CI (identique à l'API) : +225 + 07/05 + 8 chiffres. */
+export const CI_MM_PHONE = /^\+2250[57]\d{8}$/
 
 const errorOf = (err: unknown): string | null =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? null
@@ -180,6 +192,11 @@ export function HireEmployeeModal({ candidate, busy, error, onCancel, onConfirm 
     hireDate: '', departmentId: '', legalEntityId: '', baseSalary: '',
     contractType: 'cdi' as ContractType, jobTitle: '', professionalCategory: '',
   })
+  // Mode de paiement facultatif : '' = non renseigné (comportement historique).
+  const [pay, setPay] = useState({
+    method: '' as PaymentMethod | '', provider: '' as MmProvider | '', phone: '', bankName: '', iban: '',
+  })
+  const [payTouched, setPayTouched] = useState(false)
   const p = prefill.data?.data
   useEffect(() => {
     if (!p) return
@@ -197,7 +214,13 @@ export function HireEmployeeModal({ candidate, busy, error, onCancel, onConfirm 
   const linked = !!(p?.employeeId || p?.existingEmployeeId)
   const set = (patch: Partial<typeof form>) => setForm(f => ({ ...f, ...patch }))
 
+  // Erreur de cohérence du mode de paiement (clé i18n) ou null.
+  const payError = pay.method === 'mobile_money'
+    ? (!pay.provider ? 'paymentProviderRequired' : !CI_MM_PHONE.test(pay.phone.replace(/\s/g, '')) ? 'paymentPhoneInvalid' : null)
+    : pay.method === 'bank_transfer' ? (!pay.bankName.trim() ? 'paymentBankRequired' : null) : null
+
   const submit = () => {
+    if (payError) { setPayTouched(true); return }
     const values: HireEmployeeValues = {
       ...(form.hireDate ? { hireDate: form.hireDate } : {}),
       departmentId: form.departmentId || null,
@@ -206,6 +229,10 @@ export function HireEmployeeModal({ candidate, busy, error, onCancel, onConfirm 
       contractType: form.contractType,
       ...(form.jobTitle.trim() ? { jobTitle: form.jobTitle.trim() } : {}),
       ...(form.professionalCategory.trim() ? { professionalCategory: form.professionalCategory.trim() } : {}),
+      ...(pay.method === 'mobile_money' && pay.provider
+        ? { paymentMethod: 'mobile_money' as const, mobileMoneyProvider: pay.provider, mobileMoneyPhone: pay.phone.replace(/\s/g, '') } : {}),
+      ...(pay.method === 'bank_transfer'
+        ? { paymentMethod: 'bank_transfer' as const, bankName: pay.bankName.trim(), ...(pay.iban.trim() ? { iban: pay.iban.replace(/\s+/g, '') } : {}) } : {}),
     }
     onConfirm(values)
   }
@@ -290,6 +317,53 @@ export function HireEmployeeModal({ candidate, busy, error, onCancel, onConfirm 
             {form.baseSalary === '' && (
               <p className="mt-2 text-xs text-amber-700">{t('transition.salaryMissing')}</p>
             )}
+
+            {/* Mode de paiement du salaire — facultatif, mêmes règles que la fiche employé */}
+            <fieldset className="mt-3 rounded-md border p-3">
+              <legend className="px-1 text-xs font-medium text-muted-foreground">{t('transition.paymentTitle')}</legend>
+              <div className="flex gap-2">
+                {([['', 'paymentNone'], ['mobile_money', 'paymentMobileMoney'], ['bank_transfer', 'paymentBankTransfer']] as const).map(([m, label]) => (
+                  <button key={m} type="button" onClick={() => { setPay(x => ({ ...x, method: m })); setPayTouched(false) }}
+                    className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium ${pay.method === m ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground'}`}>
+                    {t(`transition.${label}`)}
+                  </button>
+                ))}
+              </div>
+              {pay.method === '' && <p className="mt-2 text-xs text-amber-700">{t('transition.paymentHint')}</p>}
+              {pay.method === 'mobile_money' && (
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    <span className="text-muted-foreground">{t('transition.paymentProvider')}</span>
+                    <select value={pay.provider} onChange={e => setPay(x => ({ ...x, provider: e.target.value as MmProvider | '' }))}
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2">
+                      <option value="">—</option>
+                      {MM_PROVIDERS.map(p => <option key={p} value={p}>{p === 'mtn' ? 'MTN MoMo' : p === 'orange' ? 'Orange Money' : 'Wave'}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-muted-foreground">{t('transition.paymentPhone')}</span>
+                    <input value={pay.phone} maxLength={30} placeholder={t('transition.paymentPhonePlaceholder')}
+                      onChange={e => setPay(x => ({ ...x, phone: e.target.value }))}
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+                  </label>
+                </div>
+              )}
+              {pay.method === 'bank_transfer' && (
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    <span className="text-muted-foreground">{t('transition.paymentBankName')}</span>
+                    <input value={pay.bankName} maxLength={100} onChange={e => setPay(x => ({ ...x, bankName: e.target.value }))}
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+                  </label>
+                  <label className="text-sm">
+                    <span className="text-muted-foreground">{t('transition.paymentIban')}</span>
+                    <input value={pay.iban} maxLength={50} onChange={e => setPay(x => ({ ...x, iban: e.target.value }))}
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2" />
+                  </label>
+                </div>
+              )}
+              {payTouched && payError && <p className="mt-2 text-xs text-red-600">{t(`transition.${payError}`)}</p>}
+            </fieldset>
           </>
         )}
 
