@@ -24,6 +24,9 @@ describe('catalogue des habilitations', () => {
     expect(isPermission('nope:view')).toBe(false)
     expect(isPermission('')).toBe(false)
   })
+  it('« close » pour les déclarations (dépôt CNPS/DISA)', () => {
+    expect(isPermission('declarations:close')).toBe(true)
+  })
   it('SENSITIVE_IMPLIED', () => {
     expect(SENSITIVE_IMPLIED).toEqual(['payroll', 'declarations', 'payments'])
   })

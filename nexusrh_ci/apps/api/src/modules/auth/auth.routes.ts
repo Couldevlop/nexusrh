@@ -5,7 +5,7 @@ import { pool } from '../../db/pool.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { blacklistTokenSafe, setTokenEpoch } from '../../services/redis.js'
 import { buildMfaChallenge } from './auth-mfa.routes.js'
-import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME, withJti, tokenBlacklistKey } from '../../plugins/auth.js'
+import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME, withJti, tokenBlacklistKey, getRequestHab } from '../../plugins/auth.js'
 import type { SecurityPolicy } from '../../services/security-policy.service.js'
 import {
   getSecurityPolicy,
@@ -941,6 +941,23 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // Habilitations RH : droits effectifs et périmètre, pour que l'interface
+      // masque ce que le serveur refusera. `null` = aucune affectation (accès
+      // par rôle) ; liste vide = affectation inactive (tout est refusé). En cas
+      // d'erreur du moteur, on annonce une liste vide (fermé par défaut).
+      let permissions: string[] | null = null
+      let habScope: { kind: string; legalEntityId: string | null; allEntities: boolean } | null = null
+      try {
+        const hab = await getRequestHab(request)
+        if (hab) {
+          permissions = [...hab.permissions].sort()
+          habScope = { kind: hab.kind, legalEntityId: hab.legalEntityId, allEntities: hab.allEntities }
+        }
+      } catch (err) {
+        request.log.error({ err }, 'habilitations : contexte indisponible pour /auth/me')
+        permissions = []
+      }
+
       return reply.send({
         user: {
           id:         user.sub,
@@ -951,6 +968,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           employeeId: user.employeeId,
         },
         tenantConfig,
+        permissions,
+        habScope,
       })
     },
   })

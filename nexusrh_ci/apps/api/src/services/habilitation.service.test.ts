@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+// Le setup global remplace loadHabContext : ce fichier teste le vrai.
+vi.unmock('./habilitation.service.js')
 vi.mock('../db/pool.js', () => ({ pool: { query: queryMock } }))
 
 import { loadHabContext, can, hrScopeSql, type HabContext } from './habilitation.service.js'

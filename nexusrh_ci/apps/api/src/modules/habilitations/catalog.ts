@@ -30,7 +30,7 @@ export const HAB_GRID: Record<HabFunction, readonly HabAction[]> = {
   attendance: ['view', 'create', 'update', 'validate', 'export'],
   payroll: ['view', 'create', 'update', 'validate', 'close', 'export', 'configure'],
   payroll_multi: ['view', 'create', 'update', 'validate', 'close', 'export'],
-  declarations: ['view', 'create', 'update', 'validate', 'export'],
+  declarations: ['view', 'create', 'update', 'validate', 'close', 'export'],
   payments: ['view', 'create', 'validate', 'pay', 'export'],
   expenses: ['view', 'create', 'update', 'delete', 'validate', 'export'],
   recruitment: ['view', 'create', 'update', 'delete', 'validate', 'export'],
