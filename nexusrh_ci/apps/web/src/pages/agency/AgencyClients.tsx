@@ -8,6 +8,7 @@ import { LogoUpload } from '@/components/shared/LogoUpload'
 
 interface ClientTenant {
   id: string; name: string; slug: string; city: string | null; plan_type: string; status: string
+  logo_url?: string | null
 }
 
 export default function AgencyClients() {
@@ -91,7 +92,9 @@ export default function AgencyClients() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tenants.map((t) => (
             <div key={t.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted"><Building2 className="h-5 w-5 text-muted-foreground" /></div>
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                {t.logo_url ? <img src={t.logo_url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-5 w-5 text-muted-foreground" />}
+              </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{t.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{t.city ?? tt('common.ciShort')} · {t.plan_type}</p>

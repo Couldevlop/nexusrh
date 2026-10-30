@@ -39,7 +39,7 @@ export default function AgencySettings() {
   }, [data])
 
   const save = useMutation({
-    mutationFn: () => api.patch(`/agency/agencies/${data!.data.id}`, form).then((r) => r.data),
+    mutationFn: () => api.patch('/agency/me', form).then((r) => r.data),
     onSuccess: () => { setSaved(true); setError(null); qc.invalidateQueries({ queryKey: ['agency-me'] }); setTimeout(() => setSaved(false), 2500) },
     onError: (err: unknown) => {
       const ax = err as { response?: { data?: { error?: string } } }

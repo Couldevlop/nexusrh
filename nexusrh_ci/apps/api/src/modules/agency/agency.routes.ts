@@ -50,13 +50,34 @@ const createAgencyBody = z.object({
 const patchAgencyBody = z.object({
   name: z.string().min(1).max(255).optional(),
   city: z.string().max(100).optional(),
-  contactEmail: z.string().email().optional(),
+  contactEmail: z.string().email().or(z.literal('')).optional(),
   contactPhone: z.string().max(30).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  logoUrl: z.string().url().or(z.literal('')).optional(),
+  // null = pas de logo (valeur renvoyée telle quelle par GET /agency/me).
+  logoUrl: z.string().url().or(z.literal('')).nullable().optional(),
   senderEmail: z.string().email().or(z.literal('')).optional(),
   senderName: z.string().max(150).optional(),
 }).strict()
+
+// Mise à jour partagée : super_admin (PATCH /agencies/:id) et propriétaire (PATCH /me).
+async function updateAgency(id: string, b: z.infer<typeof patchAgencyBody>): Promise<boolean | 'empty'> {
+  const map: Record<string, string> = {
+    name: 'name', city: 'city', contactEmail: 'contact_email', contactPhone: 'contact_phone',
+    primaryColor: 'primary_color', logoUrl: 'logo_url', senderEmail: 'sender_email', senderName: 'sender_name',
+  }
+  const sets: string[] = []
+  const vals: unknown[] = []
+  let i = 1
+  for (const [k, col] of Object.entries(map)) {
+    const v = (b as Record<string, unknown>)[k]
+    if (v !== undefined) { sets.push(`${col} = $${i++}`); vals.push(v === '' ? null : v) }
+  }
+  if (sets.length === 0) return 'empty'
+  sets.push(`updated_at = now()`)
+  vals.push(id)
+  const res = await pool.query(`UPDATE platform.agencies SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`, vals)
+  return Boolean(res.rows[0])
+}
 
 const activateBody = z.object({ tenantId: z.string().regex(UUID_RE, 'tenantId invalide') }).strict()
 
@@ -207,6 +228,23 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
            FROM platform.agencies WHERE id = $1 LIMIT 1`, [agencyId])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Cabinet introuvable' })
       return reply.send({ data: res.rows[0] })
+    },
+  })
+
+  // PATCH /agency/me — le propriétaire modifie SON cabinet (id tiré du JWT, jamais du client).
+  fastify.patch('/me', {
+    preHandler: [fastify.authorize('agency_owner')],
+    schema: { tags: ['agency'], summary: 'Modifier mon cabinet (propriétaire)' },
+    handler: async (request, reply) => {
+      const agencyId = (request.user as { agencyId?: string }).agencyId
+      if (!agencyId) return reply.status(403).send({ error: 'Contexte cabinet manquant' })
+      const parsed = patchAgencyBody.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'Validation échouée' })
+      const updated = await updateAgency(agencyId, parsed.data)
+      if (updated === 'empty') return reply.status(400).send({ error: 'Aucun champ à modifier' })
+      if (!updated) return reply.status(404).send({ error: 'Cabinet introuvable' })
+      auditLogPlatform(request.user.sub, 'agency.updated', 'agency', agencyId, { ...parsed.data }, request.ip ?? null)
+      return reply.send({ data: { id: agencyId, updated: true } })
     },
   })
 
@@ -471,23 +509,10 @@ const agencyRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
       const parsed = patchAgencyBody.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'Validation échouée' })
+      const updated = await updateAgency(id, parsed.data)
+      if (updated === 'empty') return reply.status(400).send({ error: 'Aucun champ à modifier' })
+      if (!updated) return reply.status(404).send({ error: 'Cabinet introuvable' })
       const b = parsed.data
-      const map: Record<string, string> = {
-        name: 'name', city: 'city', contactEmail: 'contact_email', contactPhone: 'contact_phone',
-        primaryColor: 'primary_color', logoUrl: 'logo_url', senderEmail: 'sender_email', senderName: 'sender_name',
-      }
-      const sets: string[] = []
-      const vals: unknown[] = []
-      let i = 1
-      for (const [k, col] of Object.entries(map)) {
-        const v = (b as Record<string, unknown>)[k]
-        if (v !== undefined) { sets.push(`${col} = $${i++}`); vals.push(v === '' ? null : v) }
-      }
-      if (sets.length === 0) return reply.status(400).send({ error: 'Aucun champ à modifier' })
-      sets.push(`updated_at = now()`)
-      vals.push(id)
-      const res = await pool.query(`UPDATE platform.agencies SET ${sets.join(', ')} WHERE id = $${i} RETURNING id`, vals)
-      if (!res.rows[0]) return reply.status(404).send({ error: 'Cabinet introuvable' })
       auditLogPlatform(request.user.sub, 'agency.updated', 'agency', id, { ...b }, request.ip ?? null)
       return reply.send({ data: { id, updated: true } })
     },
