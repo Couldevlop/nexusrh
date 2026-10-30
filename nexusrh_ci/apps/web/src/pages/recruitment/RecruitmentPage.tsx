@@ -18,6 +18,7 @@ import {
   FileSignature,
 } from 'lucide-react'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
+import { ContractProposalEditor, contractProposalKey } from '@/components/recruitment/ContractProposalEditor'
 import ScreeningReview from './ScreeningReview'
 import { confirmDialog } from '@/components/shared/ConfirmDialog'
 import { Link } from 'react-router-dom'
@@ -311,6 +312,24 @@ export default function RecruitmentPage() {
 
   const role = useAuthStore((s) => s.user?.role ?? '')
   const canMoveStage = STAGE_WRITE_ROLES.includes(role)
+  // Proposition de contrat : option tenant (admin, Paramètres). Désactivée ou
+  // illisible → action masquée (l'API renvoie de toute façon 403).
+  const proposalSettings = useQuery({
+    queryKey: ['recruitment', 'contract-proposal', 'settings'],
+    enabled: canMoveStage,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      try {
+        const r = await api.get('/recruitment/contract-proposal/settings')
+        return (r.data?.data as { enabled: boolean } | undefined) ?? { enabled: false }
+      } catch {
+        return { enabled: false }
+      }
+    },
+  })
+  const contractGenerationEnabled = proposalSettings.data?.enabled === true
+  const [proposalApp, setProposalApp] = useState<Application | null>(null)
   const [rejectTarget, setRejectTarget] = useState<Application | null>(null)
   const [hireTarget, setHireTarget] = useState<Application | null>(null)
   const [hireNotice, setHireNotice] = useState<(HireOutcome & { name: string }) | null>(null)
@@ -371,14 +390,15 @@ export default function RecruitmentPage() {
       if (contractForm.endDate) body.endDate = contractForm.endDate
       if (contractForm.nni) body.nni = contractForm.nni
       if (contractForm.category) body.category = contractForm.category
-      const res = await api.post(
+      await api.post(
         `/recruitment/applications/${contractApp.id}/contract`,
         body,
         { responseType: 'blob' },
       )
-      const url = URL.createObjectURL(res.data as Blob)
-      window.open(url, '_blank')
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      // Nouvelle version de la proposition → ouverture de l'éditeur (texte,
+      // aperçu PDF, historique) pour l'adapter avant envoi.
+      await queryClient.invalidateQueries({ queryKey: contractProposalKey(contractApp.id) })
+      setProposalApp(contractApp)
       setContractApp(null)
     } catch (err) {
       const detail = (err as { response?: { data?: unknown } })?.response?.data
@@ -1256,10 +1276,12 @@ export default function RecruitmentPage() {
                         {canMoveStage && (
                         <div className="mt-2 flex flex-wrap gap-2 border-t pt-2" onClick={e => e.stopPropagation()}>
                           {app.stage === 'hired' ? (
-                            <button onClick={() => openContract(app)}
-                              className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
-                              <FileSignature className="h-3 w-3" /> {t('contract.generate')}
-                            </button>
+                            contractGenerationEnabled ? (
+                              <button onClick={() => setProposalApp(app)}
+                                className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+                                <FileSignature className="h-3 w-3" /> {t('contract.generate')}
+                              </button>
+                            ) : null
                           ) : (
                             <button onClick={() => requestStage(app, 'hired')}
                               className="flex items-center gap-0.5 text-xs text-green-600 hover:text-green-700 font-medium">
@@ -1418,6 +1440,16 @@ export default function RecruitmentPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Proposition de contrat : éditeur versionné (texte + aperçu PDF + historique) */}
+      {proposalApp && contractGenerationEnabled && (
+        <ContractProposalEditor
+          applicationId={proposalApp.id}
+          candidate={`${proposalApp.first_name} ${proposalApp.last_name}${proposalApp.job_title ? ` · ${proposalApp.job_title}` : ''}`}
+          onClose={() => setProposalApp(null)}
+          onRegenerate={() => { const a = proposalApp; setProposalApp(null); openContract(a) }}
+        />
       )}
 
       {/* REC-007 — Modal de génération du contrat OHADA à l'embauche */}

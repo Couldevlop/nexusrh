@@ -4,6 +4,7 @@ import { classificationTableStatements } from './classification-defaults.js'
 import { payrollReminderTableStatements } from './payroll-reminders.js'
 import { disaPerEntityStatements } from './disa-records.js'
 import { employeeDocumentsTableStatements } from './employee-documents.js'
+import { contractProposalsTableStatements } from './contract-proposals.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 
@@ -189,6 +190,8 @@ export async function createPlatformSchema(): Promise<void> {
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS manager_contract_upload boolean NOT NULL DEFAULT false`)
   // Seuil d'anonymat des enquêtes climat (NULL = défaut applicatif, cf. climate.service).
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS climate_min_responses int CHECK (climate_min_responses IS NULL OR climate_min_responses BETWEEN 2 AND 100)`)
+  // Génération de PROPOSITION de contrat au recrutement (admin tenant, opt-in).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
@@ -514,6 +517,10 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
 
   // Documents du dossier salarié (contrat signé…) — cf. db/employee-documents.ts
   for (const stmt of employeeDocumentsTableStatements(schemaName)) {
+    await q(stmt)
+  }
+  // Propositions de contrat versionnées (recrutement) — cf. db/contract-proposals.ts
+  for (const stmt of contractProposalsTableStatements(schemaName)) {
     await q(stmt)
   }
 
@@ -1677,6 +1684,8 @@ export async function ensureRecruitmentSchemaMigrated(schemaName: string): Promi
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_recent ON ${s}.recruitment_decisions(decided_at DESC)`)
   await q(`CREATE INDEX IF NOT EXISTS idx_${schemaName}_decisions_job ON ${s}.recruitment_decisions(job_id, decided_at DESC)`)
   await applyFunnelColumns(s, schemaName, q)
+  // Propositions de contrat versionnées (POST/PUT /applications/:id/contract…)
+  for (const stmt of contractProposalsTableStatements(schemaName)) await q(stmt)
 }
 
 /**

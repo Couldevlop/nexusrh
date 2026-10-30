@@ -137,6 +137,29 @@ describe('PATCH /settings/tenant — Zod + audit (OWASP A03 + A09)', () => {
     expect(changes.modifiedFields).toEqual(expect.arrayContaining(['name', 'at_rate', 'primary_color']))
   })
 
+  it('admin active la génération de proposition de contrat (booléen strict)', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 't1', contract_generation_enabled: true }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'PATCH', url: '/settings/tenant',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { contract_generation_enabled: true },
+    })
+    expect(res.statusCode).toBe(200)
+    const update = queryMock.mock.calls.find((c) => String(c[0]).startsWith('UPDATE platform.tenants'))
+    expect(String(update?.[0])).toContain('contract_generation_enabled = $1')
+    expect(update?.[1]?.[0]).toBe(true)
+
+    const bad = await app.inject({
+      method: 'PATCH', url: '/settings/tenant',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { contract_generation_enabled: 'oui' },
+    })
+    expect(bad.statusCode).toBe(400)
+  })
+
   it('accepte un logo data URL réaliste (~60 Ko) — pas de 400 sur la borne max', async () => {
     // Régression : le plafond .max(8192) rejetait tout vrai logo (une data URL
     // base64 de 1 Mo ≈ 1,37 M car.), faisant échouer le PATCH complet — donc

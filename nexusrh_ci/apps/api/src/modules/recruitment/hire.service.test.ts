@@ -358,7 +358,12 @@ describe('hireApplication — niveau de poste et contrat généré', () => {
     const params = state.documents[0]!.params
     expect(params[0]).toBe(APP_ID)
     expect(params[1]).toBe('emp-1')
-    expect(params[2]).toBe('signed_contract')
+    // Proposition NON signée : jamais versée comme contrat signé.
+    expect(params[2]).toBe('contract_proposal')
+    expect(params[3]).toBe('Proposition de contrat (générée au recrutement)')
+    // Historique des versions rattaché à la nouvelle fiche.
+    const link = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE "tenant_sotra".contract_proposals SET employee_id'))
+    expect(link?.[1]).toEqual([APP_ID, 'emp-1'])
     const sql = String(queryMock.mock.calls.find((c) => String(c[0]).includes('employee_documents'))![0])
     expect(sql).toContain('is_current = false')
     expect(sql).toContain('COALESCE(MAX(version), 0) + 1')

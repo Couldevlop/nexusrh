@@ -150,5 +150,15 @@
     "signedElectronically": "signé électroniquement le {{date}}",
     "download": "Télécharger",
     "noFile": "Signature électronique sans document déposé"
+  },
+  "proposal": {
+    "title": "Propositions de contrat (non signées)",
+    "hint": "Générées au recrutement : elles ne valent pas contrat signé et ne sont pas visibles par l'employé. Déposez le contrat signé ci-dessus.",
+    "version": "Version {{version}}",
+    "current": "Courante",
+    "archived": "Archivée",
+    "generatedOn": "générée le {{date}}",
+    "download": "Télécharger",
+    "loadError": "Impossible de télécharger la proposition. Réessayez."
   }
 }
