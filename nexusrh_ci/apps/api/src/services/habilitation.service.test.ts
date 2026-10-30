@@ -8,19 +8,52 @@ import { loadHabContext, can, hrScopeSql, type HabContext } from './habilitation
 const ENT = '11111111-1111-4111-8111-111111111111'
 const row = (over: Record<string, unknown> = {}) => ({
   user_id: 'u1', subgroup_id: 'sg1', kind: 'entity', legal_entity_id: ENT,
-  permissions: ['employees:view'], self_employee_id: 'e1', ...over,
+  permissions: ['employees:view'], self_employee_id: 'e1', active: true, ...over,
 })
 
 beforeEach(() => queryMock.mockReset())
 
 describe('loadHabContext', () => {
-  it('renvoie null sans affectation active (ex. effective_from futur filtré en SQL)', async () => {
+  it('aucune ligne -> null (accès hérité) ; une seule requête LEFT JOIN', async () => {
     queryMock.mockResolvedValue({ rows: [] })
-    expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
+    const ctx = await loadHabContext('tenant_sotra', 'u1')
+    expect(ctx).toBeNull()
+    expect(hrScopeSql('tenant_sotra', 'e', ctx)).toBe('TRUE')
+    expect(queryMock).toHaveBeenCalledTimes(1)
     const sql = String(queryMock.mock.calls[0]![0])
+    expect(sql).toContain('LEFT JOIN "tenant_sotra".hab_subgroups')
     expect(sql).toContain('revoked_at IS NULL')
     expect(sql).toContain('effective_from <= current_date')
     expect(sql).toContain('INTERSECT')
+  })
+
+  const expectDeny = (ctx: HabContext | null) => {
+    expect(ctx).not.toBeNull()
+    expect(ctx!.kind).toBe('none')
+    expect(ctx!.permissions.size).toBe(0)
+    expect(ctx!.allEntities || ctx!.sensitive || ctx!.manageHabilitations).toBe(false)
+    expect(can(ctx!, 'employees', 'view')).toBe(false)
+    expect(hrScopeSql('tenant_sotra', 'e', ctx)).toBe('FALSE')
+  }
+
+  it('ligne révoquée -> contexte de refus', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ active: false })] })
+    expectDeny(await loadHabContext('tenant_sotra', 'u1'))
+  })
+
+  it('ligne à effet futur -> contexte de refus', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ active: false, permissions: [] })] })
+    expectDeny(await loadHabContext('tenant_sotra', 'u1'))
+  })
+
+  it('sous-groupe absent (colonnes sg nulles) -> contexte de refus', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ active: false, kind: null, legal_entity_id: null, permissions: [] })] })
+    expectDeny(await loadHabContext('tenant_sotra', 'u1'))
+  })
+
+  it('subgroup_id NULL -> contexte de refus', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ subgroup_id: null, active: false, kind: null, legal_entity_id: null })] })
+    expectDeny(await loadHabContext('tenant_sotra', 'u1'))
   })
 
   it('payroll:validate faux quand absent des droits effectifs (plafond)', async () => {

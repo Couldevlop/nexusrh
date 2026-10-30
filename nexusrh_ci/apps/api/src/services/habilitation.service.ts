@@ -17,7 +17,8 @@ import {
 export interface HabContext {
   userId: string
   subgroupId: string
-  kind: 'siege' | 'entity'
+  /** 'none' = contexte de refus (affectation inactive) : aucun droit, aucun périmètre. */
+  kind: 'siege' | 'entity' | 'none'
   legalEntityId: string | null
   permissions: Set<string>
   allEntities: boolean
@@ -29,9 +30,10 @@ export interface HabContext {
 interface HabRow {
   user_id: string
   subgroup_id: string
-  kind: 'siege' | 'entity'
+  kind: 'siege' | 'entity' | null
   legal_entity_id: string | null
   permissions: string[] | null
+  active: boolean
   self_employee_id: string | null
 }
 
@@ -46,16 +48,20 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
   assertValidSchemaName(schema)
   let rows: HabRow[]
   try {
+    // Une seule requête : LEFT JOIN pour distinguer « aucune ligne » (null,
+    // accès hérité) de « ligne inactive » (révoquée, future, sous-groupe absent
+    // -> refus).
     const res = await pool.query<HabRow>(
       `SELECT a.user_id, a.subgroup_id, sg.kind, sg.legal_entity_id,
-              ARRAY(SELECT unnest(a.permissions) INTERSECT SELECT unnest(sg.ceiling)) AS permissions,
-              u.employee_id AS self_employee_id
+              ARRAY(SELECT unnest(a.permissions) INTERSECT SELECT unnest(COALESCE(sg.ceiling, '{}'::text[]))) AS permissions,
+              u.employee_id AS self_employee_id,
+              (a.revoked_at IS NULL
+               AND (a.effective_from IS NULL OR a.effective_from <= current_date)
+               AND sg.id IS NOT NULL) AS active
          FROM "${schema}".hab_assignments a
-         JOIN "${schema}".hab_subgroups sg ON sg.id = a.subgroup_id
+         LEFT JOIN "${schema}".hab_subgroups sg ON sg.id = a.subgroup_id
          LEFT JOIN "${schema}".users u ON u.id = a.user_id
         WHERE a.user_id = $1
-          AND a.revoked_at IS NULL
-          AND (a.effective_from IS NULL OR a.effective_from <= current_date)
         LIMIT 1`,
       [userId],
     )
@@ -67,6 +73,20 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
   }
   const r = rows[0]
   if (!r) return null
+  // Fermé par défaut : une affectation existe mais n'est pas applicable.
+  if (!r.active || !r.kind) {
+    return {
+      userId: r.user_id,
+      subgroupId: r.subgroup_id ?? '',
+      kind: 'none',
+      legalEntityId: null,
+      permissions: new Set<string>(),
+      allEntities: false,
+      sensitive: false,
+      manageHabilitations: false,
+      selfEmployeeId: r.self_employee_id,
+    }
+  }
 
   const permissions = new Set<string>(r.permissions ?? [])
   const sensitive =
@@ -98,6 +118,7 @@ export function hrScopeSql(schema: string, alias: string, ctx: HabContext | null
   assertValidSchemaName(schema)
   if (!ALIAS_RE.test(alias)) throw new Error(`Alias SQL invalide : ${alias}`)
   if (ctx === null) return 'TRUE'
+  if (ctx.kind === 'none') return 'FALSE'
   if (ctx.kind === 'entity') {
     if (!ctx.legalEntityId || !UUID_RE.test(ctx.legalEntityId)) {
       throw new Error("Entité légale invalide pour le périmètre d'habilitation")
