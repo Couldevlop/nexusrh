@@ -39,6 +39,30 @@ const createSchema = z.object({
   expiresAt: z.string().datetime().optional().nullable(),
   signatories: z.array(signatorySchema).min(1).max(20),
 })
+/**
+ * Message métier précis pour une création refusée : la RH doit savoir QUEL
+ * champ corriger (ex. e-mail du 2e signataire), pas seulement « Validation
+ * échouée ». Premier problème rencontré seulement ; aucune valeur saisie n'est
+ * renvoyée (OWASP A09).
+ */
+export function createIssueMessage(err: z.ZodError): string {
+  const issue = err.issues[0]
+  if (!issue) return 'Validation échouée'
+  const [head, idx, field] = issue.path
+  if (head === 'signatories' && typeof idx === 'number') {
+    const n = idx + 1
+    if (field === 'email') return `E-mail du signataire n° ${n} invalide`
+    if (field === 'name') return `Nom du signataire n° ${n} requis (150 caractères max)`
+    if (field === 'employeeId') return `Collaborateur du signataire n° ${n} invalide`
+  }
+  if (head === 'signatories') return 'Au moins un signataire est requis (20 maximum)'
+  if (head === 'title') return 'Intitulé du document requis (200 caractères max)'
+  if (head === 'expiresAt') return "Date d'expiration invalide"
+  if (head === 'message') return 'Message aux signataires trop long (2000 caractères max)'
+  if (head === 'documentType') return 'Type de document invalide'
+  return 'Validation échouée'
+}
+
 const signSchema = z.object({ signatureText: z.string().min(1).max(200) })
 const declineSchema = z.object({ reason: z.string().max(500).optional().nullable() })
 
@@ -92,7 +116,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const parsed = createSchema.safeParse(request.body)
-      if (!parsed.success) return badRequest(reply)
+      if (!parsed.success) return badRequest(reply, createIssueMessage(parsed.error))
       const b = parsed.data
       const reqRes = await rawPool.query(
         `INSERT INTO "${schema}".signature_requests (title, document_type, document_id, document_url, message, sequential, expires_at, created_by, status)
