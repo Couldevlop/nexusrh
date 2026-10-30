@@ -381,7 +381,9 @@
       "rccm": "RCCM: ",
       "atRate": "AT rate: ",
       "legislationPack": "Legislation pack: ",
-      "collectiveAgreement": "CBA: ", "raf": "Payroll officer: ","rafMissing": "not assigned — required to dispatch payroll"
+      "collectiveAgreement": "CBA: ",
+      "raf": "Payroll officer: ",
+      "rafMissing": "not assigned — required to dispatch payroll"
     },
     "empty": "No legal entity — create your first entity (head office or subsidiary).",
     "modal": {
@@ -404,7 +406,10 @@
       "dgiNumber": "DGI no.",
       "rccm": "RCCM",
       "atRate": "CNPS AT rate (0.02 = 2%)",
-      "collectiveAgreement": "Applicable collective agreement", "raf": "Subsidiary payroll officer (RAF)", "rafNone": "— None —", "rafHint": "Receives the dispatched payroll of the subsidiary and submits it. Role: subsidiary RAF, admin or HR director.",
+      "collectiveAgreement": "Applicable collective agreement",
+      "raf": "Subsidiary payroll officer (RAF)",
+      "rafNone": "— None —",
+      "rafHint": "Receives the dispatched payroll of the subsidiary and submits it. Role: subsidiary RAF, admin or HR director.",
       "collectiveAgreementPlaceholder": "e.g. CI Urban Transport Agreement",
       "address": "Address",
       "cancel": "Cancel",
@@ -837,5 +842,29 @@
     "seniorityTier": "+{{days}} d after {{years}} yrs",
     "saved": "Leave policy saved.",
     "save": "Save"
+  },
+  "departureReasons": {
+    "title": "Departure reason categories",
+    "sourceDefault": "Default list (not customized).",
+    "sourceTenant": "Tenant-specific list.",
+    "hint": "Mandatory when opening an offboarding case; used for anonymized departure analysis. Editing or removing a category does not reclassify existing cases.",
+    "edit": "Edit",
+    "reset": "Restore defaults",
+    "label": "Label",
+    "key": "Key",
+    "add": "Add a category",
+    "remove": "Remove",
+    "up": "Move up",
+    "down": "Move down",
+    "keyHint": "Technical key: lowercase letters, digits and _ (40 characters max), starting with a letter. Generated from the label for a new category.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "errors": {
+      "empty": "At least one category is required.",
+      "label": "Each category needs a label.",
+      "key": "Invalid key: lowercase letters, digits and _, starting with a letter.",
+      "duplicate": "Two categories share the same key."
+    }
   }
 }

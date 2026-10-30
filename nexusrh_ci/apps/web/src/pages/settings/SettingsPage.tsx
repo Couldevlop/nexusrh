@@ -18,6 +18,7 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import DepartureReasonsCard from './DepartureReasonsCard'
 import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
 import { EmployeeLinkPicker } from '@/components/employees/EmployeeLinkPicker'
@@ -342,6 +343,9 @@ function LegislationTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
       {/* Congés payés : acquisition, contrôle du solde, allocation */}
       <LeavePolicyCard qc={qc} />
+
+      {/* Sorties : catégories de motifs de départ (liste du tenant) */}
+      <DepartureReasonsCard qc={qc} />
     </div>
   )
 }

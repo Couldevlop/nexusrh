@@ -680,6 +680,22 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const { stage, notes, rejection_reason: rejectionReason, rejection_note: rejectionNote, employee } = parsedBody.data
+      // Rejet par une action humaine (fiche, kanban, bouton) : motif de la
+      // liste fermée OBLIGATOIRE — l'entonnoir et les statistiques de motifs
+      // n'ont de valeur que si chaque sortie est qualifiée. `rejected_auto_screening`
+      // est réservé au pré-tri (décision /screening), jamais saisi ici.
+      if (stage === 'rejected' && !rejectionReason) {
+        return reply.status(400).send({
+          error: 'Motif de rejet obligatoire', code: 'REJECTION_REASON_REQUIRED',
+          details: [{ path: 'rejection_reason', message: 'Choisissez un motif de rejet dans la liste' }],
+        })
+      }
+      if (rejectionReason === 'rejected_auto_screening') {
+        return reply.status(400).send({
+          error: 'Motif réservé au pré-tri automatique', code: 'REJECTION_REASON_RESERVED',
+          details: [{ path: 'rejection_reason', message: 'Ce motif est posé uniquement par le pré-tri des CV' }],
+        })
+      }
       try {
         // Embauche : la fiche employé (et son parcours d'intégration) est créée
         // AVANT le changement d'étape — si elle échoue, l'étape ne bouge pas.
@@ -894,19 +910,24 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
           ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
           generatedAt: new Date().toISOString(),
         }
+        // Le PDF généré est conservé (dernier en date) pour être versé au
+        // dossier salarié à l'embauche (hire.service → employee_documents).
+        const fileBase = `${body.type}_${(app.last_name || 'contrat').replace(/[^a-zA-Z0-9]/g, '')}`
+        const pdfBuffer = Buffer.from(pdf)
         await Promise.resolve(pool.query(
-          `UPDATE "${schema}".applications SET offer_details = $2::jsonb WHERE id = $1`,
-          [app.id, JSON.stringify(offerDetails)],
-        )).catch((err: unknown) => { fastify.log.warn({ err }, 'offer_details non mémorisé') })
+          `UPDATE "${schema}".applications
+              SET offer_details = $2::jsonb, contract_pdf = $3, contract_pdf_name = $4, contract_pdf_at = now()
+            WHERE id = $1`,
+          [app.id, JSON.stringify(offerDetails), pdfBuffer, `${fileBase}.pdf`],
+        )).catch((err: unknown) => { fastify.log.warn({ err }, 'offer_details / contrat PDF non mémorisés') })
 
         // OWASP A09 : trace la génération du contrat (acte RH significatif)
         auditTenant(schema, { userId: request.user.sub, action: 'recruitment.contract_generated', entity: 'application', entityId: app.id, changes: { type: body.type, title }, ip: request.ip ?? null })
 
-        const fileBase = `${body.type}_${(app.last_name || 'contrat').replace(/[^a-zA-Z0-9]/g, '')}`
         return reply
           .header('Content-Type', 'application/pdf')
           .header('Content-Disposition', `inline; filename="${fileBase}.pdf"`)
-          .send(Buffer.from(pdf))
+          .send(pdfBuffer)
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

@@ -32,6 +32,7 @@ import {
 } from '../../services/employee-create.service.js'
 import { ensureHireOnboarding, type HireOnboardingResult } from '../../services/onboarding.service.js'
 import { actorUuid } from './stage-history.js'
+import { SIGNED_CONTRACT_CATEGORY } from '../contracts/signed-contracts.service.js'
 
 /** Valeurs saisies dans la modale « Créer la fiche employé » (toutes facultatives). */
 export interface HireOverrides {
@@ -67,6 +68,12 @@ export interface HireResult {
   onboarding: HireOnboardingResult | null
   /** Le parcours n'a pas pu être créé (la fiche, elle, existe). */
   onboardingError: boolean
+  /**
+   * Contrat généré pour la candidature, versé au dossier salarié
+   * (employee_documents.id) — null si aucun contrat n'a été généré, s'il y
+   * figurait déjà (idempotence) ou si la fiche reliée préexistait.
+   */
+  contractDocumentId: string | null
 }
 
 export class HireError extends Error {
@@ -94,6 +101,8 @@ interface ApplicationForHire {
   job_department_id: string | null
   job_legal_entity_id: string | null
   job_contract_type: string | null
+  /** Niveau de poste de l'offre (recruitment_jobs.job_level), null si colonne absente. */
+  job_level: string | null
 }
 
 interface EmployeeLite {
@@ -158,7 +167,9 @@ async function loadApplication(db: TxClient, schema: string, applicationId: stri
     `SELECT a.id, a.first_name, a.last_name, a.email, a.phone, a.internal_employee_id,
             a.employee_id, a.offer_details,
             rj.title AS job_title, rj.department_id AS job_department_id,
-            rj.target_legal_entity_id AS job_legal_entity_id, rj.contract_type AS job_contract_type
+            rj.target_legal_entity_id AS job_legal_entity_id, rj.contract_type AS job_contract_type,
+            -- Lecture tolérante : NULL si la colonne n'existe pas encore sur ce tenant.
+            to_jsonb(rj) ->> 'job_level' AS job_level
        FROM "${schema}".applications a
        LEFT JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
       WHERE a.id = $1
@@ -274,6 +285,9 @@ export async function hireApplication(
         ...(prefill.legalEntityId ? { legalEntityId: prefill.legalEntityId } : {}),
         ...(prefill.jobTitle ? { jobTitle: prefill.jobTitle.slice(0, 100) } : {}),
         ...(prefill.professionalCategory ? { professionalCategory: prefill.professionalCategory.slice(0, 50) } : {}),
+        // Niveau de poste de l'offre : pilote les offres internes ciblées et le
+        // choix du modèle d'intégration.
+        ...(app.job_level?.trim() ? { jobLevel: app.job_level.trim().slice(0, 50) } : {}),
         contractType: prefill.contractType,
         hireDate: prefill.hireDate,
         baseSalary,
@@ -296,7 +310,7 @@ export async function hireApplication(
         id: row.id,
         employee_number: typeof row.employee_number === 'string' ? row.employee_number : null,
         job_title: body.jobTitle ?? null,
-        job_level: null,
+        job_level: body.jobLevel ?? null,
         department_id: body.departmentId ?? null,
         hire_date: body.hireDate ?? null,
         deleted_at: null,
@@ -329,6 +343,15 @@ export async function hireApplication(
     })
   }
 
+  // Contrat généré pendant le recrutement → dossier salarié de la fiche issue
+  // de cette embauche (pas sur une fiche préexistante reliée, dont le contrat
+  // courant ne doit pas être remplacé). Best-effort : la fiche existe déjà.
+  let contractDocumentId: string | null = null
+  if (status === 'created' || status === 'already_linked') {
+    contractDocumentId = await attachGeneratedContract(schema, applicationId, employee.id, actor)
+      .catch(() => null)
+  }
+
   let onboarding: HireOnboardingResult | null = null
   let onboardingError = false
   try {
@@ -345,6 +368,56 @@ export async function hireApplication(
 
   return {
     status, employeeId: employee.id, employeeNumber: employee.employee_number,
-    toComplete, onboarding, onboardingError,
+    toComplete, onboarding, onboardingError, contractDocumentId,
   }
+}
+
+/**
+ * Verse le dernier contrat PDF généré pour la candidature dans
+ * `employee_documents` (catégorie du contrat de travail, nouvelle version
+ * courante ; l'éventuelle version précédente est conservée en historique).
+ * Une seule instruction SQL. Idempotent : rien n'est écrit si ce PDF exact
+ * figure déjà au dossier de l'employé. Renvoie l'id du document créé, ou null.
+ */
+async function attachGeneratedContract(
+  schema: string, applicationId: string, employeeId: string, actor: HireActor,
+): Promise<string | null> {
+  const r = await pool.query<{ id: string }>(
+    `WITH src AS (
+       SELECT a.contract_pdf, a.contract_pdf_name
+         FROM "${schema}".applications a
+        WHERE a.id = $1 AND a.contract_pdf IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM "${schema}".employee_documents d
+             WHERE d.employee_id = $2::uuid AND d.category = $3 AND d.bytes = a.contract_pdf)
+     ),
+     ins AS (
+       INSERT INTO "${schema}".employee_documents
+         (employee_id, contract_id, category, title, file_name, mime, size_bytes, bytes,
+          version, is_current, uploaded_by, uploaded_by_role)
+       SELECT $2::uuid, NULL, $3, $4, COALESCE(src.contract_pdf_name, 'contrat.pdf'), 'application/pdf',
+              octet_length(src.contract_pdf), src.contract_pdf,
+              (SELECT COALESCE(MAX(version), 0) + 1 FROM "${schema}".employee_documents
+                WHERE employee_id = $2::uuid AND category = $3 AND contract_id IS NULL),
+              true, $5::uuid, 'recruitment'
+         FROM src
+       RETURNING id
+     ),
+     prev AS (
+       UPDATE "${schema}".employee_documents d SET is_current = false, replaced_by = ins.id
+         FROM ins
+        WHERE d.employee_id = $2::uuid AND d.category = $3 AND d.contract_id IS NULL
+          AND d.is_current = true AND d.id <> ins.id
+     )
+     SELECT id FROM ins`,
+    [applicationId, employeeId, SIGNED_CONTRACT_CATEGORY, 'Contrat de travail (généré au recrutement)', actorUuid(actor.userId)],
+  )
+  const id = r.rows[0]?.id ?? null
+  if (id) {
+    auditTenant(schema, {
+      userId: actor.userId, action: 'recruitment.contract_filed', entity: 'employee_document', entityId: id,
+      changes: { applicationId, employeeId }, ip: actor.ip,
+    })
+  }
+  return id
 }

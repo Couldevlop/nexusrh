@@ -59,6 +59,7 @@ vi.mock('../../services/legislation-packs.js', () => ({
   },
   COUNTRY_LABELS: { CIV: 'Côte d\'Ivoire' },
   applyPackOverride: (base: unknown) => base,
+  getPackByCountry: (c: string) => (c === 'SEN' ? { smigMensuel: 64710 } : c === 'CIV' ? { smigMensuel: 75000 } : null),
 }))
 
 const { invalidateConfigMock } = vi.hoisted(() => ({ invalidateConfigMock: vi.fn() }))
@@ -670,6 +671,16 @@ describe('GET /platform/country-configs', () => {
     const res = await app.inject({ method: 'GET', url: '/platform/country-configs', headers: hSuper() })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).data).toHaveLength(1)
+  })
+  it('le SMIG renvoyé est celui du pack de législation, pas la valeur figée', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ country_code: 'SN', config: { smig: 69120, zone: 'UEMOA' } }, { country_code: 'XX', config: { smig: 1 } }] })
+    const res = await app.inject({ method: 'GET', url: '/platform/country-configs', headers: hSuper() })
+    const data = JSON.parse(res.body).data
+    expect(data[0].config).toEqual({ smig: 64710, zone: 'UEMOA' })
+    expect(data[1].config.smig).toBe(1)
   })
   it('admin tenant autorisé en lecture → 200', async () => {
     queryMock

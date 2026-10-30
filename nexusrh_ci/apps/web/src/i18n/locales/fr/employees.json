@@ -64,7 +64,7 @@
       "employeeNumber": "Automatique si vide (MAT00001…)",
       "phone": "+225 07 XX XX XX XX",
       "professionalCategory": "ex. 3ème catégorie",
-      "baseSalary": "≥ 75 000",
+      "baseSalary": "≥ SMIG",
       "mobileMoneyPhone": "+2250XXXXXXXXX",
       "iban": "CIxx xxxx xxxx xxxx xxxx xxxx xxxx"
     },
@@ -95,7 +95,7 @@
     },
     "onboardingHint": "Un <strong>parcours d'intégration</strong> sera créé automatiquement selon la séniorité et le poste (modèles configurés dans Intégration → Modèles).",
     "errors": {
-      "salaryBelowSmig": "Le salaire brut doit être ≥ 75 000 FCFA (SMIG).",
+      "salaryBelowSmig": "Le salaire brut doit être ≥ {{smig}} (SMIG).",
       "createGeneric": "Erreur lors de la création",
       "salaryRequired": "Saisissez un salaire de base.",
       "bankNameRequired": "Le virement bancaire exige le nom de la banque."

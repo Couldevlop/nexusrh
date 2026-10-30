@@ -381,7 +381,9 @@
       "rccm": "RCCM : ",
       "atRate": "Taux AT : ",
       "legislationPack": "Pack législatif : ",
-      "collectiveAgreement": "CCN : ", "raf": "RAF : ","rafMissing": "non désigné — requis pour décliner la paie"
+      "collectiveAgreement": "CCN : ",
+      "raf": "RAF : ",
+      "rafMissing": "non désigné — requis pour décliner la paie"
     },
     "empty": "Aucune entité juridique — créez votre première entité (siège social ou filiale).",
     "modal": {
@@ -404,7 +406,10 @@
       "dgiNumber": "N° DGI",
       "rccm": "RCCM",
       "atRate": "Taux AT CNPS (0.02 = 2%)",
-      "collectiveAgreement": "Convention collective applicable", "raf": "RAF (responsable paie de la filiale)", "rafNone": "— Aucun —", "rafHint": "Reçoit la paie déclinée de la filiale et la soumet. Rôle RAF filiale, admin ou DRH.",
+      "collectiveAgreement": "Convention collective applicable",
+      "raf": "RAF (responsable paie de la filiale)",
+      "rafNone": "— Aucun —",
+      "rafHint": "Reçoit la paie déclinée de la filiale et la soumet. Rôle RAF filiale, admin ou DRH.",
       "collectiveAgreementPlaceholder": "Ex: Convention Transport Urbain CI",
       "address": "Adresse",
       "cancel": "Annuler",
@@ -837,5 +842,29 @@
     "seniorityTier": "+{{days}} j après {{years}} ans",
     "saved": "Politique de congés enregistrée.",
     "save": "Enregistrer"
+  },
+  "departureReasons": {
+    "title": "Catégories de motifs de départ",
+    "sourceDefault": "Liste par défaut (non personnalisée).",
+    "sourceTenant": "Liste personnalisée du tenant.",
+    "hint": "Choisie obligatoirement à l'ouverture d'un dossier de sortie ; sert à l'analyse anonymisée des départs. Modifier ou retirer une catégorie ne reclasse pas les dossiers existants.",
+    "edit": "Modifier",
+    "reset": "Revenir aux défauts",
+    "label": "Libellé",
+    "key": "Clé",
+    "add": "Ajouter une catégorie",
+    "remove": "Supprimer",
+    "up": "Monter",
+    "down": "Descendre",
+    "keyHint": "Clé technique : minuscules, chiffres et _ (40 caractères max), commençant par une lettre. Générée depuis le libellé pour une nouvelle catégorie.",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "errors": {
+      "empty": "Au moins une catégorie est requise.",
+      "label": "Chaque catégorie doit avoir un libellé.",
+      "key": "Clé invalide : minuscules, chiffres et _, commençant par une lettre.",
+      "duplicate": "Deux catégories ont la même clé."
+    }
   }
 }

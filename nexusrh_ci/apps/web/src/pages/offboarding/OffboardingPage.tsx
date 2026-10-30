@@ -29,9 +29,16 @@ interface OffboardingRow {
   departure_type: string
   departure_date: string
   status: string
+  reason: string | null
+  reason_category: string | null
   checklist: ChecklistItem[]
   settlement: Settlement | null
 }
+
+/** Catégorie de motif de départ — liste paramétrable du tenant (GET /settings/departure-reasons). */
+interface DepartureReasonCategory { key: string; label: string }
+
+const EMPTY_FORM = { employeeId: '', departureType: 'demission', departureDate: '', reasonCategory: '', reason: '', noticeServed: true }
 
 const TYPES = ['demission', 'retraite', 'licenciement', 'fin_cdd', 'rupture_conventionnelle', 'autre'] as const
 
@@ -53,7 +60,7 @@ export default function OffboardingPage() {
   const { t } = useTranslation('offboarding')
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ employeeId: '', departureType: 'demission', departureDate: '', reason: '', noticeServed: true })
+  const [form, setForm] = useState(EMPTY_FORM)
   // Vide = solde de congés payés acquis à la date de départ
   const [congesDays, setCongesDays] = useState<Record<string, string>>({})
   // Préavis du contrat / de la convention (mois) — vide = règles applicables.
@@ -76,6 +83,18 @@ export default function OffboardingPage() {
     },
   })
 
+  const reasonsQ = useQuery({
+    queryKey: ['settings', 'departure-reasons'],
+    queryFn: async () => {
+      const res = await api.get('/settings/departure-reasons')
+      return (res.data as { data: DepartureReasonCategory[] }).data
+    },
+  })
+  const reasonCategories = reasonsQ.data ?? []
+  // Dossier classé avec une clé retirée depuis de la liste : on affiche la clé brute.
+  const categoryLabel = (key: string | null) =>
+    key ? (reasonCategories.find((r) => r.key === key)?.label ?? key) : t('reasonCategory.none')
+
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['offboarding'] })
 
   const createMut = useMutation({
@@ -84,13 +103,14 @@ export default function OffboardingPage() {
         employeeId: form.employeeId,
         departureType: form.departureType,
         departureDate: form.departureDate,
-        reason: form.reason || undefined,
+        reasonCategory: form.reasonCategory,
+        reason: form.reason.trim() || undefined,
         noticeServed: form.noticeServed,
       })
     },
     onSuccess: () => {
       setShowForm(false)
-      setForm({ employeeId: '', departureType: 'demission', departureDate: '', reason: '', noticeServed: true })
+      setForm(EMPTY_FORM)
       invalidate()
     },
   })
@@ -125,7 +145,7 @@ export default function OffboardingPage() {
     patchMut.mutate({ id: c.id, body: { checklist } })
   }
 
-  const canSubmit = form.employeeId && form.departureDate
+  const canSubmit = Boolean(form.employeeId && form.departureDate && form.reasonCategory)
 
   return (
     <div className="p-6 space-y-6">
@@ -169,11 +189,27 @@ export default function OffboardingPage() {
               <input type="date" value={form.departureDate} onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))}
                 className="w-full rounded-md border border-border bg-background px-2 py-1.5" />
             </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted-foreground">{t('form.reasonCategory')} <span className="text-destructive">*</span></span>
+              <select required value={form.reasonCategory} onChange={(e) => setForm((f) => ({ ...f, reasonCategory: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5">
+                <option value="">{t('form.reasonCategoryPlaceholder')}</option>
+                {reasonCategories.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+              {reasonsQ.isError && <span className="mt-1 block text-xs text-destructive">{t('reasonCategory.loadError')}</span>}
+            </label>
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 block text-muted-foreground">{t('form.reason')}</span>
+              <textarea value={form.reason} maxLength={2000} rows={2}
+                onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5" />
+            </label>
             <label className="flex items-center gap-2 self-end text-sm">
               <input type="checkbox" checked={form.noticeServed} onChange={(e) => setForm((f) => ({ ...f, noticeServed: e.target.checked }))} />
               {t('form.noticeServed')}
             </label>
           </div>
+          {createMut.isError && <p className="mt-2 text-xs text-destructive">{t('form.error')}</p>}
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">{t('form.cancel')}</button>
             <button type="button" disabled={!canSubmit || createMut.isPending} onClick={() => createMut.mutate()}
@@ -197,6 +233,23 @@ export default function OffboardingPage() {
               <div>
                 <p className="font-semibold">{c.first_name} {c.last_name}</p>
                 <p className="text-sm text-muted-foreground">{t(`types.${c.departure_type}`)} · {formatDate(c.departure_date)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">{t('reasonCategory.label')} :</span>
+                  {c.status === 'closed' || c.status === 'cancelled' ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{categoryLabel(c.reason_category)}</span>
+                  ) : (
+                    <select aria-label={t('reasonCategory.label')} value={c.reason_category ?? ''}
+                      onChange={(e) => { if (e.target.value) patchMut.mutate({ id: c.id, body: { reasonCategory: e.target.value } }) }}
+                      className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+                      {!c.reason_category && <option value="">{t('reasonCategory.none')}</option>}
+                      {c.reason_category && !reasonCategories.some((r) => r.key === c.reason_category) && (
+                        <option value={c.reason_category}>{c.reason_category}</option>
+                      )}
+                      {reasonCategories.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                  )}
+                </div>
+                {c.reason && <p className="mt-1 max-w-xl text-xs text-muted-foreground">{c.reason}</p>}
               </div>
               <div className="flex items-center gap-2">
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLE[c.status] ?? 'bg-muted')}>{t(`statuses.${c.status}`)}</span>
