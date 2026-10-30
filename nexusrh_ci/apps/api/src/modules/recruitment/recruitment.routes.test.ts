@@ -1099,8 +1099,10 @@ describe('POST /recruitment/applications/:id/contract', () => {
   it('génère un PDF CDI pour une candidature recrutée (admin)', async () => {
     queryMock.mockResolvedValue({ rows: [], rowCount: 0 }) // défaut (audit_log fire-and-forget)
     queryMock
+      .mockResolvedValueOnce({ rows: [{ enabled: true }], rowCount: 1 }) // option tenant
       .mockResolvedValueOnce({ rows: [HIRED_APP], rowCount: 1 }) // app + job
-      .mockResolvedValueOnce({ rows: [TENANT_ROW], rowCount: 1 }) // tenant
+      .mockResolvedValueOnce({ rows: [TENANT_ROW], rowCount: 1 }) // tenant (employeur + habillage)
+      .mockResolvedValueOnce({ rows: [{ id: 'cp-1', version: 3, created_at: '2026-10-30' }], rowCount: 1 }) // nouvelle version
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
       method: 'POST',
@@ -1110,7 +1112,42 @@ describe('POST /recruitment/applications/:id/contract', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('application/pdf')
+    expect(res.headers['x-contract-proposal-version']).toBe('3')
     expect(res.rawPayload.subarray(0, 4).toString()).toBe('%PDF')
+    // Version de proposition créée puis PDF courant aligné sur la candidature.
+    const sqls = queryMock.mock.calls.map((c) => String(c[0]))
+    expect(sqls.some((q) => q.includes('INSERT INTO "tenant_sotra".contract_proposals'))).toBe(true)
+    expect(sqls.some((q) => q.includes('UPDATE "tenant_sotra".applications') && q.includes('contract_pdf = $3'))).toBe(true)
+  })
+
+  it('option tenant désactivée : 403 explicite, aucun PDF', async () => {
+    queryMock.mockReset()
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
+    queryMock.mockResolvedValueOnce({ rows: [{ enabled: false }], rowCount: 1 })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/app-1/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdi_ci' },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).featureDisabled).toBe(true)
+    expect(queryMock.mock.calls.some((c) => String(c[0]).includes('contract_proposals'))).toBe(false)
+  })
+
+  it('option illisible (erreur DB) : fail-closed 403', async () => {
+    queryMock.mockReset()
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
+    queryMock.mockRejectedValueOnce(new Error('db down'))
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications/app-1/contract',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'cdi_ci' },
+    })
+    expect(res.statusCode).toBe(403)
   })
 
   it('refuse un CDD sans date de fin (400)', async () => {
@@ -1126,7 +1163,9 @@ describe('POST /recruitment/applications/:id/contract', () => {
 
   it('retourne 404 si la candidature est introuvable', async () => {
     queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
-    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ enabled: true }], rowCount: 1 }) // option tenant
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
       method: 'POST',

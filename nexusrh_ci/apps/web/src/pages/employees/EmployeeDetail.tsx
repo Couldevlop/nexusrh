@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
 import { EmployeeAccess } from '@/components/employees/EmployeeAccess'
 import { SignedContractsPanel } from '@/components/contracts/SignedContractsPanel'
+import { ContractProposalsPanel } from '@/components/contracts/ContractProposalsPanel'
 import { paymentMethodLabel } from '@/lib/payment'
 import {
   formatCustomFieldValue, useEmployeeFieldDefinitions, type CustomFieldValues,
@@ -248,6 +249,8 @@ export default function EmployeeDetail() {
 
       {/* Contrat signé : RH (dépôt/consultation) ; manager si l'option tenant l'autorise */}
       <SignedContractsPanel employeeId={emp.id} />
+      {/* Proposition générée au recrutement (non signée) — distincte du contrat signé */}
+      <ContractProposalsPanel employeeId={emp.id} />
 
       <div className="mt-4">
         <InterviewFocusPanel

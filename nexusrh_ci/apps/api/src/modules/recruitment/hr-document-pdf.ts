@@ -51,13 +51,78 @@ function wrap(font: PDFFont, size: number, text: string, maxWidth: number): stri
   return lines.length ? lines : ['']
 }
 
-export async function renderHrDocumentPdf(markdown: string): Promise<Uint8Array> {
+/** Mentions légales de l'employeur (filiale de l'offre, sinon tenant). */
+export interface HrDocumentLegalInfo {
+  name: string
+  legalForm?: string | null
+  rccm?: string | null
+  cnpsNumber?: string | null
+  dgiNumber?: string | null
+  address?: string | null
+  city?: string | null
+  collectiveAgreement?: string | null
+}
+
+/**
+ * Habillage optionnel (proposition de contrat) : logo, couleur d'accent,
+ * en-tête et pied de page de mentions légales, marque « PROPOSITION ». Sans ce
+ * paramètre, le rendu historique est strictement inchangé.
+ */
+export interface HrDocumentBranding {
+  logo?: { bytes: Uint8Array; mime: string } | null
+  /** Couleur principale du tenant (#RRGGBB) ; invalide → accent historique. */
+  primaryColor?: string | null
+  legal?: HrDocumentLegalInfo | null
+  /** Marque visible, ex. « PROPOSITION — document non signé ». */
+  draftMark?: string | null
+}
+
+const HEX_RE = /^#([0-9a-f]{6})$/i
+const DRAFT_RED = rgb(0.75, 0.1, 0.1)
+
+/** #RRGGBB → composantes 0..1, ou null si invalide. */
+function hexToRgb(hex: string | null | undefined): [number, number, number] | null {
+  const m = HEX_RE.exec((hex ?? '').trim())
+  if (!m) return null
+  const n = parseInt(m[1]!, 16)
+  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255]
+}
+
+/** Ligne courte des mentions légales (pied de page). */
+function legalShortLine(l: HrDocumentLegalInfo): string {
+  return [
+    l.legalForm ? `${l.name} (${l.legalForm})` : l.name,
+    l.rccm ? `RCCM ${l.rccm}` : null,
+    l.cnpsNumber ? `CNPS ${l.cnpsNumber}` : null,
+    l.dgiNumber ? `CC ${l.dgiNumber}` : null,
+    [l.address, l.city].filter(Boolean).join(', ') || null,
+  ].filter(Boolean).join(' - ')
+}
+
+/** Lignes détaillées des mentions légales (bloc d'en-tête). */
+function legalHeaderLines(l: HrDocumentLegalInfo): string[] {
+  const lines: string[] = []
+  if (l.legalForm) lines.push(`Forme juridique : ${l.legalForm}`)
+  const ids = [
+    l.rccm ? `RCCM : ${l.rccm}` : null,
+    l.cnpsNumber ? `N° CNPS : ${l.cnpsNumber}` : null,
+    l.dgiNumber ? `N° compte contribuable (DGI) : ${l.dgiNumber}` : null,
+  ].filter(Boolean)
+  if (ids.length) lines.push(ids.join('  |  '))
+  const addr = [l.address, l.city].filter(Boolean).join(', ')
+  if (addr) lines.push(`Adresse : ${addr}`)
+  if (l.collectiveAgreement) lines.push(`Convention collective : ${l.collectiveAgreement}`)
+  return lines
+}
+
+export async function renderHrDocumentPdf(markdown: string, branding?: HrDocumentBranding): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
   const oblique = await doc.embedFont(StandardFonts.HelveticaOblique)
   const ink = rgb(0.12, 0.12, 0.15)
-  const accent = rgb(0.10, 0.40, 0.30)
+  const custom = hexToRgb(branding?.primaryColor)
+  const accent = custom ? rgb(custom[0], custom[1], custom[2]) : rgb(0.10, 0.40, 0.30)
   const grey = rgb(0.5, 0.5, 0.55)
 
   let page: PDFPage = doc.addPage([W, H])
@@ -80,6 +145,55 @@ export async function renderHrDocumentPdf(markdown: string): Promise<Uint8Array>
       drawLine(ln, MARGIN_X + indent, size, f, color)
       yTop += size + 4
     }
+  }
+
+  // ── En-tête de marque (proposition) : logo + mentions légales + marque ──
+  if (branding) {
+    let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null
+    if (branding.logo?.bytes?.length) {
+      try {
+        if (/jpe?g/i.test(branding.logo.mime)) logoImg = await doc.embedJpg(branding.logo.bytes)
+        else if (/png/i.test(branding.logo.mime)) logoImg = await doc.embedPng(branding.logo.bytes)
+      } catch { logoImg = null } // logo illisible → en-tête texte seul
+    }
+    const headerTop = 28
+    let textX = MARGIN_X
+    let logoBottom = headerTop
+    if (logoImg) {
+      const lh = 44
+      const lw = Math.min(130, (logoImg.width / logoImg.height) * lh)
+      page.drawImage(logoImg, { x: MARGIN_X, y: H - headerTop - lh, width: lw, height: lh })
+      textX = MARGIN_X + lw + 14
+      logoBottom = headerTop + lh
+    }
+    let markWidth = 0
+    if (branding.draftMark) {
+      const mark = pdfSafe(branding.draftMark)
+      markWidth = bold.widthOfTextAtSize(mark, 9) + 12
+      page.drawRectangle({
+        x: W - MARGIN_X - markWidth, y: H - headerTop - 12, width: markWidth, height: 16,
+        borderColor: DRAFT_RED, borderWidth: 1,
+      })
+      page.drawText(mark, { x: W - MARGIN_X - markWidth + 6, y: H - headerTop - 7.5, size: 9, font: bold, color: DRAFT_RED })
+    }
+    let y = headerTop + 10
+    const legal = branding.legal
+    if (legal?.name) {
+      const nameW = W - MARGIN_X - textX - (markWidth ? markWidth + 8 : 0)
+      for (const ln of wrap(bold, 12, legal.name, nameW)) {
+        page.drawText(ln, { x: textX, y: H - y, size: 12, font: bold, color: accent })
+        y += 13
+      }
+      for (const l of legalHeaderLines(legal)) {
+        for (const ln of wrap(font, 7.5, l, W - MARGIN_X - textX)) {
+          page.drawText(ln, { x: textX, y: H - y, size: 7.5, font, color: grey })
+          y += 9.5
+        }
+      }
+    }
+    const sep = Math.max(y, logoBottom) + 6
+    page.drawLine({ start: { x: MARGIN_X, y: H - sep }, end: { x: W - MARGIN_X, y: H - sep }, thickness: 1.2, color: accent })
+    yTop = Math.max(TOP, sep + 18)
   }
 
   const raw = markdown.replace(/\r\n/g, '\n').split('\n')
@@ -135,6 +249,25 @@ export async function renderHrDocumentPdf(markdown: string): Promise<Uint8Array>
     // Paragraphe normal — détecte un gras « plein ligne » (**…**) pour le mettre en gras
     const fullBold = /^\*\*[^*]+\*\*$/.test(line.trim())
     para(stripInline(line), 10.5, fullBold ? bold : font)
+  }
+
+  if (branding) {
+    // Pied de page de CHAQUE page : mentions légales courtes + pagination.
+    const pages = doc.getPages()
+    const footLegal = branding.legal?.name ? legalShortLine(branding.legal) : ''
+    const mark = branding.draftMark ? pdfSafe(branding.draftMark) : ''
+    pages.forEach((p, i) => {
+      const num = `Page ${i + 1} / ${pages.length}`
+      const nw = font.widthOfTextAtSize(num, 7.5)
+      p.drawLine({ start: { x: MARGIN_X, y: 36 }, end: { x: W - MARGIN_X, y: 36 }, thickness: 0.5, color: grey })
+      if (footLegal) {
+        const ln = wrap(font, 7, footLegal, MAX_W - nw - 16)[0] ?? ''
+        p.drawText(ln, { x: MARGIN_X, y: 26, size: 7, font, color: grey })
+      }
+      if (mark) p.drawText(mark, { x: MARGIN_X, y: 16, size: 7, font: oblique, color: DRAFT_RED })
+      p.drawText(num, { x: W - MARGIN_X - nw, y: 26, size: 7.5, font, color: grey })
+    })
+    return doc.save()
   }
 
   // Pied de page sur la dernière page
