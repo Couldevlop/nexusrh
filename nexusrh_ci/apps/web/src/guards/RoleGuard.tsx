@@ -38,9 +38,14 @@ export function RoleGuard({ children, allowedRoles, redirectTo = '/dashboard' }:
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated())
+  const user = useAuthStore((s) => s.user)
+  const activeTenant = useAuthStore((s) => s.activeTenant)
   const mfaPending = useMfaPending()
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (mfaPending) return <Navigate to={MFA_SETUP_PATH} replace />
+  // Compte cabinet sans entreprise cliente active : l'app RH n'aurait aucun
+  // tenant à afficher (tableau de bord vide) → retour au portail cabinet.
+  if (user?.actorType === 'agency' && !activeTenant) return <Navigate to="/agency/dashboard" replace />
   return <>{children}</>
 }
 

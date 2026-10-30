@@ -12,26 +12,22 @@ interface ClientTenant {
 }
 
 /**
- * Sélecteur d'entreprise cliente d'un cabinet. Active une session scopée
- * (token admin délégué) sur le tenant choisi puis bascule vers l'app RH.
+ * Bascule vers une entreprise cliente : active une session scopée (token admin
+ * délégué) puis ouvre l'app RH. Partagée par le sélecteur du tableau de bord
+ * et les cartes de « Mes clients ».
  */
-export function TenantSwitcher() {
+export function useActivateClientTenant() {
   const navigate = useNavigate()
   const { t: tt } = useTranslation('agency')
   const activateTenant = useAuthStore((s) => s.activateTenant)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery<{ data: ClientTenant[] }>({
-    queryKey: ['agency-my-tenants'],
-    queryFn: () => api.get('/agency/my-tenants').then((r) => r.data),
-  })
-
-  const onSelect = async (t: ClientTenant) => {
-    setBusy(t.id); setError(null)
+  const activate = async (tenantId: string) => {
+    setBusy(tenantId); setError(null)
     try {
       const res = await api.post<{ token: string; tenantConfig: TenantConfig }>(
-        '/agency/sessions/activate', { tenantId: t.id })
+        '/agency/sessions/activate', { tenantId })
       activateTenant(res.data.token, res.data.tenantConfig)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
@@ -41,6 +37,22 @@ export function TenantSwitcher() {
       setBusy(null)
     }
   }
+
+  return { activate, busy, error }
+}
+
+/**
+ * Sélecteur d'entreprise cliente d'un cabinet. Active une session scopée
+ * (token admin délégué) sur le tenant choisi puis bascule vers l'app RH.
+ */
+export function TenantSwitcher() {
+  const { t: tt } = useTranslation('agency')
+  const { activate, busy, error } = useActivateClientTenant()
+
+  const { data, isLoading } = useQuery<{ data: ClientTenant[] }>({
+    queryKey: ['agency-my-tenants'],
+    queryFn: () => api.get('/agency/my-tenants').then((r) => r.data),
+  })
 
   if (isLoading) {
     return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {tt('tenantSwitcher.loading')}</div>
@@ -57,7 +69,7 @@ export function TenantSwitcher() {
       {tenants.map((t) => (
         <button
           key={t.id}
-          onClick={() => onSelect(t)}
+          onClick={() => activate(t.id)}
           disabled={!!busy}
           className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition hover:border-primary hover:shadow-sm disabled:opacity-60"
         >
