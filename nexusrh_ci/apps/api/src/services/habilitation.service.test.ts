@@ -16,14 +16,30 @@ const row = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => queryMock.mockReset())
 
+type TestRow = ReturnType<typeof row>
+/** Routeur de requêtes : interrupteur, affectation, ids du siège. */
+function route(r: TestRow | null, opts: { headOfficeError?: Error } = {}) {
+  queryMock.mockImplementation(async (sql: string) => {
+    const q = String(sql)
+    if (q.includes('habilitations_enforced')) return { rows: [{ enforced: r ? r.enforced : true }] }
+    if (q.includes('hab_assignments')) return { rows: r ? [r] : [] }
+    if (q.includes('is_head_office')) {
+      if (opts.headOfficeError) throw opts.headOfficeError
+      return { rows: (r?.head_office_ids ?? []).map((id) => ({ id })) }
+    }
+    return { rows: [] }
+  })
+}
+const pgErr = (code: string) => Object.assign(new Error(code), { code })
+
 describe('loadHabContext', () => {
-  it('aucune ligne -> null (accès hérité) ; une seule requête LEFT JOIN', async () => {
-    queryMock.mockResolvedValue({ rows: [] })
+  it('aucune ligne -> null (accès hérité) ; requête LEFT JOIN', async () => {
+    route(null)
     const ctx = await loadHabContext('tenant_sotra', 'u1')
     expect(ctx).toBeNull()
     expect(hrScopeSql('tenant_sotra', 'e', ctx)).toBe('TRUE')
-    expect(queryMock).toHaveBeenCalledTimes(1)
-    const sql = String(queryMock.mock.calls[0]![0])
+    expect(queryMock).toHaveBeenCalledTimes(2) // interrupteur + affectation
+    const sql = String(queryMock.mock.calls[1]![0])
     expect(sql).toContain('LEFT JOIN "tenant_sotra".hab_subgroups')
     expect(sql).toContain('revoked_at IS NULL')
     expect(sql).toContain('effective_from <= current_date')
@@ -31,30 +47,30 @@ describe('loadHabContext', () => {
   })
 
   it('interrupteur désactivé (enforced=false) -> null même avec une affectation', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ enforced: false })] })
+    route(row({ enforced: false }))
     expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
+    expect(queryMock).toHaveBeenCalledTimes(1) // seule la lecture de l'interrupteur
     const sql = String(queryMock.mock.calls[0]![0])
     expect(sql).toContain('platform.tenants')
     expect(sql).toContain('habilitations_enforced')
-    expect(sql).toContain('is_head_office')
   })
 
   it('interrupteur désactivé et ligne révoquée -> null (pas de refus)', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ enforced: false, active: false })] })
+    route(row({ enforced: false, active: false }))
     expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
   })
 
   it('enforced=true : contexte inchangé et ids du siège chargés', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ kind: 'siege', legal_entity_id: null, head_office_ids: [ENT] })] })
+    route(row({ kind: 'siege', legal_entity_id: null, head_office_ids: [ENT] }))
     const ctx = await loadHabContext('tenant_sotra', 'u1')
     expect(ctx!.kind).toBe('siege')
     expect(ctx!.headOfficeEntityIds).toEqual([ENT])
   })
 
   it('refus / filiale : headOfficeEntityIds vide', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ head_office_ids: [ENT] })] })
+    route(row({ head_office_ids: [ENT] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.headOfficeEntityIds).toEqual([])
-    queryMock.mockResolvedValue({ rows: [row({ active: false, head_office_ids: [ENT] })] })
+    route(row({ active: false, head_office_ids: [ENT] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.headOfficeEntityIds).toEqual([])
   })
 
@@ -68,27 +84,27 @@ describe('loadHabContext', () => {
   }
 
   it('ligne révoquée -> contexte de refus', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ active: false })] })
+    route(row({ active: false }))
     expectDeny(await loadHabContext('tenant_sotra', 'u1'))
   })
 
   it('ligne à effet futur -> contexte de refus', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ active: false, permissions: [] })] })
+    route(row({ active: false, permissions: [] }))
     expectDeny(await loadHabContext('tenant_sotra', 'u1'))
   })
 
   it('sous-groupe absent (colonnes sg nulles) -> contexte de refus', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ active: false, kind: null, legal_entity_id: null, permissions: [] })] })
+    route(row({ active: false, kind: null, legal_entity_id: null, permissions: [] }))
     expectDeny(await loadHabContext('tenant_sotra', 'u1'))
   })
 
   it('subgroup_id NULL -> contexte de refus', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ subgroup_id: null, active: false, kind: null, legal_entity_id: null })] })
+    route(row({ subgroup_id: null, active: false, kind: null, legal_entity_id: null }))
     expectDeny(await loadHabContext('tenant_sotra', 'u1'))
   })
 
   it('payroll:validate faux quand absent des droits effectifs (plafond)', async () => {
-    queryMock.mockResolvedValue({ rows: [row({ permissions: ['payroll:view'] })] })
+    route(row({ permissions: ['payroll:view'] }))
     const ctx = await loadHabContext('tenant_sotra', 'u1')
     expect(ctx).not.toBeNull()
     expect(can(ctx!, 'payroll', 'validate')).toBe(false)
@@ -96,36 +112,69 @@ describe('loadHabContext', () => {
   })
 
   it('un plafond retiré se reflète au prochain appel (pas de cache)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: ['payroll:validate'] })] })
+    route(row({ permissions: ['payroll:validate'] }))
     expect(can((await loadHabContext('tenant_sotra', 'u1'))!, 'payroll', 'validate')).toBe(true)
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: [] })] })
+    route(row({ permissions: [] }))
     expect(can((await loadHabContext('tenant_sotra', 'u1'))!, 'payroll', 'validate')).toBe(false)
   })
 
   it('sensitive vrai avec payroll:view, ou sensitive_data', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: ['payroll:view'] })] })
+    route(row({ permissions: ['payroll:view'] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.sensitive).toBe(true)
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: ['sensitive_data'] })] })
+    route(row({ permissions: ['sensitive_data'] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.sensitive).toBe(true)
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: ['employees:view'] })] })
+    route(row({ permissions: ['employees:view'] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.sensitive).toBe(false)
   })
 
   it('allEntities ignoré pour une entité, actif pour le siège', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [row({ permissions: ['all_entities'] })] })
+    route(row({ permissions: ['all_entities'] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.allEntities).toBe(false)
-    queryMock.mockResolvedValueOnce({ rows: [row({ kind: 'siege', legal_entity_id: null, permissions: ['all_entities', 'manage_habilitations'] })] })
+    route(row({ kind: 'siege', legal_entity_id: null, permissions: ['all_entities', 'manage_habilitations'] }))
     const ctx = (await loadHabContext('tenant_sotra', 'u1'))!
     expect(ctx.allEntities).toBe(true)
     expect(ctx.manageHabilitations).toBe(true)
     expect(ctx.selfEmployeeId).toBe('e1')
   })
 
-  it('table absente (42P01) -> null ; autre erreur relancée', async () => {
-    queryMock.mockRejectedValueOnce(Object.assign(new Error('x'), { code: '42P01' }))
+  it('tables habilitation absentes (42P01) -> null ; autre erreur relancée', async () => {
+    route(row())
+    const base = queryMock.getMockImplementation()!
+    queryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('hab_assignments')) throw pgErr('42P01')
+      return base(sql)
+    })
     expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
-    queryMock.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: '08006' }))
+    queryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('hab_assignments')) throw Object.assign(new Error('boom'), { code: '08006' })
+      return base(sql)
+    })
     await expect(loadHabContext('tenant_sotra', 'u1')).rejects.toThrow('boom')
+  })
+
+  it('colonne plateforme habilitations_enforced absente (42703) -> null (accès hérité)', async () => {
+    queryMock.mockRejectedValueOnce(pgErr('42703'))
+    expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
+  })
+
+  it('erreur sur interrupteur autre que schéma -> relancée', async () => {
+    queryMock.mockRejectedValueOnce(pgErr('08006'))
+    await expect(loadHabContext('tenant_sotra', 'u1')).rejects.toThrow()
+  })
+
+  it('enforced + is_head_office absent (42703) -> contexte conservé, headOfficeEntityIds vide', async () => {
+    route(row({ kind: 'siege', legal_entity_id: null, permissions: ['employees:view'] }), { headOfficeError: pgErr('42703') })
+    const ctx = await loadHabContext('tenant_sotra', 'u1')
+    expect(ctx).not.toBeNull()
+    expect(ctx!.kind).toBe('siege')
+    expect(ctx!.headOfficeEntityIds).toEqual([])
+    expect(can(ctx!, 'employees', 'view')).toBe(true)
+    expect(hrScopeSql('tenant_sotra', 'e', ctx)).toBe('e.legal_entity_id IS NULL')
+  })
+
+  it('enforced + autre erreur sur les filiales siège -> relancée', async () => {
+    route(row({ kind: 'siege', legal_entity_id: null }), { headOfficeError: pgErr('08006') })
+    await expect(loadHabContext('tenant_sotra', 'u1')).rejects.toThrow()
   })
 
   it('schéma invalide rejeté', async () => {

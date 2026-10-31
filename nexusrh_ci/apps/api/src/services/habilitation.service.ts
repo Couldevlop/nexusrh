@@ -40,33 +40,67 @@ interface HabRow {
   permissions: string[] | null
   active: boolean
   self_employee_id: string | null
-  /** Interrupteur du tenant (platform.tenants.habilitations_enforced). */
-  enforced: boolean
-  head_office_ids: string[] | null
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ALIAS_RE = /^[a-z_][a-z0-9_]*$/i
 
+/** Code pg « table/colonne absente » : 42P01 relation, 42703 colonne. */
+const pgCode = (err: unknown): string | undefined => (err as { code?: string }).code
+
 /**
- * Charge le contexte d'habilitation d'un utilisateur. `null` = aucune
- * affectation active (accès hérité par rôle) ou tables pas encore créées.
+ * Interrupteur d'activation du tenant. Absence de la ligne tenant ou
+ * COALESCE false => accès hérité : choix délibéré (déploiement progressif,
+ * désactivé par défaut). Seule l'absence de la colonne de plateforme
+ * `habilitations_enforced` (plateforme pas migrée) vaut « coupé ».
+ */
+async function isEnforced(schema: string): Promise<boolean> {
+  try {
+    const res = await pool.query<{ enforced: boolean | null }>(
+      `SELECT habilitations_enforced AS enforced FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+      [schema],
+    )
+    return res.rows[0]?.enforced === true
+  } catch (err) {
+    if (pgCode(err) === '42P01' || pgCode(err) === '42703') return false
+    throw err
+  }
+}
+
+/**
+ * Ids des filiales « siège social ». Colonne tenant pas encore migrée (42703)
+ * => liste vide, plus restrictive (siège = employés sans filiale seulement).
+ */
+async function loadHeadOfficeIds(schema: string): Promise<string[]> {
+  try {
+    const res = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM "${schema}".legal_entities WHERE is_head_office = true ORDER BY id`,
+    )
+    return res.rows.map((x) => x.id)
+  } catch (err) {
+    if (pgCode(err) === '42703') return []
+    throw err
+  }
+}
+
+/**
+ * Charge le contexte d'habilitation d'un utilisateur. `null` = contrôle par
+ * la grille non actif pour le tenant, ou aucune affectation (accès hérité par
+ * rôle). Une fois l'interrupteur actif, aucune erreur de schéma ne donne null
+ * (hors tables d'habilitation absentes, donc sans affectation possible) :
+ * les autres erreurs sont relancées (authorize les traduit en 403).
  */
 export async function loadHabContext(schema: string, userId: string): Promise<HabContext | null> {
   assertValidSchemaName(schema)
+  if (!(await isEnforced(schema))) return null
   let rows: HabRow[]
   try {
-    // Une seule requête : LEFT JOIN pour distinguer « aucune ligne » (null,
-    // accès hérité) de « ligne inactive » (révoquée, future, sous-groupe absent
-    // -> refus).
+    // LEFT JOIN pour distinguer « aucune ligne » (null, accès hérité) de
+    // « ligne inactive » (révoquée, future, sous-groupe absent -> refus).
     const res = await pool.query<HabRow>(
       `SELECT a.user_id, a.subgroup_id, sg.kind, sg.legal_entity_id,
               ARRAY(SELECT unnest(a.permissions) INTERSECT SELECT unnest(COALESCE(sg.ceiling, '{}'::text[]))) AS permissions,
               u.employee_id AS self_employee_id,
-              COALESCE((SELECT t.habilitations_enforced FROM platform.tenants t
-                         WHERE t.schema_name = $2 LIMIT 1), false) AS enforced,
-              ARRAY(SELECT le.id::text FROM "${schema}".legal_entities le
-                     WHERE le.is_head_office = true ORDER BY le.id) AS head_office_ids,
               (a.revoked_at IS NULL
                AND (a.effective_from IS NULL OR a.effective_from <= current_date)
                AND sg.id IS NOT NULL) AS active
@@ -75,21 +109,16 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
          LEFT JOIN "${schema}".users u ON u.id = a.user_id
         WHERE a.user_id = $1
         LIMIT 1`,
-      [userId, schema],
+      [userId],
     )
     rows = res.rows
   } catch (err) {
-    // Tenant (ou colonne d'activation / siège social) pas encore migré : pas
-    // d'habilitation, accès hérité (42P01 table absente, 42703 colonne absente).
-    const code = (err as { code?: string }).code
-    if (code === '42P01' || code === '42703') return null
+    // Tables d'habilitation pas encore créées : aucune affectation possible.
+    if (pgCode(err) === '42P01') return null
     throw err
   }
   const r = rows[0]
   if (!r) return null
-  // Activation progressive : tant que l'interrupteur du tenant est coupé, les
-  // affectations sont préparées mais le contrôle reste celui des rôles.
-  if (!r.enforced) return null
   // Fermé par défaut : une affectation existe mais n'est pas applicable.
   if (!r.active || !r.kind) {
     return {
@@ -121,7 +150,7 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
     sensitive,
     manageHabilitations: permissions.has('manage_habilitations'),
     selfEmployeeId: r.self_employee_id,
-    headOfficeEntityIds: r.kind === 'siege' ? (r.head_office_ids ?? []) : [],
+    headOfficeEntityIds: r.kind === 'siege' ? await loadHeadOfficeIds(schema) : [],
   }
 }
 

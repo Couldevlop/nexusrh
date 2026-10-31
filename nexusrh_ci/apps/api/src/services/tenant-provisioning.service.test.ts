@@ -75,7 +75,12 @@ describe('createTenantWithSchema', () => {
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxUsers)
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxEmployees)
     // Nouveau tenant : contrôle par la grille d'habilitations actif d'emblée.
-    expect(String(insertCall[0])).toMatch(/habilitations_enforced\)[\s\S]*VALUES[\s\S]*true,\s*true\)/)
+    // La valeur posée correspond à la position de la colonne habilitations_enforced.
+    const insertSql = String(insertCall[0])
+    const cols = /\(([^)]*)\)\s*VALUES/.exec(insertSql)![1]!.split(',').map(c => c.trim())
+    const vals = /VALUES\s*\(([\s\S]*)\)\s*RETURNING/.exec(insertSql)![1]!.split(/,(?![^(]*\))/).map(v => v.trim())
+    expect(vals).toHaveLength(cols.length)
+    expect(vals[cols.indexOf('habilitations_enforced')]).toBe('true')
   })
 
   it('expéditeur cabinet : from + replyTo passés à l\'email', async () => {

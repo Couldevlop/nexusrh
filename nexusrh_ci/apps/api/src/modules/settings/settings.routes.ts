@@ -1881,7 +1881,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         auditLogSettings(
           schema, request.user.sub, 'settings.legal_entity_created',
           created?.id ?? null,
-          { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate },
+          { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate,
+            isHeadOffice: body.isHeadOffice ?? false },
           request.ip ?? null,
         )
         return reply.status(201).send({ data: created ? withHeadOffice(created) : created })
