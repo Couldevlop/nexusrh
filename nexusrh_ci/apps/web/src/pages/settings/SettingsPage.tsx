@@ -67,6 +67,7 @@ interface LegalEntity {
   collective_agreement: string | null; at_rate: string; employees_count: number
   country_code: string | null; legislation_pack_code: string | null
   raf_user_id?: string | null
+  isHeadOffice?: boolean
   is_active: boolean
 }
 // Circuit N+1 … N+n → RH (absences, notes de frais) : échéances, valideur RH, prévenance.
@@ -1739,6 +1740,7 @@ interface LegalEntityForm {
   collective_agreement: string; at_rate: string
   country_code: string; legislation_pack_code: string
   raf_user_id: string
+  isHeadOffice: boolean
 }
 
 const EMPTY_LE_FORM: LegalEntityForm = {
@@ -1747,6 +1749,7 @@ const EMPTY_LE_FORM: LegalEntityForm = {
   collective_agreement: '', at_rate: '0.02',
   country_code: 'CIV', legislation_pack_code: 'CIV-2024',
   raf_user_id: '',
+  isHeadOffice: false,
 }
 
 function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
@@ -1800,6 +1803,7 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       at_rate: e.at_rate, country_code: e.country_code ?? 'CIV',
       legislation_pack_code: e.legislation_pack_code ?? 'CIV-2024',
       raf_user_id: e.raf_user_id ?? '',
+      isHeadOffice: e.isHeadOffice === true,
     })
     setShowModal(true)
   }
@@ -2037,6 +2041,14 @@ function LegalEntitiesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     <p className="mt-1 text-xs text-muted-foreground">{t('legalEntities.modal.rafHint')}</p>
                   </div>
                 )}
+                <div className="col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input type="checkbox" checked={form.isHeadOffice}
+                      onChange={e => setForm(p => ({ ...p, isHeadOffice: e.target.checked }))} />
+                    {t('legalEntities.modal.headOffice')}
+                  </label>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('legalEntities.modal.headOfficeHint')}</p>
+                </div>
                 <div className="col-span-2">
                   <label className="text-xs font-medium text-muted-foreground">{t('legalEntities.modal.collectiveAgreement')}</label>
                   <input value={form.collective_agreement} onChange={e => setForm(p => ({ ...p, collective_agreement: e.target.value }))}

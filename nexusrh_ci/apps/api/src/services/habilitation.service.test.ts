@@ -10,7 +10,8 @@ import { loadHabContext, can, hrScopeSql, type HabContext } from './habilitation
 const ENT = '11111111-1111-4111-8111-111111111111'
 const row = (over: Record<string, unknown> = {}) => ({
   user_id: 'u1', subgroup_id: 'sg1', kind: 'entity', legal_entity_id: ENT,
-  permissions: ['employees:view'], self_employee_id: 'e1', active: true, ...over,
+  permissions: ['employees:view'], self_employee_id: 'e1', active: true,
+  enforced: true, head_office_ids: [] as string[], ...over,
 })
 
 beforeEach(() => queryMock.mockReset())
@@ -27,6 +28,34 @@ describe('loadHabContext', () => {
     expect(sql).toContain('revoked_at IS NULL')
     expect(sql).toContain('effective_from <= current_date')
     expect(sql).toContain('INTERSECT')
+  })
+
+  it('interrupteur désactivé (enforced=false) -> null même avec une affectation', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ enforced: false })] })
+    expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
+    const sql = String(queryMock.mock.calls[0]![0])
+    expect(sql).toContain('platform.tenants')
+    expect(sql).toContain('habilitations_enforced')
+    expect(sql).toContain('is_head_office')
+  })
+
+  it('interrupteur désactivé et ligne révoquée -> null (pas de refus)', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ enforced: false, active: false })] })
+    expect(await loadHabContext('tenant_sotra', 'u1')).toBeNull()
+  })
+
+  it('enforced=true : contexte inchangé et ids du siège chargés', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ kind: 'siege', legal_entity_id: null, head_office_ids: [ENT] })] })
+    const ctx = await loadHabContext('tenant_sotra', 'u1')
+    expect(ctx!.kind).toBe('siege')
+    expect(ctx!.headOfficeEntityIds).toEqual([ENT])
+  })
+
+  it('refus / filiale : headOfficeEntityIds vide', async () => {
+    queryMock.mockResolvedValue({ rows: [row({ head_office_ids: [ENT] })] })
+    expect((await loadHabContext('tenant_sotra', 'u1'))!.headOfficeEntityIds).toEqual([])
+    queryMock.mockResolvedValue({ rows: [row({ active: false, head_office_ids: [ENT] })] })
+    expect((await loadHabContext('tenant_sotra', 'u1'))!.headOfficeEntityIds).toEqual([])
   })
 
   const expectDeny = (ctx: HabContext | null) => {
@@ -108,11 +137,28 @@ describe('hrScopeSql', () => {
   const base: HabContext = {
     userId: 'u1', subgroupId: 'sg', kind: 'entity', legalEntityId: ENT, permissions: new Set(),
     allEntities: false, sensitive: false, manageHabilitations: false, selfEmployeeId: null,
+    headOfficeEntityIds: [],
   }
   it('null -> TRUE', () => expect(hrScopeSql('tenant_sotra', 'e', null)).toBe('TRUE'))
   it('entité', () => expect(hrScopeSql('tenant_sotra', 'e', base)).toBe(`e.legal_entity_id = '${ENT}'`))
   it('siège sans allEntities', () =>
     expect(hrScopeSql('tenant_sotra', 'e', { ...base, kind: 'siege', legalEntityId: null })).toContain('legal_entity_id IS NULL'))
+  const siege: HabContext = { ...base, kind: 'siege', legalEntityId: null }
+  const OTHER = '22222222-2222-4222-8222-222222222222'
+  it('siège + filiale siège social : NULL OU IN (...)', () =>
+    expect(hrScopeSql('tenant_sotra', 'e', { ...siege, headOfficeEntityIds: [ENT] }))
+      .toBe(`(e.legal_entity_id IS NULL OR e.legal_entity_id IN ('${ENT}'))`))
+  it('siège + plusieurs filiales siège social', () =>
+    expect(hrScopeSql('tenant_sotra', 'e', { ...siege, headOfficeEntityIds: [ENT, OTHER] }))
+      .toBe(`(e.legal_entity_id IS NULL OR e.legal_entity_id IN ('${ENT}','${OTHER}'))`))
+  it('siège + liste vide : NULL seul', () =>
+    expect(hrScopeSql('tenant_sotra', 'e', { ...siege, headOfficeEntityIds: [] })).toBe('e.legal_entity_id IS NULL'))
+  it('siège + id invalide dans la liste lève', () =>
+    expect(() => hrScopeSql('tenant_sotra', 'e', { ...siege, headOfficeEntityIds: ["x' OR 1=1"] })).toThrow())
+  it('siège allEntities ignore la liste', () =>
+    expect(hrScopeSql('tenant_sotra', 'e', { ...siege, allEntities: true, headOfficeEntityIds: [ENT] })).toBe('TRUE'))
+  it('filiale : la liste est ignorée', () =>
+    expect(hrScopeSql('tenant_sotra', 'e', { ...base, headOfficeEntityIds: [OTHER] })).toBe(`e.legal_entity_id = '${ENT}'`))
   it('siège avec allEntities', () =>
     expect(hrScopeSql('tenant_sotra', 'e', { ...base, kind: 'siege', legalEntityId: null, allEntities: true })).toBe('TRUE'))
   it('entité avec allEntities forcé reste restreinte', () =>

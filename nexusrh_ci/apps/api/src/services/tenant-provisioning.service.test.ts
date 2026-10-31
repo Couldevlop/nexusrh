@@ -74,6 +74,8 @@ describe('createTenantWithSchema', () => {
     expect(params).toContain('tenant_acme')
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxUsers)
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxEmployees)
+    // Nouveau tenant : contrôle par la grille d'habilitations actif d'emblée.
+    expect(String(insertCall[0])).toMatch(/habilitations_enforced\)[\s\S]*VALUES[\s\S]*true,\s*true\)/)
   })
 
   it('expéditeur cabinet : from + replyTo passés à l\'email', async () => {

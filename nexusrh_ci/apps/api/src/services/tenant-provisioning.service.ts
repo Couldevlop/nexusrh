@@ -145,9 +145,9 @@ export async function createTenantWithSchema(
         max_users, max_employees, primary_color, secondary_color, logo_url,
         trial_ends_at,
         has_subsidiaries, payroll_mode, default_country_code, enabled_modules,
-        employee_contract_access)
+        employee_contract_access, habilitations_enforced)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-             COALESCE($21::jsonb, '{}'::jsonb), true)
+             COALESCE($21::jsonb, '{}'::jsonb), true, true)
      RETURNING id`,
     [
       input.name, slug, schemaName, planType,

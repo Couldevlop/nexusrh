@@ -60,7 +60,7 @@ function ctx(permissions: string[], over: Partial<HabContext> = {}): HabContext 
     permissions: new Set(permissions),
     allEntities: false,
     sensitive: false,
-    manageHabilitations: false,
+    manageHabilitations: false, headOfficeEntityIds: [],
     selfEmployeeId: null,
     ...over,
   }
@@ -149,6 +149,15 @@ describe('authorize() consulte la grille', () => {
     expect(JSON.parse(refused.body).error).toBe('Accès interdit — rôle insuffisant')
     const allowed = await call('POST', '/payroll/periods/p1/close', 'hr_manager')
     expect(allowed.statusCode).toBe(200)
+  })
+
+  it('tenant à interrupteur désactivé (loadHabContext -> null malgré une affectation) : rôle hérité, jamais la grille', async () => {
+    loadHabContextMock.mockResolvedValue(null)
+    const allowed = await call('POST', '/payroll/periods/p1/close', 'hr_manager')
+    expect(allowed.statusCode).toBe(200)
+    const refused = await call('POST', '/payroll/periods/p1/close', 'hr_officer')
+    expect(refused.statusCode).toBe(403)
+    expect(JSON.parse(refused.body).error).toBe('Accès interdit — rôle insuffisant')
   })
 
   it('admin passe toujours, sans consulter la grille', async () => {

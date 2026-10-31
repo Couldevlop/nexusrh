@@ -193,6 +193,8 @@ export async function createPlatformSchema(): Promise<void> {
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS climate_min_responses int CHECK (climate_min_responses IS NULL OR climate_min_responses BETWEEN 2 AND 100)`)
   // Génération de PROPOSITION de contrat au recrutement (admin tenant, opt-in).
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`)
+  // Habilitations RH : contrôle par la grille actif seulement si true (existants : false).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS habilitations_enforced boolean NOT NULL DEFAULT false`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.
@@ -1268,6 +1270,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   // sans cette colonne, le seed des filiales SOTRA (raf_user_id) échoue sur une
   // base neuve provisionnée sans passer par la migration lazy.
   await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS raf_user_id uuid`)
+  // Filiale « siège social » (habilitations RH : couverte par le sous-groupe RH Siège).
+  await q(`ALTER TABLE ${s}.legal_entities ADD COLUMN IF NOT EXISTS is_head_office boolean NOT NULL DEFAULT false`)
 
   // Colonne month sur variable_elements (migration lazy)
   await q(`ALTER TABLE ${s}.variable_elements ADD COLUMN IF NOT EXISTS month varchar(7)`)

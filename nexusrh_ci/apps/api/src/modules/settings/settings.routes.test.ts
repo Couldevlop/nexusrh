@@ -325,6 +325,42 @@ describe('PATCH /settings/legal-entities/:id — UUID + audit', () => {
   })
 })
 
+describe('PATCH /settings/legal-entities/:id — siège social (isHeadOffice)', () => {
+  it('{ isHeadOffice: true } -> 200, colonne is_head_office écrite, réponse isHeadOffice: true', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, is_head_office: true }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { isHeadOffice: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data.isHeadOffice).toBe(true)
+    const upd = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('legal_entities'))
+    expect(String(upd?.[0])).toContain('is_head_office = $1')
+    expect(upd?.[1]?.[0]).toBe(true)
+  })
+
+  it('isHeadOffice: "yes" -> 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { isHeadOffice: 'yes' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('hr_manager ne peut pas modifier (admin uniquement)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { isHeadOffice: true },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+})
+
 describe('POST /settings/payroll-rules — Zod + audit (taux cotisation critique)', () => {
   it('refuse type hors énum (400)', async () => {
     const token = tokenFor(app, 'admin')

@@ -268,6 +268,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS raf_user_id uuid`,
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`,
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`,
+    // Filiale « siège social » : couverte par le sous-groupe RH Siège (habilitations).
+    `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS is_head_office boolean NOT NULL DEFAULT false`,
     `ALTER TABLE "${schemaName}".employees         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
@@ -1005,6 +1007,8 @@ export async function ensurePlatformSchema(): Promise<void> {
     // Génération de PROPOSITION de contrat au recrutement (opt-in, admin tenant).
     // DEFAULT false + lecture fail-closed : cf. contract-proposal.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`,
+    // Habilitations RH : contrôle par la grille actif seulement si true (tenants existants : false).
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS habilitations_enforced boolean NOT NULL DEFAULT false`,
 
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,

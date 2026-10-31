@@ -415,6 +415,8 @@
       "raf": "RAF (responsable paie de la filiale)",
       "rafNone": "— Aucun —",
       "rafHint": "Reçoit la paie déclinée de la filiale et la soumet. Rôle RAF filiale, admin ou DRH.",
+      "headOffice": "Siège social",
+      "headOfficeHint": "Les employés de cette filiale relèvent du sous-groupe RH Siège (pas de sous-groupe RH Filiale propre).",
       "collectiveAgreementPlaceholder": "Ex: Convention Transport Urbain CI",
       "address": "Adresse",
       "cancel": "Annuler",

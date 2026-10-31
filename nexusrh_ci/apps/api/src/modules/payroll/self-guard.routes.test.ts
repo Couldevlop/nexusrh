@@ -48,7 +48,7 @@ const hab: HabContext = {
     'payroll_multi:update', 'payroll_multi:view', 'payroll_multi:validate', 'payroll_multi:create', 'payroll_multi:close', 'discipline:create',
     'discipline:update', 'discipline:view', 'payroll:update', 'payroll:delete',
   ]),
-  allEntities: true, sensitive: true, manageHabilitations: false, selfEmployeeId: ME,
+  allEntities: true, sensitive: true, manageHabilitations: false, headOfficeEntityIds: [], selfEmployeeId: ME,
 }
 
 let app: FastifyInstance

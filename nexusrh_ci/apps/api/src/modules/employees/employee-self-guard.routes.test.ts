@@ -41,7 +41,7 @@ const OTHER = '99999999-2222-4333-8444-555555555555'
 const hab: HabContext = {
   userId: 'u-drh', subgroupId: 'sg', kind: 'siege', legalEntityId: null,
   permissions: new Set(['employees:update', 'employees:view']), allEntities: true,
-  sensitive: false, manageHabilitations: false, selfEmployeeId: ME,
+  sensitive: false, manageHabilitations: false, headOfficeEntityIds: [], selfEmployeeId: ME,
 }
 
 let app: FastifyInstance

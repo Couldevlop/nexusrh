@@ -11,7 +11,7 @@ function ctx(selfEmployeeId: string | null): HabContext {
   return {
     userId: 'u1', subgroupId: 'sg', kind: 'siege', legalEntityId: null,
     permissions: new Set(['employees:update']), allEntities: true, sensitive: false,
-    manageHabilitations: false, selfEmployeeId,
+    manageHabilitations: false, headOfficeEntityIds: [], selfEmployeeId,
   }
 }
 

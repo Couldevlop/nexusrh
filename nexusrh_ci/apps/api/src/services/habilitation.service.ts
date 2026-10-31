@@ -25,6 +25,11 @@ export interface HabContext {
   sensitive: boolean
   manageHabilitations: boolean
   selfEmployeeId: string | null
+  /**
+   * Ids des filiales cochées « siège social » (is_head_office). Utile pour le
+   * sous-groupe siège uniquement ; vide pour une filiale ou un refus.
+   */
+  headOfficeEntityIds: string[]
 }
 
 interface HabRow {
@@ -35,6 +40,9 @@ interface HabRow {
   permissions: string[] | null
   active: boolean
   self_employee_id: string | null
+  /** Interrupteur du tenant (platform.tenants.habilitations_enforced). */
+  enforced: boolean
+  head_office_ids: string[] | null
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -55,6 +63,10 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
       `SELECT a.user_id, a.subgroup_id, sg.kind, sg.legal_entity_id,
               ARRAY(SELECT unnest(a.permissions) INTERSECT SELECT unnest(COALESCE(sg.ceiling, '{}'::text[]))) AS permissions,
               u.employee_id AS self_employee_id,
+              COALESCE((SELECT t.habilitations_enforced FROM platform.tenants t
+                         WHERE t.schema_name = $2 LIMIT 1), false) AS enforced,
+              ARRAY(SELECT le.id::text FROM "${schema}".legal_entities le
+                     WHERE le.is_head_office = true ORDER BY le.id) AS head_office_ids,
               (a.revoked_at IS NULL
                AND (a.effective_from IS NULL OR a.effective_from <= current_date)
                AND sg.id IS NOT NULL) AS active
@@ -63,16 +75,21 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
          LEFT JOIN "${schema}".users u ON u.id = a.user_id
         WHERE a.user_id = $1
         LIMIT 1`,
-      [userId],
+      [userId, schema],
     )
     rows = res.rows
   } catch (err) {
-    // Tenant pas encore migré : pas d'habilitation, accès hérité.
-    if ((err as { code?: string }).code === '42P01') return null
+    // Tenant (ou colonne d'activation / siège social) pas encore migré : pas
+    // d'habilitation, accès hérité (42P01 table absente, 42703 colonne absente).
+    const code = (err as { code?: string }).code
+    if (code === '42P01' || code === '42703') return null
     throw err
   }
   const r = rows[0]
   if (!r) return null
+  // Activation progressive : tant que l'interrupteur du tenant est coupé, les
+  // affectations sont préparées mais le contrôle reste celui des rôles.
+  if (!r.enforced) return null
   // Fermé par défaut : une affectation existe mais n'est pas applicable.
   if (!r.active || !r.kind) {
     return {
@@ -85,6 +102,7 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
       sensitive: false,
       manageHabilitations: false,
       selfEmployeeId: r.self_employee_id,
+      headOfficeEntityIds: [],
     }
   }
 
@@ -103,6 +121,7 @@ export async function loadHabContext(schema: string, userId: string): Promise<Ha
     sensitive,
     manageHabilitations: permissions.has('manage_habilitations'),
     selfEmployeeId: r.self_employee_id,
+    headOfficeEntityIds: r.kind === 'siege' ? (r.head_office_ids ?? []) : [],
   }
 }
 
@@ -125,7 +144,15 @@ export function hrScopeSql(schema: string, alias: string, ctx: HabContext | null
     }
     return `${alias}.legal_entity_id = '${ctx.legalEntityId}'`
   }
-  return ctx.allEntities ? 'TRUE' : `${alias}.legal_entity_id IS NULL`
+  if (ctx.allEntities) return 'TRUE'
+  // Siège : employés sans filiale + ceux des filiales cochées « siège social ».
+  const ids = ctx.headOfficeEntityIds
+  for (const id of ids) {
+    if (!UUID_RE.test(id)) throw new Error("Entité siège invalide pour le périmètre d'habilitation")
+  }
+  if (ids.length === 0) return `${alias}.legal_entity_id IS NULL`
+  const list = ids.map((id) => `'${id}'`).join(',')
+  return `(${alias}.legal_entity_id IS NULL OR ${alias}.legal_entity_id IN (${list}))`
 }
 
 /** Message renvoyé (403) quand une action RH vise le dossier de l'acteur. */

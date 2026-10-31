@@ -157,6 +157,8 @@ const createLegalEntitySchema = z.object({
   legislation_pack_code: z.string().max(50).optional().nullable(),
   // Responsable paie de la filiale (RAF) : reçoit la paie déclinée et la soumet.
   raf_user_id:           z.string().uuid().optional().nullable(),
+  // Filiale « siège social » : couverte par le sous-groupe RH Siège (habilitations).
+  isHeadOffice:          z.boolean().optional(),
 }).strict()
 
 /** Rôles pouvant tenir la paie d'une filiale (RAF). */
@@ -170,6 +172,11 @@ async function isValidRaf(schema: string, userId: string): Promise<boolean> {
     [userId, [...RAF_ROLES]],
   )
   return (r.rowCount ?? 0) > 0
+}
+
+/** Ajoute `isHeadOffice` (camelCase) à une ligne legal_entities, sans retirer is_head_office. */
+function withHeadOffice<T extends Record<string, unknown>>(row: T): T & { isHeadOffice: boolean } {
+  return { ...row, isHeadOffice: row['is_head_office'] === true }
 }
 
 const patchLegalEntitySchema = createLegalEntitySchema.partial().extend({
@@ -1815,7 +1822,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           LEFT JOIN "${schema}".employees e ON e.legal_entity_id = le.id AND e.is_active = true AND e.deleted_at IS NULL
           GROUP BY le.id ORDER BY le.name
         `)
-        return reply.send({ data: res.rows })
+        return reply.send({ data: res.rows.map(withHeadOffice) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1845,12 +1852,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query<{ id: string }>(`
           INSERT INTO "${schema}".legal_entities
             (name, rccm, cnps_number, dgi_number, address, city, legal_form,
-             collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+             collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id,
+             is_head_office)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
         `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
             body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
-            body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null])
+            body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null,
+            body.isHeadOffice ?? false])
         const created = res.rows[0]
         // Déclarer une filiale active le workflow paie multi-filiales du tenant :
         // sinon le lien « Paie multi-filiales » (qui porte l'initiation du draft)
@@ -1875,7 +1884,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate },
           request.ip ?? null,
         )
-        return reply.status(201).send({ data: created })
+        return reply.status(201).send({ data: created ? withHeadOffice(created) : created })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1899,9 +1908,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
+      // isHeadOffice (camelCase API) -> colonne is_head_office.
+      if ('isHeadOffice' in body) { body.is_head_office = body.isHeadOffice; delete body.isHeadOffice }
       const allowed = ['name','rccm','cnps_number','dgi_number','address','city',
         'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active',
-        'raf_user_id']
+        'raf_user_id','is_head_office']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1941,7 +1952,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           { modifiedFields: Object.keys(changedFields), changes: changedFields },
           request.ip ?? null,
         )
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: res.rows[0] ? withHeadOffice(res.rows[0]) : res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
