@@ -13,22 +13,35 @@
  *    (employeur) ;
  *  - AT / PF / maternité patronal manquant : plafond 70 000 au lieu de 75 000 :
  *    max(0, min(assiette, 75 000) − 70 000) × (5 % + 0,75 % + taux AT du bulletin) ;
- *  - CMU non retenue (loi n° 2014-131) : ESTIMATION d'après les bénéficiaires
- *    ACTUELS de la fiche salarié (500 F par bénéficiaire et par côté) ;
+ *  - CMU non retenue (loi n° 2014-131 ; CLEISS 2025) : ESTIMATION d'après les
+ *    bénéficiaires ACTUELS de la fiche salarié (`computeCmu` du moteur) :
+ *    500 F par bénéficiaire partagé et par côté (salarié, conjoint sans emploi
+ *    d'un salarié marié, jusqu'à 6 enfants), PLUS 1 000 F à la charge du
+ *    salarié par enfant au-delà du 6e. Une seule estimation par salarié et par
+ *    mois, même si le mois compte plusieurs bulletins clôturés ; aucune si l'un
+ *    d'eux porte déjà une ligne CMU (2200 / 3400) ;
+ *  - `conjoint_a_verifier` : salarié marié dont la situation du conjoint
+ *    (sans emploi ou non) n'est pas renseignée — conjoint non compté ;
  *  - drapeau `heures_supp_a_verifier` : le bulletin porte des lignes 1500 ou
- *    1550, dont les taux ont changé de sens (décret n° 2024-898, art. 25).
+ *    1550, dont les taux ont changé de sens (décret n° 2024-898, art. 25) ;
+ *  - périodes OUVERTES : éléments variables HEURES_SUPP_NUIT / HEURES_SUPP_FERIE
+ *    déjà saisis, « à revoir avant clôture » — depuis le décret n° 2024-898 ils
+ *    valent nuit +75 % et dimanche / férié de nuit +100 % (les heures de
+ *    dimanche de jour vont désormais en HEURES_SUPP_DIM).
  *
  * Assiette : le brut du bulletin, sauf quand les bases portées par ses lignes
  * (2000 retraite, 3100 AT/PF) prouvent qu'aucun plafond n'était atteint (base
  * inférieure à l'ancien plafond) ou que le bulletin applique déjà le nouveau
- * plafond (base supérieure) : l'écart est alors nul.
+ * plafond (base supérieure) : l'écart est alors nul. Quand la base vaut
+ * l'ancien plafond (ou que la ligne manque), le brut sert d'assiette : il peut
+ * contenir une part exonérée (transport…) → « estimation majorante ».
  *
  * Accès : admin, hr_manager. Isolation : schéma du JWT uniquement.
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { pool as rawPool } from '../../db/pool.js'
 import { CIV_2024 } from '../../services/legislation-packs.js'
-import { computeCmu } from '../../services/payroll-engine-ci.js'
+import { computeCmu, isCmuSpouseToVerify } from '../../services/payroll-engine-ci.js'
 import { employeeCmu } from '../../services/final-payslip.service.js'
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -37,6 +50,15 @@ import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 export const CNPS_PLAFONDS_AVANT_2023 = { retraite: 1_647_315, atPf: 70_000 } as const
 export const IMPACT_FROM_MONTH = '2023-01'
 export const CMU_ESTIMATION_LABEL = 'estimation (bénéficiaires actuels)'
+export const ESTIMATION_MAJORANTE_LABEL = 'estimation majorante'
+export const OPEN_PERIOD_FLAG = 'à revoir avant clôture'
+/** Sens des clés d'heures supplémentaires depuis le décret n° 2024-898 (art. 25). */
+export const OPEN_PERIOD_OVERTIME_MEANING: Readonly<Record<'HEURES_SUPP_NUIT' | 'HEURES_SUPP_FERIE', string>> = {
+  HEURES_SUPP_NUIT: 'heures de nuit, +75 % (décret n° 2024-898, art. 25)',
+  HEURES_SUPP_FERIE: 'heures de nuit des dimanches et jours fériés, +100 % (décret n° 2024-898, art. 25)',
+}
+type OpenPeriodOvertimeCode = keyof typeof OPEN_PERIOD_OVERTIME_MEANING
+const isOpenPeriodOvertimeCode = (c: string): c is OpenPeriodOvertimeCode => c in OPEN_PERIOD_OVERTIME_MEANING
 
 export interface ImpactSlipRow {
   id: string
@@ -56,6 +78,33 @@ export interface ImpactSlipRow {
   le_country_code: string | null
 }
 
+/** Élément variable d'heures supplémentaires saisi sur une période non clôturée. */
+export interface OpenPeriodOvertimeRow {
+  employee_id: string
+  month: string
+  period_status: string
+  rule_code: string
+  amount: string | number
+  first_name: string | null
+  last_name: string | null
+  employee_number: string | null
+  legal_entity_id: string | null
+  le_pack_code: string | null
+  le_country_code: string | null
+}
+
+export interface OpenPeriodOvertime {
+  employeeId: string
+  employeeNumber: string | null
+  name: string
+  month: string
+  periodStatus: string
+  code: OpenPeriodOvertimeCode
+  amount: number
+  flag: typeof OPEN_PERIOD_FLAG
+  meaning: string
+}
+
 export interface SlipImpact {
   slipId: string
   employeeId: string
@@ -64,8 +113,15 @@ export interface SlipImpact {
   retraiteSal: number
   retraitePat: number
   atPfPat: number
+  /** Écart retraite calculé sur le brut (base à l'ancien plafond ou absente) */
+  retraiteEstimationMajorante: boolean
+  /** Écart AT/PF calculé sur le brut (base à l'ancien plafond ou absente) */
+  atPfEstimationMajorante: boolean
   cmuSal: number
   cmuPat: number
+  /** Le bulletin porte déjà une ligne CMU (2200 / 3400) */
+  cmuOnSlip: boolean
+  conjointAVerifier: boolean
   heuresSuppAVerifier: boolean
 }
 
@@ -77,6 +133,8 @@ export interface ImpactTotals {
   cmuSal: number
   cmuPat: number
   heuresSuppAVerifier: number
+  /** Salarié × mois dont le conjoint est à vérifier (CMU) */
+  conjointAVerifier: number
   /** Retraite + AT/PF + CMU, salarié + employeur */
   total: number
 }
@@ -143,6 +201,9 @@ function gapBase(lines: readonly SlipLine[], code: string, oldCap: number, gross
   return null
 }
 
+const nameOf = (r: { last_name: string | null; first_name: string | null }): string =>
+  `${r.last_name ?? ''} ${r.first_name ?? ''}`.trim()
+
 /** Impact d'un bulletin clôturé (pur, entiers FCFA, arrondi inférieur comme le moteur). */
 export function computeSlipImpact(row: ImpactSlipRow, tenantAtRate: number): SlipImpact {
   const lines = toLines(row.lines)
@@ -166,11 +227,13 @@ export function computeSlipImpact(row: ImpactSlipRow, tenantAtRate: number): Sli
     atPfPat = Math.floor(gap * rate + 1e-6)
   }
 
-  // CMU déjà retenue sur le bulletin (ligne 2200) : rien à estimer.
+  // CMU déjà retenue sur le bulletin : rien à estimer. Sinon, moteur de paie
+  // (bénéficiaires actuels ; +1 000 F salarié par enfant au-delà du 6e).
+  const cmuOnSlip = lines.some(l => l.code === '2200' || l.code === '3400')
   let cmuSal = 0
   let cmuPat = 0
-  if (!lines.some(l => l.code === '2200' || l.code === '3400')) {
-    const cmu = computeCmu(pack, row.children_count ?? 0, employeeCmu(row))
+  if (!cmuOnSlip) {
+    const cmu = computeCmu(pack, row.children_count ?? 0, employeeCmu(row), row.marital_status ?? undefined)
     cmuSal = cmu.sal
     cmuPat = cmu.pat
   }
@@ -180,16 +243,20 @@ export function computeSlipImpact(row: ImpactSlipRow, tenantAtRate: number): Sli
     employeeId: row.employee_id,
     month: row.month,
     gross,
-    retraiteSal, retraitePat, atPfPat, cmuSal, cmuPat,
+    retraiteSal, retraitePat, atPfPat,
+    retraiteEstimationMajorante: ret !== null && retraiteSal + retraitePat > 0,
+    atPfEstimationMajorante: atpf !== null && atPfPat > 0,
+    cmuSal, cmuPat, cmuOnSlip,
+    conjointAVerifier: isCmuSpouseToVerify(row.marital_status, row.cmu_spouse_covered),
     heuresSuppAVerifier: lines.some(l => (l.code === '1500' || l.code === '1550') && l.amount !== 0),
   }
 }
 
 function emptyTotals(): ImpactTotals {
-  return { slips: 0, retraiteSal: 0, retraitePat: 0, atPfPat: 0, cmuSal: 0, cmuPat: 0, heuresSuppAVerifier: 0, total: 0 }
+  return { slips: 0, retraiteSal: 0, retraitePat: 0, atPfPat: 0, cmuSal: 0, cmuPat: 0, heuresSuppAVerifier: 0, conjointAVerifier: 0, total: 0 }
 }
 
-function addTo(t: ImpactTotals, s: SlipImpact): void {
+function addTo(t: Omit<ImpactTotals, 'conjointAVerifier'>, s: SlipImpact): void {
   t.slips += 1
   t.retraiteSal += s.retraiteSal
   t.retraitePat += s.retraitePat
@@ -198,6 +265,15 @@ function addTo(t: ImpactTotals, s: SlipImpact): void {
   t.cmuPat += s.cmuPat
   if (s.heuresSuppAVerifier) t.heuresSuppAVerifier += 1
   t.total += s.retraiteSal + s.retraitePat + s.atPfPat + s.cmuSal + s.cmuPat
+}
+
+export type EmployeeMonthImpact = Omit<ImpactTotals, 'conjointAVerifier'> & {
+  employeeId: string; employeeNumber: string | null; name: string; month: string
+  /** Au moins un écart retraite / AT-PF du mois calculé sur le brut */
+  retraiteEstimationMajorante: boolean
+  atPfEstimationMajorante: boolean
+  /** Salarié marié, situation du conjoint (CMU) non renseignée */
+  conjointAVerifier: boolean
 }
 
 export interface ImpactReport {
@@ -209,32 +285,79 @@ export interface ImpactReport {
   byEmployee: Array<ImpactTotals & { employeeId: string; employeeNumber: string | null; name: string }>
   byMonth: Array<ImpactTotals & { month: string }>
   /** Une ligne par salarié et par mois (export CSV) */
-  byEmployeeMonth: Array<ImpactTotals & { employeeId: string; employeeNumber: string | null; name: string; month: string }>
+  byEmployeeMonth: EmployeeMonthImpact[]
+  /** Salariés mariés dont la situation du conjoint (CMU) est à renseigner */
+  cmuSpouseToVerify: Array<{ employeeId: string; employeeNumber: string | null; name: string }>
+  /** Heures supp. NUIT / FERIE saisies sur des périodes ouvertes : à revoir avant clôture */
+  openPeriodOvertime: OpenPeriodOvertime[]
 }
 
-export function buildImpactReport(rows: readonly ImpactSlipRow[], tenantCountry: string | null, tenantAtRate: number): ImpactReport {
+/** Lignes HEURES_SUPP_NUIT / FERIE non nulles des périodes ouvertes, CIV seulement. */
+export function openPeriodOvertimeFlags(rows: readonly OpenPeriodOvertimeRow[], tenantCountry: string | null): OpenPeriodOvertime[] {
+  const out: OpenPeriodOvertime[] = []
+  for (const r of rows) {
+    if (!isOpenPeriodOvertimeCode(r.rule_code) || !isCivSlip(r, tenantCountry)) continue
+    const amount = Math.round(Number(r.amount) || 0)
+    if (amount === 0) continue
+    out.push({
+      employeeId: r.employee_id, employeeNumber: r.employee_number, name: nameOf(r),
+      month: r.month, periodStatus: r.period_status, code: r.rule_code, amount,
+      flag: OPEN_PERIOD_FLAG, meaning: OPEN_PERIOD_OVERTIME_MEANING[r.rule_code],
+    })
+  }
+  return out.sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name, 'fr') || a.code.localeCompare(b.code))
+}
+
+export function buildImpactReport(
+  rows: readonly ImpactSlipRow[], tenantCountry: string | null, tenantAtRate: number,
+  openRows: readonly OpenPeriodOvertimeRow[] = [],
+): ImpactReport {
   const totals = emptyTotals()
   const byEmp = new Map<string, ImpactTotals & { employeeId: string; employeeNumber: string | null; name: string }>()
   const byMonth = new Map<string, ImpactTotals & { month: string }>()
-  const byEmpMonth = new Map<string, ImpactTotals & { employeeId: string; employeeNumber: string | null; name: string; month: string }>()
+  const byEmpMonth = new Map<string, EmployeeMonthImpact>()
   let excluded = 0
   let analyzed = 0
+
+  // Bulletins CIV, regroupés par salarié × mois : la CMU est un forfait
+  // mensuel — estimée une seule fois par mois, et pas du tout si l'un des
+  // bulletins du mois la porte déjà.
+  const groups = new Map<string, Array<{ row: ImpactSlipRow; s: SlipImpact }>>()
   for (const row of rows) {
     if (!isCivSlip(row, tenantCountry)) { excluded += 1; continue }
     analyzed += 1
     const s = computeSlipImpact(row, tenantAtRate)
-    const name = `${row.last_name ?? ''} ${row.first_name ?? ''}`.trim()
-    addTo(totals, s)
-    let e = byEmp.get(s.employeeId)
-    if (!e) { e = { ...emptyTotals(), employeeId: s.employeeId, employeeNumber: row.employee_number, name }; byEmp.set(s.employeeId, e) }
-    addTo(e, s)
-    let m = byMonth.get(s.month)
-    if (!m) { m = { ...emptyTotals(), month: s.month }; byMonth.set(s.month, m) }
-    addTo(m, s)
     const k = `${s.employeeId}|${s.month}`
-    let em = byEmpMonth.get(k)
-    if (!em) { em = { ...emptyTotals(), employeeId: s.employeeId, employeeNumber: row.employee_number, name, month: s.month }; byEmpMonth.set(k, em) }
-    addTo(em, s)
+    const g = groups.get(k)
+    if (g) g.push({ row, s }); else groups.set(k, [{ row, s }])
+  }
+  const toVerify = new Map<string, { employeeId: string; employeeNumber: string | null; name: string }>()
+  for (const [k, group] of groups) {
+    const cmuAlreadyWithheld = group.some(x => x.s.cmuOnSlip)
+    group.forEach((x, i) => {
+      if (cmuAlreadyWithheld || i > 0) { x.s.cmuSal = 0; x.s.cmuPat = 0 }
+    })
+    const first = group[0]!
+    const name = nameOf(first.row)
+    const em: EmployeeMonthImpact = {
+      ...emptyTotals(), employeeId: first.s.employeeId, employeeNumber: first.row.employee_number, name, month: first.s.month,
+      retraiteEstimationMajorante: false, atPfEstimationMajorante: false, conjointAVerifier: false,
+    }
+    byEmpMonth.set(k, em)
+    let e = byEmp.get(first.s.employeeId)
+    if (!e) { e = { ...emptyTotals(), employeeId: first.s.employeeId, employeeNumber: first.row.employee_number, name }; byEmp.set(first.s.employeeId, e) }
+    let m = byMonth.get(first.s.month)
+    if (!m) { m = { ...emptyTotals(), month: first.s.month }; byMonth.set(first.s.month, m) }
+    for (const { s } of group) {
+      addTo(totals, s); addTo(e, s); addTo(m, s); addTo(em, s)
+      if (s.retraiteEstimationMajorante) em.retraiteEstimationMajorante = true
+      if (s.atPfEstimationMajorante) em.atPfEstimationMajorante = true
+    }
+    if (first.s.conjointAVerifier) {
+      em.conjointAVerifier = true
+      for (const t of [totals, e, m]) t.conjointAVerifier += 1
+      toVerify.set(first.s.employeeId, { employeeId: first.s.employeeId, employeeNumber: first.row.employee_number, name })
+    }
   }
   return {
     from: IMPACT_FROM_MONTH,
@@ -246,29 +369,45 @@ export function buildImpactReport(rows: readonly ImpactSlipRow[], tenantCountry:
     byMonth: [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month)),
     byEmployeeMonth: [...byEmpMonth.values()].sort((a, b) =>
       a.name.localeCompare(b.name, 'fr') || a.month.localeCompare(b.month)),
+    cmuSpouseToVerify: [...toVerify.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    openPeriodOvertime: openPeriodOvertimeFlags(openRows, tenantCountry),
   }
 }
 
 const CSV_HEADER = [
   'mois', 'matricule', 'salarie', 'bulletins',
-  'retraite_non_cotisee_salarie', 'retraite_non_cotisee_employeur', 'at_pf_maternite_employeur_manquant',
+  'retraite_non_cotisee_salarie', 'retraite_non_cotisee_employeur', 'retraite_estimation',
+  'at_pf_maternite_employeur_manquant', 'at_pf_estimation',
   `cmu_salarie_${CMU_ESTIMATION_LABEL}`, `cmu_employeur_${CMU_ESTIMATION_LABEL}`,
-  'bulletins_heures_supp_a_verifier', 'total',
+  'conjoint_a_verifier', 'bulletins_heures_supp_a_verifier', 'total',
+]
+const OPEN_PERIOD_HEADER = [
+  'periodes_ouvertes', 'matricule', 'salarie', 'code', 'montant', 'statut_periode', 'alerte', 'sens_depuis_decret_2024_898',
 ]
 
 export function impactCsv(report: ImpactReport): string {
   const cell = (v: unknown) => encodeField(v, ';')
+  const est = (b: boolean) => (b ? ESTIMATION_MAJORANTE_LABEL : '')
   const lines = [CSV_HEADER.map(cell).join(';')]
   for (const r of report.byEmployeeMonth) {
     lines.push([
       r.month, r.employeeNumber ?? '', r.name, r.slips,
-      r.retraiteSal, r.retraitePat, r.atPfPat, r.cmuSal, r.cmuPat, r.heuresSuppAVerifier, r.total,
+      r.retraiteSal, r.retraitePat, est(r.retraiteEstimationMajorante),
+      r.atPfPat, est(r.atPfEstimationMajorante),
+      r.cmuSal, r.cmuPat, r.conjointAVerifier ? 'oui' : 'non', r.heuresSuppAVerifier, r.total,
     ].map(cell).join(';'))
   }
   const t = report.totals
   lines.push([
-    'TOTAL', '', '', t.slips, t.retraiteSal, t.retraitePat, t.atPfPat, t.cmuSal, t.cmuPat, t.heuresSuppAVerifier, t.total,
+    'TOTAL', '', '', t.slips, t.retraiteSal, t.retraitePat, '', t.atPfPat, '', t.cmuSal, t.cmuPat,
+    t.conjointAVerifier, t.heuresSuppAVerifier, t.total,
   ].map(cell).join(';'))
+  if (report.openPeriodOvertime.length > 0) {
+    lines.push('', OPEN_PERIOD_HEADER.map(cell).join(';'))
+    for (const o of report.openPeriodOvertime) {
+      lines.push([o.month, o.employeeNumber ?? '', o.name, o.code, o.amount, o.periodStatus, o.flag, o.meaning].map(cell).join(';'))
+    }
+  }
   return lines.join('\r\n')
 }
 
@@ -302,7 +441,24 @@ const ci2023ImpactRoutes: FastifyPluginAsync = async (fastify) => {
             ORDER BY ps.month, e.last_name, e.first_name`,
           [IMPACT_FROM_MONTH],
         )
-        const report = buildImpactReport(slips.rows, tenant?.default_country_code ?? null, tenantAtRate)
+        // Périodes non clôturées : heures supp. NUIT / FERIE déjà saisies (sens
+        // changé par le décret n° 2024-898) — à revoir avant la clôture.
+        const openVe = await rawPool.query<OpenPeriodOvertimeRow>(
+          `SELECT ve.employee_id, pp.month, pp.status AS period_status, ve.rule_code, ve.amount,
+                  e.first_name, e.last_name, e.employee_number,
+                  COALESCE(pp.legal_entity_id, e.legal_entity_id) AS legal_entity_id,
+                  COALESCE(NULLIF(TRIM(pp.legislation_pack_code), ''), le.legislation_pack_code) AS le_pack_code,
+                  le.country_code AS le_country_code
+             FROM "${schema}".variable_elements ve
+             JOIN "${schema}".pay_periods pp ON pp.id = ve.period_id
+             LEFT JOIN "${schema}".employees e ON e.id = ve.employee_id
+             LEFT JOIN "${schema}".legal_entities le ON le.id = COALESCE(pp.legal_entity_id, e.legal_entity_id)
+            WHERE pp.status <> 'closed'
+              AND ve.rule_code IN ('HEURES_SUPP_NUIT', 'HEURES_SUPP_FERIE')
+              AND ve.amount <> 0
+            ORDER BY pp.month, e.last_name, e.first_name`,
+        )
+        const report = buildImpactReport(slips.rows, tenant?.default_country_code ?? null, tenantAtRate, openVe.rows)
         if (format === 'csv') {
           reply.header('Content-Type', 'text/csv; charset=utf-8')
           reply.header('Content-Disposition', 'attachment; filename="impact_paie_ci_2023.csv"')

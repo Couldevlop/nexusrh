@@ -22,13 +22,17 @@ vi.mock('../../config.js', () => ({
   },
 }))
 
+// ensureTenantSchema est mocké : la migration lazy (ALTER / UPDATE des
+// libellés de rubriques, jamais pay_slips) n'est donc pas couverte par les
+// assertions « aucune écriture » ci-dessous, qui portent sur les requêtes du
+// rapport lui-même (décision M3 : migration lazy acceptée sur cette route).
 vi.mock('../../utils/schema-migrations.js', () => ({
   ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
 
 import authPlugin from '../../plugins/auth.js'
 import ci2023ImpactRoutes, {
-  computeSlipImpact, buildImpactReport, isCivSlip, slipAtRate, type ImpactSlipRow,
+  computeSlipImpact, buildImpactReport, isCivSlip, slipAtRate, type ImpactSlipRow, type OpenPeriodOvertimeRow,
 } from './ci-2023-impact.routes.js'
 
 const TENANT = 'tenant_sotra'
@@ -83,9 +87,23 @@ const NOUVEAU = slip({
   ],
 })
 
+// Éléments variables saisis sur des périodes OUVERTES (I2).
+const OPEN_VE: OpenPeriodOvertimeRow[] = [
+  { employee_id: EMP_B, month: '2026-11', period_status: 'open', rule_code: 'HEURES_SUPP_NUIT', amount: '12000',
+    first_name: 'Yao', last_name: 'Brou', employee_number: 'M002', legal_entity_id: null, le_pack_code: null, le_country_code: null },
+  { employee_id: EMP_A, month: '2026-11', period_status: 'sent_to_sites', rule_code: 'HEURES_SUPP_FERIE', amount: 8000,
+    first_name: 'Awa', last_name: 'Koné', employee_number: 'M001', legal_entity_id: null, le_pack_code: null, le_country_code: null },
+  // Filiale togolaise : hors périmètre
+  { employee_id: EMP_C, month: '2026-11', period_status: 'open', rule_code: 'HEURES_SUPP_NUIT', amount: 5000,
+    first_name: 'K', last_name: 'T', employee_number: 'M003', legal_entity_id: 'le-tg', le_pack_code: 'TGO-2024', le_country_code: null },
+]
+
 describe('ci-2023-impact — calcul pur', () => {
   it('cadre 2 000 000 : retraite, AT/PF et CMU estimée', () => {
     const r = computeSlipImpact(CADRE, 0.02)
+    // base 2000 / 3100 = ancien plafond → assiette = brut : estimation majorante
+    expect(r.retraiteEstimationMajorante).toBe(true)
+    expect(r.atPfEstimationMajorante).toBe(true)
     // (2 000 000 − 1 647 315) = 352 685 × 6,3 % = 22 219,155 → 22 219 ; × 7,7 % = 27 156,745 → 27 156
     expect(r.retraiteSal).toBe(22_219)
     expect(r.retraitePat).toBe(27_156)
@@ -102,6 +120,8 @@ describe('ci-2023-impact — calcul pur', () => {
     expect([r.retraiteSal, r.retraitePat, r.atPfPat]).toEqual([0, 0, 0])
     expect([r.cmuSal, r.cmuPat]).toEqual([500, 500])
     expect(r.heuresSuppAVerifier).toBe(true)
+    expect(r.retraiteEstimationMajorante).toBe(false)
+    expect(r.atPfEstimationMajorante).toBe(false)
   })
 
   it('bulletin déjà au nouveau paramétrage : écart nul', () => {
@@ -116,6 +136,49 @@ describe('ci-2023-impact — calcul pur', () => {
     expect(r.retraitePat).toBe(133_031)
     // 5 000 × (5 % + 0,75 % + 3 %) = 437,5 → 437
     expect(r.atPfPat).toBe(437)
+  })
+
+  it('CMU estimée UNE fois par salarié et par mois (deux bulletins clôturés le même mois)', () => {
+    const second = { ...BAS, id: 's2b', lines: [] }
+    const rep = buildImpactReport([BAS, second], 'CIV', 0.02)
+    // 2 bulletins, mais une seule CMU (500 + 500) pour Yao en 2023-02
+    expect(rep.totals.slips).toBe(2)
+    expect(rep.totals.cmuSal).toBe(500)
+    expect(rep.totals.cmuPat).toBe(500)
+  })
+
+  it('CMU déjà retenue sur un des bulletins du mois : aucune estimation pour ce mois', () => {
+    const withCmu = { ...BAS, id: 's2c', lines: [{ code: '2200', label: 'CMU', base: 0, amount: 500 }] }
+    const rep = buildImpactReport([BAS, withCmu], 'CIV', 0.02)
+    expect(rep.totals.cmuSal).toBe(0)
+  })
+
+  it('CMU : +1 000 F par enfant au-delà du 6e, à la charge du salarié', () => {
+    const r = computeSlipImpact(slip({ children_count: 8, gross_salary: 60000 }), 0.02)
+    expect(r.cmuPat).toBe(3_500)        // 7 partagés × 500
+    expect(r.cmuSal).toBe(5_500)        // 7 × 500 + 2 × 1 000
+  })
+
+  it('conjoint à vérifier : marié et situation du conjoint non renseignée', () => {
+    const toVerify = slip({ id: 's9', employee_id: EMP_C, marital_status: 'married', cmu_spouse_covered: null, last_name: 'Zadi', first_name: 'Ama' })
+    const rep = buildImpactReport([toVerify, CADRE], 'CIV', 0.02)
+    expect(rep.cmuSpouseToVerify).toEqual([{ employeeId: EMP_C, employeeNumber: 'M001', name: 'Zadi Ama' }])
+    expect(rep.byEmployeeMonth.find(r => r.employeeId === EMP_C)?.conjointAVerifier).toBe(true)
+    expect(rep.byEmployeeMonth.find(r => r.employeeId === EMP_A)?.conjointAVerifier).toBe(false)
+    // conjoint non compté tant qu'il n'est pas renseigné : salarié seul
+    expect(rep.byEmployeeMonth.find(r => r.employeeId === EMP_C)?.cmuSal).toBe(500)
+  })
+
+  it('périodes ouvertes : HEURES_SUPP_NUIT / FERIE à revoir avant clôture, CIV seulement', () => {
+    const rep = buildImpactReport([], 'CIV', 0.02, OPEN_VE)
+    expect(rep.openPeriodOvertime).toEqual([
+      { employeeId: EMP_B, employeeNumber: 'M002', name: 'Brou Yao', month: '2026-11', periodStatus: 'open',
+        code: 'HEURES_SUPP_NUIT', amount: 12000, flag: 'à revoir avant clôture',
+        meaning: 'heures de nuit, +75 % (décret n° 2024-898, art. 25)' },
+      { employeeId: EMP_A, employeeNumber: 'M001', name: 'Koné Awa', month: '2026-11', periodStatus: 'sent_to_sites',
+        code: 'HEURES_SUPP_FERIE', amount: 8000, flag: 'à revoir avant clôture',
+        meaning: 'heures de nuit des dimanches et jours fériés, +100 % (décret n° 2024-898, art. 25)' },
+    ])
   })
 
   it('taux AT : libellé, puis montant/base, puis taux tenant', () => {
@@ -164,6 +227,7 @@ describe('GET /payroll/ci-2023-impact — route', () => {
     queryMock.mockImplementation(async (sql: string) => {
       if (sql.includes('platform.tenants')) return { rows: [{ default_country_code: 'CIV', at_rate: '0.020' }] }
       if (sql.includes('pay_slips')) return { rows: [CADRE, BAS, TOGO, NOUVEAU] }
+      if (sql.includes('variable_elements')) return { rows: OPEN_VE }
       return { rows: [] }
     })
   })
@@ -200,6 +264,12 @@ describe('GET /payroll/ci-2023-impact — route', () => {
     expect(slipSql).toContain("pp.status = 'closed'")
     const slipCall = queryMock.mock.calls.find(c => String(c[0]).includes('pay_slips'))
     expect(slipCall?.[1]).toEqual(['2023-01'])
+    const veSql = all.find(s => s.includes('variable_elements')) ?? ''
+    expect(veSql).toContain(`"${TENANT}".variable_elements`)
+    expect(veSql).toContain("pp.status <> 'closed'")
+    expect(veSql).toContain("'HEURES_SUPP_NUIT'")
+    expect(veSql).toContain("'HEURES_SUPP_FERIE'")
+    expect((res.json() as { data: { openPeriodOvertime: unknown[] } }).data.openPeriodOvertime).toHaveLength(2)
   })
 
   it('export CSV avec BOM, en-tête et ligne TOTAL', async () => {
@@ -213,8 +283,17 @@ describe('GET /payroll/ci-2023-impact — route', () => {
     const rows = res.body.slice(1).split('\r\n')
     expect(rows[0]).toContain('retraite_non_cotisee_salarie')
     expect(rows[0]).toContain('estimation (bénéficiaires actuels)')
-    expect(rows).toHaveLength(5)
-    expect(rows[4]).toBe('TOTAL;;;3;22219;27156;387;2000;2000;1;53762')
+    expect(rows[0]).toContain('retraite_estimation;')
+    expect(rows[0]).toContain('conjoint_a_verifier')
+    // Koné 2023-01 : bases à l'ancien plafond → estimation majorante
+    expect(rows.find(r => r.startsWith('2023-01;M001;'))).toBe('2023-01;M001;Koné Awa;1;22219;27156;estimation majorante;387;estimation majorante;1500;1500;non;0;52762')
+    expect(rows[1]).toBe('2023-02;M002;Brou Yao;1;0;0;;0;;500;500;non;1;1000')
+    expect(rows[4]).toBe('TOTAL;;;3;22219;27156;;387;;2000;2000;0;1;53762')
+    // Section périodes ouvertes (I2)
+    expect(rows[5]).toBe('')
+    expect(rows[6]).toBe('periodes_ouvertes;matricule;salarie;code;montant;statut_periode;alerte;sens_depuis_decret_2024_898')
+    expect(rows[7]).toBe('2026-11;M002;Brou Yao;HEURES_SUPP_NUIT;12000;open;à revoir avant clôture;heures de nuit, +75 % (décret n° 2024-898, art. 25)')
+    expect(rows).toHaveLength(9)
     expect(sqls().some(s => /\b(INSERT|UPDATE|DELETE)\b/i.test(s))).toBe(false)
   })
 
