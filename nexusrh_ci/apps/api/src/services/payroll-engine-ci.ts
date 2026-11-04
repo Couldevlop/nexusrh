@@ -83,7 +83,9 @@ const DEFAULT_VARIABLE_TREATMENT: VariableTreatment = {
   PRIME_RENDEMENT:   { social: true, tax: true },
   PRIME_PANIER:      { social: true, tax: true },
   HEURES_SUPP_NORM:  { social: true, tax: true },
+  HEURES_SUPP_47:    { social: true, tax: true },
   HEURES_SUPP_NUIT:  { social: true, tax: true },
+  HEURES_SUPP_DIM:   { social: true, tax: true },
   HEURES_SUPP_FERIE: { social: true, tax: true },
   ICP:               { social: true, tax: true },
   GRATIFICATION:     { social: true, tax: true },
@@ -136,6 +138,13 @@ export interface PayrollContext {
    * du pack.
    */
   variableTreatment?: VariableTreatmentOverride
+  /**
+   * Bénéficiaires CMU du salarié (packs portant `cmu`). Le salarié est
+   * toujours couvert. Conjoint : compté seulement si `spouseCovered` (un
+   * conjoint salarié a sa propre CMU). Enfants : `childrenCovered`, à défaut
+   * le nombre d'enfants à charge (`childrenCount`).
+   */
+  cmu?: { spouseCovered?: boolean; childrenCovered?: number | null }
 }
 
 export interface PayrollLine {
@@ -164,6 +173,9 @@ export interface PayrollResult {
   cnpsAtPat:       number
   totalCnpsSal:    number
   totalCnpsPat:    number
+  // CMU (hors assiettes CNPS / ITS) — 0 si le pack n'en porte pas
+  cmuSal:          number
+  cmuPat:          number
   // ITS
   baseImposable:   number
   /** Impôt brut issu du barème, avant réduction famille */
@@ -373,22 +385,70 @@ const VARIABLE_EARNINGS: ReadonlyArray<{ code: string; label: string; varKey: st
   { code: '1260', label: 'Avantage en nature',               varKey: 'AVANTAGE_NATURE'   },
   { code: '1300', label: 'Prime de transport',               varKey: 'PRIME_TRANSPORT'   },
   { code: '1350', label: 'Prime de panier',                  varKey: 'PRIME_PANIER'      },
-  { code: '1400', label: 'Heures supp. +15%',               varKey: 'HEURES_SUPP_NORM'  },
-  { code: '1500', label: 'Heures supp. +50% (nuit/dim)',    varKey: 'HEURES_SUPP_NUIT'  },
-  { code: '1550', label: 'Heures supp. +100% (jour férié)', varKey: 'HEURES_SUPP_FERIE' },
+  // Heures supplémentaires : libellés dérivés du pack (overtimeLabels).
+  // 1450 et 1520 : catégories CI du décret n° 2024-898 (art. 25).
+  { code: '1400', label: 'Heures supp.',                     varKey: 'HEURES_SUPP_NORM'  },
+  { code: '1450', label: 'Heures supp.',                     varKey: 'HEURES_SUPP_47'    },
+  { code: '1500', label: 'Heures supp.',                     varKey: 'HEURES_SUPP_NUIT'  },
+  { code: '1520', label: 'Heures supp.',                     varKey: 'HEURES_SUPP_DIM'   },
+  { code: '1550', label: 'Heures supp.',                     varKey: 'HEURES_SUPP_FERIE' },
   { code: '1600', label: 'Indemnité congés payés',           varKey: 'ICP'               },
 ]
 
 // 0 ou 1 décimale (virgule française) : 0,15 -> « 15% », 0,125 -> « 12,5% ».
 const pct = (rate: number): string => `${String(Math.round(rate * 1000) / 10).replace('.', ',')}%`
 
+export interface OvertimeLabels {
+  /** 1400 — HEURES_SUPP_NORM */
+  norm: string
+  /** 1450 — HEURES_SUPP_47 (à partir de `weeklyBeyondFromHour`) */
+  beyond: string
+  /** 1500 — HEURES_SUPP_NUIT */
+  nuit: string
+  /** 1520 — HEURES_SUPP_DIM */
+  dim: string
+  /** 1550 — HEURES_SUPP_FERIE */
+  ferie: string
+}
+
 /**
- * Libellés des lignes d'heures supplémentaires (1400 / 1500 / 1550), dérivés
- * des majorations du pack. Le pack CIV produit les libellés historiques.
+ * Libellés des lignes d'heures supplémentaires (1400 / 1450 / 1500 / 1520 /
+ * 1550), dérivés des majorations du pack.
+ *
+ * Deux modèles :
+ *  - pack à nuit de dimanche / férié distincte (`sundayHolidayNight`, CI :
+ *    décret n° 2024-898 art. 25) : 1500 = nuit, 1520 = dimanche / férié de
+ *    jour, 1550 = dimanche / férié de nuit ;
+ *  - sinon (historique) : 1500 = nuit et dimanche, 1550 = jour férié, 1520 =
+ *    dimanche seul si saisi.
  */
-export function overtimeLabels(pack: LegislationPack): { norm: string; nuit: string; ferie: string } {
+export function overtimeLabels(pack: LegislationPack): OvertimeLabels {
   const r = pack.leaveRules?.overtimeRates ?? {}
-  const norm = r.weekly !== undefined ? `Heures supp. +${pct(r.weekly)}` : 'Heures supp.'
+  const from = r.weeklyBeyondFromHour
+  const split = r.weeklyBeyond !== undefined && from !== undefined
+  const norm = r.weekly === undefined
+    ? 'Heures supp.'
+    : `Heures supp. +${pct(r.weekly)}` + (split ? ` (41e à ${from - 1}e h)` : '')
+  const beyond = r.weeklyBeyond === undefined
+    ? 'Heures supp. (au-delà du seuil hebdomadaire)'
+    : `Heures supp. +${pct(r.weeklyBeyond)}` + (from !== undefined ? ` (au-delà de ${from - 1} h)` : '')
+
+  if (r.sundayHolidayNight !== undefined) {
+    const nuit = r.night !== undefined ? `Heures supp. +${pct(r.night)} (nuit)` : 'Heures supp. (nuit)'
+    let dim: string
+    if (r.sunday !== undefined && (r.holiday === undefined || r.holiday === r.sunday)) {
+      dim = `Heures supp. +${pct(r.sunday)} (dimanche/férié de jour)`
+    } else if (r.sunday === undefined && r.holiday !== undefined) {
+      dim = `Heures supp. +${pct(r.holiday)} (dimanche/férié de jour)`
+    } else if (r.sunday !== undefined && r.holiday !== undefined) {
+      dim = `Heures supp. de jour dimanche (+${pct(r.sunday)}) / férié (+${pct(r.holiday)})`
+    } else {
+      dim = 'Heures supp. (dimanche/férié de jour)'
+    }
+    const ferie = `Heures supp. +${pct(r.sundayHolidayNight)} (dimanche/férié de nuit)`
+    return { norm, beyond, nuit, dim, ferie }
+  }
+
   let nuit: string
   if (r.night !== undefined && r.sunday !== undefined) {
     nuit = r.night === r.sunday
@@ -401,15 +461,38 @@ export function overtimeLabels(pack: LegislationPack): { norm: string; nuit: str
   } else {
     nuit = 'Heures supp. (nuit/dim)'
   }
+  const dim = r.sunday !== undefined ? `Heures supp. dimanche (+${pct(r.sunday)})` : 'Heures supp. (dimanche)'
   const ferie = r.holiday !== undefined ? `Heures supp. +${pct(r.holiday)} (jour férié)` : 'Heures supp. (jour férié)'
-  return { norm, nuit, ferie }
+  return { norm, beyond, nuit, dim, ferie }
 }
 
-function variableEarningLabel(e: { code: string; label: string }, l: { norm: string; nuit: string; ferie: string }): string {
-  if (e.code === '1400') return l.norm
-  if (e.code === '1500') return l.nuit
-  if (e.code === '1550') return l.ferie
-  return e.label
+const OVERTIME_LABEL_KEY: Readonly<Record<string, keyof OvertimeLabels>> = {
+  '1400': 'norm', '1450': 'beyond', '1500': 'nuit', '1520': 'dim', '1550': 'ferie',
+}
+
+function variableEarningLabel(e: { code: string; label: string }, l: OvertimeLabels): string {
+  const k = OVERTIME_LABEL_KEY[e.code]
+  return k ? l[k] : e.label
+}
+
+/**
+ * CMU du mois (packs portant `cmu`). Bénéficiaires partagés = salarié +
+ * conjoint couvert + enfants dans la limite du pack : part employeur / part
+ * salarié. Enfants au-delà de la limite : cotisation entière au salarié.
+ * Forfait mensuel, indépendant des jours travaillés.
+ */
+export function computeCmu(
+  pack: LegislationPack, childrenCount: number, cmu?: PayrollContext['cmu'],
+): { sal: number; pat: number; beneficiaries: number } {
+  const rule = pack.cmu
+  if (!rule) return { sal: 0, pat: 0, beneficiaries: 0 }
+  const declared = cmu?.childrenCovered
+  const children = Math.max(0, Math.floor(declared ?? childrenCount ?? 0))
+  const shared = 1 + (cmu?.spouseCovered ? 1 : 0) + Math.min(children, rule.maxSharedChildren)
+  const extra = Math.max(0, children - rule.maxSharedChildren)
+  const pat = Math.round(shared * rule.perBeneficiary * rule.employerShare)
+  const sal = shared * rule.perBeneficiary - pat + extra * rule.perBeneficiary
+  return { sal, pat, beneficiaries: shared + extra }
 }
 
 // Communes du District autonome d'Abidjan (plafond transport « Abidjan »).
@@ -517,6 +600,9 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const cnpsAtPat       = Math.floor(baseAtPf * atRate)
   const totalCnpsSal    = cnpsRetraiteSal
   const totalCnpsPat    = cnpsRetraitePat + cnpsPfPat + cnpsAtPat
+
+  // CMU : hors assiettes CNPS et ITS ; retenue salariale et charge patronale.
+  const { sal: cmuSal, pat: cmuPat } = computeCmu(pack, childrenCount, ctx.cmu)
 
   // ── PRÉ-CALCUL ABSENCE : avant ITS pour déterminer la base imposable ────────
   // Indemnités maternité et AT sont exonérées d'ITS ; maladie est taxée normalement
@@ -636,6 +722,8 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const mutuelleSal = variableElements['MUTUELLE_SAL'] ?? 0
   if (mutuelleSal > 0) lines.push({ code: '4000', label: 'Mutuelle santé salarié',  type: 'employee_contribution', base: 0, amount: mutuelleSal })
 
+  if (cmuSal > 0) lines.push({ code: '2200', label: 'CMU — part salarié', type: 'employee_contribution', base: 0, amount: cmuSal })
+
   const avance = variableElements['AVANCE'] ?? 0
   if (avance > 0) lines.push({ code: '5000', label: 'Avance sur salaire', type: 'deduction', base: 0, amount: avance })
 
@@ -650,6 +738,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     lines.push({ code: '3200', label: `${caisse} Assurance maternité (${tauxMatPatPct}%)`, type: 'employer_contribution', base: baseAtPf, amount: Math.floor(baseAtPf * pack.tauxCotisationMaternitePatronal) })
   }
   lines.push({ code: '3300', label: `${caisse} Accidents du travail (${(atRate * 100).toFixed(2)}%)`, type: 'employer_contribution', base: baseAtPf, amount: cnpsAtPat })
+  if (cmuPat > 0) lines.push({ code: '3400', label: 'CMU — part employeur', type: 'employer_contribution', base: 0, amount: cmuPat })
 
   const mutuellePat = variableElements['MUTUELLE_PAT'] ?? 0
   if (mutuellePat > 0) lines.push({ code: '4100', label: 'Mutuelle santé patronal', type: 'employer_contribution', base: 0, amount: mutuellePat })
@@ -661,9 +750,9 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   }
 
   // ── ÉTAPE 5 : Totaux ─────────────────────────────────────────────────────────
-  const totalRetenues = totalCnpsSal + its + avance + mutuelleSal + avantageNature
+  const totalRetenues = totalCnpsSal + its + avance + mutuelleSal + avantageNature + cmuSal
   const netPayable    = Math.max(0, grossSalary - totalRetenues) + reimbursement
-  const employerCost  = grossSalary + totalCnpsPat + mutuellePat
+  const employerCost  = grossSalary + totalCnpsPat + mutuellePat + cmuPat
 
   return {
     lines,
@@ -676,6 +765,8 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     cnpsAtPat,
     totalCnpsSal,
     totalCnpsPat,
+    cmuSal,
+    cmuPat,
     baseImposable,
     itsBrut,
     reductionImpot: Math.min(itsBrut, creditImpot),

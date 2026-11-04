@@ -25,7 +25,7 @@ import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } fro
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markExpensesPaid, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
+  employeeCmu, loadPayrollPopulation, markExpensesPaid, markSettlementPaid, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import {
   loadRafReadiness, readinessRefusalMessage, takeUnjustifiedAbsenceDays, withUnjustifiedAbsence,
@@ -557,6 +557,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             atRate,
             maritalStatus:    emp.marital_status ?? 'single',
             childrenCount:    emp.children_count ?? 0,
+            cmu:              employeeCmu(emp),
             variableElements: varEls,
             absence:          absenceCtx?.info,
             attendanceDeductions: attendance?.deductions,

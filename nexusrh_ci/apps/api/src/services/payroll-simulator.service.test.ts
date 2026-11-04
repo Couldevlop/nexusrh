@@ -125,6 +125,29 @@ describe('computeOvertime', () => {
     const r = computeOvertime(BFA_2024, 400_000, 40, { weekly: 0, night: 0, sunday: 0, holiday: 2 })
     expect(r.variableElements.HEURES_SUPP_FERIE).toBe(9_231)
   })
+  it('CIV 5 catégories (décret 2024-898 art. 25) : littéraux calculés à la main', () => {
+    // th = 400 000 / (40 × 52 / 12) = 2 307,692…
+    const r = computeOvertime(CIV_2024, 400_000, 40, {
+      weekly: 6, weeklyBeyond: 4, night: 2, sunday: 3, holiday: 1, sundayHolidayNight: 2,
+    })
+    expect(r.lines.map(l => [l.category, l.element, l.majoration, l.amount])).toEqual([
+      ['weekly', 'HEURES_SUPP_NORM', 0.15, 15_923],              // 6 × th × 1,15 = 15 923,08
+      ['weeklyBeyond', 'HEURES_SUPP_47', 0.5, 13_846],           // 4 × th × 1,5 = 13 846,15
+      ['night', 'HEURES_SUPP_NUIT', 0.75, 8_077],                // 2 × th × 1,75 = 8 076,92
+      ['sunday', 'HEURES_SUPP_DIM', 0.75, 12_115],               // 3 × th × 1,75 = 12 115,38
+      ['holiday', 'HEURES_SUPP_DIM', 0.75, 4_038],               // 1 × th × 1,75 = 4 038,46
+      ['sundayHolidayNight', 'HEURES_SUPP_FERIE', 1, 9_231],     // 2 × th × 2 = 9 230,77
+    ])
+    expect(r.variableElements).toEqual({
+      HEURES_SUPP_NORM: 15_923, HEURES_SUPP_47: 13_846, HEURES_SUPP_NUIT: 8_077,
+      HEURES_SUPP_DIM: 16_153, HEURES_SUPP_FERIE: 9_231,
+    })
+    expect(r.lines[5]?.label).toBe('Heures supp. +100% (dimanche/férié de nuit)')
+  })
+  it('pack sans taux au-delà de 46 h (TGO) : heures saisies -> erreur', () => {
+    expect(() => computeOvertime(TGO_2024, 400_000, 40, { weekly: 0, weeklyBeyond: 2, night: 0, sunday: 0, holiday: 0 })).toThrow()
+    expect(() => computeOvertime(TGO_2024, 400_000, 40, { weekly: 0, night: 0, sunday: 0, holiday: 0, sundayHolidayNight: 1 })).toThrow()
+  })
   it('majoration absente du pack avec heures saisies -> erreur', () => {
     const pack: LegislationPack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: { weekly: 0.15 } } }
     expect(() => computeOvertime(pack, 400_000, 40, { weekly: 0, night: 3, sunday: 0, holiday: 0 })).toThrow()

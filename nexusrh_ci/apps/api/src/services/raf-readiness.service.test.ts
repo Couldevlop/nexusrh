@@ -128,3 +128,16 @@ describe('absences injustifiées (jours) → retenue', () => {
     expect(withUnjustifiedAbsence(undefined, 0, 260_000, 26)).toBeUndefined()
   })
 })
+
+describe('RAF_VARIABLE_CODES — heures supplémentaires CI (décret n° 2024-898)', () => {
+  it('les 5 catégories sont saisissables, libellés dérivés du pack CIV', async () => {
+    const { RAF_VARIABLE_CODES, RAF_VARIABLE_LABELS } = await import('./raf-readiness.service.js')
+    expect(RAF_VARIABLE_CODES.slice(0, 5)).toEqual([
+      'HEURES_SUPP_NORM', 'HEURES_SUPP_47', 'HEURES_SUPP_NUIT', 'HEURES_SUPP_DIM', 'HEURES_SUPP_FERIE',
+    ])
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_47).toBe('Heures supp. +50% (au-delà de 46 h)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_DIM).toBe('Heures supp. +75% (dimanche/férié de jour)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_NUIT).toBe('Heures supp. +75% (nuit)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_FERIE).toBe('Heures supp. +100% (dimanche/férié de nuit)')
+  })
+})

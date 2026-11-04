@@ -24,10 +24,27 @@ export interface SeniorityResult {
   rule: SeniorityRuleOutcome | null
 }
 
-export type OvertimeElementKey = 'HEURES_SUPP_NORM' | 'HEURES_SUPP_NUIT' | 'HEURES_SUPP_FERIE'
+export type OvertimeElementKey =
+  | 'HEURES_SUPP_NORM' | 'HEURES_SUPP_47' | 'HEURES_SUPP_NUIT' | 'HEURES_SUPP_DIM' | 'HEURES_SUPP_FERIE'
+
+export type OvertimeCategory = 'weekly' | 'weeklyBeyond' | 'night' | 'sunday' | 'holiday' | 'sundayHolidayNight'
+
+/** Heures supplémentaires du mois par catégorie (les catégories CI optionnelles valent 0 si absentes). */
+export interface OvertimeHours {
+  weekly: number
+  /** Au-delà de `weeklyBeyondFromHour` − 1 (CI : au-delà de la 46e heure) */
+  weeklyBeyond?: number
+  night: number
+  /** Dimanche (de jour si le pack distingue la nuit des dimanches / fériés) */
+  sunday: number
+  /** Jour férié (de jour si le pack distingue la nuit des dimanches / fériés) */
+  holiday: number
+  /** Nuit des dimanches et jours fériés */
+  sundayHolidayNight?: number
+}
 
 export interface OvertimeLine {
-  category: 'weekly' | 'night' | 'sunday' | 'holiday'
+  category: OvertimeCategory
   element: OvertimeElementKey
   label: string
   hours: number
@@ -105,28 +122,45 @@ export function hourlyRate(baseSalary: number, weeklyHours: number): number {
   return baseSalary / ((weeklyHours * 52) / 12)
 }
 
+/**
+ * Heures supplémentaires → éléments variables du moteur.
+ *
+ * Pack à nuit de dimanche / férié distincte (`sundayHolidayNight`, CI : décret
+ * n° 2024-898 art. 25) : dimanche et férié de jour → HEURES_SUPP_DIM, nuit des
+ * dimanches / fériés → HEURES_SUPP_FERIE. Sinon (autres packs, inchangé) :
+ * dimanche → HEURES_SUPP_NUIT, férié → HEURES_SUPP_FERIE. Les heures au-delà du
+ * seuil hebdomadaire vont dans HEURES_SUPP_47. Heures saisies pour une
+ * majoration absente du pack → erreur.
+ */
 export function computeOvertime(
   pack: LegislationPack,
   baseSalary: number,
   weeklyHours: number,
-  hours: { weekly: number; night: number; sunday: number; holiday: number },
+  hours: OvertimeHours,
 ): {
   lines: OvertimeLine[]
-  variableElements: { HEURES_SUPP_NORM?: number; HEURES_SUPP_NUIT?: number; HEURES_SUPP_FERIE?: number }
+  variableElements: Partial<Record<OvertimeElementKey, number>>
 } {
   const rates = pack.leaveRules?.overtimeRates ?? {}
   const labels = overtimeLabels(pack)
   const th = hourlyRate(baseSalary, weeklyHours)
-  const spec: Array<{ category: OvertimeLine['category']; element: OvertimeElementKey; label: string }> = [
+  const splitSundayHolidayNight = rates.sundayHolidayNight !== undefined
+  const spec: Array<{ category: OvertimeCategory; element: OvertimeElementKey; label: string }> = [
     { category: 'weekly', element: 'HEURES_SUPP_NORM', label: labels.norm },
+    { category: 'weeklyBeyond', element: 'HEURES_SUPP_47', label: labels.beyond },
     { category: 'night', element: 'HEURES_SUPP_NUIT', label: labels.nuit },
-    { category: 'sunday', element: 'HEURES_SUPP_NUIT', label: labels.nuit },
-    { category: 'holiday', element: 'HEURES_SUPP_FERIE', label: labels.ferie },
+    splitSundayHolidayNight
+      ? { category: 'sunday', element: 'HEURES_SUPP_DIM', label: labels.dim }
+      : { category: 'sunday', element: 'HEURES_SUPP_NUIT', label: labels.nuit },
+    splitSundayHolidayNight
+      ? { category: 'holiday', element: 'HEURES_SUPP_DIM', label: labels.dim }
+      : { category: 'holiday', element: 'HEURES_SUPP_FERIE', label: labels.ferie },
+    { category: 'sundayHolidayNight', element: 'HEURES_SUPP_FERIE', label: labels.ferie },
   ]
   const lines: OvertimeLine[] = []
-  const variableElements: { HEURES_SUPP_NORM?: number; HEURES_SUPP_NUIT?: number; HEURES_SUPP_FERIE?: number } = {}
+  const variableElements: Partial<Record<OvertimeElementKey, number>> = {}
   for (const s of spec) {
-    const h = hours[s.category]
+    const h = hours[s.category] ?? 0
     if (!(h > 0)) continue
     const majoration = rates[s.category]
     if (majoration === undefined) {

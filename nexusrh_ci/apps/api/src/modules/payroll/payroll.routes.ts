@@ -5,7 +5,7 @@ import { calculatePayrollCI, transportZoneFromCity, type AbsencePayrollInfo, typ
 import { getWorkingDays } from '../../services/payroll-absences.service.js'
 import { loadEffectiveAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 import {
-  loadPayrollPopulation, markExpensesPaid, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
+  employeeCmu, loadPayrollPopulation, markExpensesPaid, markSettlementPaid, previousMonth, resolveEmployeeMonth, slipPaymentMethod,
 } from '../../services/final-payslip.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { VARIABLE_ELEMENTS_SQL, treatmentFromRows, type VariableElementRow } from '../../services/payroll-variable-elements.js'
@@ -146,6 +146,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       try {
       type CalcEmployee = {
         id: string; base_salary: string; marital_status: string; children_count: number
+        cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | null
         first_name: string; last_name: string; cnps_number: string; nni: string
         mobile_money_provider: string; mobile_money_phone: string; hire_date: string | null
         legal_entity_id: string | null; exit_date?: string | null; settlement?: unknown
@@ -154,6 +155,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // de solde) et le mois suivant (rattrapage du solde).
       const empRes = await rawPool.query<CalcEmployee>(
         `SELECT e.id, e.base_salary, e.marital_status, e.children_count,
+                e.cmu_spouse_covered, e.cmu_children_covered,
                 e.first_name, e.last_name, e.cnps_number, e.nni,
                 e.mobile_money_provider, e.mobile_money_phone, e.hire_date::text AS hire_date, e.legal_entity_id,
                 COALESCE(e.exit_date, oc.departure_date)::text AS exit_date, oc.settlement
@@ -269,6 +271,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         atRate,
         maritalStatus:    emp.marital_status ?? 'single',
         childrenCount:    emp.children_count ?? 0,
+        cmu:              employeeCmu(emp),
         variableElements: varEls,
         absence:          absenceCtx?.info,
         attendanceDeductions: attendance?.deductions,
@@ -495,6 +498,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           atRate:           resolved.atRate,
           maritalStatus:    emp.marital_status ?? 'single',
           childrenCount:    emp.children_count ?? 0,
+          cmu:              employeeCmu(emp),
           variableElements: varEls,
           absence:          absenceCtx?.info,
           attendanceDeductions: attendance?.deductions,

@@ -6,17 +6,23 @@
 //   - article de loi / décret CI applicable
 
 import type { PayrollLine } from './payroll-engine-ci.js'
-import type { LegislationPack } from './legislation-packs.js'
+import { CIV_2024, type LegislationPack } from './legislation-packs.js'
 
-// Constantes CNPS CI 2024 (copiées de packages/shared/src/constants/ci.ts
-// pour éviter une dépendance cross-package au build).
+// Taux, plafonds et majorations CI : lus dans le pack CIV (source unique),
+// jamais recopiés ici.
 const TAUX_CNPS = {
-  retraite:               { salarial: 0.063,  patronal: 0.077  },
-  prestationsFamiliales:  { salarial: 0,      patronal: 0.050  },
-  maternite:              { salarial: 0,      patronal: 0.0075 },
+  retraite:               { salarial: CIV_2024.tauxCotisationRetraiteSalarie, patronal: CIV_2024.tauxCotisationRetraitePatronal },
+  prestationsFamiliales:  { salarial: 0, patronal: CIV_2024.tauxCotisationPfPatronal },
+  maternite:              { salarial: 0, patronal: CIV_2024.tauxCotisationMaternitePatronal },
 }
-const PLAFOND_CNPS_RETRAITE_MENSUEL = 1_647_315
-const PLAFOND_CNPS_AT_PF_MENSUEL    = 70_000
+const PLAFOND_CNPS_RETRAITE_MENSUEL = CIV_2024.plafondCnpsRetraite
+const PLAFOND_CNPS_AT_PF_MENSUEL    = CIV_2024.plafondCnpsAtPf
+const CIV_OT = CIV_2024.leaveRules?.overtimeRates ?? {}
+const CIV_CMU = CIV_2024.cmu
+const REF_PLAFONDS_CNPS = 'plafond : communiqué CNPS du 11/01/2023 (décret n° 2022-986 du 21/12/2022), en vigueur au 01/01/2023'
+const REF_HEURES_SUPP = 'Décret n° 2024-898 du 16/10/2024 relatif à la durée du travail, art. 25 (abroge le décret n° 96-203, mêmes taux)'
+const REF_CMU = 'Loi n° 2014-131 du 24/03/2014 instituant la Couverture maladie universelle ; 1 000 F/mois par personne, partagés 50/50 employeur / salarié, recouvrés par la CNPS'
+const LAST_WEEKLY_HOUR = (CIV_OT.weeklyBeyondFromHour ?? 47) - 1
 
 export interface ExplainedLine extends PayrollLine {
   formulaHuman: string
@@ -69,21 +75,33 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     category: 'premium',
   },
   '1400': {
-    formulaHuman: () => 'Heures supplémentaires majorées de +15 % (41h → 48h/semaine) — soumises CNPS et ITS',
-    rate: 0.15,
-    legalReference: 'Code du Travail CI - Article 21.3 (heures supplémentaires)',
+    formulaHuman: () => `Heures supplémentaires de la 41e à la ${LAST_WEEKLY_HOUR}e heure de la semaine, majorées de +${pctFr(CIV_OT.weekly ?? 0)} — soumises CNPS et ITS`,
+    rate: CIV_OT.weekly,
+    legalReference: REF_HEURES_SUPP,
+    category: 'overtime',
+  },
+  '1450': {
+    formulaHuman: () => `Heures supplémentaires au-delà de la ${LAST_WEEKLY_HOUR}e heure de la semaine, majorées de +${pctFr(CIV_OT.weeklyBeyond ?? 0)} — soumises CNPS et ITS`,
+    rate: CIV_OT.weeklyBeyond,
+    legalReference: REF_HEURES_SUPP,
     category: 'overtime',
   },
   '1500': {
-    formulaHuman: () => 'Heures supplémentaires de nuit / dimanche majorées de +50 % — soumises CNPS et ITS',
-    rate: 0.50,
-    legalReference: 'Code du Travail CI - Article 21.3 (travail de nuit & dimanche)',
+    formulaHuman: () => `Heures supplémentaires de nuit majorées de +${pctFr(CIV_OT.night ?? 0)} — soumises CNPS et ITS`,
+    rate: CIV_OT.night,
+    legalReference: REF_HEURES_SUPP,
+    category: 'overtime',
+  },
+  '1520': {
+    formulaHuman: () => `Heures supplémentaires de jour, les dimanches et jours fériés, majorées de +${pctFr(CIV_OT.sunday ?? 0)} — soumises CNPS et ITS`,
+    rate: CIV_OT.sunday,
+    legalReference: REF_HEURES_SUPP,
     category: 'overtime',
   },
   '1550': {
-    formulaHuman: () => 'Heures supplémentaires de jour férié majorées de +100 % — soumises CNPS et ITS',
-    rate: 1.0,
-    legalReference: 'Code du Travail CI - Article 21.3 (heures supplémentaires)',
+    formulaHuman: () => `Heures supplémentaires de nuit, les dimanches et jours fériés, majorées de +${pctFr(CIV_OT.sundayHolidayNight ?? 0)} — soumises CNPS et ITS`,
+    rate: CIV_OT.sundayHolidayNight,
+    legalReference: REF_HEURES_SUPP,
     category: 'overtime',
   },
   '1600': {
@@ -118,7 +136,7 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     formulaHuman: () => `Base retraite × ${(TAUX_CNPS.retraite.salarial * 100).toFixed(2)} %`,
     rate: TAUX_CNPS.retraite.salarial,
     baseLabel: `Salaire brut plafonné à ${FCFA(PLAFOND_CNPS_RETRAITE_MENSUEL)} FCFA`,
-    legalReference: 'Code CNPS CI - Décret 96-194 (cotisation retraite salariale 6,30 %)',
+    legalReference: `Code CNPS CI - Décret 96-194 (cotisation retraite salariale 6,30 %) ; ${REF_PLAFONDS_CNPS}`,
     category: 'cnps',
   },
   '2100': {
@@ -126,6 +144,13 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     baseLabel: 'Brut imposable sans abattement · barème 0/16/21/24/28/32 % (0-75k / 75k-240k / 240k-800k / 800k-2,4M / 2,4M-8M / >8M)',
     legalReference: 'Ordonnance n° 2023-719 du 13/09/2023 (réforme ITS, en vigueur au 01/01/2024) — Code Général des Impôts CI',
     category: 'tax',
+  },
+  '2200': {
+    formulaHuman: () => CIV_CMU
+      ? `CMU — ${FCFA(CIV_CMU.perBeneficiary * (1 - CIV_CMU.employerShare))} F par bénéficiaire (salarié, conjoint sans emploi, jusqu'à ${CIV_CMU.maxSharedChildren} enfants de moins de 21 ans) + ${FCFA(CIV_CMU.perBeneficiary)} F par enfant au-delà du ${CIV_CMU.maxSharedChildren}e — hors assiettes CNPS et ITS`
+      : 'CMU — part salariale',
+    legalReference: REF_CMU,
+    category: 'health',
   },
   '4000': {
     formulaHuman: () => 'Mutuelle / Assurance santé — part salariale (selon contrat collectif)',
@@ -138,28 +163,35 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     formulaHuman: () => `Base retraite × ${(TAUX_CNPS.retraite.patronal * 100).toFixed(2)} %`,
     rate: TAUX_CNPS.retraite.patronal,
     baseLabel: `Salaire brut plafonné à ${FCFA(PLAFOND_CNPS_RETRAITE_MENSUEL)} FCFA`,
-    legalReference: 'Code CNPS CI - Décret 96-194 (cotisation retraite patronale 7,70 %)',
+    legalReference: `Code CNPS CI - Décret 96-194 (cotisation retraite patronale 7,70 %) ; ${REF_PLAFONDS_CNPS}`,
     category: 'cnps',
   },
   '3100': {
     formulaHuman: () => `Base AT/PF × ${(TAUX_CNPS.prestationsFamiliales.patronal * 100).toFixed(2)} %`,
     rate: TAUX_CNPS.prestationsFamiliales.patronal,
     baseLabel: `Salaire brut plafonné à ${FCFA(PLAFOND_CNPS_AT_PF_MENSUEL)} FCFA`,
-    legalReference: 'Code CNPS CI - Prestations familiales (5,00 %)',
+    legalReference: `Code CNPS CI - Prestations familiales (5,00 %) ; ${REF_PLAFONDS_CNPS}`,
     category: 'cnps',
   },
   '3200': {
     formulaHuman: () => `Base AT/PF × ${(TAUX_CNPS.maternite.patronal * 100).toFixed(2)} %`,
     rate: TAUX_CNPS.maternite.patronal,
     baseLabel: `Salaire brut plafonné à ${FCFA(PLAFOND_CNPS_AT_PF_MENSUEL)} FCFA`,
-    legalReference: 'Code CNPS CI - Assurance maternité (0,75 %)',
+    legalReference: `Code CNPS CI - Assurance maternité (0,75 %) ; ${REF_PLAFONDS_CNPS}`,
     category: 'cnps',
   },
   '3300': {
     formulaHuman: (rate) => `Base AT/PF × ${rate ? (rate * 100).toFixed(2) : '?'} % (taux variable selon secteur)`,
     baseLabel: `Salaire brut plafonné à ${FCFA(PLAFOND_CNPS_AT_PF_MENSUEL)} FCFA · Taux 2-5 % selon secteur`,
-    legalReference: 'Code CNPS CI - Accidents du travail (2,00-5,00 % selon secteur)',
+    legalReference: `Code CNPS CI - Accidents du travail (2,00-5,00 % selon secteur) ; ${REF_PLAFONDS_CNPS}`,
     category: 'cnps',
+  },
+  '3400': {
+    formulaHuman: () => CIV_CMU
+      ? `CMU — ${FCFA(CIV_CMU.perBeneficiary * CIV_CMU.employerShare)} F par bénéficiaire (salarié, conjoint sans emploi, jusqu'à ${CIV_CMU.maxSharedChildren} enfants de moins de 21 ans) — hors assiettes CNPS et ITS`
+      : 'CMU — part patronale',
+    legalReference: REF_CMU,
+    category: 'health',
   },
   '4100': {
     formulaHuman: () => 'Mutuelle / Assurance santé — part patronale (selon contrat collectif)',
@@ -254,6 +286,27 @@ function packExplainer(code: string, base: RuleExplainer, pack: LegislationPack)
       }
       return { ...generic, rate: n ?? d, formulaHuman: () => txt }
     }
+    case '1450': {
+      const r = ot.weeklyBeyond
+      return {
+        ...generic, rate: r,
+        formulaHuman: () => r === undefined
+          ? 'Heures supplémentaires au-delà du seuil hebdomadaire — majoration non paramétrée pour ce pays'
+          : `Heures supplémentaires au-delà du seuil hebdomadaire majorées de +${pctFr(r)} — soumises ${caisse} et ${impot}`,
+      }
+    }
+    case '1520': {
+      const r = ot.sunday
+      return {
+        ...generic, rate: r,
+        formulaHuman: () => r === undefined
+          ? 'Heures supplémentaires de dimanche — majoration non paramétrée pour ce pays'
+          : `Heures supplémentaires de dimanche majorées de +${pctFr(r)} — soumises ${caisse} et ${impot}`,
+      }
+    }
+    case '2200':
+    case '3400':
+      return { ...generic, formulaHuman: () => 'Couverture maladie selon les règles du pays (hors assiettes des cotisations et de l’impôt)' }
     case '1550': {
       const r = ot.holiday
       return {

@@ -194,6 +194,10 @@ const patchEmployeeSchema = z.object({
   maritalStatus:       z.enum(['single', 'married', 'divorced', 'widowed', 'cohabiting']).optional(),
   nationality:         z.string().trim().min(2).max(100).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
+  // CMU (loi n° 2014-131) : conjoint sans emploi couvert ; enfants couverts
+  // (null = nombre d'enfants à charge). Colonnes cmu_spouse_covered / cmu_children_covered.
+  cmuSpouseCovered:    z.boolean().optional(),
+  cmuChildrenCovered:  z.number().int().min(0).max(30).nullable().optional(),
   isActive:            z.boolean().optional(),
   profilePhotoUrl:     z.string().max(2000).optional(),
   address:             z.string().max(500).optional(),

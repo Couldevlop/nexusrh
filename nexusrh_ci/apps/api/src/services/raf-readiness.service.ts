@@ -19,12 +19,14 @@
  */
 import { createHash } from 'node:crypto'
 import { pool } from '../db/pool.js'
-import type { LegislationPack } from './legislation-packs.js'
-import type { AttendancePayrollDeductions } from './payroll-engine-ci.js'
+import { DEFAULT_LEGISLATION_PACK, type LegislationPack } from './legislation-packs.js'
+import { overtimeLabels, type AttendancePayrollDeductions } from './payroll-engine-ci.js'
 
 /** Variables usuelles saisissables par le RAF (clés du moteur de paie). */
 export const RAF_VARIABLE_CODES = [
-  'HEURES_SUPP_NORM', 'HEURES_SUPP_NUIT', 'HEURES_SUPP_FERIE',
+  // Heures supplémentaires CI (décret n° 2024-898, art. 25) : 41e–46e h,
+  // au-delà de 46 h, nuit, dimanche / férié de jour, dimanche / férié de nuit.
+  'HEURES_SUPP_NORM', 'HEURES_SUPP_47', 'HEURES_SUPP_NUIT', 'HEURES_SUPP_DIM', 'HEURES_SUPP_FERIE',
   'PRIME_RENDEMENT', 'PRIME_ANCIENNETE', 'PRIME_TRANSPORT', 'PRIME_PANIER',
   'ABSENCE_INJ',
 ] as const
@@ -36,10 +38,15 @@ export const MAX_UNJUSTIFIED_ABSENCE_DAYS = 31
 /** Plafond défensif des montants FCFA (aligné sur /settings/variable-elements). */
 export const MAX_VARIABLE_AMOUNT = 100_000_000
 
+// Libellés des heures supplémentaires dérivés du pack par défaut (CIV).
+const OT_LABELS = overtimeLabels(DEFAULT_LEGISLATION_PACK)
+
 export const RAF_VARIABLE_LABELS: Record<RafVariableCode, string> = {
-  HEURES_SUPP_NORM:  'Heures supp. +15%',
-  HEURES_SUPP_NUIT:  'Heures supp. +50% (nuit/dim)',
-  HEURES_SUPP_FERIE: 'Heures supp. +100% (jour férié)',
+  HEURES_SUPP_NORM:  OT_LABELS.norm,
+  HEURES_SUPP_47:    OT_LABELS.beyond,
+  HEURES_SUPP_NUIT:  OT_LABELS.nuit,
+  HEURES_SUPP_DIM:   OT_LABELS.dim,
+  HEURES_SUPP_FERIE: OT_LABELS.ferie,
   PRIME_RENDEMENT:   'Prime de rendement',
   PRIME_ANCIENNETE:  "Prime d'ancienneté",
   PRIME_TRANSPORT:   'Prime de transport',

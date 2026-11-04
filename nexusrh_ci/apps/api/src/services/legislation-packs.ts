@@ -58,6 +58,21 @@ export interface SeniorityBonusRule {
   confidence: 'confirmed' | 'to_confirm'
 }
 
+/**
+ * CMU : cotisation forfaitaire mensuelle par bénéficiaire. Bénéficiaires
+ * partagés = salarié + conjoint couvert + enfants dans la limite de
+ * `maxSharedChildren` : `employerShare` à la charge de l'employeur, le reste au
+ * salarié. Au-delà, le salarié paie la cotisation entière.
+ */
+export interface CmuRule {
+  /** Cotisation mensuelle par bénéficiaire (FCFA) */
+  perBeneficiary: number
+  /** Part employeur des bénéficiaires partagés (0.5 = 50 %) */
+  employerShare: number
+  /** Nombre d'enfants dont la cotisation est partagée avec l'employeur */
+  maxSharedChildren: number
+}
+
 export interface LegislationPack {
   /** Identifiant : ISO-3 pays + année (ex: CIV-2024, BFA-2024) */
   code: string
@@ -196,6 +211,13 @@ export interface LegislationPack {
   /** Prime d'ancienneté légale / conventionnelle (absent = saisie manuelle) */
   seniorityBonus?: SeniorityBonusRule
 
+  /**
+   * Couverture maladie universelle (absent = pas de CMU dans le pays). Le
+   * moteur ajoute une retenue salariale (2200) et une charge patronale (3400),
+   * hors assiettes des cotisations sociales et de l'impôt.
+   */
+  cmu?: CmuRule
+
   /** Note pour les administrateurs */
   notes?: string
 }
@@ -308,14 +330,26 @@ export interface LeaveRules {
 
   /** Majorations heures supplémentaires (taux à AJOUTER au taux normal) */
   overtimeRates?: {
-    /** 41-48h hebdomadaires */
+    /** Heures au-delà de la durée légale (CI : 41e à 46e heure) */
     weekly?: number
-    /** Travail de nuit (20h-5h) */
+    /**
+     * Heures hebdomadaires à partir de `weeklyBeyondFromHour` (CI : au-delà
+     * de la 46e heure). Absent = un seul taux hebdomadaire (`weekly`).
+     */
+    weeklyBeyond?: number
+    /** Première heure hebdomadaire majorée au taux `weeklyBeyond` (CI : 47). */
+    weeklyBeyondFromHour?: number
+    /** Travail de nuit */
     night?: number
-    /** Dimanche */
+    /**
+     * Dimanche. Quand `sundayHolidayNight` est présent, `sunday` et `holiday`
+     * sont les taux de JOUR (la nuit des dimanches et fériés a son propre taux).
+     */
     sunday?: number
-    /** Jour férié */
+    /** Jour férié (de jour si `sundayHolidayNight` est présent) */
     holiday?: number
+    /** Nuit des dimanches et jours fériés (CI : +100 %) */
+    sundayHolidayNight?: number
   }
 }
 
@@ -339,8 +373,11 @@ export const CIV_2024: LegislationPack = {
   bracketScale: 'monthly',
   status: 'active',
   smigMensuel: 75_000,
-  plafondCnpsRetraite: 1_647_315,
-  plafondCnpsAtPf: 70_000,
+  // Communiqué CNPS « Nouveau plafond des cotisations sociales » (11/01/2023),
+  // pris pour le décret n° 2022-986 du 21/12/2022 (SMIG 75 000) : en vigueur au
+  // 01/01/2023. Retraite = 45 × SMIG ; AT / PF / maternité = SMIG.
+  plafondCnpsRetraite: 3_375_000,
+  plafondCnpsAtPf: 75_000,
   tauxCotisationRetraiteSalarie: 0.063,
   tauxCotisationRetraitePatronal: 0.077,
   tauxCotisationPfPatronal: 0.050,
@@ -414,8 +451,19 @@ export const CIV_2024: LegislationPack = {
     leaveAllowance: { calendarDaysPerWorkingDay: 1.25, method: 'most_favourable' },
     bereavementDays: 3,
     workingDaysPerWeek: 6,
-    overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
+    // Décret n° 2024-898 du 16/10/2024, art. 25 (abroge le décret 96-203, mêmes
+    // taux) : 41e–46e h +15 % ; au-delà de la 46e h +50 % ; nuit +75 % ;
+    // dimanche / férié de jour +75 % ; dimanche / férié de nuit +100 %.
+    overtimeRates: {
+      weekly: 0.15, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
+      night: 0.75, sunday: 0.75, holiday: 0.75, sundayHolidayNight: 1.0,
+    },
   },
+  // CMU (loi n° 2014-131 du 24/03/2014) : 1 000 F/mois par bénéficiaire, 500
+  // employeur + 500 salarié pour le salarié, le conjoint sans emploi et 6 enfants
+  // de moins de 21 ans ; au-delà du 6e enfant, 1 000 à la charge du salarié
+  // (CLEISS ; servicepublic.gouv.ci). Recouvrée par la CNPS.
+  cmu: { perBeneficiary: 1000, employerShare: 0.5, maxSharedChildren: 6 },
   // Préavis : décret n° 96-200 du 7 mars 1996 (repris par le décret
   // n° 2026-198 du 15 avril 2026) pris pour l'art. 18.4 CT, identique à
   // l'art. 34 de la CCI de 1977. Indemnité : décret n° 2017-210 du 30 mars 2017
@@ -445,7 +493,9 @@ export const CIV_2024: LegislationPack = {
     PRIME_ANCIENNETE:  { social: true, tax: true },
     PRIME_RENDEMENT:   { social: true, tax: true },
     HEURES_SUPP_NORM:  { social: true, tax: true },
+    HEURES_SUPP_47:    { social: true, tax: true },
     HEURES_SUPP_NUIT:  { social: true, tax: true },
+    HEURES_SUPP_DIM:   { social: true, tax: true },
     HEURES_SUPP_FERIE: { social: true, tax: true },
     ICP:               { social: true, tax: true },
     GRATIFICATION:     { social: true, tax: true },

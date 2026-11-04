@@ -3,10 +3,22 @@ import { CIV_2024, TGO_2024, BFA_2024 } from './legislation-packs.js'
 import { calculatePayrollCI, overtimeLabels } from './payroll-engine-ci.js'
 
 describe('overtimeLabels', () => {
-  it('CIV : libellés historiques', () => {
+  it('CIV : catégories du décret n° 2024-898, art. 25', () => {
     expect(overtimeLabels(CIV_2024)).toEqual({
+      norm: 'Heures supp. +15% (41e à 46e h)',
+      beyond: 'Heures supp. +50% (au-delà de 46 h)',
+      nuit: 'Heures supp. +75% (nuit)',
+      dim: 'Heures supp. +75% (dimanche/férié de jour)',
+      ferie: 'Heures supp. +100% (dimanche/férié de nuit)',
+    })
+  })
+  it('pack historique (sans nuit de dimanche / férié distincte) : libellés inchangés', () => {
+    const pack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 } } }
+    expect(overtimeLabels(pack)).toEqual({
       norm: 'Heures supp. +15%',
+      beyond: 'Heures supp. (au-delà du seuil hebdomadaire)',
       nuit: 'Heures supp. +50% (nuit/dim)',
+      dim: 'Heures supp. dimanche (+50%)',
       ferie: 'Heures supp. +100% (jour férié)',
     })
   })
@@ -31,12 +43,12 @@ describe('lignes 1400/1500/1550 du bulletin', () => {
     maritalStatus: 'single' as const, childrenCount: 0,
     variableElements: { HEURES_SUPP_NORM: 10_000, HEURES_SUPP_NUIT: 20_000, HEURES_SUPP_FERIE: 30_000 },
   }
-  it('CIV : libellés inchangés', () => {
+  it('CIV : libellés du décret n° 2024-898', () => {
     const r = calculatePayrollCI({ ...ctx, legislationPack: CIV_2024 })
     const label = (c: string) => r.lines.find(l => l.code === c)?.label
-    expect(label('1400')).toBe('Heures supp. +15%')
-    expect(label('1500')).toBe('Heures supp. +50% (nuit/dim)')
-    expect(label('1550')).toBe('Heures supp. +100% (jour férié)')
+    expect(label('1400')).toBe('Heures supp. +15% (41e à 46e h)')
+    expect(label('1500')).toBe('Heures supp. +75% (nuit)')
+    expect(label('1550')).toBe('Heures supp. +100% (dimanche/férié de nuit)')
   })
   it('TGO : libellés dérivés du pack', () => {
     const r = calculatePayrollCI({ ...ctx, legislationPack: TGO_2024 })

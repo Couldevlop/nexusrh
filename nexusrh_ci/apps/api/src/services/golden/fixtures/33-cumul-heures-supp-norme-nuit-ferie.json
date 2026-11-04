@@ -1,6 +1,6 @@
 {
   "id": "33-cumul-heures-supp-norme-nuit-ferie",
-  "description": "Salarié avec cumul des 3 types d'heures supplémentaires ivoiriennes : +15 % (41-48h semaine, code 1400), +50 % (nuit 20h-5h ou dimanche, code 1500), +100 % (jour férié, code 1550). Vérifie que les 3 lignes sont distinctes et toutes agrégées au grossSalary. Cas typique d'un agent de sécurité ou chauffeur SOTRA en période de fêtes",
+  "description": "Salarié avec cumul des 3 types d'heures supplémentaires ivoiriennes : +15 % (41-48h semaine, code 1400), +50 % (nuit 20h-5h ou dimanche, code 1500), +100 % (jour férié, code 1550). Vérifie que les 3 lignes sont distinctes et toutes agrégées au grossSalary. Cas typique d'un agent de sécurité ou chauffeur SOTRA en période de fêtes — Note du 04/11/2026 : montants saisis inchangés ; depuis le décret n° 2024-898 (art. 25), 1500 = heures de nuit +75 % et 1550 = dimanche/férié de nuit +100 % (libellés dérivés du pack).",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -25,6 +25,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — primes, heures supplémentaires, ICP, gratifications et avantages en nature soumis CNPS + ITS ; prime de transport exonérée jusqu'à 30 000 F/mois (CGI art. 116 al. 10, annexe fiscale 2023 ; arrêté n° 2020-012/MEPS), excédent soumis",
         "deltaSummary": "cnpsRetraiteSal 11340 → 13734 ; cnpsRetraitePat 13860 → 16786 ; totalCnpsSal 11340 → 13734 ; totalCnpsPat 19985 → 22911 ; baseImposable 180000 → 218000 ; its 0 → 880 ; totalDeductions 11340 → 14614 ; netPayable 206660 → 203386 ; employerCost 237985 → 240911 ; ligne 2000 11340 → 13734 ; ligne 2100 0 → 880 ; ligne 3000 13860 → 16786"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
+        "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 2100 → 2250; totalCnpsPat 22911 → 23348; totalDeductions 14614 → 16114; netPayable 203386 → 201886; employerCost 240911 → 242848; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 2100 → 2250; ligne 2200 None → 1500; ligne 3400 None → 1500"
       }
     ]
   },
@@ -47,15 +53,15 @@
     "grossSalary": 218000,
     "cnpsRetraiteSal": 13734,
     "cnpsRetraitePat": 16786,
-    "cnpsPfPat": 4025,
-    "cnpsAtPat": 2100,
+    "cnpsPfPat": 4312,
+    "cnpsAtPat": 2250,
     "totalCnpsSal": 13734,
-    "totalCnpsPat": 22911,
+    "totalCnpsPat": 23348,
     "baseImposable": 218000,
     "its": 880,
-    "totalDeductions": 14614,
-    "netPayable": 203386,
-    "employerCost": 240911,
+    "totalDeductions": 16114,
+    "netPayable": 201886,
+    "employerCost": 242848,
     "workingDays": 26,
     "smigCompliant": true,
     "lines": [
@@ -90,6 +96,11 @@
         "amount": 880
       },
       {
+        "code": "2200",
+        "type": "employee_contribution",
+        "amount": 1500
+      },
+      {
         "code": "3000",
         "type": "employer_contribution",
         "amount": 16786
@@ -97,17 +108,22 @@
       {
         "code": "3100",
         "type": "employer_contribution",
-        "amount": 3500
+        "amount": 3750
       },
       {
         "code": "3200",
         "type": "employer_contribution",
-        "amount": 525
+        "amount": 562
       },
       {
         "code": "3300",
         "type": "employer_contribution",
-        "amount": 2100
+        "amount": 2250
+      },
+      {
+        "code": "3400",
+        "type": "employer_contribution",
+        "amount": 1500
       }
     ]
   }

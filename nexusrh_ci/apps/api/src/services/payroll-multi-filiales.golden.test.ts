@@ -63,7 +63,7 @@ const EMP_TEMPLATE = {
 
 // ─── Suite 1 : mono-pays, 2 filiales (services vs industrie) ────────────────
 describe('Multi-filiales mono-pays (CI) : Services 2% vs Industrie 4%', () => {
-  it('Pipeline filiale Services : at_rate 2% → cnpsAtPat 1 400', () => {
+  it('Pipeline filiale Services : at_rate 2% → cnpsAtPat 1 500', () => {
     const resolved = resolvePayrollContext({
       tenant: TENANT_GROUPE_CI,
       employee: { id: 'emp-services-1', legalEntityId: 'le-services' },
@@ -80,14 +80,14 @@ describe('Multi-filiales mono-pays (CI) : Services 2% vs Industrie 4%', () => {
     }
     const r = calculatePayrollCI(ctx)
     // Snapshot attendu (services, at 2%)
-    expect(r.cnpsAtPat).toBe(1_400)              // 70k × 0.02
+    expect(r.cnpsAtPat).toBe(1_500)              // 75k × 0.02
     expect(r.cnpsRetraiteSal).toBe(31_500)       // 500k × 6.3%
     expect(r.cnpsRetraitePat).toBe(38_500)       // 500k × 7.7%
     expect(r.grossSalary).toBe(500_000)
     expect(r.smigCompliant).toBe(true)
   })
 
-  it('Pipeline filiale Industrie : at_rate 4% → cnpsAtPat 2 800', () => {
+  it('Pipeline filiale Industrie : at_rate 4% → cnpsAtPat 3 000', () => {
     const resolved = resolvePayrollContext({
       tenant: TENANT_GROUPE_CI,
       employee: { id: 'emp-industrie-1', legalEntityId: 'le-industrie' },
@@ -101,7 +101,7 @@ describe('Multi-filiales mono-pays (CI) : Services 2% vs Industrie 4%', () => {
       atRate: resolved.atRate, legislationPack: resolved.legislationPack,
     })
     // Snapshot industrie : seule différence avec Services = cnpsAtPat
-    expect(r.cnpsAtPat).toBe(2_800)              // 70k × 0.04 (double Services)
+    expect(r.cnpsAtPat).toBe(3_000)              // 75k × 0.04 (double Services)
     expect(r.cnpsRetraiteSal).toBe(31_500)       // identique (pack CIV)
     expect(r.cnpsRetraitePat).toBe(38_500)
     expect(r.grossSalary).toBe(500_000)
@@ -133,8 +133,8 @@ describe('Multi-filiales mono-pays (CI) : Services 2% vs Industrie 4%', () => {
 
     // Coût employeur DIFFÉRENT (l'industrie paie plus de cotisations AT)
     expect(rIndustrie.employerCost).toBeGreaterThan(rServices.employerCost)
-    expect(rIndustrie.cnpsAtPat - rServices.cnpsAtPat).toBe(1_400)  // delta 2% × 70k
-    expect(rIndustrie.employerCost - rServices.employerCost).toBe(1_400)
+    expect(rIndustrie.cnpsAtPat - rServices.cnpsAtPat).toBe(1_500)  // delta 2% × 75k
+    expect(rIndustrie.employerCost - rServices.employerCost).toBe(1_500)
   })
 })
 
@@ -196,7 +196,7 @@ describe('Mono-filiale (non-régression Palier 1) : tenant sans filiales', () =>
     const r = calculatePayrollCI({
       ...EMP_TEMPLATE, atRate: resolved.atRate, legislationPack: resolved.legislationPack,
     })
-    expect(r.cnpsAtPat).toBe(1_400)
+    expect(r.cnpsAtPat).toBe(1_500)              // 75k × 0.02
     expect(r.cnpsRetraiteSal).toBe(31_500)
   })
 
