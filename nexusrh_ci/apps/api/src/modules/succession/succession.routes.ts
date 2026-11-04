@@ -60,7 +60,7 @@ function audit(
  * poste (pas de donnée personnelle) et reste visible ; avec titulaire, celui-ci
  * doit être dans le périmètre de l'acteur. 'TRUE' sans restriction.
  */
-async function planScope(request: FastifyRequest, column = 'incumbent_employee_id'): Promise<string> {
+async function planScope(request: FastifyRequest, column = 'succession_plans.incumbent_employee_id'): Promise<string> {
   const sc = await requestEmployeeScope(request, column)
   return sc === 'TRUE' ? 'TRUE' : `(${column} IS NULL OR ${sc})`
 }
@@ -68,6 +68,22 @@ async function planScope(request: FastifyRequest, column = 'incumbent_employee_i
 /** Le salarié visé (titulaire / successeur) est-il dans le périmètre de l'acteur ? */
 async function targetInHrScope(request: FastifyRequest, employeeId: string): Promise<boolean> {
   return employeeInHrScope(request.user.schemaName, employeeId, await requestHrScope(request, 'e'))
+}
+
+const SHARED_PLAN_ERROR =
+  'Plan partagé avec une autre filiale : action réservée à un RH habilité sur toutes les filiales'
+
+/** Un plan dont le vivier contient des salariés hors périmètre ne peut pas être supprimé par un RH limité à une filiale. */
+async function planHasForeignCandidates(request: FastifyRequest, planId: string): Promise<boolean> {
+  const sc = await requestHrScope(request, 'hs')
+  if (sc === 'TRUE') return false
+  const r = await rawPool.query(
+    `SELECT 1 FROM "${request.user.schemaName}".succession_candidates cand
+       JOIN "${request.user.schemaName}".employees hs ON hs.id = cand.employee_id
+      WHERE cand.plan_id = $1 AND NOT COALESCE((${sc}), false) LIMIT 1`,
+    [planId],
+  )
+  return r.rows.length > 0
 }
 
 const successionRoutes: FastifyPluginAsync = async (fastify) => {
@@ -87,7 +103,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
          ORDER BY p.created_at DESC`,
       )
       const cands = await rawPool.query<{ plan_id: string; readiness: string }>(
-        `SELECT plan_id, readiness FROM "${schema}".succession_candidates WHERE ${await requestEmployeeScope(request, 'employee_id')}`,
+        `SELECT plan_id, readiness FROM "${schema}".succession_candidates WHERE ${await requestEmployeeScope(request, 'succession_candidates.employee_id')}`,
       )
       const byPlan = new Map<string, string[]>()
       for (const c of cands.rows) {
@@ -188,6 +204,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (await planHasForeignCandidates(request, id)) return reply.status(409).send({ error: SHARED_PLAN_ERROR, statusCode: 409 })
       const res = await rawPool.query(
         `DELETE FROM "${schema}".succession_plans WHERE id = $1 AND ${await planScope(request)} RETURNING id`, [id],
       )
@@ -248,7 +265,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       params.push(id)
       const res = await rawPool.query(
-        `UPDATE "${schema}".succession_candidates SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING *`, params,
+        `UPDATE "${schema}".succession_candidates SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'succession_candidates.employee_id')} RETURNING *`, params,
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Successeur introuvable' })
       audit(schema, request.user.sub, 'succession.candidate_updated', 'succession_candidate', id, b as Record<string, unknown>, request.ip ?? null)
@@ -264,7 +281,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".succession_candidates WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id],
+        `DELETE FROM "${schema}".succession_candidates WHERE id = $1 AND ${await requestEmployeeScope(request, 'succession_candidates.employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Successeur introuvable' })
       audit(schema, request.user.sub, 'succession.candidate_removed', 'succession_candidate', id, {}, request.ip ?? null)

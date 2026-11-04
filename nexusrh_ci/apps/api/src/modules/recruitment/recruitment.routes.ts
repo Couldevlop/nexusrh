@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import {
@@ -162,6 +162,24 @@ function scoreToRecommendation(score: number | null): string | null {
   if (score >= 70) return 'yes'
   if (score >= 55) return 'maybe'
   return 'no'
+}
+
+/**
+ * Périmètre filiale (habilitations) d'une candidature : la filiale de l'OFFRE
+ * (recruitment_jobs.target_legal_entity_id) doit être dans le périmètre de
+ * l'acteur. Aucune requête quand le périmètre est ouvert ('TRUE').
+ */
+async function applicationInHrScope(request: FastifyRequest, schema: string, applicationId: string): Promise<boolean> {
+  const sc = await requestHrScope(request, 'jsc')
+  if (sc === 'TRUE') return true
+  const r = await pool.query(
+    `SELECT 1 FROM "${schema}".applications a
+       JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
+       LEFT JOIN LATERAL (SELECT rj.target_legal_entity_id AS legal_entity_id) jsc ON true
+      WHERE a.id = $1 AND ${sc} LIMIT 1`,
+    [applicationId],
+  )
+  return r.rows.length > 0
 }
 
 const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -585,10 +603,13 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { job_id, stage, pending } = request.query as Record<string, string>
+      // Périmètre filiale (habilitations) : filiale de l'OFFRE (target_legal_entity_id).
+      // Les offres sans filiale ciblée suivent les règles du siège (legal_entity_id NULL).
       let sql = `SELECT a.*, rj.title AS job_title
                  FROM "${schema}".applications a
                  JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
-                 WHERE 1=1`
+                 LEFT JOIN LATERAL (SELECT rj.target_legal_entity_id AS legal_entity_id) jsc ON true
+                 WHERE ${await requestHrScope(request, 'jsc')}`
       const params: unknown[] = []
       let idx = 1
       if (job_id) { sql += ` AND a.job_id = $${idx++}`; params.push(job_id) }
@@ -703,6 +724,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       try {
+        // Périmètre filiale : candidature d'une offre hors périmètre = introuvable.
+        if (!(await applicationInHrScope(request, schema, id))) {
+          return reply.status(404).send({ error: 'Candidature introuvable' })
+        }
         // Embauche : la fiche employé (et son parcours d'intégration) est créée
         // AVANT le changement d'étape — si elle échoue, l'étape ne bouge pas.
         let hire: HireResult | null = null
@@ -811,7 +836,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_PARAM_RE.test(id)) return reply.status(400).send({ error: 'application id invalide (UUID requis)' })
       try {
         await ensureRecruitmentSchemaMigrated(schema)
-        const prefill = await getHirePrefill(schema, id)
+        if (!(await applicationInHrScope(request, schema, id))) {
+          return reply.status(404).send({ error: 'Candidature introuvable' })
+        }
+        const prefill = await getHirePrefill(schema, id, await requestHrScope(request, 'e'))
         if (!prefill) return reply.status(404).send({ error: 'Candidature introuvable' })
         return reply.send({ data: prefill })
       } catch (err) {

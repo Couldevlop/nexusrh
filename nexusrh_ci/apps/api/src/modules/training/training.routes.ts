@@ -498,7 +498,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const enr = await pool.query<{ id: string; employee_id: string; status: string }>(
-          `SELECT id, employee_id, status FROM "${schema}".training_enrollments WHERE id = $1 AND ${await requestEmployeeScopeUnlessSelf(request, 'employee_id')} LIMIT 1`, [id],
+          `SELECT id, employee_id, status FROM "${schema}".training_enrollments WHERE id = $1 AND ${await requestEmployeeScopeUnlessSelf(request, 'training_enrollments.employee_id')} LIMIT 1`, [id],
         )
         const row = enr.rows[0]
         if (!row) return reply.status(404).send({ error: 'Inscription introuvable' })

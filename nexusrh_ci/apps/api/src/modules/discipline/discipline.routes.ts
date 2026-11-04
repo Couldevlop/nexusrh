@@ -148,7 +148,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       const body = parsed.data
 
       const cur = await rawPool.query<{ status: DisciplineStatus; employee_id: string }>(
-        `SELECT status, employee_id FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
+        `SELECT status, employee_id FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'disciplinary_actions.employee_id')} LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
       if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
@@ -190,7 +190,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id],
+        `DELETE FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'disciplinary_actions.employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
       audit(schema, request.user.sub, 'discipline.deleted', id, {}, request.ip ?? null)

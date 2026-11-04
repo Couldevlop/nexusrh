@@ -63,7 +63,38 @@ const SCOPED_MODULES = [
 /** Fichiers qui touchent employees mais restent volontairement hors périmètre (raison obligatoire). */
 const EXEMPT: Record<string, string> = {}
 
+/** Services / dépôts qui lisent employees : mêmes règles, exemptions motivées. */
+const EXEMPT_NON_ROUTES: Record<string, string> = {
+  'attendance/attendance.repo.ts': "ingestion des badgeuses (rapprochement référence appareil -> employé), hors requête utilisateur",
+}
+const SCOPE_CALL = /hrScopeSql\(|requestHrScope(?:UnlessSelf)?\(|scopeSql/
+
 const EMPLOYEES_TABLE = /(?:FROM|JOIN|UPDATE|INTO)\s+"?\$\{[A-Za-z.]*\}"?\."?employees\b/
+
+describe('périmètre filiale — invariant statique (services et dépôts)', () => {
+  const files: string[] = []
+  for (const m of SCOPED_MODULES) {
+    const dir = join(MODULES_DIR, m)
+    if (!existsSync(dir)) continue
+    for (const f of readdirSync(dir)) {
+      if ((f.endsWith('.service.ts') || f.endsWith('.repo.ts')) && !f.includes('.test.')) files.push(join(dir, f))
+    }
+  }
+  for (const file of files) {
+    const rel = file.slice(MODULES_DIR.length + 1).split(String.fromCharCode(92)).join('/')
+    const src = readFileSync(file, 'utf8')
+    if (!EMPLOYEES_TABLE.test(src)) continue
+    it(`${rel} applique le périmètre filiale ou est exempté`, () => {
+      if (EXEMPT_NON_ROUTES[rel]) return
+      expect(SCOPE_CALL.test(src), rel).toBe(true)
+    })
+  }
+  it('au moins hire.service et attendance.repo sont couverts par la liste', () => {
+    const rels = files.map((f) => f.slice(MODULES_DIR.length + 1).split(String.fromCharCode(92)).join('/'))
+    expect(rels).toContain('recruitment/hire.service.ts')
+    expect(rels).toContain('attendance/attendance.repo.ts')
+  })
+})
 
 describe('périmètre filiale — invariant statique', () => {
   const files: string[] = []

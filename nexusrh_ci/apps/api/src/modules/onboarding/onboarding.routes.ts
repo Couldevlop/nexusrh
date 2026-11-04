@@ -410,7 +410,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return reply.status(400).send({ error: 'status invalide (in_progress | cancelled)' })
       const schema = request.user.schemaName
       const r = await pool.query(
-        `UPDATE "${schema}".onboarding_journeys SET status = $2, updated_at = now() WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`,
+        `UPDATE "${schema}".onboarding_journeys SET status = $2, updated_at = now() WHERE id = $1 AND ${await requestEmployeeScope(request, 'onboarding_journeys.employee_id')} RETURNING id`,
         [id, parsed.data.status])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Parcours introuvable' })
       auditLogOnboarding(schema, request.user.sub, 'onboarding.journey.status_changed', id,
@@ -432,7 +432,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return reply.status(400).send({ error: 'Étape invalide' })
       const s = parsed.data
       const schema = request.user.schemaName
-      const exists = await pool.query(`SELECT 1 FROM "${schema}".onboarding_journeys WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id])
+      const exists = await pool.query(`SELECT 1 FROM "${schema}".onboarding_journeys WHERE id = $1 AND ${await requestEmployeeScope(request, 'onboarding_journeys.employee_id')} LIMIT 1`, [id])
       if (!exists.rows[0]) return reply.status(404).send({ error: 'Parcours introuvable' })
       const r = await pool.query<{ id: string }>(
         `INSERT INTO "${schema}".onboarding_steps

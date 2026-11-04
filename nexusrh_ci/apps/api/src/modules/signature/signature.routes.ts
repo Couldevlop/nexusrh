@@ -66,17 +66,19 @@ async function recomputeStatus(schema: string, requestId: string, expiresAt: str
 }
 
 /**
- * Périmètre filiale (habilitations) d'une demande de signature : elle n'est
- * visible que si TOUS ses signataires rattachés à un salarié sont dans le
- * périmètre de l'acteur (fermé par défaut : un signataire hors périmètre, ou
- * dont la filiale est inconnue, masque la demande). 'TRUE' sans restriction.
+ * Périmètre filiale (habilitations) d'une demande de signature : visible si au
+ * moins UN signataire rattaché à un salarié est dans le périmètre de l'acteur,
+ * ou si elle n'a aucun signataire salarié (signataires externes : pas de donnée
+ * de filiale à protéger, et le créateur doit la retrouver). 'TRUE' sans restriction.
  */
 async function signatureScope(request: FastifyRequest, schema: string, requestIdColumn: string): Promise<string> {
   const sc = await requestHrScope(request, 'hs')
   if (sc === 'TRUE') return 'TRUE'
-  return `NOT EXISTS (SELECT 1 FROM "${schema}".signature_signatories hss
-            JOIN "${schema}".employees hs ON hs.id = hss.employee_id
-           WHERE hss.request_id = ${requestIdColumn} AND NOT COALESCE((${sc}), false))`
+  return `(NOT EXISTS (SELECT 1 FROM "${schema}".signature_signatories hs0
+                       WHERE hs0.request_id = ${requestIdColumn} AND hs0.employee_id IS NOT NULL)
+          OR EXISTS (SELECT 1 FROM "${schema}".signature_signatories hss
+                       JOIN "${schema}".employees hs ON hs.id = hss.employee_id
+                      WHERE hss.request_id = ${requestIdColumn} AND ${sc}))`
 }
 
 const signatureRoutes: FastifyPluginAsync = async (fastify) => {
@@ -110,12 +112,15 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = createSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
-      // Périmètre filiale : tous les signataires salariés doivent être dans le périmètre.
-      const hrScope = await requestHrScope(request, 'e')
-      for (const s of b.signatories) {
-        if (s.employeeId && !(await employeeInHrScope(schema, s.employeeId, hrScope))) {
-          return reply.status(404).send({ error: 'Employé introuvable' })
+      // Périmètre filiale : au moins un signataire salarié doit être dans le périmètre.
+      const salaried = b.signatories.filter((s) => s.employeeId)
+      if (salaried.length > 0) {
+        const hrScope = await requestHrScope(request, 'e')
+        let anyInScope = false
+        for (const s of salaried) {
+          if (await employeeInHrScope(schema, s.employeeId as string, hrScope)) { anyInScope = true; break }
         }
+        if (!anyInScope) return reply.status(404).send({ error: 'Employé introuvable' })
       }
       const reqRes = await rawPool.query(
         `INSERT INTO "${schema}".signature_requests (title, document_type, document_id, document_url, message, sequential, expires_at, created_by, status)

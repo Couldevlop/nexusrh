@@ -1360,7 +1360,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
       try {
         const res = await pool.query<{ id: string; employee_id: string }>(
-          `UPDATE "${schema}".attendance_warnings SET status = $1 WHERE id = $2 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id, employee_id`,
+          `UPDATE "${schema}".attendance_warnings SET status = $1 WHERE id = $2 AND ${await requestEmployeeScope(request, 'attendance_warnings.employee_id')} RETURNING id, employee_id`,
           [b.status, id],
         )
         const row = res.rows[0]

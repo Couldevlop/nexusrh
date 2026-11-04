@@ -125,7 +125,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
           rawPool.query<{ reason_category: string | null; departure_type: string; count: string }>(
             `SELECT reason_category, departure_type, count(*)::int AS count
                FROM "${schema}".offboarding_cases
-              WHERE status <> 'cancelled' AND ${await requestEmployeeScope(request, 'employee_id')}
+              WHERE status <> 'cancelled' AND ${await requestEmployeeScope(request, 'offboarding_cases.employee_id')}
                 AND ($1::date IS NULL OR departure_date >= $1::date)
                 AND ($2::date IS NULL OR departure_date <= $2::date)
               GROUP BY reason_category, departure_type`,
@@ -257,7 +257,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string; departure_date?: string | null }>(
         `SELECT status, employee_id, departure_date::text AS departure_date
-         FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
+         FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'offboarding_cases.employee_id')} LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
@@ -426,13 +426,13 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de dossier invalide' })
       const own = await rawPool.query<{ employee_id: string }>(
-        `SELECT employee_id FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
+        `SELECT employee_id FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'offboarding_cases.employee_id')} LIMIT 1`, [id],
       )
       if (own.rows[0] && isSelfAction(request, own.rows[0].employee_id)) {
         return reply.status(403).send({ error: SELF_ACTION_ERROR })
       }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id],
+        `DELETE FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'offboarding_cases.employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       audit(schema, request.user.sub, 'offboarding.deleted', id, {}, request.ip ?? null)

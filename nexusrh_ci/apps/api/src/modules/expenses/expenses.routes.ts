@@ -435,7 +435,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
           SET status = 'submitted', submitted_at = now(), updated_at = now()
-          WHERE id = $1 AND status = 'draft' AND ${await requestEmployeeScopeUnlessSelf(request, 'employee_id')} RETURNING *
+          WHERE id = $1 AND status = 'draft' AND ${await requestEmployeeScopeUnlessSelf(request, 'expense_reports.employee_id')} RETURNING *
         `, [id])
         if (!res.rows[0]) return reply.status(400).send({ error: 'Note non modifiable' })
         // FRA-003 — notifier le manager direct (non bloquant)
@@ -462,7 +462,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
       try {
-        const report = await loadReportForWorkflow(schema, id, await requestEmployeeScopeUnlessSelf(request, 'employee_id'))
+        const report = await loadReportForWorkflow(schema, id, await requestEmployeeScopeUnlessSelf(request, 'expense_reports.employee_id'))
         if (!report) return reply.status(404).send({ error: 'Note introuvable' })
         if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non approvable' })
         if (isSelfAction(request, report.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
@@ -536,7 +536,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
       const reason = parsed.data.reason
       try {
         // OWASP A01 : même circuit que approve (valideur de l'étape, jamais soi-même).
-        const report = await loadReportForWorkflow(schema, id, await requestEmployeeScopeUnlessSelf(request, 'employee_id'))
+        const report = await loadReportForWorkflow(schema, id, await requestEmployeeScopeUnlessSelf(request, 'expense_reports.employee_id'))
         if (!report) return reply.status(404).send({ error: 'Note introuvable' })
         if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non refusable' })
         const actor = await actorOf(schema, request.user)
@@ -650,7 +650,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const res = await pool.query(`
           UPDATE "${schema}".expense_reports
           SET status = 'paid', paid_at = now(), updated_at = now()
-          WHERE id = $1 AND status = 'approved' AND ${await requestEmployeeScopeUnlessSelf(request, 'employee_id')} RETURNING *
+          WHERE id = $1 AND status = 'approved' AND ${await requestEmployeeScopeUnlessSelf(request, 'expense_reports.employee_id')} RETURNING *
         `, [id])
         if (!res.rows[0]) return reply.status(400).send({ error: 'Note non remboursable' })
         // OWASP A09 : paiement = action financière critique, traçabilité obligatoire
@@ -691,7 +691,7 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         // Même pattern d'ownership que PATCH /:id/submit (résolution employeeId
         // via token sinon lookup par email).
         const reportRes = await pool.query<{ employee_id: string; status: string }>(
-          `SELECT employee_id, status FROM "${schema}".expense_reports WHERE id = $1 AND ${await requestEmployeeScopeUnlessSelf(request, 'employee_id')} LIMIT 1`,
+          `SELECT employee_id, status FROM "${schema}".expense_reports WHERE id = $1 AND ${await requestEmployeeScopeUnlessSelf(request, 'expense_reports.employee_id')} LIMIT 1`,
           [id],
         )
         const report = reportRes.rows[0]

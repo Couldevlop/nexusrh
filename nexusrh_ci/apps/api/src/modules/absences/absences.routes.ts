@@ -472,7 +472,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
       }>(
         `SELECT validation_level, status, employee_id, days, absence_type_id, created_at, approval_trail
-         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
+         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'absences.employee_id')}`, [id]
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
@@ -567,7 +567,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         validation_level?: number; status?: string; created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
       }>(
         `SELECT employee_id, days, absence_type_id, start_date, validation_level, status, created_at, approval_trail
-         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
+         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'absences.employee_id')}`, [id]
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })

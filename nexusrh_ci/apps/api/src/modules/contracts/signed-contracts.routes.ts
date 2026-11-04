@@ -247,7 +247,7 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const r = await pool.query<{ id: string; employee_id: string; mime: string; bytes: Buffer; file_name: string }>(
           `SELECT id, employee_id, mime, bytes, file_name FROM "${schema}".employee_documents
-            WHERE id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`,
+            WHERE id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_documents.employee_id')} LIMIT 1`,
           [docId, SIGNED_CONTRACT_CATEGORY],
         )
         const row = r?.rows?.[0]

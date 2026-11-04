@@ -65,7 +65,7 @@ export async function legalEntityInHrScope(
  * Périmètre filiale pour une table qui ne porte qu'une colonne `employee_id`
  * (contrats, notes de frais, sanctions…) : sous-requête EXISTS sur employees.
  * 'TRUE' reste 'TRUE' (aucune sous-requête superflue, SQL hérité inchangé).
- * `employeeIdColumn` est une colonne qualifiée écrite dans le code (jamais une
+ * `employeeIdColumn` est une colonne QUALIFIÉE (`table.col`, obligatoire : une colonne nue serait capturée par l'alias de la sous-requête) écrite dans le code (jamais une
  * entrée utilisateur).
  */
 export async function requestEmployeeScope(request: FastifyRequest, employeeIdColumn: string): Promise<string> {
@@ -81,7 +81,7 @@ export async function requestEmployeeScopeUnlessSelf(request: FastifyRequest, em
 function wrapEmployeeScope(schema: string, employeeIdColumn: string, scopeSql: string): string {
   if (scopeSql === 'TRUE') return 'TRUE'
   assertValidSchemaName(schema)
-  if (!/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$/i.test(employeeIdColumn)) {
+  if (!/^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/i.test(employeeIdColumn)) {
     throw new Error(`Colonne SQL invalide : ${employeeIdColumn}`)
   }
   return `EXISTS (SELECT 1 FROM "${schema}".employees hs WHERE hs.id = ${employeeIdColumn} AND ${scopeSql})`

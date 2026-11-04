@@ -879,7 +879,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // pool module-level
       const schema = request.user.schemaName
       const res = await pool.query(
-        `SELECT d.*, e.first_name AS manager_first_name, e.last_name AS manager_last_name
+        `SELECT d.*,
+                CASE WHEN ${await requestHrScope(request, 'e')} THEN e.first_name END AS manager_first_name,
+                CASE WHEN ${await requestHrScope(request, 'e')} THEN e.last_name END AS manager_last_name
          FROM "${schema}".departments d
          LEFT JOIN "${schema}".employees e ON e.id = d.manager_id
          ORDER BY d.name`

@@ -389,7 +389,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
       values.push(id)
       try {
         const res = await pool.query(
-          `UPDATE "${schema}".evaluations SET ${updates.join(', ')} WHERE id = $${values.length} AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING *`,
+          `UPDATE "${schema}".evaluations SET ${updates.join(', ')} WHERE id = $${values.length} AND ${await requestEmployeeScope(request, 'evaluations.employee_id')} RETURNING *`,
           values
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Évaluation introuvable' })

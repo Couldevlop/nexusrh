@@ -198,7 +198,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
-        const scope = await requestEmployeeScope(request, 'employee_id')
+        const scope = await requestEmployeeScope(request, 'contracts.employee_id')
         const own = await contractOwner(schema, id, scope)
         if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(
@@ -228,7 +228,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
-        const scope = await requestEmployeeScope(request, 'employee_id')
+        const scope = await requestEmployeeScope(request, 'contracts.employee_id')
         const own = await contractOwner(schema, id, scope)
         if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(`
@@ -287,7 +287,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
         const orig = await pool.query(
-          `SELECT * FROM "${schema}".contracts WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
+          `SELECT * FROM "${schema}".contracts WHERE id = $1 AND ${await requestEmployeeScope(request, 'contracts.employee_id')}`, [id]
         )
         if (!orig.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
         if (orig.rows[0].employee_id && isSelfAction(request, String(orig.rows[0].employee_id))) {
@@ -317,7 +317,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(`
           SELECT * FROM "${schema}".contracts
-          WHERE employee_id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}
+          WHERE employee_id = $1 AND ${await requestEmployeeScope(request, 'contracts.employee_id')}
           ORDER BY created_at DESC
         `, [employeeId])
         return reply.send({ data: res.rows })

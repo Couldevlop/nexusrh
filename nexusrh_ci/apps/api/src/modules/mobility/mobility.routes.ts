@@ -219,7 +219,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (b.status) {
         const cur = await rawPool.query<{ status: MobilityStatus }>(
-          `SELECT status FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
+          `SELECT status FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} LIMIT 1`, [id],
         )
         if (!cur.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
         if (!canTransition(cur.rows[0].status, b.status)) {
@@ -246,7 +246,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       sets.push('updated_at = now()')
       params.push(id)
-      const res = await rawPool.query(`UPDATE "${schema}".mobility_requests SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING *`, params)
+      const res = await rawPool.query(`UPDATE "${schema}".mobility_requests SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} RETURNING *`, params)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
       audit(schema, request.user.sub, 'mobility.updated', 'mobility_request', id, b as Record<string, unknown>, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
@@ -259,7 +259,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const res = await rawPool.query(`DELETE FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id])
+      const res = await rawPool.query(`DELETE FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
       audit(schema, request.user.sub, 'mobility.deleted', 'mobility_request', id, {}, request.ip ?? null)
       return reply.send({ data: { id } })
