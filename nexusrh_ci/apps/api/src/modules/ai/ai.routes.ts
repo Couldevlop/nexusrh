@@ -7,6 +7,7 @@ import { resolveAiCreds } from '../../services/ai-credentials.service.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { generateHRDocument } from '../../services/hr-document-generator.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
+import { requestHrScopeFactory, requestHrScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import {
   CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, type LegislationPack,
@@ -178,6 +179,8 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       if (!SCHEMA_NAME_RE.test(schema)) {
         return reply.status(400).send({ error: 'Schema invalide' })
       }
+      // Habilitations : les outils IA n'atteignent les données qu'à travers ce périmètre filiale.
+      const toolHrScope = await requestHrScopeFactory(request)
 
       // Credentials IA effectifs : clé/modèle du tenant si configurés, sinon repli
       // plateforme (env). Si aucune clé Claude (tenant ni plateforme) → 503.
@@ -297,7 +300,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             systemPrompt,
             messages,
             tools:         buildToolsForRole(request.user.role),
-            toolCtx:       { schemaName: schema, role: request.user.role },
+            toolCtx:       { schemaName: schema, role: request.user.role, hrScope: toolHrScope },
             pool:          rawPool,
             maxTokens:     config.ai.maxTokens,
             maxToolRounds: 5,
@@ -371,7 +374,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             toolsUsed.push(block.name)
             const result = await executeAiTool(
               rawPool,
-              { schemaName: schema, role: request.user.role },
+              { schemaName: schema, role: request.user.role, hrScope: toolHrScope },
               block.name,
               block.input,
             )
@@ -535,6 +538,10 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           if (!(await isInManagerScope(rawPool, schema, mgrId, employeeId))) {
             return reply.status(403).send({ error: 'Accès interdit' })
           }
+        }
+        // Habilitations : salarié hors périmètre filiale = introuvable (404).
+        if (!(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
         }
         const result = await analyzeRetentionRisk(rawPool, schema, employeeId)
         if (!result) return reply.status(404).send({ error: 'Employé introuvable' })

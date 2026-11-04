@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { requestHrScope, requestEmployeeScope } from '../../utils/hr-scope.js'
 
 /**
  * Vue DG 360° — tableau de bord Direction Générale, AU-DESSUS du périmètre DRH.
@@ -58,6 +59,20 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['dg'], summary: 'Vue DG 360° — KPIs et graphiques instantanés' },
     handler: async (request, reply) => {
       const s = request.user.schemaName
+      // Habilitations : tous les agrégats sont calculés sur le périmètre filiale (le
+      // calcul du périmètre lui-même n'est PAS fail-soft : une erreur du moteur = 500).
+      const empScope = await requestHrScope(request, 'e')
+      const jobScope = await requestHrScope(request, 'j')
+      const absScope = await requestEmployeeScope(request, 'a.employee_id')
+      const expScope = await requestEmployeeScope(request, 'expense_reports.employee_id')
+      const enrScope = await requestEmployeeScope(request, 'training_enrollments.employee_id')
+      // Montants de paie : totaux de la période (périmètre ouvert) ou somme des seuls
+      // bulletins du périmètre (jamais la masse salariale des autres filiales).
+      const slipSum = (col: string, p: string): string => empScope === 'TRUE' ? `${p}.total_${col}` : `(
+        SELECT SUM(${col === 'cnps' ? 'COALESCE(ps.total_cnps_sal,0) + COALESCE(ps.total_cnps_pat,0)' : col === 'gross' ? 'ps.gross_salary' : col === 'net' ? 'ps.net_payable' : 'ps.its'})
+          FROM "${s}".pay_slips ps JOIN "${s}".employees e ON e.id = ps.employee_id
+         WHERE ps.period_id IN (SELECT c.id FROM "${s}".pay_periods c WHERE c.id = ${p}.id OR c.parent_period_id = ${p}.id)
+           AND ${empScope})`
       // Chaque bloc est fail-soft : un module non provisionné ne casse jamais
       // le dashboard (valeurs zéro à la place).
       const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -75,7 +90,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
       ] = await Promise.all([
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".employees WHERE is_active = true`)
+            `SELECT count(*) FROM "${s}".employees e WHERE e.is_active = true AND ${empScope}`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
@@ -83,7 +98,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             `SELECT d.name, count(e.id) AS count
                FROM "${s}".employees e
                LEFT JOIN "${s}".departments d ON d.id = e.department_id
-              WHERE e.is_active = true GROUP BY d.name ORDER BY count DESC`)
+              WHERE e.is_active = true AND ${empScope} GROUP BY d.name ORDER BY count DESC`)
           return r.rows.map(x => ({ department: x.name ?? 'Sans département', count: parseInt(x.count) }))
         }, [] as Array<{ department: string; count: number }>),
         safe(async () => {
@@ -91,7 +106,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
           const r = await pool.query<{ month: string; count: string }>(
             `SELECT to_char(m.month, 'YYYY-MM') AS month,
                     (SELECT count(*) FROM "${s}".employees e
-                      WHERE e.is_active = true
+                      WHERE e.is_active = true AND ${empScope}
                         AND e.hire_date <= (m.month + interval '1 month' - interval '1 day')::date
                     ) AS count
                FROM generate_series(
@@ -107,7 +122,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             total_gross: string | null; total_net: string | null
             closed_by_name: string | null
           }>(
-            `SELECT p.month, p.status, p.closed_at, p.total_gross, p.total_net,
+            `SELECT p.month, p.status, p.closed_at, ${slipSum('gross', 'p')} AS total_gross, ${slipSum('net', 'p')} AS total_net,
                     CASE WHEN u.id IS NULL THEN NULL
                          ELSE u.first_name || ' ' || u.last_name END AS closed_by_name
                FROM "${s}".pay_periods p
@@ -129,10 +144,11 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             month: string; total_gross: string | null; total_net: string | null
             total_cnps: string | null; total_its: string | null
           }>(
-            `SELECT month, total_gross, total_net, total_cnps, total_its
-               FROM "${s}".pay_periods
-              WHERE parent_period_id IS NULL AND status = 'closed'
-              ORDER BY month DESC LIMIT 12`)
+            `SELECT p.month, ${slipSum('gross', 'p')} AS total_gross, ${slipSum('net', 'p')} AS total_net,
+                    ${slipSum('cnps', 'p')} AS total_cnps, ${slipSum('its', 'p')} AS total_its
+               FROM "${s}".pay_periods p
+              WHERE p.parent_period_id IS NULL AND p.status = 'closed'
+              ORDER BY p.month DESC LIMIT 12`)
           return r.rows.reverse().map(x => ({
             month: x.month,
             gross: x.total_gross ? Number(x.total_gross) : 0,
@@ -143,14 +159,14 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
         }, [] as Array<{ month: string; gross: number; net: number; cnps: number; its: number }>),
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".absences
-              WHERE status = 'approved'
-                AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE`)
+            `SELECT count(*) FROM "${s}".absences a
+              WHERE a.status = 'approved' AND ${absScope}
+                AND a.start_date <= CURRENT_DATE AND a.end_date >= CURRENT_DATE`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".absences WHERE status IN ('pending', 'submitted')`)
+            `SELECT count(*) FROM "${s}".absences a WHERE a.status IN ('pending', 'submitted') AND ${absScope}`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
@@ -158,7 +174,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             `SELECT at.label AS name, count(*) AS count, COALESCE(sum(a.days), 0) AS days
                FROM "${s}".absences a
                LEFT JOIN "${s}".absence_types at ON at.id = a.absence_type_id
-              WHERE a.status = 'approved'
+              WHERE a.status = 'approved' AND ${absScope}
                 AND a.start_date >= date_trunc('year', CURRENT_DATE)::date
               GROUP BY at.label ORDER BY count DESC`)
           return r.rows.map(x => ({
@@ -167,28 +183,29 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
         }, [] as Array<{ type: string; count: number; days: number }>),
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".expense_reports WHERE status = 'submitted'`)
+            `SELECT count(*) FROM "${s}".expense_reports WHERE status = 'submitted' AND ${expScope}`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
           const r = await pool.query<{ total: string | null }>(
             `SELECT COALESCE(sum(total_amount), 0) AS total
                FROM "${s}".expense_reports
-              WHERE status IN ('approved', 'paid')
+              WHERE status IN ('approved', 'paid') AND ${expScope}
                 AND month = to_char(CURRENT_DATE, 'YYYY-MM')`)
           return Number(r.rows[0]?.total ?? 0)
         }, 0),
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".recruitment_jobs WHERE status = 'open'`)
+            `SELECT count(*) FROM (SELECT status, target_legal_entity_id AS legal_entity_id FROM "${s}".recruitment_jobs) j
+              WHERE j.status = 'open' AND ${jobScope}`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
           const r = await pool.query<{ stage: string | null; count: string }>(
             `SELECT a.stage, count(*) AS count
                FROM "${s}".applications a
-               JOIN "${s}".recruitment_jobs j ON j.id = a.job_id
-              WHERE j.status = 'open' GROUP BY a.stage ORDER BY count DESC`)
+               JOIN (SELECT id, status, target_legal_entity_id AS legal_entity_id FROM "${s}".recruitment_jobs) j ON j.id = a.job_id
+              WHERE j.status = 'open' AND ${jobScope} GROUP BY a.stage ORDER BY count DESC`)
           return r.rows.map(x => ({ stage: x.stage ?? 'new', count: parseInt(x.count) }))
         }, [] as Array<{ stage: string; count: number }>),
         safe(async () => {
@@ -199,7 +216,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
         }, 0),
         safe(async () => {
           const r = await pool.query<{ count: string }>(
-            `SELECT count(*) FROM "${s}".training_enrollments WHERE status = 'enrolled'`)
+            `SELECT count(*) FROM "${s}".training_enrollments WHERE status = 'enrolled' AND ${enrScope}`)
           return parseInt(r.rows[0]?.count ?? '0')
         }, 0),
         safe(async () => {
@@ -208,8 +225,8 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             retention_score: string | null; burnout_risk: string | null
           }>(
             `SELECT first_name, last_name, job_title, retention_score, burnout_risk
-               FROM "${s}".employees
-              WHERE is_active = true
+               FROM "${s}".employees e
+              WHERE is_active = true AND ${empScope}
                 AND (retention_score IS NOT NULL OR burnout_risk IS NOT NULL)
               ORDER BY
                 CASE burnout_risk WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
