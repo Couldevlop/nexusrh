@@ -333,7 +333,7 @@ export default function HomePage() {
 
         {/* ── Bandeau défilant : l'ampleur de la couverture ───────────── */}
         <div className="overflow-hidden border-b border-[#E4E8EB] py-4" aria-hidden>
-          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#C9D1D7]">
+          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#5A6672]">
             <span>{marquee}</span><span>{marquee}</span>
           </div>
         </div>
