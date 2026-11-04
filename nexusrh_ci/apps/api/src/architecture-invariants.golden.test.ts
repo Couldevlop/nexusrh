@@ -85,6 +85,22 @@ describe('Invariants d’architecture — pas de recopie des primitives partagé
     ).toEqual([])
   })
 
+  // Exceptions TEMPORAIRES, chacune datée et justifiée. Liste vouée à rester vide.
+  const ORPHAN_SERVICES_BASELINE = new Set<string>([
+    // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
+    // (plan docs/superpowers/plans/2026-11-04-simulateur-paie-uemoa.md ; service créé en tâche 1).
+    'services/payroll-simulator.service.ts',
+  ])
+
+  it('les exceptions temporaires d’orphelins ne sont pas périmées', () => {
+    for (const f of ORPHAN_SERVICES_BASELINE) {
+      const base = f.split('/').pop()!.replace(/\.ts$/, '')
+      const prod = walk(API_SRC, /\.ts$/).filter(x => !/\.test\.ts$/.test(x) && !x.endsWith(`${base}.ts`))
+      const imported = prod.some(x => readFileSync(x, 'utf8').includes(`${base}.js`))
+      expect(imported, `${f} est désormais importé : retirez-le de ORPHAN_SERVICES_BASELINE`).toBe(false)
+    }
+  })
+
   it('aucun service du dépôt n’est orphelin (le cas cv-extraction ne se reproduit pas)', () => {
     // Un service que PERSONNE n'importe est du code mort — et, quand il porte un
     // contrôle de sécurité, une protection qui ne s'exécute jamais tout en
@@ -109,6 +125,7 @@ describe('Invariants d’architecture — pas de recopie des primitives partagé
       const entrypoint   = new RegExp(`${esc}\\.ts`).test(pkg)
       return !importedAsJs && !entrypoint
     }).map(f => relative(API_SRC, f).split(sep).join('/'))
+      .filter(f => !ORPHAN_SERVICES_BASELINE.has(f))
 
     expect(
       orphans,
@@ -166,6 +183,10 @@ const DEAD_EXPORTS_BASELINE = new Set<string>([
   // la retirer déferait un correctif de sécurité livré en production.
   // À câbler le jour où le moteur de paie devient piloté par les règles.
   'services/payroll-engine-ci.ts::evalFormule',
+  // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
+  'services/payroll-simulator.service.ts::computeSeniority',
+  // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
+  'services/payroll-simulator.service.ts::computeOvertime',
 ])
 
 /**
