@@ -259,7 +259,9 @@ describe('HomePage — confiance, contacts et FAQ', () => {
 
   it('couverture pays : formulation validée, la Côte d’Ivoire en pays de référence', () => {
     const cover = "Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC"
-    expect(frHome.hero.coverage).toBe(cover)
+    // Pas de clé hero.coverage : la phrase de couverture est portée par hero.lead, affiché dans le héros.
+    expect(frHome.hero).not.toHaveProperty('coverage')
+    expect(enHome.hero).not.toHaveProperty('coverage')
     expect(frHome.faq.items.coverage.a.startsWith(`${cover}.`)).toBe(true)
     expect(frHome.hero.lead).toBe(
       "NexusRH gère la paie et les ressources humaines de votre entreprise selon le droit social de votre pays : " +
