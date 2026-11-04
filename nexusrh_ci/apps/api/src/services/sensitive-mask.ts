@@ -67,9 +67,27 @@ export function csvCell(value: unknown, ctx: HabContext | null): unknown {
   return isMasked(ctx) ? MASKED_CELL : value
 }
 
+/** Les motifs de pré-tri sur la prétention salariale citent le montant du candidat. */
+const SALARY_RULE_RE = /^Prétention salariale/
+export const SALARY_RULE_MASKED = 'Prétention salariale hors plafond'
+
+/** Motifs de pré-tri sans montant (contexte masquant) ; sinon inchangés. */
+export function redactRuleTexts(rules: readonly string[], ctx: HabContext | null): string[] {
+  return isMasked(ctx) ? rules.map((r) => (SALARY_RULE_RE.test(r) ? SALARY_RULE_MASKED : r)) : [...rules]
+}
+
 export function maskSensitive<T extends Record<string, unknown>>(row: T, ctx: HabContext | null): Masked<T> {
   if (!isMasked(ctx)) return row
-  return maskFields(row, Object.keys(row).filter((k) => MASKED_KEYS.has(k)), ctx)
+  const out = maskFields(row, Object.keys(row).filter((k) => MASKED_KEYS.has(k)), ctx)
+  const rules = (out as Record<string, unknown>).screening_failed_rules
+  if (!Array.isArray(rules) || !rules.some((r) => typeof r === 'string' && SALARY_RULE_RE.test(r))) return out
+  // screening_failed_rules : le texte « Prétention salariale … : X FCFA » révèle expected_salary.
+  const prev = Array.isArray(out.maskedFields) ? out.maskedFields : []
+  return {
+    ...out,
+    screening_failed_rules: redactRuleTexts(rules as string[], ctx),
+    maskedFields: [...new Set([...prev, 'screening_failed_rules'])],
+  } as Masked<T>
 }
 
 export function maskSensitiveRows<T extends Record<string, unknown>>(rows: T[], ctx: HabContext | null): Array<Masked<T>> {
