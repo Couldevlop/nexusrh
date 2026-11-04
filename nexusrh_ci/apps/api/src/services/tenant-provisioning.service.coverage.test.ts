@@ -21,6 +21,9 @@ vi.mock('../db/provisioning.js', () => ({
   seedAbsenceTypesCI: (...a: unknown[]) => seedAbsMock(...a),
 }))
 
+const habMock = vi.fn().mockResolvedValue(undefined)
+vi.mock('../db/habilitations-bootstrap.js', () => ({ provisionHabilitationStructure: (...a: unknown[]) => habMock(...a) }))
+
 const sendWelcomeMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('./email.js', () => ({ sendWelcomeTenantEmail: (...a: unknown[]) => sendWelcomeMock(...a) }))
 

@@ -195,6 +195,8 @@ export async function createPlatformSchema(): Promise<void> {
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`)
   // Habilitations RH : contrôle par la grille actif seulement si true (existants : false).
   await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS habilitations_enforced boolean NOT NULL DEFAULT false`)
+  // Marqueur de la reprise d'office des habilitations (NULL = jamais reprise).
+  await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS hab_bootstrapped_at timestamptz`)
 
   // ── Sourcing IA — tables de configuration (100% paramétrable) ────────────────
   // Modèles IA disponibles (Claude/Mistral/autres) avec tarifs paramétrables.

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { config } from '../config.js'
 import { provisionTenantSchema, seedPayrollRulesCI, seedAbsenceTypesCI } from '../db/provisioning.js'
+import { provisionHabilitationStructure } from '../db/habilitations-bootstrap.js'
 import { sendWelcomeTenantEmail, type TenantSmtp } from './email.js'
 import { seedDemoTenant } from '../db/seed-demo.js'
 import { ensureAdminEmployeeRecord } from '../db/admin-employee.js'
@@ -192,6 +193,10 @@ export async function createTenantWithSchema(
     // tant qu'elle n'est pas complétée). Dans le bloc atomique : un tenant
     // n'est jamais créé à moitié.
     await ensureAdminEmployeeRecord(pool, schemaName, input.adminEmail)
+
+    // 4c. Habilitations RH : structure par défaut, marqueur posé aussitôt (aucune
+    // reprise d'office pour un nouveau tenant ; le 1er DRH est habilité par l'admin).
+    await provisionHabilitationStructure(schemaName, pool)
   } catch (err) {
     if (!schemaPreexisted) {
       await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined)

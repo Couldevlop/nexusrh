@@ -18,6 +18,9 @@ vi.mock('../db/provisioning.js', () => ({
   seedAbsenceTypesCI: (...a: unknown[]) => seedAbsMock(...a),
 }))
 
+const habMock = vi.fn().mockResolvedValue(undefined)
+vi.mock('../db/habilitations-bootstrap.js', () => ({ provisionHabilitationStructure: (...a: unknown[]) => habMock(...a) }))
+
 const sendWelcomeMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('./email.js', () => ({ sendWelcomeTenantEmail: (...a: unknown[]) => sendWelcomeMock(...a) }))
 
@@ -67,6 +70,8 @@ describe('createTenantWithSchema', () => {
     expect(provisionMock).toHaveBeenCalledWith('tenant_acme')
     expect(seedRulesMock).toHaveBeenCalledWith('tenant_acme', AT_RATE_BY_SECTOR['btp'])
     expect(seedAbsMock).toHaveBeenCalledWith('tenant_acme')
+    // Habilitations : structure créée + marqueur posé pour le nouveau tenant (aucune reprise).
+    expect(habMock).toHaveBeenCalledWith('tenant_acme', expect.anything())
 
     // INSERT tenant : limites du plan business
     const insertCall = (pool as unknown as { query: ReturnType<typeof vi.fn> }).query.mock.calls[1]!

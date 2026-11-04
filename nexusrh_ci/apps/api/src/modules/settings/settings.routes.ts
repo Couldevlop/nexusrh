@@ -1849,12 +1849,25 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const atErr = atRateError(body.at_rate ?? 0.02, body.legislation_pack_code, body.country_code)
         if (atErr) return reply.status(400).send({ error: atErr })
+        // Une seule instruction = une seule transaction : la filiale et son
+        // sous-groupe « RH Filiale <nom> » (habilitations) naissent ensemble. Le
+        // siège social n'a pas de sous-groupe propre (couvert par « RH Siège »).
+        // Renommer la filiale ne renomme pas le sous-groupe.
         const res = await pool.query<{ id: string }>(`
-          INSERT INTO "${schema}".legal_entities
-            (name, rccm, cnps_number, dgi_number, address, city, legal_form,
-             collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id,
-             is_head_office)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+          WITH ins AS (
+            INSERT INTO "${schema}".legal_entities
+              (name, rccm, cnps_number, dgi_number, address, city, legal_form,
+               collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id,
+               is_head_office)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+          ), sg AS (
+            INSERT INTO "${schema}".hab_subgroups (group_id, name, kind, legal_entity_id)
+            SELECT g.id, left('RH Filiale ' || ins.name, 150), 'entity', ins.id
+              FROM ins CROSS JOIN "${schema}".hab_groups g
+             WHERE g.name = 'DRH Groupe' AND ins.is_head_office = false
+            ON CONFLICT (legal_entity_id) DO NOTHING
+          )
+          SELECT * FROM ins
         `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
             body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
