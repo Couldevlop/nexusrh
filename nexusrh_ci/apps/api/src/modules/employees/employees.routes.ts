@@ -15,7 +15,8 @@ import { canonicalEmployeeMmProvider } from '../../services/mobile-money-provide
 import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
-import { requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { isMasked, maskSensitive, csvCell } from '../../services/sensitive-mask.js'
 import { EMPLOYEE_NUMBER_MAX_LENGTH } from '../../db/employee-number.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
@@ -279,6 +280,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '20', 10) || 20))
       const offset = (page - 1) * limit
       const schema = request.user.schemaName
+      // Données sensibles masquées hors case dédiée (habilitations).
+      const maskCtx = await requestSensitiveCtx(request)
 
       // Clause WHERE commune (filtres) — réutilisée par le COUNT et la page.
       let where = ` WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`
@@ -288,7 +291,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (isActive === 'true') { where += ` AND e.is_active = true` }
       if (departmentId) { where += ` AND e.department_id = $${idx++}`; params.push(departmentId) }
       if (search) {
-        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx} OR lower(e.employee_number) LIKE $${idx})`
+        // N° CNPS masqué : il ne sert pas de critère (sinon oracle de la valeur cachée).
+        const cnpsClause = isMasked(maskCtx) ? '' : ` OR e.cnps_number LIKE $${idx}`
+        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx}${cnpsClause} OR lower(e.employee_number) LIKE $${idx})`
         params.push(`%${search.toLowerCase()}%`); idx++
       }
       // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
@@ -328,12 +333,19 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // RIB : jamais le chiffré dans la liste ; RH → RIB MASQUÉ (4 derniers
       // caractères) pour l'affichage du mode de paiement. Compte lié : RH only.
       const isHr = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
-      for (const row of res.rows as Array<Record<string, unknown>>) {
-        const iban = isHr && typeof row.iban === 'string' ? decryptIfPresent(row.iban) : null
+      // Masqué : le RIB n'est même pas déchiffré.
+      const masked = isMasked(maskCtx)
+      const listRows = (res.rows as Array<Record<string, unknown>>).map((row) => {
+        const hadIban = typeof row.iban === 'string' && row.iban !== ''
+        const iban = isHr && !masked && hadIban ? decryptIfPresent(row.iban as string) : null
         row.iban_masked = iban ? maskIban(iban) : null
         delete row.iban
         if (!isHr) { row.linked_user_id = null; row.linked_user_role = null }
-      }
+        if (!masked) return row
+        // iban_masked porte l'information « un RIB existe » : on l'annonce masqué.
+        const out = maskSensitive({ ...row, ...(hadIban ? { iban_masked: 'x' } : {}) }, maskCtx)
+        return out
+      })
 
       // Champs personnalisés sensibles : réservés aux rôles RH (A01).
       if (!isHr && res.rows.length) {
@@ -341,7 +353,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
       }
 
-      return reply.send({ data: res.rows, total, page, limit })
+      return reply.send({ data: listRows, total, page, limit })
     },
   })
 
@@ -413,6 +425,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       const emp = res.rows[0]
+      // Habilitations : données sensibles masquées hors case dédiée, sauf son propre dossier.
+      const hab = await requestSensitiveCtx(request)
+      const maskCtx = emp.email === request.user.email || (hab !== null && hab.selfEmployeeId === emp.id) ? null : hab
 
       // OWASP A01 — contrôle d'accès fin par rôle :
       // - employee : uniquement son propre dossier
@@ -436,8 +451,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) ||
         emp.email === request.user.email
       if (canSeeSensitive) {
-        if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
-        if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+        // Masqué : jamais déchiffré (la valeur chiffrée est mise à null plus bas).
+        if (!isMasked(maskCtx)) {
+          if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
+          if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+        }
       } else {
         delete emp.nni
         delete emp.iban
@@ -459,7 +477,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         emp.seniority_months = months
         emp.seniority_label = `${Math.floor(months / 12)} an(s) ${months % 12} mois`
       }
-      return reply.send({ data: emp })
+      return reply.send({ data: maskSensitive(emp, maskCtx) })
     },
   })
 
@@ -527,7 +545,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       afterEmployeeCreated(pool, schema, created, body,
         { userId: request.user.sub, ip: request.ip ?? null }, { startOnboarding: true })
 
-      return reply.status(201).send({ data: created })
+      return reply.status(201).send({ data: maskSensitive(created as Record<string, unknown>, await requestSensitiveCtx(request)) })
     },
   })
 
@@ -691,7 +709,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         bySelf: request.user.role === 'employee',
       }, request.ip ?? null)
 
-      return reply.send({ data: res.rows[0] })
+      return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
     },
   })
 
@@ -916,6 +934,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Export CSV de la liste des employés' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      const maskCtx = await requestSensitiveCtx(request)
       const res = await pool.query(
         `SELECT e.employee_number, e.last_name, e.first_name, e.email, e.phone,
                 e.job_title, e.professional_category, d.name AS department,
@@ -934,8 +953,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         lines.push([
           r.employee_number, r.last_name, r.first_name, r.email, r.phone,
           r.job_title, r.professional_category, r.department, r.contract_type,
-          r.hire_date, r.cnps_number,
-          r.base_salary != null ? Math.round(Number(r.base_salary)) : '', // FCFA entier
+          r.hire_date, csvCell(r.cnps_number, maskCtx),
+          csvCell(r.base_salary != null ? Math.round(Number(r.base_salary)) : '', maskCtx), // FCFA entier, « Réservé » si masqué
           r.currency ?? 'XOF', r.is_active ? 'Oui' : 'Non',
         ].map(enc).join(';'))
       }

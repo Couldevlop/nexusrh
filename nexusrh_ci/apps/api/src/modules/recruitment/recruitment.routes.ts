@@ -30,7 +30,8 @@ import {
 } from './stage-history.js'
 import { hireApplication, getHirePrefill, HireError, fileProposalForHiredApplication, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
-import { requestHrScope, legalEntityInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, legalEntityInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { maskSensitive } from '../../services/sensitive-mask.js'
 import contractProposalRoutes from './contract-proposal.routes.js'
 import {
   CONTRACT_GENERATION_DISABLED, isContractGenerationEnabled, loadContractEmployer,
@@ -339,7 +340,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         const appsRes = await pool.query(
           `SELECT * FROM "${schema}".applications WHERE job_id = $1 ORDER BY created_at DESC`, [id]
         )
-        const applications = appsRes.rows.map((r) => stripCvBlob(r as Record<string, unknown>))
+        const appMask = await requestSensitiveCtx(request)
+        const applications = appsRes.rows.map((r) => maskSensitive(stripCvBlob(r as Record<string, unknown>), appMask))
         return reply.send({ data: { ...jobRes.rows[0], applications } })
       } catch (err) {
         fastify.log.error(err)
@@ -673,7 +675,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       sql += ` ORDER BY a.created_at DESC`
       try {
         const res = await pool.query(sql, params)
-        return reply.send({ data: res.rows.map((r) => stripCvBlob(r as Record<string, unknown>)) })
+        const maskCtx = await requestSensitiveCtx(request)
+        return reply.send({ data: res.rows.map((r) => maskSensitive(stripCvBlob(r as Record<string, unknown>), maskCtx)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -866,7 +869,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
               }, ip: request.ip ?? null })
         }
 
-        return reply.send({ data: app, ...(hire ? { hire } : {}) })
+        return reply.send({ data: maskSensitive(app, await requestSensitiveCtx(request)), ...(hire ? { hire } : {}) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -892,7 +895,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const prefill = await getHirePrefill(schema, id, await requestHrScope(request, 'e'))
         if (!prefill) return reply.status(404).send({ error: 'Candidature introuvable' })
-        return reply.send({ data: prefill })
+        return reply.send({ data: maskSensitive(prefill, await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error({ err }, 'hire-prefill failed')
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1251,7 +1254,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         // quel score). Non-bloquant si audit_log absent.
         auditTenant(schema, { userId: request.user.sub, action: 'recruitment.analyze_cv', entity: 'application', entityId: id, changes: { model: result.modelUsed, score: result.score, recommendation: result.recommendation }, ip: request.ip ?? null })
 
-        return reply.send({ data: upd.rows[0], analysis: result })
+        return reply.send({ data: maskSensitive(upd.rows[0], await requestSensitiveCtx(request)), analysis: result })
       } catch (err) {
         // OWASP A10 : ne pas exposer les détails internes au client.
         // On loge le message complet côté serveur, on retourne un message

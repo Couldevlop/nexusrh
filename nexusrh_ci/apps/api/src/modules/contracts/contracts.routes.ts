@@ -4,7 +4,8 @@ import { pool } from '../../db/pool.js'
 import { describeDbError } from '../../utils/db-error.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
-import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { maskSensitive, maskSensitiveRows } from '../../services/sensitive-mask.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -74,7 +75,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE ${conditions.join(' AND ')}
           ORDER BY c.created_at DESC
         `, values)
-        return reply.send({ data: res.rows })
+        return reply.send({ data: maskSensitiveRows(res.rows, await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -101,7 +102,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE c.id = $1 AND ${await requestHrScope(request, 'e')}
         `, [id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -170,7 +171,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           baseSalary: body.base_salary,
         }, request.ip ?? null)
 
-        return reply.status(201).send({ data: res.rows[0] })
+        return reply.status(201).send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -206,7 +207,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           values
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -300,7 +301,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           SET end_date = $1, base_salary = COALESCE($2, base_salary), updated_at = now()
           WHERE id = $3 RETURNING *
         `, [body.new_end_date, body.base_salary || null, id])
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -320,7 +321,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           WHERE employee_id = $1 AND ${await requestEmployeeScope(request, 'contracts.employee_id')}
           ORDER BY created_at DESC
         `, [employeeId])
-        return reply.send({ data: res.rows })
+        return reply.send({ data: maskSensitiveRows(res.rows, await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -346,7 +347,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           ORDER BY c.created_at DESC LIMIT 1
         `, [empRes.rows[0].id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Aucun contrat actif' })
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { auditTenant } from '../../utils/audit-log.js'
-import { requestHrScope, requestEmployeeScope, declarationScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, declarationScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { isMasked, maskFields } from '../../services/sensitive-mask.js'
+import type { HabContext } from '../../services/habilitation.service.js'
 import type { FastifyRequest } from 'fastify'
 
-interface ClosedMonthRow {
+type ClosedMonthRow = {
   month: string; total_gross: number; total_net: number; total_cnps: number; total_its: number; employees_count: number
 }
 
@@ -45,6 +47,15 @@ function closedPayrollByMonth(
   )
 }
 
+// Habilitations : montants de salaire masqués hors case dédiée, par ligne ET en
+// agrégat (la masse ou la moyenne d'un petit groupe révèle un salaire individuel).
+const PAY_AMOUNT_KEYS = ['total_gross', 'total_net', 'total_cnps', 'total_its'] as const
+const CNPS_AMOUNT_KEYS = ['masse_salariale', 'total_cotisations_salariales', 'total_cotisations_patronales', 'total_cotisations'] as const
+
+function maskPayRows<T extends Record<string, unknown>>(rows: T[], ctx: HabContext | null) {
+  return rows.map((r) => maskFields(r, PAY_AMOUNT_KEYS, ctx))
+}
+
 // OWASP A03 — validation des paramètres query (year, month). Année comprise
 // entre 2000 et l'année courante + 1 (limite la fenêtre d'agrégation possible).
 function parseYearParam(raw: string | undefined): number | null {
@@ -83,6 +94,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
       const year = String(yearParam)
       try {
         // Habilitations : tous les agrégats sont calculés sur le périmètre filiale.
+        const maskCtx = await requestSensitiveCtx(request)
         const empScope = await requestHrScope(request, 'e')
         const jobScope = await requestHrScope(request, 'j')
         const absScope = await requestEmployeeScope(request, 'a.employee_id')
@@ -125,9 +137,11 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           data: {
             year: yearParam,
             activeEmployees: empsTotal.rows[0]?.total ?? 0,
-            departments: depts.rows,
-            payrollEvolution: pay.rows,
-            annualTotals,
+            departments: depts.rows.map((d: Record<string, unknown>) => maskFields(d, ['avg_salary'], maskCtx)),
+            payrollEvolution: maskPayRows(pay.rows, maskCtx),
+            annualTotals: isMasked(maskCtx)
+              ? { totalGross: null, totalNet: null, totalCnps: null, totalIts: null, maskedFields: ['totalGross', 'totalNet', 'totalCnps', 'totalIts'] }
+              : annualTotals,
             absencesByType: absTypes.rows,
             recruitmentByStatus: recJobs.rows,
           },
@@ -146,6 +160,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       try {
+        const maskCtx = await requestSensitiveCtx(request)
         const salScope = await requestHrScope(request, 'e')
         const [periods, salaryDist] = await Promise.all([
           closedPayrollByMonth(schema, salScope, null, 12, 'DESC'),
@@ -165,7 +180,12 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           `),
         ])
         auditLogReporting(schema, request.user.sub, 'reporting.payroll_summary', {}, request.ip ?? null)
-        return reply.send({ data: { periods: periods.rows, salaryDistribution: salaryDist.rows } })
+        // Distribution des salaires : retirée (vide + maskedFields), pas seulement annulée.
+        return reply.send({ data: {
+          periods: maskPayRows(periods.rows, maskCtx),
+          salaryDistribution: isMasked(maskCtx) ? [] : salaryDist.rows,
+          ...(isMasked(maskCtx) ? { maskedFields: ['salaryDistribution'] } : {}),
+        } })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -222,6 +242,7 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
       if (yearParam === null) return reply.status(400).send({ error: 'year invalide (format YYYY, 2000-courant+1)' })
       const year = String(yearParam)
       try {
+        const maskCtx = await requestSensitiveCtx(request)
         const declarations = await pool.query(`
           SELECT year, quarter, status, masse_salariale::int,
             total_cotisations_salariales::int, total_cotisations_patronales::int, total_cotisations::int,
@@ -233,8 +254,8 @@ const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         auditLogReporting(schema, request.user.sub, 'reporting.cnps_analytics', { year: yearParam }, request.ip ?? null)
         return reply.send({
           data: {
-            declarations: declarations.rows,
-            monthlyHistory: monthlyHistory.rows,
+            declarations: declarations.rows.map((d: Record<string, unknown>) => maskFields(d, CNPS_AMOUNT_KEYS, maskCtx)),
+            monthlyHistory: maskPayRows(monthlyHistory.rows, maskCtx),
           },
         })
       } catch (err) {

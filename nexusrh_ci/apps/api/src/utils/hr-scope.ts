@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import { getRequestHab } from '../plugins/auth.js'
-import { hrScopeSql } from '../services/habilitation.service.js'
+import { hrScopeSql, type HabContext } from '../services/habilitation.service.js'
 import { pool } from '../db/pool.js'
 import { assertValidSchemaName } from './schema-name.js'
 import { periodVisibilitySql } from './period-visibility.js'
@@ -185,4 +185,15 @@ export async function periodVisibleToRequest(request: FastifyRequest, periodId: 
   assertValidSchemaName(schema)
   const r = await pool.query(`SELECT 1 FROM "${schema}".pay_periods pp WHERE pp.id = $1 AND ${vis} LIMIT 1`, [periodId])
   return (r.rowCount ?? r.rows.length) > 0
+}
+
+/**
+ * Contexte de masquage des données sensibles pour la requête courante : null
+ * (rien n'est masqué) pour l'admin du tenant et pour le self-service (rôle
+ * effectif employee : son propre dossier) ; sinon le contexte d'habilitation
+ * (lui-même null sans affectation / tenant non contrôlé). Voir maskSensitive.
+ */
+export async function requestSensitiveCtx(request: FastifyRequest): Promise<HabContext | null> {
+  if (request.user.role === 'admin' || request.user.role === 'employee') return null
+  return getRequestHab(request)
 }

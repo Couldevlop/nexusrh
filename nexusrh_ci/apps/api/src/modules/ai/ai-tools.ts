@@ -25,6 +25,8 @@ export interface AiToolContext {
    * données employés qu'à travers lui ('TRUE' = périmètre ouvert).
    */
   hrScope: (alias: string) => string
+  /** Habilitations : vrai = montants de paie masqués (pas de case données sensibles). */
+  maskSensitive?: boolean
 }
 
 // Format Anthropic Messages API (structurel — compatible Anthropic.Messages.Tool)
@@ -171,8 +173,9 @@ export async function executeAiTool(
             validated: r.status === 'closed',
             closedAt: r.closed_at,
             closedBy: r.closed_by_name,
-            totalGrossFcfa: r.total_gross ? Number(r.total_gross) : null,
-            totalNetFcfa:   r.total_net ? Number(r.total_net) : null,
+            totalGrossFcfa: !ctx.maskSensitive && r.total_gross ? Number(r.total_gross) : null,
+            totalNetFcfa:   !ctx.maskSensitive && r.total_net ? Number(r.total_net) : null,
+            ...(ctx.maskSensitive ? { maskedFields: ['totalGrossFcfa', 'totalNetFcfa'] } : {}),
           })),
           note: "status 'closed' = paie validée et clôturée ; 'open' = en cours",
         }
