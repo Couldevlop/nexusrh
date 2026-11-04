@@ -27,6 +27,10 @@ export function habilitationTableStatements(schemaName: string): string[] {
     // Une entité légale appartient à un seul sous-groupe.
     `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_hab_subgroups_entity_uniq"
        ON ${s}.hab_subgroups(legal_entity_id)`,
+    // Un seul sous-groupe siège (filet face à la concurrence : la création du
+    // siège par la reprise reste idempotente même sans verrou).
+    `CREATE UNIQUE INDEX IF NOT EXISTS "${schemaName}_hab_subgroups_siege_uniq"
+       ON ${s}.hab_subgroups(kind) WHERE kind = 'siege'`,
     `CREATE TABLE IF NOT EXISTS ${s}.hab_fiches (
       id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       number          varchar(20) NOT NULL UNIQUE,

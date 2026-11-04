@@ -79,6 +79,27 @@ export function auditTenant(schema: string, entry: AuditEntry): void {
     .catch(() => { /* tenant sans table audit_log : non bloquant */ })
 }
 
+/**
+ * Écrit dans la piste d'audit d'un TENANT sur la connexion `db` fournie, donc
+ * DANS la transaction de l'appelant : un ROLLBACK emporte aussi l'entrée (pas
+ * de fausse trace d'une opération annulée). Un point de sauvegarde isole un
+ * échec propre à l'audit (table absente) : il ne casse jamais la transaction.
+ */
+export async function auditTenantInTx(
+  db: { query(sql: string, params?: unknown[]): Promise<unknown> },
+  schema: string,
+  entry: AuditEntry,
+): Promise<void> {
+  if (!isValidSchemaName(schema)) return
+  try {
+    await db.query('SAVEPOINT audit_tx')
+    await db.query(TENANT_SQL.replace('%SCHEMA%', schema), values(entry))
+    await db.query('RELEASE SAVEPOINT audit_tx')
+  } catch {
+    await db.query('ROLLBACK TO SAVEPOINT audit_tx').catch(() => undefined)
+  }
+}
+
 /** Écrit dans la piste d'audit de la PLATEFORME (schéma `platform`). */
 export function auditPlatform(entry: AuditEntry): void {
   pool

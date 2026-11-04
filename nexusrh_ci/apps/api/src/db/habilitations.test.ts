@@ -20,6 +20,10 @@ describe('habilitationTableStatements', () => {
     expect(sql.some((s) => /UNIQUE INDEX IF NOT EXISTS[\s\S]*hab_subgroups\(legal_entity_id\)/.test(s))).toBe(true)
   })
 
+  it('pose l\'index unique partiel : un seul sous-groupe siège', () => {
+    expect(sql.some((s) => /UNIQUE INDEX IF NOT EXISTS[\s\S]*hab_subgroups\(kind\)\s+WHERE kind = 'siege'/.test(s))).toBe(true)
+  })
+
   it('amorce les 4 règles SoD par défaut de façon idempotente', () => {
     const ins = sql.filter((s) => s.includes('INSERT INTO "tenant_x".hab_sod_rules'))
     expect(ins.length).toBeGreaterThan(0)

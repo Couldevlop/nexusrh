@@ -2,12 +2,14 @@
  * Habilitations RH — structure par défaut et reprise d'office des tenants existants.
  *
  *  - `ensureHabilitationStructure` : groupe « DRH Groupe », sous-groupe « RH Siège »
- *    et un sous-groupe « RH Filiale <nom> » par filiale active non siège. Idempotent.
+ *    et un sous-groupe « RH Filiale <nom> » par filiale active non siège. Idempotent,
+ *    rejoué à CHAQUE ensureTenantSchema (les filiales créées par script, hors route,
+ *    obtiennent ainsi leur sous-groupe).
  *  - `bootstrapExistingUsers` : affecte les utilisateurs RH actifs sans affectation
- *    avec les droits que leur rôle leur donnait jusque-là (aucune régression le jour
- *    où le tenant est basculé en `habilitations_enforced`).
+ *    avec les droits que leur rôle leur donne AUJOURD'HUI, route par route : le jour
+ *    de l'activation, rien ne change (invariant : takeover-fidelity.test.ts).
  *  - `runHabilitationBootstrap` : orchestration appelée par la migration lazy
- *    (ensureTenantSchema) — une seule fois par tenant, grâce au marqueur
+ *    (ensureTenantSchema) — reprise une seule fois par tenant, grâce au marqueur
  *    `platform.tenants.hab_bootstrapped_at` posé dans la MÊME transaction.
  *
  * Jamais exécuté par le seed (aucun corps de seed en prod) : la reprise passe
@@ -16,7 +18,7 @@
 import type { QueryResultRow } from 'pg'
 import { pool } from './pool.js'
 import { assertValidSchemaName } from '../utils/schema-name.js'
-import { auditTenant } from '../utils/audit-log.js'
+import { auditTenant, auditTenantInTx } from '../utils/audit-log.js'
 import { HAB_GRID, isPermission, type HabAction, type HabFunction } from '../modules/habilitations/catalog.js'
 
 export const HAB_GROUP_NAME = 'DRH Groupe'
@@ -31,58 +33,74 @@ export interface HabDb {
   ): Promise<{ rows: R[]; rowCount: number | null }>
 }
 
-type BootstrapRole = 'hr_manager' | 'hr_officer' | 'raf_site'
+export type BootstrapRole = 'hr_manager' | 'hr_officer' | 'raf_site'
 
 const A = (fn: HabFunction, actions: readonly HabAction[]): string[] => actions.map((a) => `${fn}:${a}`)
 const ALL = (fn: HabFunction): string[] => A(fn, HAB_GRID[fn])
 
 /**
- * Droits par défaut d'un rôle RH, dérivés de la matrice RBAC de CLAUDE.md et des
- * rôles réellement autorisés sur les routes. Toutes les clés existent dans le
- * catalogue (vérifié par le test). `sensitive_data` / `all_entities` ne figurent
- * PAS ici : ils sont ajoutés par `bootstrapExistingUsers` selon rôle et rattachement.
+ * Droits par défaut d'un rôle RH = l'accès EFFECTIF d'aujourd'hui, route par route
+ * (authorize() historique), exprimé en cases de la grille. Les routes qui
+ * partageaient une case avec un rôle moins large ont été rangées dans une case
+ * dédiée (route-permissions.ts, « Routes réservées au DRH ») : la reprise ne
+ * crée AUCUN gain d'accès. Chaque clé existe dans le catalogue (test + garde).
+ * `sensitive_data` / `all_entities` sont ajoutés par `takeoverPermissions`.
  */
 export const ROLE_DEFAULT_PERMISSIONS: Record<BootstrapRole, string[]> = {
-  // DRH : RW partout sauf paramétrage tenant et utilisateurs (admin seul).
+  // DRH : toutes les cases (paramétrage RH et de la paie compris).
   hr_manager: [
     ...ALL('employees'), ...ALL('contracts'), ...ALL('absences'), ...ALL('attendance'),
-    ...A('payroll', ['view', 'create', 'update', 'validate', 'close', 'export']),
-    ...ALL('payroll_multi'), ...ALL('declarations'), ...ALL('payments'), ...ALL('expenses'),
-    ...ALL('recruitment'), ...ALL('lifecycle'), ...ALL('discipline'), ...ALL('training'),
-    ...ALL('talent'), ...ALL('climate'), ...ALL('signature'), ...ALL('reporting'),
-    ...A('hr_settings', ['view', 'update']),
+    ...ALL('payroll'), ...ALL('payroll_multi'), ...ALL('declarations'), ...ALL('payments'),
+    ...ALL('expenses'), ...ALL('recruitment'), ...ALL('lifecycle'), ...ALL('discipline'),
+    ...ALL('training'), ...ALL('talent'), ...ALL('climate'), ...ALL('signature'),
+    ...ALL('reporting'), ...ALL('hr_settings'),
   ],
-  // Gestionnaire RH : saisie et consultation, ni clôture, ni suppression, ni paiement,
-  // ni validation de paie.
+  // Gestionnaire RH : exactement les routes qu'il ouvre aujourd'hui (il approuve /
+  // rejette absences, notes de frais, paie et paie multi-filiales ; il clôture la
+  // paie multi-filiales ; il supprime talents et inscriptions de formation).
   hr_officer: [
-    ...A('employees', ['view', 'create', 'update', 'export']),
-    ...A('contracts', ['view']),
-    ...A('absences', ['view', 'create', 'update']),
+    ...A('absences', ['view', 'validate']),
     ...A('attendance', ['view', 'create', 'update']),
-    ...A('payroll', ['view', 'export']),
-    ...A('payroll_multi', ['view']),
+    ...A('climate', ['view', 'create', 'update']),
+    ...A('contracts', ['view', 'create', 'update', 'export']),
     ...A('declarations', ['view', 'export']),
-    ...A('expenses', ['view', 'create', 'update']),
-    ...A('recruitment', ['view', 'create', 'update', 'export']),
-    ...A('lifecycle', ['view', 'create', 'update', 'export']),
     ...A('discipline', ['view', 'create', 'update']),
-    ...A('training', ['view', 'create', 'update', 'export']),
-    ...A('talent', ['view', 'create', 'update', 'export']),
-    ...A('climate', ['view', 'create', 'update', 'export']),
-    ...A('signature', ['view', 'create', 'update']),
-    ...A('reporting', ['view', 'export']),
+    ...A('employees', ['view', 'create', 'update', 'export']),
+    ...A('expenses', ['view', 'create', 'update', 'validate']),
     ...A('hr_settings', ['view']),
+    ...A('lifecycle', ['view', 'create', 'update']),
+    ...A('payroll', ['view', 'create', 'validate', 'export']),
+    ...A('payroll_multi', ['view', 'validate', 'close']),
+    ...A('recruitment', ['view', 'create', 'update']),
+    ...A('reporting', ['view', 'export']),
+    ...A('signature', ['view', 'create', 'update']),
+    ...A('talent', ['view', 'create', 'update', 'delete']),
+    ...A('training', ['view', 'create', 'delete']),
   ],
-  // RAF de site : paie centralisée multi-filiales de sa filiale.
-  raf_site: ['payroll_multi:view', 'payroll_multi:update', 'payroll_multi:close', 'payroll_multi:validate'],
+  // RAF de site : variables, état de préparation et soumission de SA paie. Ni
+  // clôture, ni validation centrale, ni approbation (séparation des tâches : un
+  // RAF ne valide jamais sa propre soumission).
+  raf_site: ['payroll_multi:view', 'payroll_multi:update'],
 }
 
 /** Rôles pour lesquels la reprise ajoute `sensitive_data`. */
 const SENSITIVE_ROLES: readonly BootstrapRole[] = ['hr_manager', 'raf_site']
-/** Rôles du siège qui voyaient toutes les filiales avant la grille. */
+/**
+ * Rôles qui voient tout le tenant aujourd'hui => `all_entities`. Le gestionnaire
+ * RH n'a pas `sensitive_data` explicite : il l'obtient de toute façon par les
+ * cases payroll/declarations (SENSITIVE_IMPLIED), ce qui reproduit l'existant.
+ */
 const ALL_ENTITIES_ROLES: readonly BootstrapRole[] = ['hr_manager', 'hr_officer']
 
-/** Garde-fou : une clé de table absente du catalogue ne doit jamais être écrite. */
+/** Droits écrits à la reprise pour un rôle (cases + extras). */
+export function takeoverPermissions(role: BootstrapRole): string[] {
+  const perms = [...ROLE_DEFAULT_PERMISSIONS[role]]
+  if (SENSITIVE_ROLES.includes(role)) perms.push('sensitive_data')
+  if (ALL_ENTITIES_ROLES.includes(role)) perms.push('all_entities')
+  return perms
+}
+
+/** Garde-fou : une clé absente du catalogue ne doit jamais être écrite. */
 function assertCatalog(perms: readonly string[]): void {
   for (const p of perms) {
     if (!isPermission(p)) throw new Error(`Permission hors catalogue : ${p}`)
@@ -103,7 +121,8 @@ async function ensureSiegeSubgroup(db: HabDb, schema: string, groupId: string): 
   await db.query(
     `INSERT INTO "${schema}".hab_subgroups (group_id, name, kind)
      SELECT $1::uuid, $2, 'siege'
-      WHERE NOT EXISTS (SELECT 1 FROM "${schema}".hab_subgroups WHERE kind = 'siege')`,
+      WHERE NOT EXISTS (SELECT 1 FROM "${schema}".hab_subgroups WHERE kind = 'siege')
+     ON CONFLICT DO NOTHING`,
     [groupId, HAB_SIEGE_NAME],
   )
   const res = await db.query<{ id: string }>(
@@ -117,8 +136,9 @@ async function ensureSiegeSubgroup(db: HabDb, schema: string, groupId: string): 
 /**
  * Crée la structure par défaut : DRH Groupe, RH Siège, et un « RH Filiale <nom> »
  * par filiale active qui n'est pas le siège social (le siège est couvert par
- * « RH Siège »). Idempotent : unicité de `legal_entity_id` et du nom de groupe.
- * `db` permet de l'exécuter dans une transaction existante.
+ * « RH Siège »). Idempotent : unicité de `legal_entity_id`, du nom de groupe et
+ * (index partiel) du sous-groupe siège. `db` permet de l'exécuter dans une
+ * transaction existante.
  */
 export async function ensureHabilitationStructure(schema: string, db: HabDb = pool): Promise<void> {
   assertValidSchemaName(schema)
@@ -138,13 +158,24 @@ interface CandidateRow extends QueryResultRow {
   id: string
   role: BootstrapRole
   entity_id: string | null
+  raf_entities: number
 }
 
 /**
  * Reprise : affecte les utilisateurs RH actifs sans affectation avec les droits
- * que leur rôle leur donnait. Renvoie le nombre de personnes affectées.
- * Sous-groupe : filiale du `raf_site` (entité dont il est RAF, ou période de paie
- * dont il est RAF) ou de la fiche employé ; sinon (ou si filiale siège) « RH Siège ».
+ * que leur rôle leur donne aujourd'hui. Renvoie le nombre de personnes affectées.
+ *
+ *  - hr_manager / hr_officer : TOUJOURS « RH Siège » avec `all_entities` (le seul
+ *    sous-groupe où ce droit s'exerce, spec §5.4) : ils voient tout le tenant
+ *    aujourd'hui, la reprise ne les cantonne donc pas. Les restreindre à une
+ *    filiale est une décision explicite de l'admin après l'activation.
+ *  - raf_site : sous-groupe de SA filiale (entité dont il est RAF, ou période de
+ *    paie dont il est RAF, ou fiche employé) ; filiale siège ou inconnue => RH Siège.
+ *    Une seule affectation par utilisateur (index unique) : un RAF de plusieurs
+ *    filiales est rattaché à la première et journalisé (`multiEntityRaf`).
+ *
+ * L'audit `habilitation.bootstrap` est écrit sur la même connexion (donc annulé
+ * avec la transaction) et ne contient que des nombres et des identifiants.
  */
 export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): Promise<number> {
   assertValidSchemaName(schema)
@@ -165,7 +196,14 @@ export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): 
               (SELECT e.legal_entity_id FROM "${schema}".employees e
                 WHERE e.id = u.employee_id OR e.user_id = u.id
                 ORDER BY (e.id = u.employee_id) DESC LIMIT 1)
-            )::text AS entity_id
+            )::text AS entity_id,
+            CASE WHEN u.role = 'raf_site' THEN (
+              SELECT count(*)::int FROM (
+                SELECT le.id FROM "${schema}".legal_entities le WHERE le.raf_user_id = u.id AND le.is_active = true
+                UNION
+                SELECT pp.legal_entity_id FROM "${schema}".pay_periods pp WHERE pp.raf_user_id = u.id AND pp.legal_entity_id IS NOT NULL
+              ) x
+            ) ELSE 0 END AS raf_entities
        FROM "${schema}".users u
       WHERE u.is_active = true
         AND u.role IN ('hr_manager', 'hr_officer', 'raf_site')
@@ -175,10 +213,12 @@ export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): 
 
   const ceilings = new Map<string, Set<string>>()
   const assignedIds: string[] = []
+  const skippedIds: string[] = []
+  const multiRafIds: string[] = []
   for (const u of cand.rows) {
     let subgroupId = siegeId
-    const isSiege = u.entity_id === null || headIds.has(u.entity_id)
-    if (!isSiege && u.entity_id) {
+    const wantsEntity = u.role === 'raf_site' && u.entity_id !== null && !headIds.has(u.entity_id)
+    if (wantsEntity && u.entity_id) {
       // Sous-groupe de la filiale, créé au besoin (filiale inactive, créée hors route…).
       await db.query(
         `INSERT INTO "${schema}".hab_subgroups (group_id, name, kind, legal_entity_id)
@@ -192,12 +232,16 @@ export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): 
         [u.entity_id],
       )
       const found = sg.rows[0]?.id
-      if (!found) continue // filiale disparue : on n'élargit jamais vers le siège
+      if (!found) {
+        // Filiale disparue : on n'élargit jamais vers le siège. L'utilisateur reste
+        // en accès hérité ; il est compté, journalisé et listé dans l'audit.
+        skippedIds.push(u.id)
+        continue
+      }
       subgroupId = found
+      if (u.raf_entities > 1) multiRafIds.push(u.id)
     }
-    const perms = [...ROLE_DEFAULT_PERMISSIONS[u.role]]
-    if (SENSITIVE_ROLES.includes(u.role)) perms.push('sensitive_data')
-    if (isSiege && ALL_ENTITIES_ROLES.includes(u.role)) perms.push('all_entities')
+    const perms = takeoverPermissions(u.role)
     assertCatalog(perms)
     const ins = await db.query(
       `INSERT INTO "${schema}".hab_assignments (user_id, subgroup_id, permissions, source)
@@ -223,14 +267,25 @@ export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): 
     )
   }
 
-  if (assignedIds.length > 0) {
-    // Audit : nombre et identifiants uniquement, aucune donnée personnelle.
-    auditTenant(schema, {
+  if (skippedIds.length > 0) {
+    console.warn(`[habilitations] reprise du tenant ${schema} : ${skippedIds.length} utilisateur(s) ignoré(s), filiale introuvable`)
+  }
+  if (multiRafIds.length > 0) {
+    console.warn(`[habilitations] reprise du tenant ${schema} : ${multiRafIds.length} RAF de plusieurs filiales rattaché(s) à la première`)
+  }
+  if (assignedIds.length > 0 || skippedIds.length > 0) {
+    // Audit : nombres et identifiants uniquement, aucune donnée personnelle.
+    await auditTenantInTx(db, schema, {
       userId: null,
       action: 'habilitation.bootstrap',
       entity: 'habilitation',
       entityId: null,
-      changes: { count: assignedIds.length, userIds: assignedIds },
+      changes: {
+        count: assignedIds.length,
+        userIds: assignedIds,
+        skipped: skippedIds,
+        ...(multiRafIds.length > 0 ? { multiEntityRaf: multiRafIds } : {}),
+      },
       ip: null,
     })
   }
@@ -240,26 +295,28 @@ export async function bootstrapExistingUsers(schema: string, db: HabDb = pool): 
 /**
  * Orchestration de la migration lazy. Ne lève JAMAIS : une erreur est journalisée
  * et le marqueur n'est pas posé (nouvelle tentative au prochain démarrage).
- *  1. colonne marqueur (idempotent) ; marqueur déjà posé => rien à faire ;
- *  2. structure (transaction propre, committée même si la reprise échoue) ;
- *  3. reprise + marqueur dans UNE transaction.
+ *  1. structure : à CHAQUE appel, transaction propre sous verrou consultatif ;
+ *  2. marqueur `hab_bootstrapped_at` déjà posé => fin ;
+ *  3. reprise + marqueur + audit dans UNE transaction (verrou, relecture du marqueur).
+ * La colonne du marqueur est créée par ensurePlatformSchema / createPlatformSchema
+ * (pas d'ALTER dans ce chemin : verrou exclusif sur la table la plus lue).
  */
 export async function runHabilitationBootstrap(schema: string): Promise<void> {
   try {
     assertValidSchemaName(schema)
-    await pool.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS hab_bootstrapped_at timestamptz`)
-    const mark = await pool.query<{ done: boolean }>(
-      `SELECT (hab_bootstrapped_at IS NOT NULL) AS done FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
-      [schema],
-    )
-    if (mark.rows[0]?.done === true) return
-
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`hab_bootstrap:${schema}`])
       await ensureHabilitationStructure(schema, client)
       await client.query('COMMIT')
+
+      const mark = await client.query<{ done: boolean }>(
+        `SELECT (hab_bootstrapped_at IS NOT NULL) AS done FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+        [schema],
+      )
+      if (mark.rows[0]?.done === true) return
+
       await client.query('BEGIN')
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`hab_bootstrap:${schema}`])
       // Relecture sous verrou : une instance concurrente a pu terminer entre-temps.
@@ -290,6 +347,48 @@ export async function runHabilitationBootstrap(schema: string): Promise<void> {
 export async function provisionHabilitationStructure(schema: string, db: HabDb = pool): Promise<void> {
   assertValidSchemaName(schema)
   await ensureHabilitationStructure(schema, db)
-  await db.query(`ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS hab_bootstrapped_at timestamptz`)
   await db.query(`UPDATE platform.tenants SET hab_bootstrapped_at = now() WHERE schema_name = $1`, [schema])
+}
+
+/** Rôles dont l'accès passe par la grille d'habilitations. */
+const GRID_ROLES: readonly string[] = ['hr_manager', 'hr_officer', 'raf_site']
+
+/**
+ * Changement de rôle : un utilisateur qui quitte hr_manager / hr_officer /
+ * raf_site perd son affectation active (revoked_at) — sinon, une fois le tenant
+ * activé, la grille continuerait à lui ouvrir des routes RH. Audit
+ * `habilitation.revoked` (raison `role_changed`, identifiants seulement).
+ * Non bloquant : tables d'habilitation absentes => rien à révoquer.
+ */
+export async function revokeHabilitationOnRoleChange(
+  schema: string,
+  userId: string,
+  newRole: string,
+  actorId: string | null,
+  ip: string | null,
+  db: HabDb = pool,
+): Promise<boolean> {
+  assertValidSchemaName(schema)
+  if (GRID_ROLES.includes(newRole)) return false
+  try {
+    const res = await db.query<{ id: string }>(
+      `UPDATE "${schema}".hab_assignments SET revoked_at = now()
+        WHERE user_id = $1::uuid AND revoked_at IS NULL
+        RETURNING id::text AS id`,
+      [userId],
+    )
+    if (res.rows.length === 0) return false
+    auditTenant(schema, {
+      userId: actorId,
+      action: 'habilitation.revoked',
+      entity: 'habilitation',
+      entityId: userId,
+      changes: { reason: 'role_changed', newRole, assignmentIds: res.rows.map((r) => r.id) },
+      ip,
+    })
+    return true
+  } catch (err) {
+    console.error(`[habilitations] révocation au changement de rôle échouée (${schema}) :`, (err as Error).message)
+    return false
+  }
 }
