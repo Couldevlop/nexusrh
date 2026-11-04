@@ -36,7 +36,7 @@ import {
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import {
-  requestHrScope, employeeInHrScope, legalEntityInHrScope, periodHasOutOfScopeSlips, SHARED_PERIOD_ERROR,
+  requestHrScope, employeeInHrScope, legalEntityInHrScope, periodHasOutOfScopeSlips, periodVisibleToRequest, SHARED_PERIOD_ERROR,
 } from '../../utils/hr-scope.js'
 import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
@@ -1196,7 +1196,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant de période invalide' })
       try {
         const parent = await loadMultiParent(schema, id)
-        if (!parent) return reply.status(404).send({ error: 'Période parente introuvable' })
+        if (!parent || !(await periodVisibleToRequest(request, id))) {
+          return reply.status(404).send({ error: 'Période parente introuvable' })
+        }
         const period = asValidationPeriod(parent)
         const view = await buildPayrollCircuitView(pool, schema, period, request.user)
         const initiator = period.initiated_by
@@ -1257,6 +1259,11 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           [id],
         )
         const children = childrenRes.rows
+        // Habilitations : un RH restreint sans déclinaison dans son périmètre ne voit pas ce draft.
+        const timelineScope = await requestHrScope(request, 'e')
+        if (timelineScope !== 'TRUE' && children.length === 0) {
+          return reply.status(404).send({ error: 'Draft de paie introuvable (période parente attendue)' })
+        }
 
         // OWASP A01 — un RAF ne peut suivre que les drafts qui le concernent
         if (request.user.role === 'raf_site') {
@@ -1300,7 +1307,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             actorName,
             at: e.created_at,
             filiale,
-            detail: ch,
+            // Restreint : les événements de la parente portent des montants consolidés
+            // (toutes filiales, ex. validate_central) -> détail retiré.
+            detail: timelineScope !== 'TRUE' && e.entity_id === parent.id ? {} : ch,
           }
         })
 

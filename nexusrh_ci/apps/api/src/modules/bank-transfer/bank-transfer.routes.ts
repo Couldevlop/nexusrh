@@ -80,6 +80,24 @@ async function fetchTransfers(schema: string, month: string, bank: string, scope
   }))
 }
 
+/**
+ * Habilitations : existe-t-il, pour (mois, banque), un virement d'un salarié HORS périmètre ?
+ * Sert à refuser l'envoi (irrévocable) d'un fichier partiel. Aucune requête en périmètre ouvert.
+ */
+async function hasForeignTransfers(schema: string, month: string, bank: string, scopeSql: string): Promise<boolean> {
+  if (scopeSql === 'TRUE') return false
+  const r = await rawPool.query(
+    `SELECT 1 FROM "${schema}".pay_slips ps
+       JOIN "${schema}".employees e ON e.id = ps.employee_id
+      WHERE ps.month = $1 AND e.payment_method = 'bank_transfer'
+        AND e.bank_name = $2 AND e.iban IS NOT NULL AND e.iban <> ''
+        AND NOT COALESCE((${scopeSql}), false)
+      LIMIT 1`,
+    [month, bank],
+  )
+  return (r.rowCount ?? r.rows.length) > 0
+}
+
 /** Gabarit Excel historique — repli quand la banque n'a pas de profil actif. */
 async function buildLegacyXlsx(bank: string, month: string, rows: BankFileRow[], tenantName: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
@@ -327,9 +345,18 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantFrom = mail?.from
       const tenantSmtp = mail?.smtp ?? null
 
+      // Habilitations : l'envoi à la banque est irrévocable ; un RH restreint ne l'envoie pas si la
+      // période contient des virements d'autres filiales (le fichier serait partiel). Refus avant tout envoi.
+      const sendScope = await requestHrScope(request, 'e')
+      for (const b of banks) {
+        if (await hasForeignTransfers(schema, month, b.name, sendScope)) {
+          return reply.status(409).send({ error: 'La période contient des salariés hors de votre périmètre' })
+        }
+      }
+
       const results: Array<{ bank: string; count: number; total: number; sent: boolean; templateVersion?: number | null; error?: string }> = []
       for (const b of banks) {
-        const rows = await fetchTransfers(schema, month, b.name, await requestHrScope(request, 'e'))
+        const rows = await fetchTransfers(schema, month, b.name, sendScope)
         if (rows.length === 0) { results.push({ bank: b.name, count: 0, total: 0, sent: false, error: 'Aucun virement' }); continue }
         const total = rows.reduce((s, r) => s + r.netPayable, 0)
         try {
@@ -637,8 +664,9 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const sample = allRows.slice(0, PREVIEW_ROWS)
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
       const dir = await loadDirectory(schema, row.bank_name)
-      // Le total et le nombre de lignes restent ceux de la paie ENTIÈRE : c'est
-      // ce que la banque recevra, l'aperçu ne doit pas laisser croire l'inverse.
+      // Le total et le nombre de lignes portent sur les virements de l'utilisateur
+      // (périmètre filiale) : un RH restreint ne voit que sa part ; l'envoi à la banque
+      // (POST /send) est refusé en 409 si la période contient d'autres filiales.
       const ctx = buildContext(row.bank_name, parsed.data.month, tenant.rows[0]?.name ?? 'NexusRH CI', dir, allRows)
 
       const table = previewTable(row.spec, sample, ctx)

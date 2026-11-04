@@ -16,7 +16,7 @@ import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import {
-  requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, countEmployeesOutOfScope, periodHasOutOfScopeSlips, SHARED_PERIOD_ERROR,
+  requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope, countEmployeesOutOfScope, periodHasOutOfScopeSlips, requestPeriodVisibility, SHARED_PERIOD_ERROR,
 } from '../../utils/hr-scope.js'
 import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
@@ -367,6 +367,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: bodyParsed.error.flatten() })
       }
       const { legalEntityId } = bodyParsed.data
+      // Habilitations : filiale demandée hors périmètre = introuvable (avant tout 422/409/écriture).
+      if (legalEntityId && !(await legalEntityInHrScope(schema, legalEntityId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+      }
 
       const tenantRes = await rawPool.query<{
         id: string; has_subsidiaries: boolean; at_rate: string
@@ -675,7 +679,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
                   ui.last_name  AS initiator_last_name
              FROM "${schema}".pay_periods p
              LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
-             WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
+             WHERE p.month = $1 AND p.parent_period_id IS NULL AND ${await requestPeriodVisibility(request, 'p')} LIMIT 1`,
           [month],
         )
         if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
@@ -1289,35 +1293,37 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const scopeSql = await requestHrScope(request, 'e')
+      const visibility = await requestPeriodVisibility(request, 'pp')
       const res = await rawPool.query<PeriodForValidation & Record<string, unknown>>(
         scopeSql === 'TRUE'
           ? `SELECT * FROM "${schema}".pay_periods ORDER BY month DESC`
-          // Habilitations : une période n'est visible que si elle est vide (en
-          // préparation) ou porte au moins un bulletin du périmètre.
-          : `SELECT pp.* FROM "${schema}".pay_periods pp
-              WHERE NOT EXISTS (SELECT 1 FROM "${schema}".pay_slips s WHERE s.period_id = pp.id)
-                 OR EXISTS (SELECT 1 FROM "${schema}".pay_slips ps
-                              JOIN "${schema}".employees e ON e.id = ps.employee_id
-                             WHERE ps.period_id = pp.id AND ${scopeSql})
-              ORDER BY pp.month DESC`
+          // Habilitations : seules les périodes portant un bulletin du périmètre (ou vides et
+          // rattachées à une filiale du périmètre) sont listées : ni statut ni clôtureur d'ailleurs.
+          : `SELECT pp.* FROM "${schema}".pay_periods pp WHERE ${visibility} ORDER BY pp.month DESC`
       )
-      if (scopeSql !== 'TRUE' && res.rows.length > 0) {
-        // Les totaux de la période sont recalculés sur les seuls bulletins du périmètre.
+      if (scopeSql !== 'TRUE') {
+        // Totaux recalculés sur les SEULS bulletins du périmètre, déclinaisons filiales
+        // comprises (une parente n'a pas de bulletin direct) ; jamais les totaux stockés.
         const tot = await rawPool.query<{
           period_id: string; gross: string; net: string; cnps: string; its: string
         }>(
-          `SELECT ps.period_id, SUM(ps.gross_salary) AS gross, SUM(ps.net_payable) AS net,
+          `SELECT pp.id AS period_id, SUM(ps.gross_salary) AS gross, SUM(ps.net_payable) AS net,
                   SUM(COALESCE(ps.total_cnps_sal,0) + COALESCE(ps.total_cnps_pat,0)) AS cnps, SUM(COALESCE(ps.its,0)) AS its
-             FROM "${schema}".pay_slips ps
+             FROM "${schema}".pay_periods pp
+             JOIN "${schema}".pay_periods c ON c.id = pp.id OR c.parent_period_id = pp.id
+             JOIN "${schema}".pay_slips ps ON ps.period_id = c.id
              JOIN "${schema}".employees e ON e.id = ps.employee_id
-            WHERE ps.period_id = ANY($1::uuid[]) AND ${scopeSql}
-            GROUP BY ps.period_id`,
+            WHERE pp.id = ANY($1::uuid[]) AND ${scopeSql}
+            GROUP BY pp.id`,
           [res.rows.map(r => String(r.id))],
         )
         const byPeriod = new Map(tot.rows.map(t => [String(t.period_id), t]))
         for (const row of res.rows) {
           const t = byPeriod.get(String(row.id))
-          if (t) { row.total_gross = t.gross; row.total_net = t.net; row.total_cnps = t.cnps; row.total_its = t.its }
+          row.total_gross = t ? t.gross : null
+          row.total_net = t ? t.net : null
+          row.total_cnps = t ? t.cnps : null
+          row.total_its = t ? t.its : null
         }
       }
       // Valideur attendu (nom + fonction + échéance) des périodes en validation

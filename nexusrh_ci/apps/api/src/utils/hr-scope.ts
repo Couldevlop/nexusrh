@@ -3,6 +3,7 @@ import { getRequestHab } from '../plugins/auth.js'
 import { hrScopeSql } from '../services/habilitation.service.js'
 import { pool } from '../db/pool.js'
 import { assertValidSchemaName } from './schema-name.js'
+import { periodVisibilitySql } from './period-visibility.js'
 
 /**
  * Fragment SQL de périmètre filiale (habilitations RH) pour la requête courante,
@@ -14,8 +15,7 @@ import { assertValidSchemaName } from './schema-name.js'
  * fermé par défaut (aucune donnée servie).
  */
 export async function requestHrScope(request: FastifyRequest, alias: string): Promise<string> {
-  if (request.user.role === 'admin') return 'TRUE'
-  return hrScopeSql(request.user.schemaName, alias, await getRequestHab(request))
+  return (await requestHrScopeFactory(request))(alias)
 }
 
 /**
@@ -79,8 +79,8 @@ export async function requestEmployeeScope(request: FastifyRequest, employeeIdCo
  * son fragment. Admin du tenant : toujours 'TRUE'.
  */
 export async function requestHrScopeFactory(request: FastifyRequest): Promise<(alias: string) => string> {
-  if (request.user.role === 'admin') return () => 'TRUE'
-  const hab = await getRequestHab(request)
+  // Admin du tenant : hors grille (hab null => 'TRUE'). Source unique de la règle.
+  const hab = request.user.role === 'admin' ? null : await getRequestHab(request)
   const schema = request.user.schemaName
   return (alias: string) => hrScopeSql(schema, alias, hab)
 }
@@ -171,4 +171,18 @@ export async function declarationScope(request: FastifyRequest, alias: string): 
     SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${alias}.data) = 'array' THEN ${alias}.data ELSE '[]'::jsonb END) x
       LEFT JOIN "${schema}".employees hs ON hs.id::text = x->>'employee_id'
      WHERE NOT COALESCE((${emp}), false)))`
+}
+
+export async function requestPeriodVisibility(request: FastifyRequest, alias: string): Promise<string> {
+  return periodVisibilitySql(request.user.schemaName, alias, await requestHrScopeFactory(request))
+}
+
+/** Garde par id : la période est-elle visible de l'utilisateur ? (aucune requête en périmètre ouvert) */
+export async function periodVisibleToRequest(request: FastifyRequest, periodId: string): Promise<boolean> {
+  const vis = await requestPeriodVisibility(request, 'pp')
+  if (vis === 'TRUE') return true
+  const schema = request.user.schemaName
+  assertValidSchemaName(schema)
+  const r = await pool.query(`SELECT 1 FROM "${schema}".pay_periods pp WHERE pp.id = $1 AND ${vis} LIMIT 1`, [periodId])
+  return (r.rowCount ?? r.rows.length) > 0
 }
