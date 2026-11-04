@@ -15,6 +15,7 @@ import {
   SEPARATOR_KEYS, buildSageCsv, exportFilename, isMultiEntityTenant, resolveSeparator, sageColumnsFor,
 } from './sage.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { requestHrScope } from '../../utils/hr-scope.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
@@ -145,7 +146,8 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
       const cfg = await loadConfig(schema)
       const matricule = cfg.matricule_source === 'id' ? 'e.id::text' : `COALESCE(e.employee_number, e.id::text)`
       const params: unknown[] = []
-      let where = `WHERE e.is_active = true`
+      // Habilitations : l'export ne contient que les salariés du périmètre filiale.
+      let where = `WHERE e.is_active = true AND ${await requestHrScope(request, 'e')}`
       if (filter.legalEntityId) { params.push(filter.legalEntityId); where += ` AND e.legal_entity_id = $${params.length}::uuid` }
       const res = await rawPool.query(
         `SELECT ${matricule} AS matricule, e.last_name, e.first_name, e.birth_date, e.gender, e.hire_date,
@@ -179,7 +181,7 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
       // Filiale de la période (paie multi-filiales), à défaut celle du salarié.
       const entityExpr = `COALESCE(pp.legal_entity_id, e.legal_entity_id)`
       const params: unknown[] = [period]
-      let where = `WHERE pp.month = $1`
+      let where = `WHERE pp.month = $1 AND ${await requestHrScope(request, 'e')}`
       if (filter.legalEntityId) { params.push(filter.legalEntityId); where += ` AND ${entityExpr} = $${params.length}::uuid` }
       const res = await rawPool.query(
         `SELECT ${matricule} AS matricule, pp.month, ve.rule_code, ve.label, ve.amount, ${ENTITY_FIELDS}
@@ -212,7 +214,7 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
       // Filiale portée par le bulletin (figée à la paie), à défaut celle du salarié.
       const entityExpr = `COALESCE(ps.legal_entity_id, e.legal_entity_id)`
       const params: unknown[] = [period]
-      let where = `WHERE ps.month = $1`
+      let where = `WHERE ps.month = $1 AND ${await requestHrScope(request, 'e')}`
       if (filter.legalEntityId) { params.push(filter.legalEntityId); where += ` AND ${entityExpr} = $${params.length}::uuid` }
       const res = await rawPool.query(
         `SELECT ${matricule} AS matricule, ps.month, ps.base_salary, ps.gross_salary, ps.total_cnps_sal,
