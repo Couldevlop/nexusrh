@@ -204,9 +204,17 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      // Visibilité d'abord : un plan masqué répond 404 (jamais 409, qui révélerait son existence).
+      const delSc = await planScope(request)
+      if (delSc !== 'TRUE') {
+        const visible = await rawPool.query(
+          `SELECT 1 FROM "${schema}".succession_plans WHERE id = $1 AND ${delSc} LIMIT 1`, [id],
+        )
+        if (!visible.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
+      }
       if (await planHasForeignCandidates(request, id)) return reply.status(409).send({ error: SHARED_PLAN_ERROR, statusCode: 409 })
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".succession_plans WHERE id = $1 AND ${await planScope(request)} RETURNING id`, [id],
+        `DELETE FROM "${schema}".succession_plans WHERE id = $1 AND ${delSc} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
       await rawPool.query(`DELETE FROM "${schema}".succession_candidates WHERE plan_id = $1`, [id]).catch(() => undefined)

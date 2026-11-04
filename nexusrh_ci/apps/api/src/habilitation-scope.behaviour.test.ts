@@ -49,7 +49,7 @@ const ID = 'bbbbbbbb-1111-4222-8333-444444444444'
 const FRAGMENT = `legal_entity_id = '${A}'`
 
 // État simulé de la base pour le routeur de requêtes.
-const db = { employeeInScope: false, foreignRows: false }
+const db = { employeeInScope: false, foreignRows: false, planVisible: true }
 
 let app: FastifyInstance
 
@@ -92,10 +92,15 @@ afterAll(async () => { await app.close() })
 beforeEach(() => {
   db.employeeInScope = false
   db.foreignRows = false
+  db.planVisible = true
   loadHabContextMock.mockResolvedValue(entityCtx())
   queryMock.mockReset()
   queryMock.mockImplementation(async (rawSql: string) => {
     const sql = String(rawSql).replace(/\s+/g, ' ')
+    // Visibilité d'un plan de succession (contrôlée AVANT le 409 des vivier étrangers)
+    if (/FROM "tenant_scope"\.succession_plans WHERE id = \$1 AND /.test(sql) && sql.startsWith('SELECT 1')) {
+      return db.planVisible ? { rows: [{ x: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 }
+    }
     // Conteneurs partagés : y a-t-il des entrées/candidats hors périmètre ?
     if (sql.includes('NOT COALESCE')) return { rows: db.foreignRows ? [{ x: 1 }] : [], rowCount: db.foreignRows ? 1 : 0 }
     // Filiale cible (ligne virtuelle) : toujours hors périmètre dans ces tests
@@ -179,6 +184,15 @@ describe('talents', () => {
     const res = await call('DELETE', `/succession/plans/${ID}`)
     expect(res.statusCode).toBe(409)
     expect(res.json().error).toContain('Plan partagé avec une autre filiale')
+    expect(writes()).toEqual([])
+  })
+
+  it('DELETE /succession/plans/:id masqué (hors périmètre) : 404 avant tout contrôle 409, rien supprimé', async () => {
+    db.planVisible = false
+    db.foreignRows = true
+    const res = await call('DELETE', `/succession/plans/${ID}`)
+    expect(res.statusCode).toBe(404)
+    expect(res.json().error).toBe('Plan introuvable')
     expect(writes()).toEqual([])
   })
 })

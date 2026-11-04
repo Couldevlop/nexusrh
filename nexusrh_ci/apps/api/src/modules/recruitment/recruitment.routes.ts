@@ -30,7 +30,7 @@ import {
 } from './stage-history.js'
 import { hireApplication, getHirePrefill, HireError, fileProposalForHiredApplication, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
-import { requestHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, legalEntityInHrScope } from '../../utils/hr-scope.js'
 import contractProposalRoutes from './contract-proposal.routes.js'
 import {
   CONTRACT_GENERATION_DISABLED, isContractGenerationEnabled, loadContractEmployer,
@@ -183,6 +183,33 @@ async function applicationInHrScope(request: FastifyRequest, schema: string, app
   return r.rows.length > 0
 }
 
+/**
+ * Habilitations : expression booléenne SQL « l'offre `jobAlias` est dans le périmètre »
+ * (filiale cible de l'offre ; offre sans filiale = règles siège de hrScopeSql).
+ * 'TRUE' sans restriction.
+ */
+async function jobScopeSql(request: FastifyRequest, jobAlias: string): Promise<string> {
+  const sc = await requestHrScope(request, 'jsc')
+  if (sc === 'TRUE') return 'TRUE'
+  return `COALESCE((SELECT TRUE FROM (SELECT ${jobAlias}.target_legal_entity_id AS legal_entity_id) jsc WHERE ${sc}), false)`
+}
+
+/** Garde par id d'offre : faux (404 « Offre introuvable ») si l'offre est hors périmètre. */
+async function jobInHrScope(request: FastifyRequest, schema: string, jobId: string): Promise<boolean> {
+  const sc = await requestHrScope(request, 'jsc')
+  if (sc === 'TRUE') return true
+  if (!UUID_PARAM_RE.test(jobId)) return false
+  const r = await pool.query(
+    `SELECT 1 FROM "${schema}".recruitment_jobs rj
+       LEFT JOIN LATERAL (SELECT rj.target_legal_entity_id AS legal_entity_id) jsc ON true
+      WHERE rj.id = $1 AND ${sc} LIMIT 1`,
+    [jobId],
+  )
+  return r.rows.length > 0
+}
+
+const JOB_NOT_FOUND = 'Offre introuvable'
+
 const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Capabilités IA (pour le sélecteur UI) ──────────────────────────────────
@@ -209,7 +236,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
                  FROM "${schema}".recruitment_jobs rj
                  LEFT JOIN "${schema}".departments d ON d.id = rj.department_id
                  LEFT JOIN "${schema}".applications a ON a.job_id = rj.id
-                 WHERE 1=1`
+                 WHERE ${await jobScopeSql(request, 'rj')}`
       const params: unknown[] = []
       let idx = 1
       if (status) { sql += ` AND rj.status = $${idx++}`; params.push(status) }
@@ -237,6 +264,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A03 — valider les énumérations APEC avant insertion.
       const enumErr = validateApecEnums(body)
       if (enumErr) return reply.status(400).send({ error: enumErr })
+      // Habilitations : l'offre ne peut viser qu'une filiale du périmètre (ni créer hors périmètre).
+      if (!(await legalEntityInHrScope(schema, body.target_legal_entity_id || null, await requestHrScope(request, 'e')))) {
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
+      }
       const visibility = VISIBILITIES.includes(body.visibility ?? '')
         ? body.visibility! : 'external'
       const status = body.status || 'open'
@@ -293,6 +324,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         const jobRes = await pool.query(`
           SELECT rj.*, d.name AS department_name
@@ -319,6 +351,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = request.body as JobBody
       // OWASP A03 — valider les énumérations APEC avant mise à jour.
       const enumErr = validateApecEnums(body)
@@ -350,6 +383,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         values.push(body.target_job_levels ?? [])
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
+      if ('target_legal_entity_id' in body
+        && !(await legalEntityInHrScope(schema, body.target_legal_entity_id || null, await requestHrScope(request, 'e')))) {
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
+      }
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
@@ -374,6 +411,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         const res = await pool.query<{ screening_criteria: unknown }>(
           `SELECT screening_criteria FROM "${schema}".recruitment_jobs WHERE id = $1 LIMIT 1`,
@@ -397,6 +435,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = (request.body ?? {}) as { criteria?: unknown }
       const clean = sanitizeCriteria(body.criteria ?? {})
       try {
@@ -423,6 +462,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         const res = await pool.query<{ interview_focus: unknown }>(
           `SELECT interview_focus FROM "${schema}".recruitment_jobs WHERE id = $1 LIMIT 1`,
@@ -446,6 +486,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = (request.body ?? {}) as { focus?: unknown }
       const focus = parseInterviewFocus(body.focus)
       if (focus === null) return reply.status(400).send({ error: 'Profil technique invalide' })
@@ -473,6 +514,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         await pool.query(`DELETE FROM "${schema}".recruitment_jobs WHERE id = $1`, [id])
         return reply.send({ success: true })
@@ -660,6 +702,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       if (!body.email && !body.phone) {
         return reply.status(400).send({ error: 'Renseignez au moins un email ou un téléphone pour joindre le candidat.' })
       }
+      // Habilitations : candidature sur une offre hors périmètre = offre introuvable, rien d'écrit.
+      if (!(await jobInHrScope(request, schema, body.job_id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         // Anti-doublon atomique : même offre + même email ou même téléphone →
         // aucune ligne insérée (double clic, réseau lent, ressaisie).
@@ -1230,6 +1274,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id: jobId } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, jobId))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = (request.body ?? {}) as {
         model?: string
         stages?: string[]
@@ -1486,6 +1531,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id: jobId } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, jobId))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       // OWASP A03 : valider que jobId est bien un UUID (évite l'injection même si bindé)
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
         return reply.status(400).send({ error: 'jobId invalide (UUID requis)' })
@@ -1844,6 +1890,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = (request.body ?? {}) as {
         model?:        string
         platforms?:    string[]
@@ -1987,6 +2034,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       try {
         const res = await pool.query(
           `SELECT id, job_id, first_name, last_name, current_position, current_company,
@@ -2018,6 +2066,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id, profileId } = request.params as { id: string; profileId: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
@@ -2108,6 +2157,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
@@ -2192,6 +2242,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await jobInHrScope(request, schema, id))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const body = (request.body ?? {}) as {
         platforms?:    string[]
         countries?:    string[]

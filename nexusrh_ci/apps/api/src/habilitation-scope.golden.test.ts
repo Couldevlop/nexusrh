@@ -48,16 +48,29 @@ import authPlugin from './plugins/auth.js'
 import employeesRoutes from './modules/employees/employees.routes.js'
 import absencesRoutes from './modules/absences/absences.routes.js'
 import signedContractsRoutes from './modules/contracts/signed-contracts.routes.js'
+import payrollRoutes from './modules/payroll/payroll.routes.js'
+import payrollWorkflowRoutes from './modules/payroll/payroll-workflow.routes.js'
+import bankTransferRoutes from './modules/bank-transfer/bank-transfer.routes.js'
+import mobileMoneyRoutes from './modules/mobile-money/mobile-money.routes.js'
+import cnpsRoutes from './modules/cnps/cnps.routes.js'
+import reportingRoutes from './modules/reporting/reporting.routes.js'
+import sageRoutes from './modules/sage/sage.routes.js'
+import orgChartRoutes from './modules/org-chart/org-chart.routes.js'
+import dgRoutes from './modules/dg/dg.routes.js'
+import { executeAiTool } from './modules/ai/ai-tools.js'
+import { hrScopeSql } from './services/habilitation.service.js'
+import type { Pool } from 'pg'
 import { HAB_GRID } from './modules/habilitations/catalog.js'
 import type { HabContext } from './services/habilitation.service.js'
 
 const MODULES_DIR = join(__dirname, 'modules')
 
-/** Modules couverts (5b ajoutera payroll, bank-transfer, mobile-money, cnps, reporting, dg, ai, sage, org-chart). */
+/** Modules couverts (5a : talents/temps/dossiers ; 5b : paie, paiements, déclarations, reporting, DG, IA, SAGE, organigramme). */
 const SCOPED_MODULES = [
   'employees', 'contracts', 'absences', 'attendance', 'expenses', 'recruitment',
   'onboarding', 'offboarding', 'discipline', 'training', 'careers', 'competencies',
   'mobility', 'succession', 'calibration', 'signature',
+  'payroll', 'bank-transfer', 'mobile-money', 'cnps', 'reporting', 'dg', 'ai', 'sage', 'org-chart',
 ] as const
 
 /** Fichiers qui touchent employees mais restent volontairement hors périmètre (raison obligatoire). */
@@ -156,6 +169,14 @@ describe('périmètre filiale — balayage dynamique (contexte entity A)', () =>
     await app.register(employeesRoutes, { prefix: '/employees' })
     await app.register(absencesRoutes, { prefix: '/absences' })
     await app.register(signedContractsRoutes, { prefix: '/contracts/signed' })
+    await app.register(payrollRoutes, { prefix: '/payroll' })
+    await app.register(payrollWorkflowRoutes, { prefix: '/payroll-workflow' })
+    await app.register(bankTransferRoutes, { prefix: '/bank-transfer' })
+    await app.register(mobileMoneyRoutes, { prefix: '/mobile-money' })
+    await app.register(cnpsRoutes, { prefix: '/cnps' })
+    await app.register(reportingRoutes, { prefix: '/reporting' })
+    await app.register(sageRoutes, { prefix: '/sage' })
+    await app.register(orgChartRoutes, { prefix: '/org-chart' })
     await app.ready()
   })
   afterAll(async () => { await app.close() })
@@ -169,6 +190,22 @@ describe('périmètre filiale — balayage dynamique (contexte entity A)', () =>
     ['GET /employees/export.csv', '/employees/export.csv'],
     ['GET /absences', '/absences'],
     ['GET /contracts/signed/documents/:docId/file', `/contracts/signed/documents/${ID}/file`],
+    // 5b — paie, paiements, déclarations, reporting, organigramme, SAGE
+    ['GET /payroll/payslips (liste des bulletins par période)', '/payroll/payslips?month=2026-05'],
+    ['GET /payroll/payslips/:id/transparency', `/payroll/payslips/${ID}/transparency`],
+    ['GET /payroll/periods', '/payroll/periods'],
+    ['GET /payroll/livre-de-paie/:year/export', '/payroll/livre-de-paie/2026/export'],
+    ['GET /payroll-workflow/periods', '/payroll-workflow/periods'],
+    ['GET /bank-transfer/preview', '/bank-transfer/preview?month=2026-05'],
+    ['GET /mobile-money/payments', '/mobile-money/payments'],
+    ['GET /cnps/declarations', '/cnps/declarations'],
+    ['GET /cnps/rns/:year/export', '/cnps/rns/2026/export'],
+    ['GET /org-chart/departments', '/org-chart/departments'],
+    ['GET /org-chart/reporting', '/org-chart/reporting'],
+    ['GET /reporting/overview (effectifs)', '/reporting/overview?year=2026'],
+    ['GET /reporting/payroll-summary', '/reporting/payroll-summary'],
+    ['GET /sage/export/employees.csv', '/sage/export/employees.csv'],
+    ['GET /sage/export/payroll.csv', '/sage/export/payroll.csv?period=2026-05'],
   ]
   for (const [label, url] of routes) {
     it(`${label} filtre sur la filiale A`, async () => {
@@ -176,3 +213,43 @@ describe('périmètre filiale — balayage dynamique (contexte entity A)', () =>
     })
   }
 })
+
+describe('périmètre filiale — vue DG et outils IA (contexte entity A)', () => {
+  beforeAll(async () => {
+    app = Fastify()
+    await app.register(authPlugin)
+    await app.register(dgRoutes, { prefix: '/dg' })
+    await app.ready()
+  })
+  afterAll(async () => { await app.close() })
+  beforeEach(() => { loadHabContextMock.mockResolvedValue(entityCtx()) })
+
+  it('GET /dg/overview : agrégats bornés à la filiale A', async () => {
+    queryMock.mockReset()
+    queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
+    const dgToken = app.jwt.sign({
+      sub: 'u-hab', tenantId: 't1', schemaName: SCHEMA, role: 'dg',
+      email: 'dg@t.ci', firstName: 'A', lastName: 'B', employeeId: null,
+    })
+    await app.inject({ method: 'GET', url: '/dg/overview', headers: { authorization: `Bearer ${dgToken}` } })
+    expect(queryMock.mock.calls.map((c) => String(c[0])).join(String.fromCharCode(10))).toContain(fragmentA())
+  })
+
+  // Le brief cite l'outil « search_employees » ; les outils réels qui lisent des données
+  // salariés sont get_headcount, count_absences_today, get_pending_requests, get_employees_at_risk.
+  for (const tool of ['get_headcount', 'count_absences_today', 'get_pending_requests', 'get_employees_at_risk']) {
+    it(`outil IA ${tool} : toute requête sur les salariés est bornée à la filiale A`, async () => {
+      const calls: string[] = []
+      const pool = { query: async (sql: string) => { calls.push(String(sql)); return { rows: [] } } } as unknown as Pool
+      await executeAiTool(
+        pool,
+        { schemaName: SCHEMA, role: 'hr_manager', hrScope: (alias: string) => hrScopeSql(SCHEMA, alias, entityCtx()) },
+        tool, {},
+      )
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls.every((q) => q.includes(fragmentA()))).toBe(true)
+    })
+  }
+})
+
+function fragmentA(): string { return `legal_entity_id = '${ENTITY_A}'` }
