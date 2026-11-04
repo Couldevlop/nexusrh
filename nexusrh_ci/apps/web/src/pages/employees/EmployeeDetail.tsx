@@ -13,6 +13,7 @@ import { paymentMethodLabel } from '@/lib/payment'
 import {
   formatCustomFieldValue, useEmployeeFieldDefinitions, type CustomFieldValues,
 } from '@/components/employees/CustomFields'
+import { isCivPayrollScope, type CivScopeEntity } from '@/lib/civ-scope'
 
 interface EmployeeDetails {
   id: string; first_name: string; last_name: string; email: string
@@ -27,8 +28,10 @@ interface EmployeeDetails {
   department_name: string; manager_first_name: string; manager_last_name: string
   mobile_money_provider: string; mobile_money_phone: string
   marital_status: string; children_count: number; city: string
-  // CMU : conjoint sans emploi couvert ; enfants couverts (null = enfants à charge)
+  // CMU : conjoint sans emploi (null = non renseigné) ; enfants de moins de 21 ans
+  // couverts (null = enfants à charge)
   cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | null
+  legal_entity_id?: string | null
   // EMP-009 — ancienneté calculée renvoyée par l'API
   seniority_label?: string; seniority_months?: number
   // EMP-015 — photo de profil
@@ -53,6 +56,15 @@ export default function EmployeeDetail() {
   const { data, isLoading } = useQuery<{ data: EmployeeDetails }>({
     queryKey: ['employee', id],
     queryFn: () => api.get(`/employees/${id}`).then(r => r.data),
+  })
+  // CMU : paie ivoirienne seulement (filiale CIV, sinon pays du tenant). Les
+  // filiales ne sont lisibles que par les rôles RH ; à défaut, pays du tenant.
+  const tenantCountry = useAuthStore((s) => s.tenantConfig?.defaultCountryCode)
+  const hasSubsidiaries = useAuthStore((s) => s.tenantConfig?.hasSubsidiaries === true)
+  const { data: leData } = useQuery<{ data: CivScopeEntity[] }>({
+    queryKey: ['settings-legal-entities'],
+    queryFn: () => api.get('/settings/legal-entities').then(r => r.data).catch(() => ({ data: [] })),
+    enabled: hasSubsidiaries && ['admin', 'hr_manager', 'hr_officer'].includes(role),
   })
   const fieldDefs = useEmployeeFieldDefinitions()
 
@@ -103,6 +115,7 @@ export default function EmployeeDetail() {
   const emp = data?.data
   if (isLoading) return <div className="p-6 text-center text-muted-foreground">{t('loadingEmployee')}</div>
   if (!emp) return <div className="p-6 text-center text-destructive">{t('employeeNotFound')}</div>
+  const cmuApplicable = isCivPayrollScope(emp.legal_entity_id ?? null, leData?.data ?? [], tenantCountry)
 
   const MARITAL_LABEL: Record<string, string> = {
     single: t('detail.maritalValues.single'), married: t('detail.maritalValues.married'),
@@ -172,12 +185,13 @@ export default function EmployeeDetail() {
             [t('detail.fields.cnpsNumber'), emp.cnps_number ?? '—'],
             [t('detail.fields.familySituation'), MARITAL_LABEL[emp.marital_status] ?? emp.marital_status],
             [t('detail.fields.childrenCount'), String(emp.children_count ?? 0)],
-            [t('form.cmu.beneficiaries'), t('form.cmu.beneficiariesValue', {
-              spouse: emp.cmu_spouse_covered === true ? t('form.cmu.spouseSuffix') : '',
+            ...(cmuApplicable ? [[t('form.cmu.beneficiaries'), t('form.cmu.beneficiariesValue', {
+              // Conjoint compté seulement pour un salarié marié dont le conjoint est sans emploi.
+              spouse: emp.marital_status === 'married' && emp.cmu_spouse_covered === true ? t('form.cmu.spouseSuffix') : '',
               children: emp.cmu_children_covered == null
                 ? t('form.cmu.childrenDefault', { count: emp.children_count ?? 0 })
                 : String(emp.cmu_children_covered),
-            })],
+            })]] : []),
             [t('detail.fields.city'), emp.city ?? '—'],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between text-sm">
@@ -185,6 +199,11 @@ export default function EmployeeDetail() {
               <span className="font-medium">{v ?? '—'}</span>
             </div>
           ))}
+          {cmuApplicable && emp.marital_status === 'married' && emp.cmu_spouse_covered == null && (
+            <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {t('form.cmu.spouseToVerify')}
+            </p>
+          )}
         </div>
 
         {/* Infos contractuelles */}

@@ -64,3 +64,25 @@ export function ciOvertimeRuleMigrations(schemaName: string): string[] {
   }
   return out
 }
+
+/**
+ * Colonnes CMU de la fiche salarié (loi n° 2014-131 ; CLEISS 2025) :
+ *  - `cmu_spouse_covered` : conjoint SANS EMPLOI, donc couvert par la CMU du
+ *    salarié. NULL = situation non renseignée (un salarié marié est alors
+ *    signalé « à vérifier ») ; false = conjoint qui travaille ou non couvert.
+ *    Colonne nullable sans défaut ; les lignes existantes ne sont pas reprises
+ *    (false garde son sens).
+ *  - `cmu_children_covered` : enfants de moins de 21 ans couverts ; NULL = le
+ *    nombre d'enfants à charge (l'âge des enfants n'est pas suivi).
+ * Idempotent : rejouable à chaque migration lazy.
+ */
+export function ciCmuEmployeeColumnMigrations(schemaName: string): string[] {
+  assertValidSchemaName(schemaName)
+  const t = `"${schemaName}".employees`
+  return [
+    `ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS cmu_spouse_covered boolean`,
+    `ALTER TABLE ${t} ALTER COLUMN cmu_spouse_covered DROP NOT NULL`,
+    `ALTER TABLE ${t} ALTER COLUMN cmu_spouse_covered DROP DEFAULT`,
+    `ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS cmu_children_covered integer`,
+  ]
+}

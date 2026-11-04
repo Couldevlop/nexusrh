@@ -7,7 +7,7 @@ import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
-import { CI_OVERTIME_RULES } from './payroll-rules-ci-2023.js'
+import { CI_OVERTIME_RULES, ciCmuEmployeeColumnMigrations } from './payroll-rules-ci-2023.js'
 
 /**
  * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
@@ -489,7 +489,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     marital_status        varchar(20),
     children_count        int DEFAULT 0,
     -- CMU (loi n° 2014-131) : conjoint sans emploi couvert ; enfants couverts (NULL = enfants à charge)
-    cmu_spouse_covered    boolean NOT NULL DEFAULT false,
+    cmu_spouse_covered    boolean,
     cmu_children_covered  integer,
     custom_fields         jsonb DEFAULT '{}',
     profile_photo_url     text,
@@ -1302,8 +1302,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
-  await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS cmu_spouse_covered boolean NOT NULL DEFAULT false`)
-  await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS cmu_children_covered integer`)
+  for (const stmt of ciCmuEmployeeColumnMigrations(schemaName)) await q(stmt)
 
   // Scope filiale sur les artefacts de paie / déclarations (Palier 3).
   // ⚠️ Doit rester aligné avec ensureTenantSchema (utils/schema-migrations.ts) :

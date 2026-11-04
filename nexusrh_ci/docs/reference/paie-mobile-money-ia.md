@@ -24,10 +24,12 @@ PLAFOND MENSUEL RETRAITE        : 3 375 000 FCFA — 45 × SMIG
   sociales », décret n° 2022-986). Anciens plafonds (avant 2023) : 70 000 / 1 647 315.
 
 CMU (Couverture Maladie Universelle, loi n° 2014-131) — hors bases CNPS et ITS
-  1 000 FCFA / mois / bénéficiaire : salarié + conjoint couvert + enfants couverts.
+  1 000 FCFA / mois / bénéficiaire : salarié + conjoint SANS EMPLOI (salarié marié, case
+  « Conjoint sans emploi » cochée ; non renseignée = non compté, signalé « à vérifier »)
+  + enfants de moins de 21 ans couverts (loi n° 2014-131 ; CLEISS 2025).
   Jusqu'au 6e enfant : 500 F salarié (ligne 2200) + 500 F employeur (ligne 3400).
   Enfants au-delà du 6e : 1 000 F entièrement à la charge du salarié (ligne 2200).
-  Fiche salarié : cmu_spouse_covered (défaut non), cmu_children_covered
+  Fiche salarié : cmu_spouse_covered (nullable : oui / non / non renseigné), cmu_children_covered
   (vide = nombre d'enfants à charge).
 
 Taux AT par secteur :
@@ -137,7 +139,7 @@ PayrollEngineCi.calculate(ctx) :
   cotisation_at_pat        = BASE_AT_PF × taux_at_secteur  (2-5%)
   total_cotisations_sal    = cotisation_retraite_sal
   total_cotisations_pat    = cotisation_retraite_pat + cotisation_pf_mat_pat + cotisation_at_pat
-  cmu (hors CNPS)          = partagés = 1 + conjoint_couvert + min(enfants_couverts, 6)
+  cmu (hors CNPS)          = partagés = 1 + (marié ET conjoint_sans_emploi) + min(enfants_couverts, 6)
                              cmu_pat = partagés × 500 ; cmu_sal = partagés × 500 + 1 000 × enfants au-delà du 6e
                              net −= cmu_sal ; coût employeur += cmu_pat
 

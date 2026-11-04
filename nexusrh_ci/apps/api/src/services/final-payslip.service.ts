@@ -171,15 +171,18 @@ export const PAYABLE_SALARY_FILTER = `COALESCE(e.base_salary, 0) > 0`
 /**
  * Bénéficiaires CMU d'un salarié pour le moteur : conjoint seulement s'il est
  * déclaré couvert ; enfants couverts saisis, sinon (NULL) le moteur retient le
- * nombre d'enfants à charge.
+ * nombre d'enfants à charge. Avec la fenêtre d'emploi du mois : CMU suspendue
+ * quand le mois ne compte aucun jour de contrat (bulletin de solde seul).
  */
 export function employeeCmu(
   emp: { cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | string | null },
+  window?: Pick<EmploymentWindow, 'contractDays'>,
 ): NonNullable<PayrollContext['cmu']> {
   const raw = emp.cmu_children_covered
   const children = raw === null || raw === undefined || raw === '' ? null : Number(raw)
   return {
     spouseCovered: emp.cmu_spouse_covered === true,
+    suspended: window !== undefined && window.contractDays === 0,
     childrenCovered: children !== null && Number.isFinite(children) && children >= 0 ? Math.floor(children) : null,
   }
 }

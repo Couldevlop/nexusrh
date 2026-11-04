@@ -139,12 +139,18 @@ export interface PayrollContext {
    */
   variableTreatment?: VariableTreatmentOverride
   /**
-   * Bénéficiaires CMU du salarié (packs portant `cmu`). Le salarié est
-   * toujours couvert. Conjoint : compté seulement si `spouseCovered` (un
-   * conjoint salarié a sa propre CMU). Enfants : `childrenCovered`, à défaut
-   * le nombre d'enfants à charge (`childrenCount`).
+   * Bénéficiaires CMU du salarié (packs portant `cmu`, loi n° 2014-131 ;
+   * CLEISS 2025). Le salarié est toujours couvert. Conjoint : compté seulement
+   * si le salarié est marié (`maritalStatus === 'married'`) ET que le conjoint
+   * est déclaré sans emploi (`spouseCovered === true`) ; false ou null (non
+   * renseigné) → non compté. Enfants de moins de 21 ans : `childrenCovered`,
+   * à défaut le nombre d'enfants à charge (`childrenCount`, âge non suivi).
+   * `suspended` : aucune CMU ce mois (mois sans aucun jour de contrat, p. ex.
+   * le bulletin de solde émis le mois suivant la sortie — la CMU du dernier
+   * mois est déjà sur le bulletin de sortie). Un congé maternité complet n'est
+   * PAS une suspension : le contrat court, la CMU reste due.
    */
-  cmu?: { spouseCovered?: boolean; childrenCovered?: number | null }
+  cmu?: { spouseCovered?: boolean | null; childrenCovered?: number | null; suspended?: boolean }
 }
 
 export interface PayrollLine {
@@ -477,22 +483,33 @@ function variableEarningLabel(e: { code: string; label: string }, l: OvertimeLab
 
 /**
  * CMU du mois (packs portant `cmu`). Bénéficiaires partagés = salarié +
- * conjoint couvert + enfants dans la limite du pack : part employeur / part
- * salarié. Enfants au-delà de la limite : cotisation entière au salarié.
+ * conjoint sans emploi d'un salarié marié + enfants dans la limite du pack
+ * (6) : moitié employeur / moitié salarié. Enfants au-delà de la limite (à
+ * partir du 7e) : cotisation entière (1 000 F) à la charge du salarié.
  * Forfait mensuel, indépendant des jours travaillés.
  */
 export function computeCmu(
-  pack: LegislationPack, childrenCount: number, cmu?: PayrollContext['cmu'],
+  pack: LegislationPack, childrenCount: number, cmu?: PayrollContext['cmu'], maritalStatus?: string,
 ): { sal: number; pat: number; beneficiaries: number } {
   const rule = pack.cmu
-  if (!rule) return { sal: 0, pat: 0, beneficiaries: 0 }
+  if (!rule || cmu?.suspended === true) return { sal: 0, pat: 0, beneficiaries: 0 }
   const declared = cmu?.childrenCovered
   const children = Math.max(0, Math.floor(declared ?? childrenCount ?? 0))
-  const shared = 1 + (cmu?.spouseCovered ? 1 : 0) + Math.min(children, rule.maxSharedChildren)
+  const spouse = maritalStatus === 'married' && cmu?.spouseCovered === true ? 1 : 0
+  const shared = 1 + spouse + Math.min(children, rule.maxSharedChildren)
   const extra = Math.max(0, children - rule.maxSharedChildren)
   const pat = Math.round(shared * rule.perBeneficiary * rule.employerShare)
   const sal = shared * rule.perBeneficiary - pat + extra * rule.perBeneficiary
   return { sal, pat, beneficiaries: shared + extra }
+}
+
+/**
+ * CMU — situation du conjoint « à vérifier » : salarié marié dont la fiche ne
+ * dit pas si le conjoint est sans emploi (NULL). Le conjoint n'est alors pas
+ * compté (sous-déclaration possible) : avertissement non bloquant.
+ */
+export function isCmuSpouseToVerify(maritalStatus: string | null | undefined, spouseCovered: boolean | null | undefined): boolean {
+  return maritalStatus === 'married' && (spouseCovered === null || spouseCovered === undefined)
 }
 
 // Communes du District autonome d'Abidjan (plafond transport « Abidjan »).
@@ -602,7 +619,7 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
   const totalCnpsPat    = cnpsRetraitePat + cnpsPfPat + cnpsAtPat
 
   // CMU : hors assiettes CNPS et ITS ; retenue salariale et charge patronale.
-  const { sal: cmuSal, pat: cmuPat } = computeCmu(pack, childrenCount, ctx.cmu)
+  const { sal: cmuSal, pat: cmuPat } = computeCmu(pack, childrenCount, ctx.cmu, maritalStatus)
 
   // ── PRÉ-CALCUL ABSENCE : avant ITS pour déterminer la base imposable ────────
   // Indemnités maternité et AT sont exonérées d'ITS ; maladie est taxée normalement

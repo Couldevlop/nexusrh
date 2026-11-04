@@ -104,6 +104,19 @@ describe('CMU — lignes 2200 (salarié) et 3400 (employeur)', () => {
     expect(line(r, '2200')?.amount).toBe(2_000)
     expect(line(r, '3400')?.amount).toBe(2_000)
   })
+  it('conjoint sans emploi déclaré mais salarié non marié : conjoint non compté', () => {
+    // célibataire + 2 enfants, case cochée : salarié + 2 enfants = 3 × 500
+    const r = calculatePayrollCI({ ...small, maritalStatus: 'single', childrenCount: 2, cmu: { spouseCovered: true } })
+    expect(r.cmuSal).toBe(1_500)
+    expect(r.cmuPat).toBe(1_500)
+    const c = calculatePayrollCI({ ...small, maritalStatus: 'cohabiting', childrenCount: 0, cmu: { spouseCovered: true } })
+    expect(c.cmuSal).toBe(500)
+  })
+  it('marié, situation du conjoint non renseignée (null) : conjoint non compté', () => {
+    const r = calculatePayrollCI({ ...small, maritalStatus: 'married', childrenCount: 0, cmu: { spouseCovered: null } })
+    expect(r.cmuSal).toBe(500)
+    expect(r.cmuPat).toBe(500)
+  })
   it('conjoint non couvert par défaut (marié, 2 enfants) : 3 bénéficiaires', () => {
     const r = calculatePayrollCI({ ...small, maritalStatus: 'married', childrenCount: 2 })
     expect(r.cmuSal).toBe(1_500)
@@ -130,6 +143,24 @@ describe('CMU — lignes 2200 (salarié) et 3400 (employeur)', () => {
     expect(r.netPayable).toBe(300_000 - 18_900 - 5_500)
     // 300 000 + 23 100 + 4 312 + 1 500 + 3 500
     expect(r.employerCost).toBe(332_412)
+  })
+  it('CMU suspendue (mois sans jour de contrat) : aucune ligne 2200 / 3400', () => {
+    const r = calculatePayrollCI({ ...small, childrenCount: 2, cmu: { suspended: true } })
+    expect(line(r, '2200')).toBeUndefined()
+    expect(line(r, '3400')).toBeUndefined()
+    expect(r.cmuSal).toBe(0)
+    expect(r.cmuPat).toBe(0)
+    // seules la retraite et l'ITS sont retenues
+    expect(r.totalDeductions).toBe(r.totalCnpsSal + r.its)
+  })
+  it('congé maternité complet (0 jour travaillé, absence) : la CMU reste due', () => {
+    const r = calculatePayrollCI({
+      ...small, baseSalary: 250_000, workedDays: 0, maritalStatus: 'married', childrenCount: 1,
+      absence: { type: 'maternite', absenceDays: 26 },
+    })
+    // salarié + 1 enfant (conjoint non couvert par défaut) = 2 × 500
+    expect(line(r, '2200')?.amount).toBe(1_000)
+    expect(line(r, '3400')?.amount).toBe(1_000)
   })
   it('pack sans CMU (TGO) : aucune ligne CMU', () => {
     const r = calculatePayrollCI({ ...small, legislationPack: TGO_2024 })

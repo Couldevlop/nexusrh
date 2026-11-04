@@ -20,7 +20,7 @@
 import { createHash } from 'node:crypto'
 import { pool } from '../db/pool.js'
 import { DEFAULT_LEGISLATION_PACK, type LegislationPack } from './legislation-packs.js'
-import { overtimeLabels, type AttendancePayrollDeductions } from './payroll-engine-ci.js'
+import { isCmuSpouseToVerify, overtimeLabels, type AttendancePayrollDeductions } from './payroll-engine-ci.js'
 
 /** Variables usuelles saisissables par le RAF (clés du moteur de paie). */
 export const RAF_VARIABLE_CODES = [
@@ -69,7 +69,12 @@ export interface ReadinessEmployeeInput {
   payment_method: string | null
   mobile_money_phone: string | null
   has_iban?: boolean | null
+  /** CMU : conjoint sans emploi (NULL = non renseigné) */
+  cmu_spouse_covered?: boolean | null
 }
+
+/** Avertissements NON bloquants (n'entrent pas dans `ready`). */
+export type ReadinessWarningCode = 'cmu_spouse_to_verify'
 
 export interface VariableElementInput {
   employee_id: string
@@ -91,6 +96,7 @@ export interface RafEmployeeReadiness {
   id: string
   name: string
   missing: ReadinessMissingCode[]
+  warnings: ReadinessWarningCode[]
   values: Record<string, number>
   validation: { mode: ValidationMode; validatedAt: string | Date | null; valid: boolean } | null
   variablesValidated: boolean
@@ -103,6 +109,8 @@ export interface RafReadiness {
   totalEmployees: number
   validatedCount: number
   incompleteCount: number
+  /** Salariés mariés dont la situation du conjoint (CMU) est à renseigner */
+  cmuSpouseToVerify: Array<{ id: string; name: string }>
   dataComplete: boolean
   variablesValidated: boolean
   ready: boolean
@@ -140,6 +148,14 @@ export function employeeMissing(emp: ReadinessEmployeeInput, smig: number): Read
   return missing
 }
 
+/** Avertissements non bloquants d'un salarié (CMU : conjoint à vérifier, packs portant `cmu`). */
+export function employeeWarnings(
+  emp: Pick<ReadinessEmployeeInput, 'marital_status' | 'cmu_spouse_covered'>,
+  pack: Partial<Pick<LegislationPack, 'cmu'>>,
+): ReadinessWarningCode[] {
+  return pack.cmu && isCmuSpouseToVerify(emp.marital_status, emp.cmu_spouse_covered) ? ['cmu_spouse_to_verify'] : []
+}
+
 /**
  * Empreinte des éléments variables d'un salarié pour la période : codes triés,
  * montants non nuls. Deux saisies identiques donnent la même empreinte.
@@ -168,7 +184,7 @@ export function computeRafReadiness(input: {
   employees: readonly ReadinessEmployeeInput[]
   variables: readonly VariableElementInput[]
   validations: readonly VariableValidationRow[]
-  pack: Pick<LegislationPack, 'code' | 'smigMensuel'>
+  pack: Pick<LegislationPack, 'code' | 'smigMensuel'> & Partial<Pick<LegislationPack, 'cmu'>>
 }): RafReadiness {
   const smig = input.pack.smigMensuel
   const valuesByEmp = groupVariables(input.variables)
@@ -183,6 +199,7 @@ export function computeRafReadiness(input: {
         id: emp.id,
         name: [emp.first_name, emp.last_name].filter(Boolean).join(' ').trim() || emp.id,
         missing: employeeMissing(emp, smig),
+        warnings: employeeWarnings(emp, input.pack),
         values,
         validation: v ? { mode: v.mode, validatedAt: v.validated_at, valid } : null,
         variablesValidated: valid,
@@ -199,6 +216,7 @@ export function computeRafReadiness(input: {
     totalEmployees: employees.length,
     validatedCount,
     incompleteCount,
+    cmuSpouseToVerify: employees.filter(e => e.warnings.includes('cmu_spouse_to_verify')).map(e => ({ id: e.id, name: e.name })),
     dataComplete,
     variablesValidated,
     ready: dataComplete && variablesValidated,
@@ -224,7 +242,7 @@ export function readinessRefusalMessage(r: RafReadiness): string {
 export async function loadRafReadiness(
   schema: string,
   periodId: string,
-  pack: Pick<LegislationPack, 'code' | 'smigMensuel'>,
+  pack: Pick<LegislationPack, 'code' | 'smigMensuel'> & Partial<Pick<LegislationPack, 'cmu'>>,
   population: readonly ReadinessEmployeeInput[],
 ): Promise<RafReadiness> {
   const eligible = population.filter(isPayrollEligible)

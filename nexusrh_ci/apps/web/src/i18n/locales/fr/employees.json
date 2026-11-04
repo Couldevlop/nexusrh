@@ -107,15 +107,18 @@
     "cmu": {
       "section": "CMU (Couverture maladie universelle)",
       "hint": "(1 000 F/mois par bénéficiaire, 500 employeur + 500 salarié ; au-delà de 6 enfants, 1 000 F à la charge du salarié)",
-      "spouseCovered": "Conjoint sans emploi couvert",
-      "spouseCoveredYes": "Oui",
-      "spouseCoveredNo": "Non",
-      "childrenCovered": "Enfants couverts (moins de 21 ans)",
+      "spouseCovered": "Conjoint sans emploi (couvert par la CMU du salarié)",
+      "spouseCoveredYes": "Oui — conjoint sans emploi",
+      "spouseCoveredNo": "Non — conjoint qui travaille, ou pas de conjoint",
+      "childrenCovered": "Enfants de moins de 21 ans couverts",
       "childrenCoveredPlaceholder": "Par défaut : enfants à charge",
       "beneficiaries": "Bénéficiaires CMU",
       "beneficiariesValue": "Salarié{{spouse}} + {{children}} enfant(s)",
       "spouseSuffix": " + conjoint",
-      "childrenDefault": "{{count}} (enfants à charge)"
+      "childrenDefault": "{{count}} (enfants à charge)",
+      "spouseCoveredUnknown": "À renseigner",
+      "childrenCoveredTooltip": "Les enfants de 21 ans ou plus ne sont pas couverts par la CMU du salarié. Laisser vide pour retenir le nombre d’enfants à charge.",
+      "spouseToVerify": "Situation du conjoint à renseigner (CMU)"
     }
   },
   "edit": {

@@ -60,7 +60,7 @@ export interface SeniorityBonusRule {
 
 /**
  * CMU : cotisation forfaitaire mensuelle par bénéficiaire. Bénéficiaires
- * partagés = salarié + conjoint couvert + enfants dans la limite de
+ * partagés = salarié + conjoint sans emploi d'un salarié marié + enfants de moins de 21 ans dans la limite de
  * `maxSharedChildren` : `employerShare` à la charge de l'employeur, le reste au
  * salarié. Au-delà, le salarié paie la cotisation entière.
  */

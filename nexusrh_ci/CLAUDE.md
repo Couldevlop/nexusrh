@@ -163,11 +163,16 @@ export const CI_LEGAL_CONSTANTS_2024 = {
     dimancheFerieJour: 0.75, dimancheFerieNuit: 1.0,
   },
 
-  // CMU (loi n° 2014-131) — 1 000 F / mois / bénéficiaire, hors bases CNPS et ITS.
-  // Salarié + conjoint couvert + enfants couverts (≤ 6) : moitié salarié / moitié employeur (500 + 500).
-  // Enfants au-delà du 6e : 1 000 F entièrement à la charge du salarié.
+  // CMU (loi n° 2014-131 ; CLEISS 2025) — 1 000 F / mois / bénéficiaire, hors bases CNPS et ITS.
+  // Bénéficiaires partagés (500 salarié + 500 employeur) : le salarié, son CONJOINT SANS EMPLOI
+  // (compté seulement si marié ET cmu_spouse_covered = true) et jusqu'à 6 enfants de moins de 21 ans.
+  // À partir du 7e enfant : 1 000 F entièrement à la charge du salarié.
   // Lignes de bulletin : 2200 (part salarié, réduit le net) · 3400 (part employeur, coût employeur).
-  // Fiche salarié : cmu_spouse_covered (défaut false), cmu_children_covered (NULL = enfants à charge).
+  // Fiche salarié : cmu_spouse_covered boolean NULL (« Conjoint sans emploi » : true / false /
+  // NULL = non renseigné → conjoint non compté, salarié marié signalé « à vérifier » sur la fiche,
+  // en préparation RAF et dans le rapport d'impact) ; cmu_children_covered (enfants < 21 ans,
+  // NULL = enfants à charge — l'âge n'est pas suivi). Pas de CMU sur un bulletin de solde émis
+  // un mois sans jour de contrat (`cmu.suspended`) ; un congé maternité complet la garde.
   CMU: { parBeneficiaire: 1_000, partEmployeur: 0.5, enfantsPartages: 6 },
 
   // Délais & FDFP

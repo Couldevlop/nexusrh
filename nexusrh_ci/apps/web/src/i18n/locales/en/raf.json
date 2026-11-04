@@ -51,7 +51,9 @@
     "saveError": "Unable to save. Please try again.",
     "validateError": "Unable to validate. Please try again.",
     "loadError": "Unable to load the variables sheet. Please try again.",
-    "submitDisabledHint": "Submit becomes available once every record is complete and every employee is validated."
+    "submitDisabledHint": "Submit becomes available once every record is complete and every employee is validated.",
+    "cmuSpouseToVerifyTitle": "{{count}} married employee(s): spouse situation to be completed (CMU)",
+    "cmuSpouseToVerifyHint": "Not blocking: until the record states whether the spouse is without employment, the spouse is not counted in the payslip CMU. Complete the employee record."
   },
   "codes": {
     "HEURES_SUPP_NORM": "OT hours 41–46 +15%",

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CI_OVERTIME_RULES, CI_OVERTIME_LEGACY_LABELS, ciOvertimeRuleMigrations } from './payroll-rules-ci-2023.js'
+import { CI_OVERTIME_RULES, CI_OVERTIME_LEGACY_LABELS, ciCmuEmployeeColumnMigrations, ciOvertimeRuleMigrations } from './payroll-rules-ci-2023.js'
 
 describe('rubriques heures supplémentaires CI (décret n° 2024-898)', () => {
   it('5 rubriques, une par clé du moteur', () => {
@@ -37,5 +37,31 @@ describe('rubriques heures supplémentaires CI (décret n° 2024-898)', () => {
 
   it('refuse un nom de schéma invalide', () => {
     expect(() => ciOvertimeRuleMigrations('x"; DROP')).toThrow()
+  })
+})
+
+describe('colonnes CMU de la fiche salarié', () => {
+  const sql = ciCmuEmployeeColumnMigrations('tenant_x')
+
+  it('conjoint sans emploi : colonne NULLABLE, sans défaut (null = à renseigner)', () => {
+    expect(sql).toContain('ALTER TABLE "tenant_x".employees ADD COLUMN IF NOT EXISTS cmu_spouse_covered boolean')
+    expect(sql).toContain('ALTER TABLE "tenant_x".employees ALTER COLUMN cmu_spouse_covered DROP NOT NULL')
+    expect(sql).toContain('ALTER TABLE "tenant_x".employees ALTER COLUMN cmu_spouse_covered DROP DEFAULT')
+    expect(sql).toContain('ALTER TABLE "tenant_x".employees ADD COLUMN IF NOT EXISTS cmu_children_covered integer')
+    expect(sql.join('\n')).not.toMatch(/NOT NULL DEFAULT/)
+  })
+
+  it('idempotente et sans reprise des lignes existantes', () => {
+    // Chaque instruction peut être rejouée : ADD … IF NOT EXISTS, DROP NOT NULL
+    // et DROP DEFAULT sont sans effet sur une colonne déjà nullable sans défaut.
+    for (const q of sql) {
+      expect(q).toMatch(/ADD COLUMN IF NOT EXISTS|DROP NOT NULL$|DROP DEFAULT$/)
+      expect(q).not.toMatch(/^\s*(UPDATE|INSERT|DELETE)/i)
+    }
+    expect(ciCmuEmployeeColumnMigrations('tenant_x')).toEqual(sql)
+  })
+
+  it('refuse un nom de schéma invalide', () => {
+    expect(() => ciCmuEmployeeColumnMigrations('x"; DROP')).toThrow()
   })
 })

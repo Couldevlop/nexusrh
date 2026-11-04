@@ -78,6 +78,18 @@ describe('PATCH /employees/:id — bénéficiaires CMU (loi n° 2014-131)', () =
     expect(updateCall()?.[1]).toEqual([null, EMP_ID])
   })
 
+  it('situation du conjoint remise à « non renseignée » (null)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: EMP_ID }] })
+    const res = await app.inject({
+      method: 'PATCH', url: `/employees/${EMP_ID}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { cmuSpouseCovered: null },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(String(updateCall()?.[0])).toContain('cmu_spouse_covered = $1')
+    expect(updateCall()?.[1]).toEqual([null, EMP_ID])
+  })
+
   it('valeurs invalides → 400 (négatif, décimal, booléen texte)', async () => {
     for (const payload of [{ cmuChildrenCovered: -1 }, { cmuChildrenCovered: 1.5 }, { cmuSpouseCovered: 'oui' }]) {
       const res = await app.inject({

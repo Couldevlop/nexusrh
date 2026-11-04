@@ -6,7 +6,7 @@ import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
-import { ciOvertimeRuleMigrations } from '../db/payroll-rules-ci-2023.js'
+import { ciCmuEmployeeColumnMigrations, ciOvertimeRuleMigrations } from '../db/payroll-rules-ci-2023.js'
 import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
@@ -887,11 +887,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // ── Relances des valideurs de la paie (idempotence par niveau / fenêtre) ──
     ...payrollReminderTableStatements(schemaName),
     // ── Paie CI : valeurs en vigueur depuis le 01/01/2023 ─────────────────────
-    // CMU (loi n° 2014-131) : conjoint sans emploi couvert (défaut false — un
-    // conjoint salarié a sa propre CMU) ; enfants couverts (NULL = nombre
-    // d'enfants à charge).
-    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS cmu_spouse_covered boolean NOT NULL DEFAULT false`,
-    `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS cmu_children_covered integer`,
+    // CMU (loi n° 2014-131) : conjoint sans emploi (nullable, NULL = à
+    // renseigner) ; enfants de moins de 21 ans couverts (NULL = enfants à charge).
+    ...ciCmuEmployeeColumnMigrations(schemaName),
     // Heures supplémentaires (décret n° 2024-898, art. 25) : libellés d'origine
     // des rubriques 1400 / 1500 / 1550 mis à jour, rubriques 1450 / 1520 ajoutées.
     ...ciOvertimeRuleMigrations(schemaName),

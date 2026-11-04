@@ -557,7 +557,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
             atRate,
             maritalStatus:    emp.marital_status ?? 'single',
             childrenCount:    emp.children_count ?? 0,
-            cmu:              employeeCmu(emp),
+            cmu:              employeeCmu(emp, monthInputs.window),
             variableElements: varEls,
             absence:          absenceCtx?.info,
             attendanceDeductions: attendance?.deductions,
