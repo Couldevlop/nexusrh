@@ -72,8 +72,8 @@ describe('resolveRoutePermission — règles', () => {
     expect(resolveRoutePermission('GET', '/interview-sim')?.fn).toBe('recruitment')
     expect(resolveRoutePermission('GET', '/contracts/signed/employee/:employeeId')?.fn).toBe('contracts')
   })
-  it('export SAGE → payroll:export', () => {
-    expect(resolveRoutePermission('GET', '/sage/export/payroll.csv')).toEqual({ fn: 'payroll', action: 'export' })
+  it('export SAGE → payroll:configure (réservé DRH : le gestionnaire RH n\'y accède pas aujourd\'hui)', () => {
+    expect(resolveRoutePermission('GET', '/sage/export/payroll.csv')).toEqual({ fn: 'payroll', action: 'configure' })
   })
   it('suffixes : validation, soumission, envoi, paramétrage', () => {
     expect(resolveRoutePermission('POST', '/expenses/:id/approve')?.action).toBe('validate')
@@ -85,7 +85,9 @@ describe('resolveRoutePermission — règles', () => {
   it('exceptions et motifs : proposition de contrat, paiement, RAF, dépôt CNPS', () => {
     expect(resolveRoutePermission('PUT', '/recruitment/applications/:id/contract-proposal')).toEqual({ fn: 'contracts', action: 'update' })
     expect(resolveRoutePermission('POST', '/mobile-money/campaigns/:reference/execute')).toEqual({ fn: 'payments', action: 'pay' })
-    expect(resolveRoutePermission('POST', '/payroll-workflow/periods/:id/submit-by-raf')).toEqual({ fn: 'payroll_multi', action: 'validate' })
+    // RAF : soumettre = « Modifier » (jamais « Valider » : séparation des tâches, arbitrage 04/11).
+    expect(resolveRoutePermission('POST', '/payroll-workflow/periods/:id/submit-by-raf')).toEqual({ fn: 'payroll_multi', action: 'update' })
+    expect(resolveRoutePermission('POST', '/payroll-workflow/periods/:id/validate-central')).toEqual({ fn: 'payroll_multi', action: 'create' })
     expect(resolveRoutePermission('POST', '/cnps/declarations/:id/submit')).toEqual({ fn: 'declarations', action: 'close' })
     expect(resolveRoutePermission('POST', '/ai/chat')).toEqual({ fn: 'reporting', action: 'view' })
     expect(resolveRoutePermission('PATCH', '/settings/payroll-rules/:id')).toEqual({ fn: 'hr_settings', action: 'update' })
@@ -100,7 +102,7 @@ describe('resolveRoutePermission — règles', () => {
     expect(resolveRoutePermission('DELETE', '/attendance/devices/:id')).toEqual({ fn: 'attendance', action: 'delete' })
   })
   it('un GET n\'est jamais une écriture (config consultée = view)', () => {
-    expect(resolveRoutePermission('GET', '/sage/config')).toEqual({ fn: 'payroll', action: 'view' })
+    expect(resolveRoutePermission('GET', '/bank-transfer/templates')).toEqual({ fn: 'payroll', action: 'view' })
   })
   it('pas de repli : une action absente de la grille ne se résout pas', () => {
     // hr_settings n'a pas « Créer » : sans entrée explicite, aucune case.

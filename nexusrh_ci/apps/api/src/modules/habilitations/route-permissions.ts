@@ -98,11 +98,25 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   'POST /ai/chat': { fn: 'reporting', action: 'view' },
   // Paie : annuler une demande de clôture relève du même droit que la lancer.
   'POST /payroll/periods/:month/cancel': { fn: 'payroll', action: 'close' },
-  'POST /payroll-workflow/periods/:id/cancel': { fn: 'payroll_multi', action: 'close' },
-  // Paie multi-filiales : la soumission RAF et la validation centrale sont des
-  // validations (spec §6 bis : le rôle raf devient « Valider »).
-  'POST /payroll-workflow/periods/:id/submit-by-raf': { fn: 'payroll_multi', action: 'validate' },
-  'POST /payroll-workflow/periods/:id/validate-central': { fn: 'payroll_multi', action: 'validate' },
+  // Paie multi-filiales : la grille n'a que 6 cases pour 4 populations (RAF de
+  // site, gestionnaire RH, DRH). Répartition qui reproduit EXACTEMENT les rôles
+  // historiques des routes (aucun gain à la reprise ; séparation des tâches : un
+  // RAF ne valide jamais sa propre soumission). Écart assumé avec la spec §6 bis
+  // (« le rôle raf devient Valider »), arbitré le 04/11 :
+  //   view     : liste et chronologie (gestionnaire RH et RAF) ;
+  //   update   : tout ce que fait le RAF (variables, état de préparation,
+  //              validation d'une variable, soumission) ;
+  //   validate : décision du gestionnaire RH (workflow, approuver, rejeter) ;
+  //   close    : clôture ;
+  //   create   : opérations réservées DRH (créer, envoyer aux sites, validation
+  //              centrale, annulation).
+  'POST /payroll-workflow/periods/:id/cancel': { fn: 'payroll_multi', action: 'create' },
+  'POST /payroll-workflow/periods/:id/submit-by-raf': { fn: 'payroll_multi', action: 'update' },
+  'POST /payroll-workflow/periods/:id/variables/:employeeId/validate': { fn: 'payroll_multi', action: 'update' },
+  'GET /payroll-workflow/periods/:id/readiness': { fn: 'payroll_multi', action: 'update' },
+  'GET /payroll-workflow/periods/:id/variables': { fn: 'payroll_multi', action: 'update' },
+  'GET /payroll-workflow/periods/:id/workflow': { fn: 'payroll_multi', action: 'validate' },
+  'POST /payroll-workflow/periods/:id/validate-central': { fn: 'payroll_multi', action: 'create' },
   // Paiements : exécuter une campagne ou relancer un paiement = payer ;
   // vérifier un numéro = consulter.
   'POST /mobile-money/campaigns/:reference/execute': { fn: 'payments', action: 'pay' },
@@ -111,7 +125,8 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // Fichier de virement généré (GET) = export.
   'GET /bank-transfer/file': { fn: 'payments', action: 'export' },
   // Aperçu du bulletin : lecture.
-  'POST /settings/payslip-template/preview': { fn: 'payroll', action: 'view' },
+  // (réservé DRH : voir « Routes réservées au DRH » plus bas pour la case).
+  'POST /settings/payslip-template/preview': { fn: 'payroll', action: 'configure' },
   // Import en masse (employés, bulletins, contrats…) : opération de paramétrage.
   'POST /settings/import/:type': { fn: 'hr_settings', action: 'configure' },
   // Notes de frais : la soumission est une saisie, pas une clôture.
@@ -119,10 +134,9 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // Dossier employé : la photo modifie la fiche.
   'POST /employees/:id/photo': { fn: 'employees', action: 'update' },
   // Contrats : rupture = modification du contrat existant.
-  'POST /contracts/:id/terminate': { fn: 'contracts', action: 'update' },
-  // Signature : envoyer ou annuler une demande relève de sa gestion.
+  'POST /contracts/:id/terminate': { fn: 'contracts', action: 'validate' },
+  // Signature : envoyer une demande relève de sa gestion (l'annuler : DRH, plus bas).
   'POST /signature/requests/:id/send': { fn: 'signature', action: 'update' },
-  'POST /signature/requests/:id/cancel': { fn: 'signature', action: 'update' },
   // Remboursement d'une note de frais = paiement.
   'PATCH /expenses/:id/pay': { fn: 'payments', action: 'pay' },
   // Réglages de module : paramétrage RH.
@@ -139,6 +153,57 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // Élément variable du mois (saisie de paie) : la paie n'a pas « Supprimer »,
   // retirer une saisie modifie la paie du mois.
   'DELETE /settings/variable-elements/:id': { fn: 'payroll', action: 'update' },
+
+  // ── Routes réservées au DRH (admin + hr_manager seulement aujourd'hui) ──────
+  // Elles partageraient leur case avec des routes ouvertes au gestionnaire RH
+  // (hr_officer) : il les gagnerait à la reprise. Elles sont donc rangées dans
+  // une case de la MÊME fonction que le gestionnaire RH n'a pas (configure là où
+  // elle existe, sinon validate / export / delete). Le DRH possède toutes les
+  // cases. Invariant : takeover-fidelity.test.ts.
+  'GET /attendance/payroll-link': { fn: 'hr_settings', action: 'configure' },
+  'GET /employer-brand/overview': { fn: 'climate', action: 'export' },
+  'GET /cnps/declarations/:id/neva': { fn: 'declarations', action: 'validate' },
+  'GET /cnps/rns/fields': { fn: 'declarations', action: 'validate' },
+  'GET /employees/:id/check-delete': { fn: 'employees', action: 'delete' },
+  'GET /settings/termination-rules': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/leave-policy': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/absence-types': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/payroll-rules': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/workflow': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/workflow/hr-team': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/workflow/unlinked-managers': { fn: 'hr_settings', action: 'configure' },
+  'GET /settings/import/users-status': { fn: 'hr_settings', action: 'configure' },
+  'GET /referentiels/stats': { fn: 'hr_settings', action: 'configure' },
+  'POST /onboarding/templates': { fn: 'lifecycle', action: 'validate' },
+  'POST /onboarding/templates/generate': { fn: 'lifecycle', action: 'validate' },
+  'PATCH /onboarding/templates/:id': { fn: 'lifecycle', action: 'validate' },
+  'PATCH /onboarding/journeys/:id': { fn: 'lifecycle', action: 'validate' },
+  'GET /offboarding/reason-stats': { fn: 'lifecycle', action: 'export' },
+  'GET /sage/export/employees.csv': { fn: 'payroll', action: 'configure' },
+  'GET /sage/export/payroll.csv': { fn: 'payroll', action: 'configure' },
+  'GET /sage/export/variable-elements.csv': { fn: 'payroll', action: 'configure' },
+  'GET /sage/config': { fn: 'payroll', action: 'configure' },
+  'GET /sage/legal-entities': { fn: 'payroll', action: 'configure' },
+  'GET /settings/payslip-template': { fn: 'payroll', action: 'configure' },
+  'GET /settings/variable-elements': { fn: 'payroll', action: 'configure' },
+  'POST /settings/variable-elements': { fn: 'payroll', action: 'configure' },
+  'POST /payroll/periods/:month': { fn: 'payroll', action: 'configure' },
+  'POST /contracts': { fn: 'contracts', action: 'validate' },
+  'POST /contracts/:id/renew': { fn: 'contracts', action: 'validate' },
+  'PATCH /contracts/:id': { fn: 'contracts', action: 'validate' },
+  'POST /recruitment/jobs/:id/source': { fn: 'recruitment', action: 'validate' },
+  'POST /recruitment/jobs/:id/source/compare': { fn: 'recruitment', action: 'validate' },
+  'POST /recruitment/jobs/:id/screening/apply': { fn: 'recruitment', action: 'validate' },
+  'PUT /recruitment/jobs/:id/screening-questions': { fn: 'recruitment', action: 'validate' },
+  'GET /recruitment/funnel-stats': { fn: 'recruitment', action: 'export' },
+  'GET /interview-sim/config': { fn: 'recruitment', action: 'export' },
+  'POST /signature/requests/:id/cancel': { fn: 'signature', action: 'validate' },
+  'GET /careers/nine-box': { fn: 'talent', action: 'export' },
+  'DELETE /succession/plans/:id': { fn: 'talent', action: 'validate' },
+  'DELETE /competencies/catalog/:id': { fn: 'talent', action: 'validate' },
+  'DELETE /competencies/job-profiles/:id': { fn: 'talent', action: 'validate' },
+  'DELETE /calibration/sessions/:id': { fn: 'talent', action: 'validate' },
+  'DELETE /mobility/requests/:id': { fn: 'talent', action: 'validate' },
 }
 
 /**
@@ -211,7 +276,9 @@ function isExport(url: string): boolean {
  */
 export function resolveRoutePermission(method: string, routeUrl: string): RoutePermission | null {
   const url = routeUrl.split('?')[0] ?? ''
-  const exact = EXACT_ROUTES[`${method.toUpperCase()} ${url}`]
+  // HEAD est servi par la route GET : même case.
+  const verb = method.toUpperCase() === 'HEAD' ? 'GET' : method.toUpperCase()
+  const exact = EXACT_ROUTES[`${verb} ${url}`]
   if (exact) return exact
   let action = verbAction(method)
   if (action === null) return null
