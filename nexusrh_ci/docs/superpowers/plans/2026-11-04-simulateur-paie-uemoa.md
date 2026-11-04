@@ -116,6 +116,17 @@
 - Si le pack n'a ni `tauxAtMin` ni `tauxAtMax`, seul le taux par défaut est accepté. Toute autre valeur → 400 « Taux AT non paramétrable pour ce pays ».
 - La simulation « +1 enfant » relance le moteur avec `childrenCount + 1`.
 - `effortRate = arrondi à 0,1 de (cotisations salariales + impôt) / brut × 100`.
+- Seuls les pays vérifiés sont simulables, comme le décide le porteur (voir la spec, § Pays). Concrètement :
+  - la constante `SIMULATOR_VERIFIED_PACKS = ['CIV-2024']` fixe la liste ;
+  - `GET /countries` ajoute `available` et `unavailableReason` à chaque pays ;
+  - `POST /simulate` sur un pays absent de la liste répond 409 `{ error: 'Données de paie en cours de vérification pour ce pays' }`.
+- Tant que la vérification CIV n'est pas close, une simulation CIV dont le brut dépasse 1 647 315 ajoute l'avertissement `Plafond retraite CNPS en cours de vérification (évolution possible depuis 2025)`.
+- De même, une simulation CIV avec des heures supplémentaires ajoute `Majorations d'heures supplémentaires en cours de vérification (décret n° 96-203)`.
+- Ces deux avertissements sont des constantes, à retirer une fois la vérification close.
+- Tests :
+  - 409 pour `SEN` ;
+  - `available` vaut false pour les 7 autres pays ;
+  - chacun des deux avertissements CIV est présent dans son cas.
 
 - [ ] **Step 1 : tests en échec** (vraies routes, vrai `authorize`, pool mocké).
   - `countries` : 8 pays dans l'ordre. Le SMIG CIV vaut 75 000, la caisse CIV `CNPS` et celle du SEN `IPRES + CSS`. `transportZones` vaut null pour un pack sans `primeTransportExoneree`. `seniorityBonus` vaut null pour BEN et GNB.
@@ -149,7 +160,8 @@
 
 - [ ] **Step 1 : test en échec** (API mockée).
   - Au chargement, la CIV est sélectionnée. Le libellé `CNPS` et le SMIG de 75 000 sont affichés.
-  - Passer au SEN :
+  - Les pays dont `available` vaut false sont grisés dans la liste, avec la mention « Données de paie en cours de vérification ». Ils ne sont pas sélectionnables.
+  - Passer au SEN (dans le test, son `available` est mis à true dans le mock, afin de vérifier que l'écran est bien piloté par les métadonnées) :
     - affiche `IPRES + CSS` ;
     - remplace la liste des secteurs AT par un champ numérique ;
     - masque la zone de transport si `transportZones` est null ;

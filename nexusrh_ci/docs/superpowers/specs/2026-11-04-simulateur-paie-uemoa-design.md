@@ -33,6 +33,15 @@ Les 8 pays de l'UEMOA, avec leurs packs actifs : CIV_2024, SEN_2024, MLI_2024, B
 
 Un audit des valeurs des packs, comparées aux sources officielles, est mené à part. Ses corrections ne seront appliquées qu'**après validation du porteur**, dans un lot distinct.
 
+**Décision du porteur (04/11, après l'audit) : on bloque les pays non vérifiés.** Seuls les pays dont le pack a été vérifié sur les textes officiels sont simulables.
+
+- La liste vit dans le code serveur : `SIMULATOR_VERIFIED_PACKS` dans `simulator.routes.ts`, qui ne contient au départ que `CIV-2024`. Un pays y entre une fois ses corrections faites et validées.
+- `GET /countries` renvoie les 8 pays. Chacun porte `available: boolean` et, s'il n'est pas disponible, `unavailableReason: 'Données de paie en cours de vérification'`.
+- `POST /simulate` sur un pays non disponible répond **409**, avec ce même message.
+- Le web affiche les pays non disponibles comme grisés, avec la mention.
+
+L'audit (`uemoa-packs-audit.md`) a relevé des écarts dans tous les packs hors CIV : barème annuel et quotient familial au Sénégal, plafonds et SMIG 2026 au Niger, assiette de l'ITS au Bénin, réduction familiale au Togo, AMU au Burkina et AMO au Mali absentes, Guinée-Bissau non vérifiée. Pour la CIV, deux points restent à vérifier sur les textes officiels : le plafond retraite CNPS (3 375 000 depuis 2025 ?) et les majorations d'heures supplémentaires (décret 96-203). Tant que ces deux points ne sont pas confirmés, la CIV reste disponible, mais le résultat porte un avertissement sur les salaires au-dessus de 1 647 315 et sur les heures supplémentaires.
+
 ## Prime d'ancienneté — nouveau champ de pack `seniorityBonus`
 
 ```ts
