@@ -30,6 +30,7 @@ import {
 } from './stage-history.js'
 import { hireApplication, getHirePrefill, HireError, fileProposalForHiredApplication, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
+import { requestHrScope } from '../../utils/hr-scope.js'
 import contractProposalRoutes from './contract-proposal.routes.js'
 import {
   CONTRACT_GENERATION_DISABLED, isContractGenerationEnabled, loadContractEmployer,
@@ -707,7 +708,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         let hire: HireResult | null = null
         if (stage === 'hired') {
           try {
-            hire = await hireApplication(schema, id, employee ?? {}, { userId: request.user.sub, ip: request.ip ?? null })
+            hire = await hireApplication(schema, id, employee ?? {}, {
+              userId: request.user.sub, ip: request.ip ?? null, scopeSql: await requestHrScope(request, 'e'),
+            })
           } catch (err) {
             if (err instanceof HireError) {
               return reply.status(err.statusCode).send({ error: err.message, code: err.code })

@@ -87,6 +87,11 @@ export class HireError extends Error {
 export interface HireActor {
   userId: string
   ip: string | null
+  /**
+   * Périmètre filiale de l'acteur (habilitations) : fragment SQL sur l'alias
+   * `e` (cf. hrScopeSql). Absent ou 'TRUE' = aucune restriction.
+   */
+  scopeSql?: string
 }
 
 interface ApplicationForHire {
@@ -260,6 +265,14 @@ export async function hireApplication(
       if (!email && !toComplete.includes('email')) toComplete.push('email')
 
       const prefill = buildHirePrefill(app, overrides)
+      // Périmètre filiale : on n'embauche pas dans une filiale hors périmètre.
+      if (actor.scopeSql && actor.scopeSql !== 'TRUE') {
+        const ok = await client.query(
+          `SELECT 1 FROM (SELECT $1::uuid AS legal_entity_id) e WHERE ${actor.scopeSql}`,
+          [prefill.legalEntityId ?? null],
+        )
+        if (ok.rows.length === 0) throw new HireError(403, 'Filiale hors de votre périmètre', 'OUT_OF_SCOPE')
+      }
       const ctx = await loadEmployeeTenantContext(client, schema, prefill.legalEntityId)
       const pack = ctx.legislation.legislationPack
       let baseSalary = prefill.baseSalary
@@ -316,6 +329,14 @@ export async function hireApplication(
         hire_date: body.hireDate ?? null,
         deleted_at: null,
       }
+    }
+
+    // Fiche existante reliée : elle doit elle aussi être dans le périmètre.
+    if (status !== 'created' && actor.scopeSql && actor.scopeSql !== 'TRUE') {
+      const ok = await client.query(
+        `SELECT 1 FROM "${schema}".employees e WHERE e.id = $1::uuid AND ${actor.scopeSql}`, [employee.id],
+      )
+      if (ok.rows.length === 0) throw new HireError(403, 'Employé hors de votre périmètre', 'OUT_OF_SCOPE')
     }
 
     if (app.employee_id !== employee.id) {

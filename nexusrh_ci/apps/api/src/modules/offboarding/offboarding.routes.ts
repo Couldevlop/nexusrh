@@ -25,6 +25,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import {
   categoryLevel, completedSeniorityMonths, effectiveTerminationRules,
@@ -124,7 +125,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
           rawPool.query<{ reason_category: string | null; departure_type: string; count: string }>(
             `SELECT reason_category, departure_type, count(*)::int AS count
                FROM "${schema}".offboarding_cases
-              WHERE status <> 'cancelled'
+              WHERE status <> 'cancelled' AND ${await requestEmployeeScope(request, 'employee_id')}
                 AND ($1::date IS NULL OR departure_date >= $1::date)
                 AND ($2::date IS NULL OR departure_date <= $2::date)
               GROUP BY reason_category, departure_type`,
@@ -183,7 +184,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const { employeeId, status } = request.query as Record<string, string>
       let sql = `SELECT o.*, e.first_name, e.last_name, e.employee_number
                  FROM "${schema}".offboarding_cases o
-                 JOIN "${schema}".employees e ON e.id = o.employee_id WHERE 1=1`
+                 JOIN "${schema}".employees e ON e.id = o.employee_id WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let i = 1
       if (employeeId) { sql += ` AND o.employee_id = $${i++}`; params.push(employeeId) }
@@ -203,7 +204,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
         `SELECT o.*, e.first_name, e.last_name FROM "${schema}".offboarding_cases o
-         JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 LIMIT 1`,
+         JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
         [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
@@ -222,6 +223,10 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const b = parsed.data
       if (isSelfAction(request, b.employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       if (await unknownReasonCategory(schema, b.reasonCategory)) return reply.status(400).send(UNKNOWN_CATEGORY)
+      // Périmètre filiale : on n'ouvre pas de dossier de sortie hors périmètre.
+      if (!(await employeeInHrScope(schema, b.employeeId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const res = await rawPool.query(
         `INSERT INTO "${schema}".offboarding_cases
            (employee_id, departure_type, departure_date, reason, notice_served, checklist, created_by, status, reason_category)
@@ -252,7 +257,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const cur = await rawPool.query<{ status: OffboardingStatus; employee_id: string; departure_date?: string | null }>(
         `SELECT status, employee_id, departure_date::text AS departure_date
-         FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
+         FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
@@ -321,7 +326,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT o.departure_type, o.departure_date, o.notice_served, o.status, o.employee_id,
                 e.base_salary, e.hire_date, e.legal_entity_id, e.professional_category
          FROM "${schema}".offboarding_cases o
-         JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 LIMIT 1`,
+         JOIN "${schema}".employees e ON e.id = o.employee_id WHERE o.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
         [id],
       )
       const row = r.rows[0]
@@ -421,13 +426,13 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de dossier invalide' })
       const own = await rawPool.query<{ employee_id: string }>(
-        `SELECT employee_id FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
+        `SELECT employee_id FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`, [id],
       )
       if (own.rows[0] && isSelfAction(request, own.rows[0].employee_id)) {
         return reply.status(403).send({ error: SELF_ACTION_ERROR })
       }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".offboarding_cases WHERE id = $1 RETURNING id`, [id],
+        `DELETE FROM "${schema}".offboarding_cases WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
       audit(schema, request.user.sub, 'offboarding.deleted', id, {}, request.ip ?? null)

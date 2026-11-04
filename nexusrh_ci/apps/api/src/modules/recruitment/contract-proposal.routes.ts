@@ -25,6 +25,7 @@ import { pool } from '../../db/pool.js'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestEmployeeScope } from '../../utils/hr-scope.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { actorUuid } from './stage-history.js'
 import { fileProposalForHiredApplication } from './hire.service.js'
@@ -209,7 +210,7 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
         }>(
           `SELECT id, title, file_name, size_bytes, version, is_current, created_at
              FROM "${schema}".employee_documents
-            WHERE employee_id = $1 AND category = $2
+            WHERE employee_id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_id')}
             ORDER BY is_current DESC, created_at DESC`,
           [employeeId, CONTRACT_PROPOSAL_CATEGORY],
         )
@@ -238,7 +239,7 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const r = await pool.query<{ id: string; employee_id: string; bytes: Buffer; file_name: string }>(
           `SELECT id, employee_id, bytes, file_name FROM "${schema}".employee_documents
-            WHERE id = $1 AND category = $2 LIMIT 1`,
+            WHERE id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_id')} LIMIT 1`,
           [docId, CONTRACT_PROPOSAL_CATEGORY],
         )
         const row = r?.rows?.[0]

@@ -18,6 +18,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -76,7 +77,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const res = await rawPool.query(
-        `SELECT s.*, (SELECT COUNT(*) FROM "${schema}".calibration_entries e WHERE e.session_id = s.id) AS entry_count
+        `SELECT s.*, (SELECT COUNT(*) FROM "${schema}".calibration_entries e WHERE e.session_id = s.id AND ${await requestEmployeeScope(request, 'e.employee_id')}) AS entry_count
          FROM "${schema}".calibration_sessions s ORDER BY s.session_date DESC NULLS LAST, s.created_at DESC`,
       )
       return reply.send({ data: res.rows })
@@ -96,7 +97,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT ce.*, emp.first_name, emp.last_name, emp.job_title
          FROM "${schema}".calibration_entries ce
          JOIN "${schema}".employees emp ON emp.id = ce.employee_id
-         WHERE ce.session_id = $1 ORDER BY emp.last_name, emp.first_name`, [id],
+         WHERE ce.session_id = $1 AND ${await requestHrScope(request, 'emp')} ORDER BY emp.last_name, emp.first_name`, [id],
       )
       const entries = e.rows.map((r) => ({
         ...r,
@@ -184,6 +185,10 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = entrySchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      // Périmètre filiale : on n'inscrit pas un collaborateur hors périmètre.
+      if (!(await employeeInHrScope(schema, b.employeeId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const ins = await rawPool.query<{ id: string }>(
         `INSERT INTO "${schema}".calibration_entries (session_id, employee_id, performance_before, potential_before)
          VALUES ($1,$2,$3,$4) ON CONFLICT (session_id, employee_id) DO NOTHING RETURNING id`,
@@ -217,7 +222,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       sets.push('updated_at = now()')
       params.push(id)
-      const res = await rawPool.query(`UPDATE "${schema}".calibration_entries SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
+      const res = await rawPool.query(`UPDATE "${schema}".calibration_entries SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING *`, params)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Entrée introuvable' })
       audit(schema, request.user.sub, 'calibration.entry_updated', 'calibration_entry', id, { fields: sets }, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
@@ -231,7 +236,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const res = await rawPool.query(`DELETE FROM "${schema}".calibration_entries WHERE id = $1 RETURNING id`, [id])
+      const res = await rawPool.query(`DELETE FROM "${schema}".calibration_entries WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Entrée introuvable' })
       audit(schema, request.user.sub, 'calibration.entry_removed', 'calibration_entry', id, {}, request.ip ?? null)
       return reply.send({ data: { id } })
