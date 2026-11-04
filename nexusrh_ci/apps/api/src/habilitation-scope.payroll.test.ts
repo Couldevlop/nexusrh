@@ -422,3 +422,144 @@ describe('recrutement — périmètre filiale (offres)', () => {
     expect(writes()).toEqual([])
   })
 })
+
+describe('fix round 1 — agrégats multi-filiales, envoi bancaire, clôture, offres', () => {
+  const PARENT = '11111111-1111-4222-8333-444444444444'
+  const CHILD = '22222222-1111-4222-8333-444444444444'
+  type Impl = (rawSql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>
+  const norm = (q: string): string => q.replace(/\s+/g, ' ')
+  /** Surcharge le routeur : `match` répond en priorité, sinon routeur par défaut. */
+  function override(match: (sql: string) => { rows: unknown[]; rowCount: number } | null): void {
+    const base = queryMock.getMockImplementation() as Impl | undefined
+    queryMock.mockImplementation(async (rawSql: string, params?: unknown[]) => {
+      return match(norm(String(rawSql))) ?? (base ? base(rawSql, params) : { rows: [], rowCount: 0 })
+    })
+  }
+
+  it('GET /payroll/periods : totaux de la parente = bulletins des déclinaisons du périmètre uniquement', async () => {
+    override((sql) => {
+      if (sql.startsWith('SELECT pp.* FROM')) {
+        return { rows: [{ id: PARENT, month: '2026-05', status: 'closed', total_gross: '999999', total_net: '888888', total_cnps: '1', total_its: '1' }], rowCount: 1 }
+      }
+      if (sql.includes('SUM(ps.gross_salary) AS gross')) {
+        return { rows: [{ period_id: PARENT, gross: '100', net: '80', cnps: '10', its: '5' }], rowCount: 1 }
+      }
+      return null
+    })
+    const res = await call('GET', '/payroll/periods')
+    expect(res.statusCode).toBe(200)
+    const row = res.json().data[0]
+    expect(row.total_gross).toBe('100')
+    expect(row.total_net).toBe('80')
+    const recompute = sqls().find((q) => q.includes('SUM(ps.gross_salary) AS gross')) ?? ''
+    expect(recompute).toContain('c.parent_period_id = pp.id')
+    expect(recompute).toContain(FRAGMENT)
+    expect(sqls().find((q) => q.startsWith('SELECT pp.* FROM'))).toContain('hvs.period_id IN')
+  })
+
+  it("GET /payroll/periods : une parente sans bulletin du périmètre n'a aucun total (null)", async () => {
+    override((sql) => {
+      if (sql.startsWith('SELECT pp.* FROM')) {
+        return { rows: [{ id: PARENT, month: '2026-05', status: 'open', total_gross: '999999', total_net: null, total_cnps: null, total_its: null }], rowCount: 1 }
+      }
+      return null
+    })
+    const res = await call('GET', '/payroll/periods')
+    expect(res.json().data[0].total_gross).toBeNull()
+  })
+
+  it('GET /payroll-workflow/periods/:id/timeline : aucune déclinaison dans le périmètre -> 404', async () => {
+    override((sql) => {
+      if (sql.includes('FROM "tenant_scope".pay_periods WHERE id = $1')) {
+        return { rows: [{ id: PARENT, month: '2026-05', status: 'validated_central', parent_period_id: null }], rowCount: 1 }
+      }
+      return null
+    })
+    const res = await call('GET', `/payroll-workflow/periods/${PARENT}/timeline`)
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('GET /payroll-workflow/periods/:id/timeline : les montants consolidés de la parente sont retirés', async () => {
+    override((sql) => {
+      if (sql.includes('FROM "tenant_scope".pay_periods WHERE id = $1')) {
+        return { rows: [{ id: PARENT, month: '2026-05', status: 'validated_central', parent_period_id: null }], rowCount: 1 }
+      }
+      if (sql.includes('WHERE pp.parent_period_id = $1')) {
+        return { rows: [{ id: CHILD, legal_entity_id: A, raf_user_id: null, legal_entity_name: 'A' }], rowCount: 1 }
+      }
+      if (sql.includes('FROM "tenant_scope".audit_log a')) {
+        return { rows: [
+          { action: 'workflow.validate_central', created_at: 'd', changes: { sumGross: 123456, sumNet: 1 }, entity_id: PARENT, first_name: 'X', last_name: 'Y' },
+          { action: 'workflow.submit', created_at: 'd', changes: { legalEntityName: 'A' }, entity_id: CHILD, first_name: 'X', last_name: 'Y' },
+        ], rowCount: 2 }
+      }
+      return null
+    })
+    const res = await call('GET', `/payroll-workflow/periods/${PARENT}/timeline`)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.stringify(res.json())).not.toContain('123456')
+    expect(res.json().data.events[1].detail.legalEntityName).toBe('A')
+  })
+
+  it('GET circuit /payroll-workflow/periods/:id/workflow et /payroll/periods/:month/workflow : période invisible -> 404', async () => {
+    override((sql) => {
+      if (sql.includes('FROM "tenant_scope".pay_periods WHERE id = $1 LIMIT 1')) {
+        return { rows: [{ id: PARENT, month: '2026-05', status: 'closed', parent_period_id: null }], rowCount: 1 }
+      }
+      return null
+    })
+    const r1 = await call('GET', `/payroll-workflow/periods/${PARENT}/workflow`)
+    const r2 = await call('GET', '/payroll/periods/2026-05/workflow')
+    expect(r1.statusCode).toBe(404)
+    expect(r2.statusCode).toBe(404)
+    expect(sqls().filter((q) => q.includes('hvs.period_id IN')).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('POST /bank-transfer/send : période contenant des virements hors périmètre -> 409, rien envoyé ni écrit', async () => {
+    override((sql) => {
+      if (sql.includes("e.payment_method = 'bank_transfer'") && sql.includes('NOT COALESCE')) return { rows: [{ x: 1 }], rowCount: 1 }
+      return null
+    })
+    const res = await call('POST', '/bank-transfer/send', { month: '2026-05', banks: [{ name: 'SGBCI', email: 'b@banque.ci' }] })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toBe('La période contient des salariés hors de votre périmètre')
+    expect(writes()).toEqual([])
+  })
+
+  it('POST /payroll/periods/:month/close avec une filiale hors périmètre -> 404 avant tout 422/409 et toute écriture', async () => {
+    const res = await call('POST', '/payroll/periods/2026-05/close', { legalEntityId: OTHER })
+    expect(res.statusCode).toBe(404)
+    expect(writes()).toEqual([])
+    expect(populationMock).not.toHaveBeenCalled()
+  })
+
+  it('POST/PATCH /recruitment/jobs avec target_legal_entity_id non UUID -> 400 (pas de 500)', async () => {
+    override((sql) => (sql.includes('FROM "tenant_scope".recruitment_jobs rj LEFT JOIN LATERAL') ? { rows: [{ x: 1 }], rowCount: 1 } : null))
+    const r1 = await call('POST', '/recruitment/jobs', { title: 'X', target_legal_entity_id: 'pas-un-uuid' })
+    const r2 = await call('PATCH', `/recruitment/jobs/${ID}`, { target_legal_entity_id: 'pas-un-uuid' })
+    expect(r1.statusCode).toBe(400)
+    expect(r2.statusCode).toBe(400)
+  })
+
+  it('GET /recruitment/jobs/:id/decisions-history avec un id invalide -> 400 (avant la garde de périmètre)', async () => {
+    const res = await call('GET', '/recruitment/jobs/pas-un-uuid/decisions-history')
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('outil IA get_recruitment_pipeline : offres et candidatures bornées à la filiale cible', async () => {
+    const calls: string[] = []
+    const pool = { query: async (sql: string) => { calls.push(String(sql)); return { rows: [] } } } as unknown as Pool
+    const ctx = { schemaName: SCHEMA, role: 'hr_manager', hrScope: (alias: string) => hrScopeSql(SCHEMA, alias, entityCtx()) }
+    await executeAiTool(pool, ctx, 'get_recruitment_pipeline', {})
+    expect(calls.length).toBe(2)
+    for (const sql of calls) expect(sql).toContain(FRAGMENT)
+  })
+
+  it('outil IA get_payroll_status : seules les périodes visibles du périmètre (statut / clôtureur)', async () => {
+    const calls: string[] = []
+    const pool = { query: async (sql: string) => { calls.push(String(sql)); return { rows: [] } } } as unknown as Pool
+    const ctx = { schemaName: SCHEMA, role: 'hr_manager', hrScope: (alias: string) => hrScopeSql(SCHEMA, alias, entityCtx()) }
+    await executeAiTool(pool, ctx, 'get_payroll_status', {})
+    expect(calls[0]).toContain('hvs.period_id IN')
+  })
+})

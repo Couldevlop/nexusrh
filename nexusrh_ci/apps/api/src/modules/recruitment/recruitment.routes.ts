@@ -264,6 +264,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A03 — valider les énumérations APEC avant insertion.
       const enumErr = validateApecEnums(body)
       if (enumErr) return reply.status(400).send({ error: enumErr })
+      if (body.target_legal_entity_id && !UUID_PARAM_RE.test(String(body.target_legal_entity_id))) {
+        return reply.status(400).send({ error: 'target_legal_entity_id invalide (UUID requis)' })
+      }
       // Habilitations : l'offre ne peut viser qu'une filiale du périmètre (ni créer hors périmètre).
       if (!(await legalEntityInHrScope(schema, body.target_legal_entity_id || null, await requestHrScope(request, 'e')))) {
         return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
@@ -383,6 +386,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         values.push(body.target_job_levels ?? [])
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
+      if (body.target_legal_entity_id && !UUID_PARAM_RE.test(String(body.target_legal_entity_id))) {
+        return reply.status(400).send({ error: 'target_legal_entity_id invalide (UUID requis)' })
+      }
       if ('target_legal_entity_id' in body
         && !(await legalEntityInHrScope(schema, body.target_legal_entity_id || null, await requestHrScope(request, 'e')))) {
         return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
@@ -1531,11 +1537,11 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id: jobId } = request.params as { id: string }
-      if (!(await jobInHrScope(request, schema, jobId))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       // OWASP A03 : valider que jobId est bien un UUID (évite l'injection même si bindé)
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
         return reply.status(400).send({ error: 'jobId invalide (UUID requis)' })
       }
+      if (!(await jobInHrScope(request, schema, jobId))) return reply.status(404).send({ error: JOB_NOT_FOUND })
       const { limit: limitRaw } = request.query as { limit?: string }
       const limit = Math.min(Math.max(parseInt(limitRaw ?? '50', 10) || 50, 1), 100)
 

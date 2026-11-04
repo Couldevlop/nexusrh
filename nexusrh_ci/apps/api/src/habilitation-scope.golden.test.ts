@@ -80,7 +80,7 @@ const EXEMPT: Record<string, string> = {}
 const EXEMPT_NON_ROUTES: Record<string, string> = {
   'attendance/attendance.repo.ts': "ingestion des badgeuses (rapprochement référence appareil -> employé), hors requête utilisateur",
 }
-const SCOPE_CALL = /hrScopeSql\(|requestHrScope(?:UnlessSelf)?\(|scopeSql/
+const SCOPE_CALL = /hrScopeSql\(|requestHrScope(?:UnlessSelf)?\(|scopeSql|hrScope\(/
 
 const EMPLOYEES_TABLE = /(?:FROM|JOIN|UPDATE|INTO)\s+"?\$\{[A-Za-z.]*\}"?\."?employees\b/
 
@@ -93,6 +93,8 @@ describe('périmètre filiale — invariant statique (services et dépôts)', ()
       if ((f.endsWith('.service.ts') || f.endsWith('.repo.ts')) && !f.includes('.test.')) files.push(join(dir, f))
     }
   }
+  // Outils IA : lisent employees hors *.service.ts, mêmes règles (ctx.hrScope obligatoire).
+  files.push(join(MODULES_DIR, 'ai', 'ai-tools.ts'))
   for (const file of files) {
     const rel = file.slice(MODULES_DIR.length + 1).split(String.fromCharCode(92)).join('/')
     const src = readFileSync(file, 'utf8')
@@ -210,6 +212,22 @@ describe('périmètre filiale — balayage dynamique (contexte entity A)', () =>
   for (const [label, url] of routes) {
     it(`${label} filtre sur la filiale A`, async () => {
       expect(await sqlOf(url)).toContain(fragment)
+    })
+  }
+
+  // Strict : TOUTE requête qui lit employees ou pay_slips pour ces routes porte le fragment
+  // (pas seulement une d'entre elles). Exemptions motivées dans STRICT_EXEMPT.
+  const READS_PERSONAL = /(?:FROM|JOIN)\s+"tenant_scope"\.(?:employees|pay_slips)/i
+  const STRICT_EXEMPT: Array<[RegExp, string]> = [
+    [/SELECT id, first_name, last_name, job_title FROM/, 'à compléter si une lecture est motivée'],
+  ]
+  for (const [label, url] of routes) {
+    it(`${label} : chaque requête sur employees / pay_slips est bornée`, async () => {
+      await sqlOf(url)
+      const offenders = queryMock.mock.calls
+        .map((c) => String(c[0]).replace(/\s+/g, ' '))
+        .filter((q) => READS_PERSONAL.test(q) && !q.includes(fragment) && !STRICT_EXEMPT.some(([re]) => re.test(q)))
+      expect(offenders).toEqual([])
     })
   }
 })
