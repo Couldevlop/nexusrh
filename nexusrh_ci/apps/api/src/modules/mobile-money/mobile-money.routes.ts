@@ -6,6 +6,7 @@ import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
 import { initiateTransfer, verifyNumber, normalizeMmProvider } from '../../services/mobile-money-providers.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { requestHrScope, requestEmployeeScope, SHARED_PERIOD_ERROR } from '../../utils/hr-scope.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
 // OWASP A03 — patterns de validation stricts
@@ -111,6 +112,8 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
         providerFilter = ` AND e.mobile_money_provider = ANY($${params.length}::text[])`
       }
 
+      // Habilitations : le lot ne contient que les bulletins du périmètre filiale.
+      const campaignScope = await requestHrScope(request, 'e')
       const slipsRes = await rawPool.query<{
         id: string; employee_id: string; net_payable: string
         payment_method: string; payment_status: string
@@ -126,6 +129,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
          WHERE ps.month = $1 AND ps.status IN ('generated','approved')
            AND ps.payment_status IN ('pending','failed')
            AND COALESCE(e.payment_method, 'mobile_money') <> 'bank_transfer'${providerFilter}
+           AND ${campaignScope}
          ORDER BY e.last_name`,
         params,
       )
@@ -133,9 +137,9 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
       const slips = slipsRes.rows
       if (slips.length === 0) {
         const paidRes = await rawPool.query<{ count: string }>(
-          `SELECT count(*)::text AS count FROM "${schema}".pay_slips
-           WHERE month = $1 AND status IN ('generated','approved')
-             AND payment_status = 'paid'`,
+          `SELECT count(*)::text AS count FROM "${schema}".pay_slips ps
+           WHERE ps.month = $1 AND ps.status IN ('generated','approved')
+             AND ps.payment_status = 'paid' AND ${await requestEmployeeScope(request, 'ps.employee_id')}`,
           [month],
         )
         const paidCount = parseInt(paidRes.rows[0]?.count ?? '0')
@@ -221,6 +225,19 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const { paySlipIds } = parsed.data
       const schema = request.user.schemaName
+
+      // Habilitations : un lot qui contient le bulletin d'un employé hors périmètre est
+      // refusé en bloc (aucun virement initié).
+      const execScope = await requestEmployeeScope(request, 'ps.employee_id')
+      if (execScope !== 'TRUE') {
+        const foreign = await rawPool.query(
+          `SELECT 1 FROM "${schema}".pay_slips ps WHERE ps.id = ANY($1::uuid[]) AND NOT (${execScope}) LIMIT 1`,
+          [paySlipIds],
+        )
+        if ((foreign.rowCount ?? foreign.rows.length) > 0) {
+          return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+        }
+      }
 
       const results: Array<{
         paySlipId: string
@@ -404,7 +421,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
                  FROM "${schema}".mobile_money_payments mp
                  JOIN "${schema}".employees e ON e.id = mp.employee_id
                  LEFT JOIN "${schema}".pay_slips ps ON ps.id = mp.pay_slip_id
-                 WHERE 1=1`
+                 WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
 
@@ -444,6 +461,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
                 SUM(mp.amount)::text AS total_amount
          FROM "${schema}".mobile_money_payments mp
          WHERE EXTRACT(YEAR FROM mp.created_at) = $1
+           AND ${await requestEmployeeScope(request, 'mp.employee_id')}
          GROUP BY mp.provider, mp.status
          ORDER BY mp.provider, mp.status`,
         [year],
@@ -476,7 +494,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
                 e.first_name, e.last_name
          FROM "${schema}".mobile_money_payments mp
          JOIN "${schema}".employees e ON e.id = mp.employee_id
-         WHERE mp.id = $1 LIMIT 1`,
+         WHERE mp.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
         [id],
       )
       const payment = payRes.rows[0]

@@ -35,6 +35,9 @@ import {
 } from '../../services/raf-readiness.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import {
+  requestHrScope, employeeInHrScope, legalEntityInHrScope, periodHasOutOfScopeSlips, SHARED_PERIOD_ERROR,
+} from '../../utils/hr-scope.js'
 import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
   asValidationPeriod, buildPayrollCircuitView, decideOnPayrollPeriod, describePendingPeriods, loadPayrollCircuit, loadPayrollUsers,
@@ -180,7 +183,7 @@ type LoadedPending =
     }
 
 /** Parente « consolidée, en attente de validation » + état de son circuit, ou l'erreur HTTP. */
-async function loadPendingParent(schema: string, id: string): Promise<LoadedPending> {
+async function loadPendingParent(schema: string, id: string, scopeSql: string): Promise<LoadedPending> {
   if (!UUID_RE.test(id)) return { status: 400, error: 'Identifiant de période invalide' }
   const parent = await loadMultiParent(schema, id)
   if (!parent) return { status: 404, error: 'Période parente introuvable' }
@@ -193,6 +196,8 @@ async function loadPendingParent(schema: string, id: string): Promise<LoadedPend
       error: 'Cette paie n\'est pas en attente de validation : consolidez-la d\'abord, une fois toutes les filiales soumises.',
     }
   }
+  // Habilitations : paie partagée avec d'autres filiales = réservée aux habilités sur toutes.
+  if (await periodHasOutOfScopeSlips(schema, parent.id, scopeSql)) return { status: 409, error: SHARED_PERIOD_ERROR }
   const period = asValidationPeriod(parent)
   const circuit = await loadPayrollCircuit(pool, schema)
   const approvals = (await loadPeriodApprovals(pool, schema, [period.id])).get(period.id) ?? []
@@ -217,7 +222,7 @@ interface RafChildPeriod {
  * celles de leur tenant (schéma du token). Une période mère est refusée.
  */
 async function loadRafChildPeriod(
-  schema: string, id: string, user: { role: string; sub: string },
+  schema: string, id: string, user: { role: string; sub: string }, scopeSql: string,
 ): Promise<{ period: RafChildPeriod } | { status: 400 | 403 | 404; error: string }> {
   if (!UUID_RE.test(id)) return { status: 400, error: 'Identifiant de période invalide' }
   const r = await pool.query<RafChildPeriod>(
@@ -232,6 +237,10 @@ async function loadRafChildPeriod(
   }
   if (user.role === 'raf_site' && period.raf_user_id !== user.sub) {
     return { status: 403, error: 'Vous n\'êtes pas le RAF de cette filiale' }
+  }
+  // Habilitations : la filiale de la déclinaison doit être dans le périmètre.
+  if (!(await legalEntityInHrScope(schema, period.legal_entity_id, scopeSql))) {
+    return { status: 404, error: 'Période introuvable' }
   }
   return { period }
 }
@@ -275,17 +284,34 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
                      LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id
                      LEFT JOIN "${schema}".users ru ON ru.id = pp.raf_user_id`
         const params: unknown[] = []
+        // Habilitations : déclinaisons dans le périmètre ; parente visible si elle n'a pas
+        // de déclinaison ou si l'une est dans le périmètre (totaux consolidés masqués).
+        const scopeSql = await requestHrScope(request, 'pp')
+        const scopeChild = scopeSql === 'TRUE' ? 'TRUE' : await requestHrScope(request, 'c')
+        const conds: string[] = scopeSql === 'TRUE' ? [] : [
+          `((pp.parent_period_id IS NOT NULL AND ${scopeSql})
+            OR (pp.parent_period_id IS NULL AND (
+                 NOT EXISTS (SELECT 1 FROM "${schema}".pay_periods c WHERE c.parent_period_id = pp.id)
+                 OR EXISTS (SELECT 1 FROM "${schema}".pay_periods c WHERE c.parent_period_id = pp.id AND ${scopeChild}))))`,
+        ]
         // Un RAF site ne voit que les périodes de son entité. `?scope=raf` (page
         // « Paie de ma filiale ») : uniquement les périodes-FILLES dont
         // l'utilisateur est le RAF — jamais la période mère du groupe, même pour
         // un admin / hr_manager désigné RAF d'une filiale.
         const { scope } = (request.query ?? {}) as { scope?: string }
         if (request.user.role === 'raf_site' || scope === 'raf') {
-          sql += ` WHERE pp.raf_user_id = $1 AND pp.legal_entity_id IS NOT NULL AND pp.parent_period_id IS NOT NULL`
+          conds.push(`pp.raf_user_id = $1 AND pp.legal_entity_id IS NOT NULL AND pp.parent_period_id IS NOT NULL`)
           params.push(request.user.sub)
         }
+        if (conds.length > 0) sql += ` WHERE ${conds.join(' AND ')}`
         sql += ` ORDER BY pp.month DESC, pp.parent_period_id NULLS FIRST, pp.created_at`
         const res = await pool.query<MultiParentRow & Record<string, unknown>>(sql, params)
+        if (scopeSql !== 'TRUE') {
+          // Totaux consolidés de la parente = toutes filiales : masqués hors habilitation globale.
+          for (const r of res.rows) {
+            if (!r.parent_period_id) { r.total_gross = null; r.total_net = null; r.total_cnps = null; r.total_its = null }
+          }
+        }
         // Valideur attendu + échéance des paies consolidées en attente de validation
         const pendingParents = res.rows.filter(r => !r.parent_period_id && r.status === 'validated_central')
         if (pendingParents.length > 0) {
@@ -414,6 +440,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
+        // Habilitations : décliner vers une filiale hors périmètre = paie partagée.
+        const sitesScope = await requestHrScope(request, 'e')
+        for (const st of sites) {
+          if (!(await legalEntityInHrScope(schema, st.legalEntityId, sitesScope))) {
+            return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+          }
+        }
+
         const month = parent.rows[0].month
         const created: unknown[] = []
         for (const s of sites) {
@@ -482,6 +516,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         }
         if (!period.legal_entity_id) {
           return reply.status(500).send({ error: 'Période enfant sans legal_entity_id (incohérence)' })
+        }
+        if (!(await legalEntityInHrScope(schema, period.legal_entity_id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Période introuvable' })
         }
 
         // ── Génération réelle des bulletins de la filiale ──────────────────
@@ -633,7 +670,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
-        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        const loaded = await loadRafChildPeriod(schema, id, request.user, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period } = loaded
         const pack = getLegislationPack(period.legislation_pack_code)
@@ -657,7 +694,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       try {
-        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        const loaded = await loadRafChildPeriod(schema, id, request.user, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period } = loaded
         const pack = getLegislationPack(period.legislation_pack_code)
@@ -698,7 +735,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       try {
-        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        const loaded = await loadRafChildPeriod(schema, id, request.user, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period } = loaded
         if (period.status !== 'sent_to_sites') {
@@ -706,7 +743,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id, employeeId })
         const emp = population.find(e => e.id === employeeId && parseInt(e.base_salary) > 0)
-        if (!emp) return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+        if (!emp || !(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+        }
 
         const entries = RAF_VARIABLE_CODES.map(code => ({ code, amount: body.data.values[code] ?? 0 }))
         const toDelete = entries.filter(e => e.amount === 0).map(e => e.code)
@@ -764,7 +803,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const body = validateBodySchema.safeParse(request.body ?? {})
       if (!body.success) return reply.status(400).send({ error: 'Mode de validation invalide (entered ou none).' })
       try {
-        const loaded = await loadRafChildPeriod(schema, id, request.user)
+        const loaded = await loadRafChildPeriod(schema, id, request.user, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period } = loaded
         if (period.status !== 'sent_to_sites') {
@@ -772,7 +811,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const population = await loadPayrollPopulation(schema, period.month, { legalEntityId: period.legal_entity_id, employeeId })
         const emp = population.find(e => e.id === employeeId && parseInt(e.base_salary) > 0)
-        if (!emp) return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+        if (!emp || !(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Salarié introuvable dans cette filiale pour ce mois' })
+        }
 
         const vars = await pool.query<{ employee_id: string; rule_code: string; amount: string }>(
           `SELECT employee_id, rule_code, amount FROM "${schema}".variable_elements
@@ -841,6 +882,9 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
               ? 'Paie clôturée : elle est immuable.'
               : 'Paie déjà consolidée et en attente de validation. Pour la recalculer, le valideur doit la renvoyer en préparation, ou l\'initiateur annuler son initiation tant qu\'aucun niveau n\'a validé.',
           })
+        }
+        if (await periodHasOutOfScopeSlips(schema, id, await requestHrScope(request, 'e'))) {
+          return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
         }
         // Vérifier que toutes les filles sont completed_by_site et consolider
         const children = await pool.query<{
@@ -938,7 +982,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
     if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
     const notes = body.data.notes || null
     try {
-      const loaded = await loadPendingParent(schema, id)
+      const loaded = await loadPendingParent(schema, id, await requestHrScope(request, 'e'))
       if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
       const { parent, period, circuit, approvals, users, state } = loaded
 
@@ -1037,7 +1081,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const reason = body.data.reason
       try {
-        const loaded = await loadPendingParent(schema, id)
+        const loaded = await loadPendingParent(schema, id, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { parent, period, state } = loaded
         const decision = decideOnPayrollPeriod(state, period.initiated_by, request.user)
@@ -1098,7 +1142,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
       const body = cancelBodySchema.safeParse(request.body ?? {})
       if (!body.success) return reply.status(400).send({ error: 'Commentaire invalide (2000 caractères maximum).' })
       try {
-        const loaded = await loadPendingParent(schema, id)
+        const loaded = await loadPendingParent(schema, id, await requestHrScope(request, 'e'))
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { parent, period, approvals } = loaded
         if (period.initiated_by !== request.user.sub) {
@@ -1209,7 +1253,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT pp.id, pp.legal_entity_id, pp.raf_user_id, le.name AS legal_entity_name
              FROM "${schema}".pay_periods pp
              LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id
-            WHERE pp.parent_period_id = $1`,
+            WHERE pp.parent_period_id = $1 AND ${await requestHrScope(request, 'pp')}`,
           [id],
         )
         const children = childrenRes.rows
