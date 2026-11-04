@@ -1,6 +1,6 @@
 {
   "id": "22-salaire-plafond-cnps-retraite-exact",
-  "description": "Salaire égal à l’ANCIEN plafond CNPS retraite (1 647 315 FCFA, périmé depuis le 01/01/2023). Depuis 2023 (plafond 3 375 000), la retraite porte sur tout le brut (103 780 FCFA sal, 126 843 FCFA pat) ; le cas limite du plafond est couvert par payroll-engine-ci-2023.golden.test.ts. ITS tranche 24 % atteinte (baseImposable 1 647 315 = 100 % du brut)",
+  "description": "Salaire égal à l’ANCIEN plafond CNPS retraite (1 647 315 FCFA, périmé depuis le 01/01/2023). Depuis 2023 (plafond 3 375 000), la retraite porte sur tout le brut (103 780 FCFA sal, 126 843 FCFA pat) ; le cas limite du nouveau plafond est la fixture 41 (3 375 000 exact). ITS tranche 24 % atteinte (baseImposable 1 647 315 = 100 % du brut)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -19,6 +19,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsPat 132268 → 132655; totalDeductions 451135 → 451635; netPayable 1196180 → 1195680; employerCost 1779583 → 1780470; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },

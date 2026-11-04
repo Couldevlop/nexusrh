@@ -1,6 +1,6 @@
 {
   "id": "23-tranche-its-15-pct-3M",
-  "description": "Salaire 3 000 000 FCFA célibataire — exerce la tranche ITS à 28 % (baseImposable 3 000 000 > 2 400 000). Plafond CNPS retraite atteint (limité à 1 647 315). ITS 696 000 FCFA, soit ~23 % du brut",
+  "description": "Salaire 3 000 000 FCFA célibataire — exerce la tranche ITS à 28 % (baseImposable 3 000 000 > 2 400 000). Retraite CNPS sur tout le brut, sous le plafond de 3 375 000 en vigueur depuis le 01/01/2023 (189 000 salarié, 231 000 employeur). ITS 696 000 FCFA, soit ~23 % du brut",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -19,6 +19,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsRetraiteSal 103780 → 189000; cnpsRetraitePat 126843 → 231000; cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsSal 103780 → 189000; totalCnpsPat 132268 → 236812; totalDeductions 799780 → 885500; netPayable 2200220 → 2114500; employerCost 3132268 → 3237312; ligne 2000 103780 → 189000; ligne 3000 126843 → 231000; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },

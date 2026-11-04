@@ -1,6 +1,6 @@
 {
   "id": "08-heures-supp-jour-nuit-prime-transport",
-  "description": "Salarié avec heures supp +15% (jour) + heures supp +50% (nuit/dimanche) + prime transport. Vérifie l'agrégation des variableElements dans grossSalary et l'assujettissement des heures supp. aux bases CNPS et ITS ; transport exonéré dans la limite de 30 000 F/mois. — Note du 04/11/2026 : montants saisis inchangés ; depuis le décret n° 2024-898 (art. 25), 1500 = heures de nuit +75 % et 1550 = dimanche/férié de nuit +100 % (libellés dérivés du pack).",
+  "description": "Salarié avec heures supp. +15 % (41e à 46e h, HEURES_SUPP_NORM, ligne 1400) + heures supp. de nuit +75 % (HEURES_SUPP_NUIT, ligne 1500 — décret n° 2024-898, art. 25 ; les heures de dimanche de jour vont désormais en HEURES_SUPP_DIM, ligne 1520) + prime transport. Vérifie l'agrégation des variableElements dans grossSalary et l'assujettissement des heures supp. aux bases CNPS et ITS ; transport exonéré dans la limite de 30 000 F/mois. Montants saisis inchangés depuis la fixture initiale.",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -25,6 +25,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsPat 20594 → 20981; totalDeductions 31931 → 32431; netPayable 190069 → 189569; employerCost 242594 → 243481; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },

@@ -1,6 +1,6 @@
 {
   "id": "03-cadre-haut-salaire-2-5m",
-  "description": "Cadre célibataire, brut 2 500 000 FCFA — test des tranches ITS hautes (24 % + 28 %, ITS 556 000) et plafond retraite CNPS (1 647 315)",
+  "description": "Cadre célibataire, brut 2 500 000 FCFA — test des tranches ITS hautes (24 % + 28 %, ITS 556 000) ; retraite CNPS sur tout le brut, sous le plafond de 3 375 000 en vigueur depuis le 01/01/2023 (157 500 salarié, 192 500 employeur)",
   "metadata": {
     "pack": "CIV-2024",
     "category": "cadre",
@@ -19,6 +19,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsRetraiteSal 103780 → 157500; cnpsRetraitePat 126843 → 192500; cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsSal 103780 → 157500; totalCnpsPat 132268 → 198312; totalDeductions 659780 → 714000; netPayable 1840220 → 1786000; employerCost 2632268 → 2698812; ligne 2000 103780 → 157500; ligne 3000 126843 → 192500; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },

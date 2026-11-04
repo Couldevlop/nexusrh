@@ -1,6 +1,6 @@
 {
   "id": "33-cumul-heures-supp-norme-nuit-ferie",
-  "description": "Salarié avec cumul des 3 types d'heures supplémentaires ivoiriennes : +15 % (41-48h semaine, code 1400), +50 % (nuit 20h-5h ou dimanche, code 1500), +100 % (jour férié, code 1550). Vérifie que les 3 lignes sont distinctes et toutes agrégées au grossSalary. Cas typique d'un agent de sécurité ou chauffeur SOTRA en période de fêtes — Note du 04/11/2026 : montants saisis inchangés ; depuis le décret n° 2024-898 (art. 25), 1500 = heures de nuit +75 % et 1550 = dimanche/férié de nuit +100 % (libellés dérivés du pack).",
+  "description": "Salarié avec cumul de 3 types d'heures supplémentaires ivoiriennes (décret n° 2024-898, art. 25) : +15 % (41e à 46e h, ligne 1400), +75 % (nuit, ligne 1500), +100 % (dimanche/férié de nuit, ligne 1550). Vérifie que les 3 lignes sont distinctes et toutes agrégées au grossSalary. Cas typique d'un agent de sécurité ou chauffeur SOTRA en période de fêtes. Montants saisis inchangés depuis la fixture initiale.",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -31,6 +31,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 2100 → 2250; totalCnpsPat 22911 → 23348; totalDeductions 14614 → 16114; netPayable 203386 → 201886; employerCost 240911 → 242848; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 2100 → 2250; ligne 2200 None → 1500; ligne 3400 None → 1500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },

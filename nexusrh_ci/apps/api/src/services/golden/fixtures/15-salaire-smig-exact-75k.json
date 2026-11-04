@@ -1,6 +1,6 @@
 {
   "id": "15-salaire-smig-exact-75k",
-  "description": "Salarié payé EXACTEMENT au SMIG (75 000 FCFA brut). Cas limite : ITS = 0 (tranche 0%) mais smigCompliant=false car après CNPS le net (70 275) tombe sous le SMIG. Alerte business pour le RH.",
+  "description": "Salarié payé EXACTEMENT au SMIG (75 000 FCFA brut). Cas limite : ITS = 0 (tranche 0 %) mais smigCompliant=false car après CNPS (4 725) et CMU (500) le net (69 775) tombe sous le SMIG. Alerte business pour le RH.",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -19,6 +19,11 @@
         "author": "Couldevlop",
         "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
         "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsPat 11200 → 11587; totalDeductions 4725 → 5225; netPayable 70275 → 69775; employerCost 86200 → 87087; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },
