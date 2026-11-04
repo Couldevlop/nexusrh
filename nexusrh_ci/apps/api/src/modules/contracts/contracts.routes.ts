@@ -92,7 +92,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(`
           SELECT c.*,
-            e.first_name, e.last_name, e.employee_number AS registration_number, e.nni,
+            e.first_name, e.last_name, e.employee_number AS registration_number,
             e.cnps_number AS employee_cnps, e.mobile_money_provider, e.mobile_money_phone AS mobile_money_number,
             (e.deleted_at IS NOT NULL) AS employee_archived,
             d.name AS department_name
@@ -348,7 +348,8 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           ORDER BY c.created_at DESC LIMIT 1
         `, [empRes.rows[0].id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Aucun contrat actif' })
-        return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
+        // Libre-service : toujours SON contrat, jamais masqué (même pour un RH sans la case).
+        return reply.send({ data: res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

@@ -22,7 +22,7 @@ import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
-import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, denyUnlessSensitive } from '../../utils/hr-scope.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, resolveManagerEmployeeId } from '../../services/manager-scope.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
@@ -244,6 +244,8 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
       const { docId } = request.params as { docId: string }
       if (!UUID_RE.test(docId)) return reply.status(400).send({ error: 'Identifiant de document invalide.' })
       const { download } = request.query as { download?: string }
+      // Un contrat signé contient le salaire : lecture RH réservée à la case sensible.
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         const r = await pool.query<{ id: string; employee_id: string; mime: string; bytes: Buffer; file_name: string }>(
           `SELECT id, employee_id, mime, bytes, file_name FROM "${schema}".employee_documents

@@ -30,7 +30,7 @@ import {
 } from './stage-history.js'
 import { hireApplication, getHirePrefill, HireError, fileProposalForHiredApplication, type HireResult } from './hire.service.js'
 import funnelStatsRoutes from './funnel-stats.routes.js'
-import { requestHrScope, legalEntityInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { requestHrScope, legalEntityInHrScope, requestSensitiveCtx, denyUnlessSensitive } from '../../utils/hr-scope.js'
 import { maskSensitive } from '../../services/sensitive-mask.js'
 import contractProposalRoutes from './contract-proposal.routes.js'
 import {
@@ -738,7 +738,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         if (res.rows.length === 0) {
           return reply.status(409).send({ error: 'Ce candidat a déjà postulé à cette offre (même email ou même téléphone).' })
         }
-        return reply.status(201).send({ data: res.rows[0] })
+        return reply.status(201).send({ data: maskSensitive(res.rows[0] as Record<string, unknown>, await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -934,6 +934,8 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Données invalides' })
       }
       const body = parsed.data
+      // Le contrat contient le salaire : jamais produit sans la case données sensibles.
+      if (await denyUnlessSensitive(request, reply)) return
 
       if (body.type === 'cdd_ci' && !body.endDate) {
         return reply.status(400).send({ error: 'Un CDD requiert une date de fin (endDate)' })

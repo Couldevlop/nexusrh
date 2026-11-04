@@ -1,9 +1,10 @@
-import type { FastifyRequest } from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import { getRequestHab } from '../plugins/auth.js'
 import { hrScopeSql, type HabContext } from '../services/habilitation.service.js'
 import { pool } from '../db/pool.js'
 import { assertValidSchemaName } from './schema-name.js'
 import { periodVisibilitySql } from './period-visibility.js'
+import { isMasked } from '../services/sensitive-mask.js'
 
 /**
  * Fragment SQL de périmètre filiale (habilitations RH) pour la requête courante,
@@ -196,4 +197,18 @@ export async function periodVisibleToRequest(request: FastifyRequest, periodId: 
 export async function requestSensitiveCtx(request: FastifyRequest): Promise<HabContext | null> {
   if (request.user.role === 'admin' || request.user.role === 'employee') return null
   return getRequestHab(request)
+}
+
+/** Message du refus d'un document qui ne peut pas être produit sans salaire. */
+export const SENSITIVE_DOCUMENT_DENIED = "Vos habilitations ne vous permettent pas d'accéder à ce document."
+
+/**
+ * Un contrat (ou sa proposition) ne se produit pas sans son salaire : on ne sert
+ * jamais de PDF masqué. Sans la case données sensibles → 403 et true (réponse
+ * envoyée, l'appelant s'arrête). Contexte null (historique, admin) → false.
+ */
+export async function denyUnlessSensitive(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
+  if (!isMasked(await requestSensitiveCtx(request))) return false
+  await reply.status(403).send({ error: SENSITIVE_DOCUMENT_DENIED })
+  return true
 }
