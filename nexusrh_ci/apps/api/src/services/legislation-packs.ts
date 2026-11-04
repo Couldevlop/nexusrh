@@ -332,6 +332,8 @@ export interface LeaveRules {
   overtimeRates?: {
     /** Heures au-delà de la durée légale (CI : 41e à 46e heure) */
     weekly?: number
+    /** Première heure supplémentaire de la semaine = durée légale + 1 (CI : 41, durée légale 40 h). */
+    weeklyFromHour?: number
     /**
      * Heures hebdomadaires à partir de `weeklyBeyondFromHour` (CI : au-delà
      * de la 46e heure). Absent = un seul taux hebdomadaire (`weekly`).
@@ -455,7 +457,7 @@ export const CIV_2024: LegislationPack = {
     // taux) : 41e–46e h +15 % ; au-delà de la 46e h +50 % ; nuit +75 % ;
     // dimanche / férié de jour +75 % ; dimanche / férié de nuit +100 %.
     overtimeRates: {
-      weekly: 0.15, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
+      weekly: 0.15, weeklyFromHour: 41, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
       night: 0.75, sunday: 0.75, holiday: 0.75, sundayHolidayNight: 1.0,
     },
   },

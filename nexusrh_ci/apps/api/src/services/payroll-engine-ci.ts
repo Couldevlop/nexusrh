@@ -434,7 +434,9 @@ export function overtimeLabels(pack: LegislationPack): OvertimeLabels {
   const split = r.weeklyBeyond !== undefined && from !== undefined
   const norm = r.weekly === undefined
     ? 'Heures supp.'
-    : `Heures supp. +${pct(r.weekly)}` + (split ? ` (41e à ${from - 1}e h)` : '')
+    : `Heures supp. +${pct(r.weekly)}` + (split
+      ? (r.weeklyFromHour !== undefined ? ` (${r.weeklyFromHour}e à ${from - 1}e h)` : ` (jusqu’à la ${from - 1}e h)`)
+      : '')
   const beyond = r.weeklyBeyond === undefined
     ? 'Heures supp. (au-delà du seuil hebdomadaire)'
     : `Heures supp. +${pct(r.weeklyBeyond)}` + (from !== undefined ? ` (au-delà de ${from - 1} h)` : '')

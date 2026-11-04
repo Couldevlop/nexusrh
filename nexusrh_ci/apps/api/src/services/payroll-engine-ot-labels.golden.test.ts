@@ -30,6 +30,24 @@ describe('overtimeLabels', () => {
   })
 })
 
+describe('overtimeLabels — tranche hebdomadaire dérivée du pack', () => {
+  it('début de tranche lu du pack (weeklyFromHour), pas écrit en dur', () => {
+    const rates = { ...CIV_2024.leaveRules!.overtimeRates!, weeklyFromHour: 43, weeklyBeyondFromHour: 49 }
+    const pack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: rates } }
+    expect(overtimeLabels(pack).norm).toBe('Heures supp. +15% (43e à 48e h)')
+    expect(overtimeLabels(pack).beyond).toBe('Heures supp. +50% (au-delà de 48 h)')
+  })
+  it('début de tranche absent : seule la borne haute est affichée', () => {
+    const { weeklyFromHour: _omit, ...rates } = CIV_2024.leaveRules!.overtimeRates!
+    void _omit
+    const pack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: rates } }
+    expect(overtimeLabels(pack).norm).toBe('Heures supp. +15% (jusqu’à la 46e h)')
+  })
+  it('CIV : 41e heure = durée légale de 40 h + 1', () => {
+    expect(CIV_2024.leaveRules?.overtimeRates?.weeklyFromHour).toBe(41)
+  })
+})
+
 describe('overtimeLabels décimales', () => {
   it('12,5 % reste 12,5', () => {
     const pack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: { weekly: 0.125 } } }

@@ -75,7 +75,7 @@ const CI_RULE_EXPLAINERS: Record<string, RuleExplainer> = {
     category: 'premium',
   },
   '1400': {
-    formulaHuman: () => `Heures supplémentaires de la 41e à la ${LAST_WEEKLY_HOUR}e heure de la semaine, majorées de +${pctFr(CIV_OT.weekly ?? 0)} — soumises CNPS et ITS`,
+    formulaHuman: () => `Heures supplémentaires de la ${CIV_OT.weeklyFromHour ?? 41}e à la ${LAST_WEEKLY_HOUR}e heure de la semaine, majorées de +${pctFr(CIV_OT.weekly ?? 0)} — soumises CNPS et ITS`,
     rate: CIV_OT.weekly,
     legalReference: REF_HEURES_SUPP,
     category: 'overtime',

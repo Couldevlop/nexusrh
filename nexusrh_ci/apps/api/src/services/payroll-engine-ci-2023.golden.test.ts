@@ -28,7 +28,7 @@ describe('pack CIV — valeurs 2023', () => {
   })
   it('majorations heures supplémentaires (décret 2024-898 art. 25)', () => {
     expect(CIV_2024.leaveRules?.overtimeRates).toEqual({
-      weekly: 0.15, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
+      weekly: 0.15, weeklyFromHour: 41, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
       night: 0.75, sunday: 0.75, holiday: 0.75, sundayHolidayNight: 1.0,
     })
   })
