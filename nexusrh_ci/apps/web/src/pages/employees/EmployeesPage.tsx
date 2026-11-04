@@ -470,6 +470,8 @@ interface EmployeeDetail {
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
   iban: string | null; bank_name: string | null; payment_method: string | null
   marital_status: string | null; children_count: number | null; nationality?: string | null
+  // CMU : conjoint sans emploi couvert ; enfants couverts (null = enfants à charge)
+  cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | null
   custom_fields?: CustomFieldValues | null
 }
 
@@ -535,6 +537,8 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       iban: emp.iban ?? '', bankName: emp.bank_name ?? '', paymentMethod: emp.payment_method ?? 'mobile_money',
       maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
       nationality: emp.nationality ?? '',
+      cmuSpouseCovered: String(emp.cmu_spouse_covered === true),
+      cmuChildrenCovered: emp.cmu_children_covered == null ? '' : String(emp.cmu_children_covered),
     }
     const numericKeys = new Set(['baseSalary', 'weeklyHours', 'childrenCount'])
     const payload: Record<string, unknown> = {}
@@ -543,6 +547,9 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       if (trimmed === orig[k]) continue
       // Retirer le responsable est un choix explicite (option « Aucun ») : null.
       if (k === 'managerId' && trimmed === '') { payload.managerId = null; continue }
+      // CMU : booléen ; enfants couverts vidés = retour aux enfants à charge (null).
+      if (k === 'cmuSpouseCovered') { payload.cmuSpouseCovered = trimmed === 'true'; continue }
+      if (k === 'cmuChildrenCovered') { payload.cmuChildrenCovered = trimmed === '' ? null : Number(trimmed); continue }
       if (trimmed === '') continue // champ vidé : on ne pousse pas (évite d'écraser involontairement)
       payload[k] = numericKeys.has(k) ? Number(trimmed) : trimmed
     }
@@ -712,6 +719,22 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   <input type="number" min={0} max={30} className={inputCls} value={val('childrenCount', emp.children_count)} onChange={set('childrenCount')} /></div>
                 <div><label className={labelCls}>{t('form.fields.nationality')}</label>
                   <input className={inputCls} placeholder={t('form.fields.nationalityPlaceholder')} value={val('nationality', emp.nationality)} onChange={set('nationality')} /></div>
+              </div>
+            </fieldset>
+
+            {/* CMU (loi n° 2014-131) — bénéficiaires de la retenue / charge CMU du bulletin */}
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.cmu.section')} <span className="font-normal text-xs text-muted-foreground">{t('form.cmu.hint')}</span></legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label htmlFor="cmu-spouse" className={labelCls}>{t('form.cmu.spouseCovered')}</label>
+                  <select id="cmu-spouse" className={inputCls} value={val('cmuSpouseCovered', String(emp.cmu_spouse_covered === true))} onChange={set('cmuSpouseCovered')}>
+                    <option value="false">{t('form.cmu.spouseCoveredNo')}</option>
+                    <option value="true">{t('form.cmu.spouseCoveredYes')}</option>
+                  </select></div>
+                <div><label htmlFor="cmu-children" className={labelCls}>{t('form.cmu.childrenCovered')}</label>
+                  <input id="cmu-children" type="number" min={0} max={30} step={1} className={inputCls}
+                    placeholder={t('form.cmu.childrenCoveredPlaceholder')}
+                    value={val('cmuChildrenCovered', emp.cmu_children_covered)} onChange={set('cmuChildrenCovered')} /></div>
               </div>
             </fieldset>
 

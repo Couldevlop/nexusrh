@@ -1169,7 +1169,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
       // chacune limitée aux clés erronées — les autres constantes éventuellement
       // surchargées par le super_admin sont gardées :
       //  - ancien régime ITS (abattement 15 %, crédits marié/enfants) → ITS 2024 ;
-      //  - congés à 2,5 j/mois → 2,2 j ouvrables / mois (CT art. 25.1).
+      //  - congés à 2,5 j/mois → 2,2 j ouvrables / mois (CT art. 25.1) ;
+      //  - plafonds CNPS périmés (1 647 315 / 70 000) → 3 375 000 / 75 000,
+      //    en vigueur au 01/01/2023 (communiqué CNPS, décret n° 2022-986) ;
+      //    seules les valeurs encore égales aux anciennes sont remplacées.
       await pool.query(`
         INSERT INTO platform.legal_constants (country, version, effective, constants, notes)
         VALUES ('CI', '2024', '2024-01-01', $1, 'Constantes légales CI 2024 — CNPS + ITS/DGI + Code du Travail')
@@ -1184,15 +1187,25 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
                 || CASE
                   WHEN platform.legal_constants.constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb
                   THEN $3::jsonb ELSE '{}'::jsonb
+                END
+                || CASE
+                  WHEN platform.legal_constants.constants->'PLAFOND_CNPS_RETRAITE_MENSUEL' = '1647315'::jsonb
+                  THEN '{"PLAFOND_CNPS_RETRAITE_MENSUEL": 3375000}'::jsonb ELSE '{}'::jsonb
+                END
+                || CASE
+                  WHEN platform.legal_constants.constants->'PLAFOND_CNPS_AT_PF_MENSUEL' = '70000'::jsonb
+                  THEN '{"PLAFOND_CNPS_AT_PF_MENSUEL": 75000}'::jsonb ELSE '{}'::jsonb
                 END,
               updated_at = NOW()
           WHERE platform.legal_constants.constants->>'ABATTEMENT_ITS' = '0.15'
              OR platform.legal_constants.constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb
+             OR platform.legal_constants.constants->'PLAFOND_CNPS_RETRAITE_MENSUEL' = '1647315'::jsonb
+             OR platform.legal_constants.constants->'PLAFOND_CNPS_AT_PF_MENSUEL' = '70000'::jsonb
       `, [JSON.stringify({
           SMIG_MENSUEL: 75000,
           SMIG_HORAIRE: 433,
-          PLAFOND_CNPS_AT_PF_MENSUEL: 70000,
-          PLAFOND_CNPS_RETRAITE_MENSUEL: 1647315,
+          PLAFOND_CNPS_AT_PF_MENSUEL: 75000,         // communiqué CNPS 01/2023 (= SMIG)
+          PLAFOND_CNPS_RETRAITE_MENSUEL: 3375000,    // 45 × SMIG, depuis le 01/01/2023
           TAUX_CNPS_RETRAITE_SAL: 0.063,
           TAUX_CNPS_RETRAITE_PAT: 0.077,
           TAUX_CNPS_PF_PAT: 0.050,

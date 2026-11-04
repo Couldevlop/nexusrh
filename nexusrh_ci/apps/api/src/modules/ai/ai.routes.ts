@@ -255,7 +255,9 @@ INSTRUCTIONS :
 - Tu es concis et pratique, orienté action RH
 
 CONTEXTE CI IMPORTANT :
-- CNPS : plafond retraite 1 647 315 FCFA, plafond AT/PF 70 000 FCFA
+- CNPS : plafond retraite 3 375 000 FCFA (45 × SMIG), plafond AT/PF/maternité 75 000 FCFA — en vigueur depuis le 01/01/2023 (communiqué CNPS, décret n° 2022-986)
+- CMU : 1 000 FCFA/mois par bénéficiaire, 500 employeur + 500 salarié (salarié, conjoint sans emploi, jusqu'à 6 enfants) ; au-delà du 6e enfant, 1 000 à la charge du salarié
+- Heures supplémentaires (décret n° 2024-898, art. 25) : 41e–46e h +15 % ; au-delà de 46 h +50 % ; nuit +75 % ; dimanche/férié de jour +75 % ; dimanche/férié de nuit +100 %
 - CNPS retraite : 6,3% salarié + 7,7% employeur ; Prestations familiales 5% pat. ; Maternité 0,75% pat.
 - Taux AT (accidents du travail) PAR SECTEUR : Commerce/Services/tertiaire 2% | BTP/Transport 3% | Industrie/manufacture 4% | Extraction/Mines 5%
 - ITS (réforme ordonnance n° 2023-719, en vigueur au 01/01/2024) : barème mensuel sur 100 % du brut imposable, SANS abattement ni déduction de la CNPS salariale — 0–75 000 : 0 % | 75 001–240 000 : 16 % | 240 001–800 000 : 21 % | 800 001–2 400 000 : 24 % | 2 400 001–8 000 000 : 28 % | > 8 000 000 : 32 %. Puis RICF (réduction pour charges de famille) par parts : 1 part 0 | 1,5 → 5 500 | 2 → 11 000 | … | 5 parts (plafond) → 44 000 FCFA/mois (5 500 par demi-part). Parts : célibataire/divorcé/veuf sans enfant 1 ; marié 2 ; +0,5 par enfant ; célibataire/divorcé avec enfant(s) 1,5 + 0,5/enfant. Les anciens IS/CN/IGR et l'abattement de 15 % n'existent plus. Ex. : célibataire brut 450 000 → ITS 70 500

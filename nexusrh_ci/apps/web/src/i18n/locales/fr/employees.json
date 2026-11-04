@@ -103,7 +103,20 @@
     "submit": "Créer l'employé",
     "submitting": "Création...",
     "paymentMobileMoney": "Mobile Money",
-    "paymentBankTransfer": "Virement bancaire"
+    "paymentBankTransfer": "Virement bancaire",
+    "cmu": {
+      "section": "CMU (Couverture maladie universelle)",
+      "hint": "(1 000 F/mois par bénéficiaire, 500 employeur + 500 salarié ; au-delà de 6 enfants, 1 000 F à la charge du salarié)",
+      "spouseCovered": "Conjoint sans emploi couvert",
+      "spouseCoveredYes": "Oui",
+      "spouseCoveredNo": "Non",
+      "childrenCovered": "Enfants couverts (moins de 21 ans)",
+      "childrenCoveredPlaceholder": "Par défaut : enfants à charge",
+      "beneficiaries": "Bénéficiaires CMU",
+      "beneficiariesValue": "Salarié{{spouse}} + {{children}} enfant(s)",
+      "spouseSuffix": " + conjoint",
+      "childrenDefault": "{{count}} (enfants à charge)"
+    }
   },
   "edit": {
     "title": "Modifier l'employé",

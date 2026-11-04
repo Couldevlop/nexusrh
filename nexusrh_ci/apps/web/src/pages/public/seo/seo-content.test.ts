@@ -125,17 +125,19 @@ describe('chiffres conformes aux packs législatifs', () => {
     expect(r.map((x) => x[1])).toEqual(CIV_2024.reductionChargesFamille!.montantsParParts.map((x) => fmt(x.montant)))
   })
 
-  it('guide CNPS : exemple à 2 000 000 FCFA recalculé (double plafond)', () => {
+  it('guide CNPS : exemple à 4 000 000 FCFA recalculé (double plafond)', () => {
     const p = CIV_2024
     const rows = tableRows(GUIDE_CNPS, /Cotisations CNPS mensuelles/)
-    const base = Math.min(2_000_000, p.plafondCnpsRetraite)
-    const small = Math.min(2_000_000, p.plafondCnpsAtPf)
+    // 4 000 000 dépasse le plafond retraite (3 375 000 depuis 01/2023) : les deux plafonds jouent.
+    const base = Math.min(4_000_000, p.plafondCnpsRetraite)
+    const small = Math.min(4_000_000, p.plafondCnpsAtPf)
+    // Arrondi du moteur de paie : au franc inférieur (75 000 × 0,75 % = 562,5 → 562).
     const expected = [
-      Math.round(base * p.tauxCotisationRetraiteSalarie),
-      Math.round(base * p.tauxCotisationRetraitePatronal),
-      Math.round(small * p.tauxCotisationPfPatronal),
-      Math.round(small * p.tauxCotisationMaternitePatronal),
-      Math.round(small * p.tauxAtDefaultPatronal),
+      Math.floor(base * p.tauxCotisationRetraiteSalarie),
+      Math.floor(base * p.tauxCotisationRetraitePatronal),
+      Math.floor(small * p.tauxCotisationPfPatronal),
+      Math.floor(small * p.tauxCotisationMaternitePatronal),
+      Math.floor(small * p.tauxAtDefaultPatronal),
     ]
     expect(rows.map((r) => r[3])).toEqual(expected.map(fmt))
     expect(rows[0]![1]).toBe(fmt(p.plafondCnpsRetraite))

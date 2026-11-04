@@ -12,14 +12,23 @@
 ```
 Branche                       Part salariale   Part patronale   Plafond/mois
 ──────────────────────────────────────────────────────────────────────────────
-Retraite                          6,30 %           7,70 %       1 647 315 FCFA
-Prestations familiales + Mat.      0,00 %           5,75 %          70 000 FCFA
+Retraite                          6,30 %           7,70 %       3 375 000 FCFA
+Prestations familiales + Mat.      0,00 %           5,75 %          75 000 FCFA
   dont Allocations familiales      0,00 %           5,00 %
   dont Assurance maternité         0,00 %           0,75 %
-Accidents du travail (AT)         0,00 %         2,00–5,00 %        70 000 FCFA
+Accidents du travail (AT)         0,00 %         2,00–5,00 %        75 000 FCFA
 
-PLAFOND MENSUEL AT/PF/Maternité : 70 000 FCFA (840 000 FCFA/an)
-PLAFOND MENSUEL RETRAITE        : 1 647 315 FCFA
+PLAFOND MENSUEL AT/PF/Maternité : 75 000 FCFA (900 000 FCFA/an) — = SMIG
+PLAFOND MENSUEL RETRAITE        : 3 375 000 FCFA — 45 × SMIG
+  En vigueur au 01/01/2023 (communiqué CNPS « Nouveau plafond des cotisations
+  sociales », décret n° 2022-986). Anciens plafonds (avant 2023) : 70 000 / 1 647 315.
+
+CMU (Couverture Maladie Universelle, loi n° 2014-131) — hors bases CNPS et ITS
+  1 000 FCFA / mois / bénéficiaire : salarié + conjoint couvert + enfants couverts.
+  Jusqu'au 6e enfant : 500 F salarié (ligne 2200) + 500 F employeur (ligne 3400).
+  Enfants au-delà du 6e : 1 000 F entièrement à la charge du salarié (ligne 2200).
+  Fiche salarié : cmu_spouse_covered (défaut non), cmu_children_covered
+  (vide = nombre d'enfants à charge).
 
 Taux AT par secteur :
   Commerce, services, tertiaire   : 2,00 %
@@ -72,9 +81,13 @@ Exemples (célibataire, 0 enfant) :
 SMIG mensuel (35h)             : 60 000 FCFA
 Congés annuels                 : 2,2 jours ouvrables / mois travaillé (CT art. 25.1)
 Heures supplémentaires         :
-  41–48h / semaine             : +15 % du taux horaire normal
-  Nuit (20h–5h) & dimanche     : +50 % du taux horaire normal
-  Jours fériés                 : +100 %
+  (décret n° 2024-898 du 16/10/2024, art. 25 — abroge le décret n° 96-203, mêmes taux)
+  41e à 46e heure / semaine    : +15 %   (1400 HEURES_SUPP_NORM)
+  Au-delà de la 46e heure      : +50 %   (1450 HEURES_SUPP_47)
+  Heures de nuit               : +75 %   (1500 HEURES_SUPP_NUIT)
+  Dimanche / férié de jour     : +75 %   (1520 HEURES_SUPP_DIM)
+  Dimanche / férié de nuit     : +100 %  (1550 HEURES_SUPP_FERIE)
+  Les montants sont saisis par la RH ; les libellés du bulletin sont dérivés du pack.
 Préavis (démission/licenciement) :
   Essai CDI employé            : 15 jours
   Essai CDI cadre              : 1 mois
@@ -104,8 +117,8 @@ PayrollEngineCi.calculate(ctx) :
   BRUT_MENSUEL = salaire brut mensuel contractuel (FCFA)
   BRUT_PRORATA = BRUT_MENSUEL * (jours_travaillés / jours_ouvrables_mois)
   SMIG = 75_000 FCFA  (vérification plancher)
-  PLAFOND_CNPS_AT_PF = 70_000 FCFA / mois
-  PLAFOND_CNPS_RETRAITE = 1_647_315 FCFA / mois
+  PLAFOND_CNPS_AT_PF = 75_000 FCFA / mois        (depuis le 01/01/2023)
+  PLAFOND_CNPS_RETRAITE = 3_375_000 FCFA / mois  (depuis le 01/01/2023)
   ELEMENTS_SOUMIS = primes (ancienneté, rendement), heures supp., ICP,
                     gratifications, avantages en nature, excédent de la prime
                     de transport au-delà de 30 000 F (Abidjan) / 24 000 F
@@ -124,6 +137,9 @@ PayrollEngineCi.calculate(ctx) :
   cotisation_at_pat        = BASE_AT_PF × taux_at_secteur  (2-5%)
   total_cotisations_sal    = cotisation_retraite_sal
   total_cotisations_pat    = cotisation_retraite_pat + cotisation_pf_mat_pat + cotisation_at_pat
+  cmu (hors CNPS)          = partagés = 1 + conjoint_couvert + min(enfants_couverts, 6)
+                             cmu_pat = partagés × 500 ; cmu_sal = partagés × 500 + 1 000 × enfants au-delà du 6e
+                             net −= cmu_sal ; coût employeur += cmu_pat
 
 ÉTAPE 3 — Calcul ITS (réforme 2024)
   brut_imposable           = BRUT_PRORATA + ELEMENTS_SOUMIS (+ indemnité
@@ -160,8 +176,11 @@ Code   Libellé                           Type              Formule/Taux
 1100   Prime d'ancienneté                earning            VAR:PRIME_ANCIENNETE
 1200   Prime de rendement                earning            VAR:PRIME_RENDEMENT
 1300   Prime de transport                earning            VAR:PRIME_TRANSPORT
-1400   Heures supplémentaires (+15%)     earning            VAR:HEURES_SUPP_NORM
-1500   Heures supplémentaires (+50%)     earning            VAR:HEURES_SUPP_NUIT
+1400   Heures supp. +15 % (41e–46e h)    earning            VAR:HEURES_SUPP_NORM
+1450   Heures supp. +50 % (> 46e h)      earning            VAR:HEURES_SUPP_47
+1500   Heures supp. de nuit (+75 %)      earning            VAR:HEURES_SUPP_NUIT
+1520   Heures supp. dim./férié jour +75% earning            VAR:HEURES_SUPP_DIM
+1550   Heures supp. dim./férié nuit +100% earning           VAR:HEURES_SUPP_FERIE
 1600   Indemnité de congés payés         earning            VAR:ICP
 2000   CNPS Retraite (salarié 6,3%)      employee_contrib   BASE_RETRAITE * 0.063
 2100   ITS (Impôt Traitements Salaires)  employee_contrib   ITS
@@ -169,6 +188,8 @@ Code   Libellé                           Type              Formule/Taux
 3100   CNPS Prestations familiales 5%    employer_contrib   BASE_AT_PF * 0.050
 3200   CNPS Assurance maternité 0,75%    employer_contrib   BASE_AT_PF * 0.0075
 3300   CNPS Accidents du travail         employer_contrib   BASE_AT_PF * taux_at
+2200   CMU — part salarié                employee_contrib   500 × partagés + 1 000 × enfants > 6
+3400   CMU — part employeur              employer_contrib   500 × partagés
 4000   Mutuelle/Assurance santé sal.     employee_contrib   VAR:MUTUELLE_SAL
 4100   Mutuelle/Assurance santé pat.     employer_contrib   VAR:MUTUELLE_PAT
 5000   Avance sur salaire                deduction          VAR:AVANCE

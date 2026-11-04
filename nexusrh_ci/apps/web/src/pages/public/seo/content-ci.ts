@@ -30,7 +30,7 @@ export const PAYROLL_CI: SeoPageContent = {
       h2: 'Ce que le moteur de paie applique',
       blocks: [
         { type: 'ul', items: [
-          'CNPS : retraite 6,3 % salarié et 7,7 % employeur, plafonnée à 1 647 315 FCFA par mois ; prestations familiales (5 %), maternité (0,75 %) et accident du travail (2 à 5 % selon le secteur) plafonnées à 70 000 FCFA.',
+          'CNPS : retraite 6,3 % salarié et 7,7 % employeur, plafonnée à 3 375 000 FCFA par mois ; prestations familiales (5 %), maternité (0,75 %) et accident du travail (2 à 5 % selon le secteur) plafonnées à 75 000 FCFA (plafonds en vigueur depuis le 1er janvier 2023). CMU : 500 FCFA salarié + 500 FCFA employeur par bénéficiaire et par mois.',
           "ITS : barème mensuel 0 / 16 / 21 / 24 / 28 / 32 % appliqué à 100 % du brut imposable (ordonnance n° 2023-719), sans abattement, puis réduction d'impôt pour charges de famille (RICF) selon le nombre de parts.",
           "Assiettes : primes d'ancienneté et de rendement, heures supplémentaires, indemnité de congés, gratifications et avantages en nature sont soumis à la CNPS et à l'ITS ; la prime de transport est exonérée jusqu'à 30 000 FCFA à Abidjan, 24 000 à Bouaké et 20 000 dans les autres villes.",
           'Contrôle du SMIG (75 000 FCFA par mois) et montants en FCFA entiers, sans centimes, sur chaque bulletin.',
@@ -80,7 +80,7 @@ export const PAYROLL_CI: SeoPageContent = {
     { q: 'La réforme ITS du 1er janvier 2024 est-elle appliquée ?',
       a: "Oui. L'ancien régime (IS, CN, IGR, abattement de 15 %) n'est plus utilisé : le barème 2024 s'applique à 100 % du brut imposable, puis la RICF est déduite selon le nombre de parts." },
     { q: 'Le double plafond CNPS est-il géré ?',
-      a: 'Oui. La retraite est plafonnée à 1 647 315 FCFA par mois ; prestations familiales, maternité et accident du travail le sont à 70 000 FCFA. Les deux plafonds ne sont jamais confondus.' },
+      a: 'Oui. La retraite est plafonnée à 3 375 000 FCFA par mois ; prestations familiales, maternité et accident du travail le sont à 75 000 FCFA (plafonds en vigueur depuis le 1er janvier 2023). Les deux plafonds ne sont jamais confondus.' },
     { q: 'Peut-on garder Sage Paie ?',
       a: 'Oui. Une interface exporte au format CSV les employés, les éléments variables et les résultats de paie vers Sage. La paie native de NexusRH CI reste disponible.' },
   ],
@@ -309,8 +309,8 @@ export const GUIDE_CNPS: SeoPageContent = {
   kind: 'guide',
   title: 'Cotisations CNPS 2024 : taux, double plafond et exemple',
   description:
-    'Taux CNPS 2024 salarié et employeur, plafonds de 1 647 315 et 70 000 FCFA, taux accident du ' +
-    'travail par secteur et un calcul complet à 2 000 000 FCFA.',
+    'Taux CNPS salarié et employeur, plafonds de 3 375 000 et 75 000 FCFA, taux accident du ' +
+    'travail par secteur et un calcul complet à 4 000 000 FCFA.',
   h1: 'Cotisations CNPS 2024 : taux et plafonds',
   lead:
     "La Caisse nationale de prévoyance sociale (CNPS) finance la retraite, les prestations familiales, la maternité " +
@@ -325,10 +325,10 @@ export const GUIDE_CNPS: SeoPageContent = {
         { type: 'table', caption: 'Cotisations CNPS 2024 (plafonds mensuels en FCFA)',
           head: ['Branche', 'Salarié', 'Employeur', 'Plafond mensuel'],
           rows: [
-            ['Retraite', '6,3 %', '7,7 %', '1 647 315'],
-            ['Prestations familiales', '—', '5 %', '70 000'],
-            ['Maternité', '—', '0,75 %', '70 000'],
-            ['Accident du travail', '—', '2 à 5 %', '70 000'],
+            ['Retraite', '6,3 %', '7,7 %', '3 375 000'],
+            ['Prestations familiales', '—', '5 %', '75 000'],
+            ['Maternité', '—', '0,75 %', '75 000'],
+            ['Accident du travail', '—', '2 à 5 %', '75 000'],
           ] },
       ],
     },
@@ -336,9 +336,10 @@ export const GUIDE_CNPS: SeoPageContent = {
       h2: 'Le double plafond',
       blocks: [
         { type: 'p', text:
-          "La retraite se calcule sur le salaire dans la limite de 1 647 315 FCFA par mois. Les prestations familiales, " +
-          "la maternité et l'accident du travail se calculent sur 70 000 FCFA au plus. Appliquer un plafond unique à toutes " +
-          "les branches est l'erreur la plus fréquente : elle fausse les cotisations dès que le salaire dépasse 70 000 FCFA." },
+          "La retraite se calcule sur le salaire dans la limite de 3 375 000 FCFA par mois (45 fois le SMIG). Les prestations " +
+          "familiales, la maternité et l'accident du travail se calculent sur 75 000 FCFA au plus (le SMIG). Ces plafonds " +
+          "s'appliquent depuis le 1er janvier 2023 (communiqué de la CNPS, décret n° 2022-986). Appliquer un plafond unique à " +
+          "toutes les branches est l'erreur la plus fréquente : elle fausse les cotisations dès que le salaire dépasse 75 000 FCFA." },
       ],
     },
     {
@@ -350,18 +351,18 @@ export const GUIDE_CNPS: SeoPageContent = {
       ],
     },
     {
-      h2: 'Exemple : salaire brut de 2 000 000 FCFA (commerce)',
+      h2: 'Exemple : salaire brut de 4 000 000 FCFA (commerce)',
       blocks: [
         { type: 'table', caption: 'Cotisations CNPS mensuelles (FCFA, arrondies au franc)',
           head: ['Branche', 'Assiette', 'Taux', 'Montant'],
           rows: [
-            ['Retraite — part salarié', '1 647 315', '6,3 %', '103 781'],
-            ['Retraite — part employeur', '1 647 315', '7,7 %', '126 843'],
-            ['Prestations familiales', '70 000', '5 %', '3 500'],
-            ['Maternité', '70 000', '0,75 %', '525'],
-            ['Accident du travail', '70 000', '2 %', '1 400'],
+            ['Retraite — part salarié', '3 375 000', '6,3 %', '212 625'],
+            ['Retraite — part employeur', '3 375 000', '7,7 %', '259 875'],
+            ['Prestations familiales', '75 000', '5 %', '3 750'],
+            ['Maternité', '75 000', '0,75 %', '562'],
+            ['Accident du travail', '75 000', '2 %', '1 500'],
           ],
-          note: 'Total salarié : 103 781 FCFA. Total employeur : 132 268 FCFA.' },
+          note: 'Total salarié : 212 625 FCFA. Total employeur : 265 687 FCFA. S\'y ajoute la CMU : 500 FCFA salarié + 500 FCFA employeur par bénéficiaire.' },
         { type: 'p', text:
           "Ce que la CNPS retient sur le salaire n'est pas déduit de l'assiette de l'ITS depuis la réforme 2024 : " +
           "les deux calculs partent du même brut." },

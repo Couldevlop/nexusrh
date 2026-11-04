@@ -54,9 +54,11 @@
     "submitDisabledHint": "Soumettre est disponible quand tous les dossiers sont complets et tous les salariés validés."
   },
   "codes": {
-    "HEURES_SUPP_NORM": "HS +15 %",
-    "HEURES_SUPP_NUIT": "HS nuit/dim. +50 %",
-    "HEURES_SUPP_FERIE": "HS férié +100 %",
+    "HEURES_SUPP_NORM": "HS 41e–46e h +15 %",
+    "HEURES_SUPP_47": "HS au-delà de 46 h +50 %",
+    "HEURES_SUPP_NUIT": "HS nuit +75 %",
+    "HEURES_SUPP_DIM": "HS dim./férié jour +75 %",
+    "HEURES_SUPP_FERIE": "HS dim./férié nuit +100 %",
     "PRIME_RENDEMENT": "Prime rendement",
     "PRIME_ANCIENNETE": "Prime ancienneté",
     "PRIME_TRANSPORT": "Prime transport",

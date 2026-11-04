@@ -54,9 +54,11 @@
     "submitDisabledHint": "Submit becomes available once every record is complete and every employee is validated."
   },
   "codes": {
-    "HEURES_SUPP_NORM": "OT +15%",
-    "HEURES_SUPP_NUIT": "OT night/Sun. +50%",
-    "HEURES_SUPP_FERIE": "OT holiday +100%",
+    "HEURES_SUPP_NORM": "OT hours 41–46 +15%",
+    "HEURES_SUPP_47": "OT beyond 46 h +50%",
+    "HEURES_SUPP_NUIT": "OT night +75%",
+    "HEURES_SUPP_DIM": "OT Sun./holiday day +75%",
+    "HEURES_SUPP_FERIE": "OT Sun./holiday night +100%",
     "PRIME_RENDEMENT": "Performance bonus",
     "PRIME_ANCIENNETE": "Seniority bonus",
     "PRIME_TRANSPORT": "Transport allowance",

@@ -31,7 +31,7 @@ export interface CountryFacts {
 
 /** Pays CEDEAO couverts par un pack (ordre d'affichage). */
 export const COUNTRY_FACTS = {
-  CIV: { pack: 'CIV-2024', fr: "Côte d'Ivoire", en: "Côte d'Ivoire", caisse: 'CNPS', impot: 'ITS', currency: 'XOF', smig: 75_000, retraiteSal: 0.063, retraitePat: 0.077, pf: 0.05, plafondRetraite: 1_647_315, plafondAtPf: 70_000, congesParMois: 2.2, joursParSemaine: 6 },
+  CIV: { pack: 'CIV-2024', fr: "Côte d'Ivoire", en: "Côte d'Ivoire", caisse: 'CNPS', impot: 'ITS', currency: 'XOF', smig: 75_000, retraiteSal: 0.063, retraitePat: 0.077, pf: 0.05, plafondRetraite: 3_375_000, plafondAtPf: 75_000, congesParMois: 2.2, joursParSemaine: 6 },
   SEN: { pack: 'SEN-2024', fr: 'Sénégal', en: 'Senegal', caisse: 'IPRES + CSS', impot: 'IR', currency: 'XOF', smig: 64_710, retraiteSal: 0.056, retraitePat: 0.084, pf: 0.07, plafondRetraite: 432_000, plafondAtPf: 63_000, congesParMois: 2.0, joursParSemaine: 5 },
   BFA: { pack: 'BFA-2024', fr: 'Burkina Faso', en: 'Burkina Faso', caisse: 'CNSS', impot: 'IUTS', currency: 'XOF', smig: 45_000, retraiteSal: 0.055, retraitePat: 0.085, pf: 0.06, plafondRetraite: 800_000, plafondAtPf: 800_000, congesParMois: 2.5, joursParSemaine: 6 },
   BEN: { pack: 'BEN-2024', fr: 'Bénin', en: 'Benin', caisse: 'CNSS', impot: 'ITS', currency: 'XOF', smig: 52_000, retraiteSal: 0.036, retraitePat: 0.064, pf: 0.09, plafondRetraite: 0, plafondAtPf: 0, congesParMois: 2.0, joursParSemaine: 6 },

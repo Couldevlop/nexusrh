@@ -103,7 +103,20 @@
     "submit": "Create employee",
     "submitting": "Creating...",
     "paymentMobileMoney": "Mobile Money",
-    "paymentBankTransfer": "Bank transfer"
+    "paymentBankTransfer": "Bank transfer",
+    "cmu": {
+      "section": "CMU (universal health coverage)",
+      "hint": "(1,000 F/month per beneficiary, 500 employer + 500 employee; beyond 6 children, 1,000 F paid by the employee)",
+      "spouseCovered": "Non-working spouse covered",
+      "spouseCoveredYes": "Yes",
+      "spouseCoveredNo": "No",
+      "childrenCovered": "Children covered (under 21)",
+      "childrenCoveredPlaceholder": "Default: dependent children",
+      "beneficiaries": "CMU beneficiaries",
+      "beneficiariesValue": "Employee{{spouse}} + {{children}} child(ren)",
+      "spouseSuffix": " + spouse",
+      "childrenDefault": "{{count}} (dependent children)"
+    }
   },
   "edit": {
     "title": "Edit employee",

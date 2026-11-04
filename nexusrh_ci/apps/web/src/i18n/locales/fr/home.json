@@ -20,8 +20,8 @@
   "proof": {
     "eyebrow": "Ce qui change tout",
     "title": "Le double plafond CNPS",
-    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 70 000 FCFA — c'est-à-dire presque toujours.",
-    "case": "Exemple : salaire brut de 2 000 000 FCFA",
+    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 75 000 FCFA — c'est-à-dire presque toujours.",
+    "case": "Exemple : salaire brut de 4 000 000 FCFA",
     "table": {
       "code": "Code",
       "label": "Rubrique",
@@ -31,13 +31,13 @@
     },
     "rows": {
       "retirement": "CNPS Retraite (part salariale)",
-      "retirementNote": "Plafond retraite : 1 647 315 FCFA",
+      "retirementNote": "Plafond retraite : 3 375 000 FCFA",
       "accident": "CNPS Accidents du travail",
-      "accidentNote": "Plafond AT / PF / Maternité : 70 000 FCFA",
+      "accidentNote": "Plafond AT / PF / Maternité : 75 000 FCFA",
       "family": "CNPS Prestations familiales",
       "its": "ITS (barème progressif sur 100 % du brut, 1 part)"
     },
-    "note": "Les mêmes 2 000 000 FCFA produisent trois bases de calcul différentes. NexusRH CI applique la bonne à chaque ligne, et le bulletin est en FCFA entiers — jamais de centimes."
+    "note": "Les mêmes 4 000 000 FCFA produisent trois bases de calcul différentes. NexusRH CI applique la bonne à chaque ligne, et le bulletin est en FCFA entiers — jamais de centimes."
   },
   "audience": {
     "eyebrow": "Pour qui",

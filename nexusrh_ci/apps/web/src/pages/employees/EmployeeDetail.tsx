@@ -27,6 +27,8 @@ interface EmployeeDetails {
   department_name: string; manager_first_name: string; manager_last_name: string
   mobile_money_provider: string; mobile_money_phone: string
   marital_status: string; children_count: number; city: string
+  // CMU : conjoint sans emploi couvert ; enfants couverts (null = enfants à charge)
+  cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | null
   // EMP-009 — ancienneté calculée renvoyée par l'API
   seniority_label?: string; seniority_months?: number
   // EMP-015 — photo de profil
@@ -170,6 +172,12 @@ export default function EmployeeDetail() {
             [t('detail.fields.cnpsNumber'), emp.cnps_number ?? '—'],
             [t('detail.fields.familySituation'), MARITAL_LABEL[emp.marital_status] ?? emp.marital_status],
             [t('detail.fields.childrenCount'), String(emp.children_count ?? 0)],
+            [t('form.cmu.beneficiaries'), t('form.cmu.beneficiariesValue', {
+              spouse: emp.cmu_spouse_covered === true ? t('form.cmu.spouseSuffix') : '',
+              children: emp.cmu_children_covered == null
+                ? t('form.cmu.childrenDefault', { count: emp.children_count ?? 0 })
+                : String(emp.cmu_children_covered),
+            })],
             [t('detail.fields.city'), emp.city ?? '—'],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between text-sm">

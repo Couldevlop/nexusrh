@@ -20,8 +20,8 @@
   "proof": {
     "eyebrow": "What makes the difference",
     "title": "The two CNPS ceilings",
-    "lead": "CNPS applies two different ceilings depending on the branch. A generic payroll engine knows only one, and gets it wrong as soon as a salary passes 70,000 FCFA — which is nearly always.",
-    "case": "Example: gross salary of 2,000,000 FCFA",
+    "lead": "CNPS applies two different ceilings depending on the branch. A generic payroll engine knows only one, and gets it wrong as soon as a salary passes 75,000 FCFA — which is nearly always.",
+    "case": "Example: gross salary of 4,000,000 FCFA",
     "table": {
       "code": "Code",
       "label": "Item",
@@ -31,13 +31,13 @@
     },
     "rows": {
       "retirement": "CNPS Retirement (employee share)",
-      "retirementNote": "Retirement ceiling: 1,647,315 FCFA",
+      "retirementNote": "Retirement ceiling: 3,375,000 FCFA",
       "accident": "CNPS Work accident",
-      "accidentNote": "Accident / family / maternity ceiling: 70,000 FCFA",
+      "accidentNote": "Accident / family / maternity ceiling: 75,000 FCFA",
       "family": "CNPS Family benefits",
       "its": "ITS (progressive scale on 100% of gross, 1 share)"
     },
-    "note": "The same 2,000,000 FCFA produce three different calculation bases. NexusRH CI applies the right one on every line, and the payslip is in whole FCFA — never cents."
+    "note": "The same 4,000,000 FCFA produce three different calculation bases. NexusRH CI applies the right one on every line, and the payslip is in whole FCFA — never cents."
   },
   "audience": {
     "eyebrow": "Who it is for",
