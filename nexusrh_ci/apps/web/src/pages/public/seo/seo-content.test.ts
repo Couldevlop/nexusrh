@@ -86,7 +86,7 @@ describe('contenu des pages publiques', () => {
     expect(html).toContain('Le mode on-premise')
     expect(html).toContain('Installé sur vos serveurs ou dans le datacenter de votre choix.')
     const onPrem = [fr, en].flatMap((p) => p.sections.filter((s) => s.id === 'on-premise' || s.h2 === 'Comparatif' || s.h2 === 'Comparison'))
-    expect(JSON.stringify(onPrem)).not.toMatch(/Côte d'Ivoire|ivoirien|Ivorian/)
+    expect(JSON.stringify(onPrem)).not.toMatch(/Côte d['’]Ivoire|ivoirien|Ivorian/i)
   })
 
   it('les pages ivoiriennes renvoient vers la couverture UEMOA', () => {

@@ -74,7 +74,7 @@ export const DEPLOY_FR: SeoPageContent = {
       blocks: [
         { type: 'ul', items: [
           "Le moteur de paie, avec les règles du pays de chaque société ; en Côte d'Ivoire : CNPS à double plafond, ITS 2024 avec RICF, déclarations CNPS et DISA.",
-          'Double authentification (TOTP et codes de secours), contrôle d’accès par rôles, journal d’audit.',
+          "Double authentification (TOTP et codes de secours), contrôle d'accès par rôles, journal d'audit.",
           'Chiffrement AES-256 des secrets et données sensibles au repos.',
           'SSO OIDC, SAML ou LDAP et export SIEM avec le module sécurité.',
           "Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC.",

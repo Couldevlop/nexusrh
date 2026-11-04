@@ -31,16 +31,16 @@ const UI = {
   fr: {
     home: 'Accueil', demo: 'Demander une démo', updated: 'Mis à jour le', faq: 'Questions fréquentes',
     related: 'À lire aussi', ctaTitle: 'Voir NexusRH sur vos propres cas de paie',
-    ctaText: 'Une démonstration avec vos rubriques, vos catégories et vos filiales, par l’équipe d’OpenLab Consulting à Abidjan.',
-    solutions: 'Solutions', guides: 'Guides', legal: 'Informations légales', contact: 'Contact', crumbs: 'Fil d’Ariane',
-    address: 'Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d’Ivoire', skip: 'Aller au contenu',
+    ctaText: "Une démonstration avec vos rubriques, vos catégories et vos filiales, par l'équipe d'OpenLab Consulting à Abidjan.",
+    solutions: 'Solutions', guides: 'Guides', legal: 'Informations légales', contact: 'Contact', crumbs: "Fil d'Ariane",
+    address: "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire", skip: 'Aller au contenu',
   },
   en: {
     home: 'Home', demo: 'Request a demo', updated: 'Updated', faq: 'Frequently asked questions',
     related: 'Read next', ctaTitle: 'See NexusRH run your own payroll cases',
     ctaText: 'A demo with your pay items, job grades and subsidiaries, by the OpenLab Consulting team in Abidjan.',
     solutions: 'Solutions', guides: 'Guides (in French)', legal: 'Legal', contact: 'Contact', crumbs: 'Breadcrumb',
-    address: 'Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d’Ivoire', skip: 'Skip to content',
+    address: "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire", skip: 'Skip to content',
   },
 } as const
 
@@ -234,7 +234,7 @@ function Page({ page }: { page: SeoPageContent }) {
             <ul className="space-y-2 text-sm text-[#5A6672]">
               <li><Link to="/legal/mentions-legales" className="hover:text-[#F04E10]">Mentions légales</Link></li>
               <li><Link to="/legal/confidentialite" className="hover:text-[#F04E10]">Confidentialité</Link></li>
-              <li><Link to="/legal/conditions" className="hover:text-[#F04E10]">Conditions d’utilisation</Link></li>
+              <li><Link to="/legal/conditions" className="hover:text-[#F04E10]">Conditions d'utilisation</Link></li>
             </ul>
           </nav>
           <div>

@@ -154,8 +154,8 @@
       "text": "Chaque entreprise dispose de son propre schéma de base de données. Ce n'est pas un filtre applicatif : les données de deux clients ne cohabitent jamais dans les mêmes tables."
     },
     "rbac": {
-      "title": "Contrôle d’accès par rôles",
-      "text": "Un manager voit son équipe, un salarié voit son dossier. Les droits sont vérifiés côté serveur, pas seulement dans l’affichage."
+      "title": "Contrôle d'accès par rôles",
+      "text": "Un manager voit son équipe, un salarié voit son dossier. Les droits sont vérifiés côté serveur, pas seulement dans l'affichage."
     },
     "mfa": {
       "title": "Double authentification",
@@ -179,7 +179,7 @@
     },
     "signature": {
       "title": "Signature électronique",
-      "text": "Contrats et documents signés dans l’application, circuit de signataires tracé au journal d’audit."
+      "text": "Contrats et documents signés dans l'application, circuit de signataires tracé au journal d'audit."
     }
   },
   "contact": {
@@ -324,7 +324,7 @@
         },
         "bank": {
           "title": "Virement bancaire",
-          "text": "Fichier de virement au format de votre banque, décrit une fois à partir d’un fichier exemple puis réutilisé chaque mois."
+          "text": "Fichier de virement au format de votre banque, décrit une fois à partir d'un fichier exemple puis réutilisé chaque mois."
         },
         "sage": {
           "title": "Interface SAGE",
@@ -403,7 +403,7 @@
         },
         "employerBrand": {
           "title": "Marque employeur",
-          "text": "Page carrières publique de l’entreprise, et indicateurs agrégés : sources de candidatures, entonnoir de recrutement, départs."
+          "text": "Page carrières publique de l'entreprise, et indicateurs agrégés : sources de candidatures, entonnoir de recrutement, départs."
         },
         "interviewSim": {
           "title": "Simulations d'entretien",
@@ -420,7 +420,7 @@
       "modules": {
         "sso": {
           "title": "SSO OIDC, SAML, LDAP",
-          "text": "Connexion fédérée avec votre annuaire d’entreprise."
+          "text": "Connexion fédérée avec votre annuaire d'entreprise."
         },
         "siem": {
           "title": "Export SIEM",
@@ -428,7 +428,7 @@
         },
         "signature": {
           "title": "Signature électronique",
-          "text": "Circuit de signataires séquentiel ou parallèle, chaque étape tracée au journal d’audit."
+          "text": "Circuit de signataires séquentiel ou parallèle, chaque étape tracée au journal d'audit."
         },
         "classification": {
           "title": "Classification des données",
@@ -548,7 +548,7 @@
         "a": "En SaaS, sur une infrastructure exploitée par OpenLab Consulting, chaque entreprise disposant de son propre schéma de base de données. En on-premise, vos données restent dans votre infrastructure, dans le pays de votre choix. Dans les deux cas, les secrets et données sensibles sont chiffrés au repos en AES-256."
       },
       "compliance": {
-        "q": "Le calcul de paie est-il conforme à la CNPS et à l’ITS 2024 ?",
+        "q": "Le calcul de paie est-il conforme à la CNPS et à l'ITS 2024 ?",
         "a": "En Côte d'Ivoire, pays de référence : oui. Le moteur applique le double plafond CNPS (75 000 FCFA pour accidents du travail, prestations familiales et maternité, 3 375 000 FCFA pour la retraite), la CMU (1 000 FCFA par bénéficiaire et par mois, partagés à parts égales) et le barème ITS de la réforme 2024, sur 100 % du brut imposable, puis la réduction pour charges de famille (RICF). La DISA annuelle et la déclaration CNPS mensuelle sont produites à partir des bulletins."
       },
       "mobileMoney": {
@@ -572,7 +572,7 @@
         "a": "Oui. L'interface est entièrement disponible en français et en anglais ; chaque utilisateur choisit sa langue."
       },
       "trial": {
-        "q": "Peut-on essayer avant de s’engager ?",
+        "q": "Peut-on essayer avant de s'engager ?",
         "a": "Oui. Demandez une démonstration sur vos propres cas de paie avec le formulaire de cette page. OpenLab Consulting peut ensuite ouvrir un environnement d'essai, limité à 20 salariés et 10 utilisateurs."
       },
       "support": {

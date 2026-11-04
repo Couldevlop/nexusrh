@@ -157,7 +157,7 @@ describe('HomePage — deux modes de déploiement', () => {
 
   it("aucune restriction de pays sur l'hébergement", () => {
     const deploy = JSON.stringify(frHome.deploy) + JSON.stringify(enHome.deploy)
-    expect(deploy).not.toMatch(/Côte d'Ivoire|ivoirien|Ivorian/)
+    expect(deploy).not.toMatch(/Côte d['’]Ivoire|ivoirien|Ivorian/i)
     expect(frHome.faq.items.hosting.a).not.toMatch(/Côte d'Ivoire/)
     expect(frHome.security.hosting.text).not.toMatch(/Côte d'Ivoire/)
   })
@@ -283,6 +283,10 @@ describe('HomePage — formulations validées (revue du 04/11)', () => {
     expect(enHome.deploy.onprem.tag).toBe('On your infrastructure')
     expect(frHome.deploy.onprem.tag).toBe('Sur vos serveurs ou dans votre datacenter')
     expect(JSON.stringify(SEO_PAGES)).toContain('Are the features the same in SaaS and on-premise?')
+  })
+
+  it('français : une seule apostrophe (droite) dans la vitrine', () => {
+    expect(JSON.stringify(frHome)).not.toContain('’')
   })
 })
 
