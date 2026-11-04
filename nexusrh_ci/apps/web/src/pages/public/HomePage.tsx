@@ -137,9 +137,11 @@ export default function HomePage() {
   ]
 
   const payslipRows = [
-    { code: '2000', label: t('proof.rows.retirement'), note: t('proof.rows.retirementNote'), base: '1 647 315', rate: '6,3 %', amount: '103 781' },
-    { code: '3300', label: t('proof.rows.accident'),   note: t('proof.rows.accidentNote'),   base: '70 000',    rate: '2,0 %', amount: '1 400' },
-    { code: '3200', label: t('proof.rows.family'),     note: null,                            base: '70 000',    rate: '5,0 %', amount: '3 500' },
+    // TODO(paie CIV) : relier ces chiffres au pack CIV-2024 par un test une fois la branche rebasée
+    // sur la correction des plafonds (le pack de cette branche porte encore 1 647 315 / 70 000).
+    { code: '2000', label: t('proof.rows.retirement'), note: t('proof.rows.retirementNote'), base: '2 000 000', rate: '6,3 %', amount: '126 000' },
+    { code: '3300', label: t('proof.rows.accident'),   note: t('proof.rows.accidentNote'),   base: '75 000',    rate: '2,0 %', amount: '1 500' },
+    { code: '3200', label: t('proof.rows.family'),     note: null,                            base: '75 000',    rate: '5,0 %', amount: '3 750' },
     { code: '2100', label: t('proof.rows.its'),        note: null,                            base: '2 000 000', rate: '0→24 %', amount: '432 000' },
   ]
 
@@ -243,7 +245,7 @@ export default function HomePage() {
             {[
               { v: <Counter to={2} />,                        l: t('compliance.cnps.title'), s: t('proof.title') },
               { v: <><Counter to={6.3} decimals={1} /> %</>,  l: 'CNPS',                     s: t('proof.rows.retirement') },
-              { v: <Counter to={1647315} />,                  l: 'FCFA',                     s: t('proof.rows.retirementNote') },
+              { v: <Counter to={3375000} />,                  l: 'FCFA',                     s: t('proof.rows.retirementNote') },
               { v: <Counter to={CATALOG_MODULE_COUNT} />,     l: t('stats.modulesLabel'),    s: t('stats.modulesText') },
             ].map((k, i) => (
               <div key={i} className="bg-white px-6 py-7">

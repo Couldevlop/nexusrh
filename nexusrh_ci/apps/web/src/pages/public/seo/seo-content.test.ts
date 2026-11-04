@@ -15,6 +15,8 @@ import { SEO_PAGES, getSeoPage } from './content'
 import { COUNTRY_FACTS } from './content-west-africa'
 import { GUIDE_CNPS, GUIDE_ITS } from './content-ci'
 import SeoContentPage from '../SeoContentPage'
+import frHome from '@/i18n/locales/fr/home.json'
+import enHome from '@/i18n/locales/en/home.json'
 import { contentJsonLd } from '@/prerender/entry'
 
 const fmt = (v: number) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
@@ -118,6 +120,15 @@ describe('contenu des pages publiques', () => {
   })
 })
 
+/**
+ * Plafonds CNPS publiés pour la Côte d'Ivoire : retraite 3 375 000 (décret n° 2022-986),
+ * AT / PF / maternité 75 000. Le portail sort avec la correction de la paie CIV.
+ * TODO(paie CIV) : à la rebase sur la correction des plafonds, supprimer cette
+ * constante et comparer de nouveau au pack CIV-2024 (plafondCnpsRetraite /
+ * plafondCnpsAtPf), qui porte encore 1 647 315 / 70 000 sur cette branche.
+ */
+const CIV_CNPS_PUBLISHED = { plafondRetraite: 3_375_000, plafondAtPf: 75_000 } as const
+
 describe('chiffres conformes aux packs législatifs', () => {
   it('pages pays : SMIG, taux, plafonds et congés = valeurs du pack', () => {
     for (const [key, f] of Object.entries(COUNTRY_FACTS)) {
@@ -129,8 +140,13 @@ describe('chiffres conformes aux packs législatifs', () => {
       expect(pack!.tauxCotisationRetraiteSalarie, key).toBe(f.retraiteSal)
       expect(pack!.tauxCotisationRetraitePatronal, key).toBe(f.retraitePat)
       expect(pack!.tauxCotisationPfPatronal, key).toBe(f.pf)
-      expect(pack!.plafondCnpsRetraite, key).toBe(f.plafondRetraite)
-      expect(pack!.plafondCnpsAtPf, key).toBe(f.plafondAtPf)
+      if (key === 'CIV') {
+        expect(f.plafondRetraite).toBe(CIV_CNPS_PUBLISHED.plafondRetraite)
+        expect(f.plafondAtPf).toBe(CIV_CNPS_PUBLISHED.plafondAtPf)
+      } else {
+        expect(pack!.plafondCnpsRetraite, key).toBe(f.plafondRetraite)
+        expect(pack!.plafondCnpsAtPf, key).toBe(f.plafondAtPf)
+      }
       expect(pack!.leaveRules?.annualLeaveDaysPerMonth, key).toBe(f.congesParMois)
       expect(pack!.leaveRules?.workingDaysPerWeek, key).toBe(f.joursParSemaine)
     }
@@ -164,11 +180,11 @@ describe('chiffres conformes aux packs législatifs', () => {
     expect(r.map((x) => x[1])).toEqual(CIV_2024.reductionChargesFamille!.montantsParParts.map((x) => fmt(x.montant)))
   })
 
-  it('guide CNPS : exemple à 2 000 000 FCFA recalculé (double plafond)', () => {
+  it('guide CNPS : exemple à 2 000 000 FCFA recalculé (double plafond, CMU)', () => {
     const p = CIV_2024
     const rows = tableRows(GUIDE_CNPS, /Cotisations CNPS mensuelles/)
-    const base = Math.min(2_000_000, p.plafondCnpsRetraite)
-    const small = Math.min(2_000_000, p.plafondCnpsAtPf)
+    const base = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondRetraite)
+    const small = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondAtPf)
     const expected = [
       Math.round(base * p.tauxCotisationRetraiteSalarie),
       Math.round(base * p.tauxCotisationRetraitePatronal),
@@ -176,8 +192,22 @@ describe('chiffres conformes aux packs législatifs', () => {
       Math.round(small * p.tauxCotisationMaternitePatronal),
       Math.round(small * p.tauxAtDefaultPatronal),
     ]
-    expect(rows.map((r) => r[3])).toEqual(expected.map(fmt))
-    expect(rows[0]![1]).toBe(fmt(p.plafondCnpsRetraite))
-    expect(rows[2]![1]).toBe(fmt(p.plafondCnpsAtPf))
+    expect(rows.slice(0, 5).map((r) => r[3])).toEqual(expected.map(fmt))
+    expect(rows[0]![1]).toBe(fmt(base))
+    expect(rows[2]![1]).toBe(fmt(small))
+    // CMU (loi n° 2014-131) : 1 000 FCFA par bénéficiaire, moitié salarié, moitié employeur.
+    expect(rows[5]).toEqual(['CMU (1 bénéficiaire)', '1 000 par bénéficiaire', '50 % / 50 %', '500 + 500'])
+    const total = (xs: number[]) => fmt(xs.reduce((a, b) => a + b, 0))
+    const note = GUIDE_CNPS.sections.flatMap((s) => s.blocks).find((b) => b.type === 'table' && /mensuelles/.test(b.caption))
+    expect(note?.type === 'table' ? note.note : '').toContain(`Total salarié : ${total([expected[0]!, 500])} FCFA`)
+    expect(note?.type === 'table' ? note.note : '').toContain(`Total employeur : ${total([...expected.slice(1), 500])} FCFA`)
+  })
+
+  it('plafonds CNPS publiés partout (vitrine, FAQ, pages CI) : 3 375 000 et 75 000, plus aucun ancien plafond', () => {
+    const all = JSON.stringify(SEO_PAGES) + JSON.stringify(frHome) + JSON.stringify(enHome)
+    expect(all).not.toMatch(/1 647 315|1,647,315|1647315|70 000 FCFA|70,000 FCFA/)
+    expect(JSON.stringify(frHome.faq.items.compliance)).toContain('3 375 000')
+    expect(JSON.stringify(frHome.faq.items.compliance)).toContain('75 000')
+    expect(JSON.stringify(frHome.compliance.cnps)).toContain('CMU')
   })
 })

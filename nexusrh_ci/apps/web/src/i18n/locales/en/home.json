@@ -22,24 +22,24 @@
   "proof": {
     "eyebrow": "What makes the difference",
     "title": "The two CNPS ceilings",
-    "lead": "CNPS applies two different ceilings depending on the branch. A generic payroll engine knows only one, and gets it wrong as soon as a salary passes 70,000 FCFA — which is nearly always.",
+    "lead": "CNPS applies two different ceilings depending on the branch. A generic payroll engine knows only one, and gets it wrong as soon as a salary passes 75,000 FCFA, which is nearly always.",
     "case": "Example: gross salary of 2,000,000 FCFA",
     "table": {
       "code": "Code",
       "label": "Item",
-      "base": "Capped base",
+      "base": "Base",
       "rate": "Rate",
       "amount": "Amount"
     },
     "rows": {
       "retirement": "CNPS Retirement (employee share)",
-      "retirementNote": "Retirement ceiling: 1,647,315 FCFA",
+      "retirementNote": "Retirement ceiling: 3,375,000 FCFA (Decree No. 2022-986)",
       "accident": "CNPS Work accident",
-      "accidentNote": "Accident / family / maternity ceiling: 70,000 FCFA",
+      "accidentNote": "Accident / family / maternity ceiling: 75,000 FCFA",
       "family": "CNPS Family benefits",
       "its": "ITS (progressive scale on 100% of gross, 1 share)"
     },
-    "note": "The same 2,000,000 FCFA produce three different calculation bases. NexusRH applies the right one on every line, and the payslip is in whole FCFA — never cents."
+    "note": "The same 2,000,000 FCFA give two bases: 75,000 FCFA for work accident, family benefits and maternity, and the full gross pay for retirement (below its 3,375,000 FCFA ceiling) and ITS. NexusRH applies the right one on every line, in whole FCFA, never cents."
   },
   "audience": {
     "eyebrow": "Who it is for",
@@ -67,7 +67,7 @@
     "lead": "Côte d'Ivoire is the reference country. Its rules are not options to configure: they are written into the calculation, tested, and updated as the law changes.",
     "cnps": {
       "title": "CNPS 2024",
-      "text": "Two ceilings for retirement and accident/family/maternity, rates per branch, work-accident rate by sector — trade, construction, industry, extraction."
+      "text": "Two ceilings: retirement up to 3,375,000 FCFA; work accident, family benefits and maternity up to 75,000 FCFA. Work-accident rate by sector. CMU: 1,000 FCFA per beneficiary per month, split equally between employee and employer."
     },
     "its": {
       "title": "ITS and DGI",
@@ -550,7 +550,7 @@
       },
       "compliance": {
         "q": "Is payroll compliant with CNPS and ITS 2024?",
-        "a": "In Côte d'Ivoire, the reference country: yes. The engine applies the two CNPS ceilings (70,000 FCFA for work accident, family benefits and maternity, 1,647,315 FCFA for retirement) and the 2024 ITS scale on 100% of taxable gross pay, then the family-charges reduction (RICF). The annual DISA and the monthly CNPS filing are produced from the payslips."
+        "a": "In Côte d'Ivoire, the reference country: yes. The engine applies the two CNPS ceilings (75,000 FCFA for work accident, family benefits and maternity, 3,375,000 FCFA for retirement), the CMU (1,000 FCFA per beneficiary per month, split equally) and the 2024 ITS scale on 100% of taxable gross pay, then the family-charges reduction (RICF). The annual DISA and the monthly CNPS filing are produced from the payslips."
       },
       "mobileMoney": {
         "q": "Can salaries be paid via Mobile Money?",

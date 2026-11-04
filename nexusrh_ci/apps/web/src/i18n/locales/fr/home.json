@@ -22,24 +22,24 @@
   "proof": {
     "eyebrow": "Ce qui change tout",
     "title": "Le double plafond CNPS",
-    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 70 000 FCFA — c'est-à-dire presque toujours.",
+    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 75 000 FCFA, c'est-à-dire presque toujours.",
     "case": "Exemple : salaire brut de 2 000 000 FCFA",
     "table": {
       "code": "Code",
       "label": "Rubrique",
-      "base": "Base plafonnée",
+      "base": "Assiette",
       "rate": "Taux",
       "amount": "Montant"
     },
     "rows": {
       "retirement": "CNPS Retraite (part salariale)",
-      "retirementNote": "Plafond retraite : 1 647 315 FCFA",
+      "retirementNote": "Plafond retraite : 3 375 000 FCFA (décret n° 2022-986)",
       "accident": "CNPS Accidents du travail",
-      "accidentNote": "Plafond AT / PF / Maternité : 70 000 FCFA",
+      "accidentNote": "Plafond AT / PF / maternité : 75 000 FCFA",
       "family": "CNPS Prestations familiales",
       "its": "ITS (barème progressif sur 100 % du brut, 1 part)"
     },
-    "note": "Les mêmes 2 000 000 FCFA produisent trois bases de calcul différentes. NexusRH applique la bonne à chaque ligne, et le bulletin est en FCFA entiers — jamais de centimes."
+    "note": "Les mêmes 2 000 000 FCFA donnent deux assiettes : 75 000 FCFA pour les accidents du travail, les prestations familiales et la maternité, le brut entier pour la retraite (sous son plafond de 3 375 000 FCFA) et pour l'ITS. NexusRH applique la bonne à chaque ligne, en FCFA entiers, jamais de centimes."
   },
   "audience": {
     "eyebrow": "Pour qui",
@@ -67,7 +67,7 @@
     "lead": "La Côte d'Ivoire est le pays de référence. Ses règles ne sont pas des options à configurer : elles sont écrites dans le calcul, testées et mises à jour à chaque évolution légale.",
     "cnps": {
       "title": "CNPS 2024",
-      "text": "Double plafond retraite et AT/PF/Maternité, taux par branche, taux accident du travail selon votre secteur — commerce, BTP, industrie, extraction."
+      "text": "Double plafond : retraite jusqu'à 3 375 000 FCFA, accidents du travail, prestations familiales et maternité jusqu'à 75 000 FCFA. Taux accident du travail selon le secteur. CMU : 1 000 FCFA par bénéficiaire et par mois, à parts égales entre salarié et employeur."
     },
     "its": {
       "title": "ITS et DGI",
@@ -550,7 +550,7 @@
       },
       "compliance": {
         "q": "Le calcul de paie est-il conforme à la CNPS et à l’ITS 2024 ?",
-        "a": "En Côte d'Ivoire, pays de référence : oui. Le moteur applique le double plafond CNPS (70 000 FCFA pour accidents du travail, prestations familiales et maternité, 1 647 315 FCFA pour la retraite) et le barème ITS de la réforme 2024, sur 100 % du brut imposable, puis la réduction pour charges de famille (RICF). La DISA annuelle et la déclaration CNPS mensuelle sont produites à partir des bulletins."
+        "a": "En Côte d'Ivoire, pays de référence : oui. Le moteur applique le double plafond CNPS (75 000 FCFA pour accidents du travail, prestations familiales et maternité, 3 375 000 FCFA pour la retraite), la CMU (1 000 FCFA par bénéficiaire et par mois, partagés à parts égales) et le barème ITS de la réforme 2024, sur 100 % du brut imposable, puis la réduction pour charges de famille (RICF). La DISA annuelle et la déclaration CNPS mensuelle sont produites à partir des bulletins."
       },
       "mobileMoney": {
         "q": "Peut-on payer les salaires par Mobile Money ?",
