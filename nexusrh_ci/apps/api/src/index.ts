@@ -30,7 +30,7 @@ async function main() {
 
   try {
     await app.listen({ port: config.port, host: '0.0.0.0' })
-    console.log(`\n  NexusRH CI — API démarrée`)
+    console.log(`\n  NexusRH — API démarrée`)
     console.log(`  API:     http://localhost:${config.port}`)
     console.log(`  Swagger: http://localhost:${config.port}/docs`)
     console.log(`  Health:  http://localhost:${config.port}/health\n`)

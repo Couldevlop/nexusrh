@@ -45,7 +45,7 @@ describe('security.service — formatage', () => {
   })
   it('CEF : en-tête ArcSight + extensions', () => {
     const line = formatEvent(ev, 'cef')
-    expect(line.startsWith('CEF:0|OpenLab|NexusRH CI|1.0|auth.login_failed|auth|')).toBe(true)
+    expect(line.startsWith('CEF:0|OpenLab|NexusRH|1.0|auth.login_failed|auth|')).toBe(true)
     expect(line).toContain('cs1Label=tenant cs1=tenant_sotra')
     expect(line).toContain('src=10.0.0.1')
   })

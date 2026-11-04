@@ -1,6 +1,6 @@
 version: '3.9'
 
-# NexusRH CI — Infrastructure locale
+# NexusRH — Infrastructure locale
 # Ports distincts de NexusRH (parent) pour cohabitation :
 #   PostgreSQL : 5434  (NexusRH : 5433)
 #   Redis      : 6380  (NexusRH : 6379)

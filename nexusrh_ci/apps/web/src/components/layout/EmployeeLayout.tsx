@@ -116,7 +116,7 @@ export default function EmployeeLayout() {
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">{tenantConfig?.name ?? 'NexusRH CI'}</p>
+              <p className="text-sm font-semibold truncate">{tenantConfig?.name ?? 'NexusRH'}</p>
               <p className="text-xs text-muted-foreground">{t('nav.personalSpace')}</p>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden rounded-md p-1 text-muted-foreground hover:bg-accent">

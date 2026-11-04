@@ -469,7 +469,7 @@ export default function PlatformSettings() {
             <>
               <h2 className="font-semibold">{t('settings.general.title')}</h2>
               <Field label={t('settings.general.appName')} hint={t('settings.general.appNameHint')}>
-                <input className={inputCls} value={settings.app_name ?? 'NexusRH CI'}
+                <input className={inputCls} value={settings.app_name ?? 'NexusRH'}
                   onChange={e => update('app_name', e.target.value)} />
               </Field>
               <Field label={t('settings.general.trialDays')}>
@@ -636,13 +636,13 @@ export default function PlatformSettings() {
                   onChange={e => update('support_email', e.target.value)} />
               </Field>
               <Field label={t('settings.notifications.supportPhone')} hint={t('settings.notifications.supportPhoneHint')}>
-                <input className={inputCls} value={settings.support_phone ?? '+225 07 09 32 05 94'}
+                <input className={inputCls} value={settings.support_phone ?? '+225 07 49 43 92 03'}
                   onChange={e => update('support_phone', e.target.value)} />
               </Field>
               <Field label={t('settings.notifications.supportWhatsapp')} hint={t('settings.notifications.supportWhatsappHint')}>
-                <input className={inputCls} value={settings.support_whatsapp ?? '+225 07 09 32 05 94'}
+                <input className={inputCls} value={settings.support_whatsapp ?? '+225 07 49 43 92 03'}
                   onChange={e => update('support_whatsapp', e.target.value)}
-                  placeholder="+225 07 09 32 05 94" />
+                  placeholder="+225 07 49 43 92 03" />
               </Field>
               <Field label={t('settings.notifications.welcomeSignature')} hint={t('settings.notifications.welcomeSignatureHint')}>
                 <textarea rows={3} className={inputCls}

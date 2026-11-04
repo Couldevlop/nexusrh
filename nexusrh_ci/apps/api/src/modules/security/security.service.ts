@@ -90,7 +90,7 @@ export function formatEvent(event: SecurityEvent, format: SiemFormat): string {
       `cs2Label=entity cs2=${event.entity ?? ''}`,
     ].join(' ')
     // CEF:Version|Vendor|Product|Version|SignatureID|Name|Severity|Extension
-    return `CEF:0|OpenLab|NexusRH CI|1.0|${event.action}|${cat}|${severityFor(cat)}|${ext}`
+    return `CEF:0|OpenLab|NexusRH|1.0|${event.action}|${cat}|${severityFor(cat)}|${ext}`
   }
   return JSON.stringify({
     id: event.id, category: cat, action: event.action, entity: event.entity,

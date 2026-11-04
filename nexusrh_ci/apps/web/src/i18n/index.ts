@@ -1,5 +1,5 @@
 /**
- * i18n NexusRH CI — Français (défaut) + Anglais.
+ * i18n NexusRH — Français (défaut) + Anglais.
  *
  * - Détection : localStorage `nexusrh:lang` puis langue du navigateur, repli fr.
  * - Persistance : chaque changement de langue est mémorisé dans localStorage.

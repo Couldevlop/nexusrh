@@ -77,7 +77,7 @@ const BODY = {
   fullName: 'Awa Koné',
   company: 'SOTRA',
   email: 'awa.kone@sotra.ci',
-  phone: '+225 07 09 32 05 94',
+  phone: '+225 07 09 33 42 38',
   headcount: '200-999',
   message: 'Nous voulons voir la paie CNPS sur notre cas.',
   website: '',

@@ -236,7 +236,8 @@
     "security": "Sécurité",
     "demo": "Démo",
     "deploy": "Déploiement",
-    "faq": "FAQ"
+    "faq": "FAQ",
+    "menu": "Menu"
   },
   "footerNav": {
     "product": "Produit",

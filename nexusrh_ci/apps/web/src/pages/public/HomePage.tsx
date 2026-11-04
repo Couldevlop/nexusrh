@@ -124,6 +124,14 @@ function MoreLinks({ items }: { items: { to: string; label: string }[] }) {
 
 export default function HomePage() {
   const { t } = useTranslation('home')
+  const navLinks = [
+    { href: '#produit', label: 'nav.product' },
+    { href: '#conformite', label: 'nav.compliance' },
+    { href: '#modules', label: 'nav.modules' },
+    { href: `#${HOME_ANCHORS.deploy}`, label: 'nav.deploy' },
+    { href: '#securite', label: 'nav.security' },
+    { href: `#${HOME_ANCHORS.faq}`, label: 'nav.faq' },
+  ]
 
   const audience   = ['sme', 'group', 'public', 'agency'] as const
   const compliance = ['cnps', 'its', 'labour', 'declarations', 'ohada', 'currency'] as const
@@ -179,14 +187,22 @@ export default function HomePage() {
             <span className="text-[15px] font-bold tracking-tight sm:text-[17px]">NexusRH</span>
           </a>
           <nav className="hidden items-center gap-7 text-sm font-medium text-[#5A6672] lg:flex">
-            <a href="#produit" className="transition-colors hover:text-[#0F1214]">{t('nav.product')}</a>
-            <a href="#conformite" className="transition-colors hover:text-[#0F1214]">{t('nav.compliance')}</a>
-            <a href="#modules" className="transition-colors hover:text-[#0F1214]">{t('nav.modules')}</a>
-            <a href={`#${HOME_ANCHORS.deploy}`} className="transition-colors hover:text-[#0F1214]">{t('nav.deploy')}</a>
-            <a href="#securite" className="transition-colors hover:text-[#0F1214]">{t('nav.security')}</a>
-            <a href={`#${HOME_ANCHORS.faq}`} className="transition-colors hover:text-[#0F1214]">{t('nav.faq')}</a>
+            {navLinks.map(l => (
+              <a key={l.href} href={l.href} className="transition-colors hover:text-[#0F1214]">{t(l.label)}</a>
+            ))}
           </nav>
           <div className="flex items-center gap-3">
+            {/* Sous lg, le menu se replie : <details> reste utilisable sans JavaScript (prérendu). */}
+            <details className="group relative lg:hidden">
+              <summary className="cursor-pointer list-none rounded-lg border-2 border-[#0F1214] px-3 py-1.5 text-sm font-bold [&::-webkit-details-marker]:hidden">
+                {t('nav.menu')}
+              </summary>
+              <nav aria-label={t('nav.menu')} className="absolute right-0 top-full mt-2 flex w-56 flex-col rounded-lg border-2 border-[#0F1214] bg-white py-2 text-sm font-medium shadow-[6px_6px_0_0_#F04E10]">
+                {navLinks.map(l => (
+                  <a key={l.href} href={l.href} className="px-4 py-2 hover:bg-[#F4F6F8]">{t(l.label)}</a>
+                ))}
+              </nav>
+            </details>
             <LanguageSwitcher />
             <Link to="/login" className="hidden rounded-lg border-2 border-[#0F1214] px-4 py-1.5 text-sm font-bold transition-colors hover:bg-[#0F1214] hover:text-white sm:inline-block">
               {t('hero.ctaApp')}
