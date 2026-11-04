@@ -6,10 +6,10 @@
   "docs": {
     "notice": {
       "title": "Mentions légales",
-      "lead": "Informations relatives à l'éditeur du service NexusRH CI et à ses conditions de publication.",
+      "lead": "Informations relatives à l'éditeur du service NexusRH et à ses conditions de publication.",
       "s1": {
         "h": "Éditeur",
-        "p": "NexusRH CI est édité par OpenLab Consulting, société de conseil et d'ingénierie logicielle établie à Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact : waopron@openlabconsulting.com, +225 07 09 32 05 94."
+        "p": "NexusRH est édité par OpenLab Consulting, société de conseil et d'ingénierie logicielle établie à Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact : waopron@openlabconsulting.com, +225 07 09 33 42 38, +225 07 49 43 92 03, +33 6 19 24 53 29."
       },
       "s2": {
         "h": "Directeur de la publication",
@@ -17,11 +17,11 @@
       },
       "s3": {
         "h": "Hébergement",
-        "p": "Le service est hébergé sur une infrastructure sous contrôle de l'éditeur, avec chiffrement des échanges en HTTPS. Les clients qui l'exigent — établissements publics, banques, opérateurs sensibles — peuvent obtenir un hébergement de leurs fichiers en Côte d'Ivoire, prévu contractuellement."
+        "p": "Le service est proposé en deux modes. En SaaS, il est hébergé sur une infrastructure sous contrôle de l'éditeur, avec chiffrement des échanges en HTTPS. En on-premise, il est installé sur les serveurs du client ou dans le datacenter de son choix : les données restent dans son infrastructure, dans le pays de son choix."
       },
       "s4": {
         "h": "Propriété intellectuelle",
-        "p": "Le logiciel NexusRH CI, sa documentation, ses marques, ses interfaces et ses éléments graphiques sont la propriété d'OpenLab Consulting. Toute reproduction, extraction, décompilation ou réutilisation, totale ou partielle, sans autorisation écrite, est interdite. Les données saisies par un client restent la propriété de ce client."
+        "p": "Le logiciel NexusRH, sa documentation, ses marques, ses interfaces et ses éléments graphiques sont la propriété d'OpenLab Consulting. Toute reproduction, extraction, décompilation ou réutilisation, totale ou partielle, sans autorisation écrite, est interdite. Les données saisies par un client restent la propriété de ce client."
       },
       "s5": {
         "h": "Responsabilité",
@@ -30,7 +30,9 @@
       "s6": {
         "h": "Droit applicable",
         "p": "Les présentes mentions sont régies par le droit ivoirien. En cas de litige, et à défaut de résolution amiable, compétence est attribuée aux juridictions compétentes d'Abidjan."
-      }
+      },
+      "seoTitle": "Mentions légales de NexusRH | OpenLab Consulting Abidjan",
+      "seoDescription": "Mentions légales de NexusRH : éditeur OpenLab Consulting, Cocody, Abidjan, directeur de la publication, hébergement et propriété intellectuelle."
     },
     "privacy": {
       "title": "Politique de confidentialité",
@@ -62,14 +64,16 @@
       "s7": {
         "h": "Réclamation",
         "p": "Vous pouvez introduire une réclamation auprès de l'Autorité de régulation des télécommunications de Côte d'Ivoire (ARTCI), autorité de protection des données à caractère personnel, ou auprès de l'autorité compétente de votre pays de résidence."
-      }
+      },
+      "seoTitle": "Confidentialité et protection des données | NexusRH",
+      "seoDescription": "Comment NexusRH et OpenLab Consulting traitent les données personnelles des visiteurs et des utilisateurs : finalités, conservation et droits (loi 2013-450)."
     },
     "terms": {
       "title": "Conditions générales d'utilisation",
-      "lead": "Règles d'accès et d'usage du service NexusRH CI. Elles complètent, sans le remplacer, le contrat conclu avec chaque entreprise cliente.",
+      "lead": "Règles d'accès et d'usage du service NexusRH. Elles complètent, sans le remplacer, le contrat conclu avec chaque entreprise cliente.",
       "s1": {
         "h": "Objet",
-        "p": "NexusRH CI est un service en ligne de gestion des ressources humaines et de la paie, destiné aux entreprises et organisations. L'accès est réservé aux personnes autorisées par l'entreprise cliente. La consultation des pages publiques n'ouvre aucun droit d'usage du service."
+        "p": "NexusRH est un service en ligne de gestion des ressources humaines et de la paie, destiné aux entreprises et organisations. L'accès est réservé aux personnes autorisées par l'entreprise cliente. La consultation des pages publiques n'ouvre aucun droit d'usage du service."
       },
       "s2": {
         "h": "Comptes et sécurité",
@@ -94,7 +98,9 @@
       "s7": {
         "h": "Droit applicable",
         "p": "Les présentes conditions sont régies par le droit ivoirien. Tout litige relève, à défaut d'accord amiable, des juridictions compétentes d'Abidjan."
-      }
+      },
+      "seoTitle": "Conditions générales d'utilisation du service | NexusRH",
+      "seoDescription": "Conditions générales d'utilisation de NexusRH : accès au service, comptes et sécurité, usages interdits, responsabilités. Complètent le contrat client."
     },
     "cookies": {
       "title": "Politique cookies",
@@ -114,7 +120,9 @@
       "s4": {
         "h": "Refus et suppression",
         "p": "Vous pouvez à tout moment effacer ces éléments depuis les réglages de votre navigateur. Le refus du cookie de session empêche la connexion au service : il est indispensable à son fonctionnement, ce qui le dispense de recueil de consentement préalable."
-      }
+      },
+      "seoTitle": "Politique cookies : aucun traceur publicitaire | NexusRH",
+      "seoDescription": "NexusRH ne dépose aucun cookie publicitaire ni outil de mesure tiers : un seul cookie de session strictement nécessaire, et votre choix de langue en local."
     }
   }
 }

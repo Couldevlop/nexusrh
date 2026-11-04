@@ -275,8 +275,8 @@ pnpm run dev
 
 ```
 OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan, CI
-Email infos@openlabconsulting.com · Tel CI +225 07 09 32 05 94 · Tel FR +33 06 19 24 53 29 · www.openlabconsulting.com
-Support NexusRH CI : WhatsApp +225 07 09 32 05 94 · support@nexusrh-ci.com · Lun–Ven 7h30–18h00 (Abidjan)
+Email infos@openlabconsulting.com · Tel CI +225 07 09 33 42 38 · +225 07 49 43 92 03 · Tel FR +33 6 19 24 53 29 · www.openlabconsulting.com
+Support NexusRH : WhatsApp +225 07 49 43 92 03 (wa.me/2250749439203) · support@nexusrh-ci.com · Lun–Ven 7h30–18h00 (Abidjan)
 ```
 
 ---
