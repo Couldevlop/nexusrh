@@ -379,7 +379,8 @@ const VARIABLE_EARNINGS: ReadonlyArray<{ code: string; label: string; varKey: st
   { code: '1600', label: 'Indemnité congés payés',           varKey: 'ICP'               },
 ]
 
-const pct = (rate: number): string => `${Math.round(rate * 100)}%`
+// 0 ou 1 décimale (virgule française) : 0,15 -> « 15% », 0,125 -> « 12,5% ».
+const pct = (rate: number): string => `${String(Math.round(rate * 1000) / 10).replace('.', ',')}%`
 
 /**
  * Libellés des lignes d'heures supplémentaires (1400 / 1500 / 1550), dérivés

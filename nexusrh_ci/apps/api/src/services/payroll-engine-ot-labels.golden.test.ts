@@ -18,6 +18,13 @@ describe('overtimeLabels', () => {
   })
 })
 
+describe('overtimeLabels décimales', () => {
+  it('12,5 % reste 12,5', () => {
+    const pack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: { weekly: 0.125 } } }
+    expect(overtimeLabels(pack).norm).toBe('Heures supp. +12,5%')
+  })
+})
+
 describe('lignes 1400/1500/1550 du bulletin', () => {
   const ctx = {
     baseSalary: 300_000, workedDays: 26, workingDaysMonth: 26, atRate: 0.02,

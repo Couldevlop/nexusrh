@@ -5,15 +5,23 @@
 import type { LegislationPack, SeniorityBonusRule } from './legislation-packs.js'
 import { overtimeLabels } from './payroll-engine-ci.js'
 
-export interface SeniorityResult {
-  years: number
-  months: number
+export interface SeniorityRuleOutcome {
   rate: number
   base: number
   amount: number
+  confidence: 'confirmed' | 'to_confirm'
+  legalSource: string
+}
+
+export interface SeniorityResult {
+  years: number
+  months: number
+  /** Origine du montant retenu. */
   source: 'rule' | 'manual' | 'none'
-  confidence: 'confirmed' | 'to_confirm' | null
-  legalSource: string | null
+  /** Montant retenu. */
+  amount: number
+  /** Ce que donne la règle du pack (null si le pack n'en a pas), même en saisie manuelle. */
+  rule: SeniorityRuleOutcome | null
 }
 
 export type OvertimeElementKey = 'HEURES_SUPP_NORM' | 'HEURES_SUPP_NUIT' | 'HEURES_SUPP_FERIE'
@@ -36,8 +44,12 @@ export function completedYears(hireDate: string, payMonth: string): { years: num
   const h = DATE_RE.exec(hireDate)
   const p = MONTH_RE.exec(payMonth)
   if (!h || !p) throw new RangeError('Format de date invalide (attendu AAAA-MM-JJ / AAAA-MM)')
-  const hy = Number(h[1]), hm = Number(h[2])
+  const hy = Number(h[1]), hm = Number(h[2]), hd = Number(h[3])
   const py = Number(p[1]), pm = Number(p[2])
+  if (pm < 1 || pm > 12 || hm < 1 || hm > 12) throw new RangeError('Mois invalide (attendu 1 à 12)')
+  if (hd < 1 || hd > new Date(Date.UTC(hy, hm, 0)).getUTCDate()) {
+    throw new RangeError("Date d'embauche inexistante")
+  }
   // Évalué au dernier jour du mois de paie : le jour anniversaire est toujours
   // atteint (un 29 février en année non bissextile compte le 28), donc seul
   // l'écart de mois civils compte.
@@ -74,18 +86,18 @@ export function computeSeniority(input: {
   const { pack, baseSalary, categoryMinimum, override } = input
   const { years, months } = completedYears(input.hireDate, input.payMonth)
   const rule = pack.seniorityBonus
-  const meta = rule
-    ? { confidence: rule.confidence, legalSource: rule.source }
-    : { confidence: null, legalSource: null }
-  if (override !== undefined) {
-    return { years, months, rate: 0, base: 0, amount: override, source: 'manual', ...meta }
+  let outcome: SeniorityRuleOutcome | null = null
+  if (rule) {
+    const rate = seniorityRate(rule, years)
+    const base = rule.base === 'category_minimum' ? categoryMinimum : baseSalary
+    outcome = {
+      rate, base, amount: Math.round(rate * base),
+      confidence: rule.confidence, legalSource: rule.source,
+    }
   }
-  if (!rule) {
-    return { years, months, rate: 0, base: 0, amount: 0, source: 'none', ...meta }
-  }
-  const rate = seniorityRate(rule, years)
-  const base = rule.base === 'category_minimum' ? categoryMinimum : baseSalary
-  return { years, months, rate, base, amount: Math.round(rate * base), source: 'rule', ...meta }
+  if (override !== undefined) return { years, months, source: 'manual', amount: override, rule: outcome }
+  if (!outcome) return { years, months, source: 'none', amount: 0, rule: null }
+  return { years, months, source: 'rule', amount: outcome.amount, rule: outcome }
 }
 
 /** Taux horaire = salaire de base ÷ (heures hebdomadaires × 52 ÷ 12), non arrondi. */

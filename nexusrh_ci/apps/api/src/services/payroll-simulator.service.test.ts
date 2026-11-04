@@ -52,33 +52,56 @@ describe('completedYears', () => {
   })
 })
 
+describe('completedYears validation', () => {
+  it('mois hors 1-12', () => {
+    expect(() => completedYears('2016-11-01', '2026-13')).toThrow(RangeError)
+    expect(() => completedYears('2016-11-01', '2026-00')).toThrow(RangeError)
+    expect(() => completedYears('2016-13-01', '2026-11')).toThrow(RangeError)
+  })
+  it('date impossible', () => {
+    expect(() => completedYears('2026-02-30', '2026-11')).toThrow(RangeError)
+    expect(() => completedYears('2021-02-29', '2026-11')).toThrow(RangeError)
+  })
+})
+
 describe('computeSeniority', () => {
+  const common = { hireDate: '2016-11-01', payMonth: '2026-11', baseSalary: 400_000, categoryMinimum: 150_000 }
   it('CIV : taux sur le minimum de catégorie', () => {
-    const r = computeSeniority({ pack: CIV_2024, hireDate: '2016-11-01', payMonth: '2026-11', baseSalary: 400_000, categoryMinimum: 150_000 })
+    const r = computeSeniority({ pack: CIV_2024, ...common })
     expect(r.years).toBe(10)
-    expect(r.rate).toBe(0.10)
-    expect(r.base).toBe(150_000)
-    expect(r.amount).toBe(15_000)
+    expect(r.months).toBe(0)
     expect(r.source).toBe('rule')
-    expect(r.confidence).toBe('confirmed')
-    expect(r.legalSource).toContain('1977')
+    expect(r.amount).toBe(15_000)
+    expect(r.rule).toMatchObject({ rate: 0.10, base: 150_000, amount: 15_000, confidence: 'confirmed' })
+    expect(r.rule?.legalSource).toContain('1977')
+  })
+  it('mois révolus', () => {
+    const r = computeSeniority({ pack: CIV_2024, ...common, hireDate: '2016-12-01' })
+    expect(r.years).toBe(9)
+    expect(r.months).toBe(11)
   })
   it('BFA : assiette = salaire de base', () => {
-    const r = computeSeniority({ pack: BFA_2024, hireDate: '2016-11-01', payMonth: '2026-11', baseSalary: 200_000, categoryMinimum: 80_000 })
-    expect(r.base).toBe(200_000)
+    const r = computeSeniority({ pack: BFA_2024, ...common, baseSalary: 200_000, categoryMinimum: 80_000 })
+    expect(r.rule?.base).toBe(200_000)
     expect(r.amount).toBe(24_000)
   })
-  it('override manuel', () => {
-    const r = computeSeniority({ pack: CIV_2024, hireDate: '2016-11-01', payMonth: '2026-11', baseSalary: 400_000, categoryMinimum: 150_000, override: 50_000 })
-    expect(r.amount).toBe(50_000)
+  it('manuel avec règle : montant retenu = saisie, règle conservée', () => {
+    const r = computeSeniority({ pack: CIV_2024, ...common, override: 50_000 })
     expect(r.source).toBe('manual')
+    expect(r.amount).toBe(50_000)
+    expect(r.rule?.amount).toBe(15_000)
+  })
+  it('manuel sans règle', () => {
+    const r = computeSeniority({ pack: BEN_2024, ...common, override: 20_000 })
+    expect(r.source).toBe('manual')
+    expect(r.amount).toBe(20_000)
+    expect(r.rule).toBeNull()
   })
   it('BEN sans override', () => {
-    const r = computeSeniority({ pack: BEN_2024, hireDate: '2016-11-01', payMonth: '2026-11', baseSalary: 400_000, categoryMinimum: 150_000 })
-    expect(r.amount).toBe(0)
+    const r = computeSeniority({ pack: BEN_2024, ...common })
     expect(r.source).toBe('none')
-    expect(r.confidence).toBeNull()
-    expect(r.legalSource).toBeNull()
+    expect(r.amount).toBe(0)
+    expect(r.rule).toBeNull()
   })
 })
 
@@ -87,16 +110,20 @@ describe('computeOvertime', () => {
   it('taux horaire non arrondi', () => {
     expect(hourlyRate(400_000, 40)).toBe(th)
   })
-  it('CIV heures normales', () => {
+  it('CIV 10 h normales : littéral calculé à la main (26 538)', () => {
     const r = computeOvertime(CIV_2024, 400_000, 40, { weekly: 10, night: 0, sunday: 0, holiday: 0 })
-    expect(r.variableElements.HEURES_SUPP_NORM).toBe(Math.round(10 * th * 1.15))
+    expect(r.variableElements.HEURES_SUPP_NORM).toBe(26_538)
     expect(r.variableElements.HEURES_SUPP_NUIT).toBeUndefined()
     expect(r.lines).toHaveLength(1)
   })
-  it('nuit et dimanche s\'additionnent', () => {
-    const r = computeOvertime(CIV_2024, 400_000, 40, { weekly: 0, night: 4, sunday: 6, holiday: 2 })
-    expect(r.variableElements.HEURES_SUPP_NUIT).toBe(Math.round(4 * th * 1.5) + Math.round(6 * th * 1.5))
-    expect(r.variableElements.HEURES_SUPP_FERIE).toBe(Math.round(2 * th * 2))
+  it('TGO nuit 4 h (+50 %) et dimanche 6 h (+65 %) : 13 846 + 22 846', () => {
+    const r = computeOvertime(TGO_2024, 400_000, 40, { weekly: 0, night: 4, sunday: 6, holiday: 0 })
+    expect(r.lines.map(l => l.amount)).toEqual([13_846, 22_846])
+    expect(r.variableElements.HEURES_SUPP_NUIT).toBe(36_692)
+  })
+  it('BFA jour férié 2 h (+100 %) : 9 231', () => {
+    const r = computeOvertime(BFA_2024, 400_000, 40, { weekly: 0, night: 0, sunday: 0, holiday: 2 })
+    expect(r.variableElements.HEURES_SUPP_FERIE).toBe(9_231)
   })
   it('majoration absente du pack avec heures saisies -> erreur', () => {
     const pack: LegislationPack = { ...CIV_2024, leaveRules: { ...CIV_2024.leaveRules!, overtimeRates: { weekly: 0.15 } } }

@@ -6,6 +6,7 @@
 //   - article de loi / décret CI applicable
 
 import type { PayrollLine } from './payroll-engine-ci.js'
+import type { LegislationPack } from './legislation-packs.js'
 
 // Constantes CNPS CI 2024 (copiées de packages/shared/src/constants/ci.ts
 // pour éviter une dépendance cross-package au build).
@@ -185,22 +186,141 @@ const FALLBACK: RuleExplainer = {
   category: 'other',
 }
 
-export function explainLine(line: PayrollLine, computedRate?: number): ExplainedLine {
-  const exp = CI_RULE_EXPLAINERS[line.code] ?? FALLBACK
-  const rate = exp.rate ?? computedRate
+/** Pourcentage à la française : 0 ou 1 décimale (virgule) selon le besoin. */
+function pctFr(rate: number): string {
+  const v = Math.round(rate * 1000) / 10
+  return `${String(v).replace('.', ',')} %`
+}
+
+function isCivPack(pack?: LegislationPack): boolean {
+  return !pack || pack.countryCode === 'CIV'
+}
+
+// Rubriques dont la référence légale est générique (non propre à la CI).
+const GENERIC_LEGAL_CODES = new Set(['4000', '4100'])
+
+function ceilingLabel(amount: number): string {
+  return amount > 0 ? `Salaire brut plafonné à ${FCFA(amount)} FCFA` : 'Salaire brut (aucun plafond paramétré)'
+}
+
+/** Explication d'une rubrique pour un pack non ivoirien : tout est dérivé du pack. */
+function packExplainer(code: string, base: RuleExplainer, pack: LegislationPack): RuleExplainer {
+  const caisse = pack.labelCaisseSociale
+  const impot = pack.labelImpotSalaire.split(' — ')[0] ?? pack.labelImpotSalaire
+  const ot = pack.leaveRules?.overtimeRates ?? {}
+  const swap = (t: string): string => t.replace(/CNPS/g, caisse).replace(/ITS/g, impot)
+  const generic: RuleExplainer = {
+    ...base,
+    formulaHuman: (r) => swap(base.formulaHuman(r)),
+    baseLabel: base.baseLabel === undefined ? undefined : swap(base.baseLabel),
+    legalReference: GENERIC_LEGAL_CODES.has(code) ? base.legalReference : '',
+  }
+  switch (code) {
+    case '1300': {
+      const t = pack.primeTransportExoneree
+      let txt: string
+      if (!t) {
+        txt = `Prime de transport mensuelle — aucun plafond d'exonération paramétré pour ce pays`
+      } else {
+        const zones = Object.entries(t.parZone ?? {}).map(([z, v]) => `${FCFA(v)} F (${z})`)
+        txt = `Prime de transport mensuelle — exonérée ${caisse} et ${impot} jusqu'à ${FCFA(t.defaut)} F`
+          + (zones.length > 0 ? ` (par zone : ${zones.join(', ')})` : '')
+          + ` ; l'excédent est soumis`
+      }
+      return { ...generic, formulaHuman: () => txt }
+    }
+    case '1400': {
+      const r = ot.weekly
+      return {
+        ...generic, rate: r,
+        formulaHuman: () => r === undefined
+          ? 'Heures supplémentaires — majoration non paramétrée pour ce pays'
+          : `Heures supplémentaires majorées de +${pctFr(r)} — soumises ${caisse} et ${impot}`,
+      }
+    }
+    case '1500': {
+      const n = ot.night, d = ot.sunday
+      let txt: string
+      if (n !== undefined && d !== undefined) {
+        txt = n === d
+          ? `Heures supplémentaires de nuit / dimanche majorées de +${pctFr(n)} — soumises ${caisse} et ${impot}`
+          : `Heures supplémentaires de nuit (+${pctFr(n)}) / dimanche (+${pctFr(d)}) — soumises ${caisse} et ${impot}`
+      } else if (n !== undefined) {
+        txt = `Heures supplémentaires de nuit majorées de +${pctFr(n)} — soumises ${caisse} et ${impot}`
+      } else if (d !== undefined) {
+        txt = `Heures supplémentaires de dimanche majorées de +${pctFr(d)} — soumises ${caisse} et ${impot}`
+      } else {
+        txt = 'Heures supplémentaires de nuit / dimanche — majoration non paramétrée pour ce pays'
+      }
+      return { ...generic, rate: n ?? d, formulaHuman: () => txt }
+    }
+    case '1550': {
+      const r = ot.holiday
+      return {
+        ...generic, rate: r,
+        formulaHuman: () => r === undefined
+          ? 'Heures supplémentaires de jour férié — majoration non paramétrée pour ce pays'
+          : `Heures supplémentaires de jour férié majorées de +${pctFr(r)} — soumises ${caisse} et ${impot}`,
+      }
+    }
+    case '1600':
+      return { ...generic, formulaHuman: () => `Allocation de congés payés selon les règles du pays — soumise ${caisse} et ${impot}` }
+    case '1610':
+    case '1620':
+    case '1630':
+      return { ...generic, formulaHuman: () => `Élément de solde de tout compte selon les règles du pays (${base.formulaHuman().split('(')[0]?.trim() ?? ''})` }
+    case '2000':
+      return { ...generic, rate: pack.tauxCotisationRetraiteSalarie, baseLabel: ceilingLabel(pack.plafondCnpsRetraite),
+        formulaHuman: () => `Base retraite × ${(pack.tauxCotisationRetraiteSalarie * 100).toFixed(2)} %` }
+    case '2100':
+      return { ...generic, baseLabel: undefined,
+        formulaHuman: () => `${impot} — barème progressif du pays appliqué au brut imposable, puis réductions pour charges de famille selon le pack` }
+    case '3000':
+      return { ...generic, rate: pack.tauxCotisationRetraitePatronal, baseLabel: ceilingLabel(pack.plafondCnpsRetraite),
+        formulaHuman: () => `Base retraite × ${(pack.tauxCotisationRetraitePatronal * 100).toFixed(2)} %` }
+    case '3100':
+      return { ...generic, rate: pack.tauxCotisationPfPatronal, baseLabel: ceilingLabel(pack.plafondCnpsAtPf),
+        formulaHuman: () => `Base AT/PF × ${(pack.tauxCotisationPfPatronal * 100).toFixed(2)} %` }
+    case '3200':
+      return { ...generic, rate: pack.tauxCotisationMaternitePatronal, baseLabel: ceilingLabel(pack.plafondCnpsAtPf),
+        formulaHuman: () => `Base AT/PF × ${(pack.tauxCotisationMaternitePatronal * 100).toFixed(2)} %` }
+    case '3300':
+      return { ...generic, baseLabel: ceilingLabel(pack.plafondCnpsAtPf),
+        formulaHuman: (r) => `Base AT/PF × ${r ? (r * 100).toFixed(2) : '?'} % (taux variable selon secteur)` }
+    default:
+      return generic
+  }
+}
+
+export function explainLine(line: PayrollLine, computedRate?: number, pack?: LegislationPack): ExplainedLine {
+  const civ = CI_RULE_EXPLAINERS[line.code] ?? FALLBACK
+  if (isCivPack(pack) || !pack) {
+    const rate = civ.rate ?? computedRate
+    return {
+      ...line,
+      formulaHuman: civ.formulaHuman(rate),
+      rate,
+      baseLabel: civ.baseLabel,
+      legalReference: civ.legalReference,
+      category: civ.category,
+    }
+  }
+  const exp = line.code in CI_RULE_EXPLAINERS ? packExplainer(line.code, civ, pack) : { ...civ, legalReference: '' }
+  const isOvertime = civ.category === 'overtime'
+  const rate = isOvertime ? exp.rate : (exp.rate ?? computedRate)
   return {
     ...line,
     formulaHuman: exp.formulaHuman(rate),
     rate,
     baseLabel: exp.baseLabel,
-    legalReference: exp.legalReference,
+    legalReference: exp.legalReference === '' ? undefined : exp.legalReference,
     category: exp.category,
   }
 }
 
-export function explainLines(lines: PayrollLine[]): ExplainedLine[] {
+export function explainLines(lines: PayrollLine[], pack?: LegislationPack): ExplainedLine[] {
   return lines.map(l => {
     const computedRate = l.base > 0 ? Math.abs(l.amount) / l.base : undefined
-    return explainLine(l, computedRate)
+    return explainLine(l, computedRate, pack)
   })
 }
