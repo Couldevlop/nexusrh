@@ -25,7 +25,7 @@ Le nouveau simulateur repose entièrement sur le moteur de paie (`calculatePayro
    - minimum de catégorie inférieur au SMIG ;
    - montants négatifs.
 4. **Montants en entiers** dans la devise du pack (FCFA pour l'UEMOA). Aucune décimale.
-5. **Côte d'Ivoire inchangée.** Les fixtures golden du moteur restent vertes, et les libellés CI du bulletin ne changent pas.
+5. **Côte d'Ivoire : seulement les corrections de la tâche 1b.** Les fixtures golden du moteur restent vertes (recalculées à la main en tâche 1b). Les libellés CI d'heures supplémentaires CHANGENT : ils suivent le décret n° 2024-898 (art. 25) et la décision du 04/11/2026 (tâche 1b).
 
 ## Pays
 
@@ -45,7 +45,7 @@ L'audit (`uemoa-packs-audit.md`) a relevé des écarts dans tous les packs hors 
 - plafond retraite à 3 375 000 et non 1 647 315 ;
 - plafond AT/PF/maternité à 75 000 et non 70 000 ;
 - heures supplémentaires régies par le décret 2024-898, art. 25 : 15 / 50 / 75 / 75 / 100 % ;
-- CMU de 1 000 F par mois et par bénéficiaire, partagée à 50/50, absente du moteur.
+- CMU de 1 000 F par mois et par bénéficiaire, partagée à 50/50, absente du moteur. La loi (loi n° 2014-131 ; CLEISS 2025) couvre le salarié, son **conjoint sans emploi** et jusqu'à 6 enfants de moins de 21 ans (moitié employeur, moitié salarié) ; à partir du 7e enfant, le salarié paie tout. Décision du porteur (« faire ce que dit la loi ») : le conjoint n'est compté que si le salarié est marié ET que la fiche le déclare sans emploi (`cmu_spouse_covered = true`) ; une situation non renseignée (NULL) n'est pas comptée et le salarié est signalé « à vérifier » (fiche, préparation RAF, rapport d'impact).
 
 Le porteur a choisi de corriger dès la prochaine paie (04/11), avec un rapport d'impact par client et sans modifier les bulletins clôturés : c'est la tâche 1b du plan.
 
@@ -111,7 +111,7 @@ Correspondance avec les éléments du moteur :
 
 Si une majoration est absente du pack, le champ d'heures de cette catégorie est désactivé, avec la mention « non paramétré ».
 
-Les libellés de ces lignes dans le moteur deviennent **dérivés du pack**. Le pack CIV doit produire exactement les libellés actuels (`Heures supp. +15%`, `Heures supp. +50% (nuit/dim)`, `Heures supp. +100% (jour férié)`). Pour un autre pays, les pourcentages affichés sont ceux du pack. Si la nuit et le dimanche ont des majorations différentes, le libellé devient `Heures supp. nuit (+X%) / dimanche (+Y%)`.
+Les libellés de ces lignes dans le moteur deviennent **dérivés du pack**. Le pack CIV ne reproduit PAS les anciens libellés (`+50% (nuit/dim)`, `+100% (jour férié)`), devenus faux : depuis le décret n° 2024-898 du 16/10/2024 (art. 25) et la décision du 04/11/2026 (tâche 1b), il produit cinq libellés — `Heures supp. +15% (41e à 46e h)` (1400), `+50% (au-delà de 46 h)` (1450), `+75% (nuit)` (1500), `+75% (dimanche/férié de jour)` (1520), `+100% (dimanche/férié de nuit)` (1550), le début de la tranche (« 41e ») étant lui aussi dérivé du pack. Pour un autre pays, les pourcentages affichés sont ceux du pack. Si la nuit et le dimanche ont des majorations différentes, le libellé devient `Heures supp. nuit (+X%) / dimanche (+Y%)`.
 
 ## Autres éléments
 
@@ -183,7 +183,7 @@ Réécriture de `apps/web/src/pages/payroll/ItsSimulatorPage.tsx`, titre « Simu
   - une date d'embauche un 29 février ;
   - une embauche postérieure au mois de paie, qui renvoie 400.
 - **Golden simulateur CIV.** Brut de 450 000, célibataire, sans enfant : l'ITS vaut 70 500, comme le moteur. Avec une ancienneté de 10 ans et un minimum de catégorie de 150 000, la prime vaut 15 000 et figure sur la ligne 1100.
-- **Golden libellés d'heures supplémentaires.** Les libellés CIV sont inchangés, et ceux du Togo et du Sénégal sont dérivés de leur pack. Les fixtures golden existantes du moteur restent toutes vertes.
+- **Golden libellés d'heures supplémentaires.** Les libellés CIV sont ceux du décret n° 2024-898 (art. 25), fixés par la décision du 04/11/2026 (tâche 1b) ; ceux du Togo et du Sénégal sont dérivés de leur pack. Les fixtures golden existantes du moteur restent toutes vertes.
 - **Route `countries`.** Elle renvoie exactement les 8 pays. Aucune donnée n'est inventée : pour un pack sans `primeTransportExoneree`, `transportZones` vaut null.
 - **Route `simulate`.** Elle renvoie 400 pour un taux AT hors bornes, une zone inconnue, un minimum de catégorie inférieur au SMIG ou un pays hors UEMOA. Elle renvoie 403 pour les rôles manager, employee et readonly.
 - **Web.** Changer de pays met à jour les libellés de la caisse et de l'impôt, le SMIG et la liste des zones. Le formulaire envoie le bon corps de requête.

@@ -19,7 +19,7 @@
 - Aucun taux, plafond ni barème écrit en dur dans le web : tout vient de `GET /payroll/simulator/countries`.
 - Aucune valeur inventée : une donnée absente du pack donne `null`, un champ désactivé et la mention « non paramétré ».
 - Montants entiers, arrondis avec `Math.round` sauf si le moteur arrondit déjà autrement : réutiliser l'arrondi du moteur.
-- Les fixtures golden existantes du moteur (`apps/api/src/services/golden`) restent vertes, et les libellés CI du bulletin sont inchangés.
+- Les fixtures golden existantes du moteur (`apps/api/src/services/golden`) restent vertes. Les libellés CI d'heures supplémentaires du bulletin, eux, changent : ils suivent le décret n° 2024-898 (art. 25), conformément à la décision du 04/11/2026 (tâche 1b) ; les fixtures ont été recalculées à la main en tâche 1b.
 - Accès : `authorize('admin', 'hr_manager', 'hr_officer')` ; 400 avec un message français précis pour toute incohérence.
 - TypeScript strict : pas de `any`, pas de `@ts-ignore`. i18n en FR et EN, namespace `payroll`.
 - Nouveaux fichiers sous `nexusrh_ci/` : `git add -f`.
@@ -33,7 +33,7 @@
 2. **Changement de pays avec un résultat affiché.** Aucune valeur du pays précédent ne doit rester : taux AT hors bornes, zone inconnue (test web en tâche 3, test 400 en tâche 2).
 3. **Pays sans plafond de transport ou sans majoration.** Pas de valeur par défaut fabriquée (tests en tâches 2 et 3).
 4. **Salaire de base sous le minimum de catégorie ou sous le SMIG.** Avertissement dans le résultat, pas d'erreur 500 (tâche 2).
-5. **Libellés d'heures supplémentaires CIV.** Strictement identiques à l'existant (golden en tâche 1).
+5. **Libellés d'heures supplémentaires CIV.** Dérivés du pack et conformes au décret n° 2024-898 (art. 25) depuis la décision du 04/11/2026 (tâche 1b) : 1400 +15 % (41e à 46e h), 1450 +50 % (au-delà de 46 h), 1500 +75 % nuit, 1520 +75 % dimanche/férié de jour, 1550 +100 % dimanche/férié de nuit. Ne pas revenir aux anciens libellés (golden `payroll-engine-ot-labels`).
 
 ---
 
