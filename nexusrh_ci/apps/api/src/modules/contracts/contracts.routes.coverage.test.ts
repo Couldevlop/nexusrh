@@ -297,7 +297,8 @@ describe('PATCH /contracts/:id', () => {
   })
 
   it('renvoie 500 si l\'UPDATE échoue', async () => {
-    queryMock.mockRejectedValueOnce(new Error('update failed'))
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
+    queryMock.mockRejectedValueOnce(new Error('update failed'))         // UPDATE
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
       method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
@@ -329,7 +330,8 @@ describe('POST /contracts/:id/terminate — branches restantes', () => {
   })
 
   it('renvoie 500 si la base échoue', async () => {
-    queryMock.mockRejectedValueOnce(new Error('db down'))
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
+    queryMock.mockRejectedValueOnce(new Error('db down'))               // UPDATE contracts
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
