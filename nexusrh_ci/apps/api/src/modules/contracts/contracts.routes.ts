@@ -4,6 +4,7 @@ import { pool } from '../../db/pool.js'
 import { describeDbError } from '../../utils/db-error.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -33,9 +34,9 @@ function auditLogContract(
 }
 
 /** Salarié titulaire d'un contrat (SELECT minimal) pour la garde « propre dossier ». */
-async function contractOwner(schema: string, id: string): Promise<string | null> {
+async function contractOwner(schema: string, id: string, scope: string): Promise<string | null> {
   const r = await pool.query<{ employee_id: string | null }>(
-    `SELECT employee_id FROM "${schema}".contracts WHERE id = $1`, [id])
+    `SELECT employee_id FROM "${schema}".contracts WHERE id = $1 AND ${scope}`, [id])
   return r.rows[0]?.employee_id ?? null
 }
 
@@ -50,7 +51,8 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         status?: string; employee_id?: string; type?: string
       }
       try {
-        const conditions: string[] = ['1=1']
+        // Périmètre filiale (habilitations) sur l'employé titulaire.
+        const conditions: string[] = [await requestHrScope(request, 'e')]
         const values: unknown[] = []
         if (status)      { conditions.push(`c.status = $${values.length + 1}`);      values.push(status) }
         if (employee_id) { conditions.push(`c.employee_id = $${values.length + 1}`); values.push(employee_id) }
@@ -96,7 +98,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           FROM "${schema}".contracts c
           JOIN "${schema}".employees e ON e.id = c.employee_id
           LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-          WHERE c.id = $1
+          WHERE c.id = $1 AND ${await requestHrScope(request, 'e')}
         `, [id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
         return reply.send({ data: res.rows[0] })
@@ -123,6 +125,11 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       const body = parsed.data
       if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       try {
+        // Périmètre filiale : l'employé visé doit être dans le périmètre (sinon 404).
+        const empScope = await requestHrScope(request, 'employees')
+        if (!(await employeeInHrScope(schema, body.employee_id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         // Calcul automatique de la fin de période d'essai selon Code du Travail CI
         let trialEndDate = body.trial_end_date || null
         if (!trialEndDate && body.start_date) {
@@ -151,7 +158,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Met à jour le salaire de base de l'employé
         await pool.query(
-          `UPDATE "${schema}".employees SET base_salary = $1, job_title = COALESCE($2, job_title), updated_at = now() WHERE id = $3`,
+          `UPDATE "${schema}".employees SET base_salary = $1, job_title = COALESCE($2, job_title), updated_at = now() WHERE id = $3 AND ${empScope}`,
           [body.base_salary, body.job_title || null, body.employee_id]
         )
 
@@ -191,10 +198,11 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
-        const own = await contractOwner(schema, id)
+        const scope = await requestEmployeeScope(request, 'employee_id')
+        const own = await contractOwner(schema, id, scope)
         if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(
-          `UPDATE "${schema}".contracts SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
+          `UPDATE "${schema}".contracts SET ${updates.join(', ')} WHERE id = $${values.length} AND ${scope} RETURNING *`,
           values
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
@@ -220,12 +228,13 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
-        const own = await contractOwner(schema, id)
+        const scope = await requestEmployeeScope(request, 'employee_id')
+        const own = await contractOwner(schema, id, scope)
         if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(`
           UPDATE "${schema}".contracts
           SET status = 'terminated', end_date = $1, updated_at = now()
-          WHERE id = $2
+          WHERE id = $2 AND ${scope}
           RETURNING employee_id
         `, [body.termination_date, id])
         if (!res.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
@@ -278,7 +287,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
         const orig = await pool.query(
-          `SELECT * FROM "${schema}".contracts WHERE id = $1`, [id]
+          `SELECT * FROM "${schema}".contracts WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
         )
         if (!orig.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
         if (orig.rows[0].employee_id && isSelfAction(request, String(orig.rows[0].employee_id))) {
@@ -308,7 +317,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query(`
           SELECT * FROM "${schema}".contracts
-          WHERE employee_id = $1
+          WHERE employee_id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}
           ORDER BY created_at DESC
         `, [employeeId])
         return reply.send({ data: res.rows })

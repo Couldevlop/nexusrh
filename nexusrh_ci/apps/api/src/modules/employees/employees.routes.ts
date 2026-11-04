@@ -15,6 +15,7 @@ import { canonicalEmployeeMmProvider } from '../../services/mobile-money-provide
 import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope } from '../../utils/hr-scope.js'
 import { EMPLOYEE_NUMBER_MAX_LENGTH } from '../../db/employee-number.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
@@ -280,7 +281,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
 
       // Clause WHERE commune (filtres) — réutilisée par le COUNT et la page.
-      let where = ` WHERE e.deleted_at IS NULL`
+      let where = ` WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
 
@@ -387,6 +388,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       // pool module-level
       const schema = request.user.schemaName
+      // Périmètre filiale (habilitations) : hors périmètre = 404, sans fuite d'existence.
+      // Le self-service (rôle effectif employee) n'est jamais filtré.
+      const hrScope = await requestHrScopeUnlessSelf(request, 'e')
 
       const res = await pool.query(
         `SELECT e.*, d.name AS department_name,
@@ -402,7 +406,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             ORDER BY (u.employee_id = e.id) DESC NULLS LAST
             LIMIT 1
          ) lu ON true
-         WHERE e.id = $1 AND e.deleted_at IS NULL LIMIT 1`,
+         WHERE e.id = $1 AND e.deleted_at IS NULL AND ${hrScope} LIMIT 1`,
         [id]
       )
 
@@ -475,6 +479,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const body = parsed.data
       const schema = request.user.schemaName
 
+      // Périmètre filiale : on ne crée pas un employé hors de son périmètre.
+      if (!(await legalEntityInHrScope(schema, body.legalEntityId, await requestHrScope(request, 'e')))) {
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
+      }
+
       // Pays de l'employé (filiale ou tenant) + champs personnalisés du tenant.
       const ctx = await loadEmployeeTenantContext(pool, schema, body.legalEntityId)
       const smig = smigError(ctx.legislation.legislationPack, body.baseSalary)
@@ -540,6 +549,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // Habilitations : aucune action RH sur son propre dossier (le self-service
       // du rôle effectif employee reste autorisé, filtré ci-dessous).
       if (isSelfAction(request, id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
+      // Périmètre filiale : un employé hors périmètre est introuvable (404).
+      if (!(await employeeInHrScope(request.user.schemaName, id, await requestHrScopeUnlessSelf(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       // OWASP A03 : Zod parse + whitelist
       const parsed = patchEmployeeSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -556,6 +569,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         for (const k of Object.keys(body)) {
           if (!EMPLOYEE_SELF_FIELDS.has(k)) delete body[k]
         }
+      } else if (body.legalEntityId !== undefined
+          && !(await legalEntityInHrScope(request.user.schemaName, body.legalEntityId as string | null,
+                                          await requestHrScope(request, 'e')))) {
+        // Pas de déplacement d'un employé vers une filiale hors périmètre.
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
       }
 
       const schema = request.user.schemaName
@@ -638,7 +656,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       let res
       try {
         res = await pool.query(
-          `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+          `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} AND ${await requestHrScopeUnlessSelf(request, 'employees')} RETURNING *`,
           vals
         )
       } catch (err) {
@@ -688,7 +706,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const res = await pool.query<{ legal_entity_id: string | null }>(
-          `SELECT legal_entity_id FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+          `SELECT legal_entity_id FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')} LIMIT 1`,
           [id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -716,7 +734,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const res = await pool.query<{ interview_focus: unknown }>(
-          `SELECT interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+          `SELECT interview_focus FROM "${schema}".employees e WHERE e.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
           [id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -743,7 +761,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query<{ id: string }>(
           `UPDATE "${schema}".employees SET interview_focus = $1, updated_at = now()
-           WHERE id = $2 RETURNING id`,
+           WHERE id = $2 AND ${await requestHrScope(request, 'employees')} RETURNING id`,
           [JSON.stringify(focus), id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -765,6 +783,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // pool module-level
       const schema = request.user.schemaName
       try {
+        // Périmètre filiale : employé hors périmètre = introuvable.
+        if (!(await employeeInHrScope(schema, id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         const pending: Array<{ type: string; label: string; path: string; count: number }> = []
 
         const absRes = await pool.query(
@@ -811,7 +833,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
           job_title: string | null
         }>(
           `SELECT first_name, last_name, email, job_title
-             FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL`,
+             FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`,
           [id],
         )
         if (!snapshot.rows[0]) {
@@ -876,10 +898,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const res = await pool.query(
-        `SELECT id, first_name, last_name, job_title
-         FROM "${schema}".employees
-         WHERE deleted_at IS NULL AND is_active = true
-         ORDER BY last_name, first_name`
+        `SELECT e.id, e.first_name, e.last_name, e.job_title
+         FROM "${schema}".employees e
+         WHERE e.deleted_at IS NULL AND e.is_active = true AND ${await requestHrScope(request, 'e')}
+         ORDER BY e.last_name, e.first_name`
       )
       return reply.send({ data: res.rows })
     },
@@ -899,7 +921,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
                 e.base_salary, e.currency, e.is_active
          FROM "${schema}".employees e
          LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-         WHERE e.deleted_at IS NULL
+         WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}
          ORDER BY e.last_name, e.first_name`,
       )
       const headers = ['Matricule', 'Nom', 'Prénom', 'Email', 'Téléphone', 'Poste', 'Catégorie',
@@ -962,7 +984,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         const url = employeePhotoUrl(id)
         const upd = await pool.query(
           `UPDATE "${schema}".employees SET profile_photo_url = $1, updated_at = now()
-           WHERE id = $2 AND deleted_at IS NULL RETURNING id`, [url, id])
+           WHERE id = $2 AND deleted_at IS NULL AND ${await requestHrScopeUnlessSelf(request, 'employees')} RETURNING id`, [url, id])
         if (!upd.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
         await pool.query(
           `INSERT INTO "${schema}".employee_photos (employee_id, mime, bytes, size_bytes, uploaded_by)
@@ -1000,7 +1022,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT p.mime, p.bytes, e.email, e.manager_id
            FROM "${schema}".employee_photos p
            JOIN "${schema}".employees e ON e.id = p.employee_id
-          WHERE p.employee_id = $1 AND e.deleted_at IS NULL LIMIT 1`, [id])
+          WHERE p.employee_id = $1 AND e.deleted_at IS NULL AND ${await requestHrScopeUnlessSelf(request, 'e')} LIMIT 1`, [id])
       const row = res.rows[0]
       if (!row) return reply.status(404).send({ error: 'Photo introuvable' })
 

@@ -1,0 +1,147 @@
+/**
+ * Golden — périmètre filiale (habilitations RH) appliqué dans les modules.
+ *
+ * 1. Invariant statique : tout fichier `*.routes.ts` d'un module listé qui lit
+ *    ou modifie la table employees doit appeler le fragment de périmètre
+ *    (`hrScopeSql` / `requestHrScope`). Un module qui n'est pas dans la liste
+ *    n'est pas couvert : AJOUTER ici tout nouveau module touchant des employés.
+ * 2. Balayage dynamique (pool mocké) : pour un contexte « entity A », le SQL
+ *    émis par chaque route RH contient `legal_entity_id = '<A>'`.
+ */
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import Fastify, { type FastifyInstance } from 'fastify'
+import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
+vi.mock('pg', () => ({
+  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+}))
+vi.mock('./services/redis.js', () => ({
+  blacklistToken:      vi.fn().mockResolvedValue(undefined),
+  blacklistTokenSafe:  vi.fn().mockResolvedValue(undefined),
+  isTokenBlacklisted:  vi.fn().mockResolvedValue(false),
+  setTokenEpoch:       vi.fn().mockResolvedValue(undefined),
+  getTokenEpoch:       vi.fn().mockResolvedValue(0),
+}))
+vi.mock('./config.js', () => ({
+  config: {
+    env: 'test',
+    jwt: { secret: 'test-secret-minimum-32-characters-ok!', expiresIn: '1h' },
+    database: { url: 'postgresql://test' },
+    redis: { url: 'redis://localhost:6380' },
+    ai: { apiKey: 'sk-ant-test', model: 'claude-sonnet-4', maxTokens: 1024, temperature: 0.3 },
+    mistral: { apiKey: '', model: 'mistral-large', apiUrl: 'https://api.mistral.ai/v1' },
+  },
+}))
+vi.mock('./utils/schema-migrations.js', () => ({
+  ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
+}))
+
+const { loadHabContextMock } = vi.hoisted(() => ({ loadHabContextMock: vi.fn() }))
+vi.mock('./services/habilitation.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./services/habilitation.service.js')>()
+  return { ...actual, loadHabContext: loadHabContextMock }
+})
+
+import authPlugin from './plugins/auth.js'
+import employeesRoutes from './modules/employees/employees.routes.js'
+import absencesRoutes from './modules/absences/absences.routes.js'
+import signedContractsRoutes from './modules/contracts/signed-contracts.routes.js'
+import { HAB_GRID } from './modules/habilitations/catalog.js'
+import type { HabContext } from './services/habilitation.service.js'
+
+const MODULES_DIR = join(__dirname, 'modules')
+
+/** Modules couverts (5b ajoutera payroll, bank-transfer, mobile-money, cnps, reporting, dg, ai, sage, org-chart). */
+const SCOPED_MODULES = [
+  'employees', 'contracts', 'absences', 'attendance', 'expenses', 'recruitment',
+  'onboarding', 'offboarding', 'discipline', 'training', 'careers', 'competencies',
+  'mobility', 'succession', 'calibration', 'signature',
+] as const
+
+/** Fichiers qui touchent employees mais restent volontairement hors périmètre (raison obligatoire). */
+const EXEMPT: Record<string, string> = {}
+
+const EMPLOYEES_TABLE = /(?:FROM|JOIN|UPDATE|INTO)\s+"?\$\{[A-Za-z.]*\}"?\."?employees\b/
+
+describe('périmètre filiale — invariant statique', () => {
+  const files: string[] = []
+  for (const m of SCOPED_MODULES) {
+    const dir = join(MODULES_DIR, m)
+    if (!existsSync(dir)) continue
+    for (const f of readdirSync(dir)) {
+      if (f.endsWith('.routes.ts')) files.push(join(dir, f))
+    }
+  }
+
+  it('la liste de modules couvre des fichiers de routes', () => {
+    expect(files.length).toBeGreaterThan(15)
+  })
+
+  for (const file of files) {
+    const rel = file.slice(MODULES_DIR.length + 1).split(String.fromCharCode(92)).join('/')
+    const src = readFileSync(file, 'utf8')
+    if (!EMPLOYEES_TABLE.test(src)) continue
+    it(`${rel} applique le périmètre filiale`, () => {
+      if (EXEMPT[rel]) return
+      expect(src).toMatch(/hrScopeSql\(|requestHrScope(?:UnlessSelf)?\(/)
+    })
+  }
+})
+
+const ENTITY_A = 'aaaaaaaa-1111-4222-8333-444444444444'
+const SCHEMA = 'tenant_scope'
+
+function entityCtx(): HabContext {
+  const perms = Object.entries(HAB_GRID).flatMap(([fn, actions]) => actions.map((a) => `${fn}:${a}`))
+  return {
+    userId: 'u-hab', subgroupId: 'sg-1', kind: 'entity', legalEntityId: ENTITY_A,
+    permissions: new Set(perms), allEntities: false, sensitive: true,
+    manageHabilitations: false, selfEmployeeId: null, headOfficeEntityIds: [],
+  }
+}
+
+let app: FastifyInstance
+
+function token(): string {
+  return app.jwt.sign({
+    sub: 'u-hab', tenantId: 't1', schemaName: SCHEMA, role: 'hr_manager',
+    email: 'rh@t.ci', firstName: 'A', lastName: 'B', employeeId: null,
+  })
+}
+
+async function sqlOf(url: string): Promise<string> {
+  queryMock.mockReset()
+  queryMock.mockResolvedValue({ rows: [], rowCount: 0 })
+  await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token()}` } })
+  return queryMock.mock.calls.map((c) => String(c[0])).join('\n')
+}
+
+describe('périmètre filiale — balayage dynamique (contexte entity A)', () => {
+  beforeAll(async () => {
+    app = Fastify()
+    await app.register(authPlugin)
+    await app.register(employeesRoutes, { prefix: '/employees' })
+    await app.register(absencesRoutes, { prefix: '/absences' })
+    await app.register(signedContractsRoutes, { prefix: '/contracts/signed' })
+    await app.ready()
+  })
+  afterAll(async () => { await app.close() })
+  beforeEach(() => { loadHabContextMock.mockResolvedValue(entityCtx()) })
+
+  const fragment = `legal_entity_id = '${ENTITY_A}'`
+  const ID = 'bbbbbbbb-1111-4222-8333-444444444444'
+  const routes: Array<[string, string]> = [
+    ['GET /employees', '/employees'],
+    ['GET /employees/:id', `/employees/${ID}`],
+    ['GET /employees/export.csv', '/employees/export.csv'],
+    ['GET /absences', '/absences'],
+    ['GET /contracts/signed/documents/:docId/file', `/contracts/signed/documents/${ID}/file`],
+  ]
+  for (const [label, url] of routes) {
+    it(`${label} filtre sur la filiale A`, async () => {
+      expect(await sqlOf(url)).toContain(fragment)
+    })
+  }
+})

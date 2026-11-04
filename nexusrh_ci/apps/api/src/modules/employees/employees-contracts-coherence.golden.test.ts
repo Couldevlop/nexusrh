@@ -137,6 +137,7 @@ describe('GET /contracts — visibilité archive (employé supprimé)', () => {
 describe('POST /contracts/:id/terminate — rupture + désactivation employé', () => {
   it('rompt le contrat et désactive l\'employé lié (cohérence inverse)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] })                     // SELECT titulaire (garde « propre dossier »)
       .mockResolvedValueOnce({ rows: [{ employee_id: EMP }] }) // UPDATE contracts RETURNING employee_id
       .mockResolvedValueOnce({ rows: [] })                     // UPDATE employees is_active=false
       .mockResolvedValueOnce({ rows: [] })                     // INSERT hr_events
