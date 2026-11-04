@@ -130,7 +130,7 @@ export async function sendWelcomeTenantEmail(params: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bienvenue sur NexusRH CI</title>
+  <title>Bienvenue sur NexusRH</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -139,7 +139,7 @@ export async function sendWelcomeTenantEmail(params: {
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
 
           <!-- Header -->
-          <tr>${brandHeader(tenantName, `${tenantCity} · NexusRH CI`, primaryColor, logoUrl)}
+          <tr>${brandHeader(tenantName, `${tenantCity} · NexusRH`, primaryColor, logoUrl)}
           </tr>
 
           <!-- Body -->
@@ -150,7 +150,7 @@ export async function sendWelcomeTenantEmail(params: {
                 Bonjour ${firstName} ${lastName} 👋
               </h1>
               <p style="margin:0 0 24px;font-size:16px;color:#374151;line-height:1.6;">
-                Votre espace <strong>NexusRH CI</strong> pour <strong>${tenantName}</strong> est prêt.
+                Votre espace <strong>NexusRH</strong> pour <strong>${tenantName}</strong> est prêt.
                 Vous êtes maintenant administrateur de votre organisation sur la plateforme.
               </p>
 
@@ -230,7 +230,7 @@ export async function sendWelcomeTenantEmail(params: {
                 Une question ? Contactez notre support
               </p>
               <p style="margin:0;font-size:13px;">
-                <a href="https://wa.me/2250709320594" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 09 32 05 94</a>
+                <a href="https://wa.me/2250749439203" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 49 43 92 03</a>
                 &nbsp;·&nbsp;
                 <a href="mailto:support@nexusrh-ci.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">support@nexusrh-ci.com</a>
               </p>
@@ -238,7 +238,7 @@ export async function sendWelcomeTenantEmail(params: {
                 OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · Côte d'Ivoire
               </p>
               <p style="margin:4px 0 0;font-size:11px;color:#9ca3af;">
-                NexusRH CI — Propulsé par Claude AI (Anthropic)
+                NexusRH — Propulsé par Claude AI (Anthropic)
               </p>
             </td>
           </tr>
@@ -258,9 +258,9 @@ export async function sendWelcomeTenantEmail(params: {
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
     to,
-    subject: `🎉 Votre espace NexusRH CI est prêt — ${tenantName}`,
+    subject: `🎉 Votre espace NexusRH est prêt — ${tenantName}`,
     html,
-    text: `Bonjour ${firstName},\n\nVotre espace NexusRH CI pour ${tenantName} est prêt.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+    text: `Bonjour ${firstName},\n\nVotre espace NexusRH pour ${tenantName} est prêt.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting — support@nexusrh-ci.com`,
   })
 }
 
@@ -278,11 +278,11 @@ export async function sendEmployeeWelcomeEmail(params: {
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
   <tr><td align="center">
     <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
-      <tr>${brandHeader(tenantName, 'NexusRH CI — Espace employé', primaryColor, logoUrl)}</tr>
+      <tr>${brandHeader(tenantName, 'NexusRH — Espace employé', primaryColor, logoUrl)}</tr>
       <tr><td style="padding:32px;">
         <h2 style="margin:0 0 12px;font-size:22px;color:#111;">Bonjour ${firstName} ${lastName} 👋</h2>
         <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
-          Votre compte <strong>NexusRH CI</strong> a été créé. Accédez à votre espace employé pour consulter vos bulletins de paie, gérer vos absences et vos notes de frais.
+          Votre compte <strong>NexusRH</strong> a été créé. Accédez à votre espace employé pour consulter vos bulletins de paie, gérer vos absences et vos notes de frais.
         </p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px;">
           <p style="margin:0 0 12px;font-weight:600;font-size:14px;color:#374151;">Vos identifiants</p>
@@ -299,7 +299,7 @@ export async function sendEmployeeWelcomeEmail(params: {
         </div>
       </td></tr>
       <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#9ca3af;">OpenLab Consulting · support@nexusrh-ci.com · +225 07 09 32 05 94</p>
+        <p style="margin:0;font-size:12px;color:#9ca3af;">OpenLab Consulting · support@nexusrh-ci.com · +225 07 49 43 92 03</p>
       </td></tr>
     </table>
   </td></tr>
@@ -313,7 +313,7 @@ export async function sendEmployeeWelcomeEmail(params: {
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
     to,
-    subject: `Votre accès NexusRH CI — ${tenantName}`,
+    subject: `Votre accès NexusRH — ${tenantName}`,
     html,
     text: `Bonjour ${firstName},\nVotre compte a été créé.\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\nConnexion : ${loginUrl}\nVous devrez changer ce mot de passe à la première connexion.`,
   })
@@ -338,12 +338,12 @@ export async function sendWelcomeAgencyEmail(params: {
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-      <tr>${brandHeader(agencyName, 'Cabinet de recrutement · NexusRH CI', primaryColor, logoUrl)}</tr>
+      <tr>${brandHeader(agencyName, 'Cabinet de recrutement · NexusRH', primaryColor, logoUrl)}</tr>
       <tr><td style="padding:40px;">
         <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;">BIENVENUE</p>
         <h1 style="margin:0 0 16px;font-size:26px;font-weight:700;color:#111827;">Bonjour ${firstName} ${lastName} 👋</h1>
         <p style="margin:0 0 24px;font-size:16px;color:#374151;line-height:1.6;">
-          Votre cabinet <strong>${agencyName}</strong> est désormais actif sur <strong>NexusRH CI</strong>.
+          Votre cabinet <strong>${agencyName}</strong> est désormais actif sur <strong>NexusRH</strong>.
           Vous pouvez gérer vos entreprises clientes, inviter vos recruteurs et piloter le recrutement.
         </p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:24px;margin-bottom:28px;">
@@ -359,7 +359,7 @@ export async function sendWelcomeAgencyEmail(params: {
         </div>
       </td></tr>
       <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
-        <p style="margin:0;font-size:11px;color:#9ca3af;">OpenLab Consulting · Abidjan · NexusRH CI</p>
+        <p style="margin:0;font-size:11px;color:#9ca3af;">OpenLab Consulting · Abidjan · NexusRH</p>
       </td></tr>
     </table>
   </td></tr>
@@ -369,9 +369,9 @@ export async function sendWelcomeAgencyEmail(params: {
   await getTransporter().sendMail({
     from: config.smtp.from,
     to,
-    subject: `🎉 Votre cabinet est actif sur NexusRH CI — ${agencyName}`,
+    subject: `🎉 Votre cabinet est actif sur NexusRH — ${agencyName}`,
     html,
-    text: `Bonjour ${firstName},\n\nVotre cabinet ${agencyName} est actif sur NexusRH CI.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting`,
+    text: `Bonjour ${firstName},\n\nVotre cabinet ${agencyName} est actif sur NexusRH.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting`,
   })
 }
 
@@ -391,7 +391,7 @@ export async function sendPasswordResetEmail(params: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Réinitialisation de votre mot de passe — NexusRH CI</title>
+  <title>Réinitialisation de votre mot de passe — NexusRH</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -408,7 +408,7 @@ export async function sendPasswordResetEmail(params: {
                 </div>
                 <div style="text-align:left;">
                   <p style="margin:0;font-size:20px;font-weight:700;color:#fff;">${tenantName}</p>
-                  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">${tenantCity ? `${tenantCity} · ` : ''}NexusRH CI</p>
+                  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">${tenantCity ? `${tenantCity} · ` : ''}NexusRH</p>
                 </div>
               </div>
             </td>
@@ -479,7 +479,7 @@ export async function sendPasswordResetEmail(params: {
                 Une question ? Contactez notre support
               </p>
               <p style="margin:0;font-size:13px;">
-                <a href="https://wa.me/2250709320594" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 09 32 05 94</a>
+                <a href="https://wa.me/2250749439203" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 49 43 92 03</a>
                 &nbsp;·&nbsp;
                 <a href="mailto:support@nexusrh-ci.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">support@nexusrh-ci.com</a>
               </p>
@@ -487,7 +487,7 @@ export async function sendPasswordResetEmail(params: {
                 OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · Côte d'Ivoire
               </p>
               <p style="margin:4px 0 0;font-size:11px;color:#9ca3af;">
-                NexusRH CI — La RH Intelligente, au service de l'Afrique qui avance
+                NexusRH — La RH Intelligente, au service de l'Afrique qui avance
               </p>
             </td>
           </tr>
@@ -528,7 +528,7 @@ export async function sendPasswordResetLinkEmail(params: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Réinitialiser votre mot de passe — NexusRH CI</title>
+  <title>Réinitialiser votre mot de passe — NexusRH</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -537,7 +537,7 @@ export async function sendPasswordResetLinkEmail(params: {
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
             <td style="background:#E85D04;padding:32px 40px;text-align:center;">
-              <p style="margin:0;font-size:22px;font-weight:700;color:#fff;">NexusRH CI</p>
+              <p style="margin:0;font-size:22px;font-weight:700;color:#fff;">NexusRH</p>
               <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">La RH Intelligente d'Abidjan</p>
             </td>
           </tr>
@@ -590,9 +590,9 @@ export async function sendPasswordResetLinkEmail(params: {
   await getTransporter().sendMail({
     from: config.smtp.from,
     to,
-    subject: `🔑 Réinitialisez votre mot de passe NexusRH CI`,
+    subject: `🔑 Réinitialisez votre mot de passe NexusRH`,
     html,
-    text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH CI.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+    text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
   })
 }
 
@@ -712,14 +712,14 @@ export async function sendTestEmail(params: {
   const color = primaryColor || '#E85D04'
   const via = smtp?.host
     ? `votre serveur SMTP (<strong>${smtp.host}</strong>)`
-    : 'le serveur de la plateforme NexusRH CI (aucun serveur SMTP tenant configuré)'
+    : 'le serveur de la plateforme NexusRH (aucun serveur SMTP tenant configuré)'
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;font-family:Arial,sans-serif;background:#f4f4f7;">
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
     <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
       <tr>${brandHeader(tenantName, 'Test de la configuration email', color, null)}</tr>
       <tr><td style="padding:32px 40px;color:#1f2937;">
-        <p>✅ <strong>Ceci est un email de test</strong> envoyé depuis les paramètres de <strong>${tenantName}</strong> sur NexusRH CI.</p>
+        <p>✅ <strong>Ceci est un email de test</strong> envoyé depuis les paramètres de <strong>${tenantName}</strong> sur NexusRH.</p>
         <p>Il a été acheminé via ${via}.</p>
         <p style="color:#6b7280;font-size:13px;">Si vous recevez ce message, votre configuration d'envoi fonctionne. Aucune action n'est requise.</p>
       </td></tr>
@@ -731,9 +731,9 @@ export async function sendTestEmail(params: {
     from: from || smtp?.user || config.smtp.from,
     ...(replyTo ? { replyTo } : {}),
     to,
-    subject: `✅ Email de test — ${tenantName} (NexusRH CI)`,
+    subject: `✅ Email de test — ${tenantName} (NexusRH)`,
     html,
-    text: `Ceci est un email de test envoyé depuis les paramètres de ${tenantName} sur NexusRH CI. Si vous recevez ce message, votre configuration d'envoi fonctionne.`,
+    text: `Ceci est un email de test envoyé depuis les paramètres de ${tenantName} sur NexusRH. Si vous recevez ce message, votre configuration d'envoi fonctionne.`,
   })
 }
 

@@ -6,7 +6,7 @@ export default fp(async (fastify) => {
   await fastify.register(fastifySwagger, {
     openapi: {
       info: {
-        title: 'NexusRH CI — API',
+        title: 'NexusRH — API',
         description: 'SIRH SaaS Multi-Tenant · Côte d\'Ivoire · OpenLab Consulting',
         version: '1.0.0',
       },

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 const envSchema = z.object({
   NODE_ENV:     z.enum(['development', 'production', 'test']).default('development'),
-  APP_NAME:     z.string().default('NexusRH CI'),
+  APP_NAME:     z.string().default('NexusRH'),
   APP_URL:      z.string().default('http://localhost:3001'),
   API_URL:      z.string().default('http://localhost:4001'),
   API_PORT:     z.coerce.number().default(4001),
@@ -61,7 +61,7 @@ const envSchema = z.object({
   CLAMAV_TIMEOUT_MS: z.coerce.number().default(15_000),
   JWT_EXPIRES_IN:        z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
-  MFA_ISSUER:            z.string().default('NexusRH CI'),
+  MFA_ISSUER:            z.string().default('NexusRH'),
 
   GOOGLE_CLIENT_ID:     z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -85,7 +85,7 @@ const envSchema = z.object({
   SMTP_SECURE: z.string().transform(v => v === 'true').default('false'),
   SMTP_USER:   z.string().default(''),
   SMTP_PASS:   z.string().default(''),
-  SMTP_FROM:   z.string().default('NexusRH CI <noreply@nexusrh-ci.com>'),
+  SMTP_FROM:   z.string().default('NexusRH <noreply@nexusrh-ci.com>'),
 
   S3_ENDPOINT:         z.string().default('http://localhost:9002'),
   S3_ACCESS_KEY:       z.string().default('minioadmin'),

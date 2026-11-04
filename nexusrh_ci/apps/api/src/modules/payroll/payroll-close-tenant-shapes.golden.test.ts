@@ -2,7 +2,7 @@
  * Golden test E2E — Clôture de paie selon la FORME du tenant.
  *
  * Le handler `POST /payroll/periods/:month/close` est le point de bascule entre
- * les deux topologies clientes de NexusRH CI :
+ * les deux topologies clientes de NexusRH :
  *
  *   • Tenant SANS filiale (has_subsidiaries = false) :
  *       clôture mono-entité → tous les employés actifs du tenant, pack/at_rate

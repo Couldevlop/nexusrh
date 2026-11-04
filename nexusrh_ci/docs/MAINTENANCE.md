@@ -51,7 +51,7 @@ Trois niveaux de contrôle :
 ### Procédure recommandée : GitHub Actions (le plus sûr)
 
 1. Ouvrir l'onglet **Actions** du repo
-2. Sélectionner `Reset Demo Passwords — NexusRH CI`
+2. Sélectionner `Reset Demo Passwords — NexusRH`
 3. Cliquer **Run workflow**
 4. Choisir :
    - `target` : `nexusrh-ci` (preprod) ou `nexusrh-prod`

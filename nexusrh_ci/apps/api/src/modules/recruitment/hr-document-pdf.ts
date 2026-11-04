@@ -278,7 +278,7 @@ export async function renderHrDocumentPdf(markdown: string, branding?: HrDocumen
   // Pied de page sur la dernière page
   ensure(30)
   yTop = H - BOTTOM + 18
-  drawCentered('Document généré par NexusRH CI — propulsé par Claude AI', 8, font, grey)
+  drawCentered('Document généré par NexusRH — propulsé par Claude AI', 8, font, grey)
 
   return doc.save()
 }

@@ -290,7 +290,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       // le nom de l'organisation, sinon l'application d'authentification
       // remplace l'entrée d'un tenant par celle de l'autre (même libellé).
       const accountLabel = await resolveAccountLabel(user.schemaName)
-      const issuer = accountLabel ? `NexusRH CI · ${accountLabel}` : 'NexusRH CI'
+      const issuer = accountLabel ? `NexusRH · ${accountLabel}` : 'NexusRH'
       const qrDataUrl = await toDataURL(authenticator.keyuri(scope.email, issuer, secret))
 
       // OWASP — les backup codes ne seront JAMAIS retournés à nouveau

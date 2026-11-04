@@ -1,15 +1,15 @@
-# NexusRH CI — Guide du Cabinet de Recrutement
+# NexusRH — Guide du Cabinet de Recrutement
 
 **Édition spéciale partenaires : cabinets & agences de recrutement**
 _La RH Intelligente, au service de l'Afrique qui avance_
 
-OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · infos@openlabconsulting.com · +225 07 09 32 05 94
+OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · infos@openlabconsulting.com · +225 07 09 33 42 38
 
 ---
 
 ## 1. À qui s'adresse cette édition ?
 
-NexusRH CI propose un **mode Cabinet de recrutement** : un espace dédié qui permet à votre cabinet de **gérer plusieurs entreprises clientes** (toutes en Côte d'Ivoire) depuis un **portail unique**, avec une équipe de recruteurs, tout en garantissant l'**isolation totale** des données de chaque client.
+NexusRH propose un **mode Cabinet de recrutement** : un espace dédié qui permet à votre cabinet de **gérer plusieurs entreprises clientes** (toutes en Côte d'Ivoire) depuis un **portail unique**, avec une équipe de recruteurs, tout en garantissant l'**isolation totale** des données de chaque client.
 
 C'est l'offre idéale pour :
 
@@ -111,9 +111,9 @@ CNPS 2024 (retraite, prestations familiales, AT par secteur), ITS/DGI (barème 2
 
 ## 9. Support
 
-**OpenLab Consulting** · Support WhatsApp **+225 07 09 32 05 94** · support@nexusrh-ci.com
+**OpenLab Consulting** · Support WhatsApp **+225 07 49 43 92 03** · support@nexusrh-ci.com
 Horaires : Lun–Ven 7h30–18h00 (heure d'Abidjan)
 
 ---
 
-_NexusRH CI — Édition Cabinet de recrutement · Propulsé par Claude AI (Anthropic) · Conforme Code du Travail ivoirien & CNPS 2024_
+_NexusRH — Édition Cabinet de recrutement · Propulsé par Claude AI (Anthropic) · Conforme Code du Travail ivoirien & CNPS 2024_

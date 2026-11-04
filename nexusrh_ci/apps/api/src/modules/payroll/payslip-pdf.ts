@@ -436,7 +436,7 @@ export async function renderPayslipPdf(data: PayslipPdfData): Promise<Uint8Array
     'Bulletin établi conformément au Code du travail ivoirien et à la réglementation CNPS. ' +
     'À conserver sans limitation de durée.'),
     { x: ML, y: footY, size: 7, font, color: SLATE })
-  page.drawText(pdfSafe(`Document généré le ${gen} — NexusRH CI · OpenLab Consulting`),
+  page.drawText(pdfSafe(`Document généré le ${gen} — NexusRH · OpenLab Consulting`),
     { x: ML, y: footY - 11, size: 7, font, color: SLATE })
 
   return doc.save()

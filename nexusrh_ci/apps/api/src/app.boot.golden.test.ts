@@ -1,5 +1,5 @@
 /**
- * Golden Boot Test — démarrage BOUT-À-BOUT de l'API NexusRH CI.
+ * Golden Boot Test — démarrage BOUT-À-BOUT de l'API NexusRH.
  *
  * Objectif : valider en une passe que l'application réelle (`buildApp()`)
  * démarre intégralement et que CHAQUE module est correctement câblé. C'est le
@@ -92,7 +92,7 @@ const PROTECTED_ENDPOINTS: Array<{
 
 let app: FastifyInstance
 
-describe('Golden Boot — l\'API NexusRH CI démarre bout-à-bout', () => {
+describe('Golden Boot — l\'API NexusRH démarre bout-à-bout', () => {
   beforeAll(async () => {
     app = await buildApp()
     await app.ready()
