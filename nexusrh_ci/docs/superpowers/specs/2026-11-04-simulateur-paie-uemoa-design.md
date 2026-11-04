@@ -40,7 +40,14 @@ Un audit des valeurs des packs, comparées aux sources officielles, est mené à
 - `POST /simulate` sur un pays non disponible répond **409**, avec ce même message.
 - Le web affiche les pays non disponibles comme grisés, avec la mention.
 
-L'audit (`uemoa-packs-audit.md`) a relevé des écarts dans tous les packs hors CIV : barème annuel et quotient familial au Sénégal, plafonds et SMIG 2026 au Niger, assiette de l'ITS au Bénin, réduction familiale au Togo, AMU au Burkina et AMO au Mali absentes, Guinée-Bissau non vérifiée. Pour la CIV, deux points restent à vérifier sur les textes officiels : le plafond retraite CNPS (3 375 000 depuis 2025 ?) et les majorations d'heures supplémentaires (décret 96-203). Tant que ces deux points ne sont pas confirmés, la CIV reste disponible, mais le résultat porte un avertissement sur les salaires au-dessus de 1 647 315 et sur les heures supplémentaires.
+L'audit (`uemoa-packs-audit.md`) a relevé des écarts dans tous les packs hors CIV : barème annuel et quotient familial au Sénégal, plafonds et SMIG 2026 au Niger, assiette de l'ITS au Bénin, réduction familiale au Togo, AMU au Burkina et AMO au Mali absentes, Guinée-Bissau non vérifiée. Pour la CIV, la vérification sur les textes officiels (`civ-verification.md`) a montré que le moteur réel était faux depuis le 01/01/2023 :
+
+- plafond retraite à 3 375 000 et non 1 647 315 ;
+- plafond AT/PF/maternité à 75 000 et non 70 000 ;
+- heures supplémentaires régies par le décret 2024-898, art. 25 : 15 / 50 / 75 / 75 / 100 % ;
+- CMU de 1 000 F par mois et par bénéficiaire, partagée à 50/50, absente du moteur.
+
+Le porteur a choisi de corriger dès la prochaine paie (04/11), avec un rapport d'impact par client et sans modifier les bulletins clôturés : c'est la tâche 1b du plan.
 
 ## Prime d'ancienneté — nouveau champ de pack `seniorityBonus`
 
