@@ -54,7 +54,7 @@ describe('ITS 2024 — barème sur 100 % du brut imposable (célibataire, 1 part
     const r = calculatePayrollCI(ctx({ baseSalary: 450_000 }))
     expect(r.totalCnpsSal).toBe(28_350)            // 450 000 × 6,3 %
     expect(r.baseImposable).toBe(450_000)          // et non 450 000 − 28 350
-    expect(r.netPayable).toBe(450_000 - 28_350 - 70_500)
+    expect(r.netPayable).toBe(450_000 - 28_350 - 70_500 - 500)   // − CMU salarié 500
   })
 
   it('le pack CI ne porte plus d\'abattement ni de crédits marié/enfants', () => {

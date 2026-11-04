@@ -38,7 +38,7 @@ L'activation par pays se fait après implémentation des règles fines + validat
 
 ### Côte d'Ivoire 🟢 — pack `CIV-2024` · **ACTIF**
 - **Caisse** : CNPS · **SMIG** : 75 000 FCFA/mois
-- **Plafonds** : retraite 1 647 315 · AT/PF 70 000 (double plafond)
+- **Plafonds** : retraite 3 375 000 · AT/PF 75 000 (double plafond, en vigueur au 01/01/2023 ; anciens plafonds 1 647 315 / 70 000)
 - **Cotisations** : retraite sal 6,30 % / pat 7,70 % · PF pat 5,00 % · maternité pat 0,75 % · AT 2-5 % (secteur)
 - **Impôt** : ITS (réforme au 01/01/2024, Ordonnance n° 2023-719 — remplace IS/CN/IGR), **sans abattement** (100 % du brut imposable, cotisations CNPS salariales non déduites), barème **mensuel** 0/16/21/24/28/32 % (0-75k / 75k-240k / 240k-800k / 800k-2,4M / 2,4M-8M / >8M)
 - **RICF** (réduction pour charges de famille, imputée sur l'impôt brut) : 5 500 FCFA par demi-part au-delà de 1 part, de 0 (1 part) à 44 000 (5 parts) · parts : célibataire 1, marié 2, +0,5/enfant, parent isolé 1,5 + 0,5/enfant, plafond 5

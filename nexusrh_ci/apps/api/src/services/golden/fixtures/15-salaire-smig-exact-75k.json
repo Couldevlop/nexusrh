@@ -1,6 +1,6 @@
 {
   "id": "15-salaire-smig-exact-75k",
-  "description": "Salarié payé EXACTEMENT au SMIG (75 000 FCFA brut). Cas limite : ITS = 0 (tranche 0%) mais smigCompliant=false car après CNPS le net (70 275) tombe sous le SMIG. Alerte business pour le RH.",
+  "description": "Salarié payé EXACTEMENT au SMIG (75 000 FCFA brut). Cas limite : ITS = 0 (tranche 0 %) mais smigCompliant=false car après CNPS (4 725) et CMU (500) le net (69 775) tombe sous le SMIG. Alerte business pour le RH.",
   "metadata": {
     "pack": "CIV-2024",
     "category": "non-cadre",
@@ -13,6 +13,17 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 59025 → 75000"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
+        "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsPat 11200 → 11587; totalDeductions 4725 → 5225; netPayable 70275 → 69775; employerCost 86200 → 87087; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 500; ligne 3400 None → 500"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Fix round 1 (M4) — description mise à jour (plafonds 2023, décret n° 2024-898, CMU) ; valeurs attendues inchangées"
       }
     ]
   },
@@ -31,25 +42,27 @@
     "grossSalary": 75000,
     "cnpsRetraiteSal": 4725,
     "cnpsRetraitePat": 5775,
-    "cnpsPfPat": 4025,
-    "cnpsAtPat": 1400,
+    "cnpsPfPat": 4312,
+    "cnpsAtPat": 1500,
     "totalCnpsSal": 4725,
-    "totalCnpsPat": 11200,
+    "totalCnpsPat": 11587,
     "baseImposable": 75000,
     "its": 0,
-    "totalDeductions": 4725,
-    "netPayable": 70275,
-    "employerCost": 86200,
+    "totalDeductions": 5225,
+    "netPayable": 69775,
+    "employerCost": 87087,
     "workingDays": 26,
     "smigCompliant": false,
     "lines": [
       { "code": "1000", "type": "earning",                 "amount":  75000 },
       { "code": "2000", "type": "employee_contribution",   "amount":   4725 },
       { "code": "2100", "type": "employee_contribution",   "amount":      0 },
+      { "code": "2200", "type": "employee_contribution",   "amount":    500 },
       { "code": "3000", "type": "employer_contribution",   "amount":   5775 },
-      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
-      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
-      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+      { "code": "3100", "type": "employer_contribution",   "amount":   3750 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    562 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1500 },
+      { "code": "3400", "type": "employer_contribution",   "amount":    500 }
     ]
   }
 }

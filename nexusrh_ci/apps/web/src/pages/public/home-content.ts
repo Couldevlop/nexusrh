@@ -151,3 +151,22 @@ export const PUBLISHER = {
 
 /** Nombre de modules du catalogue activable (MODULE_KEYS.length côté API) — vérifié par test. */
 export const CATALOG_MODULE_COUNT = 29
+
+/**
+ * Démonstration du double plafond CNPS (section « proof » de la vitrine) :
+ * salaire brut de 2 000 000 FCFA, 1 part. Chiffres comparés au pack CIV-2024
+ * de l'API (plafonds, taux, barème ITS, arrondi au franc inférieur) par
+ * seo/seo-content.test.ts : un pack modifié sans report ici fait échouer la CI.
+ * `key` = clé i18n home.proof.rows.<key> ; `note` = clé de la note éventuelle.
+ */
+export const PROOF_CNPS = {
+  gross: 2_000_000,
+  /** Plafond mensuel CNPS retraite affiché par le compteur des chiffres clés. */
+  retirementCeiling: 3_375_000,
+  rows: [
+    { code: '2000', key: 'retirement', note: 'retirementNote', base: '2 000 000', rate: '6,3 %',  amount: '126 000' },
+    { code: '3300', key: 'accident',   note: 'accidentNote',   base: '75 000',    rate: '2,0 %',  amount: '1 500' },
+    { code: '3100', key: 'family',     note: null,             base: '75 000',    rate: '5,0 %',  amount: '3 750' },
+    { code: '2100', key: 'its',        note: null,             base: '2 000 000', rate: '0→24 %', amount: '432 000' },
+  ],
+} as const

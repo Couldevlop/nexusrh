@@ -20,7 +20,7 @@ import { Link } from 'react-router-dom'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import DemoForm from './DemoForm'
 import {
-  CATALOG_MODULE_COUNT, DEPLOY_POINTS, DEPLOY_ROWS, HOME_ANCHORS, HOME_DOMAINS, HOME_FAQ, PHONES, PUBLISHER,
+  CATALOG_MODULE_COUNT, DEPLOY_POINTS, DEPLOY_ROWS, HOME_ANCHORS, HOME_DOMAINS, HOME_FAQ, PHONES, PROOF_CNPS, PUBLISHER,
 } from './home-content'
 // La vidéo passe par le build : son URL porte une empreinte de contenu, donc
 // une nouvelle version change d'adresse et AUCUN cache ne peut servir
@@ -144,14 +144,9 @@ export default function HomePage() {
     { slug: 'cookies',          label: t('footerNav.cookies') },
   ]
 
-  const payslipRows = [
-    // TODO(paie CIV) : relier ces chiffres au pack CIV-2024 par un test une fois la branche rebasée
-    // sur la correction des plafonds (le pack de cette branche porte encore 1 647 315 / 70 000).
-    { code: '2000', label: t('proof.rows.retirement'), note: t('proof.rows.retirementNote'), base: '2 000 000', rate: '6,3 %', amount: '126 000' },
-    { code: '3300', label: t('proof.rows.accident'),   note: t('proof.rows.accidentNote'),   base: '75 000',    rate: '2,0 %', amount: '1 500' },
-    { code: '3200', label: t('proof.rows.family'),     note: null,                            base: '75 000',    rate: '5,0 %', amount: '3 750' },
-    { code: '2100', label: t('proof.rows.its'),        note: null,                            base: '2 000 000', rate: '0→24 %', amount: '432 000' },
-  ]
+  const payslipRows = PROOF_CNPS.rows.map(r => ({
+    ...r, label: t(`proof.rows.${r.key}`), note: r.note ? t(`proof.rows.${r.note}`) : null,
+  }))
 
   const marquee = HOME_DOMAINS.flatMap(d => d.modules.map(m => t(`domains.${d.key}.modules.${m.key}.title`))).join(' · ')
 
@@ -261,7 +256,7 @@ export default function HomePage() {
             {[
               { v: <Counter to={2} />,                        l: t('compliance.cnps.title'), s: t('proof.title') },
               { v: <><Counter to={6.3} decimals={1} /> %</>,  l: 'CNPS',                     s: t('proof.rows.retirement') },
-              { v: <Counter to={3375000} />,                  l: 'FCFA',                     s: t('proof.rows.retirementNote') },
+              { v: <Counter to={PROOF_CNPS.retirementCeiling} />, l: 'FCFA',                     s: t('proof.rows.retirementNote') },
               { v: <Counter to={CATALOG_MODULE_COUNT} />,     l: t('stats.modulesLabel'),    s: t('stats.modulesText') },
             ].map((k, i) => (
               <div key={i} className="bg-white px-6 py-7">
@@ -338,7 +333,7 @@ export default function HomePage() {
 
         {/* ── Bandeau défilant : l'ampleur de la couverture ───────────── */}
         <div className="overflow-hidden border-b border-[#E4E8EB] py-4" aria-hidden>
-          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#C9D1D7]">
+          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#5A6672]">
             <span>{marquee}</span><span>{marquee}</span>
           </div>
         </div>

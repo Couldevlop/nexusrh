@@ -18,6 +18,7 @@ import SeoContentPage from '../SeoContentPage'
 import frHome from '@/i18n/locales/fr/home.json'
 import enHome from '@/i18n/locales/en/home.json'
 import { contentJsonLd } from '@/prerender/entry'
+import { PROOF_CNPS } from '../home-content'
 
 const fmt = (v: number) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 const render = (path: string) =>
@@ -120,15 +121,6 @@ describe('contenu des pages publiques', () => {
   })
 })
 
-/**
- * Plafonds CNPS publiés pour la Côte d'Ivoire : retraite 3 375 000 (décret n° 2022-986),
- * AT / PF / maternité 75 000. Le portail sort avec la correction de la paie CIV.
- * TODO(paie CIV) : à la rebase sur la correction des plafonds, supprimer cette
- * constante et comparer de nouveau au pack CIV-2024 (plafondCnpsRetraite /
- * plafondCnpsAtPf), qui porte encore 1 647 315 / 70 000 sur cette branche.
- */
-const CIV_CNPS_PUBLISHED = { plafondRetraite: 3_375_000, plafondAtPf: 75_000 } as const
-
 describe('chiffres conformes aux packs législatifs', () => {
   it("pays UEMOA hors Côte d'Ivoire : données de paie en cours de vérification, aucun chiffre publié", () => {
     // Les chiffres de paie des pays autres que la Côte d'Ivoire ne sont pas encore vérifiés :
@@ -193,8 +185,8 @@ describe('chiffres conformes aux packs législatifs', () => {
   it('guide CNPS : exemple à 2 000 000 FCFA recalculé (double plafond, CMU)', () => {
     const p = CIV_2024
     const rows = tableRows(GUIDE_CNPS, /Cotisations CNPS mensuelles/)
-    const base = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondRetraite)
-    const small = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondAtPf)
+    const base = Math.min(2_000_000, p.plafondCnpsRetraite)
+    const small = Math.min(2_000_000, p.plafondCnpsAtPf)
     const expected = [
       // Le moteur de paie arrondit à l'entier inférieur : 75 000 x 0,75 % = 562,5 -> 562.
       Math.floor(base * p.tauxCotisationRetraiteSalarie),
@@ -212,6 +204,30 @@ describe('chiffres conformes aux packs législatifs', () => {
     const note = GUIDE_CNPS.sections.flatMap((s) => s.blocks).find((b) => b.type === 'table' && /mensuelles/.test(b.caption))
     expect(note?.type === 'table' ? note.note : '').toContain(`Total salarié : ${total([expected[0]!, 500])} FCFA`)
     expect(note?.type === 'table' ? note.note : '').toContain(`Total employeur : ${total([...expected.slice(1), 500])} FCFA`)
+  })
+
+  it('vitrine : démonstration du double plafond recalculée depuis le pack CIV-2024', () => {
+    const p = CIV_2024
+    const g = PROOF_CNPS.gross
+    const pct = (t: number) => `${(t * 100).toFixed(1).replace('.', ',')} %`
+    const retraite = Math.min(g, p.plafondCnpsRetraite)
+    const atPf = Math.min(g, p.plafondCnpsAtPf)
+    const trancheHaute = p.tranchesImpotSalaire.find((t) => g <= t.max)!
+    const expected = {
+      '2000': [fmt(retraite), pct(p.tauxCotisationRetraiteSalarie), fmt(Math.floor(retraite * p.tauxCotisationRetraiteSalarie))],
+      '3300': [fmt(atPf), pct(p.tauxAtDefaultPatronal), fmt(Math.floor(atPf * p.tauxAtDefaultPatronal))],
+      '3100': [fmt(atPf), pct(p.tauxCotisationPfPatronal), fmt(Math.floor(atPf * p.tauxCotisationPfPatronal))],
+      '2100': [fmt(g), `0→${Math.round(trancheHaute.taux * 100)} %`, fmt(itsBrut(g))],
+    }
+    expect(Object.fromEntries(PROOF_CNPS.rows.map((r) => [r.code, [r.base, r.rate, r.amount]]))).toEqual(expected)
+    // Compteur des chiffres clés et notes affichées sous les rubriques.
+    expect(PROOF_CNPS.retirementCeiling).toBe(p.plafondCnpsRetraite)
+    expect(frHome.proof.rows.retirementNote).toContain(fmt(p.plafondCnpsRetraite))
+    expect(frHome.proof.rows.accidentNote).toContain(fmt(p.plafondCnpsAtPf))
+    expect(enHome.proof.rows.retirementNote).toContain(p.plafondCnpsRetraite.toLocaleString('en-US'))
+    expect(enHome.proof.rows.accidentNote).toContain(p.plafondCnpsAtPf.toLocaleString('en-US'))
+    expect(frHome.proof.case).toContain(fmt(g))
+    expect(enHome.proof.case).toContain(g.toLocaleString('en-US'))
   })
 
   it('plafonds CNPS publiés partout (vitrine, FAQ, pages CI) : 3 375 000 et 75 000, plus aucun ancien plafond', () => {

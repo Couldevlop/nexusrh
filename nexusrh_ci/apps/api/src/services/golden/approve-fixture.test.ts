@@ -115,6 +115,8 @@ function makeResult(over: Partial<PayrollResult> = {}): PayrollResult {
     totalDeductions: 13835,
     netPayable: 186165,
     employerCost: 220825,
+    cmuSal: 0,
+    cmuPat: 0,
     currency: 'XOF',
     smigCompliant: true,
     workingDays: 26,

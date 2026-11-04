@@ -7,6 +7,7 @@ import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
+import { CI_OVERTIME_RULES, ciCmuEmployeeColumnMigrations } from './payroll-rules-ci-2023.js'
 
 /**
  * Crée le schéma droit_ci — articles juridiques (source de vérité, séparé de la plateforme)
@@ -487,6 +488,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     ai_score_factors      jsonb DEFAULT '[]',
     marital_status        varchar(20),
     children_count        int DEFAULT 0,
+    -- CMU (loi n° 2014-131) : conjoint sans emploi couvert ; enfants couverts (NULL = enfants à charge)
+    cmu_spouse_covered    boolean,
+    cmu_children_covered  integer,
     custom_fields         jsonb DEFAULT '{}',
     profile_photo_url     text,
     is_active             boolean NOT NULL DEFAULT true,
@@ -1298,6 +1302,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
   )`)
   // Colonne legal_entity_id sur employees (migration lazy)
   await q(`ALTER TABLE ${s}.employees ADD COLUMN IF NOT EXISTS legal_entity_id uuid`)
+  for (const stmt of ciCmuEmployeeColumnMigrations(schemaName)) await q(stmt)
 
   // Scope filiale sur les artefacts de paie / déclarations (Palier 3).
   // ⚠️ Doit rester aligné avec ensureTenantSchema (utils/schema-migrations.ts) :
@@ -1777,9 +1782,8 @@ export async function seedPayrollRulesCI(schemaName: string, atRate: number = 0.
     { code: '1250', label: 'Gratification', type: 'earning', formula: 'VAR:GRATIFICATION', order: 32 },
     { code: '1260', label: 'Avantage en nature', type: 'earning', formula: 'VAR:AVANTAGE_NATURE', order: 34 },
     { code: '1300', label: 'Prime de transport', type: 'earning', formula: 'VAR:PRIME_TRANSPORT', order: 40 },
-    { code: '1400', label: 'Heures supplémentaires (+15%)', type: 'earning', formula: 'VAR:HEURES_SUPP_NORM', order: 50 },
-    { code: '1500', label: 'Heures supplémentaires (+50%)', type: 'earning', formula: 'VAR:HEURES_SUPP_NUIT', order: 60 },
-    { code: '1550', label: 'Heures supplémentaires (+100%)', type: 'earning', formula: 'VAR:HEURES_SUPP_FERIE', order: 65 },
+    // Heures supplémentaires : décret n° 2024-898, art. 25 (5 rubriques)
+    ...CI_OVERTIME_RULES,
     { code: '1600', label: 'Indemnité de congés payés', type: 'earning', formula: 'VAR:ICP', order: 70 },
     { code: '2000', label: 'CNPS Retraite salarié (6,3%)', type: 'employee_contribution', formula: 'BASE_RETRAITE * 0.063', order: 100 },
     { code: '2100', label: 'ITS - Impôt sur Traitements et Salaires', type: 'employee_contribution', formula: 'ITS', order: 110 },

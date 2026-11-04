@@ -17,12 +17,15 @@ interface ApiPayload {
 interface ApiResult {
   input: ApiPayload & { brut: number }
   cnps: { salarial: number; patronal: number }
+  /** CMU (loi n° 2014-131) — hors bases CNPS et ITS */
+  cmu?: { salarial: number; patronal: number }
   its: { base: number; brut: number; credit: number; parts: number; net: number }
   net: { payable: number; smigCompliant: boolean }
   employerCost: number
   simulation: {
     avecUnEnfantSupp: {
-      its: number; net: number; gain: number; message: string
+      /** gain = variation du net (ITS − CMU de l'enfant), peut être négative */
+      its: number; net: number; gain: number; itsGain?: number; cmuCost?: number; message: string
     }
   }
   currency: string
@@ -75,7 +78,8 @@ export default function ItsSimulatorPage() {
   const inputCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none'
 
   const brut = result ? result.input.brut : brutMensuel + primes
-  const tauxEffort = result ? Math.round((result.cnps.salarial + result.its.net) / result.input.brut * 100 * 10) / 10 : 0
+  // Taux d'effort salarial : CNPS + ITS + CMU (part salariale) rapportés au brut.
+  const tauxEffort = result ? Math.round((result.cnps.salarial + result.its.net + (result.cmu?.salarial ?? 0)) / result.input.brut * 100 * 10) / 10 : 0
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -193,7 +197,8 @@ export default function ItsSimulatorPage() {
               {result.net.smigCompliant ? t('simulator.smigCompliant') : t('simulator.smigNotCompliant')}
             </span>
 
-            {/* Détail CNPS */}
+            {/* Détail CNPS — valeurs recopiées (plafonds, taux) : à dériver du pack lors de la
+                réécriture de cette page par la tâche 3 du plan simulateur (2026-11-04). */}
             <div className="rounded-xl border border-border bg-card p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-orange-500" /> {t('simulator.cnpsDetailTitle')}
@@ -201,12 +206,12 @@ export default function ItsSimulatorPage() {
               <div className="space-y-1.5 text-sm">
                 {[
                   { label: t('simulator.cnps.grossSubject'),       value: formatFCFA(brut) },
-                  { label: t('simulator.cnps.retirementBase'),     value: formatFCFA(Math.min(brut, 1_647_315)) },
-                  { label: t('simulator.cnps.atPfBase'),           value: formatFCFA(Math.min(brut, 70_000)) },
-                  { label: t('simulator.cnps.retirementEmployee'), value: formatFCFA(Math.floor(Math.min(brut, 1_647_315) * 0.063)), cls: 'text-orange-600' },
-                  { label: t('simulator.cnps.retirementEmployer'), value: formatFCFA(Math.floor(Math.min(brut, 1_647_315) * 0.077)), cls: 'text-purple-600' },
-                  { label: t('simulator.cnps.familyMaternity'),    value: formatFCFA(Math.floor(Math.min(brut, 70_000) * 0.0575)), cls: 'text-purple-600' },
-                  { label: t('simulator.cnps.atMp', { rate: (atRate * 100).toFixed(0) }), value: formatFCFA(Math.floor(Math.min(brut, 70_000) * atRate)), cls: 'text-purple-600' },
+                  { label: t('simulator.cnps.retirementBase'),     value: formatFCFA(Math.min(brut, 3_375_000)) },
+                  { label: t('simulator.cnps.atPfBase'),           value: formatFCFA(Math.min(brut, 75_000)) },
+                  { label: t('simulator.cnps.retirementEmployee'), value: formatFCFA(Math.floor(Math.min(brut, 3_375_000) * 0.063)), cls: 'text-orange-600' },
+                  { label: t('simulator.cnps.retirementEmployer'), value: formatFCFA(Math.floor(Math.min(brut, 3_375_000) * 0.077)), cls: 'text-purple-600' },
+                  { label: t('simulator.cnps.familyMaternity'),    value: formatFCFA(Math.floor(Math.min(brut, 75_000) * 0.0575)), cls: 'text-purple-600' },
+                  { label: t('simulator.cnps.atMp', { rate: (atRate * 100).toFixed(0) }), value: formatFCFA(Math.floor(Math.min(brut, 75_000) * atRate)), cls: 'text-purple-600' },
                   { label: t('simulator.cnps.totalEmployer'),      value: formatFCFA(result.cnps.patronal), cls: 'text-purple-700 font-semibold border-t border-border pt-1.5 mt-1.5' },
                 ].map(({ label, value, cls }) => (
                   <div key={label} className={`flex justify-between ${cls ?? ''}`}>
@@ -249,7 +254,7 @@ export default function ItsSimulatorPage() {
                 <div className="space-y-1.5 text-sm text-green-700">
                   <div className="flex justify-between">
                     <span>{t('simulator.childSim.monthlyGain')}</span>
-                    <span className="font-mono font-semibold">+{formatFCFA(result.simulation.avecUnEnfantSupp.gain)}</span>
+                    <span className="font-mono font-semibold">{result.simulation.avecUnEnfantSupp.gain >= 0 ? '+' : '−'}{formatFCFA(Math.abs(result.simulation.avecUnEnfantSupp.gain))}</span>
                   </div>
                   <div className="flex justify-between font-semibold border-t border-green-200 pt-1.5 mt-1.5">
                     <span>{t('simulator.childSim.newNet')}</span>

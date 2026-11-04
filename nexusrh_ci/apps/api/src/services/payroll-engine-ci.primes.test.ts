@@ -34,7 +34,7 @@ describe('Primes et heures supplémentaires — soumises CNPS + ITS', () => {
     expect(r.cnpsRetraitePat).toBe(19_250)       // 250 000 × 7,7 %
     expect(r.baseImposable).toBe(250_000)
     expect(r.its).toBe(28_500)                   // 26 400 + 10 000 × 21 %
-    expect(r.netPayable).toBe(205_750)           // 250 000 − 15 750 − 28 500
+    expect(r.netPayable).toBe(205_250)           // 250 000 − 15 750 − 28 500 − 500 (CMU)
   })
 
   it('prime de panier 50 000 : ligne 1350 portée au bulletin, bases 250 000', () => {
@@ -51,7 +51,7 @@ describe('Primes et heures supplémentaires — soumises CNPS + ITS', () => {
     expect(r.grossSalary).toBe(300_000)
     expect(r.cnpsRetraiteSal).toBe(18_900)       // 300 000 × 6,3 %
     expect(r.its).toBe(39_000)                   // 26 400 + 60 000 × 21 %
-    expect(r.netPayable).toBe(242_100)           // 300 000 − 18 900 − 39 000
+    expect(r.netPayable).toBe(241_600)           // 300 000 − 18 900 − 39 000 − 500 (CMU)
   })
 
   it('avantage en nature 50 000 : imposé et cotisé, puis repris en retenue (ligne 5200)', () => {
@@ -61,8 +61,8 @@ describe('Primes et heures supplémentaires — soumises CNPS + ITS', () => {
     expect(r.grossSalary).toBe(250_000)
     expect(r.cnpsRetraiteSal).toBe(15_750)
     expect(r.its).toBe(28_500)
-    expect(r.totalDeductions).toBe(94_250)       // 15 750 + 28 500 + 50 000
-    expect(r.netPayable).toBe(155_750)           // le salarié ne touche pas l'avantage en espèces
+    expect(r.totalDeductions).toBe(94_750)       // 15 750 + 28 500 + 50 000 + 500 (CMU)
+    expect(r.netPayable).toBe(155_250)           // le salarié ne touche pas l'avantage en espèces
   })
 })
 
@@ -80,7 +80,7 @@ describe('Prime de transport — exonérée dans la limite du plafond légal', (
     expect(r.baseImposable).toBe(215_000)
     expect(r.cnpsRetraiteSal).toBe(13_545)       // 215 000 × 6,3 %
     expect(r.its).toBe(22_400)                   // 140 000 × 16 %
-    expect(r.netPayable).toBe(209_055)           // 245 000 − 13 545 − 22 400
+    expect(r.netPayable).toBe(208_555)           // 245 000 − 13 545 − 22 400 − 500 (CMU)
   })
 
   it('45 000 à Bouaké (plafond 24 000) : excédent 21 000', () => {

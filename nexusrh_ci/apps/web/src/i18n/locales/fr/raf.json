@@ -51,12 +51,16 @@
     "saveError": "Enregistrement impossible. Réessayez.",
     "validateError": "Validation impossible. Réessayez.",
     "loadError": "Impossible de charger la feuille de variables. Réessayez.",
-    "submitDisabledHint": "Soumettre est disponible quand tous les dossiers sont complets et tous les salariés validés."
+    "submitDisabledHint": "Soumettre est disponible quand tous les dossiers sont complets et tous les salariés validés.",
+    "cmuSpouseToVerifyTitle": "{{count}} salarié(s) marié(s) : situation du conjoint à renseigner (CMU)",
+    "cmuSpouseToVerifyHint": "Non bloquant : tant que la fiche ne dit pas si le conjoint est sans emploi, il n'est pas compté dans la CMU du bulletin. Renseignez la fiche salarié."
   },
   "codes": {
-    "HEURES_SUPP_NORM": "HS +15 %",
-    "HEURES_SUPP_NUIT": "HS nuit/dim. +50 %",
-    "HEURES_SUPP_FERIE": "HS férié +100 %",
+    "HEURES_SUPP_NORM": "HS 41e–46e h +15 %",
+    "HEURES_SUPP_47": "HS au-delà de 46 h +50 %",
+    "HEURES_SUPP_NUIT": "HS nuit +75 %",
+    "HEURES_SUPP_DIM": "HS dim./férié jour +75 %",
+    "HEURES_SUPP_FERIE": "HS dim./férié nuit +100 %",
     "PRIME_RENDEMENT": "Prime rendement",
     "PRIME_ANCIENNETE": "Prime ancienneté",
     "PRIME_TRANSPORT": "Prime transport",

@@ -117,9 +117,11 @@ export const CI_LEGAL_CONSTANTS_2024 = {
   // SMIG
   SMIG_MENSUEL: 75_000, SMIG_HORAIRE: 433, // FCFA (en vigueur depuis le 01/01/2023)
 
-  // CNPS — DOUBLE PLAFOND (ne jamais confondre)
-  PLAFOND_CNPS_AT_PF_MENSUEL: 70_000,        // AT, Prestations familiales, Maternité
-  PLAFOND_CNPS_RETRAITE_MENSUEL: 1_647_315,  // Retraite
+  // CNPS — DOUBLE PLAFOND (ne jamais confondre) — en vigueur au 01/01/2023
+  // (communiqué CNPS « Nouveau plafond des cotisations sociales », décret n° 2022-986).
+  // 1 647 315 / 70 000 sont les ANCIENS plafonds (avant 2023) : ne plus les utiliser.
+  PLAFOND_CNPS_AT_PF_MENSUEL: 75_000,        // AT, Prestations familiales, Maternité (= SMIG)
+  PLAFOND_CNPS_RETRAITE_MENSUEL: 3_375_000,  // Retraite (45 × SMIG)
   TAUX_CNPS_RETRAITE_SAL: 0.063, TAUX_CNPS_RETRAITE_PAT: 0.077,
   TAUX_CNPS_PF_PAT: 0.05, TAUX_CNPS_MATERNITE_PAT: 0.0075,
   TAUX_CNPS_AT_COMMERCE: 0.02, TAUX_CNPS_AT_BTP: 0.03,
@@ -154,8 +156,24 @@ export const CI_LEGAL_CONSTANTS_2024 = {
   // indemnités maternité / AT. Paramétrable par rubrique (pack `traitementElementsVariables`,
   // tenant `payroll_rules.subject_social/subject_tax`).
 
-  // Heures supplémentaires (majorations)
-  MAJORATIONS_HEURES_SUPP: { normal: 0.15 /*41–48h*/, nuit: 0.5 /*20h–5h*/, dimanche: 0.5, ferie: 1.0 },
+  // Heures supplémentaires — décret n° 2024-898 du 16/10/2024, art. 25 (abroge le décret n° 96-203, mêmes taux).
+  // Rubriques : 1400 NORM · 1450 HEURES_SUPP_47 · 1500 NUIT · 1520 HEURES_SUPP_DIM · 1550 FERIE (dim./férié de nuit).
+  MAJORATIONS_HEURES_SUPP: {
+    semaine: 0.15 /*41e–46e h*/, auDelaDe46h: 0.5 /*à partir de la 47e h*/, nuit: 0.75,
+    dimancheFerieJour: 0.75, dimancheFerieNuit: 1.0,
+  },
+
+  // CMU (loi n° 2014-131 ; CLEISS 2025) — 1 000 F / mois / bénéficiaire, hors bases CNPS et ITS.
+  // Bénéficiaires partagés (500 salarié + 500 employeur) : le salarié, son CONJOINT SANS EMPLOI
+  // (compté seulement si marié ET cmu_spouse_covered = true) et jusqu'à 6 enfants de moins de 21 ans.
+  // À partir du 7e enfant : 1 000 F entièrement à la charge du salarié.
+  // Lignes de bulletin : 2200 (part salarié, réduit le net) · 3400 (part employeur, coût employeur).
+  // Fiche salarié : cmu_spouse_covered boolean NULL (« Conjoint sans emploi » : true / false /
+  // NULL = non renseigné → conjoint non compté, salarié marié signalé « à vérifier » sur la fiche,
+  // en préparation RAF et dans le rapport d'impact) ; cmu_children_covered (enfants < 21 ans,
+  // NULL = enfants à charge — l'âge n'est pas suivi). Pas de CMU sur un bulletin de solde émis
+  // un mois sans jour de contrat (`cmu.suspended`) ; un congé maternité complet la garde.
+  CMU: { parBeneficiaire: 1_000, partEmployeur: 0.5, enfantsPartages: 6 },
 
   // Délais & FDFP
   DELAI_DISA_MOIS: 1, ECNPS_DELAI_MENSUEL: 15, TAUX_CONTRIBUTION_FDFP: 0.004, // 0,4% masse sal. (>10 sal.)
@@ -181,7 +199,7 @@ const PLAN_DEFAULTS = {
 
 ## PATTERNS ET PIÈGES — SPÉCIFIQUES CI
 
-1. **CNPS — double plafond.** AT/PF/Maternité plafonnés à 70 000 FCFA ; Retraite à 1 647 315 FCFA. Jamais le même plafond pour toutes les branches. Tester avec un salaire à 2 000 000 FCFA.
+1. **CNPS — double plafond.** AT/PF/Maternité plafonnés à 75 000 FCFA ; Retraite à 3 375 000 FCFA (depuis le 01/01/2023 ; 70 000 / 1 647 315 sont les anciens plafonds). Jamais le même plafond pour toutes les branches. Tester avec des salaires à 2 000 000 FCFA (sous le plafond retraite) et 4 000 000 FCFA (au-dessus). Valeurs lues du pack `CIV_2024`, jamais recopiées en dur. Impact sur les bulletins clôturés depuis 01/2023 : `GET /payroll/ci-2023-impact` (lecture seule, admin/hr_manager, `?format=csv`).
 2. **ITS — barème 2024 sur 100 % du brut imposable.** Plus d'abattement de 15 % (supprimé au 01/01/2024) et les cotisations CNPS salariales ne sont PAS déduites de l'assiette : `its_brut = barème(brut_imposable)` (0/16/21/24/28/32 %), PUIS `ITS = max(0, its_brut − RICF(parts))`. Ne jamais réintroduire l'ancien régime (abattement, tranches 1,5/5/10/15 %, crédits 5 500 + 3 000/6 000/9 000). `PLAN_DEFAULTS` (ci-dessus) toujours dans l'INSERT tenant.
 3. **FCFA entiers.** Colonnes PostgreSQL `integer`/`bigint`, jamais `numeric(10,2)`. Aucun centime sur les bulletins.
 4. **Mobile Money — numéros CI.** Format `+225 07…` (Wave/Orange) ou `+225 05…` (MTN). Valider `/^\+2250[57]\d{8}$/` avant tout virement.

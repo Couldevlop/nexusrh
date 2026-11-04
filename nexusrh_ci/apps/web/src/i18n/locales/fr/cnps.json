@@ -202,7 +202,7 @@
       "checkMobileLabel": "Mobile Money",
       "checkMobileDesc": "Numéro enregistré par salarié",
       "checkPlafondsLabel": "Plafonds CNPS",
-      "checkPlafondsDesc": "Retraite 1 647 315 FCFA · AT/PF 70 000 FCFA",
+      "checkPlafondsDesc": "Retraite 3 375 000 FCFA · AT/PF 75 000 FCFA",
       "runAudit": "Lancer l'audit ({{count}} contrôle)",
       "runAudit_other": "Lancer l'audit ({{count}} contrôles)",
       "analyzing": "Analyse en cours…",

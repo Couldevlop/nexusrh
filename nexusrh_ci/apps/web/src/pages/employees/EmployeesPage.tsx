@@ -6,6 +6,7 @@ import { api, formatFCFA, formatDate } from '@/lib/api'
 import { Users, Search, Trash2, AlertTriangle, X, ExternalLink, Plus, Loader2, Rocket, Pencil, Download, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { canonicalMmProvider, paymentMethodLabel } from '@/lib/payment'
+import { isCivPayrollScope } from '@/lib/civ-scope'
 import {
   CustomFieldsFieldset, useEmployeeFieldDefinitions, type CustomFieldValue, type CustomFieldValues,
 } from '@/components/employees/CustomFields'
@@ -36,7 +37,7 @@ const CATEGORIES_CI = [
 ]
 
 interface Department { id: string; name: string }
-interface LegalEntityLite { id: string; name: string; country_code: string | null }
+interface LegalEntityLite { id: string; name: string; country_code: string | null; legislation_pack_code?: string | null }
 interface ManagerOption { id: string; first_name: string; last_name: string; job_title: string | null }
 
 // Responsable hiérarchique (manager_id) : c'est lui qui définit l'équipe d'un
@@ -470,6 +471,9 @@ interface EmployeeDetail {
   base_salary: string | null; mobile_money_provider: string | null; mobile_money_phone: string | null
   iban: string | null; bank_name: string | null; payment_method: string | null
   marital_status: string | null; children_count: number | null; nationality?: string | null
+  // CMU : conjoint sans emploi (null = non renseigné) ; enfants de moins de 21 ans
+  // couverts (null = enfants à charge)
+  cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | null
   custom_fields?: CustomFieldValues | null
 }
 
@@ -503,6 +507,7 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
     enabled: hasSubsidiaries,
   })
   const legalEntities = leData?.data ?? []
+  const tenantCountry = useAuthStore((s) => s.tenantConfig?.defaultCountryCode)
   const emp = detail?.data
   const fieldDefs = useEmployeeFieldDefinitions()
   // Champs personnalisés modifiés (clé → nouvelle valeur ; '' = effacer).
@@ -535,6 +540,8 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       iban: emp.iban ?? '', bankName: emp.bank_name ?? '', paymentMethod: emp.payment_method ?? 'mobile_money',
       maritalStatus: emp.marital_status ?? '', childrenCount: String(emp.children_count ?? 0),
       nationality: emp.nationality ?? '',
+      cmuSpouseCovered: emp.cmu_spouse_covered == null ? '' : String(emp.cmu_spouse_covered),
+      cmuChildrenCovered: emp.cmu_children_covered == null ? '' : String(emp.cmu_children_covered),
     }
     const numericKeys = new Set(['baseSalary', 'weeklyHours', 'childrenCount'])
     const payload: Record<string, unknown> = {}
@@ -543,6 +550,10 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
       if (trimmed === orig[k]) continue
       // Retirer le responsable est un choix explicite (option « Aucun ») : null.
       if (k === 'managerId' && trimmed === '') { payload.managerId = null; continue }
+      // CMU : booléen ; enfants couverts vidés = retour aux enfants à charge (null).
+      // '' = situation du conjoint non renseignée (null, signalée « à vérifier »).
+      if (k === 'cmuSpouseCovered') { payload.cmuSpouseCovered = trimmed === '' ? null : trimmed === 'true'; continue }
+      if (k === 'cmuChildrenCovered') { payload.cmuChildrenCovered = trimmed === '' ? null : Number(trimmed); continue }
       if (trimmed === '') continue // champ vidé : on ne pousse pas (évite d'écraser involontairement)
       payload[k] = numericKeys.has(k) ? Number(trimmed) : trimmed
     }
@@ -714,6 +725,28 @@ function EditEmployeeModal({ employeeId, onClose, onSaved }: {
                   <input className={inputCls} placeholder={t('form.fields.nationalityPlaceholder')} value={val('nationality', emp.nationality)} onChange={set('nationality')} /></div>
               </div>
             </fieldset>
+
+            {/* CMU (loi n° 2014-131 ; CLEISS 2025) — bénéficiaires de la retenue / charge CMU
+                du bulletin. Paie ivoirienne uniquement (filiale CIV, sinon pays du tenant). */}
+            {isCivPayrollScope(val('legalEntityId', emp.legal_entity_id) || null, legalEntities, tenantCountry) && (
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold mb-1">{t('form.cmu.section')} <span className="font-normal text-xs text-muted-foreground">{t('form.cmu.hint')}</span></legend>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label htmlFor="cmu-spouse" className={labelCls}>{t('form.cmu.spouseCovered')}</label>
+                  <select id="cmu-spouse" className={inputCls}
+                    value={val('cmuSpouseCovered', emp.cmu_spouse_covered == null ? '' : String(emp.cmu_spouse_covered))}
+                    onChange={set('cmuSpouseCovered')}>
+                    <option value="">{t('form.cmu.spouseCoveredUnknown')}</option>
+                    <option value="true">{t('form.cmu.spouseCoveredYes')}</option>
+                    <option value="false">{t('form.cmu.spouseCoveredNo')}</option>
+                  </select></div>
+                <div><label htmlFor="cmu-children" className={labelCls} title={t('form.cmu.childrenCoveredTooltip')}>{t('form.cmu.childrenCovered')}</label>
+                  <input id="cmu-children" type="number" min={0} max={30} step={1} className={inputCls}
+                    placeholder={t('form.cmu.childrenCoveredPlaceholder')} title={t('form.cmu.childrenCoveredTooltip')}
+                    value={val('cmuChildrenCovered', emp.cmu_children_covered)} onChange={set('cmuChildrenCovered')} /></div>
+              </div>
+            </fieldset>
+            )}
 
             <CustomFieldsFieldset defs={fieldDefs} values={{ ...origCustom, ...customEdits }}
               inputCls={inputCls} labelCls={labelCls}

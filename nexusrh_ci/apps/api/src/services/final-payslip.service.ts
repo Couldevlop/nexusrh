@@ -23,13 +23,17 @@ import {
   resolveAttendanceForPayroll,
   type AttendancePayrollResult, type AttendancePayrollSettings,
 } from './attendance-payroll.service.js'
-import type { SettlementEarning } from './payroll-engine-ci.js'
+import type { PayrollContext, SettlementEarning } from './payroll-engine-ci.js'
 
 export interface PayrollEmployeeRow {
   id: string
   base_salary: string
   marital_status: string
   children_count: number
+  /** CMU : conjoint sans emploi couvert (défaut false) */
+  cmu_spouse_covered?: boolean | null
+  /** CMU : enfants couverts (NULL = nombre d'enfants à charge) */
+  cmu_children_covered?: number | null
   mobile_money_provider: string
   mobile_money_phone: string
   payment_method: string | null
@@ -151,6 +155,7 @@ function defaultSettlementLabel(key: (typeof SETTLEMENT_KEYS)[number]): string {
 }
 
 const EMPLOYEE_COLUMNS = `e.id, e.base_salary, e.marital_status, e.children_count,
+  e.cmu_spouse_covered, e.cmu_children_covered,
   e.mobile_money_provider, e.mobile_money_phone, e.payment_method,
   e.first_name, e.last_name, e.cnps_number, e.nni,
   e.hire_date::text AS hire_date, e.legal_entity_id,
@@ -162,6 +167,25 @@ const EMPLOYEE_COLUMNS = `e.id, e.base_salary, e.marital_status, e.children_coun
  * renseignée. Le salarié reste visible partout ailleurs (liste des employés…).
  */
 export const PAYABLE_SALARY_FILTER = `COALESCE(e.base_salary, 0) > 0`
+
+/**
+ * Bénéficiaires CMU d'un salarié pour le moteur : conjoint seulement s'il est
+ * déclaré couvert ; enfants couverts saisis, sinon (NULL) le moteur retient le
+ * nombre d'enfants à charge. Avec la fenêtre d'emploi du mois : CMU suspendue
+ * quand le mois ne compte aucun jour de contrat (bulletin de solde seul).
+ */
+export function employeeCmu(
+  emp: { cmu_spouse_covered?: boolean | null; cmu_children_covered?: number | string | null },
+  window?: Pick<EmploymentWindow, 'contractDays'>,
+): NonNullable<PayrollContext['cmu']> {
+  const raw = emp.cmu_children_covered
+  const children = raw === null || raw === undefined || raw === '' ? null : Number(raw)
+  return {
+    spouseCovered: emp.cmu_spouse_covered === true,
+    suspended: window !== undefined && window.contractDays === 0,
+    childrenCovered: children !== null && Number.isFinite(children) && children >= 0 ? Math.floor(children) : null,
+  }
+}
 
 /** Mode de paiement porté sur le bulletin : virement, sinon l'opérateur Mobile Money. */
 export function slipPaymentMethod(emp: Pick<PayrollEmployeeRow, 'payment_method' | 'mobile_money_provider'>): string {

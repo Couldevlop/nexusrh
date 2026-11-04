@@ -7,7 +7,7 @@ vi.mock('../config.js', () => ({
 }))
 
 import {
-  employmentWindow, loadPayrollPopulation, loadReimbursableExpenses, markExpensesPaid, markSettlementPaid, previousMonth,
+  employeeCmu, employmentWindow, loadPayrollPopulation, loadReimbursableExpenses, markExpensesPaid, markSettlementPaid, previousMonth,
   resolveEmployeeMonth, settlementEarningsFrom, slipPaymentMethod, workedDaysFor,
 } from './final-payslip.service.js'
 import { calculatePayrollCI } from './payroll-engine-ci.js'
@@ -130,6 +130,27 @@ describe('bulletin de solde — moteur', () => {
     })
     expect(r.lines.find(l => l.code === '2000')?.base).toBe(100_000)
     expect(r.baseImposable).toBeGreaterThan(0)
+  })
+  it('bulletin de solde seul (mois suivant la sortie) : pas de CMU', () => {
+    const window = employmentWindow('2026-10', '2019-04-01', '2026-09-30')
+    expect(window.contractDays).toBe(0)
+    const cmu = employeeCmu({ cmu_spouse_covered: true, cmu_children_covered: 2 }, window)
+    expect(cmu.suspended).toBe(true)
+    const r = calculatePayrollCI({
+      ...base, workedDays: 0, childrenCount: 2, cmu,
+      settlementEarnings: [{ key: 'conges', label: 'Indemnité compensatrice de congés', amount: 82_500 }],
+    })
+    expect(r.lines.find(l => l.code === '2200')).toBeUndefined()
+    expect(r.lines.find(l => l.code === '3400')).toBeUndefined()
+    expect(r.cmuSal + r.cmuPat).toBe(0)
+  })
+  it('mois de sortie (jours de contrat) : CMU due', () => {
+    const window = employmentWindow('2026-10', '2019-04-01', '2026-10-15')
+    const cmu = employeeCmu({ cmu_spouse_covered: false, cmu_children_covered: null }, window)
+    expect(cmu.suspended).toBe(false)
+    const r = calculatePayrollCI({ ...base, workedDays: 13, cmu })
+    expect(r.lines.find(l => l.code === '2200')?.amount).toBe(500)
+    expect(r.lines.find(l => l.code === '3400')?.amount).toBe(500)
   })
   it('sans solde : bulletin inchangé', () => {
     const a = calculatePayrollCI({ ...base, workedDays: 27 })
