@@ -42,6 +42,22 @@ export interface FamilyTaxReduction {
   montantsParParts: readonly { parts: number; montant: number }[]
 }
 
+/** Règle de prime d'ancienneté d'un pack (absente = pas de calcul automatique). */
+export interface SeniorityBonusRule {
+  /** Paliers ordonnés : à partir de `years` années révolues, taux `rate`. */
+  steps: ReadonlyArray<{ years: number; rate: number }>
+  /** Taux ajouté par année révolue au-delà du dernier palier. */
+  incrementPerYear: number
+  /** Taux maximal (null = aucun plafond trouvé dans le texte). */
+  maxRate: number | null
+  /** Assiette : minimum de la catégorie, ou salaire de base réel. */
+  base: 'category_minimum' | 'base_salary'
+  /** Texte légal (article, date). */
+  source: string
+  /** confirmed = texte vérifié ; to_confirm = source secondaire ou ambiguë. */
+  confidence: 'confirmed' | 'to_confirm'
+}
+
 export interface LegislationPack {
   /** Identifiant : ISO-3 pays + année (ex: CIV-2024, BFA-2024) */
   code: string
@@ -177,6 +193,9 @@ export interface LegislationPack {
    */
   primeTransportExoneree?: { defaut: number; parZone?: Readonly<Record<string, number>> }
 
+  /** Prime d'ancienneté légale / conventionnelle (absent = saisie manuelle) */
+  seniorityBonus?: SeniorityBonusRule
+
   /** Note pour les administrateurs */
   notes?: string
 }
@@ -304,6 +323,14 @@ export interface LeaveRules {
 // Toute modification doit être sourcée (texte légal) et répercutée dans les
 // fixtures golden, recalculées et vérifiées à la main (services/golden).
 export const CIV_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.25,
+    base: 'category_minimum',
+    source: 'CCI du 19/07/1977, art. 55 (Cour suprême, arrêt n° 351 du 15/06/2006)',
+    confidence: 'confirmed',
+  },
   code: 'CIV-2024',
   name: 'Côte d\'Ivoire — CNPS + ITS 2024',
   countryCode: 'CIV',
@@ -534,6 +561,14 @@ export const BEN_2024: LegislationPack = {
 // Togo — CNSS + IRPP 2024 (source : CNSS.tg, Code général des impôts Togo)
 // ATTENTION : barème IRPP Togo est ANNUEL — bracketScale: 'annual'
 export const TGO_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }, { years: 4, rate: 0.03 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.30,
+    base: 'category_minimum',
+    source: 'CCI du Togo, art. 36 (3e année ambiguë)',
+    confidence: 'to_confirm',
+  },
   code: 'TGO-2024',
   name: 'Togo — CNSS (avec AMU) + IRPP 2024',
   countryCode: 'TGO',
@@ -591,6 +626,14 @@ export const TGO_2024: LegislationPack = {
 
 // Burkina Faso — CNSS + IUTS 2024
 export const BFA_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.05 }],
+    incrementPerYear: 0.01,
+    maxRate: null,
+    base: 'base_salary',
+    source: 'Décret 2010-810 du 31/12/2010, art. 5 (source secondaire)',
+    confidence: 'to_confirm',
+  },
   code: 'BFA-2024',
   name: 'Burkina Faso — CNSS + IUTS 2024',
   countryCode: 'BFA',
@@ -643,6 +686,14 @@ export const BFA_2024: LegislationPack = {
 
 // Sénégal — IPRES + CSS + IR 2024
 export const SEN_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.25,
+    base: 'category_minimum',
+    source: 'CCNI, art. 45 (cité par des arrêts de la Cour suprême ; vérifier la CCNI de 2019)',
+    confidence: 'to_confirm',
+  },
   code: 'SEN-2024',
   name: 'Sénégal — IPRES + CSS + IR 2024',
   countryCode: 'SEN',
@@ -690,6 +741,14 @@ export const SEN_2024: LegislationPack = {
 
 // Mali — INPS + ITS 2024
 export const MLI_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.03 }, { years: 5, rate: 0.05 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.15,
+    base: 'category_minimum',
+    source: 'Code du travail, art. 97 (loi 2017-21)',
+    confidence: 'confirmed',
+  },
   code: 'MLI-2024',
   name: 'Mali — INPS + ITS 2024',
   countryCode: 'MLI',
@@ -730,6 +789,14 @@ export const MLI_2024: LegislationPack = {
 
 // Niger — CNSS + ITS 2024
 export const NER_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.03 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.24,
+    base: 'category_minimum',
+    source: 'CCI du 15/12/1972, art. 47a (maintien sous le Code de 2012 non confirmé)',
+    confidence: 'to_confirm',
+  },
   code: 'NER-2024',
   name: 'Niger — CNSS + ITS 2024',
   countryCode: 'NER',

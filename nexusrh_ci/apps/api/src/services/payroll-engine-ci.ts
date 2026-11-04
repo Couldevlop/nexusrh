@@ -379,6 +379,38 @@ const VARIABLE_EARNINGS: ReadonlyArray<{ code: string; label: string; varKey: st
   { code: '1600', label: 'Indemnité congés payés',           varKey: 'ICP'               },
 ]
 
+const pct = (rate: number): string => `${Math.round(rate * 100)}%`
+
+/**
+ * Libellés des lignes d'heures supplémentaires (1400 / 1500 / 1550), dérivés
+ * des majorations du pack. Le pack CIV produit les libellés historiques.
+ */
+export function overtimeLabels(pack: LegislationPack): { norm: string; nuit: string; ferie: string } {
+  const r = pack.leaveRules?.overtimeRates ?? {}
+  const norm = r.weekly !== undefined ? `Heures supp. +${pct(r.weekly)}` : 'Heures supp.'
+  let nuit: string
+  if (r.night !== undefined && r.sunday !== undefined) {
+    nuit = r.night === r.sunday
+      ? `Heures supp. +${pct(r.night)} (nuit/dim)`
+      : `Heures supp. nuit (+${pct(r.night)}) / dimanche (+${pct(r.sunday)})`
+  } else if (r.night !== undefined) {
+    nuit = `Heures supp. nuit (+${pct(r.night)})`
+  } else if (r.sunday !== undefined) {
+    nuit = `Heures supp. dimanche (+${pct(r.sunday)})`
+  } else {
+    nuit = 'Heures supp. (nuit/dim)'
+  }
+  const ferie = r.holiday !== undefined ? `Heures supp. +${pct(r.holiday)} (jour férié)` : 'Heures supp. (jour férié)'
+  return { norm, nuit, ferie }
+}
+
+function variableEarningLabel(e: { code: string; label: string }, l: { norm: string; nuit: string; ferie: string }): string {
+  if (e.code === '1400') return l.norm
+  if (e.code === '1500') return l.nuit
+  if (e.code === '1550') return l.ferie
+  return e.label
+}
+
 // Communes du District autonome d'Abidjan (plafond transport « Abidjan »).
 const COMMUNES_ABIDJAN = new Set([
   'abidjan', 'abobo', 'adjame', 'anyama', 'attecoube', 'bingerville', 'cocody', 'koumassi',
@@ -565,9 +597,10 @@ export function calculatePayrollCI(ctx: PayrollContext): PayrollResult {
     lines.push({ code: '1020', label: `Retenue retards (${att.lateMinutes} min)`, type: 'earning', base: baseSalary, amount: -retenueRetards })
   }
 
+  const otLabels = overtimeLabels(pack)
   for (const e of VARIABLE_EARNINGS) {
     const amount = variableElements[e.varKey] ?? 0
-    if (amount > 0) lines.push({ code: e.code, label: e.label, type: 'earning', base: brutProrata, amount })
+    if (amount > 0) lines.push({ code: e.code, label: variableEarningLabel(e, otLabels), type: 'earning', base: brutProrata, amount })
   }
 
   // Ligne indemnité absence (si applicable)
