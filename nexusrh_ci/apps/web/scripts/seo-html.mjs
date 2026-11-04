@@ -21,8 +21,8 @@ function replaceOnce(html, pattern, replacement, label) {
 }
 
 const IMAGE_ALT = {
-  fr: "NexusRH CI — logiciel de paie et SIRH pour la Côte d'Ivoire",
-  en: 'NexusRH CI — HRIS and payroll software for West Africa',
+  fr: "NexusRH — logiciel de paie et SIRH pour la Côte d'Ivoire",
+  en: 'NexusRH — HRIS and payroll software for West Africa',
 }
 
 /**
@@ -51,7 +51,7 @@ export function buildPageHtml(template, page, bodyHtml, { siteUrl, preload = [] 
     ...(page.alternates ?? []).map((a) =>
       `<link rel="alternate" hreflang="${escapeAttr(a.hreflang)}" href="${escapeAttr(`${siteUrl}${a.path}`)}" />`),
     `<meta property="og:type" content="${page.ogType === 'article' ? 'article' : 'website'}" />`,
-    '<meta property="og:site_name" content="NexusRH CI" />',
+    '<meta property="og:site_name" content="NexusRH" />',
     `<meta property="og:locale" content="${lang === 'en' ? 'en_GB' : 'fr_CI'}" />`,
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
@@ -73,9 +73,28 @@ export function buildPageHtml(template, page, bodyHtml, { siteUrl, preload = [] 
 }
 
 /**
- * robots.txt : seules la vitrine, les pages de contenu, les pages légales et
- * leurs ressources sont explorables. Chaque page de contenu est autorisée par
- * son chemin exact (`$`) : le reste de l'application reste fermé.
+ * Robots explicitement nommés (moteurs de recherche et robots IA). Ils suivent
+ * les mêmes règles que les autres : vitrine, pages de contenu, pages légales et
+ * llms.txt explorables ; application fermée.
+ */
+export const NAMED_CRAWLERS = [
+  'Googlebot', 'Bingbot',
+  'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
+  'ClaudeBot', 'Claude-SearchBot', 'Claude-User',
+  'PerplexityBot', 'Google-Extended', 'Applebot-Extended',
+]
+
+/** Zones applicatives : interdites explicitement (en plus du `Disallow: /` final). */
+export const APP_DISALLOW = [
+  '/dashboard', '/platform', '/api/', '/mon-espace', '/login', '/mfa-setup', '/careers/',
+]
+
+/**
+ * robots.txt : seules la vitrine, les pages de contenu, les pages légales,
+ * llms.txt et leurs ressources sont explorables. Chaque page de contenu est
+ * autorisée par son chemin exact (`$`) : le reste de l'application reste fermé.
+ * Un seul groupe (RFC 9309 : plusieurs User-agent partagent les règles) pour
+ * les robots nommés et `*` : impossible que leurs règles divergent.
  * @param {string} siteUrl
  * @param {{path:string}[]} [pages]
  */
@@ -84,12 +103,16 @@ export function buildRobotsTxt(siteUrl, pages = []) {
     .map((p) => p.path)
     .filter((p) => p !== '/' && !p.startsWith('/legal/'))
   return [
-    '# NexusRH CI — seules les pages publiques sont explorables.',
+    '# NexusRH — seules les pages publiques sont explorables.',
     "# L'application (espaces RH, paie, offres des tenants…) reste hors index.",
+    '# Moteurs de recherche et robots IA nommés : mêmes règles que les autres.',
+    ...NAMED_CRAWLERS.map((ua) => `User-agent: ${ua}`),
     'User-agent: *',
     'Allow: /$',
     'Allow: /legal/',
     ...contentPaths.map((p) => `Allow: ${p}$`),
+    'Allow: /llms.txt$',
+    'Allow: /llms-full.txt$',
     'Allow: /assets/',
     'Allow: /openlab.png',
     'Allow: /logo.svg',
@@ -99,6 +122,7 @@ export function buildRobotsTxt(siteUrl, pages = []) {
     // Le sitemap doit rester lisible : sous `Disallow: /`, Search Console
     // refuse de le récupérer malgré la directive Sitemap.
     'Allow: /sitemap.xml$',
+    ...APP_DISALLOW.map((p) => `Disallow: ${p}`),
     'Disallow: /',
     '',
     `Sitemap: ${siteUrl}/sitemap.xml`,

@@ -19,15 +19,17 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import DemoForm from './DemoForm'
+import {
+  CATALOG_MODULE_COUNT, DEPLOY_POINTS, DEPLOY_ROWS, HOME_ANCHORS, HOME_DOMAINS, HOME_FAQ, PHONES, PUBLISHER,
+} from './home-content'
 // La vidéo passe par le build : son URL porte une empreinte de contenu, donc
 // une nouvelle version change d'adresse et AUCUN cache ne peut servir
 // l'ancienne. C'est ce qui permet le cache long côté nginx.
 import videoUrl from '@/assets/nexusrh.mp4'
 
-const EMAIL    = 'waopron@openlabconsulting.com'
-const PHONE_CI = '+225 07 09 32 05 94'
-const PHONE_FR = '+33 6 19 24 53 29'
-const WHATSAPP = 'https://wa.me/2250709320594'
+const EMAIL    = PUBLISHER.demoEmail
+const WHATSAPP = PUBLISHER.whatsapp
+const WHATSAPP_NUM = PUBLISHER.whatsappDisplay
 
 /** Révèle un bloc à l'entrée dans le champ de vision. Dégradé proprement là
  *  où l'API n'existe pas (tests, très vieux navigateurs) : tout est visible. */
@@ -125,9 +127,14 @@ export default function HomePage() {
 
   const audience   = ['sme', 'group', 'public', 'agency'] as const
   const compliance = ['cnps', 'its', 'labour', 'declarations', 'ohada', 'currency'] as const
-  const families   = ['payroll', 'people', 'time', 'talent', 'hiring', 'steering'] as const
   const ai         = ['assistant', 'screening', 'interview', 'control'] as const
   const security   = ['isolation', 'rbac', 'mfa', 'crypto', 'audit', 'hosting', 'sso', 'signature'] as const
+  const legalDocs  = [
+    { slug: 'mentions-legales', label: t('footerNav.legalNotice') },
+    { slug: 'confidentialite',  label: t('footerNav.privacy') },
+    { slug: 'conditions',       label: t('footerNav.terms') },
+    { slug: 'cookies',          label: t('footerNav.cookies') },
+  ]
 
   const payslipRows = [
     { code: '2000', label: t('proof.rows.retirement'), note: t('proof.rows.retirementNote'), base: '1 647 315', rate: '6,3 %', amount: '103 781' },
@@ -136,7 +143,7 @@ export default function HomePage() {
     { code: '2100', label: t('proof.rows.its'),        note: null,                            base: '2 000 000', rate: '0→24 %', amount: '432 000' },
   ]
 
-  const marquee = families.map(k => t(`modules.${k}.items`)).join(' · ')
+  const marquee = HOME_DOMAINS.flatMap(d => d.modules.map(m => t(`domains.${d.key}.modules.${m.key}.title`))).join(' · ')
 
   return (
     <div className="min-h-screen bg-white text-[#0F1214] antialiased">
@@ -167,13 +174,15 @@ export default function HomePage() {
           <a href="#contenu" className="flex items-center gap-3 sm:gap-4">
             <img src="/openlab.png" alt="OpenLab Consulting" className="h-9 w-auto sm:h-11" />
             <span className="h-8 w-px bg-[#E4E8EB]" />
-            <span className="text-[15px] font-bold tracking-tight sm:text-[17px]">NexusRH <span className="text-[#F04E10]">CI</span></span>
+            <span className="text-[15px] font-bold tracking-tight sm:text-[17px]">NexusRH</span>
           </a>
           <nav className="hidden items-center gap-7 text-sm font-medium text-[#5A6672] lg:flex">
             <a href="#produit" className="transition-colors hover:text-[#0F1214]">{t('nav.product')}</a>
             <a href="#conformite" className="transition-colors hover:text-[#0F1214]">{t('nav.compliance')}</a>
             <a href="#modules" className="transition-colors hover:text-[#0F1214]">{t('nav.modules')}</a>
+            <a href={`#${HOME_ANCHORS.deploy}`} className="transition-colors hover:text-[#0F1214]">{t('nav.deploy')}</a>
             <a href="#securite" className="transition-colors hover:text-[#0F1214]">{t('nav.security')}</a>
+            <a href={`#${HOME_ANCHORS.faq}`} className="transition-colors hover:text-[#0F1214]">{t('nav.faq')}</a>
           </nav>
           <div className="flex items-center gap-3">
             <LanguageSwitcher />
@@ -199,6 +208,7 @@ export default function HomePage() {
                 {t('hero.title')}
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5A6672]">{t('hero.lead')}</p>
+              <p className="mt-4 max-w-xl border-l-4 border-[#F04E10] pl-4 text-sm font-semibold leading-relaxed text-[#0F1214]">{t('hero.reference')}</p>
               <div className="mt-9 flex flex-wrap gap-3">
                 <a href="#demo" className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08] hover:shadow-[0_14px_30px_-12px_#F04E10]">
                   {t('hero.ctaDemo')}
@@ -217,7 +227,7 @@ export default function HomePage() {
               <figure id="produit" className="scroll-mt-24 overflow-hidden rounded-xl border-2 border-[#0F1214] bg-white shadow-[10px_10px_0_0_#F04E10]">
                 <figcaption className="flex items-center justify-between border-b border-[#E4E8EB] px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em]">
                   <span className="font-bold text-[#F04E10]">{t('video.label')}</span>
-                  <span className="text-[#8A97A3]">NEXUSRH-CI</span>
+                  <span className="text-[#8A97A3]">NEXUSRH</span>
                 </figcaption>
                 <video controls preload="metadata" playsInline className="block aspect-video w-full bg-black" title={t('video.docTitle')}>
                   <source src={videoUrl} type="video/mp4" />
@@ -234,7 +244,7 @@ export default function HomePage() {
               { v: <Counter to={2} />,                        l: t('compliance.cnps.title'), s: t('proof.title') },
               { v: <><Counter to={6.3} decimals={1} /> %</>,  l: 'CNPS',                     s: t('proof.rows.retirement') },
               { v: <Counter to={1647315} />,                  l: 'FCFA',                     s: t('proof.rows.retirementNote') },
-              { v: <><Counter to={22} />+</>,                 l: t('modules.eyebrow'),       s: t('modules.title') },
+              { v: <Counter to={CATALOG_MODULE_COUNT} />,     l: t('stats.modulesLabel'),    s: t('stats.modulesText') },
             ].map((k, i) => (
               <div key={i} className="bg-white px-6 py-7">
                 <p className="font-mono text-2xl font-bold text-[#0891B2] sm:text-3xl">{k.v}</p>
@@ -315,21 +325,84 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ── Modules ─────────────────────────────────────────────────── */}
+        {/* ── Fonctionnalités : six domaines ─────────────────────────── */}
         <section className="mx-auto max-w-6xl px-6 py-20">
-          <SectionHead id="modules" eyebrow={t('modules.eyebrow')} title={t('modules.title')} lead={t('modules.lead')} />
-          <div className="border-t-2 border-[#0F1214]">
-            {families.map((k, i) => (
-              <Reveal key={k} delay={i * 50}>
-                <div className="grid gap-2 border-b border-[#E4E8EB] py-6 transition-colors hover:bg-[#FAFBFC] sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-8">
-                  <h3 className="flex items-baseline gap-3 text-[15px] font-bold tracking-tight">
-                    <span className="font-mono text-[11px] text-[#F04E10]">{String(i + 1).padStart(2, '0')}</span>
-                    {t(`modules.${k}.title`)}
-                  </h3>
-                  <p className="text-sm leading-relaxed text-[#5A6672]">{t(`modules.${k}.items`)}</p>
-                </div>
-              </Reveal>
+          <SectionHead id={HOME_ANCHORS.modules} eyebrow={t('modules.eyebrow')} title={t('modules.title')} lead={t('modules.lead')} />
+          <div className="space-y-12">
+            {HOME_DOMAINS.map((d, i) => (
+              <div key={d.key} data-domain={d.key} className="border-t-2 border-[#0F1214] pt-6">
+                <h3 className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight">
+                  <span className="font-mono text-[11px] text-[#F04E10]">{String(i + 1).padStart(2, '0')}</span>
+                  {t(`domains.${d.key}.title`)}
+                </h3>
+                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {d.modules.map((m, j) => (
+                    <li key={m.key} data-module={m.key}>
+                      <Reveal delay={j * 40} className="h-full">
+                        <div className="h-full rounded-xl border border-[#E4E8EB] bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:border-[#F04E10]">
+                          <h4 className="text-[15px] font-bold tracking-tight">{t(`domains.${d.key}.modules.${m.key}.title`)}</h4>
+                          <p className="mt-2 text-sm leading-relaxed text-[#5A6672]">{t(`domains.${d.key}.modules.${m.key}.text`)}</p>
+                        </div>
+                      </Reveal>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
+          </div>
+        </section>
+
+        {/* ── Deux modes de déploiement ───────────────────────────────── */}
+        <section className="border-y border-[#E4E8EB] bg-[#F7F8F9]">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <SectionHead id={HOME_ANCHORS.deploy} eyebrow={t('deploy.eyebrow')} title={t('deploy.title')} lead={t('deploy.lead')} />
+            <div className="grid gap-4 md:grid-cols-2">
+              {(['saas', 'onprem'] as const).map(mode => (
+                <div key={mode} data-deploy={mode} className="rounded-xl border-2 border-[#0F1214] bg-white p-6">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#F04E10]">{t(`deploy.${mode}.tag`)}</p>
+                  <h3 className="mt-2 text-2xl font-bold tracking-tight">{t(`deploy.${mode}.title`)}</h3>
+                  <ul className="mt-4 space-y-2.5">
+                    {DEPLOY_POINTS[mode].map(p => (
+                      <li key={p} className="flex gap-3 text-sm leading-relaxed text-[#3F4B56]">
+                        <span aria-hidden className="mt-[0.55em] h-1.5 w-1.5 shrink-0 bg-[#F04E10]" />
+                        <span>{t(`deploy.${mode}.${p}`)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 overflow-x-auto rounded-xl border border-[#E4E8EB] bg-white">
+              <table className="w-full min-w-[36rem] text-sm">
+                <caption className="border-b border-[#E4E8EB] px-5 py-3 text-left font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[#5A6672]">
+                  {t('deploy.table.caption')}
+                </caption>
+                <thead>
+                  <tr className="border-b border-[#E4E8EB] text-left">
+                    <th scope="col" className="px-5 py-3 font-semibold">{t('deploy.table.criterion')}</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">{t('deploy.table.saas')}</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">{t('deploy.table.onprem')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {DEPLOY_ROWS.map(r => (
+                    <tr key={r} className="border-b border-[#EDF0F2] align-top last:border-0">
+                      <th scope="row" className="px-5 py-3 text-left font-semibold">{t(`deploy.rows.${r}.label`)}</th>
+                      <td className="px-5 py-3 text-[#3F4B56]">{t(`deploy.rows.${r}.saas`)}</td>
+                      <td className="px-5 py-3 text-[#3F4B56]">{t(`deploy.rows.${r}.onprem`)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-8 flex flex-wrap items-center gap-6">
+              <a href={`#${HOME_ANCHORS.demo}`} className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08]">
+                {t('deploy.cta')}
+              </a>
+              <Link to="/sirh-saas-ou-on-premise" className="text-sm font-semibold text-[#C43C08] underline-offset-4 hover:underline">
+                {t('deploy.more')} <span aria-hidden>→</span>
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -371,6 +444,80 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ── Confiance : éditeur, données, documents publics ─────────── */}
+        <section className="mx-auto max-w-6xl px-6 py-20">
+          <SectionHead id={HOME_ANCHORS.trust} eyebrow={t('trust.eyebrow')} title={t('trust.title')} lead={t('trust.lead')} />
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-xl border-2 border-[#0F1214] p-6 lg:row-span-2">
+              <h3 className="text-[15px] font-bold tracking-tight">{t('trust.publisher.title')}</h3>
+              <p className="mt-1 text-lg font-bold">{t('trust.publisher.name')}</p>
+              <p className="mt-2 text-sm leading-relaxed text-[#5A6672]">{t('trust.publisher.text')}</p>
+              <dl className="mt-5 space-y-3 text-sm">
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.address')}</dt>
+                  <dd className="text-[#3F4B56]">{t('contact.address')}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.phones')}</dt>
+                  <dd className="nx-fig text-[#3F4B56]">
+                    {PHONES.map((ph, i) => (
+                      <span key={ph.e164}>
+                        {i > 0 && ' · '}
+                        <a href={`tel:${ph.e164}`} className="hover:text-[#F04E10]">{ph.display}</a>
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.emails')}</dt>
+                  <dd className="break-all text-[#3F4B56]">
+                    <a href={`mailto:${PUBLISHER.infoEmail}`} className="hover:text-[#F04E10]">{PUBLISHER.infoEmail}</a>
+                    {' · '}
+                    <a href={`mailto:${PUBLISHER.supportEmail}`} className="hover:text-[#F04E10]">{PUBLISHER.supportEmail}</a>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.whatsapp')}</dt>
+                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[#3F4B56] hover:text-[#F04E10]">{WHATSAPP_NUM}</a></dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.hours')}</dt>
+                  <dd className="text-[#3F4B56]">{t('trust.supportHours')}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.web')}</dt>
+                  <dd><a href={PUBLISHER.url} target="_blank" rel="noreferrer noopener" className="text-[#3F4B56] hover:text-[#F04E10]">www.openlabconsulting.com</a></dd>
+                </div>
+              </dl>
+            </div>
+            <Card title={t('trust.data.title')} text={t('trust.data.text')} />
+            <Card title={t('trust.compliance.title')} text={t('trust.compliance.text')} i={1} />
+            <div className="rounded-xl border border-[#E4E8EB] bg-white p-6 lg:col-span-2">
+              <h3 className="text-[15px] font-bold tracking-tight">{t('trust.legalTitle')}</h3>
+              <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold">
+                {legalDocs.map(l => (
+                  <li key={l.slug}><Link to={`/legal/${l.slug}`} className="text-[#C43C08] underline-offset-4 hover:underline">{l.label}</Link></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* ── FAQ visible (publiée aussi en FAQPage dans le JSON-LD) ──── */}
+        <section className="border-y border-[#E4E8EB] bg-[#F7F8F9]">
+          <div className="mx-auto max-w-4xl px-6 py-20">
+            <SectionHead id={HOME_ANCHORS.faq} eyebrow={t('faq.eyebrow')} title={t('faq.title')} />
+            <div className="divide-y divide-[#E4E8EB] border-y border-[#E4E8EB] bg-white">
+              {HOME_FAQ.map(k => (
+                <div key={k} data-faq={k} className="px-5 py-5">
+                  <h3 className="text-[15px] font-bold">{t(`faq.items.${k}.q`)}</h3>
+                  <p className="mt-2 text-[15px] leading-relaxed text-[#3F4B56]">{t(`faq.items.${k}.a`)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── Demande de démo ─────────────────────────────────────────── */}
         <section id="demo" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-20">
           <div className="grid gap-12 lg:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)]">
@@ -383,11 +530,13 @@ export default function HomePage() {
                 </div>
                 <div>
                   <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.whatsappLabel')}</dt>
-                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{PHONE_CI}</a></dd>
+                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{WHATSAPP_NUM}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.phoneFrLabel')}</dt>
-                  <dd><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{PHONE_FR}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.phones')}</dt>
+                  {PHONES.map(ph => (
+                    <dd key={ph.e164}><a href={`tel:${ph.e164}`} className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{ph.display}</a></dd>
+                  ))}
                 </div>
                 <div>
                   <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.addressLabel')}</dt>
@@ -411,7 +560,7 @@ export default function HomePage() {
             <div>
               <div className="flex items-center gap-2.5">
                 <img src="/logo.svg" alt="" className="h-7 w-7" />
-                <span className="text-[15px] font-bold tracking-tight">NexusRH <span className="text-[#F04E10]">CI</span></span>
+                <span className="text-[15px] font-bold tracking-tight">NexusRH</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#5A6672]">{t('footer.tagline')}</p>
               <img src="/openlab.png" alt="OpenLab Consulting" className="mt-6 h-10 w-auto" />
@@ -424,6 +573,9 @@ export default function HomePage() {
                 <li><a href="#modules" className="transition-colors hover:text-[#F04E10]">{t('footerNav.modulesLink')}</a></li>
                 <li><a href="#conformite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.complianceLink')}</a></li>
                 <li><a href="#securite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.securityLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.deploy}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.deployLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.trust}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.trustLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.faq}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.faqLink')}</a></li>
                 <li><Link to="/login" className="transition-colors hover:text-[#F04E10]">{t('footerNav.signIn')}</Link></li>
               </ul>
             </nav>
@@ -435,6 +587,7 @@ export default function HomePage() {
                 <li><Link to="/gestion-conges-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.leaveCi')}</Link></li>
                 <li><Link to="/paiement-salaires-mobile-money" className="transition-colors hover:text-[#F04E10]">{t('footerNav.mobileMoney')}</Link></li>
                 <li><Link to="/sirh-afrique-ouest" className="transition-colors hover:text-[#F04E10]">{t('footerNav.westAfrica')}</Link></li>
+                <li><Link to="/sirh-saas-ou-on-premise" className="transition-colors hover:text-[#F04E10]">{t('footerNav.deployLink')}</Link></li>
                 <li><Link to="/guides/calcul-its-2024-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideIts')}</Link></li>
                 <li><Link to="/guides/cotisations-cnps-2024" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideCnps')}</Link></li>
               </ul>
@@ -454,8 +607,10 @@ export default function HomePage() {
               <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.contact')}</p>
               <ul className="space-y-2.5 text-sm text-[#5A6672]">
                 <li><a href={`mailto:${EMAIL}`} className="break-all transition-colors hover:text-[#F04E10]">{EMAIL}</a></li>
-                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-[#F04E10]">{PHONE_CI}</a></li>
-                <li><a href={`tel:${PHONE_FR.replace(/\s/g, '')}`} className="nx-fig transition-colors hover:text-[#F04E10]">{PHONE_FR}</a></li>
+                {PHONES.map(ph => (
+                  <li key={ph.e164}><a href={`tel:${ph.e164}`} className="nx-fig transition-colors hover:text-[#F04E10]">{ph.display}</a></li>
+                ))}
+                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-[#F04E10]">WhatsApp {WHATSAPP_NUM}</a></li>
                 <li className="pt-1 text-xs leading-relaxed text-[#8A97A3]">{t('contact.address')}</li>
               </ul>
             </div>

@@ -9,7 +9,7 @@
  */
 import type { SeoPageContent } from './types'
 
-const UPDATED = '2026-10-29'
+const UPDATED = '2026-11-04'
 
 export interface CountryFacts {
   /** Code du pack législatif (clé de LEGISLATION_PACKS). */
@@ -46,8 +46,7 @@ export const COUNTRY_FACTS = {
 export type CountryKey = keyof typeof COUNTRY_FACTS
 
 /** Pays UEMOA (zone franc, XOF) couverts. */
-const UEMOA: CountryKey[] = ['CIV', 'SEN', 'BFA', 'BEN', 'TGO', 'MLI', 'NER', 'GNB']
-const ANGLO: CountryKey[] = ['GHA', 'NGA']
+export const UEMOA: CountryKey[] = ['CIV', 'SEN', 'BFA', 'BEN', 'TGO', 'MLI', 'NER', 'GNB']
 /** Pays ayant une page dédiée (lien depuis le tableau). */
 const COUNTRY_PAGE: Partial<Record<CountryKey, string>> = {
   CIV: '/logiciel-paie-cote-divoire',
@@ -91,10 +90,10 @@ export const WEST_AFRICA: SeoPageContent = {
   path: '/sirh-afrique-ouest',
   lang: 'fr',
   kind: 'landing',
-  title: "SIRH et paie multi-pays en Afrique de l'Ouest (UEMOA) | NexusRH",
+  title: "SIRH et paie multi-filiales en Afrique de l'Ouest | NexusRH",
   description:
-    "Un seul SIRH pour vos filiales en Côte d'Ivoire, au Sénégal, au Burkina Faso, au Bénin, au Togo, au Mali, " +
-    'au Niger, au Ghana et au Nigeria.',
+    "Un seul SIRH pour vos filiales : paie en Côte d'Ivoire et dans la zone UEMOA, extensible aux autres pays " +
+    'de la CEDEAO et de la CEMAC.',
   h1: "SIRH et paie multi-pays pour l'Afrique de l'Ouest",
   lead:
     "Un groupe qui s'étend dans la zone UEMOA garde un seul système RH : chaque filiale applique la législation de son " +
@@ -116,27 +115,13 @@ export const WEST_AFRICA: SeoPageContent = {
       ],
     },
     {
-      h2: 'Ghana et Nigeria',
-      blocks: [
-        { type: 'p', text:
-          "Pour les groupes présents dans la CEDEAO anglophone, deux packs supplémentaires gèrent la paie en cedi (GHS) " +
-          "et en naira (NGN)." },
-        { type: 'table', caption: 'Packs législatifs 2024 — Ghana et Nigeria',
-          head: ['Pays', 'Caisse sociale', 'Impôt sur salaire', 'Salaire minimum mensuel', 'Retraite salarié / employeur'],
-          rows: countryRows(ANGLO, 'fr') },
-        { type: 'p', text:
-          "Ghana : les allègements fiscaux individuels et le plafond SSNIT ne sont pas encore modélisés. Nigeria : la " +
-          "Consolidated Relief Allowance et le barème NTA 2025 applicable en 2026 restent à intégrer." },
-      ],
-    },
-    {
       h2: 'Comment fonctionne un groupe multi-pays',
       blocks: [
         { type: 'ul', items: [
           "Chaque société du groupe est une entité avec son pays : le pack législatif du pays s'installe automatiquement.",
           'Devise, SMIG, préavis et cotisations suivent le pays de l’entité ; les montants restent des entiers dans la devise locale.',
-          'Les responsables de site ne voient que leur périmètre ; la direction du groupe consolide effectifs et masse salariale.',
-          "Les packs couvrent aussi six pays de la CEMAC (Cameroun, Gabon, Congo, Tchad, Centrafrique, Guinée équatoriale), en FCFA CEMAC.",
+          'La direction du groupe consolide effectifs et masse salariale.',
+          "Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC.",
         ] },
       ],
     },
@@ -152,10 +137,10 @@ export const WEST_AFRICA_EN: SeoPageContent = {
   path: '/en/hris-payroll-west-africa',
   lang: 'en',
   kind: 'landing',
-  title: 'HRIS and multi-country payroll for West Africa | NexusRH CI',
+  title: 'HRIS and multi-country payroll for West Africa | NexusRH',
   description:
-    "One HRIS for subsidiaries in Côte d'Ivoire, Senegal, Burkina Faso, Benin, Togo, Mali, Niger, Ghana and " +
-    'Nigeria, with country payroll rules built in.',
+    "One HRIS for all your subsidiaries: payroll in Côte d'Ivoire and the WAEMU zone, extensible to other " +
+    'ECOWAS and CEMAC countries.',
   h1: 'HRIS and multi-country payroll for West Africa',
   lead:
     'A group expanding across the WAEMU zone keeps a single HR system: each subsidiary applies its own country’s ' +
@@ -174,26 +159,13 @@ export const WEST_AFRICA_EN: SeoPageContent = {
       ],
     },
     {
-      h2: 'Ghana and Nigeria',
-      blocks: [
-        { type: 'p', text:
-          'For groups operating in English-speaking ECOWAS countries, two additional packs run payroll in cedi (GHS) and naira (NGN).' },
-        { type: 'table', caption: '2024 country packs — Ghana and Nigeria',
-          head: ['Country', 'Social security fund', 'Payroll tax', 'Monthly minimum wage', 'Pension employee / employer'],
-          rows: countryRows(ANGLO, 'en') },
-        { type: 'p', text:
-          'Ghana: individual tax reliefs and the SSNIT insurable earnings cap are not modelled yet. Nigeria: the ' +
-          'Consolidated Relief Allowance and the NTA 2025 brackets that apply from 2026 are still to be added.' },
-      ],
-    },
-    {
       h2: 'How a multi-country group works',
       blocks: [
         { type: 'ul', items: [
           'Each company in the group is an entity with its own country; the matching country pack is installed automatically.',
           'Currency, minimum wage, notice periods and contributions follow the entity’s country; amounts are whole numbers in local currency.',
-          'Site managers only see their own scope; group management consolidates headcount and payroll costs.',
-          'Packs also cover six CEMAC countries (Cameroon, Gabon, Congo, Chad, Central African Republic, Equatorial Guinea).',
+          'Group management consolidates headcount and payroll costs.',
+          "Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries.",
           'The application is available in French and English.',
         ] },
       ],
@@ -203,7 +175,7 @@ export const WEST_AFRICA_EN: SeoPageContent = {
       blocks: [{ type: 'p', text:
         "Côte d'Ivoire is the reference pack: every rule is locked by hand-calculated payroll test cases. The other packs use " +
         'published rates and brackets (tax codes, national funds, CLEISS); some country-specific rules are not modelled yet ' +
-        'and are listed above. Every set-up is reviewed with your local payroll adviser before the first payroll run.' }],
+        'and are listed on each country page. Every set-up is reviewed with your local payroll adviser before the first payroll run.' }],
     },
   ],
   related: [],
@@ -213,9 +185,9 @@ export const SENEGAL: SeoPageContent = {
   path: '/logiciel-paie-senegal',
   lang: 'fr',
   kind: 'landing',
-  title: 'Logiciel de paie Sénégal : IPRES, CSS et IR | NexusRH CI',
+  title: 'Logiciel de paie Sénégal : IPRES, CSS et IR | NexusRH',
   description:
-    'Paie sénégalaise dans NexusRH CI : cotisations IPRES et CSS avec leurs plafonds, IR, semaine de 40 heures, ' +
+    'Paie sénégalaise dans NexusRH : cotisations IPRES et CSS avec leurs plafonds, IR, semaine de 40 heures, ' +
     'pour les groupes présents au Sénégal.',
   h1: 'Logiciel de paie pour le Sénégal',
   lead:
@@ -268,7 +240,7 @@ export const BURKINA: SeoPageContent = {
   path: '/logiciel-paie-burkina-faso',
   lang: 'fr',
   kind: 'landing',
-  title: 'Logiciel de paie Burkina Faso : IUTS et CNSS | NexusRH CI',
+  title: 'Logiciel de paie Burkina Faso : IUTS et CNSS | NexusRH',
   description:
     'Paie burkinabè : IUTS selon le CGI (barème 0 à 25 %, abattement 25 %, réduction pour charges de famille), ' +
     'cotisations CNSS plafonnées à 800 000 FCFA.',
@@ -324,7 +296,7 @@ export const BENIN: SeoPageContent = {
   path: '/logiciel-paie-benin',
   lang: 'fr',
   kind: 'landing',
-  title: 'Logiciel de paie Bénin : ITS et CNSS | NexusRH CI',
+  title: 'Logiciel de paie pour le Bénin : ITS et CNSS | NexusRH',
   description:
     'Paie béninoise : ITS au barème mensuel de 0 à 30 %, cotisations CNSS sans plafond, prestations familiales ' +
     'à 9 %, dans le même SIRH que le reste du groupe.',

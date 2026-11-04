@@ -1,10 +1,12 @@
 import type { SeoPageContent } from './types'
 import { SEO_PATHS, type SeoPath } from './paths'
 import { GUIDE_CNPS, GUIDE_ITS, LEAVE_CI, MOBILE_MONEY, PAYROLL_CI } from './content-ci'
+import { DEPLOY_EN, DEPLOY_FR } from './content-deployment'
 import { BENIN, BURKINA, SENEGAL, WEST_AFRICA, WEST_AFRICA_EN } from './content-west-africa'
 
 const ALL: SeoPageContent[] = [
   PAYROLL_CI, LEAVE_CI, MOBILE_MONEY, WEST_AFRICA, SENEGAL, BURKINA, BENIN, GUIDE_ITS, GUIDE_CNPS, WEST_AFRICA_EN,
+  DEPLOY_FR, DEPLOY_EN,
 ]
 
 /** Pages de contenu, dans l'ordre de SEO_PATHS. */

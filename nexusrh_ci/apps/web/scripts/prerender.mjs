@@ -1,6 +1,7 @@
 /**
  * Étape de build : écrit dans dist/ les pages publiques pré-générées
- * (home.html, pages de contenu, legal/*.html), robots.txt et sitemap.xml.
+ * (home.html, pages de contenu, legal/*.html), robots.txt, sitemap.xml,
+ * llms.txt et llms-full.txt.
  * Prérequis : `vite build` (client → dist/) puis
  * `vite build --ssr src/prerender/entry.tsx --outDir dist-ssr`.
  * nginx.conf sert home.html sur `/`, <chemin>.html sur chaque page de contenu
@@ -14,7 +15,7 @@ import { buildPageHtml, buildRobotsTxt, buildSitemap } from './seo-html.mjs'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
 
-const { getPages, renderPage, SITE_URL } = await import(pathToFileURL(join(root, 'dist-ssr', 'entry.js')).href)
+const { getPages, renderPage, buildLlmsTxt, buildLlmsFullTxt, SITE_URL } = await import(pathToFileURL(join(root, 'dist-ssr', 'entry.js')).href)
 
 const template = readFileSync(join(dist, 'index.html'), 'utf8')
 const assets = readdirSync(join(dist, 'assets'))
@@ -45,3 +46,8 @@ for (const page of pages) {
 writeFileSync(join(dist, 'robots.txt'), buildRobotsTxt(SITE_URL, pages))
 writeFileSync(join(dist, 'sitemap.xml'), buildSitemap(SITE_URL, pages, new Date().toISOString().slice(0, 10)))
 console.log(`prerender: robots.txt + sitemap.xml (${pages.length} URL)`)
+
+// Robots IA (llmstxt.org) : même contenu que les pages, assemblé par entry.tsx.
+writeFileSync(join(dist, 'llms.txt'), buildLlmsTxt())
+writeFileSync(join(dist, 'llms-full.txt'), buildLlmsFullTxt())
+console.log('prerender: llms.txt + llms-full.txt')

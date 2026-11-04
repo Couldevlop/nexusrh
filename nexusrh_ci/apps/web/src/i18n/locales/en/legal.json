@@ -6,10 +6,10 @@
   "docs": {
     "notice": {
       "title": "Legal notice",
-      "lead": "Information about the publisher of NexusRH CI and the conditions under which it is published.",
+      "lead": "Information about the publisher of NexusRH and the conditions under which it is published.",
       "s1": {
         "h": "Publisher",
-        "p": "NexusRH CI is published by OpenLab Consulting, a consulting and software engineering company based in Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact: waopron@openlabconsulting.com, +225 07 09 32 05 94."
+        "p": "NexusRH is published by OpenLab Consulting, a consulting and software engineering company based in Abidjan, Côte d'Ivoire — Cocody, Rivièra Faya Lauriers 8. Contact: waopron@openlabconsulting.com, +225 07 09 33 42 38, +225 07 49 43 92 03, +33 6 19 24 53 29."
       },
       "s2": {
         "h": "Publication director",
@@ -17,11 +17,11 @@
       },
       "s3": {
         "h": "Hosting",
-        "p": "The service is hosted on infrastructure under the publisher's control, with all traffic encrypted over HTTPS. Clients who require it — public bodies, banks, sensitive operators — can have their files hosted in Côte d'Ivoire, as provided for in their contract."
+        "p": "The service is offered in two modes. As SaaS, it is hosted on infrastructure under the publisher's control, with all traffic encrypted over HTTPS. On-premise, it is installed on the client's own servers or in the datacenter of its choice: the data stays within its infrastructure, in the country of its choice."
       },
       "s4": {
         "h": "Intellectual property",
-        "p": "The NexusRH CI software, its documentation, trademarks, interfaces and graphical elements are the property of OpenLab Consulting. Any reproduction, extraction, decompilation or reuse, in whole or in part, without written permission is prohibited. Data entered by a client remains the property of that client."
+        "p": "The NexusRH software, its documentation, trademarks, interfaces and graphical elements are the property of OpenLab Consulting. Any reproduction, extraction, decompilation or reuse, in whole or in part, without written permission is prohibited. Data entered by a client remains the property of that client."
       },
       "s5": {
         "h": "Liability",
@@ -30,7 +30,9 @@
       "s6": {
         "h": "Governing law",
         "p": "This notice is governed by Ivorian law. In the event of a dispute, and failing an amicable settlement, jurisdiction lies with the competent courts of Abidjan."
-      }
+      },
+      "seoTitle": "Legal notice for NexusRH | OpenLab Consulting, Abidjan",
+      "seoDescription": "Legal notice for NexusRH: publisher OpenLab Consulting, Cocody, Abidjan, publication director, hosting and intellectual property."
     },
     "privacy": {
       "title": "Privacy policy",
@@ -62,14 +64,16 @@
       "s7": {
         "h": "Complaints",
         "p": "You may lodge a complaint with the Telecommunications Regulatory Authority of Côte d'Ivoire (ARTCI), the personal data protection authority, or with the competent authority in your country of residence."
-      }
+      },
+      "seoTitle": "Privacy policy and personal data handling | NexusRH",
+      "seoDescription": "How NexusRH and OpenLab Consulting handle personal data of visitors and users: purposes, retention and your rights under Ivorian Law No. 2013-450."
     },
     "terms": {
       "title": "Terms of use",
-      "lead": "Rules for accessing and using NexusRH CI. They supplement, without replacing, the agreement signed with each client company.",
+      "lead": "Rules for accessing and using NexusRH. They supplement, without replacing, the agreement signed with each client company.",
       "s1": {
         "h": "Purpose",
-        "p": "NexusRH CI is an online HR and payroll service for companies and organisations. Access is restricted to people authorised by the client company. Browsing the public pages grants no right to use the service."
+        "p": "NexusRH is an online HR and payroll service for companies and organisations. Access is restricted to people authorised by the client company. Browsing the public pages grants no right to use the service."
       },
       "s2": {
         "h": "Accounts and security",
@@ -94,7 +98,9 @@
       "s7": {
         "h": "Governing law",
         "p": "These terms are governed by Ivorian law. Any dispute falls, failing an amicable settlement, to the competent courts of Abidjan."
-      }
+      },
+      "seoTitle": "Terms of use of the NexusRH HR and payroll service",
+      "seoDescription": "Terms of use of NexusRH: access to the service, accounts and security, prohibited uses and liability. They supplement the client agreement."
     },
     "cookies": {
       "title": "Cookie policy",
@@ -114,7 +120,9 @@
       "s4": {
         "h": "Refusing and deleting",
         "p": "You can clear these items at any time from your browser settings. Refusing the session cookie prevents signing in: it is essential to the service, which is why it does not require prior consent."
-      }
+      },
+      "seoTitle": "Cookie policy: no advertising trackers | NexusRH",
+      "seoDescription": "NexusRH sets no advertising cookie and no third-party analytics: one strictly necessary session cookie, and your language choice stored locally."
     }
   }
 }

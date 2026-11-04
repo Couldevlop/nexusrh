@@ -74,6 +74,45 @@ describe('contenu des pages publiques', () => {
     }
   })
 
+  it('page « SaaS ou on-premise » : FR et EN réciproques, deux modes, sans restriction de pays sur l’hébergement', () => {
+    const fr = getSeoPage('/sirh-saas-ou-on-premise')!
+    const en = getSeoPage('/en/hris-saas-or-on-premise')!
+    expect(fr.alternate).toBe(en.path)
+    expect(en.alternate).toBe(fr.path)
+    const html = render(fr.path)
+    expect(html).toContain('Le mode SaaS')
+    expect(html).toContain('Le mode on-premise')
+    expect(html).toContain('Installé sur vos serveurs ou dans le datacenter de votre choix.')
+    const onPrem = [fr, en].flatMap((p) => p.sections.filter((s) => s.id === 'on-premise' || s.h2 === 'Comparatif' || s.h2 === 'Comparison'))
+    expect(JSON.stringify(onPrem)).not.toMatch(/Côte d'Ivoire|ivoirien|Ivorian/)
+  })
+
+  it('les pages ivoiriennes renvoient vers la couverture UEMOA', () => {
+    for (const p of ['/logiciel-paie-cote-divoire', '/gestion-conges-cote-divoire', '/paiement-salaires-mobile-money',
+      '/guides/calcul-its-2024-cote-divoire', '/guides/cotisations-cnps-2024'] as const) {
+      expect(getSeoPage(p)!.related, p).toContain('/sirh-afrique-ouest')
+    }
+  })
+
+  it('marque « NexusRH » et coordonnées à jour sur toutes les pages de contenu', () => {
+    for (const p of SEO_PAGES) {
+      const html = render(p.path)
+      const all = JSON.stringify(p) + html
+      expect(all, p.path).not.toMatch(/NexusRH CI/)
+      expect(all, p.path).not.toMatch(/07 ?09 ?32 ?05 ?94|0709320594/)
+      expect(html, p.path).toContain('href="tel:+2250709334238"')
+      expect(html, p.path).toContain('href="https://wa.me/2250749439203"')
+    }
+  })
+
+  it('hub Afrique de l’Ouest : formulation de couverture validée, sans pays hors UEMOA', () => {
+    for (const p of [getSeoPage('/sirh-afrique-ouest')!, getSeoPage('/en/hris-payroll-west-africa')!]) {
+      const all = JSON.stringify(p)
+      expect(all).toMatch(/Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC|Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries/)
+      expect(all).not.toMatch(/Ghana|Nigeria|Cameroun|Cameroon|Gabon/)
+    }
+  })
+
   it('chemin inconnu → aucune page (redirection vers l’accueil)', () => {
     expect(getSeoPage('/logiciel-paie-guinee')).toBeUndefined()
   })
