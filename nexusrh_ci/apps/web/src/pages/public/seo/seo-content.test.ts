@@ -12,7 +12,7 @@ import { createElement } from 'react'
 import { LEGISLATION_PACKS, CIV_2024 } from '../../../../../api/src/services/legislation-packs'
 import { SEO_PATHS } from './paths'
 import { SEO_PAGES, getSeoPage } from './content'
-import { COUNTRY_FACTS } from './content-west-africa'
+import { COUNTRY_FACTS, PAYROLL_PENDING_FR, PAYROLL_PENDING_EN } from './content-west-africa'
 import { GUIDE_CNPS, GUIDE_ITS } from './content-ci'
 import SeoContentPage from '../SeoContentPage'
 import frHome from '@/i18n/locales/fr/home.json'
@@ -130,41 +130,51 @@ describe('contenu des pages publiques', () => {
 const CIV_CNPS_PUBLISHED = { plafondRetraite: 3_375_000, plafondAtPf: 75_000 } as const
 
 describe('chiffres conformes aux packs législatifs', () => {
-  it('pages pays : SMIG, taux, plafonds et congés = valeurs du pack', () => {
+  it("pays UEMOA hors Côte d'Ivoire : données de paie en cours de vérification, aucun chiffre publié", () => {
+    // Les chiffres de paie des pays autres que la Côte d'Ivoire ne sont pas encore vérifiés :
+    // aucune page n'en publie. Pour réactiver un pays : passer son `payroll` à 'verified' dans
+    // COUNTRY_FACTS, remettre ses tableaux, puis ajouter ici la comparaison de ses chiffres
+    // au pack (SMIG, taux, plafonds, barème, congés), sur le modèle du guide ITS ci-dessous.
     for (const [key, f] of Object.entries(COUNTRY_FACTS)) {
       const pack = LEGISLATION_PACKS[f.pack]
       expect(pack, key).toBeDefined()
       expect(pack!.status, key).toBe('active')
       expect(pack!.currency, key).toBe(f.currency)
-      expect(pack!.smigMensuel, key).toBe(f.smig)
-      expect(pack!.tauxCotisationRetraiteSalarie, key).toBe(f.retraiteSal)
-      expect(pack!.tauxCotisationRetraitePatronal, key).toBe(f.retraitePat)
-      expect(pack!.tauxCotisationPfPatronal, key).toBe(f.pf)
-      if (key === 'CIV') {
-        expect(f.plafondRetraite).toBe(CIV_CNPS_PUBLISHED.plafondRetraite)
-        expect(f.plafondAtPf).toBe(CIV_CNPS_PUBLISHED.plafondAtPf)
-      } else {
-        expect(pack!.plafondCnpsRetraite, key).toBe(f.plafondRetraite)
-        expect(pack!.plafondCnpsAtPf, key).toBe(f.plafondAtPf)
-      }
-      expect(pack!.leaveRules?.annualLeaveDaysPerMonth, key).toBe(f.congesParMois)
-      expect(pack!.leaveRules?.workingDaysPerWeek, key).toBe(f.joursParSemaine)
+      expect(f.payroll, key).toBe(key === 'CIV' ? 'verified' : 'pending')
+    }
+    const figure = /\d+(,\d+)? ?%|\d{1,3}( \d{3})+|\d{4,}|\d+(,\d+)? jours?|\d+ (heures|semaines)/
+    for (const path of ['/logiciel-paie-senegal', '/logiciel-paie-burkina-faso', '/logiciel-paie-benin']) {
+      const page = getSeoPage(path)!
+      const text = JSON.stringify({ ...page, updated: '' })
+      expect(text, path).toContain(PAYROLL_PENDING_FR)
+      expect(text, path).not.toMatch(figure)
+      expect(page.sections.flatMap((s) => s.blocks).some((b) => b.type === 'table'), path).toBe(false)
+    }
+    for (const [path, pending] of [['/sirh-afrique-ouest', PAYROLL_PENDING_FR], ['/en/hris-payroll-west-africa', PAYROLL_PENDING_EN]] as const) {
+      const page = getSeoPage(path)!
+      const rows = page.sections.flatMap((s) => s.blocks).flatMap((b) => (b.type === 'table' ? b.rows : []))
+      expect(rows).toHaveLength(8)
+      for (const r of rows.slice(1)) expect(r[3], `${path} ${r[0]}`).toBe(pending)
+      expect(JSON.stringify(rows.slice(1)), path).not.toMatch(figure)
+      expect(JSON.stringify({ ...page, updated: '' }), path).not.toMatch(/FCFA/)
     }
   })
 
-  it('barèmes publiés (Burkina Faso, Bénin, Côte d’Ivoire) = barèmes des packs', () => {
-    const check = (path: string, packCode: string) => {
-      const page = getSeoPage(path)!
-      const rows = page.sections.flatMap((s) => s.blocks)
-        .find((b) => b.type === 'table' && /Barème/.test(b.caption))
-      expect(rows?.type).toBe('table')
-      const rates = (rows as { rows: string[][] }).rows.map((r) => Number(r[1]!.replace(' %', '').replace(',', '.')) / 100)
-      const expected = LEGISLATION_PACKS[packCode]!.tranchesImpotSalaire.map((t) => t.taux)
-      expect(rates.map((x) => Math.round(x * 1000))).toEqual(expected.map((x) => Math.round(x * 1000)))
-    }
-    check('/logiciel-paie-burkina-faso', 'BFA-2024')
-    check('/logiciel-paie-benin', 'BEN-2024')
-    check('/guides/calcul-its-2024-cote-divoire', 'CIV-2024')
+  it('hub : liens uniquement vers les pages pays existantes', () => {
+    const page = getSeoPage('/sirh-afrique-ouest')!
+    const links = page.sections.flatMap((s) => s.blocks).flatMap((b) => (b.type === 'links' ? b.items : []))
+    for (const l of links) expect(getSeoPage(l.to), l.to).toBeDefined()
+    expect(JSON.stringify(SEO_PAGES)).not.toMatch(/sur la page du pays|on each country page/)
+  })
+
+  it("barème ITS publié (Côte d'Ivoire) = barème du pack", () => {
+    const page = getSeoPage('/guides/calcul-its-2024-cote-divoire')!
+    const rows = page.sections.flatMap((s) => s.blocks)
+      .find((b) => b.type === 'table' && /Barème/.test(b.caption))
+    expect(rows?.type).toBe('table')
+    const rates = (rows as { rows: string[][] }).rows.map((r) => Number(r[1]!.replace(' %', '').replace(',', '.')) / 100)
+    const expected = CIV_2024.tranchesImpotSalaire.map((t) => t.taux)
+    expect(rates.map((x) => Math.round(x * 1000))).toEqual(expected.map((x) => Math.round(x * 1000)))
   })
 
   it('guide ITS : exemples recalculés depuis le barème et la RICF du pack CI', () => {
