@@ -14,6 +14,7 @@
  *  - exécution fail-soft : une erreur DB renvoie { error } à l'IA, jamais un 500.
  */
 import type { Pool } from 'pg'
+import { periodVisibilitySql } from '../../utils/period-visibility.js'
 
 export interface AiToolContext {
   schemaName: string
@@ -157,7 +158,7 @@ export async function executeAiTool(
              -- closed_by est varchar(100) (uuid de user OU libellé hérité) :
              -- cast côté users, jamais uuid = varchar (erreur d'opérateur PG).
              LEFT JOIN "${s}".users u ON u.id::text = p.closed_by
-            WHERE p.parent_period_id IS NULL
+            WHERE p.parent_period_id IS NULL AND ${periodVisibilitySql(s, 'p', ctx.hrScope)}
               AND ($1::text IS NULL OR p.month = $1)
             ORDER BY p.month DESC
             LIMIT 3`,

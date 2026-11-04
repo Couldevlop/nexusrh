@@ -36,10 +36,10 @@ function closedPayrollByMonth(
             COALESCE(SUM(COALESCE(ps.total_cnps_sal,0) + COALESCE(ps.total_cnps_pat,0)),0)::int AS total_cnps,
             COALESCE(SUM(ps.its),0)::int AS total_its,
             COUNT(ps.id)::int AS employees_count
-       FROM "${schema}".pay_periods pp
-       JOIN "${schema}".pay_slips ps ON ps.period_id = pp.id
+       FROM (SELECT DISTINCT month FROM "${schema}".pay_periods pp WHERE pp.status = 'closed' ${monthFilter}) pp
+       JOIN "${schema}".pay_slips ps ON ps.month = pp.month
        JOIN "${schema}".employees e ON e.id = ps.employee_id
-      WHERE pp.status = 'closed' ${monthFilter} AND ${scopeSql}
+      WHERE ${scopeSql}
       GROUP BY pp.month ORDER BY pp.month ${order}${lim}`,
     params,
   )

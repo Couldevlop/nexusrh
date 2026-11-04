@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
 import { auditTenant } from '../../utils/audit-log.js'
-import { requestHrScope, requestEmployeeScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, requestPeriodVisibility } from '../../utils/hr-scope.js'
 
 /**
  * Vue DG 360° — tableau de bord Direction Générale, AU-DESSUS du périmètre DRH.
@@ -66,6 +66,8 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
       const absScope = await requestEmployeeScope(request, 'a.employee_id')
       const expScope = await requestEmployeeScope(request, 'expense_reports.employee_id')
       const enrScope = await requestEmployeeScope(request, 'training_enrollments.employee_id')
+      // Périodes de paie : ni statut ni clôtureur des paies d'autres filiales.
+      const periodVis = await requestPeriodVisibility(request, 'p')
       // Montants de paie : totaux de la période (périmètre ouvert) ou somme des seuls
       // bulletins du périmètre (jamais la masse salariale des autres filiales).
       const slipSum = (col: string, p: string): string => empScope === 'TRUE' ? `${p}.total_${col}` : `(
@@ -130,7 +132,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
                -- uuid de user OU un libellé hérité) : cast côté users, jamais
                -- uuid = varchar (erreur d'opérateur PG → panneau vide).
                LEFT JOIN "${s}".users u ON u.id::text = p.closed_by
-              WHERE p.parent_period_id IS NULL
+              WHERE p.parent_period_id IS NULL AND ${periodVis}
               ORDER BY p.month DESC LIMIT 3`)
           return r.rows.map(x => ({
             month: x.month, status: x.status, validated: x.status === 'closed',
@@ -147,7 +149,7 @@ const dgRoutes: FastifyPluginAsync = async (fastify) => {
             `SELECT p.month, ${slipSum('gross', 'p')} AS total_gross, ${slipSum('net', 'p')} AS total_net,
                     ${slipSum('cnps', 'p')} AS total_cnps, ${slipSum('its', 'p')} AS total_its
                FROM "${s}".pay_periods p
-              WHERE p.parent_period_id IS NULL AND p.status = 'closed'
+              WHERE p.parent_period_id IS NULL AND p.status = 'closed' AND ${periodVis}
               ORDER BY p.month DESC LIMIT 12`)
           return r.rows.reverse().map(x => ({
             month: x.month,
