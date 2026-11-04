@@ -11,12 +11,14 @@ export const SEO_PATHS = [
   '/gestion-conges-cote-divoire',
   '/paiement-salaires-mobile-money',
   '/sirh-afrique-ouest',
+  '/sirh-saas-ou-on-premise',
   '/logiciel-paie-senegal',
   '/logiciel-paie-burkina-faso',
   '/logiciel-paie-benin',
   '/guides/calcul-its-2024-cote-divoire',
   '/guides/cotisations-cnps-2024',
   '/en/hris-payroll-west-africa',
+  '/en/hris-saas-or-on-premise',
 ] as const
 
 export type SeoPath = (typeof SEO_PATHS)[number]

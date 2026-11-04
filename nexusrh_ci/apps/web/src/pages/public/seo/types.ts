@@ -23,9 +23,9 @@ export interface SeoPageContent {
   lang: 'fr' | 'en'
   /** landing = page produit ; guide = article (schema Article). */
   kind: 'landing' | 'guide'
-  /** <title> — ≤ 65 caractères. */
+  /** <title> — 50 à 60 caractères. */
   title: string
-  /** meta description — ≤ 160 caractères. */
+  /** meta description — 120 à 160 caractères. */
   description: string
   h1: string
   lead: string
