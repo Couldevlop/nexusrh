@@ -463,25 +463,45 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       })
       const r = simuler(childrenCount)
       const plus1 = simuler(childrenCount + 1)
-      const gainEnfantSupp = r.its - plus1.its
+      // Effet d'un enfant de plus sur le net : économie d'ITS (RICF) MOINS la
+      // CMU de l'enfant (500 F jusqu'au 6e, 1 000 F au-delà — loi n° 2014-131).
+      const itsGain = r.its - plus1.its
+      const cmuCost = plus1.cmuSal - r.cmuSal
+      const netDelta = plus1.netPayable - r.netPayable
       const plafondAtteint = (plus1.partsFiscales ?? 0) === (r.partsFiscales ?? 0)
+      const fcfa = (n: number) => n.toLocaleString('fr-CI')
+      const cmuNote = cmuCost > 0 ? `, CMU de l'enfant +${fcfa(cmuCost)} FCFA` : ''
+      const itsReason = itsGain > 0
+        ? `impôt −${fcfa(itsGain)} FCFA`
+        : plafondAtteint
+          ? `impôt inchangé : le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint`
+          : `impôt inchangé : il est déjà entièrement couvert par la réduction pour charges de famille`
+      const message = netDelta > 0
+        ? `Avec 1 enfant de plus, le net augmenterait de ${fcfa(netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+        : netDelta < 0
+          ? `Avec 1 enfant de plus, le net baisserait de ${fcfa(-netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+          : itsGain === 0 && plafondAtteint
+            ? `Le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
+            : itsGain === 0
+              ? `L'impôt est déjà entièrement couvert par la réduction pour charges de famille`
+              : `Avec 1 enfant de plus, le net ne change pas (${itsReason}${cmuNote})`
 
       return reply.send({
         input:       { baseSalary, primes, brut, maritalStatus, childrenCount, atRate },
         cnps:        { salarial: r.totalCnpsSal, patronal: r.totalCnpsPat },
         its:         { base: r.baseImposable, brut: r.itsBrut, credit: r.reductionImpot, parts: r.partsFiscales ?? 1, net: r.its },
+        cmu:         { salarial: r.cmuSal, patronal: r.cmuPat },
         net:         { payable: r.netPayable, smigCompliant: r.smigCompliant },
         employerCost: r.employerCost,
         simulation: {
           avecUnEnfantSupp: {
             its: plus1.its,
             net: plus1.netPayable,
-            gain: gainEnfantSupp,
-            message: gainEnfantSupp > 0
-              ? `Avec 1 enfant de plus, le net augmenterait de ${gainEnfantSupp.toLocaleString('fr-CI')} FCFA/mois`
-              : plafondAtteint
-                ? `Le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
-                : `L'impôt est déjà entièrement couvert par la réduction pour charges de famille`,
+            /** Variation du net (ITS et CMU), peut être négative */
+            gain: netDelta,
+            itsGain,
+            cmuCost,
+            message,
           },
         },
         currency: 'XOF',
