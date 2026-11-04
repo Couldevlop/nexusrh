@@ -75,3 +75,36 @@ export function maskSensitive<T extends Record<string, unknown>>(row: T, ctx: Ha
 export function maskSensitiveRows<T extends Record<string, unknown>>(rows: T[], ctx: HabContext | null): Array<Masked<T>> {
   return isMasked(ctx) ? rows.map((r) => maskSensitive(r, ctx)) : rows
 }
+
+const SETTLEMENT_AMOUNT_KEYS = ['indemniteConges', 'indemnitePreavis', 'indemniteLicenciement', 'total', 'severanceBase'] as const
+
+/**
+ * Solde de tout compte : les montants (congés, préavis, licenciement, total,
+ * assiette, lignes, candidats d'indemnité de congés) reflètent le salaire de
+ * l'employé ; masqués hors case dédiée. Libellés, durées et alertes restent.
+ */
+export function maskSettlement<T extends Record<string, unknown>>(settlement: T, ctx: HabContext | null): Masked<T> {
+  if (!isMasked(ctx)) return settlement
+  const out: Record<string, unknown> = { ...maskFields(settlement, SETTLEMENT_AMOUNT_KEYS, ctx) }
+  const hidden: string[] = Array.isArray(out.maskedFields) ? [...(out.maskedFields as string[])] : []
+  if (Array.isArray(out.lines)) {
+    out.lines = (out.lines as Array<Record<string, unknown>>).map((l) => ({ ...l, amount: null }))
+    hidden.push('lines')
+  }
+  const allowance = out.congesAllowance
+  if (allowance && typeof allowance === 'object') {
+    out.congesAllowance = { ...(allowance as Record<string, unknown>), candidates: null }
+    hidden.push('congesAllowance')
+  }
+  if (hidden.length > 0) out.maskedFields = [...new Set(hidden)]
+  return out as Masked<T>
+}
+
+/** Ligne d'un dossier de sortie (offboarding_cases) : masque son `settlement` jsonb. */
+export function maskOffboardingCase<T extends Record<string, unknown>>(row: T, ctx: HabContext | null): Masked<T> {
+  const st = row.settlement
+  if (!isMasked(ctx) || !st || typeof st !== 'object' || Array.isArray(st)) return row
+  const out: Record<string, unknown> = { ...row, settlement: maskSettlement(st as Record<string, unknown>, ctx) }
+  out.maskedFields = [...new Set([...(Array.isArray(row.maskedFields) ? row.maskedFields as string[] : []), 'settlement'])]
+  return out as Masked<T>
+}

@@ -168,7 +168,8 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           employeeId: body.employee_id,
           type: body.type,
           startDate: body.start_date,
-          baseSalary: body.base_salary,
+          // Jamais la valeur du salaire dans l'audit : uniquement les noms de champs.
+          changedFields: ['baseSalary'],
         }, request.ip ?? null)
 
         return reply.status(201).send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })

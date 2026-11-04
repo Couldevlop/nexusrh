@@ -127,6 +127,11 @@ describe('loadHabContext', () => {
     expect((await loadHabContext('tenant_sotra', 'u1'))!.sensitive).toBe(false)
   })
 
+  it('payroll_multi seul implique sensitive (accès aux bulletins, décision 04/11)', async () => {
+    route(row({ permissions: ['payroll_multi:view'] }))
+    expect((await loadHabContext('tenant_sotra', 'u1'))!.sensitive).toBe(true)
+  })
+
   it('allEntities ignoré pour une entité, actif pour le siège', async () => {
     route(row({ permissions: ['all_entities'] }))
     expect((await loadHabContext('tenant_sotra', 'u1'))!.allEntities).toBe(false)

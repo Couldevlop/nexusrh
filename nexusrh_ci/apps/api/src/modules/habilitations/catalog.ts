@@ -44,8 +44,11 @@ export const HAB_GRID: Record<HabFunction, readonly HabAction[]> = {
   hr_settings: ['view', 'update', 'configure'],
 }
 
-/** Fonctions dont l'accès implique l'extra `sensitive_data`. */
-export const SENSITIVE_IMPLIED: HabFunction[] = ['payroll', 'declarations', 'payments']
+/**
+ * Fonctions dont l'accès implique l'extra `sensitive_data`.
+ * payroll_multi donne accès aux bulletins → implique sensitive (décision 04/11).
+ */
+export const SENSITIVE_IMPLIED: HabFunction[] = ['payroll', 'payroll_multi', 'declarations', 'payments']
 
 /** Vrai pour une case valide de la grille (`fn:action`) ou un extra. */
 export function isPermission(s: string): boolean {

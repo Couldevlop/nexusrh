@@ -31,6 +31,6 @@ describe('catalogue des habilitations', () => {
     for (const f of ['attendance', 'lifecycle', 'signature'] as const) expect(HAB_GRID[f]).toContain('delete')
   })
   it('SENSITIVE_IMPLIED', () => {
-    expect(SENSITIVE_IMPLIED).toEqual(['payroll', 'declarations', 'payments'])
+    expect(SENSITIVE_IMPLIED).toEqual(['payroll', 'payroll_multi', 'declarations', 'payments'])
   })
 })

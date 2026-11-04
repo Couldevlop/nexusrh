@@ -25,7 +25,8 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
-import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { maskSettlement, maskOffboardingCase } from '../../services/sensitive-mask.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import {
   categoryLevel, completedSeniorityMonths, effectiveTerminationRules,
@@ -191,7 +192,8 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (status)     { sql += ` AND o.status = $${i++}`; params.push(status) }
       sql += ` ORDER BY o.departure_date DESC, o.created_at DESC`
       const res = await rawPool.query(sql, params)
-      return reply.send({ data: res.rows })
+      const maskCtx = await requestSensitiveCtx(request)
+      return reply.send({ data: res.rows.map((r) => maskOffboardingCase(r, maskCtx)) })
     },
   })
 
@@ -208,7 +210,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
         [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
-      return reply.send({ data: res.rows[0] })
+      return reply.send({ data: maskOffboardingCase(res.rows[0], await requestSensitiveCtx(request)) })
     },
   })
 
@@ -303,7 +305,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
             { employeeId: cur.rows[0].employee_id, ...arch }, request.ip ?? null)
         }
       }
-      return reply.send({ data: res.rows[0] })
+      return reply.send({ data: maskOffboardingCase(res.rows[0], await requestSensitiveCtx(request)) })
     },
   })
 
@@ -412,8 +414,8 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE "${schema}".offboarding_cases SET settlement = $1, status = $2, updated_at = now() WHERE id = $3`,
         [JSON.stringify(settlement), nextStatus, id],
       )
-      audit(schema, request.user.sub, 'offboarding.settlement', id, { total: settlement.total }, request.ip ?? null)
-      return reply.send({ data: settlement })
+      audit(schema, request.user.sub, 'offboarding.settlement', id, { computedFields: ['total'] }, request.ip ?? null)
+      return reply.send({ data: maskSettlement(settlement, await requestSensitiveCtx(request)) })
     },
   })
 

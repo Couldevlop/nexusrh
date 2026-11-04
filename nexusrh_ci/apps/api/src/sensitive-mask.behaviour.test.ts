@@ -34,6 +34,7 @@ import authPlugin from './plugins/auth.js'
 import employeesRoutes from './modules/employees/employees.routes.js'
 import contractsRoutes from './modules/contracts/contracts.routes.js'
 import recruitmentRoutes from './modules/recruitment/recruitment.routes.js'
+import offboardingRoutes from './modules/offboarding/offboarding.routes.js'
 import reportingRoutes from './modules/reporting/reporting.routes.js'
 import { HAB_GRID } from './modules/habilitations/catalog.js'
 import type { HabContext } from './services/habilitation.service.js'
@@ -59,6 +60,14 @@ const EMP = {
   base_salary: '450000', cnps_number: 'CI123', mobile_money_phone: '0707000000', hire_date: null,
 }
 
+async function post(url: string, payload: Record<string, unknown>) {
+  const token = app.jwt.sign({
+    sub: 'u-hab', tenantId: 't1', schemaName: SCHEMA, role: 'hr_manager',
+    email: 'rh@t.ci', firstName: 'A', lastName: 'B', employeeId: null,
+  })
+  return app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${token}` }, payload })
+}
+
 async function get(url: string) {
   const token = app.jwt.sign({
     sub: 'u-hab', tenantId: 't1', schemaName: SCHEMA, role: 'hr_manager',
@@ -74,6 +83,7 @@ beforeAll(async () => {
   await app.register(contractsRoutes, { prefix: '/contracts' })
   await app.register(reportingRoutes, { prefix: '/reporting' })
   await app.register(recruitmentRoutes, { prefix: '/recruitment' })
+  await app.register(offboardingRoutes, { prefix: '/offboarding' })
   await app.ready()
 })
 afterAll(async () => { await app.close() })
@@ -86,6 +96,20 @@ beforeEach(() => {
     if (/e\.\*/.test(sql)) return { rows: [{ ...EMP }], rowCount: 1 }
     if (/e\.employee_number, e\.last_name/.test(sql)) return { rows: [{ ...EMP, department: 'IT', contract_type: 'cdi', is_active: true }], rowCount: 1 }
     if (/FROM "tenant_mask"\.contracts/.test(sql)) return { rows: [{ id: 'c1', employee_id: ID, base_salary: 450000, first_name: 'Awa' }], rowCount: 1 }
+    if (/employee_custom_fields FROM platform\.tenants/.test(sql)) {
+      return { rows: [{ employee_custom_fields: [
+        { key: 'groupe_sanguin', label: 'Groupe sanguin', type: 'text', sensitive: true },
+        { key: 'taille', label: 'Taille', type: 'text', sensitive: false },
+      ] }], rowCount: 1 }
+    }
+    if (/INSERT INTO "tenant_mask"\.contracts/.test(sql)) return { rows: [{ id: 'c9', employee_id: ID, base_salary: 450000 }], rowCount: 1 }
+    if (/FROM "tenant_mask"\.offboarding_cases o/.test(sql)) {
+      return { rows: [{ id: 'o1', employee_id: ID, status: 'settled', settlement: {
+        total: 900000, indemniteConges: 100000, indemnitePreavis: 300000, indemniteLicenciement: 500000, severanceBase: 450000,
+        noticeMonths: 2, lines: [{ key: 'conges', label: 'Congés', amount: 100000 }], warnings: [],
+        congesAllowance: { method: 'average_calendar', calendarDays: 20, candidates: { average_calendar: 1 } },
+      } }], rowCount: 1 }
+    }
     if (/FROM "tenant_mask"\.applications a/.test(sql)) return { rows: [{ id: 'a1', first_name: 'Y', expected_salary: 600000, cv_blob: null }], rowCount: 1 }
     if (/AS avg_salary/.test(sql)) return { rows: [{ department: 'IT', count: 1, avg_salary: 450000 }], rowCount: 1 }
     if (/base_salary < 100000/.test(sql)) return { rows: [{ range: '> 1M', count: 1 }], rowCount: 1 }
@@ -217,5 +241,71 @@ describe('candidatures', () => {
     const open = (await get('/recruitment/applications')).json().data[0]
     expect(open.expected_salary).toBe(600000)
     expect('maskedFields' in open).toBe(false)
+  })
+})
+
+describe('champs personnalisés (liste et détail)', () => {
+  const withCustom = { ...EMP, custom_fields: { groupe_sanguin: 'O+', taille: '1m80' } }
+  beforeEach(() => {
+    const base = queryMock.getMockImplementation()!
+    queryMock.mockImplementation(async (rawSql: string, params?: unknown[]) => {
+      const sql = String(rawSql).replace(/\s+/g, ' ')
+      if (/e\.\*/.test(sql)) return { rows: [{ ...withCustom }], rowCount: 1 }
+      return base(rawSql, params)
+    })
+  })
+
+  it('liste masquée : champ personnalisé sensible retiré ET champs sensibles à null', async () => {
+    loadHabContextMock.mockResolvedValue(ctx(false))
+    const row = (await get('/employees')).json().data[0]
+    expect(row.custom_fields).toEqual({ taille: '1m80' })
+    expect(row.base_salary).toBeNull()
+    expect(row.maskedFields).toContain('base_salary')
+  })
+
+  it('détail masqué : même comportement', async () => {
+    loadHabContextMock.mockResolvedValue(ctx(false))
+    const emp = (await get(`/employees/${ID}`)).json().data
+    expect(emp.custom_fields).toEqual({ taille: '1m80' })
+    expect(emp.base_salary).toBeNull()
+  })
+
+  it('contexte null ou sensitive : champs personnalisés intacts', async () => {
+    loadHabContextMock.mockResolvedValue(null)
+    expect((await get('/employees')).json().data[0].custom_fields).toEqual({ groupe_sanguin: 'O+', taille: '1m80' })
+    loadHabContextMock.mockResolvedValue(ctx(true))
+    expect((await get(`/employees/${ID}`)).json().data.custom_fields).toEqual({ groupe_sanguin: 'O+', taille: '1m80' })
+  })
+})
+
+describe('solde de tout compte (offboarding)', () => {
+  it('dossier : montants null + maskedFields sans sensitive, intacts avec contexte null', async () => {
+    loadHabContextMock.mockResolvedValue(ctx(false))
+    const row = (await get('/offboarding')).json().data[0]
+    expect(row.settlement.total).toBeNull()
+    expect(row.settlement.indemnitePreavis).toBeNull()
+    expect(row.settlement.lines[0].amount).toBeNull()
+    expect(row.settlement.congesAllowance.candidates).toBeNull()
+    expect(row.settlement.noticeMonths).toBe(2)
+    expect(row.settlement.maskedFields).toEqual(expect.arrayContaining(['total', 'lines', 'congesAllowance']))
+    expect(row.maskedFields).toContain('settlement')
+    loadHabContextMock.mockResolvedValue(null)
+    const open = (await get('/offboarding')).json().data[0]
+    expect(open.settlement.total).toBe(900000)
+    expect('maskedFields' in open).toBe(false)
+  })
+})
+
+describe('audit sans valeur personnelle', () => {
+  it('contract.created ne contient que des noms de champs, jamais le salaire', async () => {
+    loadHabContextMock.mockResolvedValue(null)
+    const res = await post('/contracts', { employee_id: ID, type: 'cdi', start_date: '2026-01-01', base_salary: 450000 })
+    expect(res.statusCode).toBe(201)
+    const audits = queryMock.mock.calls.filter((c) => /INSERT INTO "tenant_mask"\.audit_log/.test(String(c[0])))
+    const created = audits.find((c) => (c[1] as unknown[]).includes('contract.created'))
+    expect(created).toBeDefined()
+    const changes = String((created![1] as unknown[])[4])
+    expect(changes).toContain('changedFields')
+    expect(changes).not.toContain('450000')
   })
 })

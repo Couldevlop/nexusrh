@@ -335,6 +335,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const isHr = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
       // Masqué : le RIB n'est même pas déchiffré.
       const masked = isMasked(maskCtx)
+      // Champs personnalisés sensibles : réservés aux rôles RH disposant de la case
+      // données sensibles (A01). Fait AVANT le masquage, qui copie les lignes.
+      if ((!isHr || masked) && res.rows.length) {
+        const defs = await loadCustomFieldDefinitions(schema)
+        for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
+      }
       const listRows = (res.rows as Array<Record<string, unknown>>).map((row) => {
         const hadIban = typeof row.iban === 'string' && row.iban !== ''
         const iban = isHr && !masked && hadIban ? decryptIfPresent(row.iban as string) : null
@@ -346,12 +352,6 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         const out = maskSensitive({ ...row, ...(hadIban ? { iban_masked: 'x' } : {}) }, maskCtx)
         return out
       })
-
-      // Champs personnalisés sensibles : réservés aux rôles RH (A01).
-      if (!isHr && res.rows.length) {
-        const defs = await loadCustomFieldDefinitions(schema)
-        for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
-      }
 
       return reply.send({ data: listRows, total, page, limit })
     },
@@ -455,6 +455,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         if (!isMasked(maskCtx)) {
           if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
           if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+        } else {
+          // RH sans la case données sensibles : champs personnalisés sensibles retirés.
+          emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
         }
       } else {
         delete emp.nni
