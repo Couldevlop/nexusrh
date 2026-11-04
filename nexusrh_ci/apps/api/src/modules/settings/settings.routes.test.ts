@@ -230,6 +230,42 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
     expect(String(flip?.[0])).toMatch(/count\(\*\) FROM "[^"]+"\.legal_entities\) >= 2/)
   })
 
+  it('création : le sous-groupe « RH Filiale <nom> » naît dans la MÊME instruction, noms passés en paramètres, siège exclu', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'le-1', name: 'Filiale Cocody', _hab_group_ok: true }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { name: 'Filiale Cocody' },
+    })
+    expect(res.statusCode).toBe(201)
+    const ins = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO "tenant_sotra".legal_entities'))!
+    const sql = String(ins[0])
+    expect(sql).toContain('INSERT INTO "tenant_sotra".hab_subgroups')
+    expect(sql).toContain('ins.is_head_office = false')
+    expect(sql).toContain('ON CONFLICT (legal_entity_id) DO NOTHING')
+    // Constantes partagées, pas de littéraux recopiés dans le SQL.
+    expect(sql).not.toContain("'RH Filiale '")
+    expect(sql).not.toContain("'DRH Groupe'")
+    expect((ins[1] as unknown[]).slice(13)).toEqual(['DRH Groupe', 'RH Filiale '])
+    // L'indicateur interne n'est pas exposé.
+    expect(JSON.parse(res.body).data._hab_group_ok).toBeUndefined()
+  })
+
+  it('création : groupe DRH introuvable => la filiale est créée quand même (201), anomalie journalisée', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'le-2', name: 'Filiale X', _hab_group_ok: false }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { name: 'Filiale X' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).data.id).toBe('le-2')
+  })
+
   it('RAF de filiale : un utilisateur non éligible est refusé (400), aucune insertion', async () => {
     queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 }) // isValidRaf
     const token = tokenFor(app, 'admin')

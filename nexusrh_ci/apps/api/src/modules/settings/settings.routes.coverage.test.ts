@@ -461,6 +461,42 @@ describe('PATCH /settings/users/:id', () => {
     expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_A)
   })
 
+  it('hr_officer → employee : l\'affectation d\'habilitation active est révoquée (revoked_at) + audit habilitation.revoked (reason role_changed)', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql)
+      if (s.includes('SELECT role, is_active')) return { rows: [{ role: 'hr_officer', is_active: true }] }
+      if (s.includes('UPDATE "tenant_sotra".users')) return { rows: [{ id: UUID_A, role: 'employee', is_active: true }] }
+      if (s.includes('hab_assignments SET revoked_at')) return { rows: [{ id: 'as-1' }], rowCount: 1 }
+      return { rows: [] }
+    })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+      payload: { role: 'employee' },
+    })
+    expect(res.statusCode).toBe(200)
+    const revoke = queryMock.mock.calls.find(c => String(c[0]).includes('hab_assignments SET revoked_at'))
+    expect(revoke?.[1]).toEqual([UUID_A])
+    await new Promise((r) => setTimeout(r, 0))
+    const audit = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log') && c[1]?.[1] === 'habilitation.revoked')
+    expect(audit).toBeDefined()
+    expect(JSON.parse(String(audit![1]![4]))).toMatchObject({ reason: 'role_changed', newRole: 'employee' })
+  })
+
+  it('hr_officer → hr_manager : reste dans la grille, aucune révocation', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql)
+      if (s.includes('SELECT role, is_active')) return { rows: [{ role: 'hr_officer', is_active: true }] }
+      if (s.includes('UPDATE "tenant_sotra".users')) return { rows: [{ id: UUID_A, role: 'hr_manager', is_active: true }] }
+      return { rows: [] }
+    })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+      payload: { role: 'hr_manager' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(queryMock.mock.calls.some(c => String(c[0]).includes('hab_assignments'))).toBe(false)
+  })
+
   it('change is_active seul (même rôle) → audit user.updated (200) + invalide les sessions existantes', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: true }] })

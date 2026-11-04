@@ -19,6 +19,7 @@ import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@ne
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { HAB_FILIALE_PREFIX, HAB_GROUP_NAME, revokeHabilitationOnRoleChange } from '../../db/habilitations-bootstrap.js'
 import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
@@ -1488,6 +1489,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // JWT (7j) via /auth/refresh. cf. plugins/auth.ts (token-epoch).
         // Le lien de fiche est porté par le JWT (employeeId) : un changement de
         // fiche invalide aussi les sessions pour ne pas agir sous l'ancienne.
+        // Habilitations : quitter un rôle RH (hr_manager, hr_officer, raf_site)
+        // révoque l'affectation active (revoked_at + audit habilitation.revoked).
+        if (roleChanged && role !== undefined) {
+          await revokeHabilitationOnRoleChange(schema, id, role, request.user.sub, request.ip ?? null)
+        }
         const becameInactive = is_active === false
         if (roleChanged || becameInactive || linkChanged) {
           try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
@@ -1853,7 +1859,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // sous-groupe « RH Filiale <nom> » (habilitations) naissent ensemble. Le
         // siège social n'a pas de sous-groupe propre (couvert par « RH Siège »).
         // Renommer la filiale ne renomme pas le sous-groupe.
-        const res = await pool.query<{ id: string }>(`
+        const res = await pool.query<{ id: string; _hab_group_ok?: boolean }>(`
           WITH ins AS (
             INSERT INTO "${schema}".legal_entities
               (name, rccm, cnps_number, dgi_number, address, city, legal_form,
@@ -1862,18 +1868,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
           ), sg AS (
             INSERT INTO "${schema}".hab_subgroups (group_id, name, kind, legal_entity_id)
-            SELECT g.id, left('RH Filiale ' || ins.name, 150), 'entity', ins.id
+            SELECT g.id, left($15 || ins.name, 150), 'entity', ins.id
               FROM ins CROSS JOIN "${schema}".hab_groups g
-             WHERE g.name = 'DRH Groupe' AND ins.is_head_office = false
+             WHERE g.name = $14 AND ins.is_head_office = false
             ON CONFLICT (legal_entity_id) DO NOTHING
           )
-          SELECT * FROM ins
+          SELECT ins.*, EXISTS (SELECT 1 FROM "${schema}".hab_groups WHERE name = $14) AS _hab_group_ok
+            FROM ins
         `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
             body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
             body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null,
-            body.isHeadOffice ?? false])
-        const created = res.rows[0]
+            body.isHeadOffice ?? false, HAB_GROUP_NAME, HAB_FILIALE_PREFIX])
+        const { _hab_group_ok: habGroupOk, ...created } = res.rows[0] ?? ({} as { id?: string; _hab_group_ok?: boolean })
+        if (habGroupOk === false) {
+          // Groupe racine absent ou renommé : la filiale est créée SANS sous-groupe
+          // (rattrapé au prochain démarrage par ensureHabilitationStructure).
+          fastify.log.error({ schema }, `habilitations : groupe « ${HAB_GROUP_NAME} » introuvable, sous-groupe de filiale non créé`)
+        }
         // Déclarer une filiale active le workflow paie multi-filiales du tenant :
         // sinon le lien « Paie multi-filiales » (qui porte l'initiation du draft)
         // reste masqué dans la sidebar (conditionné à tenantConfig.hasSubsidiaries).
@@ -1893,12 +1905,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A09 — création d'entité légale = action critique (numéros CNPS/DGI officiels)
         auditLogSettings(
           schema, request.user.sub, 'settings.legal_entity_created',
-          created?.id ?? null,
+          created.id ?? null,
           { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate,
             isHeadOffice: body.isHeadOffice ?? false },
           request.ip ?? null,
         )
-        return reply.status(201).send({ data: created ? withHeadOffice(created) : created })
+        return reply.status(201).send({ data: created.id ? withHeadOffice(created) : undefined })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
