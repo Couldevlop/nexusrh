@@ -66,19 +66,26 @@ async function recomputeStatus(schema: string, requestId: string, expiresAt: str
 }
 
 /**
- * Périmètre filiale (habilitations) d'une demande de signature : visible si au
- * moins UN signataire rattaché à un salarié est dans le périmètre de l'acteur,
- * ou si elle n'a aucun signataire salarié (signataires externes : pas de donnée
- * de filiale à protéger, et le créateur doit la retrouver). 'TRUE' sans restriction.
+ * Périmètre filiale (habilitations) d'une demande de signature, FERMÉ PAR DÉFAUT :
+ * visible seulement si AUCUN signataire rattaché à un salarié n'est hors du
+ * périmètre de l'acteur (filiale inconnue = hors périmètre). Une demande sans
+ * signataire salarié (externes seulement) n'est visible que de son créateur.
+ * 'TRUE' (périmètre ouvert) : aucune restriction.
  */
-async function signatureScope(request: FastifyRequest, schema: string, requestIdColumn: string): Promise<string> {
+async function signatureScope(
+  request: FastifyRequest, schema: string, requestIdColumn: string, createdByColumn: string,
+): Promise<string> {
   const sc = await requestHrScope(request, 'hs')
   if (sc === 'TRUE') return 'TRUE'
-  return `(NOT EXISTS (SELECT 1 FROM "${schema}".signature_signatories hs0
-                       WHERE hs0.request_id = ${requestIdColumn} AND hs0.employee_id IS NOT NULL)
-          OR EXISTS (SELECT 1 FROM "${schema}".signature_signatories hss
-                       JOIN "${schema}".employees hs ON hs.id = hss.employee_id
-                      WHERE hss.request_id = ${requestIdColumn} AND ${sc}))`
+  const sub = request.user.sub
+  const mine = typeof sub === 'string' && UUID_RE.test(sub) ? `${createdByColumn}::text = '${sub.toLowerCase()}'` : 'FALSE'
+  return `(NOT EXISTS (SELECT 1 FROM "${schema}".signature_signatories hss
+                       LEFT JOIN "${schema}".employees hs ON hs.id = hss.employee_id
+                      WHERE hss.request_id = ${requestIdColumn} AND hss.employee_id IS NOT NULL
+                        AND NOT COALESCE((${sc}), false))
+          AND (EXISTS (SELECT 1 FROM "${schema}".signature_signatories hs0
+                        WHERE hs0.request_id = ${requestIdColumn} AND hs0.employee_id IS NOT NULL)
+               OR ${mine}))`
 }
 
 const signatureRoutes: FastifyPluginAsync = async (fastify) => {
@@ -96,7 +103,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
                 COUNT(s.id) FILTER (WHERE s.status = 'signed')::int AS signed_count
          FROM "${schema}".signature_requests r
          LEFT JOIN "${schema}".signature_signatories s ON s.request_id = r.id
-         WHERE ${await signatureScope(request, schema, 'r.id')}
+         WHERE ${await signatureScope(request, schema, 'r.id', 'r.created_by')}
          GROUP BY r.id ORDER BY r.created_at DESC`,
       )
       return reply.send({ data: res.rows })
@@ -112,15 +119,12 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = createSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
-      // Périmètre filiale : au moins un signataire salarié doit être dans le périmètre.
-      const salaried = b.signatories.filter((s) => s.employeeId)
-      if (salaried.length > 0) {
-        const hrScope = await requestHrScope(request, 'e')
-        let anyInScope = false
-        for (const s of salaried) {
-          if (await employeeInHrScope(schema, s.employeeId as string, hrScope)) { anyInScope = true; break }
+      // Périmètre filiale (fermé par défaut) : TOUS les signataires salariés doivent être dans le périmètre.
+      const hrScope = await requestHrScope(request, 'e')
+      for (const s of b.signatories) {
+        if (s.employeeId && !(await employeeInHrScope(schema, s.employeeId, hrScope))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
         }
-        if (!anyInScope) return reply.status(404).send({ error: 'Employé introuvable' })
       }
       const reqRes = await rawPool.query(
         `INSERT INTO "${schema}".signature_requests (title, document_type, document_id, document_url, message, sequential, expires_at, created_by, status)
@@ -149,7 +153,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return badRequest(reply, 'id invalide')
-      const r = await rawPool.query(`SELECT * FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id')}`, [id])
+      const r = await rawPool.query(`SELECT * FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id', 'signature_requests.created_by')}`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Demande introuvable' })
       const sigs = await rawPool.query(`SELECT * FROM "${schema}".signature_signatories WHERE request_id = $1 ORDER BY order_index`, [id])
       return reply.send({ data: { ...r.rows[0], signatories: sigs.rows } })
@@ -164,7 +168,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return badRequest(reply, 'id invalide')
-      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id')}`, [id])
+      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id', 'signature_requests.created_by')}`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Demande introuvable' })
       const cnt = await rawPool.query(`SELECT COUNT(*)::int AS n FROM "${schema}".signature_signatories WHERE request_id = $1`, [id])
       if (!canSend(r.rows[0].status as RequestStatus, cnt.rows[0].n)) return badRequest(reply, 'Demande non envoyable (statut ou signataires)')
@@ -182,7 +186,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return badRequest(reply, 'id invalide')
-      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id')}`, [id])
+      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id', 'signature_requests.created_by')}`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Demande introuvable' })
       if (!canCancel(r.rows[0].status as RequestStatus)) return badRequest(reply, 'Annulation impossible à ce stade')
       await rawPool.query(`UPDATE "${schema}".signature_requests SET status = 'cancelled', updated_at = now() WHERE id = $1`, [id])
@@ -199,7 +203,7 @@ const signatureRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return badRequest(reply, 'id invalide')
-      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id')}`, [id])
+      const r = await rawPool.query(`SELECT status FROM "${schema}".signature_requests WHERE id = $1 AND ${await signatureScope(request, schema, 'signature_requests.id', 'signature_requests.created_by')}`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Demande introuvable' })
       if (!canDelete(r.rows[0].status as RequestStatus)) return badRequest(reply, 'Seul un brouillon est supprimable (sinon : annuler)')
       await rawPool.query(`DELETE FROM "${schema}".signature_signatories WHERE request_id = $1`, [id])

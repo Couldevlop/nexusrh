@@ -172,6 +172,7 @@ function scoreToRecommendation(score: number | null): string | null {
 async function applicationInHrScope(request: FastifyRequest, schema: string, applicationId: string): Promise<boolean> {
   const sc = await requestHrScope(request, 'jsc')
   if (sc === 'TRUE') return true
+  if (!UUID_PARAM_RE.test(applicationId)) return false
   const r = await pool.query(
     `SELECT 1 FROM "${schema}".applications a
        JOIN "${schema}".recruitment_jobs rj ON rj.id = a.job_id
@@ -871,6 +872,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await applicationInHrScope(request, schema, id))) {
+        return reply.status(404).send({ error: 'Candidature introuvable' })
+      }
 
       const parsed = contractBodySchema.safeParse(request.body ?? {})
       if (!parsed.success) {
@@ -1005,6 +1009,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await applicationInHrScope(request, schema, id))) {
+        return reply.status(404).send({ error: 'Candidature introuvable' })
+      }
       try {
         const file = await request.file()
         if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu' })
@@ -1072,6 +1079,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await applicationInHrScope(request, schema, id))) {
+        return reply.status(404).send({ error: 'Candidature introuvable' })
+      }
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         return reply.status(400).send({ error: 'application id invalide (UUID requis)' })
       }
@@ -1115,6 +1125,9 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       await ensureRecruitmentSchemaMigrated(schema)
       const { id } = request.params as { id: string }
+      if (!(await applicationInHrScope(request, schema, id))) {
+        return reply.status(404).send({ error: 'Candidature introuvable' })
+      }
       const { model: rawModel, cv_text: overrideCv } =
         (request.body ?? {}) as { model?: string; cv_text?: string }
       const model: AiModelChoice = rawModel === 'mistral' ? 'mistral' : 'claude'
