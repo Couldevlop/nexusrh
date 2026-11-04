@@ -88,21 +88,15 @@ const ORGANIZATION = {
   email: PUBLISHER.infoEmail,
   telephone: TELEPHONES,
   address: ADDRESS,
+  // Un seul point de contact, comme sur la page : les trois numéros publiés, dans l'ordre.
   contactPoint: [
     {
       '@type': 'ContactPoint',
-      contactType: 'sales',
-      email: EMAIL,
-      telephone: PHONES[0]!.e164,
-      areaServed: AREA_SERVED,
-      availableLanguage: ['French', 'English'],
-    },
-    {
-      '@type': 'ContactPoint',
-      contactType: 'customer support',
+      contactType: 'customer service',
+      telephone: TELEPHONES,
       email: PUBLISHER.supportEmail,
-      telephone: PHONES[1]!.e164,
       hoursAvailable: SUPPORT_HOURS,
+      areaServed: AREA_SERVED,
       availableLanguage: ['French', 'English'],
     },
   ],

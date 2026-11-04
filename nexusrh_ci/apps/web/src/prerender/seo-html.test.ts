@@ -206,6 +206,11 @@ describe('données structurées (JSON-LD)', () => {
     const graph = graphOf(getPages()[0]!.jsonLd)
     const org = graph.find((n) => n['@type'] === 'Organization')!
     expect(org.telephone).toEqual(['+2250709334238', '+2250749439203', '+33619245329'])
+    // Un seul contactPoint « customer service » portant les trois numéros.
+    const cps = org.contactPoint as { contactType: string; telephone: string[] }[]
+    expect(cps).toHaveLength(1)
+    expect(cps[0]!.contactType).toBe('customer service')
+    expect(cps[0]!.telephone).toEqual(['+2250709334238', '+2250749439203', '+33619245329'])
     const html = renderPage('/')
     for (const tel of ['+2250709334238', '+2250749439203', '+33619245329']) expect(html, tel).toContain(`href="tel:${tel}"`)
     for (const shown of ['+225 07 09 33 42 38', '+225 07 49 43 92 03', '+33 6 19 24 53 29']) expect(html, shown).toContain(shown)
