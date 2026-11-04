@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary font-black text-sm text-primary-foreground">N</div>
-            <span className="font-black text-lg">NexusRH CI</span>
+            <span className="font-black text-lg">NexusRH</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">{t('reset.title')}</h1>
           <p className="mt-2 text-sm text-gray-500">

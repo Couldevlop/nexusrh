@@ -1,5 +1,5 @@
 /**
- * Seed NexusRH CI — Données complètes et fonctionnelles
+ * Seed NexusRH — Données complètes et fonctionnelles
  * Tenant 1 : SOTRA (80 employés, transport Abidjan)
  * Tenant 2 : Cabinet Expertise CI (25 employés, cabinet conseil)
  */
@@ -275,7 +275,7 @@ async function seedOnboarding(
 const TENANT_SCHEMAS = ['tenant_sotra', 'tenant_cabinet_expertise_ci', 'tenant_openlab_consulting', 'tenant_woyaa']
 
 async function runSeed(): Promise<void> {
-  console.log('NexusRH CI — Initialisation du seed...')
+  console.log('NexusRH — Initialisation du seed...')
 
   // ── Garde-fou PRODUCTION : ne JAMAIS détruire une base déjà initialisée ──────
   // Le seed est destructif (DROP SCHEMA ... CASCADE → efface utilisateurs,

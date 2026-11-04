@@ -9,6 +9,7 @@ import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
 import { ciCmuEmployeeColumnMigrations, ciOvertimeRuleMigrations } from '../db/payroll-rules-ci-2023.js'
 import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
+import { platformRenameStatements } from '../db/platform-rename.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
 
 const migratedSchemas = new Set<string>()
@@ -1210,6 +1211,9 @@ export async function ensurePlatformSchema(): Promise<void> {
       updated_at     timestamptz NOT NULL DEFAULT now(),
       UNIQUE (role_key, langue)
     )`,
+
+    // ── Renommage produit : met à jour les anciennes valeurs par défaut uniquement ──
+    ...platformRenameStatements(),
   ]
   for (const sql of alters) {
     await pool.query(sql).catch(() => undefined)

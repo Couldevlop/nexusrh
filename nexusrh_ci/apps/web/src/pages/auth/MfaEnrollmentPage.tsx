@@ -141,7 +141,7 @@ export default function MfaEnrollmentPage() {
       <div className="w-full max-w-2xl">
         {/* En-tête */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <img src={nexusrhLogoDark} alt="NexusRH CI" className="mb-6 h-9 w-auto object-contain" />
+          <img src={nexusrhLogoDark} alt="NexusRH" className="mb-6 h-9 w-auto object-contain" />
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100">
             <ShieldCheck className="h-6 w-6 text-indigo-600" />
           </div>

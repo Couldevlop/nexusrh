@@ -35,7 +35,7 @@
   },
   "dashboard": {
     "title": "Tableau de bord plateforme",
-    "subtitle": "NexusRH CI — OpenLab Consulting",
+    "subtitle": "NexusRH — OpenLab Consulting",
     "kpi": {
       "activeTenants": "Tenants actifs",
       "trial": "En trial",
@@ -464,7 +464,7 @@
   },
   "settings": {
     "title": "Paramètres Plateforme",
-    "subtitle": "Configuration globale NexusRH CI · v{{version}} · {{environment}}",
+    "subtitle": "Configuration globale NexusRH · v{{version}} · {{environment}}",
     "saved": "Enregistré",
     "save": "Enregistrer",
     "systemStatus": {
@@ -567,7 +567,7 @@
       "supportWhatsappHint": "Affiché dans les emails de bienvenue tenant · Format +225 XXXXXXXXXX",
       "welcomeSignature": "Signature email de bienvenue",
       "welcomeSignatureHint": "Texte affiché en bas de l'email envoyé à la création d'un tenant",
-      "defaultSignature": "L'équipe NexusRH CI · OpenLab Consulting · Abidjan",
+      "defaultSignature": "L'équipe NexusRH · OpenLab Consulting · Abidjan",
       "autoEmailsTitle": "Emails déclenchés automatiquement",
       "autoEmails": {
         "welcome": "Bienvenue admin à la création du tenant",

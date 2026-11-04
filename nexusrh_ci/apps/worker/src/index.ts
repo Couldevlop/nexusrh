@@ -201,7 +201,7 @@ connection.on('ready', () => {
 })
 
 async function start(): Promise<void> {
-  logger.info('NexusRH CI Worker starting...')
+  logger.info('NexusRH Worker starting...')
 
   workers.push(createWorker('email', processEmailJob as JobHandler))
   workers.push(createWorker('payroll-ci', processPayrollJob as JobHandler))

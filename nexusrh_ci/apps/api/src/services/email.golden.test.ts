@@ -34,7 +34,7 @@ vi.mock('../config.js', () => ({
     smtp: {
       host: 'smtp.gmail.com', port: 587, secure: false,
       user: 'infos@openlabconsulting.com', pass: 'app-password-16c',
-      from: 'NexusRH CI <noreply@nexusrh-ci.com>',
+      from: 'NexusRH <noreply@nexusrh-ci.com>',
     },
   },
 }))
@@ -68,7 +68,7 @@ describe('sendWelcomeTenantEmail — email de bienvenue création tenant', () =>
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const mail = (sendMailMock.mock.calls[0]?.[0] ?? {}) as Record<string, string>
     expect(mail.to).toBe('admin@acme.ci')
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.subject).toContain('ACME Corp')
     // Le mot de passe temporaire ET le lien doivent figurer (HTML + texte de repli)
     expect(mail.html).toContain('CI_SECRET9!')
@@ -118,7 +118,7 @@ describe('sendTestEmail — test de la configuration SMTP (Paramètres → Email
   it('repli plateforme sans config tenant (expéditeur plateforme)', async () => {
     await sendTestEmail({ to: 'admin@acme.ci', tenantName: 'ACME' })
     const mail = (sendMailMock.mock.calls.at(-1)?.[0] ?? {}) as Record<string, string>
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.html).toContain('plateforme')
   })
 })

@@ -505,7 +505,7 @@ describe('GET /platform/tenants/:id/admin-status', () => {
 // ─── GET /platform/settings ──────────────────────────────────────────────────
 describe('GET /platform/settings', () => {
   it('table existante → 200 + flags dérivés', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH CI', maintenance_mode: false }] })
+    queryMock.mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH', maintenance_mode: false }] })
     const res = await app.inject({ method: 'GET', url: '/platform/settings', headers: hSuper() })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
@@ -518,10 +518,10 @@ describe('GET /platform/settings', () => {
       .mockRejectedValueOnce(new Error('relation platform.platform_settings does not exist')) // SELECT initial
       .mockResolvedValueOnce({ rows: [] }) // CREATE TABLE
       .mockResolvedValueOnce({ rows: [] }) // INSERT DEFAULT
-      .mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH CI' }] }) // relecture
+      .mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH' }] }) // relecture
     const res = await app.inject({ method: 'GET', url: '/platform/settings', headers: hSuper() })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).data.app_name).toBe('NexusRH CI')
+    expect(JSON.parse(res.body).data.app_name).toBe('NexusRH')
   })
 })
 

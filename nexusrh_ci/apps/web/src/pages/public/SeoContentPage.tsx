@@ -11,10 +11,10 @@ import { useEffect } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { getSeoPage } from './seo/content'
 import type { SeoBlock, SeoPageContent } from './seo/types'
+import { PHONES, PUBLISHER } from './home-content'
 
-const EMAIL    = 'waopron@openlabconsulting.com'
-const PHONE_CI = '+225 07 09 32 05 94'
-const WHATSAPP = 'https://wa.me/2250709320594'
+const EMAIL    = PUBLISHER.demoEmail
+const WHATSAPP = PUBLISHER.whatsapp
 
 const MONTHS = {
   fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
@@ -30,23 +30,23 @@ export function formatDate(iso: string, lang: 'fr' | 'en'): string {
 const UI = {
   fr: {
     home: 'Accueil', demo: 'Demander une démo', updated: 'Mis à jour le', faq: 'Questions fréquentes',
-    related: 'À lire aussi', ctaTitle: 'Voir NexusRH CI sur vos propres cas de paie',
-    ctaText: 'Une démonstration avec vos rubriques, vos catégories et vos filiales, par l’équipe d’OpenLab Consulting à Abidjan.',
-    solutions: 'Solutions', guides: 'Guides', legal: 'Informations légales', contact: 'Contact', crumbs: 'Fil d’Ariane',
-    address: 'Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d’Ivoire', skip: 'Aller au contenu',
+    related: 'À lire aussi', ctaTitle: 'Voir NexusRH sur vos propres cas de paie',
+    ctaText: "Une démonstration avec vos rubriques, vos catégories et vos filiales, par l'équipe d'OpenLab Consulting à Abidjan.",
+    solutions: 'Solutions', guides: 'Guides', legal: 'Informations légales', contact: 'Contact', crumbs: "Fil d'Ariane",
+    address: "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire", skip: 'Aller au contenu',
   },
   en: {
     home: 'Home', demo: 'Request a demo', updated: 'Updated', faq: 'Frequently asked questions',
-    related: 'Read next', ctaTitle: 'See NexusRH CI run your own payroll cases',
+    related: 'Read next', ctaTitle: 'See NexusRH run your own payroll cases',
     ctaText: 'A demo with your pay items, job grades and subsidiaries, by the OpenLab Consulting team in Abidjan.',
     solutions: 'Solutions', guides: 'Guides (in French)', legal: 'Legal', contact: 'Contact', crumbs: 'Breadcrumb',
-    address: 'Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d’Ivoire', skip: 'Skip to content',
+    address: "Cocody, Rivièra Faya Lauriers 8, Abidjan, Côte d'Ivoire", skip: 'Skip to content',
   },
 } as const
 
 /** Maillage du pied de page : toutes les pages de contenu + vitrine. */
 const FOOTER_SOLUTIONS = [
-  { to: '/', label: "SIRH Côte d'Ivoire" },
+  { to: '/', label: "SIRH Côte d'Ivoire et UEMOA" },
   { to: '/logiciel-paie-cote-divoire', label: "Logiciel de paie Côte d'Ivoire" },
   { to: '/gestion-conges-cote-divoire', label: 'Gestion des congés' },
   { to: '/paiement-salaires-mobile-money', label: 'Salaires par Mobile Money' },
@@ -54,7 +54,9 @@ const FOOTER_SOLUTIONS = [
   { to: '/logiciel-paie-senegal', label: 'Paie Sénégal' },
   { to: '/logiciel-paie-burkina-faso', label: 'Paie Burkina Faso' },
   { to: '/logiciel-paie-benin', label: 'Paie Bénin' },
+  { to: '/sirh-saas-ou-on-premise', label: 'SaaS ou on-premise' },
   { to: '/en/hris-payroll-west-africa', label: 'HRIS West Africa (English)' },
+  { to: '/en/hris-saas-or-on-premise', label: 'SaaS or on-premise (English)' },
 ]
 const FOOTER_GUIDES = [
   { to: '/guides/calcul-its-2024-cote-divoire', label: "Calcul de l'ITS 2024" },
@@ -136,7 +138,7 @@ function Page({ page }: { page: SeoPageContent }) {
           <Link to="/" className="flex items-center gap-3">
             <img src="/openlab.png" alt="OpenLab Consulting" width="108" height="36" className="h-9 w-auto" />
             <span className="hidden h-7 w-px bg-[#E4E8EB] sm:block" />
-            <span className="hidden text-[15px] font-bold tracking-tight sm:inline">NexusRH <span className="text-[#F04E10]">CI</span></span>
+            <span className="hidden text-[15px] font-bold tracking-tight sm:inline">NexusRH</span>
           </Link>
           <a href="/#demo" className="rounded-lg bg-[#F04E10] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#C43C08]">
             {ui.demo}
@@ -188,7 +190,7 @@ function Page({ page }: { page: SeoPageContent }) {
           <div className="mt-5 flex flex-wrap gap-3">
             <a href="/#demo" className="rounded-lg bg-[#F04E10] px-5 py-3 text-sm font-bold text-white hover:bg-[#C43C08]">{ui.demo}</a>
             <a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="rounded-lg border-2 border-[#0F1214] px-5 py-2.5 text-sm font-bold tabular-nums hover:bg-[#0F1214] hover:text-white">
-              WhatsApp {PHONE_CI}
+              WhatsApp {PUBLISHER.whatsappDisplay}
             </a>
           </div>
         </aside>
@@ -232,7 +234,7 @@ function Page({ page }: { page: SeoPageContent }) {
             <ul className="space-y-2 text-sm text-[#5A6672]">
               <li><Link to="/legal/mentions-legales" className="hover:text-[#F04E10]">Mentions légales</Link></li>
               <li><Link to="/legal/confidentialite" className="hover:text-[#F04E10]">Confidentialité</Link></li>
-              <li><Link to="/legal/conditions" className="hover:text-[#F04E10]">Conditions d’utilisation</Link></li>
+              <li><Link to="/legal/conditions" className="hover:text-[#F04E10]">Conditions d'utilisation</Link></li>
             </ul>
           </nav>
           <div>
@@ -240,7 +242,9 @@ function Page({ page }: { page: SeoPageContent }) {
             <address className="space-y-2 text-sm not-italic text-[#5A6672]">
               <p>OpenLab Consulting</p>
               <p>{ui.address}</p>
-              <p><a href={`tel:${PHONE_CI.replace(/\s/g, '')}`} className="tabular-nums hover:text-[#F04E10]">{PHONE_CI}</a></p>
+              {PHONES.map((ph) => (
+                <p key={ph.e164}><a href={`tel:${ph.e164}`} className="tabular-nums hover:text-[#F04E10]">{ph.display}</a></p>
+              ))}
               <p><a href={`mailto:${EMAIL}`} className="break-all hover:text-[#F04E10]">{EMAIL}</a></p>
             </address>
           </div>

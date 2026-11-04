@@ -5,7 +5,7 @@
 
 ```bash
 NODE_ENV=development
-APP_NAME=NexusRH CI
+APP_NAME=NexusRH
 APP_URL=http://localhost:3000
 API_URL=http://localhost:4000
 API_PORT=4000
@@ -26,7 +26,7 @@ REDIS_URL=redis://localhost:6380
 JWT_SECRET=nexusrh-ci-super-secret-key-minimum-32-chars!!
 JWT_EXPIRES_IN=7d
 JWT_REFRESH_EXPIRES_IN=30d
-MFA_ISSUER=NexusRH CI
+MFA_ISSUER=NexusRH
 
 # OAuth2 (optionnel)
 GOOGLE_CLIENT_ID=
@@ -46,7 +46,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
-SMTP_FROM=NexusRH CI <noreply@nexusrh-ci.com>
+SMTP_FROM=NexusRH <noreply@nexusrh-ci.com>
 
 # Stockage (MinIO / S3 hébergeable en CI)
 S3_ENDPOINT=http://localhost:9000

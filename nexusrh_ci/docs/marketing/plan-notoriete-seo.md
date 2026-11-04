@@ -1,4 +1,4 @@
-# Plan de notoriété et de référencement — NexusRH CI
+# Plan de notoriété et de référencement — NexusRH
 
 Site : https://nexusrh.openlabconsulting.com · Éditeur : OpenLab Consulting (Abidjan)
 
@@ -34,25 +34,25 @@ balises Open Graph et données structurées. Ce document couvre ce qui se fait
 |---|---|---|
 | Fiche **Google Business Profile** d'OpenLab Consulting (Cocody) | business.google.com | Apparaître dans Google Maps et les recherches locales « logiciel paie Abidjan » |
 | Lien vers NexusRH depuis **openlabconsulting.com** (menu + page produit dédiée) | site de l'éditeur | Premier lien d'autorité, le plus facile à obtenir |
-| **Page LinkedIn** OpenLab + page vitrine « NexusRH CI » | linkedin.com | Canal principal des DRH et DAF en Côte d'Ivoire |
+| **Page LinkedIn** OpenLab + page vitrine « NexusRH » | linkedin.com | Canal principal des DRH et DAF en Côte d'Ivoire |
 | Fiches logiciel gratuites | Capterra / GetApp (Gartner), G2, Appvizer, SaaSworthy | Liens + avis vérifiés, bien classés sur « logiciel RH » |
 | Annuaires d'entreprises CI | Goafricaonline, CCI Côte d'Ivoire, CGECI (si adhésion) | Liens locaux pertinents pour Google |
 | Lien en signature email de toute l'équipe | — | Trafic direct et visibilité |
 
 ### Texte prêt — description Google Business Profile / annuaires (≈ 700 caractères)
 
-> OpenLab Consulting, basé à Cocody (Abidjan), édite NexusRH CI, le logiciel de
+> OpenLab Consulting, basé à Cocody (Abidjan), édite NexusRH, le logiciel de
 > paie et de gestion des ressources humaines conçu pour la Côte d'Ivoire. La paie
 > applique nativement les règles ivoiriennes : cotisations CNPS 2024 avec double
 > plafond, ITS selon le barème 2024, congés en jours ouvrables, DISA annuelle et
 > déclarations CNPS. Les salaires peuvent être versés par Mobile Money (Wave,
-> Orange, MTN) ou par virement bancaire. NexusRH CI couvre aussi le recrutement,
+> Orange, MTN) ou par virement bancaire. NexusRH couvre aussi le recrutement,
 > la formation FDFP, les entretiens, les carrières et le pilotage multi-filiales
 > (UEMOA, CEMAC). Démonstration gratuite sur nexusrh.openlabconsulting.com.
 
 ### Texte court (≈ 160 caractères) — annuaires, bios
 
-> NexusRH CI : logiciel de paie et SIRH conçu pour la Côte d'Ivoire. CNPS, ITS,
+> NexusRH : logiciel de paie et SIRH conçu pour la Côte d'Ivoire. CNPS, ITS,
 > DISA, Mobile Money. Édité par OpenLab Consulting, Abidjan.
 
 ## Mois 1 à 3 — Contenu qui attire des recherches réelles
@@ -96,7 +96,7 @@ page publique pré-générée.
 > 2024 et réduction pour charges de famille, congés en jours ouvrables, DISA en janvier. Trop de logiciels étrangers
 > les « adaptent » à la main.
 >
-> Avec NexusRH CI, nous avons fait l'inverse : un SIRH écrit pour le droit
+> Avec NexusRH, nous avons fait l'inverse : un SIRH écrit pour le droit
 > ivoirien, avec versement des salaires par Mobile Money et pilotage
 > multi-filiales UEMOA/CEMAC.
 >

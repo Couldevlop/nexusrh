@@ -1,4 +1,4 @@
-# NexusRH CI
+# NexusRH
 
 **SIRH SaaS Multi-Tenant · Côte d'Ivoire**
 _La RH Intelligente, au service de l'Afrique qui avance_
@@ -98,7 +98,7 @@ pnpm run dev
 > **Procédure de reset si login 401** :
 > ```bash
 > # Workflow GitHub Actions (recommandé)
-> # → Actions → "Reset Demo Passwords — NexusRH CI" → Run workflow
+> # → Actions → "Reset Demo Passwords — NexusRH" → Run workflow
 > #   target: nexusrh-ci · mode: apply · confirmation: RESET
 >
 > # OU SQL direct (urgence)
@@ -310,9 +310,9 @@ ensuite en fonction des recommandations, chercher à corriger
 **OpenLab Consulting**
 📍 Cocody, Rivièra Faya Lauriers 8, Abidjan
 📧 infos@openlabconsulting.com
-📱 +225 07 09 32 05 94
+📱 +225 07 09 33 42 38
 🌐 www.openlabconsulting.com
 
 ---
 
-_NexusRH CI — Conforme Code du Travail ivoirien & CNPS 2024_
+_NexusRH — Conforme Code du Travail ivoirien & CNPS 2024_

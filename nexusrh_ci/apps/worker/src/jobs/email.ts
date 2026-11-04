@@ -40,7 +40,7 @@ export async function processEmailJob(job: Job<unknown, void>): Promise<void> {
 
   try {
     await transporter.sendMail({
-      from: process.env['SMTP_FROM'] ?? 'NexusRH CI <noreply@nexusrh-ci.com>',
+      from: process.env['SMTP_FROM'] ?? 'NexusRH <noreply@nexusrh-ci.com>',
       to,
       subject,
       html,
