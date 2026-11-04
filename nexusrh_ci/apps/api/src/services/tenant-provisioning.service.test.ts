@@ -177,6 +177,16 @@ describe('createTenantWithSchema — fiche employé « à compléter » de l\'ad
     expect(query.mock.calls[createIdx]![1]).toEqual(['admin@acme.ci'])
   })
 
+  it('échec des habilitations (structure + marqueur) : création annulée (schéma supprimé, tenant retiré), erreur relancée', async () => {
+    const { pool, query } = routedPool()
+    habMock.mockRejectedValueOnce(new Error('hab KO'))
+    await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('hab KO')
+    const sqls = query.mock.calls.map(c => String(c[0]))
+    expect(sqls.some(s => s.includes('DROP SCHEMA IF EXISTS "tenant_acme" CASCADE'))).toBe(true)
+    expect(sqls.some(s => s.includes('DELETE FROM platform.tenants'))).toBe(true)
+    expect(sendWelcomeMock).not.toHaveBeenCalled()
+  })
+
   it('échec de création de la fiche : tenant annulé (atomicité), erreur relancée', async () => {
     const { pool, query } = routedPool(true)
     await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('employees KO')
