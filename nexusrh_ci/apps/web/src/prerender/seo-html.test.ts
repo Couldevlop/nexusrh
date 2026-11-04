@@ -325,3 +325,19 @@ describe('robots IA : robots.txt, llms.txt, llms-full.txt', () => {
     expect(full).not.toMatch(/ISO 27001|SOC ?2|certifié|aggregateRating|99[,.]9 ?%/i)
   })
 })
+
+describe('image de partage (og-image.png)', () => {
+  it('1200 x 630, générée par scripts/generate-og-image.py, sans « CI » ni « ivoirienne »', () => {
+    const png = readFileSync(join(__dirname, '..', '..', 'public', 'og-image.png'))
+    // En-tête IHDR : largeur et hauteur aux octets 16 et 20.
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
+    const script = readFileSync(join(__dirname, '..', '..', 'scripts', 'generate-og-image.py'), 'utf8')
+    expect(script).toContain("TITLE = 'NexusRH'")
+    expect(script).toContain(`SUBTITLE = "SIRH et paie — Côte d'Ivoire et UEMOA"`)
+    expect(script).toContain("BYLINE = 'par OpenLab Consulting'")
+    expect(script).not.toMatch(/NexusRH CI|ivoirienne/)
+    const html: string = buildPageHtml(TEMPLATE, getPages()[0]!, '<h1>X</h1>', { siteUrl: SITE_URL })
+    expect(html).toContain(`og:image:alt" content="NexusRH — SIRH et paie, Côte d'Ivoire et UEMOA, par OpenLab Consulting"`)
+  })
+})

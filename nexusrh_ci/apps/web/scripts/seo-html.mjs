@@ -21,8 +21,8 @@ function replaceOnce(html, pattern, replacement, label) {
 }
 
 const IMAGE_ALT = {
-  fr: "NexusRH — logiciel de paie et SIRH pour la Côte d'Ivoire",
-  en: 'NexusRH — HRIS and payroll software for West Africa',
+  fr: "NexusRH — SIRH et paie, Côte d'Ivoire et UEMOA, par OpenLab Consulting",
+  en: "NexusRH — HRIS and payroll, Côte d'Ivoire and WAEMU, by OpenLab Consulting",
 }
 
 /**
