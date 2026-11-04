@@ -38,6 +38,7 @@ import type { AttendanceConfig, EffectiveSchedule, FieldMapping, NormalizedPunch
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
+import { requestHrScope, requestEmployeeScope } from '../../utils/hr-scope.js'
 import { attendancePayrollSettingsSchema, loadAttendancePayrollSettings } from '../../services/attendance-payroll.service.js'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -1028,7 +1029,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
                         p.direction, p.source, p.created_at
                    FROM "${schema}".attendance_punches p
                    LEFT JOIN "${schema}".employees e ON e.id = p.employee_id
-                  WHERE 1=1`
+                  WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (employeeId) { sql += ` AND p.employee_id = $${idx++}`; params.push(employeeId) }
@@ -1075,7 +1076,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
         // schéma courant — un id valide mais appartenant à un autre tenant ne
         // matchera simplement aucune ligne ici.
         const emp = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [b.employeeId],
+          `SELECT id FROM "${schema}".employees WHERE id = $1 AND ${await requestHrScope(request, 'employees')} LIMIT 1`, [b.employeeId],
         )
         if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
@@ -1132,7 +1133,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
                         d.late_minutes, d.status, d.justified_by, d.computed_at
                    FROM "${schema}".attendance_days d
                    JOIN "${schema}".employees e ON e.id = d.employee_id
-                  WHERE 1=1`
+                  WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (employeeId) { sql += ` AND d.employee_id = $${idx++}`; params.push(employeeId) }
@@ -1235,12 +1236,19 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       if (dates.length > 366) {
         return reply.status(400).send({ error: 'Plage de dates trop large (maximum 366 jours)' })
       }
+      // Périmètre filiale : on ne recalcule que les salariés du périmètre.
+      const recomputeScope = await requestHrScope(request, 'employees')
       let employeeIds = b.employeeIds
       if (!employeeIds) {
         const act = await pool.query<{ id: string }>(
-          `SELECT id FROM "${schema}".employees WHERE is_active = true AND deleted_at IS NULL LIMIT 1000`,
+          `SELECT id FROM "${schema}".employees WHERE is_active = true AND deleted_at IS NULL AND ${recomputeScope} LIMIT 1000`,
         ).catch(() => ({ rows: [] as Array<{ id: string }> }))
         employeeIds = act.rows.map((r) => r.id)
+      } else if (recomputeScope !== 'TRUE') {
+        const inScope = await pool.query<{ id: string }>(
+          `SELECT id FROM "${schema}".employees WHERE id = ANY($1::uuid[]) AND ${recomputeScope}`, [employeeIds],
+        ).catch(() => ({ rows: [] as Array<{ id: string }> }))
+        employeeIds = inScope.rows.map((r) => r.id)
       }
 
       let recomputed = 0
@@ -1306,7 +1314,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
                         w.employee_response, w.responded_at, w.disciplinary_action_id, w.created_at
                    FROM "${schema}".attendance_warnings w
                    LEFT JOIN "${schema}".employees e ON e.id = w.employee_id
-                  WHERE 1=1`
+                  WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (employeeId) { sql += ` AND w.employee_id = $${idx++}`; params.push(employeeId) }
@@ -1352,7 +1360,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
 
       try {
         const res = await pool.query<{ id: string; employee_id: string }>(
-          `UPDATE "${schema}".attendance_warnings SET status = $1 WHERE id = $2 RETURNING id, employee_id`,
+          `UPDATE "${schema}".attendance_warnings SET status = $1 WHERE id = $2 AND ${await requestEmployeeScope(request, 'employee_id')} RETURNING id, employee_id`,
           [b.status, id],
         )
         const row = res.rows[0]
@@ -1533,7 +1541,9 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
       const effTo = to ?? range.to
 
       const params: unknown[] = [effFrom, effTo]
-      let mgrFilter = ''
+      // Périmètre filiale (habilitations) appliqué à chaque sous-requête (alias e).
+      const hrScope = await requestHrScope(request, 'e')
+      let mgrFilter = hrScope === 'TRUE' ? '' : ` AND ${hrScope}`
 
       // RBAC-équipe : manager limité à son périmètre (équipe directe ou branche, cf. manager-scope.service).
       if (request.user.role === 'manager') {
@@ -1547,7 +1557,7 @@ export async function attendanceRoutes(fastify: FastifyInstance) {
           })
         }
         params.push(emp.rows[0].id)
-        mgrFilter = ` AND ${managerScopeSql(schema, 'e', '$3')}`
+        mgrFilter += ` AND ${managerScopeSql(schema, 'e', '$3')}`
       }
 
       const sql = `SELECT

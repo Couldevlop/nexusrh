@@ -9,6 +9,7 @@ import { sendAbsenceRequestEmail } from '../../services/email.js'
 import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
 import {
@@ -125,7 +126,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
                  FROM "${schema}".absences a
                  JOIN "${schema}".absence_types at ON at.id = a.absence_type_id
                  JOIN "${schema}".employees e ON e.id = a.employee_id
-                 WHERE 1=1`
+                 WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (employeeId) { sql += ` AND a.employee_id = $${idx++}`; params.push(employeeId) }
@@ -232,6 +233,11 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let empId: string | null
       if (isHrRole) {
         empId = employeeId ?? request.user.employeeId ?? null
+        // Périmètre filiale : les soldes d'un autre salarié hors périmètre sont introuvables.
+        if (employeeId && employeeId !== request.user.employeeId
+            && !(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
       } else if (role === 'manager' && employeeId) {
         let managerEmpId: string | null = request.user.employeeId ?? null
         if (!managerEmpId) {
@@ -315,6 +321,10 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       let employeeId: string | null = request.user.employeeId ?? null
       if (body.employeeId && body.employeeId !== employeeId) {
         if (isHrRole) {
+          // Périmètre filiale : saisie pour un salarié hors périmètre = introuvable.
+          if (!(await employeeInHrScope(schema, body.employeeId, await requestHrScope(request, 'e')))) {
+            return reply.status(404).send({ error: 'Employé introuvable' })
+          }
           employeeId = body.employeeId
         } else {
           const creatorEmp = await actorEmployeeId(schema, request.user)
@@ -462,7 +472,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
       }>(
         `SELECT validation_level, status, employee_id, days, absence_type_id, created_at, approval_trail
-         FROM "${schema}".absences WHERE id = $1`, [id]
+         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
@@ -557,7 +567,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
         validation_level?: number; status?: string; created_at?: string; approval_trail?: ApprovalTrailEntry[] | null
       }>(
         `SELECT employee_id, days, absence_type_id, start_date, validation_level, status, created_at, approval_trail
-         FROM "${schema}".absences WHERE id = $1`, [id]
+         FROM "${schema}".absences WHERE id = $1 AND ${await requestEmployeeScope(request, 'employee_id')}`, [id]
       )
       const absence = cur.rows[0]
       if (!absence) return reply.status(404).send({ error: 'Absence introuvable' })
