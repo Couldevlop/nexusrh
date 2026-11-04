@@ -235,8 +235,23 @@ describe('données structurées (JSON-LD)', () => {
       buildRobotsTxt(SITE_URL, getPages()),
     ]
     for (const s of sources) expect(s).not.toMatch(/NexusRH CI/)
+    // Marque coupée par du balisage (ancien logo texte « NexusRH <span>CI</span> ») :
+    // contrôle sur le HTML brut ET sur le texte visible (textContent, balises retirées).
+    const brand = /NexusRH\s*(<[^>]+>\s*)*CI\b/
+    const visible = (h: string): string =>
+      (new DOMParser().parseFromString(h, 'text/html').body.textContent ?? '').replace(/\s+/g, ' ')
+    for (const p of getPages()) {
+      const page = renderPage(p.path)
+      expect(page, p.path).not.toMatch(brand)
+      expect(visible(page), p.path).not.toMatch(/NexusRH ?CI\b/)
+    }
     const html: string = buildPageHtml(TEMPLATE, getPages()[0]!, renderPage('/'), { siteUrl: SITE_URL })
     expect(html).not.toMatch(/NexusRH CI/)
+    expect(html).not.toMatch(brand)
+    expect(visible(html)).not.toMatch(/NexusRH ?CI\b/)
+    // Le contrôle détecte bien une marque coupée par une balise.
+    expect('NexusRH <span class="x">CI</span>').toMatch(brand)
+    expect(visible('<b>NexusRH</b><span>CI</span>')).toMatch(/NexusRH ?CI\b/)
     expect(html).toContain('<meta property="og:site_name" content="NexusRH" />')
   })
 
