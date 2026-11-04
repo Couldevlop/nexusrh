@@ -16,7 +16,8 @@ import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
-import { isMasked, maskSensitive, csvCell } from '../../services/sensitive-mask.js'
+import { isMasked, csvCell } from '../../services/sensitive-mask.js'
+import { presentEmployeeRow } from '../../services/employee-presenter.js'
 import { EMPLOYEE_NUMBER_MAX_LENGTH } from '../../db/employee-number.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
@@ -25,7 +26,7 @@ import {
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { currencyLabel, type LegislationPack } from '../../services/legislation-packs.js'
 import {
-  parseFieldDefinitions, redactCustomFields, validateCustomFieldValues,
+  parseFieldDefinitions, validateCustomFieldValues,
   type CustomFieldError,
 } from '../../services/employee-custom-fields.service.js'
 
@@ -336,21 +337,19 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // Masqué : le RIB n'est même pas déchiffré.
       const masked = isMasked(maskCtx)
       // Champs personnalisés sensibles : réservés aux rôles RH disposant de la case
-      // données sensibles (A01). Fait AVANT le masquage, qui copie les lignes.
-      if ((!isHr || masked) && res.rows.length) {
-        const defs = await loadCustomFieldDefinitions(schema)
-        for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
-      }
+      // données sensibles (A01). L'ordre (expurger, retirer les chiffrés, masquer)
+      // est porté par presentEmployeeRow, commun à liste / détail / POST / PATCH.
+      const redactCustom = !isHr || masked
+      const defs = redactCustom && res.rows.length ? await loadCustomFieldDefinitions(schema) : []
       const listRows = (res.rows as Array<Record<string, unknown>>).map((row) => {
         const hadIban = typeof row.iban === 'string' && row.iban !== ''
         const iban = isHr && !masked && hadIban ? decryptIfPresent(row.iban as string) : null
         row.iban_masked = iban ? maskIban(iban) : null
         delete row.iban
         if (!isHr) { row.linked_user_id = null; row.linked_user_role = null }
-        if (!masked) return row
         // iban_masked porte l'information « un RIB existe » : on l'annonce masqué.
-        const out = maskSensitive({ ...row, ...(hadIban ? { iban_masked: 'x' } : {}) }, maskCtx)
-        return out
+        if (masked && hadIban) row.iban_masked = 'x'
+        return presentEmployeeRow(row, { ctx: maskCtx, defs, redactCustom, secrets: 'drop' })
       })
 
       return reply.send({ data: listRows, total, page, limit })
@@ -450,19 +449,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const canSeeSensitive =
         ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) ||
         emp.email === request.user.email
-      if (canSeeSensitive) {
-        // Masqué : jamais déchiffré (la valeur chiffrée est mise à null plus bas).
-        if (!isMasked(maskCtx)) {
-          if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
-          if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
-        } else {
-          // RH sans la case données sensibles : champs personnalisés sensibles retirés.
-          emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
-        }
-      } else {
-        delete emp.nni
-        delete emp.iban
-        emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
+      // Masqué : jamais déchiffré (presentEmployeeRow met le chiffré à null).
+      const showClear = canSeeSensitive && !isMasked(maskCtx)
+      if (showClear) {
+        if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
+        if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
       }
       // Compte utilisateur lié : information d'administration, rôles RH seulement.
       if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)) {
@@ -480,7 +471,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         emp.seniority_months = months
         emp.seniority_label = `${Math.floor(months / 12)} an(s) ${months % 12} mois`
       }
-      return reply.send({ data: maskSensitive(emp, maskCtx) })
+      const detailRedact = !canSeeSensitive || isMasked(maskCtx)
+      return reply.send({ data: presentEmployeeRow(emp, {
+        ctx: maskCtx, redactCustom: detailRedact,
+        defs: detailRedact ? await loadCustomFieldDefinitions(schema) : [],
+        secrets: showClear ? 'keep' : 'drop',
+      }) })
     },
   })
 
@@ -548,7 +544,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       afterEmployeeCreated(pool, schema, created, body,
         { userId: request.user.sub, ip: request.ip ?? null }, { startOnboarding: true })
 
-      return reply.status(201).send({ data: maskSensitive(created as Record<string, unknown>, await requestSensitiveCtx(request)) })
+      const createCtx = await requestSensitiveCtx(request)
+      return reply.status(201).send({ data: presentEmployeeRow(created as Record<string, unknown>, {
+        ctx: createCtx, redactCustom: isMasked(createCtx),
+        defs: isMasked(createCtx) ? await loadCustomFieldDefinitions(schema) : [], secrets: 'drop',
+      }) })
     },
   })
 
@@ -694,6 +694,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       // EMP-010 — historise un changement de salaire dans hr_events (non bloquant).
+      // ATTENTION : hr_events (description + metadata) contient les montants de salaire.
+      // Aucune route ne la lit aujourd'hui ; toute lecture future DOIT passer par
+      // maskSensitive (services/sensitive-mask.ts), sinon elle contourne le masquage.
       if (body.baseSalary != null && Number(body.baseSalary) !== oldSalary) {
         const newSalary = Number(body.baseSalary)
         const evtType = oldSalary != null && newSalary > oldSalary ? 'augmentation' : 'salary_change'
@@ -712,7 +715,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         bySelf: request.user.role === 'employee',
       }, request.ip ?? null)
 
-      return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
+      const patchCtx = await requestSensitiveCtx(request)
+      return reply.send({ data: presentEmployeeRow(res.rows[0] as Record<string, unknown>, {
+        ctx: patchCtx, redactCustom: isMasked(patchCtx),
+        defs: isMasked(patchCtx) ? await loadCustomFieldDefinitions(schema) : [], secrets: 'drop',
+      }) })
     },
   })
 
@@ -848,12 +855,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       try {
         // OWASP A09 : snapshot AVANT archivage pour la trace audit (sinon on
-        // perd le nom/email/poste qui ont été supprimés)
+        // perd l'identité qui a été supprimée). Identité minimale : matricule + nom.
         const snapshot = await pool.query<{
-          first_name: string; last_name: string; email: string | null
-          job_title: string | null
+          first_name: string; last_name: string; employee_number: string | null
         }>(
-          `SELECT first_name, last_name, email, job_title
+          `SELECT first_name, last_name, employee_number
              FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`,
           [id],
         )
@@ -867,10 +873,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         // d'un dossier de sortie (offboarding).
         const cascade = await archiveEmployeeCascade(pool, schema, id)
         auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
+          employeeNumber: snapshot.rows[0].employee_number,
           firstName: snapshot.rows[0].first_name,
           lastName:  snapshot.rows[0].last_name,
-          email:     snapshot.rows[0].email,
-          jobTitle:  snapshot.rows[0].job_title,
           terminatedContracts: cascade.terminatedContracts,
           cancelledDiscipline: cascade.cancelledDiscipline,
           cancelledSignatures: cascade.cancelledSignatures,

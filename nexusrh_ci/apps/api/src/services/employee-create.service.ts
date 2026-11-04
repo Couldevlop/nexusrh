@@ -126,7 +126,7 @@ export function afterEmployeeCreated(
     changes: {
       firstName: body.firstName, lastName: body.lastName,
       email: body.email ?? null, jobTitle: body.jobTitle ?? null,
-      baseSalary: body.baseSalary,
+      changedFields: ['baseSalary'],
       ...(opts.auditChanges ?? {}),
     },
     ip: actor.ip,
