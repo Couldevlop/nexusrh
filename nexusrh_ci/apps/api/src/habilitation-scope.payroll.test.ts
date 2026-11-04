@@ -562,4 +562,12 @@ describe('fix round 1 — agrégats multi-filiales, envoi bancaire, clôture, of
     await executeAiTool(pool, ctx, 'get_payroll_status', {})
     expect(calls[0]).toContain('hvs.period_id IN')
   })
+
+  it('GET /payroll-workflow/periods : la liste exige une déclinaison du périmètre pour montrer une parente', async () => {
+    await call('GET', '/payroll-workflow/periods')
+    const q = sqls().find((x) => x.includes('FROM "tenant_scope".pay_periods pp')) ?? ''
+    expect(q).toContain('EXISTS (SELECT 1 FROM "tenant_scope".pay_periods c WHERE c.parent_period_id = pp.id AND')
+    expect(q).not.toContain('NOT EXISTS (SELECT 1 FROM "tenant_scope".pay_periods c')
+    expect(q).toContain(FRAGMENT)
+  })
 })

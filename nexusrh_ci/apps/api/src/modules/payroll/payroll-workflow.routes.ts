@@ -284,15 +284,14 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
                      LEFT JOIN "${schema}".legal_entities le ON le.id = pp.legal_entity_id
                      LEFT JOIN "${schema}".users ru ON ru.id = pp.raf_user_id`
         const params: unknown[] = []
-        // Habilitations : déclinaisons dans le périmètre ; parente visible si elle n'a pas
-        // de déclinaison ou si l'une est dans le périmètre (totaux consolidés masqués).
+        // Habilitations : déclinaisons dans le périmètre ; parente visible seulement si l'une
+        // de ses déclinaisons est dans le périmètre (sinon masquée, comme la chronologie) (totaux consolidés masqués).
         const scopeSql = await requestHrScope(request, 'pp')
         const scopeChild = scopeSql === 'TRUE' ? 'TRUE' : await requestHrScope(request, 'c')
         const conds: string[] = scopeSql === 'TRUE' ? [] : [
           `((pp.parent_period_id IS NOT NULL AND ${scopeSql})
-            OR (pp.parent_period_id IS NULL AND (
-                 NOT EXISTS (SELECT 1 FROM "${schema}".pay_periods c WHERE c.parent_period_id = pp.id)
-                 OR EXISTS (SELECT 1 FROM "${schema}".pay_periods c WHERE c.parent_period_id = pp.id AND ${scopeChild}))))`,
+            OR (pp.parent_period_id IS NULL
+                AND EXISTS (SELECT 1 FROM "${schema}".pay_periods c WHERE c.parent_period_id = pp.id AND ${scopeChild})))`,
         ]
         // Un RAF site ne voit que les périodes de son entité. `?scope=raf` (page
         // « Paie de ma filiale ») : uniquement les périodes-FILLES dont

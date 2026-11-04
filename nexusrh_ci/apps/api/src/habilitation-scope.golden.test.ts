@@ -218,9 +218,8 @@ describe('périmètre filiale — balayage dynamique (contexte entity A)', () =>
   // Strict : TOUTE requête qui lit employees ou pay_slips pour ces routes porte le fragment
   // (pas seulement une d'entre elles). Exemptions motivées dans STRICT_EXEMPT.
   const READS_PERSONAL = /(?:FROM|JOIN)\s+"tenant_scope"\.(?:employees|pay_slips)/i
-  const STRICT_EXEMPT: Array<[RegExp, string]> = [
-    [/SELECT id, first_name, last_name, job_title FROM/, 'à compléter si une lecture est motivée'],
-  ]
+  // Aucune exemption : toute lecture employees / pay_slips doit porter le fragment.
+  const STRICT_EXEMPT: Array<[RegExp, string]> = []
   for (const [label, url] of routes) {
     it(`${label} : chaque requête sur employees / pay_slips est bornée`, async () => {
       await sqlOf(url)
