@@ -775,7 +775,7 @@ const payrollWorkflowRoutes: FastifyPluginAsync = async (fastify) => {
         await auditWorkflow({
           schema, userId: request.user.sub,
           action: 'payroll_variables.update', entity: 'pay_period', entityId: period.id,
-          changes: { employeeId, values: Object.fromEntries(toUpsert.map(e => [e.code, e.amount])) },
+          changes: { employeeId, codes: toUpsert.map(e => e.code) },
           ipAddress: request.ip,
         })
         return reply.send({

@@ -545,7 +545,9 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         if (!(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
           return reply.status(404).send({ error: 'Employé introuvable' })
         }
-        const result = await analyzeRetentionRisk(rawPool, schema, employeeId)
+        const result = await analyzeRetentionRisk(rawPool, schema, employeeId, {
+          hideAmounts: isMasked(await requestSensitiveCtx(request)),
+        })
         if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
         return reply.send({ data: result })
       } catch (err) {

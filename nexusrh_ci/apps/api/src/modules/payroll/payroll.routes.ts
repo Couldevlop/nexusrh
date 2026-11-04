@@ -1511,12 +1511,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A09 : trace de la simulation (action sensible — préparation
       // d'offre, négociation). Non bloquant si audit_log absent.
       auditTenant(schema, { userId: request.user.sub, action: 'payroll.simulated', entity: 'payroll_simulation', entityId: body.employee_id ?? null, changes: {
-           baseSalary: body.baseSalary,
+           // Noms de champs seulement : jamais les montants (audit sans valeur personnelle).
+           simulatedFields: ['baseSalary', 'grossSalary', 'netPayable', 'employerCost'],
            hasAbsence: !!body.absence,
            variableElementsCount: Object.keys(body.variableElements ?? {}).length,
-           grossSalary: result.grossSalary,
-           netPayable: result.netPayable,
-           employerCost: result.employerCost,
          }, ip: request.ip ?? null })
 
       return reply.send({

@@ -6,7 +6,8 @@ import { analyzeRetentionRisk } from '../../services/retention-analysis.service.
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
-import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { isMasked } from '../../services/sensitive-mask.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -511,7 +512,9 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
         if (!(await targetInHrScope(request, employeeId))) {
           return reply.status(404).send({ error: 'Employé introuvable' })
         }
-        const result = await analyzeRetentionRisk(pool, schema, employeeId)
+        const result = await analyzeRetentionRisk(pool, schema, employeeId, {
+          hideAmounts: isMasked(await requestSensitiveCtx(request)),
+        })
         if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
         return reply.send({ data: result })
       } catch (err) {

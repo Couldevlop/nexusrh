@@ -543,7 +543,7 @@ const mobileMoneyRoutes: FastifyPluginAsync = async (fastify) => {
       auditLogMobileMoney(
         schema, request.user.sub, 'mobile_money.payment.retried',
         id,
-        { success: retryResult.success, amount: retryAmount, provider: payment.provider },
+        { success: retryResult.success, provider: payment.provider },
         request.ip ?? null,
       )
 
