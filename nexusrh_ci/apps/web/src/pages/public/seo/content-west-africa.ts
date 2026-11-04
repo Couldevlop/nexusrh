@@ -128,7 +128,7 @@ export const WEST_AFRICA_EN: SeoPageContent = {
   kind: 'landing',
   title: 'HRIS and multi-country payroll for West Africa | NexusRH',
   description:
-    "One HRIS for all your subsidiaries: payroll in Côte d'Ivoire and the WAEMU zone, extensible to other " +
+    "One HRIS for all your subsidiaries: payroll in Côte d'Ivoire and the WAEMU zone, extendable to other " +
     'ECOWAS and CEMAC countries.',
   h1: 'HRIS and multi-country payroll for West Africa',
   lead:
@@ -154,7 +154,7 @@ export const WEST_AFRICA_EN: SeoPageContent = {
           'Each company in the group is an entity with its own country; the matching country pack is installed automatically.',
           "Currency, minimum wage, notice periods and contributions follow the entity's country; amounts are whole numbers in local currency.",
           'Group management consolidates headcount and payroll costs.',
-          "Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries.",
+          "Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries.",
           'The application is available in French and English.',
         ] },
       ],

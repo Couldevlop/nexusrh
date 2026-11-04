@@ -459,7 +459,7 @@
     },
     "onprem": {
       "title": "On-premise",
-      "tag": "Installé chez vous",
+      "tag": "Sur vos serveurs ou dans votre datacenter",
       "p1": "Installé sur vos serveurs ou dans le datacenter de votre choix",
       "p2": "Vos données restent dans votre infrastructure",
       "p3": "Adapté aux banques, au secteur public et aux organisations soumises à des exigences de souveraineté",

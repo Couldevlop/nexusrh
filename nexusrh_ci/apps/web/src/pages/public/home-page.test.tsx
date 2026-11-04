@@ -39,6 +39,7 @@ vi.mock('react-i18next', async () => {
 
 import HomePage from './HomePage'
 import { MODULE_KEYS } from '../../../../api/src/services/tenant-modules.service'
+import { SEO_PAGES } from './seo/content'
 import frHome from '@/i18n/locales/fr/home.json'
 import enHome from '@/i18n/locales/en/home.json'
 import { CATALOG_MODULE_COUNT, DEPLOY_POINTS, DEPLOY_ROWS, HOME_DOMAINS, HOME_FAQ, PHONES } from './home-content'
@@ -270,6 +271,18 @@ describe('HomePage — confiance, contacts et FAQ', () => {
       "NexusRH runs your company's payroll and HR in line with your country's labour law: " +
       "Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries.")
     expect(JSON.stringify(frHome)).not.toMatch(/droit ivoirien|Seize|Sénégal|Cameroun|Ghana|Nigeria/)
+  })
+})
+
+describe('HomePage — formulations validées (revue du 04/11)', () => {
+  it('anglais : « extendable », intitulés des cabinets, de la conformité et du on-premise', () => {
+    expect(JSON.stringify(enHome)).not.toMatch(/extensible/)
+    expect(JSON.stringify(SEO_PAGES.filter((p) => p.lang === 'en'))).not.toMatch(/extensible/)
+    expect(enHome.audience.agency.title).toBe('Recruitment and HR consulting firms')
+    expect(enHome.compliance.title).toBe("The Côte d'Ivoire example: the law in the engine, not in a settings screen")
+    expect(enHome.deploy.onprem.tag).toBe('On your infrastructure')
+    expect(frHome.deploy.onprem.tag).toBe('Sur vos serveurs ou dans votre datacenter')
+    expect(JSON.stringify(SEO_PAGES)).toContain('Are the features the same in SaaS and on-premise?')
   })
 })
 

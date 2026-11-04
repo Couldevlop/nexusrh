@@ -162,7 +162,7 @@ export const DEPLOY_EN: SeoPageContent = {
           'Two-factor authentication (TOTP and backup codes), role-based access control, audit log.',
           'AES-256 encryption of secrets and sensitive data at rest.',
           'SSO with OIDC, SAML or LDAP and SIEM export with the security module.',
-          "Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries.",
+          "Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries.",
         ] },
         { type: 'links', items: [
           { to: '/en/hris-payroll-west-africa', label: 'HRIS and payroll for West Africa' },
@@ -171,7 +171,7 @@ export const DEPLOY_EN: SeoPageContent = {
     },
   ],
   faq: [
-    { q: 'Are the features the same as SaaS and on-premise?',
+    { q: 'Are the features the same in SaaS and on-premise?',
       a: 'Yes. It is the same software; only where it is installed and who operates it change.' },
     { q: 'Who installs and updates the on-premise version?',
       a: 'OpenLab Consulting delivers the software as a containerised deployment, on your own servers or in the datacenter of your choice, then delivers the updates.' },

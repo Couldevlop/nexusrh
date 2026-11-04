@@ -110,7 +110,7 @@ describe('contenu des pages publiques', () => {
   it('hub Afrique de l’Ouest : formulation de couverture validée, sans pays hors UEMOA', () => {
     for (const p of [getSeoPage('/sirh-afrique-ouest')!, getSeoPage('/en/hris-payroll-west-africa')!]) {
       const all = JSON.stringify(p)
-      expect(all).toMatch(/Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC|Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries/)
+      expect(all).toMatch(/Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC|Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries/)
       expect(all).not.toMatch(/Ghana|Nigeria|Cameroun|Cameroon|Gabon/)
     }
   })

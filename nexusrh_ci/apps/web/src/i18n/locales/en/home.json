@@ -56,13 +56,13 @@
       "text": "Full traceability of decisions and payments, and installation on your own infrastructure if your data must not leave it."
     },
     "agency": {
-      "title": "Firms",
+      "title": "Recruitment and HR consulting firms",
       "text": "A recruitment or HR consulting firm handles several client companies from a single account, without ever mixing their data."
     }
   },
   "compliance": {
     "eyebrow": "Compliance · the Côte d'Ivoire example",
-    "title": "Example, Côte d'Ivoire: the law in the engine, not in a settings screen",
+    "title": "The Côte d'Ivoire example: the law in the engine, not in a settings screen",
     "lead": "Côte d'Ivoire is the reference country. Its rules are not options to configure: they are written into the calculation, tested, and updated as the law changes.",
     "cnps": {
       "title": "CNPS 2024",
@@ -110,14 +110,14 @@
   "multi": {
     "eyebrow": "Groups",
     "title": "Several companies, several countries",
-    "lead": "A group keeps one system for all its companies. Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries.",
+    "lead": "A group keeps one system for all its companies. Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries.",
     "entities": {
       "title": "Subsidiaries",
       "text": "Each company has its own employees, payroll and filings, with its own approval flow."
     },
     "packs": {
       "title": "Country coverage",
-      "text": "Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries."
+      "text": "Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries."
     },
     "consolidation": {
       "title": "Consolidation",
@@ -459,7 +459,7 @@
     },
     "onprem": {
       "title": "On-premise",
-      "tag": "Installed at your site",
+      "tag": "On your infrastructure",
       "p1": "Installed on your own servers or in the datacenter of your choice",
       "p2": "Your data stays within your infrastructure",
       "p3": "Suited to banks, the public sector and organisations with sovereignty requirements",
@@ -565,7 +565,7 @@
       },
       "coverage": {
         "q": "Which countries are covered?",
-        "a": "Payroll: Côte d'Ivoire and WAEMU, extensible to other ECOWAS and CEMAC countries. Côte d'Ivoire is the reference country; for other countries, every set-up is reviewed with your local payroll adviser before the first payroll run."
+        "a": "Payroll: Côte d'Ivoire and WAEMU, extendable to other ECOWAS and CEMAC countries. Côte d'Ivoire is the reference country; for other countries, every set-up is reviewed with your local payroll adviser before the first payroll run."
       },
       "languages": {
         "q": "Is the software available in French and English?",
