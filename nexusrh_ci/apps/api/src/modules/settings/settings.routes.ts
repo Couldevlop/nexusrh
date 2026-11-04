@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
+import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
@@ -2233,6 +2233,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant invalide' })
       try {
         // Garde « propre dossier » : on retrouve le salarié visé avant de supprimer.
         const target = await pool.query<{ employee_id: string }>(

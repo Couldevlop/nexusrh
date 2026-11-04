@@ -226,3 +226,8 @@ export function isSelfAction(
     throw err
   }
 }
+
+/** Identifiant UUID (toute version) : permet de répondre 400 plutôt que 500 sur un id mal formé. */
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}

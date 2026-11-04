@@ -106,7 +106,7 @@ describe('garde « propre dossier » — paie / discipline / éléments variable
 
   it('DELETE settings/variable-elements/:id sur sa propre ligne → 403, pas de DELETE', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ employee_id: ME.toUpperCase() }] })
-    const res = await app.inject({ method: 'DELETE', url: '/settings/variable-elements/v1', headers: auth() })
+    const res = await app.inject({ method: 'DELETE', url: '/settings/variable-elements/33333333-2222-4333-8444-555555555555', headers: auth() })
     expect(res.statusCode).toBe(403)
     expect(queryMock).toHaveBeenCalledTimes(1)
   })

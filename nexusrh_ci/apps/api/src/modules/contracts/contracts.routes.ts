@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { describeDbError } from '../../utils/db-error.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -29,6 +30,13 @@ function auditLogContract(
   contractId: string, changes: Record<string, unknown>, ip: string | null,
 ): void {
   auditTenant(schema, { userId: userId, action: action, entity: 'contract', entityId: contractId, changes: changes, ip: ip })
+}
+
+/** Salarié titulaire d'un contrat (SELECT minimal) pour la garde « propre dossier ». */
+async function contractOwner(schema: string, id: string): Promise<string | null> {
+  const r = await pool.query<{ employee_id: string | null }>(
+    `SELECT employee_id FROM "${schema}".contracts WHERE id = $1`, [id])
+  return r.rows[0]?.employee_id ?? null
 }
 
 const contractsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -113,6 +121,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const body = parsed.data
+      if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       try {
         // Calcul automatique de la fin de période d'essai selon Code du Travail CI
         let trialEndDate = body.trial_end_date || null
@@ -168,6 +177,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       const body = request.body as Record<string, unknown>
       const allowed = ['end_date', 'trial_end_date', 'base_salary', 'working_hours',
         'convention', 'job_title', 'job_level', 'status', 'non_competition_clause',
@@ -181,6 +191,8 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       updates.push(`updated_at = now()`)
       values.push(id)
       try {
+        const own = await contractOwner(schema, id)
+        if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(
           `UPDATE "${schema}".contracts SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
           values
@@ -206,7 +218,10 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         notice_days?: number
         comment?: string
       }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
+        const own = await contractOwner(schema, id)
+        if (own && isSelfAction(request, own)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const res = await pool.query(`
           UPDATE "${schema}".contracts
           SET status = 'terminated', end_date = $1, updated_at = now()
@@ -260,11 +275,15 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const body = request.body as { new_end_date: string; base_salary?: number }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
         const orig = await pool.query(
           `SELECT * FROM "${schema}".contracts WHERE id = $1`, [id]
         )
         if (!orig.rows[0]) return reply.status(404).send({ error: 'Contrat introuvable' })
+        if (orig.rows[0].employee_id && isSelfAction(request, String(orig.rows[0].employee_id))) {
+          return reply.status(403).send({ error: SELF_ACTION_ERROR })
+        }
         if (orig.rows[0].type !== 'cdd') return reply.status(400).send({ error: 'Seuls les CDD sont renouvelables' })
 
         const res = await pool.query(`
@@ -332,6 +351,7 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
       try {
         // OWASP A09 : snapshot du contrat AVANT suppression pour la trace audit
         // (sinon on perd l'employé concerné). Suppression suit dans la même
@@ -340,6 +360,8 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT employee_id, type, status FROM "${schema}".contracts WHERE id = $1`,
           [id],
         )
+        const ownerId = snapshot.rows[0]?.employee_id
+        if (ownerId && isSelfAction(request, ownerId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         await pool.query(
           `DELETE FROM "${schema}".contracts WHERE id = $1`, [id]
         )

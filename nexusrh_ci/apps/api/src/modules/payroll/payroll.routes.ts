@@ -15,6 +15,7 @@ import { createPayslipLabelResolver, loadPayslipCountryLabels } from '../../serv
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
 import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
@@ -138,6 +139,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsedBody.error.flatten() })
       }
       const { employeeId, month } = parsedBody.data
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const schema = request.user.schemaName
 
       // Toute la simulation est encadrée : une donnée employé/tenant incohérente

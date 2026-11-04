@@ -20,6 +20,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, resolveManagerEmployeeId } from '../../services/manager-scope.service.js'
@@ -264,6 +265,7 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { employeeId } = request.params as { employeeId: string }
       if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant employé invalide.' })
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const q = uploadQuerySchema.safeParse(request.query ?? {})
       if (!q.success) return reply.status(400).send({ error: q.error.issues[0]?.message ?? 'Paramètres invalides.' })
       const contractId = q.data.contractId ?? null

@@ -135,6 +135,7 @@ describe('POST /contracts — validation Zod (OWASP A03)', () => {
 describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () => {
   it('rupture contrat trace audit_log contract.terminated', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
       .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // UPDATE contracts
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees (désactivation)
       .mockResolvedValueOnce({ rows: [] }) // INSERT hr_events
@@ -143,7 +144,7 @@ describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST',
-      url: '/contracts/con-1/terminate',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
       headers: { authorization: `Bearer ${token}` },
       payload: {
         termination_date: '2026-06-30',
@@ -170,7 +171,7 @@ describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () 
     const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({
       method: 'POST',
-      url: '/contracts/con-1/terminate',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
       headers: { authorization: `Bearer ${token}` },
       payload: { termination_date: '2026-06-30', termination_reason: 'resignation' },
     })
@@ -178,12 +179,12 @@ describe('POST /contracts/:id/terminate — audit log critique (OWASP A09)', () 
   })
 
   it('retourne 404 si le contrat n\'existe pas', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE returns no rows
+    queryMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] }) // SELECT propriétaire + UPDATE : aucune ligne
 
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST',
-      url: '/contracts/unknown/terminate',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
       headers: { authorization: `Bearer ${token}` },
       payload: { termination_date: '2026-06-30', termination_reason: 'other' },
     })
@@ -201,7 +202,7 @@ describe('DELETE /contracts/:id — audit log critique (OWASP A09)', () => {
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
       method: 'DELETE',
-      url: '/contracts/con-99',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
@@ -216,7 +217,7 @@ describe('DELETE /contracts/:id — audit log critique (OWASP A09)', () => {
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'DELETE',
-      url: '/contracts/con-1',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(403)
@@ -226,7 +227,7 @@ describe('DELETE /contracts/:id — audit log critique (OWASP A09)', () => {
     const token = tokenFor(app, 'employee')
     const res = await app.inject({
       method: 'DELETE',
-      url: '/contracts/con-1',
+      url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(403)

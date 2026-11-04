@@ -23,6 +23,7 @@ import {
   type DepartureType,
 } from './offboarding.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import {
@@ -219,6 +220,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = createSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
+      if (isSelfAction(request, b.employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       if (await unknownReasonCategory(schema, b.reasonCategory)) return reply.status(400).send(UNKNOWN_CATEGORY)
       const res = await rawPool.query(
         `INSERT INTO "${schema}".offboarding_cases
@@ -242,6 +244,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de dossier invalide' })
       const parsed = updateSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply, parsed.error)
       const b = parsed.data
@@ -252,6 +255,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Dossier introuvable' })
+      if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       if (b.status && !canTransition(cur.rows[0].status, b.status)) {
         return reply.status(409).send({
           error: `Transition de statut interdite : ${cur.rows[0].status} → ${b.status}`, statusCode: 409,
@@ -305,6 +309,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de dossier invalide' })
       const parsed = settlementSchema.safeParse(request.body ?? {})
       if (!parsed.success) return badRequest(reply, parsed.error)
 
@@ -321,6 +326,7 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
       )
       const row = r.rows[0]
       if (!row) return reply.status(404).send({ error: 'Dossier introuvable' })
+      if (isSelfAction(request, row.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
 
       // Règles de rupture : convention du tenant > pack du pays de l'employé.
       const ctx = await loadEmployeeTenantContext(rawPool, schema, row.legal_entity_id)
@@ -413,6 +419,13 @@ const offboardingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de dossier invalide' })
+      const own = await rawPool.query<{ employee_id: string }>(
+        `SELECT employee_id FROM "${schema}".offboarding_cases WHERE id = $1 LIMIT 1`, [id],
+      )
+      if (own.rows[0] && isSelfAction(request, own.rows[0].employee_id)) {
+        return reply.status(403).send({ error: SELF_ACTION_ERROR })
+      }
       const res = await rawPool.query(
         `DELETE FROM "${schema}".offboarding_cases WHERE id = $1 RETURNING id`, [id],
       )
