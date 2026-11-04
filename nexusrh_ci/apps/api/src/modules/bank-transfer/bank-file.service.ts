@@ -400,7 +400,7 @@ function buildTextFile(spec: BankFileSpec, rows: BankFileRow[], ctx: BankFileCon
 
 async function buildXlsxFile(spec: BankFileSpec, rows: BankFileRow[], ctx: BankFileContext): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'NexusRH CI'
+  wb.creator = 'NexusRH'
   const ws = wb.addWorksheet(`Virements ${ctx.month}`)
 
   // Valeur de cellule : nombre pour les montants bruts, texte neutralisé sinon.

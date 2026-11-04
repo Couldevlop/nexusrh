@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Reseed SÉCURISÉ de NexusRH CI — fait un DUMP COMPLET de la base AVANT tout
+# Reseed SÉCURISÉ de NexusRH — fait un DUMP COMPLET de la base AVANT tout
 # DROP/seed (filet de sécurité). À utiliser à la place d'un `node dist/db/seed.js`
 # direct sur un environnement contenant des données à préserver.
 #

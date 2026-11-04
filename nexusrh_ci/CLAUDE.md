@@ -1,4 +1,4 @@
-# CLAUDE.md — NexusRH CI : SIRH SaaS Multi-Tenant · Côte d'Ivoire
+# CLAUDE.md — NexusRH : SIRH SaaS Multi-Tenant · Côte d'Ivoire
 
 > Contexte maître pour Claude Code. Placé dans `/nexusrh/nexusrh_ci/CLAUDE.md`.
 > Projet **indépendant** de `/nexusrh/` : tout le code, schémas, config et données sont sous `/nexusrh/nexusrh_ci/`.
@@ -8,12 +8,12 @@
 
 ## MISSION
 
-**NexusRH CI** — premier SIRH SaaS **multi-tenant** production-ready pour les **entreprises ivoiriennes**.
+**NexusRH** — premier SIRH SaaS **multi-tenant** production-ready pour les **entreprises ivoiriennes**.
 Conformité native **Code du Travail CI + CNPS 2024 + ITS/DGI + OHADA**.
 Tenant = entreprise isolée (schéma PostgreSQL dédié). Un **super_admin** gère les tenants ; chaque tenant a son **admin**.
 **Fichiers complets. Pas de TODO, pas de pseudo-code, pas de confirmation.**
 
-**Identité produit** : NexusRH CI · « La RH Intelligente, au service de l'Afrique qui avance » · Éditeur **OpenLab Consulting** (Abidjan) · Devise **FCFA (XOF)** exclusivement · Langue **français** (UI + IA + docs). Marché : PME/ETI/filiales/public/ONG — CI & CEDEAO. Contacts complets → `docs/reference/` (specs) ou section Contacts ci-dessous.
+**Identité produit** : NexusRH · « La RH Intelligente, au service de l'Afrique qui avance » · Éditeur **OpenLab Consulting** (Abidjan) · Devise **FCFA (XOF)** exclusivement · Langue **français** (UI + IA + docs). Marché : PME/ETI/filiales/public/ONG — CI & CEDEAO. Contacts complets → `docs/reference/` (specs) ou section Contacts ci-dessous.
 
 ---
 
@@ -292,4 +292,4 @@ Support NexusRH : WhatsApp +225 07 49 43 92 03 (wa.me/2250749439203) · support@
 
 ---
 
-_NexusRH CI — SIRH SaaS Multi-Tenant · Propulsé par Claude AI (Anthropic) · Conforme Code du Travail ivoirien & CNPS 2024 · OpenLab Consulting, Abidjan_
+_NexusRH — SIRH SaaS Multi-Tenant · Propulsé par Claude AI (Anthropic) · Conforme Code du Travail ivoirien & CNPS 2024 · OpenLab Consulting, Abidjan_

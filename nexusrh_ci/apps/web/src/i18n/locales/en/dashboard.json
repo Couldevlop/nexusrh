@@ -1,6 +1,6 @@
 {
   "title": "Dashboard",
-  "defaultTenant": "NexusRH CI",
+  "defaultTenant": "NexusRH",
   "actions": {
     "excel": "Excel",
     "pdf": "PDF",
@@ -109,7 +109,7 @@
         "ITS calculation for a salary of 350,000 FCFA?"
       ],
       "manager": [
-        "How do I approve an absence on NexusRH CI?",
+        "How do I approve an absence on NexusRH?",
         "What are my obligations toward my team?",
         "Notice period for an employee with 3 years of seniority?"
       ]

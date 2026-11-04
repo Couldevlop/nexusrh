@@ -186,7 +186,7 @@ export async function renderPdf(data: ReportData, a: Analysis): Promise<Uint8Arr
   const titre = data.period.type === 'weekly' ? 'Rapport hebdomadaire' : 'Rapport mensuel'
   page.drawText(texte(`${titre} — ${data.period.label}`, 80), { x: MARGE, y, size: 16, font: bold, color: NAVY })
   y -= 18
-  page.drawText('NexusRH CI · OpenLab Consulting', { x: MARGE, y, size: 9, font, color: SLATE })
+  page.drawText('NexusRH · OpenLab Consulting', { x: MARGE, y, size: 9, font, color: SLATE })
   y -= 30
 
   const t = a.totals

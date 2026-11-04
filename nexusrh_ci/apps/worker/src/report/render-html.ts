@@ -90,7 +90,7 @@ export function renderHtml(data: ReportData, a: Analysis): string {
 
   return `<div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;max-width:820px">
   <h1 style="color:#0f2a44;font-size:20px">${titre} — ${escapeHtml(data.period.label)}</h1>
-  <p style="color:#64748b">NexusRH CI · OpenLab Consulting · le détail complet et les graphiques sont dans le PDF joint.</p>
+  <p style="color:#64748b">NexusRH · OpenLab Consulting · le détail complet et les graphiques sont dans le PDF joint.</p>
 
   <h2 style="font-size:16px">Vue plateforme</h2>
   <table style="${CSS_TABLE}">
@@ -140,7 +140,7 @@ export function renderText(data: ReportData, a: Analysis): string {
   const titre = data.period.type === 'weekly' ? 'Rapport hebdomadaire' : 'Rapport mensuel'
   const lignes: string[] = [
     `${titre} — ${data.period.label}`,
-    'NexusRH CI · OpenLab Consulting — le détail complet et les graphiques sont dans le PDF joint.',
+    'NexusRH · OpenLab Consulting — le détail complet et les graphiques sont dans le PDF joint.',
     '',
     'VUE PLATEFORME',
     `- Entreprises : ${t.tenants} (${t.active} actives, ${t.trial} en essai, ${t.suspended} suspendues)`,

@@ -68,10 +68,10 @@ export async function processPlatformReportJob(job: Job): Promise<void> {
 
     const nom = `nexusrh-rapport-${period.type}-${period.start.toISOString().slice(0, 10)}.pdf`
     await transporter.sendMail({
-      from: process.env['SMTP_FROM'] ?? 'NexusRH CI <noreply@nexusrh-ci.com>',
+      from: process.env['SMTP_FROM'] ?? 'NexusRH <noreply@nexusrh-ci.com>',
       to: TO,
       cc: CC,
-      subject: `NexusRH CI — ${periodType === 'weekly' ? 'rapport hebdomadaire' : 'rapport mensuel'} · ${period.label}`,
+      subject: `NexusRH — ${periodType === 'weekly' ? 'rapport hebdomadaire' : 'rapport mensuel'} · ${period.label}`,
       html,
       text,
       attachments: [{ filename: nom, content: Buffer.from(pdf), contentType: 'application/pdf' }],

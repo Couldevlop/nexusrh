@@ -171,7 +171,7 @@ export async function alertPayrollValidators(ctx: PayrollAlertContext): Promise<
   for (const r of withEmail) {
     try {
       await sendPayrollValidationEmail({
-        to: r.email as string, firstName: r.firstName, tenantName: mail?.name || 'NexusRH CI',
+        to: r.email as string, firstName: r.firstName, tenantName: mail?.name || 'NexusRH',
         primaryColor: mail?.primaryColor ?? null, monthLabel, level: ctx.state.level,
         requiredLevels: ctx.state.requiredLevels, dueLabel, overdue: ctx.state.overdue, kind: ctx.kind,
         multiSites: ctx.scope === 'multi_sites', actionUrl,

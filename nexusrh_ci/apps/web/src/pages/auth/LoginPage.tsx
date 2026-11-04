@@ -408,7 +408,7 @@ export default function LoginPage() {
         {/* Contenu */}
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           <div className="flex items-center">
-            <img src={nexusrhLogo} alt="NexusRH CI" className="h-14 w-auto object-contain drop-shadow" />
+            <img src={nexusrhLogo} alt="NexusRH" className="h-14 w-auto object-contain drop-shadow" />
           </div>
           <div>
             <h2 className="text-4xl font-black leading-tight mb-4">
@@ -460,7 +460,7 @@ export default function LoginPage() {
           <div className="mb-8">
             <div className="lg:hidden flex items-center mb-6">
               {/* Variante sombre du logo (sans fond) — lisible sur surface claire */}
-              <img src={nexusrhLogoDark} alt="NexusRH CI" className="h-9 w-auto object-contain" />
+              <img src={nexusrhLogoDark} alt="NexusRH" className="h-9 w-auto object-contain" />
             </div>
             {/* PLT-020 — branding du tenant ciblé, affiché AVANT login */}
             {brand && (

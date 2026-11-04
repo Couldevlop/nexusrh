@@ -4,7 +4,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 /**
- * Schéma tenant NexusRH CI — instancié dynamiquement par schemaName
+ * Schéma tenant NexusRH — instancié dynamiquement par schemaName
  * Chaque tenant a son propre schéma PostgreSQL isolé.
  */
 export function createTenantSchema(schemaName: string) {
