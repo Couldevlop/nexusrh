@@ -361,12 +361,12 @@ export const GUIDE_CNPS: SeoPageContent = {
             ['Retraite — part salarié', '2 000 000', '6,3 %', '126 000'],
             ['Retraite — part employeur', '2 000 000', '7,7 %', '154 000'],
             ['Prestations familiales', '75 000', '5 %', '3 750'],
-            ['Maternité', '75 000', '0,75 %', '563'],
+            ['Maternité', '75 000', '0,75 %', '562'],
             ['Accident du travail', '75 000', '2 %', '1 500'],
             ['CMU (1 bénéficiaire)', '1 000 par bénéficiaire', '50 % / 50 %', '500 + 500'],
           ],
           note: 'Le salaire reste sous le plafond retraite de 3 375 000 FCFA : la retraite porte sur tout le brut. ' +
-            'Total salarié : 126 500 FCFA (CMU comprise). Total employeur : 160 313 FCFA (CMU comprise).' },
+            'Total salarié : 126 500 FCFA (CMU comprise). Total employeur : 160 312 FCFA (CMU comprise).' },
         { type: 'p', text:
           "Ce que la CNPS retient sur le salaire n'est pas déduit de l'assiette de l'ITS depuis la réforme 2024 : " +
           "les deux calculs partent du même brut." },

@@ -196,11 +196,12 @@ describe('chiffres conformes aux packs législatifs', () => {
     const base = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondRetraite)
     const small = Math.min(2_000_000, CIV_CNPS_PUBLISHED.plafondAtPf)
     const expected = [
-      Math.round(base * p.tauxCotisationRetraiteSalarie),
-      Math.round(base * p.tauxCotisationRetraitePatronal),
-      Math.round(small * p.tauxCotisationPfPatronal),
-      Math.round(small * p.tauxCotisationMaternitePatronal),
-      Math.round(small * p.tauxAtDefaultPatronal),
+      // Le moteur de paie arrondit à l'entier inférieur : 75 000 x 0,75 % = 562,5 -> 562.
+      Math.floor(base * p.tauxCotisationRetraiteSalarie),
+      Math.floor(base * p.tauxCotisationRetraitePatronal),
+      Math.floor(small * p.tauxCotisationPfPatronal),
+      Math.floor(small * p.tauxCotisationMaternitePatronal),
+      Math.floor(small * p.tauxAtDefaultPatronal),
     ]
     expect(rows.slice(0, 5).map((r) => r[3])).toEqual(expected.map(fmt))
     expect(rows[0]![1]).toBe(fmt(base))
