@@ -19,6 +19,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 39350 → 50000"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
+        "deltaSummary": "totalDeductions 3150 → 3650; netPayable 46850 → 46350; employerCost 57725 → 58225; ligne 2200 None → 500; ligne 3400 None → 500"
       }
     ]
   },
@@ -43,9 +49,9 @@
     "totalCnpsPat": 7725,
     "baseImposable": 50000,
     "its": 0,
-    "totalDeductions": 3150,
-    "netPayable": 46850,
-    "employerCost": 57725,
+    "totalDeductions": 3650,
+    "netPayable": 46350,
+    "employerCost": 58225,
     "workingDays": 26,
     "smigCompliant": false,
     "lines": [
@@ -63,6 +69,11 @@
         "code": "2100",
         "type": "employee_contribution",
         "amount": 0
+      },
+      {
+        "code": "2200",
+        "type": "employee_contribution",
+        "amount": 500
       },
       {
         "code": "3000",
@@ -83,6 +94,11 @@
         "code": "3300",
         "type": "employer_contribution",
         "amount": 1000
+      },
+      {
+        "code": "3400",
+        "type": "employer_contribution",
+        "amount": 500
       }
     ]
   }

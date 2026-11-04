@@ -76,14 +76,15 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       expect(r.its).toBe(0)
     })
 
-    it('net à payer = 168 660 FCFA et respect SMIG', () => {
-      expect(r.netPayable).toBe(168_660)
+    it('net à payer = 166 660 FCFA et respect SMIG', () => {
+      // 180 000 − 11 340 (retraite) − 0 (ITS) − 2 000 (CMU : salarié + 3 enfants × 500)
+      expect(r.netPayable).toBe(166_660)
       expect(r.smigCompliant).toBe(true)
     })
 
-    it('coût employeur ≈ 199 285 FCFA (charges patronales sur plafond 70 000)', () => {
-      // 180 000 brut + 13 860 (retraite pat) + 3 500 (PF) + 525 (mat) + 1 400 (AT 2%)
-      expect(r.employerCost).toBe(199_285)
+    it('coût employeur = 201 672 FCFA (charges patronales sur plafond 75 000 + CMU)', () => {
+      // 180 000 brut + 13 860 (retraite pat) + 3 750 (PF) + 562 (mat) + 1 500 (AT 2%) + 2 000 (CMU employeur)
+      expect(r.employerCost).toBe(201_672)
     })
 
     it('aucun bordereau CNPS (pas d\'absence)', () => {
@@ -98,7 +99,7 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
       marital: 'single', children: 0,
     }))
 
-    it('CNPS retraite salarié plafonnée à 1 647 315 mais non atteinte (950k)', () => {
+    it('CNPS retraite salarié plafonnée à 3 375 000 mais non atteinte (950k)', () => {
       expect(r.cnpsRetraiteSal).toBe(Math.floor(950_000 * 0.063))  // 59 850
     })
 
@@ -223,7 +224,9 @@ describe('Scénario PME-Test-CI — Décembre 2024 — Bulletins attendus', () =
 
     it('net à payer cumule brut présence + IJSS AT', () => {
       expect(r.grossSalary).toBe(116_923 + 248_461)
-      expect(r.netPayable).toBe(r.grossSalary - r.totalCnpsSal - r.its)
+      // CMU salarié : salarié + 1 enfant = 2 × 500
+      expect(r.cmuSal).toBe(1_000)
+      expect(r.netPayable).toBe(r.grossSalary - r.totalCnpsSal - r.its - r.cmuSal)
       expect(r.smigCompliant).toBe(true)
     })
   })

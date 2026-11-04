@@ -150,8 +150,12 @@ describe('POST /ai/simulate-its — ITS 2024 et RICF par parts', () => {
     expect(body.its.parts).toBe(5)
     expect(body.its.credit).toBe(44_000)
     expect(body.its.net).toBe(268_000)
-    expect(body.simulation.avecUnEnfantSupp.gain).toBe(0)
+    // 7e enfant : impôt inchangé (plafond), CMU de l'enfant 1 000 F entièrement salarié
+    expect(body.simulation.avecUnEnfantSupp.itsGain).toBe(0)
+    expect(body.simulation.avecUnEnfantSupp.cmuCost).toBe(1_000)
+    expect(body.simulation.avecUnEnfantSupp.gain).toBe(-1_000)
     expect(body.simulation.avecUnEnfantSupp.message).toContain('plafond de 5 parts')
+    expect(body.simulation.avecUnEnfantSupp.message).toContain('le net baisserait de 1')
   })
 
   it('marié 1 enfant : 2,5 parts → RICF 16 500', async () => {
@@ -189,8 +193,15 @@ describe('POST /ai/simulate-its — ITS 2024 et RICF par parts', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.its.net).toBe(70_500)
-    expect(body.simulation.avecUnEnfantSupp.gain).toBe(11_000)
-    expect(body.simulation.avecUnEnfantSupp.message).toContain('le net augmenterait')
+    // ITS −11 000 (2 parts), CMU de l'enfant +500 (part salariale) → net +10 500
+    expect(body.simulation.avecUnEnfantSupp.itsGain).toBe(11_000)
+    expect(body.simulation.avecUnEnfantSupp.cmuCost).toBe(500)
+    expect(body.simulation.avecUnEnfantSupp.gain).toBe(10_500)
+    expect(body.simulation.avecUnEnfantSupp.net - body.net.payable).toBe(10_500)
+    expect(body.simulation.avecUnEnfantSupp.message).toContain('le net augmenterait de 10')
+    expect(body.simulation.avecUnEnfantSupp.message).toContain('CMU')
+    // CMU du salarié seul : 500 / 500
+    expect(body.cmu).toEqual({ salarial: 500, patronal: 500 })
   })
 
   it('impôt déjà couvert par la RICF : message dédié', async () => {
@@ -203,5 +214,7 @@ describe('POST /ai/simulate-its — ITS 2024 et RICF par parts', () => {
     const body = JSON.parse(res.body)
     expect(body.its.net).toBe(0)           // 25 000 × 16 % = 4 000 ≤ 16 500
     expect(body.simulation.avecUnEnfantSupp.message).toContain('entièrement couvert')
+    // seul effet : la CMU de l'enfant (500 F)
+    expect(body.simulation.avecUnEnfantSupp.gain).toBe(-500)
   })
 })

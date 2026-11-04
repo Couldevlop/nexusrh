@@ -42,6 +42,37 @@ export interface FamilyTaxReduction {
   montantsParParts: readonly { parts: number; montant: number }[]
 }
 
+/** Règle de prime d'ancienneté d'un pack (absente = pas de calcul automatique). */
+export interface SeniorityBonusRule {
+  /** Paliers ordonnés : à partir de `years` années révolues, taux `rate`. */
+  steps: ReadonlyArray<{ years: number; rate: number }>
+  /** Taux ajouté par année révolue au-delà du dernier palier. */
+  incrementPerYear: number
+  /** Taux maximal (null = aucun plafond trouvé dans le texte). */
+  maxRate: number | null
+  /** Assiette : minimum de la catégorie, ou salaire de base réel. */
+  base: 'category_minimum' | 'base_salary'
+  /** Texte légal (article, date). */
+  source: string
+  /** confirmed = texte vérifié ; to_confirm = source secondaire ou ambiguë. */
+  confidence: 'confirmed' | 'to_confirm'
+}
+
+/**
+ * CMU : cotisation forfaitaire mensuelle par bénéficiaire. Bénéficiaires
+ * partagés = salarié + conjoint sans emploi d'un salarié marié + enfants de moins de 21 ans dans la limite de
+ * `maxSharedChildren` : `employerShare` à la charge de l'employeur, le reste au
+ * salarié. Au-delà, le salarié paie la cotisation entière.
+ */
+export interface CmuRule {
+  /** Cotisation mensuelle par bénéficiaire (FCFA) */
+  perBeneficiary: number
+  /** Part employeur des bénéficiaires partagés (0.5 = 50 %) */
+  employerShare: number
+  /** Nombre d'enfants dont la cotisation est partagée avec l'employeur */
+  maxSharedChildren: number
+}
+
 export interface LegislationPack {
   /** Identifiant : ISO-3 pays + année (ex: CIV-2024, BFA-2024) */
   code: string
@@ -177,6 +208,16 @@ export interface LegislationPack {
    */
   primeTransportExoneree?: { defaut: number; parZone?: Readonly<Record<string, number>> }
 
+  /** Prime d'ancienneté légale / conventionnelle (absent = saisie manuelle) */
+  seniorityBonus?: SeniorityBonusRule
+
+  /**
+   * Couverture maladie universelle (absent = pas de CMU dans le pays). Le
+   * moteur ajoute une retenue salariale (2200) et une charge patronale (3400),
+   * hors assiettes des cotisations sociales et de l'impôt.
+   */
+  cmu?: CmuRule
+
   /** Note pour les administrateurs */
   notes?: string
 }
@@ -289,14 +330,28 @@ export interface LeaveRules {
 
   /** Majorations heures supplémentaires (taux à AJOUTER au taux normal) */
   overtimeRates?: {
-    /** 41-48h hebdomadaires */
+    /** Heures au-delà de la durée légale (CI : 41e à 46e heure) */
     weekly?: number
-    /** Travail de nuit (20h-5h) */
+    /** Première heure supplémentaire de la semaine = durée légale + 1 (CI : 41, durée légale 40 h). */
+    weeklyFromHour?: number
+    /**
+     * Heures hebdomadaires à partir de `weeklyBeyondFromHour` (CI : au-delà
+     * de la 46e heure). Absent = un seul taux hebdomadaire (`weekly`).
+     */
+    weeklyBeyond?: number
+    /** Première heure hebdomadaire majorée au taux `weeklyBeyond` (CI : 47). */
+    weeklyBeyondFromHour?: number
+    /** Travail de nuit */
     night?: number
-    /** Dimanche */
+    /**
+     * Dimanche. Quand `sundayHolidayNight` est présent, `sunday` et `holiday`
+     * sont les taux de JOUR (la nuit des dimanches et fériés a son propre taux).
+     */
     sunday?: number
-    /** Jour férié */
+    /** Jour férié (de jour si `sundayHolidayNight` est présent) */
     holiday?: number
+    /** Nuit des dimanches et jours fériés (CI : +100 %) */
+    sundayHolidayNight?: number
   }
 }
 
@@ -304,6 +359,14 @@ export interface LeaveRules {
 // Toute modification doit être sourcée (texte légal) et répercutée dans les
 // fixtures golden, recalculées et vérifiées à la main (services/golden).
 export const CIV_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.25,
+    base: 'category_minimum',
+    source: 'CCI du 19/07/1977, art. 55 (Cour suprême, arrêt n° 351 du 15/06/2006)',
+    confidence: 'confirmed',
+  },
   code: 'CIV-2024',
   name: 'Côte d\'Ivoire — CNPS + ITS 2024',
   countryCode: 'CIV',
@@ -312,8 +375,11 @@ export const CIV_2024: LegislationPack = {
   bracketScale: 'monthly',
   status: 'active',
   smigMensuel: 75_000,
-  plafondCnpsRetraite: 1_647_315,
-  plafondCnpsAtPf: 70_000,
+  // Communiqué CNPS « Nouveau plafond des cotisations sociales » (11/01/2023),
+  // pris pour le décret n° 2022-986 du 21/12/2022 (SMIG 75 000) : en vigueur au
+  // 01/01/2023. Retraite = 45 × SMIG ; AT / PF / maternité = SMIG.
+  plafondCnpsRetraite: 3_375_000,
+  plafondCnpsAtPf: 75_000,
   tauxCotisationRetraiteSalarie: 0.063,
   tauxCotisationRetraitePatronal: 0.077,
   tauxCotisationPfPatronal: 0.050,
@@ -387,8 +453,19 @@ export const CIV_2024: LegislationPack = {
     leaveAllowance: { calendarDaysPerWorkingDay: 1.25, method: 'most_favourable' },
     bereavementDays: 3,
     workingDaysPerWeek: 6,
-    overtimeRates: { weekly: 0.15, night: 0.5, sunday: 0.5, holiday: 1.0 },
+    // Décret n° 2024-898 du 16/10/2024, art. 25 (abroge le décret 96-203, mêmes
+    // taux) : 41e–46e h +15 % ; au-delà de la 46e h +50 % ; nuit +75 % ;
+    // dimanche / férié de jour +75 % ; dimanche / férié de nuit +100 %.
+    overtimeRates: {
+      weekly: 0.15, weeklyFromHour: 41, weeklyBeyond: 0.5, weeklyBeyondFromHour: 47,
+      night: 0.75, sunday: 0.75, holiday: 0.75, sundayHolidayNight: 1.0,
+    },
   },
+  // CMU (loi n° 2014-131 du 24/03/2014) : 1 000 F/mois par bénéficiaire, 500
+  // employeur + 500 salarié pour le salarié, le conjoint sans emploi et 6 enfants
+  // de moins de 21 ans ; au-delà du 6e enfant, 1 000 à la charge du salarié
+  // (CLEISS ; servicepublic.gouv.ci). Recouvrée par la CNPS.
+  cmu: { perBeneficiary: 1000, employerShare: 0.5, maxSharedChildren: 6 },
   // Préavis : décret n° 96-200 du 7 mars 1996 (repris par le décret
   // n° 2026-198 du 15 avril 2026) pris pour l'art. 18.4 CT, identique à
   // l'art. 34 de la CCI de 1977. Indemnité : décret n° 2017-210 du 30 mars 2017
@@ -418,7 +495,9 @@ export const CIV_2024: LegislationPack = {
     PRIME_ANCIENNETE:  { social: true, tax: true },
     PRIME_RENDEMENT:   { social: true, tax: true },
     HEURES_SUPP_NORM:  { social: true, tax: true },
+    HEURES_SUPP_47:    { social: true, tax: true },
     HEURES_SUPP_NUIT:  { social: true, tax: true },
+    HEURES_SUPP_DIM:   { social: true, tax: true },
     HEURES_SUPP_FERIE: { social: true, tax: true },
     ICP:               { social: true, tax: true },
     GRATIFICATION:     { social: true, tax: true },
@@ -534,6 +613,14 @@ export const BEN_2024: LegislationPack = {
 // Togo — CNSS + IRPP 2024 (source : CNSS.tg, Code général des impôts Togo)
 // ATTENTION : barème IRPP Togo est ANNUEL — bracketScale: 'annual'
 export const TGO_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }, { years: 4, rate: 0.03 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.30,
+    base: 'category_minimum',
+    source: 'CCI du Togo, art. 36 (3e année ambiguë)',
+    confidence: 'to_confirm',
+  },
   code: 'TGO-2024',
   name: 'Togo — CNSS (avec AMU) + IRPP 2024',
   countryCode: 'TGO',
@@ -591,6 +678,14 @@ export const TGO_2024: LegislationPack = {
 
 // Burkina Faso — CNSS + IUTS 2024
 export const BFA_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.05 }],
+    incrementPerYear: 0.01,
+    maxRate: null,
+    base: 'base_salary',
+    source: 'Décret 2010-810 du 31/12/2010, art. 5 (source secondaire)',
+    confidence: 'to_confirm',
+  },
   code: 'BFA-2024',
   name: 'Burkina Faso — CNSS + IUTS 2024',
   countryCode: 'BFA',
@@ -643,6 +738,14 @@ export const BFA_2024: LegislationPack = {
 
 // Sénégal — IPRES + CSS + IR 2024
 export const SEN_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 2, rate: 0.02 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.25,
+    base: 'category_minimum',
+    source: 'CCNI, art. 45 (cité par des arrêts de la Cour suprême ; vérifier la CCNI de 2019)',
+    confidence: 'to_confirm',
+  },
   code: 'SEN-2024',
   name: 'Sénégal — IPRES + CSS + IR 2024',
   countryCode: 'SEN',
@@ -690,6 +793,14 @@ export const SEN_2024: LegislationPack = {
 
 // Mali — INPS + ITS 2024
 export const MLI_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.03 }, { years: 5, rate: 0.05 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.15,
+    base: 'category_minimum',
+    source: 'Code du travail, art. 97 (loi 2017-21)',
+    confidence: 'confirmed',
+  },
   code: 'MLI-2024',
   name: 'Mali — INPS + ITS 2024',
   countryCode: 'MLI',
@@ -730,6 +841,14 @@ export const MLI_2024: LegislationPack = {
 
 // Niger — CNSS + ITS 2024
 export const NER_2024: LegislationPack = {
+  seniorityBonus: {
+    steps: [{ years: 3, rate: 0.03 }],
+    incrementPerYear: 0.01,
+    maxRate: 0.24,
+    base: 'category_minimum',
+    source: 'CCI du 15/12/1972, art. 47a (maintien sous le Code de 2012 non confirmé)',
+    confidence: 'to_confirm',
+  },
   code: 'NER-2024',
   name: 'Niger — CNSS + ITS 2024',
   countryCode: 'NER',

@@ -24,8 +24,8 @@ const TEST_PACK: LegislationPack = {
   tauxCotisationRetraiteSalarie:    0.08,
   tauxCotisationRetraitePatronal:   0.10,
   // Plafonds différents
-  plafondCnpsAtPf:    80_000,         // vs 70 000 CIV
-  plafondCnpsRetraite: 2_000_000,     // vs 1 647 315 CIV
+  plafondCnpsAtPf:    80_000,         // vs 75 000 CIV
+  plafondCnpsRetraite: 2_000_000,     // vs 3 375 000 CIV
 }
 
 const BASE_CTX: PayrollContext = {
@@ -51,23 +51,23 @@ describe('PayrollEngine — multi-pays (legislationPack consommé)', () => {
     expect(r.cnpsRetraitePat).toBe(50_000)  // 500k × 10%
   })
 
-  it('Plafond AT/PF CIV = 70k, plafond TST = 80k → atPat différent', () => {
+  it('Plafond AT/PF CIV = 75k, plafond TST = 80k → atPat différent', () => {
     // À salaire 100k > plafonds, le base AT/PF = min(salaire, plafond)
     const civ = calculatePayrollCI({ ...BASE_CTX, baseSalary: 100_000 })
     const tst = calculatePayrollCI({ ...BASE_CTX, baseSalary: 100_000, legislationPack: TEST_PACK })
-    // CIV : 70k × atRate 2% = 1400
-    expect(civ.cnpsAtPat).toBe(1_400)
+    // CIV : 75k × atRate 2% = 1500
+    expect(civ.cnpsAtPat).toBe(1_500)
     // TST : 80k × atRate 2% = 1600
     expect(tst.cnpsAtPat).toBe(1_600)
   })
 
-  it('Plafond retraite CIV 1.6M, plafond TST 2M → retraite différent au-delà', () => {
-    // À 3M salaire, base retraite = min(3M, plafond)
-    const ctx = { ...BASE_CTX, baseSalary: 3_000_000 }
+  it('Plafond retraite CIV 3,375M, plafond TST 2M → retraite différent au-delà', () => {
+    // À 4M salaire, base retraite = min(4M, plafond)
+    const ctx = { ...BASE_CTX, baseSalary: 4_000_000 }
     const civ = calculatePayrollCI(ctx)
     const tst = calculatePayrollCI({ ...ctx, legislationPack: TEST_PACK })
-    // CIV : 1 647 315 × 6.3% = 103 780
-    expect(civ.cnpsRetraiteSal).toBe(103_780)
+    // CIV : 3 375 000 × 6.3% = 212 625
+    expect(civ.cnpsRetraiteSal).toBe(212_625)
     // TST : 2 000 000 × 8% = 160 000
     expect(tst.cnpsRetraiteSal).toBe(160_000)
   })

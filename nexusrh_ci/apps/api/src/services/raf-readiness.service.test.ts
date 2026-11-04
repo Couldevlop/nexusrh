@@ -128,3 +128,48 @@ describe('absences injustifiées (jours) → retenue', () => {
     expect(withUnjustifiedAbsence(undefined, 0, 260_000, 26)).toBeUndefined()
   })
 })
+
+describe('RAF_VARIABLE_CODES — heures supplémentaires CI (décret n° 2024-898)', () => {
+  it('les 5 catégories sont saisissables, libellés dérivés du pack CIV', async () => {
+    const { RAF_VARIABLE_CODES, RAF_VARIABLE_LABELS } = await import('./raf-readiness.service.js')
+    expect(RAF_VARIABLE_CODES.slice(0, 5)).toEqual([
+      'HEURES_SUPP_NORM', 'HEURES_SUPP_47', 'HEURES_SUPP_NUIT', 'HEURES_SUPP_DIM', 'HEURES_SUPP_FERIE',
+    ])
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_47).toBe('Heures supp. +50% (au-delà de 46 h)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_DIM).toBe('Heures supp. +75% (dimanche/férié de jour)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_NUIT).toBe('Heures supp. +75% (nuit)')
+    expect(RAF_VARIABLE_LABELS.HEURES_SUPP_FERIE).toBe('Heures supp. +100% (dimanche/férié de nuit)')
+  })
+})
+
+describe('CMU — conjoint à vérifier (avertissement non bloquant)', () => {
+  it('marié, situation du conjoint non renseignée (null) : signalé, sans bloquer', () => {
+    const r = computeRafReadiness({
+      employees: [emp({ marital_status: 'married', cmu_spouse_covered: null })],
+      variables: [], validations: [], pack: CIV,
+    })
+    expect(r.employees[0]!.warnings).toEqual(['cmu_spouse_to_verify'])
+    expect(r.employees[0]!.missing).toEqual([])
+    expect(r.cmuSpouseToVerify).toEqual([{ id: r.employees[0]!.id, name: r.employees[0]!.name }])
+    expect(r.dataComplete).toBe(true)
+  })
+  it('marié renseigné (true ou false), célibataire non renseigné : pas d’avertissement', () => {
+    const r = computeRafReadiness({
+      employees: [
+        emp({ id: 'a', marital_status: 'married', cmu_spouse_covered: true }),
+        emp({ id: 'b', marital_status: 'married', cmu_spouse_covered: false }),
+        emp({ id: 'c', marital_status: 'single', cmu_spouse_covered: null }),
+      ],
+      variables: [], validations: [], pack: CIV,
+    })
+    expect(r.employees.map(e => e.warnings)).toEqual([[], [], []])
+    expect(r.cmuSpouseToVerify).toEqual([])
+  })
+  it('pack sans CMU : pas d’avertissement', () => {
+    const r = computeRafReadiness({
+      employees: [emp({ marital_status: 'married', cmu_spouse_covered: null })],
+      variables: [], validations: [], pack: getLegislationPack('TGO-2024'),
+    })
+    expect(r.employees[0]!.warnings).toEqual([])
+  })
+})

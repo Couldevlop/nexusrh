@@ -339,7 +339,8 @@ export const GUIDE_CNPS: SeoPageContent = {
       blocks: [
         { type: 'p', text:
           "La retraite se calcule sur le salaire dans la limite de 3 375 000 FCFA par mois (décret n° 2022-986). Les " +
-          "prestations familiales, la maternité et l'accident du travail se calculent sur 75 000 FCFA au plus. Appliquer un " +
+          "prestations familiales, la maternité et l'accident du travail se calculent sur 75 000 FCFA au plus. Ces deux plafonds " +
+          "s'appliquent depuis le 1er janvier 2023. Appliquer un " +
           "plafond unique à toutes les branches est l'erreur la plus fréquente : elle fausse les cotisations dès que le " +
           "salaire dépasse 75 000 FCFA." },
       ],
@@ -353,7 +354,7 @@ export const GUIDE_CNPS: SeoPageContent = {
       ],
     },
     {
-      h2: 'Exemple : salaire brut de 2 000 000 FCFA (commerce)',
+      h2: 'Exemple : salaire brut de 4 000 000 FCFA (commerce)',
       blocks: [
         { type: 'table', caption: 'Cotisations CNPS mensuelles (FCFA, arrondies au franc)',
           head: ['Branche', 'Assiette', 'Taux', 'Montant'],

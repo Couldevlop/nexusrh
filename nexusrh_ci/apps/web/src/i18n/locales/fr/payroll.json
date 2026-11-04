@@ -227,8 +227,8 @@
     "cnpsDetailTitle": "Détail CNPS",
     "cnps": {
       "grossSubject": "Brut soumis à cotisations",
-      "retirementBase": "Base retraite (plaf. 1 647 315)",
-      "atPfBase": "Base AT/PF (plaf. 70 000)",
+      "retirementBase": "Base retraite (plaf. 3 375 000)",
+      "atPfBase": "Base AT/PF (plaf. 75 000)",
       "retirementEmployee": "Retraite salarié (6,3%)",
       "retirementEmployer": "Retraite patronal (7,7%)",
       "familyMaternity": "Prest. fam. + mat. (5,75%)",

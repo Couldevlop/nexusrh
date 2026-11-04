@@ -21,22 +21,20 @@ describe('PayrollEngineCi — calculs CNPS 2024', () => {
 
   it('CNPS retraite salarié = BASE_RETRAITE × 6,3%', () => {
     const r = calculatePayrollCI(baseCtx)
-    const baseRetraite = Math.min(baseCtx.baseSalary, 1_647_315)
-    expect(r.cnpsRetraiteSal).toBe(Math.floor(baseRetraite * 0.063))
+    // 200 000 × 6,3 % (sous le plafond 3 375 000)
+    expect(r.cnpsRetraiteSal).toBe(12_600)
   })
 
-  it('CNPS retraite plafonné à 1 647 315 FCFA', () => {
-    const ctx: PayrollContext = { ...baseCtx, baseSalary: 2_000_000 }
+  it('CNPS retraite plafonné à 3 375 000 FCFA (depuis le 01/01/2023)', () => {
+    const ctx: PayrollContext = { ...baseCtx, baseSalary: 4_000_000 }
     const r = calculatePayrollCI(ctx)
-    const plafond = 1_647_315
-    expect(r.cnpsRetraiteSal).toBe(Math.floor(plafond * 0.063))
+    expect(r.cnpsRetraiteSal).toBe(212_625)   // 3 375 000 × 6,3 %
   })
 
-  it('AT/PF plafonné à 70 000 FCFA', () => {
+  it('AT/PF plafonné à 75 000 FCFA (depuis le 01/01/2023)', () => {
     const ctx: PayrollContext = { ...baseCtx, baseSalary: 200_000 }
     const r = calculatePayrollCI(ctx)
-    const baseAtPf = Math.min(200_000, 70_000)
-    expect(r.cnpsAtPat).toBe(Math.floor(baseAtPf * 0.02))
+    expect(r.cnpsAtPat).toBe(1_500)           // 75 000 × 2 %
   })
 
   it('ITS = 0 pour salaire net imposable ≤ 75 000', () => {
@@ -139,7 +137,7 @@ describe('PayrollEngineCi — SMIG & taux AT secteur', () => {
   it('taux AT extraction (5%) = max', () => {
     const ctx: PayrollContext = { ...baseCtx, baseSalary: 200_000, atRate: 0.05 }
     const r = calculatePayrollCI(ctx)
-    expect(r.cnpsAtPat).toBe(Math.floor(Math.min(200_000, 70_000) * 0.05))
+    expect(r.cnpsAtPat).toBe(3_750)           // 75 000 × 5 %
   })
 })
 

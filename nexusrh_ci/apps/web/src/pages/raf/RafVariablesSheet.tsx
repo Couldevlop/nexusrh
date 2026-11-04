@@ -24,6 +24,8 @@ interface SheetRow {
   id: string
   name: string
   missing: MissingCode[]
+  /** Avertissements non bloquants (CMU : conjoint à vérifier) */
+  warnings?: Array<'cmu_spouse_to_verify'>
   values: Record<string, number>
   validation: { mode: 'entered' | 'none'; validatedAt: string | null; valid: boolean } | null
   variablesValidated: boolean
@@ -39,6 +41,8 @@ interface SheetData {
   readiness: {
     smig: number; totalEmployees: number; validatedCount: number; incompleteCount: number
     dataComplete: boolean; variablesValidated: boolean; ready: boolean
+    /** Salariés mariés dont la situation du conjoint (CMU) est à renseigner — non bloquant */
+    cmuSpouseToVerify?: Array<{ id: string; name: string }>
   }
 }
 
@@ -165,6 +169,23 @@ export default function RafVariablesSheet({ periodId, onSubmitted }: { periodId:
                   ? <Link to={`/employees/${r.id}`} className="font-medium underline underline-offset-2 hover:opacity-80">{r.name}</Link>
                   : <span className="font-medium">{r.name}</span>}
                 <span className="text-xs">— {r.missing.map(m => t(`missing.${m}`, { smig: readiness.smig })).join(' · ')}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* CMU — conjoint à vérifier : avertissement NON bloquant (n'entre pas dans readiness.ready) */}
+      {(readiness.cmuSpouseToVerify?.length ?? 0) > 0 && (
+        <div role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <p className="font-semibold">{t('sheet.cmuSpouseToVerifyTitle', { count: readiness.cmuSpouseToVerify?.length ?? 0 })}</p>
+          <p className="mt-0.5 text-xs">{t('sheet.cmuSpouseToVerifyHint')}</p>
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            {(readiness.cmuSpouseToVerify ?? []).map(r => (
+              <li key={r.id}>
+                {canOpenEmployee
+                  ? <Link to={`/employees/${r.id}`} className="font-medium underline underline-offset-2 hover:opacity-80">{r.name}</Link>
+                  : <span className="font-medium">{r.name}</span>}
               </li>
             ))}
           </ul>

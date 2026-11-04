@@ -928,7 +928,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           { code: '1300', label: 'Prime de transport', type: 'earning', base: null, amount: 30000 },
           { code: '2000', label: 'CNPS Retraite (6,3%)', type: 'employee_contribution', base: 250000, amount: 15750 },
           { code: '2100', label: 'ITS', type: 'employee_contribution', base: null, amount: 3200 },
-          { code: '3300', label: 'CNPS Accidents du travail', type: 'employer_contribution', base: 70000, amount: 2100 },
+          { code: '3300', label: 'CNPS Accidents du travail', type: 'employer_contribution', base: 75000, amount: 2250 },
         ],
         grossSalary: 280000, totalCnpsSal: 15750, its: 3200, totalDeductions: 18950,
         netPayable: 261050, employerCost: 312000, currency: 'XOF',

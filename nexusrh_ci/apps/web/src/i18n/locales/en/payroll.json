@@ -227,8 +227,8 @@
     "cnpsDetailTitle": "CNPS breakdown",
     "cnps": {
       "grossSubject": "Gross subject to contributions",
-      "retirementBase": "Retirement base (cap 1,647,315)",
-      "atPfBase": "AT/PF base (cap 70,000)",
+      "retirementBase": "Retirement base (cap 3,375,000)",
+      "atPfBase": "AT/PF base (cap 75,000)",
       "retirementEmployee": "Employee retirement (6.3%)",
       "retirementEmployer": "Employer retirement (7.7%)",
       "familyMaternity": "Family + maternity (5.75%)",
