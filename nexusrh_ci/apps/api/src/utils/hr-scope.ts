@@ -83,7 +83,15 @@ export async function requestHrScopeFactory(request: FastifyRequest): Promise<(a
   // Admin du tenant : hors grille (hab null => 'TRUE'). Source unique de la règle.
   const hab = request.user.role === 'admin' ? null : await getRequestHab(request)
   const schema = request.user.schemaName
-  return (alias: string) => hrScopeSql(schema, alias, hab)
+  return (alias: string) => {
+    const fragment = hrScopeSql(schema, alias, hab)
+    // Marqueur de traçage (tâche 13) : un périmètre réellement restreint est la
+    // seule chose qui distingue un 404 « hors de mon périmètre » d'un vrai 404.
+    // La RÉPONSE reste identique dans les deux cas ; seule la piste d'audit
+    // porte la cause.
+    if (fragment !== 'TRUE') request.habScopeRestricted = true
+    return fragment
+  }
 }
 
 /** Variante self-service : un employé (rôle effectif) n'est jamais filtré. */

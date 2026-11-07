@@ -80,6 +80,7 @@ import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
 import habilitationStructureRoutes from './modules/habilitations/structure.routes.js'
 import habilitationFicheRoutes from './modules/habilitations/fiche.routes.js'
 import habilitationDelegationRoutes from './modules/habilitations/delegation.routes.js'
+import habilitationAuditRoutes from './modules/habilitations/audit.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -449,6 +450,7 @@ export async function buildApp() {
   // Circuit de fiche : ouvert aux acteurs désignés par la fiche (cf. fiche.routes.ts).
   await fastify.register(habilitationFicheRoutes, { prefix: '/habilitations' })
   await fastify.register(habilitationDelegationRoutes, { prefix: '/habilitations' })
+  await fastify.register(habilitationAuditRoutes, { prefix: '/habilitations' })
   await fastify.register(interviewSimRoutes, { prefix: '/interview-sim' })
   await fastify.register(interviewSimPublicRoutes, { prefix: '/public/interview-sim' })
 

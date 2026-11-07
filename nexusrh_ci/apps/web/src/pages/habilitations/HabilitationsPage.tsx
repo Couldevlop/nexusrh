@@ -5,7 +5,10 @@
  *    des employés sans filiale (le « siège »), aperçu « Ce que voit X ».
  *  - Fiches : liste par étape, grille préremplissable par modèle, actions
  *    dépendant de l'étape, téléchargement du PDF.
- *  - Délégations : posée ici (vide), remplie par la tâche 12.
+ *  - Délégations : procurations données et reçues, révocables.
+ *  - Piste d'audit : TOUTES les requêtes des habilités, filtrables par rôle,
+ *    matricule, période et RÉSULTAT — les accès refusés sont le premier motif
+ *    de consultation d'un contrôleur.
  *
  * Deux refus délibérés :
  *  - une fiche verrouillée n'est PAS modifiable : la validation porte sur un
@@ -27,7 +30,41 @@ import { PermissionGrid } from '@/components/habilitations/PermissionGrid'
 import { PreviewDrawer } from '@/components/habilitations/PreviewDrawer'
 import { isFicheEditable } from '@/lib/habilitations'
 
-type Tab = 'structure' | 'fiches' | 'delegations'
+type Tab = 'structure' | 'fiches' | 'delegations' | 'audit'
+
+interface Delegation {
+  id: string
+  delegator_id: string
+  delegate_id: string
+  subgroup_id: string | null
+  starts_at: string
+  ends_at: string
+  revoked_at: string | null
+  active: boolean
+}
+
+interface AuditRow {
+  id: string
+  created_at: string
+  action: string
+  entity: string
+  entity_id: string | null
+  changes: Record<string, unknown> | null
+  email: string | null
+  role: string | null
+  subgroup_name: string | null
+  employee_number: string | null
+}
+
+interface AuditFilters {
+  result: string
+  matricule: string
+  from: string
+  to: string
+}
+
+/** Causes de refus et masquage, telles que le serveur les écrit (hab-trace). */
+const AUDIT_RESULTS = ['denied', 'denied_permission', 'denied_scope', 'denied_self', 'masked', 'allowed'] as const
 
 interface Member {
   userId: string
@@ -156,7 +193,50 @@ export default function HabilitationsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const tabs: Tab[] = ['structure', 'fiches', 'delegations']
+  // ── Onglet Délégations ───────────────────────────────────────────────────
+  const delegationsQ = useQuery({
+    queryKey: ['habilitations', 'delegations'],
+    queryFn: async () => (await api.get('/habilitations/delegations')).data.data as Delegation[],
+  })
+  const revokeDelegation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/habilitations/delegations/${id}`)).data,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['habilitations', 'delegations'] }),
+  })
+
+  // ── Onglet Piste d'audit ─────────────────────────────────────────────────
+  const [auditFilters, setAuditFilters] = useState<AuditFilters>({ result: '', matricule: '', from: '', to: '' })
+  // Filtres passés en `params` (et non concaténés dans l'URL) : l'URL reste un
+  // littéral, donc vérifiable par le banc golden du contrat UI↔API.
+  const auditParams = useMemo(
+    () => Object.fromEntries(Object.entries(auditFilters).filter(([, v]) => v !== '')),
+    [auditFilters],
+  )
+  const auditQ = useQuery({
+    queryKey: ['habilitations', 'audit', auditParams],
+    queryFn: async () => (await api.get('/habilitations/audit', { params: auditParams })).data.data as AuditRow[],
+    enabled: role === 'admin' && tab === 'audit',
+  })
+  /**
+   * Libellé d'une personne à partir de son identifiant, repris des membres déjà
+   * chargés par la structure. Repli sur l'identifiant : une délégation reste
+   * lisible même si le membre a quitté le sous-groupe entre-temps.
+   */
+  const memberLabel = (userId: string): string => {
+    for (const g of structure?.groups ?? []) {
+      for (const sg of g.subgroups) {
+        const m = sg.members.find((x) => x.userId === userId)
+        if (m) return m.email
+      }
+    }
+    return userId
+  }
+
+  const setAuditFilter = (key: keyof AuditFilters, value: string): void =>
+    setAuditFilters((prev) => ({ ...prev, [key]: value }))
+
+  const tabs: Tab[] = role === 'admin'
+    ? ['structure', 'fiches', 'delegations', 'audit']
+    : ['structure', 'fiches', 'delegations']
 
   return (
     <div className="p-6 space-y-6">
@@ -406,9 +486,139 @@ export default function HabilitationsPage() {
       {tab === 'delegations' ? (
         <section className="space-y-3">
           <p className="text-sm text-muted-foreground">{t('delegations.intro')}</p>
-          <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            {t('delegations.empty')}
-          </p>
+          {(delegationsQ.data ?? []).length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+              {t('delegations.empty')}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {(delegationsQ.data ?? []).map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                  <div>
+                    <p className="font-medium">{memberLabel(d.delegate_id)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('delegations.until')} {new Date(d.ends_at).toLocaleDateString()}
+                      {d.revoked_at !== null
+                        ? ` · ${t('delegations.revoked')}`
+                        : d.active ? '' : ` · ${t('delegations.expired')}`}
+                    </p>
+                  </div>
+                  {d.revoked_at === null && d.delegator_id === me ? (
+                    <button
+                      onClick={() => revokeDelegation.mutate(d.id)}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+                    >
+                      {t('delegations.revoke')}
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {tab === 'audit' ? (
+        <section className="space-y-3">
+          <p className="text-sm text-muted-foreground">{t('audit.intro')}</p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('audit.filters.result')}
+              <select
+                aria-label={t('audit.filters.result')}
+                value={auditFilters.result}
+                onChange={(e) => setAuditFilter('result', e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              >
+                <option value="">{t('audit.filters.all')}</option>
+                {AUDIT_RESULTS.map((r) => (
+                  <option key={r} value={r}>{t(`audit.results.${r}`)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('audit.filters.matricule')}
+              <input
+                aria-label={t('audit.filters.matricule')}
+                value={auditFilters.matricule}
+                onChange={(e) => setAuditFilter('matricule', e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('audit.filters.from')}
+              <input
+                type="date"
+                aria-label={t('audit.filters.from')}
+                value={auditFilters.from}
+                onChange={(e) => setAuditFilter('from', e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('audit.filters.to')}
+              <input
+                type="date"
+                aria-label={t('audit.filters.to')}
+                value={auditFilters.to}
+                onChange={(e) => setAuditFilter('to', e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              />
+            </label>
+          </div>
+
+          {auditQ.isLoading ? <p className="text-sm text-muted-foreground">{t('loading')}</p> : null}
+          {!auditQ.isLoading && (auditQ.data ?? []).length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+              {t('audit.empty')}
+            </p>
+          ) : null}
+          {(auditQ.data ?? []).length > 0 ? (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.date')}</th>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.user')}</th>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.subgroup')}</th>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.matricule')}</th>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.action')}</th>
+                    <th className="px-3 py-2 text-left">{t('audit.columns.result')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(auditQ.data ?? []).map((r) => {
+                    const raw = r.changes?.['result']
+                    const result = typeof raw === 'string' ? raw : 'allowed'
+                    return (
+                      <tr key={r.id}>
+                        <td className="whitespace-nowrap px-3 py-2">{new Date(r.created_at).toLocaleString()}</td>
+                        <td className="px-3 py-2">{r.email ?? '—'}</td>
+                        <td className="px-3 py-2">{r.subgroup_name ?? '—'}</td>
+                        <td className="px-3 py-2">{r.employee_number ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{r.action}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={cn(
+                              'rounded px-2 py-0.5 text-xs',
+                              result.startsWith('denied')
+                                ? 'bg-red-100 text-red-900'
+                                : result === 'masked'
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-emerald-100 text-emerald-900',
+                            )}
+                          >
+                            {t(`audit.results.${result}`)}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

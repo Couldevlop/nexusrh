@@ -214,7 +214,12 @@ export function assertNotSelf(ctx: HabContext | null, targetEmployeeId: string):
  * (self-service : l'utilisateur agit légitimement sur son propre profil).
  */
 export function isSelfAction(
-  request: { hab?: HabContext | null; user: { role: string } },
+  request: {
+    hab?: HabContext | null
+    user: { role: string }
+    /** Marqueur de traçage (tâche 13) : cause du refus, posée ici. */
+    habDenial?: 'permission' | 'scope' | 'self'
+  },
   targetEmployeeId: string,
 ): boolean {
   if (request.user.role === 'employee') return false
@@ -222,7 +227,10 @@ export function isSelfAction(
     assertNotSelf(request.hab ?? null, targetEmployeeId)
     return false
   } catch (err) {
-    if (err instanceof SelfActionError) return true
+    if (err instanceof SelfActionError) {
+      request.habDenial = 'self'
+      return true
+    }
     throw err
   }
 }
@@ -230,4 +238,64 @@ export function isSelfAction(
 /** Identifiant UUID (toute version) : permet de répondre 400 plutôt que 500 sur un id mal formé. */
 export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+/** Cause d'une coupure de droits : elle est tracée telle quelle dans l'audit. */
+export type RevocationReason = 'offboarding' | 'user_disabled'
+
+/**
+ * Coupe TOUTES les habilitations d'un utilisateur : affectation révoquée,
+ * délégations données ET reçues révoquées, révocation tracée.
+ *
+ * Appelée depuis la cascade d'archivage d'un employé
+ * (`employee-archive.service.ts`) — le seul chemin commun à la clôture d'un
+ * dossier de sortie et à l'archivage manuel — pour qu'aucun départ ne puisse
+ * l'oublier. Désactiver le compte ne suffisait pas : la délégation REÇUE par
+ * une personne partie laisserait un tiers agir en son nom, et la délégation
+ * qu'elle a DONNÉE survivrait à son propre départ.
+ *
+ * Non bloquante par construction : un tenant qui n'a pas encore les tables
+ * d'habilitation ne doit pas voir un départ échouer pour cette raison.
+ */
+export async function revokeAllForUser(
+  schema: string, userId: string, reason: RevocationReason,
+): Promise<void> {
+  assertValidSchemaName(schema)
+  if (!isUuid(userId)) return
+  try {
+    const assignments = await pool.query(
+      `UPDATE "${schema}".hab_assignments
+          SET revoked_at = now()
+        WHERE user_id = $1 AND revoked_at IS NULL
+        RETURNING id`,
+      [userId],
+    )
+    const delegations = await pool.query(
+      `UPDATE "${schema}".hab_delegations
+          SET revoked_at = now()
+        WHERE (delegator_id = $1 OR delegate_id = $1) AND revoked_at IS NULL
+        RETURNING id`,
+      [userId],
+    )
+    // Trace : des COMPTES et la cause, jamais les permissions retirées (elles
+    // restent lisibles sur la fiche, qui est le document de référence).
+    await pool.query(
+      `INSERT INTO "${schema}".audit_log (user_id, action, entity, entity_id, changes, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        null, 'habilitation.revoked', 'habilitation', userId,
+        JSON.stringify({
+          reason,
+          assignments: assignments.rows.length,
+          delegations: delegations.rows.length,
+        }),
+        null,
+      ],
+    )
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code
+    // 42P01 table absente / 42703 colonne absente : tenant non migré.
+    if (code === '42P01' || code === '42703') return
+    throw err
+  }
 }

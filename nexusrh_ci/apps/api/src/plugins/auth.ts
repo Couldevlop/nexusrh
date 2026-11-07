@@ -9,6 +9,9 @@ import { isValidSchemaName } from '../utils/schema-name.js'
 import { loadHabContext, can, hrScopeSql, type HabContext } from '../services/habilitation.service.js'
 import { HR_GRID_ROLES, resolveRoutePermission } from '../modules/habilitations/route-permissions.js'
 import { isPermission } from '../modules/habilitations/catalog.js'
+import { habTraceEntry, type HabDenial } from '../modules/habilitations/hab-trace.js'
+import { maskedFieldsFor } from '../services/sensitive-mask.js'
+import { auditTenant } from '../utils/audit-log.js'
 
 // Nom du cookie qui transporte le JWT en httpOnly (mode SPA browser).
 // Les clients API peuvent toujours utiliser Authorization: Bearer (backward-compat).
@@ -119,6 +122,14 @@ declare module 'fastify' {
      * hérité par rôle). Cf. getRequestHab.
      */
     hab?: HabContext | null
+    /**
+     * Cause d'un refus d'habilitation, posée au point de décision (grille,
+     * périmètre, « propre dossier »). Lue par le hook de traçage ; JAMAIS
+     * renvoyée au client — la réponse HTTP reste indistinguable (cf. hab-trace).
+     */
+    habDenial?: HabDenial
+    /** Vrai dès qu'un fragment de périmètre filiale a réellement restreint la requête. */
+    habScopeRestricted?: boolean
   }
 }
 
@@ -287,6 +298,7 @@ export default fp(async (fastify) => {
         if (hab !== null) hrScopeSql(request.user.schemaName, 'e', hab)
       } catch (err) {
         request.log.error({ err }, 'habilitations : contexte indisponible, accès refusé')
+        request.habDenial = 'permission'
         return reply.status(403).send({ error: HAB_DENIED_ERROR })
       }
 
@@ -303,10 +315,52 @@ export default fp(async (fastify) => {
         request.user.role = 'employee'
         return
       }
+      request.habDenial = 'permission'
       return reply.status(403).send({ error: HAB_DENIED_ERROR })
     }
     AUTHORIZE_ROLES.set(handler, roles)
     return handler
+  })
+
+  /**
+   * Traçage de TOUTES les requêtes d'un utilisateur habilité (demande du
+   * porteur du 04/11/2026 : « toutes ses actions doivent être tracées et
+   * consultables »), lectures de liste comprises, avec la cause du refus
+   * quand il y en a une.
+   *
+   * Posé en `onResponse` : la réponse est déjà partie, l'écriture d'audit ne
+   * peut donc ni la retarder ni la faire échouer (`auditTenant` est
+   * non bloquant par construction). Seuls les utilisateurs passés par la
+   * grille sont tracés — `request.hab` reste `undefined` pour l'admin du
+   * tenant et les jetons plateforme, qui gardent leur propre audit métier.
+   */
+  fastify.addHook('onResponse', async (request, reply) => {
+    const hab = request.hab
+    if (!hab) return
+    try {
+      const entry = habTraceEntry({
+        method: request.method,
+        routeUrl: request.routeOptions.url ?? '',
+        statusCode: reply.statusCode,
+        denial: request.habDenial,
+        scopeRestricted: request.habScopeRestricted,
+        maskedFields: maskedFieldsFor(hab),
+        paramId: (request.params as { id?: string } | undefined)?.id ?? null,
+        filterKeys: Object.keys((request.query ?? {}) as Record<string, unknown>),
+      }, { subgroupId: hab.subgroupId })
+      if (entry === null) return
+      auditTenant(request.user.schemaName, {
+        userId: request.user.sub,
+        action: entry.action,
+        entity: entry.entity,
+        entityId: entry.entityId,
+        changes: entry.changes,
+        ip: request.ip,
+      })
+    } catch (err) {
+      // Une trace manquante ne doit jamais faire échouer une requête servie.
+      request.log.error({ err }, 'habilitations : traçage de la requête impossible')
+    }
   })
 
   // Recensement des routes protégées par authorize() (contrôle de couverture

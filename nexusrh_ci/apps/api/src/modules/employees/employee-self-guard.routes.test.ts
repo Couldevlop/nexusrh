@@ -66,13 +66,21 @@ beforeEach(() => {
   loadHabContextMock.mockReset()
 })
 
+/**
+ * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
+ * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
+ * n'entre pas dans l'invariant « la base n'est pas touchee ».
+ */
+const businessQueries = () =>
+  queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))
+
 describe('PATCH /employees/:id — son propre dossier', () => {
   it('DRH habilité modifiant son propre base_salary → 403 sans toucher la base', async () => {
     loadHabContextMock.mockResolvedValue(hab)
     const res = await patch(ME, { baseSalary: 9_000_000 })
     expect(res.statusCode).toBe(403)
     expect(JSON.parse(res.body).error).toBe('Action interdite sur votre propre dossier')
-    expect(queryMock).not.toHaveBeenCalled()
+    expect(businessQueries()).toHaveLength(0)
   })
 
   it('id en MAJUSCULES (même fiche pour PostgreSQL) → 403 aussi', async () => {
@@ -80,7 +88,7 @@ describe('PATCH /employees/:id — son propre dossier', () => {
     const res = await patch(ME.toUpperCase(), { baseSalary: 9_000_000 })
     expect(res.statusCode).toBe(403)
     expect(JSON.parse(res.body).error).toBe('Action interdite sur votre propre dossier')
-    expect(queryMock).not.toHaveBeenCalled()
+    expect(businessQueries()).toHaveLength(0)
   })
 
   it('DRH habilité modifiant un autre dossier → traité normalement (404, fiche absente)', async () => {

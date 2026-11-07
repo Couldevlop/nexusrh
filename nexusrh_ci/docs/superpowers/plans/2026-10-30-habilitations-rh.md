@@ -632,6 +632,26 @@ Tables, toutes dans le schéma tenant :
 - [ ] **Step 4:** Relancer. Attendu : PASS.
 - [ ] **Step 5:** Commit `feat(habilitations): piste d'audit filtrable (rôle, groupe, matricule, utilisateur)`.
 
+**Amendement du 04/11/2026 (demande du porteur : « toutes ses actions doivent
+être tracées et consultables ») — prime sur les étapes ci-dessus :**
+- Tracer TOUTES les requêtes d'un utilisateur habilité, GET de liste compris
+  (`action: 'hr.<fn>.view'`), avec un champ `result` :
+  `allowed` | `denied_permission` (403 grille) | `denied_scope` (404 dû au
+  périmètre filiale) | `denied_self` (garde « son propre dossier ») |
+  `masked` (réponse avec `maskedFields`, liste des noms de champs).
+- Le 404 de périmètre est distingué d'un vrai 404 par un marqueur posé sur la
+  requête au moment du refus (ex. `request.habDenial = 'scope'`) ; la réponse
+  HTTP reste un 404 identique (pas de fuite d'existence), seule la trace
+  interne porte la cause.
+- Toujours sans body ni valeur personnelle ; pour les GET, `changes` porte
+  la route et les noms des filtres utilisés, jamais leurs valeurs.
+- `GET /habilitations/audit` ajoute le filtre `result=` et l'onglet « Piste
+  d'audit » permet de filtrer « Accès refusés ».
+- Tests : un GET de liste génère une trace `allowed` (remplace « ne génère
+  rien ») ; un 403 grille, un 404 de périmètre et un refus « propre dossier »
+  génèrent chacun leur `result` ; un vrai 404 hors périmètre-habilitation ne
+  porte pas `denied_scope`.
+
 ### Task 14: Coupure automatique au départ
 
 **Files:**

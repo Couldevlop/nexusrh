@@ -6,7 +6,8 @@
   "tabs": {
     "structure": "Structure",
     "fiches": "Fiches",
-    "delegations": "Délégations"
+    "delegations": "Délégations",
+    "audit": "Piste d'audit"
   },
   "actions": {
     "save": "Enregistrer",
@@ -85,7 +86,11 @@
   },
   "delegations": {
     "intro": "Déléguer la rédaction de fiches pendant une absence.",
-    "empty": "Aucune délégation en cours."
+    "empty": "Aucune délégation en cours.",
+    "until": "Jusqu'au",
+    "revoke": "Révoquer",
+    "revoked": "révoquée",
+    "expired": "échue"
   },
   "preview": {
     "title": "Ce que voit cette personne",
@@ -101,5 +106,32 @@
     "sensitive": "Données sensibles",
     "sensitiveYes": "Visibles (case « données sensibles »)",
     "masked": "{{count}} champ(s) masqué(s) : salaires et coordonnées bancaires restent cachés"
+  },
+  "audit": {
+    "intro": "Toutes les actions des personnes habilitées, accès refusés compris.",
+    "empty": "Aucune action sur cette période.",
+    "filters": {
+      "result": "Résultat",
+      "all": "Tous",
+      "matricule": "Matricule",
+      "from": "Du",
+      "to": "Au"
+    },
+    "columns": {
+      "date": "Date",
+      "user": "Utilisateur",
+      "subgroup": "Sous-groupe",
+      "matricule": "Matricule",
+      "action": "Action",
+      "result": "Résultat"
+    },
+    "results": {
+      "denied": "Accès refusés",
+      "allowed": "Autorisé",
+      "denied_permission": "Refus — droit manquant",
+      "denied_scope": "Refus — hors périmètre",
+      "denied_self": "Refus — propre dossier",
+      "masked": "Données masquées"
+    }
   }
 }

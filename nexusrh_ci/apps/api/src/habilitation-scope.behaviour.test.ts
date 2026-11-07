@@ -65,7 +65,12 @@ function entityCtx(): HabContext {
 function sqls(): string[] {
   return queryMock.mock.calls.map((c) => String(c[0]).replace(/\s+/g, ' '))
 }
-const writes = (): string[] => sqls().filter((s) => /^(UPDATE|DELETE|INSERT)/i.test(s.trim()))
+// Écritures MÉTIER : la trace d'audit des habilitations (tâche 13) est une
+// écriture volontaire sur chaque requête d'un habilité, refus compris — elle
+// n'entre pas dans l'invariant « aucune écriture » d'un accès refusé.
+const writes = (): string[] => sqls()
+  .filter((s) => /^(UPDATE|DELETE|INSERT)/i.test(s.trim()))
+  .filter((s) => !/INSERT INTO "[a-z0-9_]+"\.audit_log/i.test(s))
 
 async function call(method: 'PATCH' | 'DELETE', url: string, payload?: Record<string, unknown>) {
   const token = app.jwt.sign({

@@ -53,7 +53,12 @@ const auth = (role = 'hr_manager') => ({ authorization: `Bearer ${app.jwt.sign({
   sub: 'u-drh', tenantId: 't1', schemaName: 'tenant_sotra', role,
   email: 'drh@sotra.ci', firstName: 'D', lastName: 'R', employeeId: ME,
 })}` })
-const writes = () => queryMock.mock.calls.filter((c) => /\b(INSERT|UPDATE|DELETE)\b/i.test(String(c[0])))
+// Ecritures METIER : la trace d'audit des habilitations (tache 13) est ecrite
+// sur CHAQUE requete d'un habilite, refus compris -- c'est le but ; elle
+// n'entre donc pas dans l'invariant « aucune ecriture » d'un refus.
+const writes = () => queryMock.mock.calls
+  .filter((c) => /\b(INSERT|UPDATE|DELETE)\b/i.test(String(c[0])))
+  .filter((c) => !/audit_log/i.test(String(c[0])))
 
 beforeAll(async () => {
   app = Fastify()
@@ -72,6 +77,14 @@ beforeEach(() => {
 
 const newContract = (id: string) => ({ employee_id: id, type: 'cdi', start_date: '2026-01-01', base_salary: 500000 })
 const idCases = [['id exact', ME], ['id MAJUSCULES', ME.toUpperCase()]] as const
+
+/**
+ * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
+ * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
+ * n'entre pas dans l'invariant « aucune requete ».
+ */
+const businessQueries = () =>
+  queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))
 
 describe('contrats — garde « propre dossier »', () => {
   for (const [label, id] of idCases) {
@@ -103,7 +116,7 @@ describe('contrats — garde « propre dossier »', () => {
       const res = await app.inject({ method: 'POST', url: `/contracts/signed/employee/${id}`, headers: auth() })
       expect(res.statusCode).toBe(403)
       expect(JSON.parse(res.body).error).toBe(DENIED)
-      expect(queryMock).not.toHaveBeenCalled()
+      expect(businessQueries()).toHaveLength(0)
     })
   }
 
@@ -126,7 +139,7 @@ describe('contrats — garde « propre dossier »', () => {
         ...(method === 'DELETE' ? {} : { payload: { base_salary: 1 } }),
       })
       expect(res.statusCode).toBe(400)
-      expect(queryMock).not.toHaveBeenCalled()
+      expect(businessQueries()).toHaveLength(0)
     })
   }
 })

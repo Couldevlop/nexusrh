@@ -73,6 +73,14 @@ beforeEach(() => {
   loadHabContextMock.mockResolvedValue(hab)
 })
 
+/**
+ * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
+ * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
+ * n'entre pas dans l'invariant « la base n'est pas touchee ».
+ */
+const businessQueries = () =>
+  queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))
+
 describe('garde « propre dossier » — paie / discipline / éléments variables', () => {
   for (const [label, id] of [['id exact', ME], ['id MAJUSCULES', ME.toUpperCase()]] as const) {
     it(`PUT payroll-workflow variables/:employeeId (${label}) → 403`, async () => {
@@ -100,7 +108,7 @@ describe('garde « propre dossier » — paie / discipline / éléments variable
       })
       expect(res.statusCode).toBe(403)
       expect(JSON.parse(res.body).error).toBe(DENIED)
-      expect(queryMock).not.toHaveBeenCalled()
+      expect(businessQueries()).toHaveLength(0)
     })
   }
 
@@ -108,7 +116,7 @@ describe('garde « propre dossier » — paie / discipline / éléments variable
     queryMock.mockResolvedValueOnce({ rows: [{ employee_id: ME.toUpperCase() }] })
     const res = await app.inject({ method: 'DELETE', url: '/settings/variable-elements/33333333-2222-4333-8444-555555555555', headers: auth() })
     expect(res.statusCode).toBe(403)
-    expect(queryMock).toHaveBeenCalledTimes(1)
+    expect(businessQueries()).toHaveLength(1)
   })
 
   it("PUT variables d'un autre salarié → non bloqué par la garde", async () => {

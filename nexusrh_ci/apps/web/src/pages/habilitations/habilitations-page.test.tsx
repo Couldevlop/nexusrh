@@ -15,9 +15,9 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 
-const { getMock, postMock, patchMock } = vi.hoisted(() => ({ getMock: vi.fn(), postMock: vi.fn(), patchMock: vi.fn() }))
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({ getMock: vi.fn(), postMock: vi.fn(), patchMock: vi.fn(), deleteMock: vi.fn() }))
 vi.mock('@/lib/api', () => ({
-  api: { get: getMock, post: postMock, patch: patchMock, delete: vi.fn(), put: vi.fn() },
+  api: { get: getMock, post: postMock, patch: patchMock, delete: deleteMock, put: vi.fn() },
 }))
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: Record<string, unknown>) => (o ? `${k} ${JSON.stringify(o)}` : k) }),
@@ -34,8 +34,24 @@ import HabilitationsPage from './HabilitationsPage'
 const SIEGE = '22222222-2222-4222-8222-222222222222'
 const FICHE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
-interface State { enforced: boolean; ficheStatus: string; sodAlerts: Array<{ ruleId: string; label: string }> }
+interface AuditRow {
+  id: string; created_at: string; action: string; entity: string; entity_id: string | null
+  changes: Record<string, unknown>; email: string; role: string
+  subgroup_name: string | null; employee_number: string | null
+}
+interface Delegation {
+  id: string; delegator_id: string; delegate_id: string; subgroup_id: string | null
+  starts_at: string; ends_at: string; revoked_at: string | null; active: boolean
+}
+interface State {
+  enforced: boolean
+  ficheStatus: string
+  sodAlerts: Array<{ ruleId: string; label: string }>
+  delegations: Delegation[]
+  auditRows: AuditRow[]
+}
 let state: State
+let lastAuditParams: Record<string, string> = {}
 
 function structure() {
   return {
@@ -75,11 +91,26 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  state = { enforced: true, ficheStatus: 'n1', sodAlerts: [] }
+  lastAuditParams = {}
+  state = {
+    enforced: true, ficheStatus: 'n1', sodAlerts: [],
+    delegations: [{
+      id: 'd-1', delegator_id: 'u-admin', delegate_id: 'u-rh', subgroup_id: SIEGE,
+      starts_at: '2026-11-01T00:00:00.000Z', ends_at: '2026-11-30T00:00:00.000Z',
+      revoked_at: null, active: true,
+    }],
+    auditRows: [{
+      id: 'a-1', created_at: '2026-11-04T09:00:00.000Z', action: 'hr.employees.view',
+      entity: 'employees', entity_id: null,
+      changes: { result: 'denied_scope', route: '/employees' },
+      email: 'rh@sotra.ci', role: 'hr_officer', subgroup_name: 'Filiale Nord', employee_number: 'MAT00084',
+    }],
+  }
   getMock.mockReset()
   postMock.mockReset().mockResolvedValue({ data: { data: {} } })
   patchMock.mockReset().mockResolvedValue({ data: { data: {} } })
-  getMock.mockImplementation(async (url: string) => {
+  deleteMock.mockReset().mockResolvedValue({ data: { data: {} } })
+  getMock.mockImplementation(async (url: string, opts?: { params?: Record<string, unknown> }) => {
     if (url.startsWith('/habilitations/structure')) return { data: structure() }
     if (url.startsWith('/habilitations/fiches/')) return { data: { data: { fiche: fiches().data[0], events: [] } } }
     if (url.startsWith('/habilitations/fiches')) return { data: fiches() }
@@ -89,6 +120,13 @@ beforeEach(() => {
     }
     if (url.startsWith('/habilitations/takeover-report')) {
       return { data: { data: { enforced: state.enforced, assignments: [{ source: 'reprise', count: 4, withoutPermissions: 0 }], usersWithoutAssignment: 1, subgroupCount: 2 } } }
+    }
+    if (url.startsWith('/habilitations/delegations')) {
+      return { data: { data: state.delegations } }
+    }
+    if (url.startsWith('/habilitations/audit')) {
+      lastAuditParams = (opts?.params ?? {}) as Record<string, string>
+      return { data: { data: state.auditRows, page: 1, pageSize: 100 } }
     }
     if (url.startsWith('/employees')) return { data: { data: [] } }
     return { data: { data: [] } }
@@ -179,10 +217,48 @@ describe('Onglet Fiches', () => {
 })
 
 describe('Onglet Délégations', () => {
-  it('existe, même vide', async () => {
+  it('liste les délégations et permet de les révoquer', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.delegations'))
+    expect(await screen.findByText(/rh@sotra.ci|u-rh/)).toBeTruthy()
+    fireEvent.click(screen.getByText('delegations.revoke'))
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/habilitations/delegations/d-1'))
+  })
+
+  it('le dit quand aucune délégation n\'est en cours', async () => {
+    state.delegations = []
     renderPage()
     fireEvent.click(await screen.findByText('tabs.delegations'))
     expect(await screen.findByText('delegations.empty')).toBeTruthy()
+  })
+})
+
+describe('Onglet Piste d\'audit', () => {
+  it('montre l\'action, la personne, le sous-groupe, le matricule et le résultat', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.audit'))
+    expect(await screen.findByText('hr.employees.view')).toBeTruthy()
+    expect(screen.getByText('rh@sotra.ci')).toBeTruthy()
+    expect(screen.getByText('Filiale Nord')).toBeTruthy()
+    expect(screen.getByText('MAT00084')).toBeTruthy()
+    // Le libellé figure aussi dans le filtre : la CELLULE du tableau est ciblée.
+    expect(screen.getByRole('cell', { name: /audit.results.denied_scope/ })).toBeTruthy()
+  })
+
+  it('le filtre « Accès refusés » interroge le serveur avec result=denied', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.audit'))
+    await screen.findByText('hr.employees.view')
+    fireEvent.change(screen.getByLabelText('audit.filters.result'), { target: { value: 'denied' } })
+    await waitFor(() => expect(lastAuditParams.result).toBe('denied'))
+  })
+
+  it('le filtre matricule est transmis au serveur', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.audit'))
+    await screen.findByText('hr.employees.view')
+    fireEvent.change(screen.getByLabelText('audit.filters.matricule'), { target: { value: 'MAT00084' } })
+    await waitFor(() => expect(lastAuditParams.matricule).toBe('MAT00084'))
   })
 })
 

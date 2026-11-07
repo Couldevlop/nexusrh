@@ -36,6 +36,31 @@ const RESPONSE_ALIASES: Readonly<Record<string, string>> = {
 const MASKED_KEYS: ReadonlySet<string> = new Set([...SENSITIVE_FIELDS, ...Object.keys(RESPONSE_ALIASES)])
 
 /** Le contexte impose-t-il le masquage ? (null = historique : non) */
+/**
+ * Champs masqués pendant la requête courante, recensés PAR CONTEXTE
+ * d'habilitation.
+ *
+ * Le contexte (`request.hab`) est créé une fois par requête : une table faible
+ * indexée par ce contexte donne donc un recensement à la durée de vie de la
+ * requête, sans ajouter de paramètre à `maskFields` ni de champ à `HabContext`.
+ * La piste d'audit (tâche 13) s'en sert pour écrire `result: 'masked'` avec les
+ * NOMS des champs cachés — jamais leurs valeurs.
+ */
+const MASKED_TRACE = new WeakMap<HabContext, Set<string>>()
+
+function recordMasked(ctx: HabContext | null, keys: readonly string[]): void {
+  if (ctx === null || keys.length === 0) return
+  const set = MASKED_TRACE.get(ctx) ?? new Set<string>()
+  for (const k of keys) set.add(k)
+  MASKED_TRACE.set(ctx, set)
+}
+
+/** Noms des champs masqués pour ce contexte depuis le début de la requête. */
+export function maskedFieldsFor(ctx: HabContext | null): string[] {
+  if (ctx === null) return []
+  return [...(MASKED_TRACE.get(ctx) ?? [])]
+}
+
 export function isMasked(ctx: HabContext | null): boolean {
   return ctx !== null && !ctx.sensitive
 }
@@ -57,6 +82,7 @@ export function maskFields<T extends Record<string, unknown>>(row: T, keys: read
     else if (k in out) out[k] = null
   }
   if (hidden.length === 0) return out as Masked<T>
+  recordMasked(ctx, hidden)
   const prev = Array.isArray(out.maskedFields) ? (out.maskedFields as string[]) : []
   out.maskedFields = [...new Set([...prev, ...hidden])]
   return out as Masked<T>
@@ -83,6 +109,7 @@ export function maskSensitive<T extends Record<string, unknown>>(row: T, ctx: Ha
   if (!Array.isArray(rules) || !rules.some((r) => typeof r === 'string' && SALARY_RULE_RE.test(r))) return out
   // screening_failed_rules : le texte « Prétention salariale … : X FCFA » révèle expected_salary.
   const prev = Array.isArray(out.maskedFields) ? out.maskedFields : []
+  recordMasked(ctx, ['screening_failed_rules'])
   return {
     ...out,
     screening_failed_rules: redactRuleTexts(rules as string[], ctx),
@@ -114,7 +141,10 @@ export function maskSettlement<T extends Record<string, unknown>>(settlement: T,
     out.congesAllowance = { ...(allowance as Record<string, unknown>), candidates: null }
     hidden.push('congesAllowance')
   }
-  if (hidden.length > 0) out.maskedFields = [...new Set(hidden)]
+  if (hidden.length > 0) {
+    recordMasked(ctx, hidden)
+    out.maskedFields = [...new Set(hidden)]
+  }
   return out as Masked<T>
 }
 
@@ -123,6 +153,7 @@ export function maskOffboardingCase<T extends Record<string, unknown>>(row: T, c
   const st = row.settlement
   if (!isMasked(ctx) || !st || typeof st !== 'object' || Array.isArray(st)) return row
   const out: Record<string, unknown> = { ...row, settlement: maskSettlement(st as Record<string, unknown>, ctx) }
+  recordMasked(ctx, ['settlement'])
   out.maskedFields = [...new Set([...(Array.isArray(row.maskedFields) ? row.maskedFields as string[] : []), 'settlement'])]
   return out as Masked<T>
 }

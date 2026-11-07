@@ -53,7 +53,12 @@ const auth = () => ({ authorization: `Bearer ${app.jwt.sign({
   sub: 'u-drh', tenantId: 't1', schemaName: 'tenant_sotra', role: 'hr_manager',
   email: 'drh@sotra.ci', firstName: 'D', lastName: 'R', employeeId: ME,
 })}` })
-const writes = () => queryMock.mock.calls.filter((c) => /\b(INSERT|UPDATE|DELETE)\b/i.test(String(c[0])))
+// Ecritures METIER : la trace d'audit des habilitations (tache 13) est ecrite
+// sur CHAQUE requete d'un habilite, refus compris -- c'est le but ; elle
+// n'entre donc pas dans l'invariant « aucune ecriture » d'un refus.
+const writes = () => queryMock.mock.calls
+  .filter((c) => /\b(INSERT|UPDATE|DELETE)\b/i.test(String(c[0])))
+  .filter((c) => !/audit_log/i.test(String(c[0])))
 
 beforeAll(async () => {
   app = Fastify()
@@ -69,6 +74,14 @@ beforeEach(() => {
   loadHabContextMock.mockReset()
   loadHabContextMock.mockResolvedValue(hab)
 })
+
+/**
+ * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
+ * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
+ * n'entre pas dans l'invariant « aucune requete ».
+ */
+const businessQueries = () =>
+  queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))
 
 describe('payroll /calculate — garde « propre dossier »', () => {
   for (const [label, id] of [['id exact', ME], ['id MAJUSCULES', ME.toUpperCase()]] as const) {
@@ -92,6 +105,6 @@ describe('payroll /calculate — garde « propre dossier »', () => {
   it('DELETE /settings/variable-elements/pas-un-uuid → 400, aucune requête', async () => {
     const res = await app.inject({ method: 'DELETE', url: '/settings/variable-elements/pas-un-uuid', headers: auth() })
     expect(res.statusCode).toBe(400)
-    expect(queryMock).not.toHaveBeenCalled()
+    expect(businessQueries()).toHaveLength(0)
   })
 })

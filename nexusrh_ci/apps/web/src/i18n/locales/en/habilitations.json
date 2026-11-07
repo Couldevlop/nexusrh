@@ -6,7 +6,8 @@
   "tabs": {
     "structure": "Structure",
     "fiches": "Forms",
-    "delegations": "Delegations"
+    "delegations": "Delegations",
+    "audit": "Audit trail"
   },
   "actions": {
     "save": "Save",
@@ -85,7 +86,11 @@
   },
   "delegations": {
     "intro": "Delegate form drafting while you are away.",
-    "empty": "No delegation in progress."
+    "empty": "No delegation in progress.",
+    "until": "Until",
+    "revoke": "Revoke",
+    "revoked": "revoked",
+    "expired": "expired"
   },
   "preview": {
     "title": "What this person can see",
@@ -101,5 +106,32 @@
     "sensitive": "Sensitive data",
     "sensitiveYes": "Visible (sensitive data box)",
     "masked": "{{count}} field(s) hidden: salaries and bank details stay masked"
+  },
+  "audit": {
+    "intro": "Every action taken by authorised users, denied attempts included.",
+    "empty": "No action in this period.",
+    "filters": {
+      "result": "Outcome",
+      "all": "All",
+      "matricule": "Employee number",
+      "from": "From",
+      "to": "To"
+    },
+    "columns": {
+      "date": "Date",
+      "user": "User",
+      "subgroup": "Subgroup",
+      "matricule": "Employee number",
+      "action": "Action",
+      "result": "Outcome"
+    },
+    "results": {
+      "denied": "Denied attempts",
+      "allowed": "Allowed",
+      "denied_permission": "Denied — missing right",
+      "denied_scope": "Denied — out of scope",
+      "denied_self": "Denied — own record",
+      "masked": "Masked data"
+    }
   }
 }
