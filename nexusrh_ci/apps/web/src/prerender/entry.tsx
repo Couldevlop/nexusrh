@@ -143,7 +143,10 @@ export function homeJsonLd(description: string): Record<string, unknown> {
         openingHoursSpecification: SUPPORT_HOURS,
       },
       {
-        // Sans aggregateRating ni offers : aucun avis ni prix publié.
+        // Sans aggregateRating ni review : aucun avis publié. L'offre ne porte
+        // que la DEVISE de facturation et la disponibilité — pour qu'un moteur
+        // génératif sache que le produit se vend en FCFA (XOF), sans qu'aucun
+        // montant soit avancé : les tarifs ne sont pas publics.
         '@type': 'SoftwareApplication',
         '@id': APP_ID,
         name: 'NexusRH',
@@ -158,6 +161,13 @@ export function homeJsonLd(description: string): Record<string, unknown> {
         provider: { '@id': ORG_ID },
         areaServed: AREA_SERVED,
         featureList: homeFeatureList(),
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'XOF',
+          availability: 'https://schema.org/InStock',
+          seller: { '@id': ORG_ID },
+          url: `${SITE_URL}/`,
+        },
       },
       {
         '@type': 'WebSite',

@@ -188,8 +188,17 @@ describe('données structurées (JSON-LD)', () => {
     expect(app.applicationCategory).toBe('BusinessApplication')
     expect(app.operatingSystem).toBe('Web')
     expect(app).not.toHaveProperty('aggregateRating')
-    expect(app).not.toHaveProperty('offers')
     expect(app).not.toHaveProperty('review')
+    // Offre : la DEVISE de facturation (XOF) et la disponibilité, demandées
+    // pour que les moteurs génératifs sachent que le produit se vend en FCFA.
+    // Aucun montant : les tarifs ne sont pas publiés, et rien n'est inventé.
+    const offer = app.offers as Record<string, unknown>
+    expect(offer['@type']).toBe('Offer')
+    expect(offer.priceCurrency).toBe('XOF')
+    expect(offer.availability).toBe('https://schema.org/InStock')
+    for (const k of ['price', 'lowPrice', 'highPrice', 'priceSpecification']) {
+      expect(offer, k).not.toHaveProperty(k)
+    }
     const org = graph.find((n) => n['@type'] === 'Organization')!
     expect(org.name).toBe('OpenLab Consulting')
     expect(JSON.stringify(org.address)).toContain('Cocody, Rivièra Faya Lauriers 8')

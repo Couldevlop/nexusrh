@@ -103,6 +103,70 @@ page publique pré-générée.
 > Démo gratuite : https://nexusrh.openlabconsulting.com
 > #RH #Paie #CôteDIvoire #CNPS #SIRH #Abidjan
 
+## Être cité par les assistants IA (GEO / AEO)
+
+Un DRH qui demande « quel logiciel de paie pour la Côte d'Ivoire ? » à ChatGPT,
+Claude ou Perplexity obtient une réponse construite à partir de ce que ces
+modèles trouvent **sur le web**, pas d'un classement de moteur. Trois conditions,
+dans cet ordre.
+
+### 1. Les robots IA peuvent lire le site — vérifié
+
+`robots.txt` nomme explicitement, dans le même groupe de règles que `*` :
+`Googlebot`, `Bingbot`, `GPTBot`, `OAI-SearchBot`, `ChatGPT-User`, `ClaudeBot`,
+`Claude-SearchBot`, `Claude-User`, `PerplexityBot`, `Google-Extended`,
+`Applebot-Extended`. Aucun n'est bloqué : tous accèdent à la vitrine, aux pages
+de contenu, aux pages légales et à `llms.txt` / `llms-full.txt` ; l'application
+(espaces RH, paie, offres des tenants) reste fermée. Source :
+`apps/web/scripts/seo-html.mjs` (`NAMED_CRAWLERS`), vérifié par
+`apps/web/src/prerender/seo-html.test.ts`.
+
+À contrôler après chaque déploiement : `curl https://nexusrh.openlabconsulting.com/robots.txt`.
+
+### 2. Le site répond aux questions, en clair
+
+Déjà en place : une FAQ visible reprise en `FAQPage`, des pages de contenu qui
+donnent les chiffres (barème ITS, taux et plafonds CNPS, 2,2 jours de congés),
+`llms.txt` et `llms-full.txt`, et un `SoftwareApplication` qui liste les modules
+(`featureList`) et déclare la devise de facturation (`Offer` en **XOF**, sans
+montant : les tarifs ne sont pas publics).
+
+Ce que les modèles ne peuvent PAS déduire du site aujourd'hui, et qui manque donc
+à leurs réponses : **des cas clients nommés et des témoignages**. Ils ne peuvent
+pas être inventés ni empruntés aux tenants de démonstration (voir l'avertissement
+en tête de ce document). Dès le premier client réel : un cas client d'une page
+(contexte, effectif, ce qui a changé, verbatim signé) publié sur la vitrine, plus
+un avis Google et un avis Capterra.
+
+### 3. La co-citation : être nommé ailleurs, avec les bons mots
+
+Un modèle associe une marque à un besoin quand il a vu les deux ensemble, sur
+des sites qu'il juge fiables. L'association à construire, telle quelle, dans
+chaque publication :
+
+> **NexusRH** — **SIRH et paie CNPS** — **Abidjan, Côte d'Ivoire** — édité par
+> **OpenLab Consulting**
+
+| Canal | Cible | Angle |
+|---|---|---|
+| Presse économique africaine | Financial Afrik, Agence Ecofin, Jeune Afrique Business+ | « Un SIRH écrit pour le droit ivoirien, pas un logiciel étranger adapté » |
+| Presse tech africaine | CIO Mag, Abidjan.net, Fraternité Matin | Souveraineté des données (hébergement en CI) et conformité CNPS / ITS |
+| Comparateurs logiciels | Capterra, GetApp, Appvizer, SaaSworthy, G2 | Fiche complète : catégorie « Logiciel de paie », pays Côte d'Ivoire, modules, devise XOF |
+| Annuaires locaux | Chambre de Commerce et d'Industrie CI, CGECI, Goafricaonline | Adresse réelle Cocody + lien |
+| Profils propres | Google Business Profile (actif, avec photos et posts), page LinkedIn OpenLab + vitrine NexusRH | Les deux sources que les modèles citent le plus pour « qui est l'éditeur » |
+
+Règle pour chaque fiche et chaque article : la même adresse, les mêmes
+téléphones et le même nom d'éditeur que sur le site (`+225 07 09 33 42 38`,
+`+225 07 49 43 92 03`, Cocody, Rivièra Faya Lauriers 8, Abidjan). Une
+incohérence d'adresse ou de nom casse l'association.
+
+### Contrôle (mensuel, 10 min)
+
+Poser littéralement, dans ChatGPT, Claude et Perplexity :
+« Quel logiciel de paie conforme à la CNPS pour une entreprise en Côte d'Ivoire ? »
+puis « Qui édite NexusRH ? ». Noter si le produit est cité, et avec quelles
+sources. C'est la seule mesure directe de ce chapitre.
+
 ## Suivi (mensuel, 15 min dans Search Console)
 
 - Pages indexées (objectif : les 5 pages publiques).
@@ -113,7 +177,11 @@ page publique pré-générée.
 
 ## Limites connues du site (à traiter plus tard si besoin)
 
-- Une seule langue indexée (français) : la bascule FR/EN ne change pas l'URL.
-  Indexer l'anglais demanderait des URL dédiées (`/en/`) et des balises `hreflang`.
 - Les pages carrières des tenants restent hors index tant que la production
   contient des données de démonstration.
+- Aucun cas client ni témoignage publiable à ce jour (voir l'avertissement en
+  tête) : c'est le manque le plus visible, en référencement comme dans les
+  réponses des assistants IA.
+- Les tarifs ne sont pas publiés : le `SoftwareApplication` déclare la devise
+  (XOF) sans montant. Une grille publique, même « à partir de », améliorerait
+  les réponses aux questions de budget.
