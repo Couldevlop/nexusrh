@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Sidebar } from './Sidebar'
 import AiChat from '@/components/ai/AiChat'
 import { AlertTriangle, Menu } from 'lucide-react'
-import { useAuthStore, type TenantConfig } from '@/stores/authStore'
+import { useAuthStore, type TenantConfig , type HabScope } from '@/stores/authStore'
 import { api } from '@/lib/api'
 import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 import { isModuleEnabled } from '@/lib/modules'
@@ -34,6 +34,7 @@ export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { tenantConfig } = useAuthStore()
   const updateTenantConfig = useAuthStore(s => s.updateTenantConfig)
+  const setHabilitations = useAuthStore(s => s.setHabilitations)
   const location = useLocation()
   const hasTenant = tenantConfig !== null
 
@@ -42,11 +43,17 @@ export default function MainLayout() {
   useEffect(() => {
     if (!hasTenant) return
     let cancelled = false
-    api.get<{ tenantConfig: TenantConfig | null }>('/auth/me')
-      .then(r => { if (!cancelled && r.data.tenantConfig) updateTenantConfig(r.data.tenantConfig) })
+    api.get<{ tenantConfig: TenantConfig | null; permissions?: string[] | null; habScope?: HabScope | null }>('/auth/me')
+      .then(r => {
+        if (cancelled) return
+        if (r.data.tenantConfig) updateTenantConfig(r.data.tenantConfig)
+        // Habilitations RH : droits effectifs calculés par le serveur. Relus à
+        // chaque chargement pour qu'un plafond retiré se voie sans reconnexion.
+        setHabilitations(r.data.permissions ?? null, r.data.habScope ?? null)
+      })
       .catch(() => { /* non bloquant : on garde la config du login */ })
     return () => { cancelled = true }
-  }, [hasTenant, updateTenantConfig])
+  }, [hasTenant, updateTenantConfig, setHabilitations])
   const labelKey = ROUTE_LABEL_KEYS[location.pathname]
   const pageTitle = labelKey ? t(labelKey) : t('appName')
 

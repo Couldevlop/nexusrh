@@ -1,0 +1,105 @@
+{
+  "title": "HR authorisations",
+  "subtitle": "Groups, ceilings, authorisation forms and rights preview",
+  "notEnforced": "Authorisation control is not enabled for this client — access still follows roles, and revocations have no effect until it is enabled.",
+  "loading": "Loading…",
+  "tabs": {
+    "structure": "Structure",
+    "fiches": "Forms",
+    "delegations": "Delegations"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "editCeiling": "Edit ceiling",
+    "enable": "Enable control",
+    "submit": "Submit to line manager",
+    "validate": "Approve",
+    "reject": "Reject",
+    "apply": "Apply",
+    "pdf": "Download PDF",
+    "close": "Close"
+  },
+  "grid": {
+    "function": "Area",
+    "extras": "Cross-cutting rights"
+  },
+  "gridActions": {
+    "view": "View",
+    "create": "Create",
+    "update": "Update",
+    "delete": "Delete",
+    "validate": "Approve",
+    "close": "Close period",
+    "export": "Export",
+    "pay": "Pay",
+    "configure": "Configure"
+  },
+  "functions": {
+    "employees": "Employees",
+    "contracts": "Contracts",
+    "absences": "Absences",
+    "attendance": "Time tracking",
+    "payroll": "Payroll",
+    "payroll_multi": "Multi-entity payroll",
+    "declarations": "Statutory filings",
+    "payments": "Payments",
+    "expenses": "Expense claims",
+    "recruitment": "Recruitment",
+    "lifecycle": "Onboarding / offboarding",
+    "discipline": "Discipline",
+    "training": "Training",
+    "talent": "Talent and careers",
+    "climate": "Employee engagement",
+    "signature": "Signature",
+    "reporting": "Reporting",
+    "hr_settings": "HR settings"
+  },
+  "extras": {
+    "sensitive_data": "Sensitive data (salaries, bank details)",
+    "all_entities": "All entities",
+    "manage_habilitations": "Manage authorisations"
+  },
+  "status": {
+    "draft": "Draft",
+    "n1": "Awaiting line manager",
+    "n2": "Awaiting second approver",
+    "locked": "Locked",
+    "applied": "Applied",
+    "rejected": "Rejected",
+    "superseded": "Superseded"
+  },
+  "structure": {
+    "siegeCount": "Employees with no entity (head office):",
+    "siege": "Head office",
+    "entity": "Entity",
+    "memberCount": "{{count}} member(s)",
+    "revoked": "rights revoked"
+  },
+  "fiche": {
+    "empty": "No form concerns you at the moment.",
+    "revokeKind": "rights removal",
+    "sodTitle": "Sensitive combinations found",
+    "acceptSod": "I acknowledge this combination",
+    "rejectReason": "Reason for rejection"
+  },
+  "delegations": {
+    "intro": "Delegate form drafting while you are away.",
+    "empty": "No delegation in progress."
+  },
+  "preview": {
+    "title": "What this person can see",
+    "open": "Preview",
+    "loading": "Computing rights…",
+    "noAssignment": "No form applied: access still follows their role.",
+    "scope": "Scope",
+    "scopeAll": "All entities",
+    "scopeEntity": "Their entity",
+    "scopeSiege": "Head office (employees with no entity)",
+    "permissions": "Effective rights",
+    "none": "No effective right",
+    "sensitive": "Sensitive data",
+    "sensitiveYes": "Visible (sensitive data box)",
+    "masked": "{{count}} field(s) hidden: salaries and bank details stay masked"
+  }
+}

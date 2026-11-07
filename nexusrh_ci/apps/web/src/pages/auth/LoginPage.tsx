@@ -101,6 +101,7 @@ export default function LoginPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const setHabilitations = useAuthStore((s) => s.setHabilitations);
 
   const [error, setError] = useState<string | null>(null);
   // Mot de passe EXACT validé à la connexion — figé au moment de la soumission
@@ -194,6 +195,8 @@ export default function LoginPage() {
         tenantConfig?: TenantConfig | null;
         agencyConfig?: AgencyConfig | null;
         redirectTo?: string;
+        /** Droits effectifs d'un salarié habilité (habilitations RH). */
+        permissions?: string[] | null;
         must_change_password?: boolean;
         // Politique de sécurité (OWASP A07) :
         mfaSetupRequired?: boolean;
@@ -249,6 +252,10 @@ export default function LoginPage() {
         res.data.tenantConfig ?? null,
         res.data.agencyConfig ?? null,
       );
+      // Habilitations RH : l'API les renvoie dès le login pour un salarié
+      // habilité, afin que la garde de /dashboard ne le renvoie pas au
+      // self-service avant le premier /auth/me.
+      if (res.data.permissions) setHabilitations(res.data.permissions, null);
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       // OWASP A07 — message d'erreur générique pour éviter l'énumération

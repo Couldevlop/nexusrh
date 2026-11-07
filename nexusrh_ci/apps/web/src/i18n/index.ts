@@ -48,6 +48,7 @@ import frClassification from './locales/fr/classification.json'
 import frSignature from './locales/fr/signature.json'
 import frSecurity from './locales/fr/security.json'
 import frSage from './locales/fr/sage.json'
+import frHabilitations from './locales/fr/habilitations.json'
 import frAttendance from './locales/fr/attendance.json'
 import frInterviewSim from './locales/fr/interviewSim.json'
 import frInterviewFocus from './locales/fr/interviewFocus.json'
@@ -93,6 +94,7 @@ import enClassification from './locales/en/classification.json'
 import enSignature from './locales/en/signature.json'
 import enSecurity from './locales/en/security.json'
 import enSage from './locales/en/sage.json'
+import enHabilitations from './locales/en/habilitations.json'
 import enAttendance from './locales/en/attendance.json'
 import enInterviewSim from './locales/en/interviewSim.json'
 import enInterviewFocus from './locales/en/interviewFocus.json'
@@ -123,6 +125,7 @@ const resources = {
     offboarding: frOffboarding, climate: frClimate, succession: frSuccession,
     competencies: frCompetencies, calibration: frCalibration, mobility: frMobility,
     classification: frClassification, signature: frSignature, security: frSecurity, sage: frSage,
+    habilitations: frHabilitations,
     attendance: frAttendance, interviewSim: frInterviewSim, interviewFocus: frInterviewFocus,
     approvals: frApprovals, employerBrand: frEmployerBrand,
   },
@@ -138,6 +141,7 @@ const resources = {
     offboarding: enOffboarding, climate: enClimate, succession: enSuccession,
     competencies: enCompetencies, calibration: enCalibration, mobility: enMobility,
     classification: enClassification, signature: enSignature, security: enSecurity, sage: enSage,
+    habilitations: enHabilitations,
     attendance: enAttendance, interviewSim: enInterviewSim, interviewFocus: enInterviewFocus,
     approvals: enApprovals, employerBrand: enEmployerBrand,
   },

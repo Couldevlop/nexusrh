@@ -20,6 +20,8 @@ import { redisLockoutStore } from '../../services/redis.js'
 import { checkLockout, registerFailure, clearFailures } from '../../services/account-lockout.service.js'
 import { assertAgencyCanActOnTenant } from '../../services/agency.service.js'
 import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
+import { loadHabContext } from '../../services/habilitation.service.js'
+import { postLoginRedirect } from './post-login-redirect.js'
 import { issueRefreshToken, consumeRefreshToken, revokeRefreshToken, revokeAllRefreshTokensForUser, verifyAccountActive } from '../../services/refresh-token.service.js'
 
 // OWASP A02 — options du cookie httpOnly de session.
@@ -656,11 +658,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           `UPDATE "${tenant.schema_name}".users SET last_login_at = now() WHERE id = $1`,
           [user.id],
         )
-        const redirectTo = pwdResetRequired
-          ? '/change-password'
-          : (user.role === 'employee' ? '/mon-espace'
-            : user.role === 'dg' ? '/dg'
-            : '/dashboard')
+        // Habilitations RH : un salarié peut avoir reçu des cases par fiche.
+        // Le moteur n'est consulté QUE pour ce rôle — les autres gardent leur
+        // destination historique sans requête supplémentaire au login.
+        const habPermissions = user.role === 'employee'
+          ? await loadHabContext(tenant.schema_name, user.id)
+              .then((hab) => (hab ? [...hab.permissions].sort() : null))
+              .catch(() => null)
+          : null
+        const redirectTo = postLoginRedirect({ role: user.role, pwdResetRequired, habPermissions })
 
         auditLogAuth(
           tenant.schema_name, user.id, 'auth.login.success',
@@ -711,6 +717,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             enabledModules:     resolveEnabledModules(tenant.enabled_modules),
           },
           redirectTo,
+          // Droits effectifs connus dès le login (salarié habilité) : l'écran
+          // ouvre le bon espace sans attendre /auth/me.
+          ...(habPermissions ? { permissions: habPermissions } : {}),
         })
       } catch (err) {
         // OWASP A10 — ne pas leak les détails internes (DB down, etc.)
