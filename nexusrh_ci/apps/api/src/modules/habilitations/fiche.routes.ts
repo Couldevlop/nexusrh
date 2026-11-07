@@ -22,6 +22,7 @@ import {
   listFiches, getFicheWithEvents, FicheError,
 } from './fiche.service.js'
 import { renderFichePdf } from './fiche-pdf.js'
+import { activeDelegation } from './delegation.routes.js'
 
 const createSchema = z.object({
   targetUserId: z.string(),
@@ -97,8 +98,9 @@ const ficheRoutes: FastifyPluginAsync = async (fastify) => {
         const fiche = await createFiche(schema, {
           actorId: request.user.sub, role: request.user.role,
           ctx: await ctxOf(schema, request.user.sub), ip: request.ip,
-          // Délégation : branchée par la tâche 12 (table hab_delegations).
-          delegation: null,
+          // Délégation reçue : elle ouvre le périmètre du délégant, pas plus,
+          // et son expiration est filtrée en SQL (aucun job dans la boucle).
+          delegation: await activeDelegation(schema, request.user.sub),
         }, b)
         return reply.status(201).send({ data: fiche })
       } catch (err) {

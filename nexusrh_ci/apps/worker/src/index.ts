@@ -11,6 +11,7 @@ import { processAttendancePollJob } from './jobs/attendance-poll.js'
 import { processAttendanceEvaluateJob } from './jobs/attendance-evaluate.js'
 import { processAttendanceCronJob } from './jobs/attendance-cron.js'
 import { processInterviewSimConsentPurgeJob } from './jobs/interview-sim-consent-purge.js'
+import { processHabilitationsDailyJob } from './jobs/habilitations-daily.js'
 import { processPlatformReportJob } from './jobs/platform-report.js'
 
 type AnyJob = Job<unknown, void>
@@ -139,6 +140,21 @@ async function scheduleInterviewSimConsentPurgeCron(): Promise<void> {
   logger.info({ pattern }, 'interview-sim-consent-purge: cron quotidien programmé')
 }
 
+// Balayage quotidien des habilitations RH : il ne coupe AUCUN droit (le moteur
+// filtre les dates à chaque requête), il trace les échéances que le passage du
+// temps produit — sans quoi la piste d'audit montre des droits qui
+// apparaissent et disparaissent sans aucune ligne pour l'expliquer.
+async function scheduleHabilitationsDailyCron(): Promise<void> {
+  const pattern = process.env['HABILITATIONS_DAILY_CRON'] ?? '0 1 * * *'
+  const q = new Queue('habilitations-daily', { connection })
+  await q.upsertJobScheduler(
+    'habilitations-daily',
+    { pattern, tz: 'Africa/Abidjan' },
+    { name: 'habilitations-daily', data: {} },
+  )
+  logger.info({ pattern }, 'habilitations-daily: cron quotidien programmé')
+}
+
 // Rapport statistique 360° de la plateforme : hebdomadaire le dimanche,
 // mensuel le 1er du mois. Deux planifications distinctes sur la MÊME file : le
 // handler distingue les deux par `periodType`, ce qui évite de dupliquer un
@@ -179,6 +195,7 @@ async function registerSchedulers(): Promise<void> {
   await scheduleLegislationWatchCron()
   await scheduleAttendanceCron()
   await scheduleInterviewSimConsentPurgeCron()
+  await scheduleHabilitationsDailyCron()
   await schedulePlatformReportCrons()
 }
 
@@ -213,6 +230,7 @@ async function start(): Promise<void> {
   workers.push(createWorker('attendance-evaluate', processAttendanceEvaluateJob as JobHandler))
   workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
   workers.push(createWorker('interview-sim-consent-purge', processInterviewSimConsentPurgeJob as JobHandler))
+  workers.push(createWorker('habilitations-daily', processHabilitationsDailyJob as JobHandler))
   workers.push(createWorker('platform-report', processPlatformReportJob as JobHandler))
 
   await registerSchedulers()
@@ -223,7 +241,8 @@ async function start(): Promise<void> {
       queues: [
         'email', 'payroll-ci', 'cnps-declaration', 'ai-scoring-ci',
         'legal-watch', 'legislation-watch', 'attendance-poll', 'attendance-evaluate',
-        'attendance-cron', 'interview-sim-consent-purge', 'platform-report',
+        'attendance-cron', 'interview-sim-consent-purge', 'habilitations-daily',
+        'platform-report',
       ],
     },
     'Workers started',
