@@ -1,12 +1,31 @@
 name: Quality & Security — NexusRH CI
 
+# Déclenchement sans doublon.
+#
+# Une branche qui porte une PR ouverte reçoit DEUX événements pour le MÊME
+# commit : `push` sur la branche, et `pull_request` sur la PR. Même SHA, mêmes
+# tests, deux fois le temps de calcul — et chaque contrôle affiché en double.
+#
+# Le cas vaut pour les branches de travail comme pour `develop`, qui porte en
+# permanence la PR vers `main` : garder `develop` dans `push` suffisait à
+# reproduire le doublon à chaque fusion.
+#
+# `push` ne garde donc que `main`, seule branche dont le contenu n'est jamais
+# couvert par une PR ouverte. Tout le reste passe par `pull_request`, qui teste
+# la FUSION prévue — c'est l'état qui compte avant de fusionner.
 on:
   push:
-    branches: [ main, develop, 'feat/**', 'fix/**', 'hotfix/**' ]
+    branches: [ main ]
     paths: [ 'nexusrh_ci/**', '.github/workflows/**' ]
   pull_request:
     branches: [ main, develop ]
-    paths: [ 'nexusrh_ci/**' ]
+    paths: [ 'nexusrh_ci/**', '.github/workflows/**' ]
+
+# Une poussée en remplace une autre sur la même référence : seul le dernier
+# état est intéressant. Jamais sur main — un commit fusionné n'est pas annulé.
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
