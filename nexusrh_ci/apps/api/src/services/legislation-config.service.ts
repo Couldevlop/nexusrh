@@ -19,6 +19,7 @@ import {
   DEFAULT_LEGISLATION_PACK,
   COUNTRY_LABELS,
 } from './legislation-packs.js'
+import { QUALIFICATION_LEVELS, type QualificationLevel } from './qualification-levels.service.js'
 
 export interface LegislationConfigView {
   /** Pays effectivement résolu (repli CIV si pays inconnu) */
@@ -32,6 +33,12 @@ export interface LegislationConfigView {
   pack: LegislationPack
   /** Pays sélectionnables (résumé pour le menu déroulant) */
   available: ReturnType<typeof listCountries>
+  /**
+   * Niveaux de qualification (diplômes) — référentiel commun au simulateur,
+   * au recrutement et aux fiches de poste. Indépendant du pays : un diplôme ne
+   * détermine aucun montant, il positionne une catégorie.
+   */
+  qualificationLevels: readonly QualificationLevel[]
 }
 
 /**
@@ -48,5 +55,6 @@ export function buildLegislationConfig(countryCode: string | null | undefined): 
     usable: pack.status === 'active',
     pack,
     available: listCountries(),
+    qualificationLevels: QUALIFICATION_LEVELS,
   }
 }

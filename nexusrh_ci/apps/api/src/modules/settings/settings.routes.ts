@@ -374,11 +374,22 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // liste des pays pris en charge et du pays du tenant, et il est accessible
   // aux responsables et gestionnaires RH. L'ÉCRITURE (PUT) reste à l'admin :
   // changer de pays change barème, cotisations et devise.
+  // `?country=ISO3` retourne le pack d'un AUTRE pays, en lecture seule : le
+  // simulateur en a besoin pour adapter son formulaire (natures d'heures
+  // supplémentaires, santé, ancienneté, devise) AVANT de lancer un calcul.
+  // Cela ne change rien au paramétrage du tenant — seul le PUT le fait.
   fastify.get('/legislation', {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const asked = (request.query as { country?: string } | undefined)?.country
+      if (asked !== undefined) {
+        if (!/^[A-Za-z]{3}$/.test(asked) || !isSupportedCountry(asked.toUpperCase())) {
+          return reply.status(400).send({ error: `Pays non pris en charge : ${asked}` })
+        }
+        return reply.send({ data: buildLegislationConfig(asked.toUpperCase()) })
+      }
       try {
         const res = await pool.query<{ default_country_code: string | null }>(
           `SELECT default_country_code FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],

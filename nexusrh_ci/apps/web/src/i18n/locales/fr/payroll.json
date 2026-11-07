@@ -193,7 +193,7 @@
   },
   "simulator": {
     "title": "Simulateur de salaire — {{country}}",
-    "subtitle": "Cotisations sociales, impôt sur le salaire et net à payer, calculés par le moteur de paie du pays choisi. Aucun taux n'est recopié à l'écran : tout vient du pack législatif.",
+    "subtitle": "Cotisations sociales, impôt sur le salaire, net à payer et coût employeur, calculés par le moteur de paie du pays choisi. Avant une embauche, sur une situation en cours, ou pour chiffrer une revalorisation.",
     "paramsTitle": "Paramètres de simulation",
     "countryLabel": "Pays de la législation appliquée",
     "countryHint": "À défaut, le pays du tenant. Changer de pays change le barème, les cotisations, le salaire minimum et la devise.",
@@ -268,7 +268,73 @@
       "newNet": "Nouveau net à payer",
       "annualGain": "Gain annuel estimé : {{amount}}"
     },
-    "emptyHint": "Renseignez les paramètres et cliquez sur <strong>Calculer</strong><br />pour obtenir le détail des cotisations, de l'impôt et du net"
+    "emptyHint": "Renseignez les paramètres et cliquez sur <strong>Calculer</strong><br />pour obtenir le détail des cotisations, de l'impôt et du net",
+    "purpose": {
+      "hire": "Projet d'embauche",
+      "current": "Salarié en poste",
+      "raise": "Revalorisation"
+    },
+    "purposeHint": {
+      "hire": "Chiffrez ce qu'un salaire proposé donne en net au candidat, et ce qu'il coûte à l'entreprise — avant de vous engager.",
+      "current": "Vérifiez le net, les retenues et le coût d'un salarié déjà en poste.",
+      "raise": "Comparez la situation actuelle au nouveau salaire : ce que le salarié gagne réellement, ce que l'augmentation coûte."
+    },
+    "countrySection": "Pays et période",
+    "paySection": "Rémunération",
+    "profileSection": "Classification et situation familiale",
+    "timeSection": "Ancienneté et temps de travail",
+    "raiseSection": "Nouvelle rémunération",
+    "payMonthLabel": "Mois simulé",
+    "offeredSalaryLabel": "Salaire de base proposé ({{currency}})",
+    "benefitsLabel": "Avantages en nature ({{currency}})",
+    "benefitsHint": "Logement, véhicule, électricité, domestique… Soumis aux cotisations et à l'impôt comme du salaire.",
+    "categoryLabel": "Catégorie professionnelle",
+    "categoryPlaceholder": "5e catégorie, Agent de maîtrise, Cadre…",
+    "categoryMinimumLabel": "Minimum de la catégorie ({{currency}})",
+    "categoryMinimumPlaceholder": "salaire minimum légal",
+    "categoryMinimumHint": "Minimum conventionnel de la catégorie. Renseigné, il vérifie que le salaire le respecte.",
+    "categoryMinimumHintSeniority": "Minimum conventionnel de la catégorie : c'est l'assiette de la prime d'ancienneté dans ce pays. À défaut, le salaire minimum légal est pris, ce qui sous-estime la prime.",
+    "categoryMinimumCompliant": "✓ Minimum de la catégorie respecté (≥ {{amount}})",
+    "categoryMinimumNotCompliant": "✗ Sous le minimum de la catégorie ({{amount}})",
+    "qualificationLabel": "Niveau de qualification (diplôme)",
+    "qualificationNone": "Non renseigné",
+    "qualificationHint": "Repère de classification : il positionne usuellement une catégorie. Aucun montant n'en dépend.",
+    "seniorityYearsLabel": "ou ancienneté (années)",
+    "seniorityYearsPlaceholder": "ex. 12",
+    "seniorityHint": "La date d'embauche l'emporte si les deux sont saisies. L'ancienneté ouvre la prime du pays, quand il en prévoit une.",
+    "seniorityTitle": "Prime d'ancienneté",
+    "seniority": {
+      "years": "Années révolues",
+      "rate": "Taux appliqué",
+      "base": "Assiette",
+      "amount": "Prime incluse dans le brut"
+    },
+    "weeklyHoursLabel": "Heures hebdomadaires",
+    "overtimeLabel": "Heures supplémentaires du mois",
+    "overtimeHint": "Seules les natures que la loi du pays majore sont proposées. Les taux viennent du pack législatif.",
+    "overtime": {
+      "weekly": "Hebdomadaires (+{{rate}})",
+      "weeklyBeyond": "Au-delà du seuil (+{{rate}})",
+      "night": "De nuit (+{{rate}})",
+      "sunday": "Dimanche (+{{rate}})",
+      "holiday": "Jour férié (+{{rate}})",
+      "sundayHolidayNight": "Dimanche/férié de nuit (+{{rate}})"
+    },
+    "overtimeTitle": "Heures supplémentaires — taux horaire {{rate}}",
+    "overtimeHours": "{{hours}} h",
+    "overtimeTotal": "Total heures supplémentaires",
+    "newSalaryLabel": "Nouveau salaire de base ({{currency}})",
+    "newPrimesLabel": "Nouvelles primes ({{currency}})",
+    "raiseHint": "Le reste du profil est inchangé : l'écart mesuré vient de la seule revalorisation.",
+    "comparisonTitle": "Avant / après la revalorisation (+{{pct}} % de brut)",
+    "comparison": {
+      "row": "Poste",
+      "before": "Actuel",
+      "after": "Nouveau",
+      "delta": "Écart",
+      "netShare": "{{pct}} % de la hausse du brut arrive dans la poche du salarié ; l'augmentation coûte {{cost}} de plus par mois à l'entreprise."
+    },
+    "hireTotal": "Coût total employeur : {{monthly}} par mois, soit {{annual}} sur douze mois (hors prime de fin d'année et formation)."
   },
   "transparency": {
     "title": "Bulletin transparent",

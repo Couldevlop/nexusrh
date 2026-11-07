@@ -14,7 +14,9 @@ import {
   CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, isSupportedCountry,
   type LegislationPack,
 } from '../../services/legislation-packs.js'
-import { computeSeniority } from '../../services/payroll-simulator.service.js'
+import { computeOvertime, computeSeniority } from '../../services/payroll-simulator.service.js'
+import { QUALIFICATION_KEYS, positionProfile } from '../../services/qualification-levels.service.js'
+import { categoryLevel } from '../../services/termination-rules.service.js'
 import { transportZoneFromCity } from '../../services/payroll-engine-ci.js'
 import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
@@ -51,6 +53,14 @@ const chatSchema = z.object({
   }).strict().optional(),
 }).strict()
 
+/**
+ * Durée hebdomadaire retenue à défaut de saisie, pour le taux horaire des
+ * heures supplémentaires. 40 h est la durée légale en Côte d'Ivoire (CT art.
+ * 21.2) comme dans la plupart des pays des packs ; un contrat qui s'en écarte
+ * (42 h, 48 h agricole) se saisit dans le champ.
+ */
+const DEFAULT_WEEKLY_HOURS = 40
+
 // Simulateur de salaire : les champs qui CHANGENT le net doivent tous pouvoir
 // être saisis, et le pays doit être choisi — le simulateur était figé sur la
 // Côte d'Ivoire alors que seize packs existent.
@@ -85,6 +95,53 @@ const simulateItsSchema = z.object({
   /** Mois incomplet : jours travaillés / jours ouvrables. */
   workedDays:       z.number().int().min(0).max(31).optional(),
   workingDaysMonth: z.number().int().min(1).max(31).optional(),
+  /**
+   * Catégorie professionnelle (libellé de la grille : « 5e catégorie »,
+   * « Agent de maîtrise », « Cadre »). Sert au repère de classification et au
+   * préavis ; son MINIMUM conventionnel, lui, change un montant.
+   */
+  professionalCategory: z.string().max(50).optional(),
+  /**
+   * Minimum conventionnel de la catégorie. C'est l'assiette de la prime
+   * d'ancienneté quand le pack le prévoit (CI : CCI art. 55, assiette =
+   * minimum catégoriel). À défaut, le salaire minimum légal était pris, ce
+   * qui sous-estimait la prime de toutes les catégories supérieures.
+   */
+  categoryMinimum: z.number().int().min(0).max(100_000_000).optional(),
+  /**
+   * Ancienneté en années révolues — saisie directe, à la place de la date
+   * d'embauche (les deux sont acceptées ; la date l'emporte).
+   */
+  seniorityYears: z.number().int().min(0).max(60).optional(),
+  /** Niveau de qualification (diplôme) : REPÈRE, ne change aucun montant. */
+  qualificationLevel: z.enum(QUALIFICATION_KEYS).optional(),
+  /** Durée hebdomadaire contractuelle, pour le taux horaire des heures supp. */
+  weeklyHours: z.number().min(1).max(84).optional(),
+  /**
+   * Heures supplémentaires par nature. Les majorations viennent du pack ; une
+   * nature que le pays ne paramètre pas est refusée, jamais inventée.
+   */
+  overtimeHours: z.object({
+    weekly:             z.number().min(0).max(200).optional(),
+    weeklyBeyond:       z.number().min(0).max(200).optional(),
+    night:              z.number().min(0).max(200).optional(),
+    sunday:             z.number().min(0).max(200).optional(),
+    holiday:            z.number().min(0).max(200).optional(),
+    sundayHolidayNight: z.number().min(0).max(200).optional(),
+  }).strict().optional(),
+  /** Avantages en nature (logement, véhicule, électricité…) : soumis. */
+  benefitsInKind: z.number().int().min(0).max(100_000_000).optional(),
+  /**
+   * Second scénario, à profil identique : le simulateur sert AVANT l'embauche
+   * (quel net pour quel coût) et pour une REVALORISATION (ce que change une
+   * augmentation). Seuls le salaire de base et les primes bougent — tout le
+   * reste du profil est volontairement commun aux deux scénarios, sinon
+   * l'écart ne serait plus attribuable à l'augmentation.
+   */
+  comparison: z.object({
+    baseSalary: z.number().int().min(1).max(100_000_000),
+    primes:     z.number().int().min(0).max(100_000_000).optional(),
+  }).strict().optional(),
 }).strict()
 
 // AI-006/007 — génération de documents RH (CDI/CDD/certificat/attestation).
@@ -491,6 +548,9 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         countryCode, transportAllowance = 0, city,
         cmuSpouseCovered, cmuChildrenCovered,
         hireDate, payMonth, workedDays, workingDaysMonth,
+        professionalCategory, categoryMinimum, seniorityYears,
+        qualificationLevel, weeklyHours = DEFAULT_WEEKLY_HOURS, overtimeHours,
+        benefitsInKind = 0, comparison,
       } = parsed.data
 
       // Pays : celui demandé, sinon celui du tenant, sinon le pack par défaut.
@@ -512,20 +572,62 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       }
       const effectivePack = pack ?? DEFAULT_LEGISLATION_PACK
 
-      // Prime d'ancienneté : seulement si une date d'embauche est fournie ET
-      // que le pack porte une règle d'ancienneté (sinon aucune prime inventée).
+      // Prime d'ancienneté : seulement si l'ancienneté est connue (date
+      // d'embauche OU années révolues saisies) ET que le pack porte une règle
+      // d'ancienneté (sinon aucune prime inventée).
+      //
+      // L'assiette est le MINIMUM CATÉGORIEL quand le pack le prévoit (CI :
+      // CCI art. 55). Faute de minimum saisi, le salaire minimum légal sert de
+      // repli — c'est ce qui se passait pour tout le monde, et cela sous-estime
+      // la prime de chaque catégorie au-dessus du minimum légal.
       const month = payMonth ?? new Date().toISOString().slice(0, 7)
-      let seniorityAmount = 0
-      if (hireDate) {
+      const effectiveCategoryMinimum = categoryMinimum ?? effectivePack.smigMensuel
+      // Années saisies → date d'embauche équivalente au 1er du mois simulé.
+      const effectiveHireDate = hireDate
+        ?? (seniorityYears !== undefined
+          ? `${String(Number(month.slice(0, 4)) - seniorityYears).padStart(4, '0')}-${month.slice(5, 7)}-01`
+          : null)
+      let seniority: { amount: number; years: number; rate: number | null } = { amount: 0, years: 0, rate: null }
+      if (effectiveHireDate) {
         try {
-          seniorityAmount = computeSeniority({
-            pack: effectivePack, hireDate, payMonth: month,
-            baseSalary, categoryMinimum: effectivePack.smigMensuel,
-          }).amount
+          const s = computeSeniority({
+            pack: effectivePack, hireDate: effectiveHireDate, payMonth: month,
+            baseSalary, categoryMinimum: effectiveCategoryMinimum,
+          })
+          seniority = { amount: s.amount, years: s.years, rate: s.rule?.rate ?? null }
         } catch {
           // Date d'embauche postérieure au mois simulé, ou format impossible :
           // pas de prime plutôt qu'une erreur sur un écran de simulation.
-          seniorityAmount = 0
+          seniority = { amount: 0, years: 0, rate: null }
+        }
+      }
+      const seniorityAmount = seniority.amount
+
+      // Heures supplémentaires : montants calculés par le service à partir du
+      // taux horaire et des MAJORATIONS DU PACK. Une nature que le pays ne
+      // paramètre pas est refusée — on n'invente pas une majoration.
+      let overtime: { lines: ReturnType<typeof computeOvertime>['lines']; elements: Record<string, number>; total: number }
+        = { lines: [], elements: {}, total: 0 }
+      if (overtimeHours && Object.values(overtimeHours).some((h) => (h ?? 0) > 0)) {
+        try {
+          const ot = computeOvertime(effectivePack, baseSalary, weeklyHours, {
+            weekly:  overtimeHours.weekly  ?? 0,
+            night:   overtimeHours.night   ?? 0,
+            sunday:  overtimeHours.sunday  ?? 0,
+            holiday: overtimeHours.holiday ?? 0,
+            ...(overtimeHours.weeklyBeyond       !== undefined ? { weeklyBeyond: overtimeHours.weeklyBeyond } : {}),
+            ...(overtimeHours.sundayHolidayNight !== undefined ? { sundayHolidayNight: overtimeHours.sundayHolidayNight } : {}),
+          })
+          overtime = {
+            lines: ot.lines,
+            elements: ot.variableElements as Record<string, number>,
+            total: ot.lines.reduce((s, l) => s + l.amount, 0),
+          }
+        } catch (err) {
+          return reply.status(400).send({
+            error: err instanceof Error ? err.message : 'Heures supplémentaires non paramétrées pour ce pays',
+            code: 'OVERTIME_NOT_CONFIGURED',
+          })
         }
       }
 
@@ -533,15 +635,17 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       // La prime de transport, elle, passe par un ÉLÉMENT VARIABLE : le moteur
       // lui applique le plafond exonéré de la zone de travail.
       const brut = baseSalary + primes + seniorityAmount
-      const variableElements: Record<string, number> = transportAllowance > 0
-        ? { PRIME_TRANSPORT: transportAllowance }
-        : {}
+      const variableElements: Record<string, number> = {
+        ...overtime.elements,
+        ...(transportAllowance > 0 ? { PRIME_TRANSPORT: transportAllowance } : {}),
+        ...(benefitsInKind > 0 ? { AVANTAGE_NATURE: benefitsInKind } : {}),
+      }
       const days = {
         worked: workedDays ?? workingDaysMonth ?? 26,
         month:  workingDaysMonth ?? 26,
       }
-      const simuler = (enfants: number) => calculatePayrollCI({
-        baseSalary: brut, workedDays: days.worked, workingDaysMonth: days.month, atRate,
+      const simuler = (enfants: number, brutSimule: number = brut) => calculatePayrollCI({
+        baseSalary: brutSimule, workedDays: days.worked, workingDaysMonth: days.month, atRate,
         maritalStatus, childrenCount: enfants, variableElements,
         legislationPack: effectivePack,
         transportZone: transportZoneFromCity(city),
@@ -552,6 +656,52 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       })
       const r = simuler(childrenCount)
       const plus1 = simuler(childrenCount + 1)
+
+      // Second scénario (embauche projetée ou revalorisation). L'ancienneté est
+      // recalculée sur le nouveau salaire : quand le pack assoit la prime sur
+      // le salaire réel (et non sur le minimum catégoriel), une augmentation
+      // emporte la prime avec elle.
+      let comparisonView: Record<string, unknown> | null = null
+      if (comparison) {
+        const cPrimes = comparison.primes ?? primes
+        let cSeniority = 0
+        if (effectiveHireDate) {
+          try {
+            cSeniority = computeSeniority({
+              pack: effectivePack, hireDate: effectiveHireDate, payMonth: month,
+              baseSalary: comparison.baseSalary, categoryMinimum: effectiveCategoryMinimum,
+            }).amount
+          } catch { cSeniority = 0 }
+        }
+        const cBrut = comparison.baseSalary + cPrimes + cSeniority
+        const c = simuler(childrenCount, cBrut)
+        comparisonView = {
+          input: {
+            baseSalary: comparison.baseSalary, primes: cPrimes,
+            brut: cBrut, seniorityAmount: cSeniority,
+          },
+          cnps:         { salarial: c.totalCnpsSal, patronal: c.totalCnpsPat },
+          cmu:          { salarial: c.cmuSal, patronal: c.cmuPat },
+          its:          { base: c.baseImposable, brut: c.itsBrut, credit: c.reductionImpot, parts: c.partsFiscales ?? 1, net: c.its },
+          net:          { payable: c.netPayable, smigCompliant: c.smigCompliant },
+          employerCost: c.employerCost,
+          lines:        c.lines,
+          /** Écarts (positifs = en hausse par rapport au premier scénario). */
+          delta: {
+            baseSalary:   comparison.baseSalary - baseSalary,
+            brut:         cBrut - brut,
+            netPayable:   c.netPayable - r.netPayable,
+            its:          c.its - r.its,
+            cnpsSal:      c.totalCnpsSal - r.totalCnpsSal,
+            employerCost: c.employerCost - r.employerCost,
+            /** Hausse du brut en %, à une décimale. */
+            brutPct:      Math.round(((cBrut - brut) / brut) * 1000) / 10,
+            /** Part de l'augmentation qui arrive réellement dans la poche. */
+            netSharePct:  cBrut === brut ? null
+              : Math.round(((c.netPayable - r.netPayable) / (cBrut - brut)) * 1000) / 10,
+          },
+        }
+      }
       // Effet d'un enfant de plus sur le net : économie d'ITS (RICF) MOINS la
       // CMU de l'enfant (500 F jusqu'au 6e, 1 000 F au-delà — loi n° 2014-131).
       const itsGain = r.its - plus1.its
@@ -583,12 +733,42 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           transportAllowance, city: city ?? null,
           cmuSpouseCovered: cmuSpouseCovered ?? null,
           cmuChildrenCovered: cmuChildrenCovered ?? null,
-          hireDate: hireDate ?? null, payMonth: month,
+          hireDate: effectiveHireDate, payMonth: month,
           seniorityAmount,
           workedDays: days.worked, workingDaysMonth: days.month,
           countryCode: effectivePack.countryCode,
           packCode: effectivePack.code,
+          professionalCategory: professionalCategory ?? null,
+          categoryLevel: categoryLevel(professionalCategory),
+          categoryMinimum: effectiveCategoryMinimum,
+          categoryMinimumProvided: categoryMinimum !== undefined,
+          qualificationLevel: qualificationLevel ?? null,
+          weeklyHours,
+          benefitsInKind,
         },
+        /** Ancienneté retenue : années révolues, taux du pack, assiette. */
+        seniority: {
+          years:  seniority.years,
+          rate:   seniority.rate,
+          base:   effectivePack.seniorityBonus?.base === 'category_minimum' ? effectiveCategoryMinimum : baseSalary,
+          amount: seniorityAmount,
+          source: effectivePack.seniorityBonus?.source ?? null,
+        },
+        /** Heures supplémentaires : une ligne par nature, majoration du pack. */
+        overtime: { lines: overtime.lines, total: overtime.total, hourlyRate: Math.round(baseSalary / ((weeklyHours * 52) / 12)) },
+        /** Conformité des minima : légal, et conventionnel si saisi. */
+        compliance: {
+          smig: r.smigCompliant,
+          smigMinimum: effectivePack.smigMensuel,
+          categoryMinimum: categoryMinimum === undefined ? null : baseSalary >= categoryMinimum,
+        },
+        /** Repère de classification — informatif, aucun montant n'en dépend. */
+        positioning: positionProfile({ qualificationKey: qualificationLevel, baseSalary }),
+        /**
+         * Second scénario et écarts : embauche projetée, ou revalorisation.
+         * `null` quand aucun n'a été demandé.
+         */
+        comparison: comparisonView,
         cnps:        { salarial: r.totalCnpsSal, patronal: r.totalCnpsPat },
         its:         { base: r.baseImposable, brut: r.itsBrut, credit: r.reductionImpot, parts: r.partsFiscales ?? 1, net: r.its },
         cmu:         { salarial: r.cmuSal, patronal: r.cmuPat },
@@ -612,6 +792,8 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           transportExoneration: effectivePack.primeTransportExoneree ?? null,
           hasCmu:        !!effectivePack.cmu,
           hasSeniorityBonus: !!effectivePack.seniorityBonus,
+          /** Natures d'heures supplémentaires paramétrées, et leurs majorations. */
+          overtimeRates: effectivePack.leaveRules?.overtimeRates ?? null,
         },
         simulation: {
           avecUnEnfantSupp: {

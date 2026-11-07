@@ -86,11 +86,9 @@ describe('Invariants d’architecture — pas de recopie des primitives partagé
   })
 
   // Exceptions TEMPORAIRES, chacune datée et justifiée. Liste vouée à rester vide.
-  const ORPHAN_SERVICES_BASELINE = new Set<string>([
-    // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
-    // (plan docs/superpowers/plans/2026-11-04-simulateur-paie-uemoa.md ; service créé en tâche 1).
-    'services/payroll-simulator.service.ts',
-  ])
+  // (Vidée le 07/11/2026 : payroll-simulator.service.ts est branché sur le
+  // simulateur de salaire — ancienneté et heures supplémentaires.)
+  const ORPHAN_SERVICES_BASELINE = new Set<string>([])
 
   it('les exceptions temporaires d’orphelins ne sont pas périmées', () => {
     for (const f of ORPHAN_SERVICES_BASELINE) {
@@ -185,10 +183,6 @@ const DEAD_EXPORTS_BASELINE = new Set<string>([
   // la retirer déferait un correctif de sécurité livré en production.
   // À câbler le jour où le moteur de paie devient piloté par les règles.
   'services/payroll-engine-ci.ts::evalFormule',
-  // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
-  'services/payroll-simulator.service.ts::computeSeniority',
-  // temporaire — branché par la tâche 2 du plan simulateur (simulator.routes.ts), à retirer alors
-  'services/payroll-simulator.service.ts::computeOvertime',
 ])
 
 /**
