@@ -6,6 +6,12 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 import { config } from '../config.js'
 import { isTokenBlacklisted, getTokenEpoch } from '../services/redis.js'
 import { isValidSchemaName } from '../utils/schema-name.js'
+import { loadHabContext, can, hrScopeSql, type HabContext } from '../services/habilitation.service.js'
+import { HR_GRID_ROLES, resolveRoutePermission } from '../modules/habilitations/route-permissions.js'
+import { isPermission } from '../modules/habilitations/catalog.js'
+import { habTraceEntry, type HabDenial } from '../modules/habilitations/hab-trace.js'
+import { maskedFieldsFor } from '../services/sensitive-mask.js'
+import { auditTenant } from '../utils/audit-log.js'
 
 // Nom du cookie qui transporte le JWT en httpOnly (mode SPA browser).
 // Les clients API peuvent toujours utiliser Authorization: Bearer (backward-compat).
@@ -95,11 +101,67 @@ export function tokenBlacklistKey(user: { sub: string; jti?: string }): string {
   return user.jti ?? user.sub
 }
 
+/** Route protégée par `authorize()` : recensée au démarrage (onRoute). */
+export interface AuthorizedRoute {
+  method: string
+  url: string
+  roles: readonly string[]
+}
+
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>
     authorize: (...roles: string[]) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>
+    /** Routes protégées par `authorize()` et leurs rôles (contrôle de couverture de la grille). */
+    authorizedRoutes: AuthorizedRoute[]
   }
+  interface FastifyRequest {
+    /**
+     * Contexte d'habilitation RH, chargé au plus une fois par requête
+     * (`undefined` = pas encore chargé ; `null` = aucune affectation, accès
+     * hérité par rôle). Cf. getRequestHab.
+     */
+    hab?: HabContext | null
+    /**
+     * Cause d'un refus d'habilitation, posée au point de décision (grille,
+     * périmètre, « propre dossier »). Lue par le hook de traçage ; JAMAIS
+     * renvoyée au client — la réponse HTTP reste indistinguable (cf. hab-trace).
+     */
+    habDenial?: HabDenial
+    /** Vrai dès qu'un fragment de périmètre filiale a réellement restreint la requête. */
+    habScopeRestricted?: boolean
+  }
+}
+
+/** Rôles listés dans chaque gestionnaire créé par `authorize()`. */
+const AUTHORIZE_ROLES = new WeakMap<object, readonly string[]>()
+
+const HR_GRID_ROLE_SET: ReadonlySet<string> = new Set(HR_GRID_ROLES)
+
+export const HAB_DENIED_ERROR = 'Accès interdit — habilitation insuffisante'
+
+/**
+ * Vrai pour un jeton d'utilisateur de tenant (seuls concernés par la grille).
+ * Les jetons plateforme (super_admin, cabinet en contexte cabinet) et les
+ * jetons de cabinet scopés sur un tenant (sub = utilisateur de cabinet, pas un
+ * utilisateur du tenant) gardent le contrôle par rôle.
+ */
+function isTenantUserToken(user: JwtPayload): boolean {
+  return user.schemaName !== 'platform' && user.schemaName !== 'public' && user.actorType !== 'agency'
+}
+
+/**
+ * Contexte d'habilitation de l'utilisateur courant, mémorisé sur la requête.
+ * `null` hors tenant ou sans affectation. Lève si le moteur échoue : l'appelant
+ * décide (authorize refuse, fermé par défaut).
+ */
+export async function getRequestHab(request: FastifyRequest): Promise<HabContext | null> {
+  if (request.hab !== undefined) return request.hab
+  const hab = isTenantUserToken(request.user)
+    ? await loadHabContext(request.user.schemaName, request.user.sub)
+    : null
+  request.hab = hab
+  return hab
 }
 
 export default fp(async (fastify) => {
@@ -204,11 +266,120 @@ export default fp(async (fastify) => {
 
   fastify.decorate('authenticate', verifyAndCheckBlacklist)
 
-  fastify.decorate('authorize', (...roles: string[]) => async (request: FastifyRequest, reply: FastifyReply) => {
-    await verifyAndCheckBlacklist(request, reply)
-    if (reply.sent) return
-    if (!roles.includes(request.user.role)) {
-      return reply.status(403).send({ error: 'Accès interdit — rôle insuffisant' })
+  // Habilitations RH : un rôle hors grille listé par la route (admin, manager,
+  // employee, dg, readonly) passe comme avant. Pour tout autre cas, si
+  // l'utilisateur a une affectation, la grille décide (fonction, action,
+  // périmètre valide) ; sans affectation, contrôle hérité par rôle.
+  //
+  // Self-service préservé : un utilisateur de rôle RH (hr_*, raf_site) que la
+  // grille refuse sur une route ouverte aussi aux employés y passe EN TANT
+  // QU'EMPLOYÉ — `request.user.role` vaut 'employee' pour cette requête
+  // seulement (le JWT n'est pas modifié), afin que le handler prenne sa branche
+  // self-service (son propre dossier) et jamais une branche RH.
+  fastify.decorate('authorize', (...roles: string[]) => {
+    const routeAllowsHrRole = roles.some((r) => HR_GRID_ROLE_SET.has(r))
+    const routeAllowsEmployee = roles.includes('employee')
+    const handler = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      await verifyAndCheckBlacklist(request, reply)
+      if (reply.sent) return
+      const role = request.user.role
+      if (roles.includes(role) && !HR_GRID_ROLE_SET.has(role)) return
+      // Route sans rôle RH (ex. authorize('admin')) : la grille n'ouvre rien,
+      // refus hérité sans consulter le moteur.
+      if (!routeAllowsHrRole) {
+        return reply.status(403).send({ error: 'Accès interdit — rôle insuffisant' })
+      }
+
+      let hab: HabContext | null
+      try {
+        hab = await getRequestHab(request)
+        // Valide le périmètre (ex. sous-groupe filiale sans entité légale) :
+        // un périmètre incalculable ne doit jamais ouvrir l'accès.
+        if (hab !== null) hrScopeSql(request.user.schemaName, 'e', hab)
+      } catch (err) {
+        request.log.error({ err }, 'habilitations : contexte indisponible, accès refusé')
+        request.habDenial = 'permission'
+        return reply.status(403).send({ error: HAB_DENIED_ERROR })
+      }
+
+      if (hab === null) {
+        if (!roles.includes(role)) {
+          return reply.status(403).send({ error: 'Accès interdit — rôle insuffisant' })
+        }
+        return
+      }
+
+      const perm = resolveRoutePermission(request.method, request.routeOptions.url ?? '')
+      if (hab.kind !== 'none' && perm !== null && can(hab, perm.fn, perm.action)) return
+      if (routeAllowsEmployee && HR_GRID_ROLE_SET.has(role)) {
+        request.user.role = 'employee'
+        return
+      }
+      request.habDenial = 'permission'
+      return reply.status(403).send({ error: HAB_DENIED_ERROR })
+    }
+    AUTHORIZE_ROLES.set(handler, roles)
+    return handler
+  })
+
+  /**
+   * Traçage de TOUTES les requêtes d'un utilisateur habilité (demande du
+   * porteur du 04/11/2026 : « toutes ses actions doivent être tracées et
+   * consultables »), lectures de liste comprises, avec la cause du refus
+   * quand il y en a une.
+   *
+   * Posé en `onResponse` : la réponse est déjà partie, l'écriture d'audit ne
+   * peut donc ni la retarder ni la faire échouer (`auditTenant` est
+   * non bloquant par construction). Seuls les utilisateurs passés par la
+   * grille sont tracés — `request.hab` reste `undefined` pour l'admin du
+   * tenant et les jetons plateforme, qui gardent leur propre audit métier.
+   */
+  fastify.addHook('onResponse', async (request, reply) => {
+    const hab = request.hab
+    if (!hab) return
+    try {
+      const entry = habTraceEntry({
+        method: request.method,
+        routeUrl: request.routeOptions.url ?? '',
+        statusCode: reply.statusCode,
+        denial: request.habDenial,
+        scopeRestricted: request.habScopeRestricted,
+        maskedFields: maskedFieldsFor(hab),
+        paramId: (request.params as { id?: string } | undefined)?.id ?? null,
+        filterKeys: Object.keys((request.query ?? {}) as Record<string, unknown>),
+      }, { subgroupId: hab.subgroupId })
+      if (entry === null) return
+      auditTenant(request.user.schemaName, {
+        userId: request.user.sub,
+        action: entry.action,
+        entity: entry.entity,
+        entityId: entry.entityId,
+        changes: entry.changes,
+        ip: request.ip,
+      })
+    } catch (err) {
+      // Une trace manquante ne doit jamais faire échouer une requête servie.
+      request.log.error({ err }, 'habilitations : traçage de la requête impossible')
+    }
+  })
+
+  // Recensement des routes protégées par authorize() (contrôle de couverture
+  // de la grille, cf. route-permissions.test.ts). Une route RH sans case de
+  // grille est refusée à tout habilité : on le signale dès le démarrage.
+  const authorizedRoutes: AuthorizedRoute[] = []
+  fastify.decorate('authorizedRoutes', authorizedRoutes)
+  fastify.addHook('onRoute', (route) => {
+    const hooks = [route.onRequest, route.preHandler].flatMap((h) => (h === undefined ? [] : Array.isArray(h) ? h : [h]))
+    const roles = hooks.map((h) => AUTHORIZE_ROLES.get(h)).find((r) => r !== undefined)
+    if (!roles) return
+    const methods = Array.isArray(route.method) ? route.method : [route.method]
+    for (const method of methods) {
+      authorizedRoutes.push({ method, url: route.url, roles })
+      if (!roles.some((r) => HR_GRID_ROLE_SET.has(r))) continue
+      const perm = resolveRoutePermission(method, route.url)
+      if (perm === null || !isPermission(`${perm.fn}:${perm.action}`)) {
+        fastify.log.error({ method, url: route.url }, 'habilitations : route RH sans case de grille (refusée aux habilités)')
+      }
     }
   })
 })

@@ -8,7 +8,7 @@
  * SÉCURITÉ : OWASP A01 (RBAC ; décision approuvé/rejeté réservée admin/hr_manager),
  * A03 (Zod safeParse + niveaux Bloom 1–6), A09 (audit_log).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import {
@@ -18,6 +18,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -44,6 +45,11 @@ function audit(
   id: string | null, changes: Record<string, unknown>, ip: string | null,
 ): void {
   auditTenant(schema, { userId: userId ?? null, action: action, entity: entity, entityId: id, changes: changes, ip: ip })
+}
+
+/** Périmètre filiale (habilitations) : le salarié visé est-il dans le périmètre de l'acteur ? */
+async function targetInHrScope(request: FastifyRequest, employeeId: string): Promise<boolean> {
+  return employeeInHrScope(request.user.schemaName, employeeId, await requestHrScope(request, 'e'))
 }
 
 async function requiredOf(schema: string, jobProfileId: string): Promise<RequiredItem[]> {
@@ -75,6 +81,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { employeeId } = request.params as { employeeId: string }
       if (!UUID_RE.test(employeeId)) return badRequest(reply, 'employeeId invalide')
+      if (!(await targetInHrScope(request, employeeId))) return reply.status(404).send({ error: 'Employé introuvable' })
       const res = await rawPool.query(
         `SELECT ec.id, ec.competency_id, ec.level, cf.label, cf.category, cf.bloom_level
          FROM "${schema}".employee_competencies ec
@@ -95,6 +102,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = assessSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      if (!(await targetInHrScope(request, employeeId))) return reply.status(404).send({ error: 'Employé introuvable' })
       await rawPool.query(
         `INSERT INTO "${schema}".employee_competencies (employee_id, competency_id, level)
          VALUES ($1,$2,$3) ON CONFLICT (employee_id, competency_id)
@@ -112,6 +120,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { employeeId, competencyId } = request.params as { employeeId: string; competencyId: string }
+      if (!(await targetInHrScope(request, employeeId))) return reply.status(404).send({ error: 'Évaluation introuvable' })
       const res = await rawPool.query(
         `DELETE FROM "${schema}".employee_competencies WHERE employee_id = $1 AND competency_id = $2 RETURNING id`,
         [employeeId, competencyId],
@@ -132,6 +141,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(employeeId) || !jobProfileId || !UUID_RE.test(jobProfileId)) {
         return badRequest(reply, 'employeeId et jobProfileId (UUID) requis')
       }
+      if (!(await targetInHrScope(request, employeeId))) return reply.status(404).send({ error: 'Employé introuvable' })
       const [req, asm] = await Promise.all([requiredOf(schema, jobProfileId), assessedMap(schema, employeeId)])
       return reply.send({ data: gapAnalysis(req, asm) })
     },
@@ -148,6 +158,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".mobility_requests m
          JOIN "${schema}".employees e ON e.id = m.employee_id
          JOIN "${schema}".job_profiles jp ON jp.id = m.target_job_profile_id
+         WHERE ${await requestHrScope(request, 'e')}
          ORDER BY m.created_at DESC`,
       )
       return reply.send({ data: res.rows })
@@ -165,7 +176,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".mobility_requests m
          JOIN "${schema}".employees e ON e.id = m.employee_id
          JOIN "${schema}".job_profiles jp ON jp.id = m.target_job_profile_id
-         WHERE m.id = $1 LIMIT 1`, [id],
+         WHERE m.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`, [id],
       )
       const row = m.rows[0]
       if (!row) return reply.status(404).send({ error: 'Passerelle introuvable' })
@@ -184,6 +195,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = requestSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      if (!(await targetInHrScope(request, b.employeeId))) return reply.status(404).send({ error: 'Employé introuvable' })
       const res = await rawPool.query(
         `INSERT INTO "${schema}".mobility_requests (employee_id, target_job_profile_id, reason, requested_by, status)
          VALUES ($1,$2,$3,$4,'proposed') RETURNING *`,
@@ -207,7 +219,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (b.status) {
         const cur = await rawPool.query<{ status: MobilityStatus }>(
-          `SELECT status FROM "${schema}".mobility_requests WHERE id = $1 LIMIT 1`, [id],
+          `SELECT status FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} LIMIT 1`, [id],
         )
         if (!cur.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
         if (!canTransition(cur.rows[0].status, b.status)) {
@@ -234,7 +246,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       sets.push('updated_at = now()')
       params.push(id)
-      const res = await rawPool.query(`UPDATE "${schema}".mobility_requests SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
+      const res = await rawPool.query(`UPDATE "${schema}".mobility_requests SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} RETURNING *`, params)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
       audit(schema, request.user.sub, 'mobility.updated', 'mobility_request', id, b as Record<string, unknown>, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
@@ -247,7 +259,7 @@ const mobilityRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const res = await rawPool.query(`DELETE FROM "${schema}".mobility_requests WHERE id = $1 RETURNING id`, [id])
+      const res = await rawPool.query(`DELETE FROM "${schema}".mobility_requests WHERE id = $1 AND ${await requestEmployeeScope(request, 'mobility_requests.employee_id')} RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Passerelle introuvable' })
       audit(schema, request.user.sub, 'mobility.deleted', 'mobility_request', id, {}, request.ip ?? null)
       return reply.send({ data: { id } })

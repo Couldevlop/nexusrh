@@ -1,0 +1,137 @@
+{
+  "title": "Habilitations RH",
+  "subtitle": "Groupes, plafonds, fiches d'habilitation et aperçu des droits",
+  "notEnforced": "Contrôle des habilitations non activé pour ce client — les droits restent ceux des rôles, et les révocations n'ont aucun effet tant qu'il n'est pas activé.",
+  "loading": "Chargement…",
+  "tabs": {
+    "structure": "Structure",
+    "fiches": "Fiches",
+    "delegations": "Délégations",
+    "audit": "Piste d'audit"
+  },
+  "actions": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "editCeiling": "Modifier le plafond",
+    "enable": "Activer le contrôle",
+    "submit": "Soumettre au N+1",
+    "validate": "Valider",
+    "reject": "Refuser",
+    "apply": "Appliquer",
+    "pdf": "Télécharger le PDF",
+    "close": "Fermer"
+  },
+  "grid": {
+    "function": "Fonction",
+    "extras": "Droits transverses"
+  },
+  "gridActions": {
+    "view": "Consulter",
+    "create": "Créer",
+    "update": "Modifier",
+    "delete": "Supprimer",
+    "validate": "Valider",
+    "close": "Clôturer",
+    "export": "Exporter",
+    "pay": "Payer",
+    "configure": "Paramétrer"
+  },
+  "functions": {
+    "employees": "Employés",
+    "contracts": "Contrats",
+    "absences": "Absences",
+    "attendance": "Pointage",
+    "payroll": "Paie",
+    "payroll_multi": "Paie multi-filiales",
+    "declarations": "Déclarations",
+    "payments": "Paiements",
+    "expenses": "Notes de frais",
+    "recruitment": "Recrutement",
+    "lifecycle": "Entrées / sorties",
+    "discipline": "Discipline",
+    "training": "Formation",
+    "talent": "Talents et carrières",
+    "climate": "Climat social",
+    "signature": "Signature",
+    "reporting": "Reporting",
+    "hr_settings": "Paramétrage RH"
+  },
+  "extras": {
+    "sensitive_data": "Données sensibles (salaires, coordonnées bancaires)",
+    "all_entities": "Toutes les filiales",
+    "manage_habilitations": "Gérer les habilitations"
+  },
+  "status": {
+    "draft": "Brouillon",
+    "n1": "En validation N+1",
+    "n2": "En validation N+2",
+    "locked": "Verrouillée",
+    "applied": "Appliquée",
+    "rejected": "Refusée",
+    "superseded": "Remplacée"
+  },
+  "structure": {
+    "siegeCount": "Employés sans filiale (siège) :",
+    "siege": "Siège",
+    "entity": "Filiale",
+    "memberCount": "{{count}} membre(s)",
+    "revoked": "droits révoqués"
+  },
+  "fiche": {
+    "empty": "Aucune fiche ne vous concerne pour le moment.",
+    "revokeKind": "retrait de droits",
+    "sodTitle": "Cumuls sensibles relevés",
+    "acceptSod": "J'ai pris connaissance du cumul",
+    "rejectReason": "Motif du refus"
+  },
+  "delegations": {
+    "intro": "Déléguer la rédaction de fiches pendant une absence.",
+    "empty": "Aucune délégation en cours.",
+    "until": "Jusqu'au",
+    "revoke": "Révoquer",
+    "revoked": "révoquée",
+    "expired": "échue"
+  },
+  "preview": {
+    "title": "Ce que voit cette personne",
+    "open": "Aperçu",
+    "loading": "Calcul des droits…",
+    "noAssignment": "Aucune fiche appliquée : l'accès reste celui de son rôle.",
+    "scope": "Périmètre",
+    "scopeAll": "Toutes les filiales",
+    "scopeEntity": "Sa filiale",
+    "scopeSiege": "Siège (employés sans filiale)",
+    "permissions": "Droits effectifs",
+    "none": "Aucun droit effectif",
+    "sensitive": "Données sensibles",
+    "sensitiveYes": "Visibles (case « données sensibles »)",
+    "masked": "{{count}} champ(s) masqué(s) : salaires et coordonnées bancaires restent cachés"
+  },
+  "audit": {
+    "intro": "Toutes les actions des personnes habilitées, accès refusés compris.",
+    "empty": "Aucune action sur cette période.",
+    "filters": {
+      "result": "Résultat",
+      "all": "Tous",
+      "matricule": "Matricule",
+      "from": "Du",
+      "to": "Au"
+    },
+    "columns": {
+      "date": "Date",
+      "user": "Utilisateur",
+      "subgroup": "Sous-groupe",
+      "matricule": "Matricule",
+      "action": "Action",
+      "result": "Résultat"
+    },
+    "results": {
+      "denied": "Accès refusés",
+      "allowed": "Autorisé",
+      "denied_permission": "Refus — droit manquant",
+      "denied_scope": "Refus — hors périmètre",
+      "denied_self": "Refus — propre dossier",
+      "masked": "Données masquées"
+    }
+  }
+}

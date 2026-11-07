@@ -64,20 +64,20 @@ describe('GOLDEN IA hybride — matrice rôle → outils (alignée RBAC)', () =>
 
 describe('GOLDEN IA hybride — executeAiTool (defense in depth, OWASP A01)', () => {
   it('refuse un outil hors matrice même si le modèle le demandait', async () => {
-    const r = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'manager' }, 'get_payroll_status', {})
+    const r = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'manager', hrScope: () => 'TRUE' }, 'get_payroll_status', {})
     expect(r['error']).toBeDefined()
-    const r2 = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'employee' }, 'get_headcount', {})
+    const r2 = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'employee', hrScope: () => 'TRUE' }, 'get_headcount', {})
     expect(r2['error']).toBeDefined()
   })
 
   it('refuse un outil inconnu', async () => {
-    const r = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'admin' }, 'drop_database', {})
+    const r = await executeAiTool(fakePool(), { schemaName: 'tenant_x', role: 'admin', hrScope: () => 'TRUE' }, 'drop_database', {})
     expect(r['error']).toBeDefined()
   })
 
   it('manager : agrégats SANS liste nominative (absents du jour)', async () => {
     const rows = [{ first_name: 'Awa', last_name: 'Koné', type_name: 'CP', start_date: '2026-06-12', end_date: '2026-06-12' }]
-    const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role: 'manager' }, 'count_absences_today', {})
+    const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role: 'manager', hrScope: () => 'TRUE' }, 'count_absences_today', {})
     expect(r['absentToday']).toBe(1)
     expect(r['details']).toBeUndefined()
   })
@@ -85,7 +85,7 @@ describe('GOLDEN IA hybride — executeAiTool (defense in depth, OWASP A01)', ()
   it('admin/dg : détail nominatif inclus (absents du jour)', async () => {
     const rows = [{ first_name: 'Awa', last_name: 'Koné', type_name: 'CP', start_date: '2026-06-12', end_date: '2026-06-12' }]
     for (const role of ['admin', 'dg']) {
-      const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role }, 'count_absences_today', {})
+      const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role, hrScope: () => 'TRUE' }, 'count_absences_today', {})
       expect(r['absentToday']).toBe(1)
       expect(Array.isArray(r['details'])).toBe(true)
     }
@@ -96,7 +96,7 @@ describe('GOLDEN IA hybride — executeAiTool (defense in depth, OWASP A01)', ()
       month: '2026-05', status: 'closed', closed_at: '2026-06-05T10:00:00Z',
       total_gross: '45000000', total_net: '38000000', closed_by_name: 'Responsable Paie',
     }]
-    const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role: 'dg' }, 'get_payroll_status', { month: '2026-05' })
+    const r = await executeAiTool(fakePool(rows), { schemaName: 'tenant_x', role: 'dg', hrScope: () => 'TRUE' }, 'get_payroll_status', { month: '2026-05' })
     const periods = r['periods'] as Array<Record<string, unknown>>
     expect(periods[0]?.['validated']).toBe(true)
     expect(periods[0]?.['closedBy']).toBe('Responsable Paie')
@@ -105,7 +105,7 @@ describe('GOLDEN IA hybride — executeAiTool (defense in depth, OWASP A01)', ()
 
   it('fail-soft : erreur DB → { error }, jamais une exception (pas de 500)', async () => {
     const failing = { query: () => Promise.reject(new Error('db down')) } as unknown as Pool
-    const r = await executeAiTool(failing, { schemaName: 'tenant_x', role: 'admin' }, 'get_headcount', {})
+    const r = await executeAiTool(failing, { schemaName: 'tenant_x', role: 'admin', hrScope: () => 'TRUE' }, 'get_headcount', {})
     expect(r['error']).toBeDefined()
   })
 
@@ -117,7 +117,7 @@ describe('GOLDEN IA hybride — executeAiTool (defense in depth, OWASP A01)', ()
         return Promise.resolve({ rows: [] })
       },
     } as unknown as Pool
-    await executeAiTool(spyPool, { schemaName: 'tenant_x', role: 'admin' }, 'get_payroll_status', { month: "'; DROP TABLE--" })
+    await executeAiTool(spyPool, { schemaName: 'tenant_x', role: 'admin', hrScope: () => 'TRUE' }, 'get_payroll_status', { month: "'; DROP TABLE--" })
     expect(captured[0]).toBeNull() // input non conforme YYYY-MM → null paramétré
   })
 })

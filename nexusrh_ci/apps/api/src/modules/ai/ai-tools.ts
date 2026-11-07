@@ -14,10 +14,19 @@
  *  - exécution fail-soft : une erreur DB renvoie { error } à l'IA, jamais un 500.
  */
 import type { Pool } from 'pg'
+import { periodVisibilitySql } from '../../utils/period-visibility.js'
 
 export interface AiToolContext {
   schemaName: string
   role: string
+  /**
+   * Habilitations RH : fragment SQL de périmètre filiale pour un alias de ligne
+   * employé (`requestHrScopeFactory`). OBLIGATOIRE : les outils n'accèdent aux
+   * données employés qu'à travers lui ('TRUE' = périmètre ouvert).
+   */
+  hrScope: (alias: string) => string
+  /** Habilitations : vrai = montants de paie masqués (pas de case données sensibles). */
+  maskSensitive?: boolean
 }
 
 // Format Anthropic Messages API (structurel — compatible Anthropic.Messages.Tool)
@@ -117,6 +126,14 @@ export async function executeAiTool(
     return { error: `Outil non autorisé pour le rôle ${ctx.role}` }
   }
   const s = ctx.schemaName
+  // Périmètre filiale : sur l'alias employé `e`, sur une colonne employee_id
+  // (EXISTS) ou sur la filiale cible d'une offre.
+  const empScope = ctx.hrScope('e')
+  const jobScope = ctx.hrScope('j')
+  const viaEmployee = (col: string): string => {
+    const scope = ctx.hrScope('hs')
+    return scope === 'TRUE' ? 'TRUE' : `EXISTS (SELECT 1 FROM "${s}".employees hs WHERE hs.id = ${col} AND ${scope})`
+  }
   // Les managers ne reçoivent que des agrégats (pas de liste nominative).
   const includeNames = ctx.role !== 'manager'
 
@@ -124,20 +141,26 @@ export async function executeAiTool(
     switch (toolName) {
       case 'get_payroll_status': {
         const month = asMonth(input)
+        // Totaux de la période : ceux de la paie entière en périmètre ouvert, sinon
+        // la somme des seuls bulletins du périmètre filiale.
+        const slipTotal = (col: string, openCol: string): string => empScope === 'TRUE' ? `p.total_${openCol}` : `(
+          SELECT SUM(ps.${col}) FROM "${s}".pay_slips ps JOIN "${s}".employees e ON e.id = ps.employee_id
+           WHERE ps.period_id IN (SELECT c.id FROM "${s}".pay_periods c WHERE c.id = p.id OR c.parent_period_id = p.id)
+             AND ${empScope})`
         const res = await pool.query<{
           month: string; status: string; closed_at: string | null
           total_gross: string | null; total_net: string | null
           closed_by_name: string | null
         }>(
           `SELECT p.month, p.status, p.closed_at,
-                  p.total_gross, p.total_net,
+                  ${slipTotal('gross_salary', 'gross')} AS total_gross, ${slipTotal('net_payable', 'net')} AS total_net,
                   CASE WHEN u.id IS NULL THEN NULL
                        ELSE u.first_name || ' ' || u.last_name END AS closed_by_name
              FROM "${s}".pay_periods p
              -- closed_by est varchar(100) (uuid de user OU libellé hérité) :
              -- cast côté users, jamais uuid = varchar (erreur d'opérateur PG).
              LEFT JOIN "${s}".users u ON u.id::text = p.closed_by
-            WHERE p.parent_period_id IS NULL
+            WHERE p.parent_period_id IS NULL AND ${periodVisibilitySql(s, 'p', ctx.hrScope)}
               AND ($1::text IS NULL OR p.month = $1)
             ORDER BY p.month DESC
             LIMIT 3`,
@@ -150,8 +173,9 @@ export async function executeAiTool(
             validated: r.status === 'closed',
             closedAt: r.closed_at,
             closedBy: r.closed_by_name,
-            totalGrossFcfa: r.total_gross ? Number(r.total_gross) : null,
-            totalNetFcfa:   r.total_net ? Number(r.total_net) : null,
+            totalGrossFcfa: !ctx.maskSensitive && r.total_gross ? Number(r.total_gross) : null,
+            totalNetFcfa:   !ctx.maskSensitive && r.total_net ? Number(r.total_net) : null,
+            ...(ctx.maskSensitive ? { maskedFields: ['totalGrossFcfa', 'totalNetFcfa'] } : {}),
           })),
           note: "status 'closed' = paie validée et clôturée ; 'open' = en cours",
         }
@@ -166,7 +190,7 @@ export async function executeAiTool(
              FROM "${s}".absences a
              JOIN "${s}".employees e ON e.id = a.employee_id
              LEFT JOIN "${s}".absence_types at ON at.id = a.absence_type_id
-            WHERE a.status = 'approved'
+            WHERE a.status = 'approved' AND ${empScope}
               AND a.start_date <= CURRENT_DATE AND a.end_date >= CURRENT_DATE
             ORDER BY e.last_name
             LIMIT 100`,
@@ -188,10 +212,10 @@ export async function executeAiTool(
 
       case 'get_pending_requests': {
         const abs = await pool.query<{ count: string }>(
-          `SELECT count(*) FROM "${s}".absences WHERE status IN ('pending', 'submitted')`,
+          `SELECT count(*) FROM "${s}".absences WHERE status IN ('pending', 'submitted') AND ${viaEmployee('absences.employee_id')}`,
         )
         const exp = await pool.query<{ count: string }>(
-          `SELECT count(*) FROM "${s}".expense_reports WHERE status = 'submitted'`,
+          `SELECT count(*) FROM "${s}".expense_reports WHERE status = 'submitted' AND ${viaEmployee('expense_reports.employee_id')}`,
         )
         const out: Record<string, unknown> = {
           pendingAbsences: parseInt(abs.rows[0]?.count ?? '0'),
@@ -204,7 +228,7 @@ export async function executeAiTool(
             `SELECT e.first_name, e.last_name, a.start_date, a.end_date
                FROM "${s}".absences a
                JOIN "${s}".employees e ON e.id = a.employee_id
-              WHERE a.status IN ('pending', 'submitted')
+              WHERE a.status IN ('pending', 'submitted') AND ${empScope}
               ORDER BY a.created_at DESC LIMIT 10`,
           )
           out['pendingAbsencesDetails'] = detail.rows.map(r => ({
@@ -216,13 +240,13 @@ export async function executeAiTool(
 
       case 'get_headcount': {
         const total = await pool.query<{ count: string }>(
-          `SELECT count(*) FROM "${s}".employees WHERE is_active = true`,
+          `SELECT count(*) FROM "${s}".employees e WHERE e.is_active = true AND ${empScope}`,
         )
         const byDept = await pool.query<{ name: string | null; count: string }>(
           `SELECT d.name, count(e.id) AS count
              FROM "${s}".employees e
              LEFT JOIN "${s}".departments d ON d.id = e.department_id
-            WHERE e.is_active = true
+            WHERE e.is_active = true AND ${empScope}
             GROUP BY d.name ORDER BY count DESC`,
         )
         return {
@@ -240,8 +264,8 @@ export async function executeAiTool(
           retention_score: string | null; burnout_risk: string | null
         }>(
           `SELECT first_name, last_name, job_title, retention_score, burnout_risk
-             FROM "${s}".employees
-            WHERE is_active = true
+             FROM "${s}".employees e
+            WHERE is_active = true AND ${empScope}
               AND (retention_score IS NOT NULL OR burnout_risk IS NOT NULL)
             ORDER BY
               CASE burnout_risk WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
@@ -264,13 +288,14 @@ export async function executeAiTool(
 
       case 'get_recruitment_pipeline': {
         const jobs = await pool.query<{ count: string }>(
-          `SELECT count(*) FROM "${s}".recruitment_jobs WHERE status = 'open'`,
+          `SELECT count(*) FROM (SELECT status, target_legal_entity_id AS legal_entity_id FROM "${s}".recruitment_jobs) j
+            WHERE j.status = 'open' AND ${jobScope}`,
         )
         const byStage = await pool.query<{ stage: string | null; count: string }>(
           `SELECT a.stage, count(*) AS count
              FROM "${s}".applications a
-             JOIN "${s}".recruitment_jobs j ON j.id = a.job_id
-            WHERE j.status = 'open'
+             JOIN (SELECT id, status, target_legal_entity_id AS legal_entity_id FROM "${s}".recruitment_jobs) j ON j.id = a.job_id
+            WHERE j.status = 'open' AND ${jobScope}
             GROUP BY a.stage ORDER BY count DESC`,
         )
         return {

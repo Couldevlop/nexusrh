@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Habilitations RH : par défaut, aucune affectation (accès hérité par rôle).
+    setupFiles: ['src/__tests__/legacy-hab.setup.ts'],
     // L'instrumentation coverage ralentit fortement buildApp() des tests golden :
     // les hooks beforeAll/afterAll dépassent les 10 s par défaut.
     hookTimeout: 120_000,

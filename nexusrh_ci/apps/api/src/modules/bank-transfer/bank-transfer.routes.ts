@@ -32,6 +32,7 @@ import {
 import { analyzeSample, SampleRejectedError, MAX_SAMPLE_BYTES } from './bank-sample.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { requestHrScope } from '../../utils/hr-scope.js'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const UUID_RE = /^[0-9a-fA-F-]{36}$/
@@ -47,7 +48,7 @@ async function ensureSchema(request: FastifyRequest): Promise<void> {
 }
 
 /** Récupère les virements (RIB déchiffrés) d'une banque pour une période. */
-async function fetchTransfers(schema: string, month: string, bank: string): Promise<BankFileRow[]> {
+async function fetchTransfers(schema: string, month: string, bank: string, scopeSql: string): Promise<BankFileRow[]> {
   const r = await rawPool.query<{
     first_name: string; last_name: string; employee_number: string | null; job_title: string | null
     department: string | null; nni: string | null; iban: string | null; bank_name: string | null
@@ -60,6 +61,7 @@ async function fetchTransfers(schema: string, month: string, bank: string): Prom
        LEFT JOIN "${schema}".departments d ON d.id = e.department_id
       WHERE ps.month = $1 AND e.payment_method = 'bank_transfer'
         AND e.bank_name = $2 AND e.iban IS NOT NULL AND e.iban <> ''
+        AND ${scopeSql}
       ORDER BY e.last_name, e.first_name`,
     [month, bank],
   )
@@ -76,6 +78,24 @@ async function fetchTransfers(schema: string, month: string, bank: string): Prom
     netPayable: parseInt(x.net_payable ?? '0', 10),
     grossSalary: parseInt(x.gross_salary ?? '0', 10),
   }))
+}
+
+/**
+ * Habilitations : existe-t-il, pour (mois, banque), un virement d'un salarié HORS périmètre ?
+ * Sert à refuser l'envoi (irrévocable) d'un fichier partiel. Aucune requête en périmètre ouvert.
+ */
+async function hasForeignTransfers(schema: string, month: string, bank: string, scopeSql: string): Promise<boolean> {
+  if (scopeSql === 'TRUE') return false
+  const r = await rawPool.query(
+    `SELECT 1 FROM "${schema}".pay_slips ps
+       JOIN "${schema}".employees e ON e.id = ps.employee_id
+      WHERE ps.month = $1 AND e.payment_method = 'bank_transfer'
+        AND e.bank_name = $2 AND e.iban IS NOT NULL AND e.iban <> ''
+        AND NOT COALESCE((${scopeSql}), false)
+      LIMIT 1`,
+    [month, bank],
+  )
+  return (r.rowCount ?? r.rows.length) > 0
 }
 
 /** Gabarit Excel historique — repli quand la banque n'a pas de profil actif. */
@@ -262,6 +282,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
                   ON tpl.bank_name = e.bank_name AND tpl.status = 'active'
           WHERE ps.month = $1 AND e.payment_method = 'bank_transfer'
             AND e.iban IS NOT NULL AND e.iban <> '' AND e.bank_name IS NOT NULL
+            AND ${await requestHrScope(request, 'e')}
           GROUP BY e.bank_name, bd.email, tpl.version, tpl.output_kind
           ORDER BY e.bank_name`,
         [month],
@@ -288,7 +309,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       if (!month || !MONTH_RE.test(month)) return reply.status(400).send({ error: 'month requis (YYYY-MM)' })
       if (!bank || bank.length > 100) return reply.status(400).send({ error: 'bank requis' })
       const schema = request.user.schemaName
-      const rows = await fetchTransfers(schema, month, bank)
+      const rows = await fetchTransfers(schema, month, bank, await requestHrScope(request, 'e'))
       if (rows.length === 0) return reply.status(404).send({ error: 'Aucun virement pour cette banque/période' })
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
       const file = await generateFile(schema, bank, month, rows, tenant.rows[0]?.name ?? 'NexusRH')
@@ -324,9 +345,18 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantFrom = mail?.from
       const tenantSmtp = mail?.smtp ?? null
 
+      // Habilitations : l'envoi à la banque est irrévocable ; un RH restreint ne l'envoie pas si la
+      // période contient des virements d'autres filiales (le fichier serait partiel). Refus avant tout envoi.
+      const sendScope = await requestHrScope(request, 'e')
+      for (const b of banks) {
+        if (await hasForeignTransfers(schema, month, b.name, sendScope)) {
+          return reply.status(409).send({ error: 'La période contient des salariés hors de votre périmètre' })
+        }
+      }
+
       const results: Array<{ bank: string; count: number; total: number; sent: boolean; templateVersion?: number | null; error?: string }> = []
       for (const b of banks) {
-        const rows = await fetchTransfers(schema, month, b.name)
+        const rows = await fetchTransfers(schema, month, b.name, sendScope)
         if (rows.length === 0) { results.push({ bank: b.name, count: 0, total: 0, sent: false, error: 'Aucun virement' }); continue }
         const total = rows.reduce((s, r) => s + r.netPayable, 0)
         try {
@@ -411,9 +441,10 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       // un nom absent d'ici ne s'appliquera à personne. On le signale plutôt que
       // de laisser croire que le format est en place.
       const emp = await rawPool.query<{ bank_name: string }>(
-        `SELECT DISTINCT bank_name FROM "${schema}".employees
-          WHERE payment_method = 'bank_transfer' AND bank_name IS NOT NULL AND bank_name <> ''
-          ORDER BY bank_name`,
+        `SELECT DISTINCT e.bank_name FROM "${schema}".employees e
+          WHERE e.payment_method = 'bank_transfer' AND e.bank_name IS NOT NULL AND e.bank_name <> ''
+            AND ${await requestHrScope(request, 'e')}
+          ORDER BY e.bank_name`,
       ).catch(() => ({ rows: [] as Array<{ bank_name: string }> }))
       return reply.send({
         data: r.rows.map((x) => ({
@@ -629,12 +660,13 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       if (!row) return reply.status(404).send({ error: 'Profil introuvable' })
 
       const issues = specIssues(row.spec)
-      const allRows = await fetchTransfers(schema, parsed.data.month, row.bank_name)
+      const allRows = await fetchTransfers(schema, parsed.data.month, row.bank_name, await requestHrScope(request, 'e'))
       const sample = allRows.slice(0, PREVIEW_ROWS)
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
       const dir = await loadDirectory(schema, row.bank_name)
-      // Le total et le nombre de lignes restent ceux de la paie ENTIÈRE : c'est
-      // ce que la banque recevra, l'aperçu ne doit pas laisser croire l'inverse.
+      // Le total et le nombre de lignes portent sur les virements de l'utilisateur
+      // (périmètre filiale) : un RH restreint ne voit que sa part ; l'envoi à la banque
+      // (POST /send) est refusé en 409 si la période contient d'autres filiales.
       const ctx = buildContext(row.bank_name, parsed.data.month, tenant.rows[0]?.name ?? 'NexusRH', dir, allRows)
 
       const table = previewTable(row.spec, sample, ctx)
@@ -673,7 +705,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const row = cur.rows[0]
       if (!row) return reply.status(404).send({ error: 'Profil introuvable' })
 
-      const rows = await fetchTransfers(schema, month, row.bank_name)
+      const rows = await fetchTransfers(schema, month, row.bank_name, await requestHrScope(request, 'e'))
       if (rows.length === 0) return reply.status(404).send({ error: 'Aucun virement pour cette banque/période' })
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
       const dir = await loadDirectory(schema, row.bank_name)

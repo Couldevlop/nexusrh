@@ -6,6 +6,8 @@
  * sortie), AUCUN processus actif ne doit subsister sur un dossier qui n'existe
  * plus. On rompt/annule donc, en une seule opération cohérente :
  *   - le compte de connexion lié (users.is_active = false) ;
+ *   - ses habilitations RH : affectation révoquée et délégations (données comme
+ *     reçues) révoquées — sinon une procuration survit à son titulaire ;
  *   - les contrats ACTIFS → 'terminated' (archivés) ;
  *   - les sanctions disciplinaires NON terminales → 'cancelled' ;
  *   - les demandes de signature en cours (draft/pending) où l'employé est
@@ -17,11 +19,14 @@
  * deleted_at IS NULL sur l'employé).
  */
 import type { Pool } from 'pg'
+import { revokeAllForUser } from './habilitation.service.js'
 
 export interface ArchiveCascadeResult {
   terminatedContracts: number
   cancelledDiscipline: number
   cancelledSignatures: number
+  /** Comptes dont les habilitations RH ont été coupées (0 ou 1 en pratique). */
+  revokedHabilitations: number
 }
 
 export async function archiveEmployeeCascade(
@@ -38,6 +43,18 @@ export async function archiveEmployeeCascade(
     `UPDATE "${schema}".users SET is_active = false, updated_at = now() WHERE employee_id = $1`,
     [employeeId],
   ).catch(() => { /* non bloquant */ })
+
+  // 2 bis. Habilitations RH du compte lié : affectation ET délégations (données
+  //        comme reçues). Désactiver le compte ne suffit pas — une délégation
+  //        reçue par une personne partie laisserait un tiers agir en son nom
+  //        (cf. revokeAllForUser).
+  const accounts = await pool.query<{ id: string }>(
+    `SELECT id::text AS id FROM "${schema}".users WHERE employee_id = $1`,
+    [employeeId],
+  ).catch(() => ({ rows: [] as Array<{ id: string }> }))
+  for (const a of accounts.rows) {
+    await revokeAllForUser(schema, a.id, 'offboarding').catch(() => { /* non bloquant */ })
+  }
 
   // 3. Contrats actifs → terminés (archive).
   const contracts = await pool.query<{ id: string }>(
@@ -70,5 +87,6 @@ export async function archiveEmployeeCascade(
     terminatedContracts: contracts.rows.length,
     cancelledDiscipline: discipline.rows.length,
     cancelledSignatures: signatures.rows.length,
+    revokedHabilitations: accounts.rows.length,
   }
 }

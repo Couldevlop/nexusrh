@@ -8,12 +8,14 @@ import {
   Receipt, BarChart3, Settings, Star, ShieldCheck, ScrollText,
   Calculator, ClipboardCheck, X, Scale, ClipboardList, Layers, Rocket,
   Eye, Activity, Network, Gavel, DoorOpen, MessageSquare, GitBranch, GraduationCap, Grid3x3, Route, FileSignature, ShieldHalf, FileSpreadsheet, Clock,
-  ListChecks, UserCircle, FileText, Megaphone,
+  ListChecks, UserCircle, FileText, Megaphone, KeyRound,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
+import { hasHabFunction, hasHabExtra, type HabFunction } from '@/lib/habilitations'
+import { usePendingFiches } from '@/components/habilitations/usePendingFiches'
 import { usePendingApprovals } from '@/components/approvals/workflow'
 
 interface NavItem {
@@ -32,13 +34,21 @@ interface NavItem {
   /** Module activable : l'entrée est MASQUÉE si le module est désactivé pour
    *  le tenant (piloté par le super_admin — voir lib/modules.ts). */
   moduleKey?: ModuleKey
+  /** Fonction de la grille d'habilitations qui ouvre cette entrée. Quand
+   *  l'utilisateur a une affectation (habPermissions non null), l'entrée est
+   *  MASQUÉE s'il n'a aucune case de cette fonction : l'écran n'affiche plus
+   *  une rubrique que l'API refuserait en 403. Sans affectation, rien ne
+   *  change (accès hérité du rôle). */
+  habFn?: HabFunction
 }
 
 // Entrée épinglée en haut, hors groupe (toujours visible).
 const PINNED: NavItem = { to: '/dashboard', labelKey: 'dashboard', icon: LayoutDashboard, end: true }
 // RH et managers sont aussi des salariés : accès direct à leur espace personnel
 // (demandes d'absence, notes de frais, bulletins…).
-const PINNED_SELF: NavItem = { to: '/mon-espace', labelKey: 'mySpace', icon: UserCircle, roles: ['admin','hr_manager','hr_officer','manager','readonly'] }
+// Un salarié habilité par fiche travaille dans la coquille RH : son espace
+// personnel reste accessible par cette entrée épinglée.
+const PINNED_SELF: NavItem = { to: '/mon-espace', labelKey: 'mySpace', icon: UserCircle, roles: ['admin','hr_manager','hr_officer','manager','readonly','employee'] }
 
 // Route de « Mes validations » : porte la pastille du nombre de demandes à traiter.
 const APPROVALS_ROUTE = '/approvals'
@@ -60,15 +70,15 @@ const EMPLOYER_BRAND_ITEM: NavItem = { to: '/employer-brand', labelKey: 'employe
 
 const NAV_GROUPS: NavGroup[] = [
   { key: 'collaborators', items: [
-    { to: '/employees',     labelKey: 'employees',  icon: Users,      end: true },
-    { to: '/contracts',     labelKey: 'contracts',  icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'contracts' },
-    { to: '/org-chart',     labelKey: 'orgChart',   icon: Network,    end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'org_chart' },
-    { to: '/signature',     labelKey: 'signature',  icon: FileSignature, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'signature' },
-    { to: '/discipline',    labelKey: 'discipline', icon: Gavel,      end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'discipline' },
-    { to: '/offboarding',   labelKey: 'offboarding', icon: DoorOpen,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'offboarding' },
+    { to: '/employees',     labelKey: 'employees',  icon: Users,      end: true , habFn: 'employees' },
+    { to: '/contracts',     labelKey: 'contracts',  icon: ScrollText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'contracts' , habFn: 'contracts' },
+    { to: '/org-chart',     labelKey: 'orgChart',   icon: Network,    end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'org_chart' , habFn: 'reporting' },
+    { to: '/signature',     labelKey: 'signature',  icon: FileSignature, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'signature' , habFn: 'signature' },
+    { to: '/discipline',    labelKey: 'discipline', icon: Gavel,      end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'discipline' , habFn: 'discipline' },
+    { to: '/offboarding',   labelKey: 'offboarding', icon: DoorOpen,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'offboarding' , habFn: 'lifecycle' },
   ] },
   { key: 'payroll', items: [
-    { to: '/payroll',       labelKey: 'payroll',    icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true, moduleKey: 'payroll' },
+    { to: '/payroll',       labelKey: 'payroll',    icon: CreditCard, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], hideIfSubsidiaries: true, moduleKey: 'payroll' , habFn: 'payroll' },
     // Workflow multi-filiales — visible UNIQUEMENT pour les tenants à filiales :
     //  - RH centrale (admin/hr_manager) : pilotage complet (initier draft, décliner,
     //    suivi progression par filiale, consolider, clôturer) → /payroll/multi-filiales
@@ -79,39 +89,43 @@ const NAV_GROUPS: NavGroup[] = [
       roles: ['admin','hr_manager','hr_officer','readonly'], requiresSubsidiaries: true, moduleKey: 'payroll' },
     { to: '/raf/periods',   labelKey: 'payrollRaf', icon: ClipboardList, end: true,
       roles: ['raf_site'], requiresSubsidiaries: true, moduleKey: 'payroll' },
-    { to: '/payroll/payslips', labelKey: 'payslips', icon: FileText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'payroll' },
-    { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'payroll' },
-    { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'cnps' },
-    { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'cnps' },
-    { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'], moduleKey: 'mobile_money' },
-    { to: '/sage',          labelKey: 'sage',       icon: FileSpreadsheet, end: true, roles: ['admin','hr_manager'], moduleKey: 'sage' },
+    { to: '/payroll/payslips', labelKey: 'payslips', icon: FileText, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'payroll' , habFn: 'payroll' },
+    { to: '/payroll/simulateur-its', labelKey: 'itsSimulator', icon: Calculator, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'payroll' , habFn: 'payroll' },
+    { to: '/cnps',          labelKey: 'cnps',       icon: ShieldCheck,    end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'cnps' , habFn: 'declarations' },
+    { to: '/cnps/audit',    labelKey: 'cnpsAudit',  icon: ClipboardCheck, end: true, roles: ['admin','hr_manager','hr_officer'], moduleKey: 'cnps' , habFn: 'declarations' },
+    { to: '/mobile-money',  labelKey: 'mobileMoney', icon: Smartphone, end: true, roles: ['admin','hr_manager'], moduleKey: 'mobile_money' , habFn: 'payments' },
+    { to: '/sage',          labelKey: 'sage',       icon: FileSpreadsheet, end: true, roles: ['admin','hr_manager'], moduleKey: 'sage' , habFn: 'payroll' },
   ] },
   { key: 'timeExpenses', items: [
     { to: APPROVALS_ROUTE,  labelKey: 'approvals',  icon: ListChecks, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'] },
-    { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true, moduleKey: 'absences' },
-    { to: '/attendance',    labelKey: 'attendance', icon: Clock,      end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'attendance' },
-    { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'expenses' },
+    { to: '/absences',      labelKey: 'absences',   icon: Calendar,   end: true, moduleKey: 'absences' , habFn: 'absences' },
+    { to: '/attendance',    labelKey: 'attendance', icon: Clock,      end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'attendance' , habFn: 'attendance' },
+    { to: '/expenses-rh',   labelKey: 'expenses',   icon: Receipt,    end: true, roles: ['admin','hr_manager','hr_officer','manager'], moduleKey: 'expenses' , habFn: 'expenses' },
   ] },
   { key: 'talent', items: [
-    { to: '/recruitment',   labelKey: 'recruitment', icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'recruitment' },
-    { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'onboarding' },
-    { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'training' },
-    { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'careers' },
-    { to: '/competencies',  labelKey: 'competencies', icon: GraduationCap, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'competencies' },
-    { to: '/calibration',   labelKey: 'calibration', icon: Grid3x3,     end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'calibration' },
-    { to: '/mobility',      labelKey: 'mobility',   icon: Route,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'mobility' },
-    { to: '/succession',    labelKey: 'succession', icon: GitBranch,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'succession' },
-    { to: '/climate',       labelKey: 'climate',    icon: MessageSquare, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'climate' },
+    { to: '/recruitment',   labelKey: 'recruitment', icon: Briefcase,  end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'recruitment' , habFn: 'recruitment' },
+    { to: '/onboarding',    labelKey: 'onboarding', icon: Rocket,     end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'onboarding' , habFn: 'lifecycle' },
+    { to: '/training',      labelKey: 'training',   icon: BookOpen,   end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'training' , habFn: 'training' },
+    { to: '/careers',       labelKey: 'careers',    icon: Star,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'careers' , habFn: 'talent' },
+    { to: '/competencies',  labelKey: 'competencies', icon: GraduationCap, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'competencies' , habFn: 'talent' },
+    { to: '/calibration',   labelKey: 'calibration', icon: Grid3x3,     end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'calibration' , habFn: 'talent' },
+    { to: '/mobility',      labelKey: 'mobility',   icon: Route,       end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly'], moduleKey: 'mobility' , habFn: 'talent' },
+    { to: '/succession',    labelKey: 'succession', icon: GitBranch,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'succession' , habFn: 'talent' },
+    { to: '/climate',       labelKey: 'climate',    icon: MessageSquare, end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'climate' , habFn: 'climate' },
   ] },
   { key: 'analytics', items: [
-    { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'reporting' },
-    { to: '/referentiels',  labelKey: 'referentiels', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] },
+    { to: '/reporting',     labelKey: 'reporting',  icon: BarChart3,  end: true, roles: ['admin','hr_manager','hr_officer','readonly'], moduleKey: 'reporting' , habFn: 'reporting' },
+    { to: '/referentiels',  labelKey: 'referentiels', icon: Scale, end: true, roles: ['admin','hr_manager','hr_officer','readonly'] , habFn: 'hr_settings' },
     EMPLOYER_BRAND_ITEM,
   ] },
   { key: 'adminSecurity', items: [
-    { to: '/classification', labelKey: 'classification', icon: Layers, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly','dg'], moduleKey: 'classification' },
+    { to: '/classification', labelKey: 'classification', icon: Layers, end: true, roles: ['admin','hr_manager','hr_officer','manager','readonly','dg'], moduleKey: 'classification' , habFn: 'hr_settings' },
     { to: '/security',      labelKey: 'security',   icon: ShieldHalf, end: true, roles: ['admin'], moduleKey: 'security' },
-    { to: '/settings',      labelKey: 'settings',   icon: Settings,   end: true, roles: ['admin'] },
+    // Habilitations : l'admin l'administre ; un titulaire de « gérer les
+    // habilitations » et un validateur ayant des fiches en attente y accèdent
+    // aussi — leur rôle ne le dit pas, l'entrée est donc calculée (isVisible).
+    { to: '/habilitations', labelKey: 'habilitations', icon: KeyRound, end: true },
+    { to: '/settings',      labelKey: 'settings',   icon: Settings,   end: true, roles: ['admin'] , habFn: 'hr_settings' },
   ] },
 ]
 
@@ -145,14 +159,24 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { t } = useTranslation('nav')
   const { t: tc } = useTranslation('common')
   const { user, tenantConfig, logout } = useAuthStore()
+  const habPermissions = useAuthStore((s) => s.habPermissions)
   const location = useLocation()
   const initials = tenantConfig?.name
     ? tenantConfig.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
     : 'RH'
 
   const hasSubsidiaries = tenantConfig?.hasSubsidiaries === true
+  // Fiches dont l'utilisateur est le validateur attendu : donne accès à
+  // l'écran Habilitations même sans aucune case de la grille.
+  const pendingFiches = usePendingFiches(!!user && user.role !== 'super_admin')
+  const canSeeHabilitations = user?.role === 'admin'
+    || hasHabExtra(habPermissions, 'manage_habilitations')
+    || pendingFiches > 0
   const isVisible = (item: NavItem): boolean => {
+    if (item.to === '/habilitations') return canSeeHabilitations
     if (item.roles && !item.roles.includes(user?.role ?? '')) return false
+    // Habilitations RH : la grille retire une rubrique que l'API refuserait.
+    if (item.habFn && !hasHabFunction(habPermissions, item.habFn)) return false
     if (item.requiresSubsidiaries && !hasSubsidiaries) return false
     if (item.hideIfSubsidiaries && hasSubsidiaries) return false
     if (item.moduleKey && !isModuleEnabled(tenantConfig, item.moduleKey)) return false

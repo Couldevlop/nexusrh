@@ -133,6 +133,7 @@ describe('Cycle de vie collaborateur — recrutement → sortie', () => {
       .mockResolvedValueOnce({ rows: [{ first_name: 'Aya', last_name: 'Koné', email: 'a@x.ci', job_title: 'Comptable' }] }) // snapshot
       .mockResolvedValueOnce({ rows: [] })                 // UPDATE employees deleted_at
       .mockResolvedValueOnce({ rows: [] })                 // UPDATE users
+      .mockResolvedValueOnce({ rows: [] })                 // SELECT users (comptes liés : habilitations à couper)
       .mockResolvedValueOnce({ rows: [{ id: CONTRACT }] }) // UPDATE contracts → terminated
     const res = await app.inject({
       method: 'DELETE', url: `/employees/${EMP}`, headers: auth(token(app)),

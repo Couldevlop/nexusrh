@@ -112,6 +112,8 @@ describe('Invariants d’architecture — pas de recopie des primitives partagé
       ...services,
       ...walk(join(API_SRC, 'utils'), /\.ts$/).filter(f => !/\.test\.ts$/.test(f)),
       ...walk(join(API_SRC, 'scripts'), /\.ts$/).filter(f => !/\.test\.ts$/.test(f)),
+      // Plugins Fastify : code de production (ex. auth.ts branche le moteur d'habilitation).
+      ...walk(join(API_SRC, 'plugins'), /\.ts$/).filter(f => !/\.test\.ts$/.test(f)),
       join(API_SRC, 'app.ts'),
     ].map(f => readFileSync(f, 'utf8')).join('\n')
     // Un fichier peut aussi être un POINT D'ENTRÉE déclaré dans package.json

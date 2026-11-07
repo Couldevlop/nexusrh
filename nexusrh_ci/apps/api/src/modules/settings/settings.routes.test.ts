@@ -230,6 +230,42 @@ describe('POST /settings/legal-entities — Zod + audit + bornes AT (OWASP A03 +
     expect(String(flip?.[0])).toMatch(/count\(\*\) FROM "[^"]+"\.legal_entities\) >= 2/)
   })
 
+  it('création : le sous-groupe « RH Filiale <nom> » naît dans la MÊME instruction, noms passés en paramètres, siège exclu', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'le-1', name: 'Filiale Cocody', _hab_group_ok: true }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { name: 'Filiale Cocody' },
+    })
+    expect(res.statusCode).toBe(201)
+    const ins = queryMock.mock.calls.find((c) => String(c[0]).includes('INSERT INTO "tenant_sotra".legal_entities'))!
+    const sql = String(ins[0])
+    expect(sql).toContain('INSERT INTO "tenant_sotra".hab_subgroups')
+    expect(sql).toContain('ins.is_head_office = false')
+    expect(sql).toContain('ON CONFLICT (legal_entity_id) DO NOTHING')
+    // Constantes partagées, pas de littéraux recopiés dans le SQL.
+    expect(sql).not.toContain("'RH Filiale '")
+    expect(sql).not.toContain("'DRH Groupe'")
+    expect((ins[1] as unknown[]).slice(13)).toEqual(['DRH Groupe', 'RH Filiale '])
+    // L'indicateur interne n'est pas exposé.
+    expect(JSON.parse(res.body).data._hab_group_ok).toBeUndefined()
+  })
+
+  it('création : groupe DRH introuvable => la filiale est créée quand même (201), anomalie journalisée', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: 'le-2', name: 'Filiale X', _hab_group_ok: false }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'POST', url: '/settings/legal-entities',
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { name: 'Filiale X' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).data.id).toBe('le-2')
+  })
+
   it('RAF de filiale : un utilisateur non éligible est refusé (400), aucune insertion', async () => {
     queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 }) // isValidRaf
     const token = tokenFor(app, 'admin')
@@ -322,6 +358,42 @@ describe('PATCH /settings/legal-entities/:id — UUID + audit', () => {
     expect(res.statusCode).toBe(200)
     const auditCall = queryMock.mock.calls.find((c) => String(c[0]).includes('audit_log'))
     expect(auditCall?.[1]?.[1]).toBe('settings.legal_entity_updated')
+  })
+})
+
+describe('PATCH /settings/legal-entities/:id — siège social (isHeadOffice)', () => {
+  it('{ isHeadOffice: true } -> 200, colonne is_head_office écrite, réponse isHeadOffice: true', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: UUID_A, is_head_office: true }] }) // UPDATE
+      .mockResolvedValueOnce({ rows: [] }) // audit_log
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { isHeadOffice: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).data.isHeadOffice).toBe(true)
+    const upd = queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE') && String(c[0]).includes('legal_entities'))
+    expect(String(upd?.[0])).toContain('is_head_office = $1')
+    expect(upd?.[1]?.[0]).toBe(true)
+  })
+
+  it('isHeadOffice: "yes" -> 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { isHeadOffice: 'yes' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('hr_manager ne peut pas modifier (admin uniquement)', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/legal-entities/${UUID_A}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
+      payload: { isHeadOffice: true },
+    })
+    expect(res.statusCode).toBe(403)
   })
 })
 

@@ -20,7 +20,9 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, denyUnlessSensitive } from '../../utils/hr-scope.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, resolveManagerEmployeeId } from '../../services/manager-scope.service.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
@@ -214,6 +216,10 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
           const denied = await managerUploadDenied(schema, request.user, employeeId)
           if (denied) return reply.status(denied.status).send({ error: denied.error })
         }
+        // Périmètre filiale (habilitations) : employé hors périmètre = introuvable.
+        if (!(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable.' })
+        }
         const [docs, sigs] = await Promise.all([
           loadEmployeeDocuments(schema, employeeId),
           loadSignedRequests(schema, employeeId),
@@ -238,10 +244,12 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
       const { docId } = request.params as { docId: string }
       if (!UUID_RE.test(docId)) return reply.status(400).send({ error: 'Identifiant de document invalide.' })
       const { download } = request.query as { download?: string }
+      // Un contrat signé contient le salaire : lecture RH réservée à la case sensible.
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         const r = await pool.query<{ id: string; employee_id: string; mime: string; bytes: Buffer; file_name: string }>(
           `SELECT id, employee_id, mime, bytes, file_name FROM "${schema}".employee_documents
-            WHERE id = $1 AND category = $2 LIMIT 1`,
+            WHERE id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_documents.employee_id')} LIMIT 1`,
           [docId, SIGNED_CONTRACT_CATEGORY],
         )
         const row = r?.rows?.[0]
@@ -264,6 +272,7 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { employeeId } = request.params as { employeeId: string }
       if (!UUID_RE.test(employeeId)) return reply.status(400).send({ error: 'Identifiant employé invalide.' })
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const q = uploadQuerySchema.safeParse(request.query ?? {})
       if (!q.success) return reply.status(400).send({ error: q.error.issues[0]?.message ?? 'Paramètres invalides.' })
       const contractId = q.data.contractId ?? null
@@ -303,7 +312,7 @@ const signedContractsRoutes: FastifyPluginAsync = async (fastify) => {
                   COALESCE(e.user_id, (SELECT u.id FROM "${schema}".users u
                                         WHERE u.employee_id = e.id AND u.is_active = true LIMIT 1)) AS user_id
              FROM "${schema}".employees e
-            WHERE e.id = $1 AND e.deleted_at IS NULL LIMIT 1`,
+            WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')} LIMIT 1`,
           [employeeId],
         )
         const employee = emp?.rows?.[0]

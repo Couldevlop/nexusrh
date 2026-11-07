@@ -23,6 +23,8 @@ export interface RetentionResult {
 
 export async function analyzeRetentionRisk(
   pool: Pool, schema: string, employeeId: string,
+  /** Habilitations : sans la case données sensibles, aucun montant dans les facteurs. */
+  opts: { hideAmounts?: boolean } = {},
 ): Promise<RetentionResult | null> {
   if (!isValidSchemaName(schema)) return null
 
@@ -61,7 +63,9 @@ export async function analyzeRetentionRisk(
   const salary = Math.round(Number(emp.base_salary) || 0)
   if (salary > 0 && salary <= pack.smigMensuel * 1.1) {
     score += 20
-    factors.push(`Rémunération proche du SMIG (${String(salary).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currencyLabel(pack.currency)})`)
+    factors.push(opts.hideAmounts
+      ? 'Rémunération proche du SMIG'
+      : `Rémunération proche du SMIG (${String(salary).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currencyLabel(pack.currency)})`)
     recommendations.push('Étudier une revalorisation salariale ou une prime de fidélisation.')
   }
 

@@ -125,6 +125,7 @@ const MobilityPage = lazy(() => import('@/pages/mobility/MobilityPage'))
 
 // ── Classification des données ───────────────────────────────────────────────
 const ClassificationPage = lazy(() => import('@/pages/classification/ClassificationPage'))
+const HabilitationsPage = lazy(() => import('@/pages/habilitations/HabilitationsPage'))
 
 // ── Signature électronique ───────────────────────────────────────────────────
 const SignaturePage = lazy(() => import('@/pages/signature/SignaturePage'))
@@ -485,6 +486,16 @@ export default function App() {
                 <ModuleGuard moduleKey="mobility">
                   <MobilityPage />
                 </ModuleGuard>
+              </RoleGuard>
+            } />
+
+            {/* Habilitations RH : l'admin administre, et TOUT utilisateur du
+                tenant peut y être acteur d'une fiche (un N+1 validateur n'a
+                aucune case de la grille — la route ne peut donc pas être
+                réservée aux rôles RH). */}
+            <Route path="habilitations" element={
+              <RoleGuard allowedRoles={['admin','hr_manager','hr_officer','manager','readonly','dg','raf_site','employee']}>
+                <HabilitationsPage />
               </RoleGuard>
             } />
 

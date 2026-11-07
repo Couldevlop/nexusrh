@@ -18,6 +18,9 @@ vi.mock('../db/provisioning.js', () => ({
   seedAbsenceTypesCI: (...a: unknown[]) => seedAbsMock(...a),
 }))
 
+const habMock = vi.fn().mockResolvedValue(undefined)
+vi.mock('../db/habilitations-bootstrap.js', () => ({ provisionHabilitationStructure: (...a: unknown[]) => habMock(...a) }))
+
 const sendWelcomeMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('./email.js', () => ({ sendWelcomeTenantEmail: (...a: unknown[]) => sendWelcomeMock(...a) }))
 
@@ -67,6 +70,8 @@ describe('createTenantWithSchema', () => {
     expect(provisionMock).toHaveBeenCalledWith('tenant_acme')
     expect(seedRulesMock).toHaveBeenCalledWith('tenant_acme', AT_RATE_BY_SECTOR['btp'])
     expect(seedAbsMock).toHaveBeenCalledWith('tenant_acme')
+    // Habilitations : structure créée + marqueur posé pour le nouveau tenant (aucune reprise).
+    expect(habMock).toHaveBeenCalledWith('tenant_acme', expect.anything())
 
     // INSERT tenant : limites du plan business
     const insertCall = (pool as unknown as { query: ReturnType<typeof vi.fn> }).query.mock.calls[1]!
@@ -74,6 +79,13 @@ describe('createTenantWithSchema', () => {
     expect(params).toContain('tenant_acme')
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxUsers)
     expect(params).toContain(PLAN_DEFAULTS['business']!.maxEmployees)
+    // Nouveau tenant : contrôle par la grille d'habilitations actif d'emblée.
+    // La valeur posée correspond à la position de la colonne habilitations_enforced.
+    const insertSql = String(insertCall[0])
+    const cols = /\(([^)]*)\)\s*VALUES/.exec(insertSql)![1]!.split(',').map(c => c.trim())
+    const vals = /VALUES\s*\(([\s\S]*)\)\s*RETURNING/.exec(insertSql)![1]!.split(/,(?![^(]*\))/).map(v => v.trim())
+    expect(vals).toHaveLength(cols.length)
+    expect(vals[cols.indexOf('habilitations_enforced')]).toBe('true')
   })
 
   it('expéditeur cabinet : from + replyTo passés à l\'email', async () => {
@@ -163,6 +175,16 @@ describe('createTenantWithSchema — fiche employé « à compléter » de l\'ad
     expect(sqls[createIdx]).toContain('SET employee_id = ins.id')
     // Scopé à l'admin créé (email), schéma du tenant — jamais en dur.
     expect(query.mock.calls[createIdx]![1]).toEqual(['admin@acme.ci'])
+  })
+
+  it('échec des habilitations (structure + marqueur) : création annulée (schéma supprimé, tenant retiré), erreur relancée', async () => {
+    const { pool, query } = routedPool()
+    habMock.mockRejectedValueOnce(new Error('hab KO'))
+    await expect(createTenantWithSchema(pool, baseInput)).rejects.toThrow('hab KO')
+    const sqls = query.mock.calls.map(c => String(c[0]))
+    expect(sqls.some(s => s.includes('DROP SCHEMA IF EXISTS "tenant_acme" CASCADE'))).toBe(true)
+    expect(sqls.some(s => s.includes('DELETE FROM platform.tenants'))).toBe(true)
+    expect(sendWelcomeMock).not.toHaveBeenCalled()
   })
 
   it('échec de création de la fiche : tenant annulé (atomicité), erreur relancée', async () => {

@@ -8,7 +8,7 @@
  * SÉCURITÉ : OWASP A01 (RBAC RH ; suppression admin/hr_manager), A03 (Zod
  * safeParse + scores bornés 1–3), A09 (audit_log).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import {
@@ -18,6 +18,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -66,6 +67,26 @@ interface EntryRow {
   qualities: string | null; gaps: string | null; corrective_actions: string | null
 }
 
+const SHARED_SESSION_ERROR =
+  'Session partagée avec une autre filiale : action réservée à un RH habilité sur toutes les filiales'
+
+/**
+ * Une session est un conteneur commun : un RH limité à une filiale ne peut ni la
+ * clôturer ni la supprimer (cascade sur les entrées) si elle contient des
+ * collaborateurs hors de son périmètre. Sans restriction ('TRUE') : aucune requête.
+ */
+async function sessionHasForeignEntries(request: FastifyRequest, sessionId: string): Promise<boolean> {
+  const sc = await requestHrScope(request, 'hs')
+  if (sc === 'TRUE') return false
+  const r = await rawPool.query(
+    `SELECT 1 FROM "${request.user.schemaName}".calibration_entries ce
+       JOIN "${request.user.schemaName}".employees hs ON hs.id = ce.employee_id
+      WHERE ce.session_id = $1 AND NOT COALESCE((${sc}), false) LIMIT 1`,
+    [sessionId],
+  )
+  return r.rows.length > 0
+}
+
 const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
 
@@ -76,7 +97,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const res = await rawPool.query(
-        `SELECT s.*, (SELECT COUNT(*) FROM "${schema}".calibration_entries e WHERE e.session_id = s.id) AS entry_count
+        `SELECT s.*, (SELECT COUNT(*) FROM "${schema}".calibration_entries e WHERE e.session_id = s.id AND ${await requestEmployeeScope(request, 'e.employee_id')}) AS entry_count
          FROM "${schema}".calibration_sessions s ORDER BY s.session_date DESC NULLS LAST, s.created_at DESC`,
       )
       return reply.send({ data: res.rows })
@@ -96,7 +117,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT ce.*, emp.first_name, emp.last_name, emp.job_title
          FROM "${schema}".calibration_entries ce
          JOIN "${schema}".employees emp ON emp.id = ce.employee_id
-         WHERE ce.session_id = $1 ORDER BY emp.last_name, emp.first_name`, [id],
+         WHERE ce.session_id = $1 AND ${await requestHrScope(request, 'emp')} ORDER BY emp.last_name, emp.first_name`, [id],
       )
       const entries = e.rows.map((r) => ({
         ...r,
@@ -137,6 +158,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = sessionUpdateSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      if (await sessionHasForeignEntries(request, id)) return reply.status(409).send({ error: SHARED_SESSION_ERROR, statusCode: 409 })
       if (b.status) {
         const cur = await rawPool.query<{ status: SessionStatus }>(`SELECT status FROM "${schema}".calibration_sessions WHERE id = $1 LIMIT 1`, [id])
         if (!cur.rows[0]) return reply.status(404).send({ error: 'Session introuvable' })
@@ -166,6 +188,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (await sessionHasForeignEntries(request, id)) return reply.status(409).send({ error: SHARED_SESSION_ERROR, statusCode: 409 })
       const res = await rawPool.query(`DELETE FROM "${schema}".calibration_sessions WHERE id = $1 RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Session introuvable' })
       await rawPool.query(`DELETE FROM "${schema}".calibration_entries WHERE session_id = $1`, [id]).catch(() => undefined)
@@ -184,6 +207,10 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = entrySchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      // Périmètre filiale : on n'inscrit pas un collaborateur hors périmètre.
+      if (!(await employeeInHrScope(schema, b.employeeId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const ins = await rawPool.query<{ id: string }>(
         `INSERT INTO "${schema}".calibration_entries (session_id, employee_id, performance_before, potential_before)
          VALUES ($1,$2,$3,$4) ON CONFLICT (session_id, employee_id) DO NOTHING RETURNING id`,
@@ -217,7 +244,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       sets.push('updated_at = now()')
       params.push(id)
-      const res = await rawPool.query(`UPDATE "${schema}".calibration_entries SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
+      const res = await rawPool.query(`UPDATE "${schema}".calibration_entries SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'calibration_entries.employee_id')} RETURNING *`, params)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Entrée introuvable' })
       audit(schema, request.user.sub, 'calibration.entry_updated', 'calibration_entry', id, { fields: sets }, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
@@ -231,7 +258,7 @@ const calibrationRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const res = await rawPool.query(`DELETE FROM "${schema}".calibration_entries WHERE id = $1 RETURNING id`, [id])
+      const res = await rawPool.query(`DELETE FROM "${schema}".calibration_entries WHERE id = $1 AND ${await requestEmployeeScope(request, 'calibration_entries.employee_id')} RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Entrée introuvable' })
       audit(schema, request.user.sub, 'calibration.entry_removed', 'calibration_entry', id, {}, request.ip ?? null)
       return reply.send({ data: { id } })

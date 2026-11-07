@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { encodeField } from '../sage/sage.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import {
+  requestHrScope, requestEmployeeScope, declarationScope, legalEntityInHrScope, countEmployeesOutOfScope, SHARED_PERIOD_ERROR,
+} from '../../utils/hr-scope.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import {
@@ -169,16 +172,16 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'legalEntityId invalide (UUID requis)' })
       }
 
-      let sql = `SELECT * FROM "${schema}".cnps_declarations WHERE quarter IS NOT NULL`
+      let sql = `SELECT d.* FROM "${schema}".cnps_declarations d WHERE d.quarter IS NOT NULL AND ${await declarationScope(request, 'd')}`
       const params: unknown[] = []
       let idx = 1
 
-      if (yearParsed !== null) { sql += ` AND year = $${idx++}`; params.push(yearParsed) }
-      if (status) { sql += ` AND status = $${idx++}`; params.push(status) }
+      if (yearParsed !== null) { sql += ` AND d.year = $${idx++}`; params.push(yearParsed) }
+      if (status) { sql += ` AND d.status = $${idx++}`; params.push(status) }
       // Multi-filiales : n'afficher que les déclarations de la filiale choisie
       // (chaque n° CNPS employeur a ses propres déclarations).
-      if (legalEntityId) { sql += ` AND legal_entity_id = $${idx++}`; params.push(legalEntityId) }
-      sql += ` ORDER BY year DESC NULLS LAST, quarter DESC NULLS LAST`
+      if (legalEntityId) { sql += ` AND d.legal_entity_id = $${idx++}`; params.push(legalEntityId) }
+      sql += ` ORDER BY d.year DESC NULLS LAST, d.quarter DESC NULLS LAST`
 
       const res = await rawPool.query(sql, params)
       return reply.send({ data: res.rows })
@@ -224,6 +227,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
         const entity = le.rows[0]
         if (!entity) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        if (!(await legalEntityInHrScope(schema, entity.id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        }
         if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
       }
 
@@ -287,6 +293,11 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       const employees = slipsRes.rows
+      // Habilitations : une déclaration est un document unique pour sa filiale ; elle ne
+      // peut pas être produite par un RH restreint si elle agrège d'autres filiales.
+      if (await countEmployeesOutOfScope(schema, employees.map(e => e.employee_id), await requestHrScope(request, 'e')) > 0) {
+        return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+      }
       let totalSalarial = 0
       let totalPatronal = 0
       let totalMasseSalariale = 0
@@ -381,9 +392,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
 
       const res = await rawPool.query(
-        `UPDATE "${schema}".cnps_declarations
+        `UPDATE "${schema}".cnps_declarations d
          SET status = 'submitted', submitted_at = now(), submitted_by = $1, updated_at = now()
-         WHERE id = $2 AND status = 'draft' RETURNING *`,
+         WHERE d.id = $2 AND d.status = 'draft' AND ${await declarationScope(request, 'd')} RETURNING d.*`,
         [request.user.sub, id]
       )
       if (!res.rows[0]) {
@@ -415,10 +426,10 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         year: number; quarter: number; period_month: string | null; data: unknown
         total_cotisations: string; employees_count: number
       }>(
-        `SELECT year, quarter, period_month, data,
-                COALESCE(total_cotisations, 0)::text AS total_cotisations,
-                COALESCE(employees_count, 0) AS employees_count
-         FROM "${schema}".cnps_declarations WHERE id = $1 LIMIT 1`,
+        `SELECT d.year, d.quarter, d.period_month, d.data,
+                COALESCE(d.total_cotisations, 0)::text AS total_cotisations,
+                COALESCE(d.employees_count, 0) AS employees_count
+         FROM "${schema}".cnps_declarations d WHERE d.id = $1 AND ${await declarationScope(request, 'd')} LIMIT 1`,
         [id]
       )
       const decl = res.rows[0]
@@ -477,11 +488,12 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
           schema, legalEntityId ?? null, tenantRes.rows[0]?.has_subsidiaries === true, 'DISA distincte par numéro CNPS',
         )
         if ('error' in scope) return reply.status(scope.status).send({ error: scope.error })
+        const disaScope = await declarationScope(request, 'd')
         const res = scope.entity
           ? await rawPool.query(
-              `SELECT * FROM "${schema}".disa_records WHERE legal_entity_id = $1 ORDER BY year DESC`, [scope.entity.id],
+              `SELECT d.* FROM "${schema}".disa_records d WHERE d.legal_entity_id = $1 AND ${disaScope} ORDER BY d.year DESC`, [scope.entity.id],
             )
-          : await rawPool.query(`SELECT * FROM "${schema}".disa_records ORDER BY year DESC`)
+          : await rawPool.query(`SELECT d.* FROM "${schema}".disa_records d WHERE ${disaScope} ORDER BY d.year DESC`)
         return reply.send({ data: res.rows })
       } catch (err) {
         fastify.log.error({ err: (err as Error).message }, '[cnps] DISA list failed')
@@ -522,6 +534,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         ).catch(() => ({ rows: [] as CnpsEntityRow[] }))
         const entity = le.rows[0]
         if (!entity) return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        if (!(await legalEntityInHrScope(schema, entity.id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+        }
         if (!isCivEntity(entity)) return reply.status(400).send({ error: nonCivError(entity.name) })
       }
 
@@ -555,6 +570,10 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       )
 
       const employees = empsRes.rows
+      // Habilitations : DISA = document unique de la filiale (409 si d'autres filiales y figurent).
+      if (await countEmployeesOutOfScope(schema, employees.map(e => e.employee_id), await requestHrScope(request, 'e')) > 0) {
+        return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+      }
 
       // OWASP A04 — cap anti-fraude : refuser les exports DISA gigantesques.
       if (employees.length > DISA_MAX_EMPLOYEES) {
@@ -668,7 +687,7 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         const decl = await rawPool.query<typeof d>(
           `SELECT year, quarter, data, total_cotisations_salariales, total_cotisations_patronales,
                   total_cotisations, masse_salariale, employees_count, legal_entity_id
-           FROM "${schema}".cnps_declarations WHERE id = $1 LIMIT 1`, [id]
+           FROM "${schema}".cnps_declarations d WHERE d.id = $1 AND ${await declarationScope(request, 'd')} LIMIT 1`, [id]
         )
         if (!decl.rows[0]) return reply.status(404).send({ error: 'Déclaration introuvable' })
         d = decl.rows[0]
@@ -773,6 +792,8 @@ ${salaries}
       }
       const { employeeId, exitDate, reason } = parsed.data
       const schema = request.user.schemaName
+      // Habilitations : l'alias est le nom de la table (le SELECT et l'UPDATE le partagent).
+      const cessationScope = await requestHrScope(request, 'employees')
 
       const empRes = await rawPool.query<{
         id: string; first_name: string; last_name: string; cnps_number: string; nni: string
@@ -781,7 +802,7 @@ ${salaries}
       }>(
         `SELECT id, first_name, last_name, cnps_number, nni, hire_date, base_salary,
                 legal_entity_id, professional_category
-         FROM "${schema}".employees WHERE id = $1 LIMIT 1`, [employeeId]
+         FROM "${schema}".employees WHERE id = $1 AND ${cessationScope} LIMIT 1`, [employeeId]
       )
       const emp = empRes.rows[0]
       if (!emp) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -827,7 +848,7 @@ ${salaries}
 
       // Désactiver l'employé
       await rawPool.query(
-        `UPDATE "${schema}".employees SET is_active = false, exit_date = $1, exit_reason = $2 WHERE id = $3`,
+        `UPDATE "${schema}".employees SET is_active = false, exit_date = $1, exit_reason = $2 WHERE id = $3 AND ${cessationScope}`,
         [exitDate, reason, employeeId]
       )
 
@@ -886,6 +907,7 @@ ${salaries}
          FROM "${schema}".pay_slips ps
          WHERE ps.month LIKE $1
            AND ${civPayslipFilter(schema)}${entityFilter}
+           AND ${await requestEmployeeScope(request, 'ps.employee_id')}
          GROUP BY ps.month
          ORDER BY ps.month`,
         params,
@@ -1007,6 +1029,8 @@ ${salaries}
       } else {
         slipFilter = ` AND ${civPayslipFilter(schema)}`
       }
+      // Habilitations : seuls les bulletins des salariés du périmètre sont contrôlés.
+      slipFilter += ` AND ${await requestEmployeeScope(request, 'ps.employee_id')}`
 
       // 3. Vérifier bulletins de la période existent
       const slipCountRes = await rawPool.query<{ cnt: string }>(
@@ -1221,7 +1245,8 @@ ${salaries}
           -- employés du tenant mono-pays (legal_entity_id NULL) ou rattachés à une
           -- entité juridique ivoirienne (pack CIV-* ou pays CIV), et on exclut les
           -- filiales étrangères (et leurs bulletins, cf. slipScope).
-          AND ${entity ? `e.legal_entity_id = $${params.length}` : `(e.legal_entity_id IS NULL OR ${civEntitySql('le')})`}`
+          AND ${entity ? `e.legal_entity_id = $${params.length}` : `(e.legal_entity_id IS NULL OR ${civEntitySql('le')})`}
+          AND ${await requestHrScope(request, 'e')}`
       if (employeeId) { params.push(employeeId); empSql += ` AND e.id = $${params.length}` }
       empSql += ` GROUP BY e.id ORDER BY e.last_name, e.first_name`
 
@@ -1349,6 +1374,7 @@ ${salaries}
          JOIN "${schema}".employees e ON e.id = ps.employee_id
          WHERE ps.month = ANY($1::text[])
            AND ${rnsScope}
+           AND ${await requestHrScope(request, 'e')}
          GROUP BY e.id, e.first_name, e.last_name, e.cnps_number, e.nni, e.job_title
          ORDER BY e.last_name, e.first_name`,
         rnsParams,
@@ -1458,13 +1484,14 @@ ${salaries}
 
         // Filiale : SA ligne DISA. Mono-entité : la ligne de l'année (celle sans
         // filiale en priorité) — comportement inchangé.
+        const disaScope = await declarationScope(request, 'd')
         const disaRes = entity
           ? await rawPool.query<typeof disa>(
-              `SELECT * FROM "${schema}".disa_records WHERE year = $1 AND legal_entity_id = $2 LIMIT 1`, [yr, entity.id],
+              `SELECT d.* FROM "${schema}".disa_records d WHERE d.year = $1 AND d.legal_entity_id = $2 AND ${disaScope} LIMIT 1`, [yr, entity.id],
             )
           : await rawPool.query<typeof disa>(
-              `SELECT * FROM "${schema}".disa_records WHERE year = $1
-                ORDER BY (legal_entity_id IS NULL) DESC LIMIT 1`, [yr],
+              `SELECT d.* FROM "${schema}".disa_records d WHERE d.year = $1 AND ${disaScope}
+                ORDER BY (d.legal_entity_id IS NULL) DESC LIMIT 1`, [yr],
             )
         if (!disaRes.rows[0]) {
           return reply.status(404).send({
@@ -1575,6 +1602,10 @@ ${salaries}
       const checkPlafonds  = q.checkPlafonds  !== 'false'
 
       const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+      // Habilitations : l'audit ne porte que sur les salariés / bulletins du périmètre.
+      const auditEmpScope = await requestHrScope(request, 'e')
+      const auditSlipScope = await requestEmployeeScope(request, 'ps.employee_id')
+      const auditDeclScope = await declarationScope(request, 'd')
 
       try {
         // ── Données tenant ───────────────────────────────────────────────────
@@ -1677,6 +1708,7 @@ ${salaries}
              ORDER BY month DESC LIMIT 1
            ) ps ON true
            WHERE e.is_active = true AND e.deleted_at IS NULL${entity ? ' AND e.legal_entity_id = $2' : ''}
+             AND ${auditEmpScope}
            ORDER BY e.last_name, e.first_name`,
           [months, ...entityParam]
         )
@@ -1690,15 +1722,16 @@ ${salaries}
           `SELECT quarter, status,
                   COALESCE(total_cotisations, 0)::text AS total_cotisations,
                   COALESCE(employees_count, 0) AS employees_count,
-                  legal_entity_id
-           FROM "${schema}".cnps_declarations WHERE year = $1${entity ? ' AND legal_entity_id = $2' : ''}
-           ORDER BY quarter`, [year, ...entityParam]
+                  d.legal_entity_id
+           FROM "${schema}".cnps_declarations d WHERE d.year = $1${entity ? ' AND d.legal_entity_id = $2' : ''}
+             AND ${auditDeclScope}
+           ORDER BY d.quarter`, [year, ...entityParam]
         )
 
         // ── 5. Stats cotisations de l'année ───────────────────────────────────
-        const slipScope = entity
+        const slipScope = (entity
           ? ' AND ps.legal_entity_id = $4'
-          : hasSubs ? ` AND ${civPayslipFilter(schema)}` : ''
+          : hasSubs ? ` AND ${civPayslipFilter(schema)}` : '') + ` AND ${auditSlipScope}`
         const cotisRes = await rawPool.query<{
           masse: string; cnps_sal: string; cnps_pat: string
           its: string; net: string; nb: string
@@ -1718,9 +1751,9 @@ ${salaries}
         const cotis = cotisRes.rows[0]
 
         // ── 6. Mensuel ────────────────────────────────────────────────────────
-        const monthlyScope = entity
+        const monthlyScope = (entity
           ? ' AND ps.legal_entity_id = $2'
-          : hasSubs ? ` AND ${civPayslipFilter(schema)}` : ''
+          : hasSubs ? ` AND ${civPayslipFilter(schema)}` : '') + ` AND ${auditSlipScope}`
         const monthlyRes = await rawPool.query<{
           month: string; nb: string; masse: string; cnps_sal: string; cnps_pat: string; its: string; net: string
         }>(
@@ -1737,7 +1770,8 @@ ${salaries}
         // ── 7. Mobile Money répartition ───────────────────────────────────────
         const mobileRes = await rawPool.query<{ provider: string; cnt: string }>(
           `SELECT COALESCE(mobile_money_provider,'aucun') AS provider, COUNT(*)::text AS cnt
-           FROM "${schema}".employees WHERE is_active = true AND deleted_at IS NULL${entity ? ' AND legal_entity_id = $1' : ''}
+           FROM "${schema}".employees e WHERE e.is_active = true AND e.deleted_at IS NULL${entity ? ' AND e.legal_entity_id = $1' : ''}
+             AND ${auditEmpScope}
            GROUP BY mobile_money_provider ORDER BY COUNT(*) DESC`, entityParam
         )
 
@@ -1755,6 +1789,7 @@ ${salaries}
                     SUM(ps.total_cnps_pat)::text AS cnps_pat,
                     SUM(ps.its)::text AS its
              FROM "${schema}".pay_slips ps WHERE ps.month = ANY($1::text[])
+               AND ${auditSlipScope}
              GROUP BY ps.legal_entity_id`, [months]
           )
           for (const r of aggRes.rows) {

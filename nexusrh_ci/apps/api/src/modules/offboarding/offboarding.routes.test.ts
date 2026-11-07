@@ -132,7 +132,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit
     const res = await app.inject({
-      method: 'POST', url: '/offboarding/o1/settlement',
+      method: 'POST', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001/settlement',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: { congesDaysOutstanding: 10 },
     })
@@ -159,7 +159,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({
-      method: 'POST', url: '/offboarding/o1/settlement',
+      method: 'POST', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001/settlement',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: {},
     })
@@ -183,7 +183,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit
     const res = await app.inject({
-      method: 'POST', url: '/offboarding/o1/settlement',
+      method: 'POST', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001/settlement',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: { congesDaysOutstanding: 0 },
     })
@@ -196,7 +196,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
   it('404 si dossier inexistant', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     const res = await app.inject({
-      method: 'POST', url: '/offboarding/inconnu/settlement',
+      method: 'POST', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000002/settlement',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: {},
     })
@@ -217,7 +217,7 @@ describe('POST /offboarding/:id/settlement — solde de tout compte', () => {
       .mockResolvedValueOnce({ rows: [] }) // UPDATE
       .mockResolvedValueOnce({ rows: [] }) // audit
     const res = await app.inject({
-      method: 'POST', url: '/offboarding/o1/settlement',
+      method: 'POST', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001/settlement',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: {},
     })
@@ -240,7 +240,7 @@ describe('PATCH /offboarding/:id — transition contrôlée', () => {
   it('refuse open → closed (409)', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ status: 'open' }] })
     const res = await app.inject({
-      method: 'PATCH', url: '/offboarding/o1',
+      method: 'PATCH', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_manager')}` },
       payload: { status: 'closed' },
     })

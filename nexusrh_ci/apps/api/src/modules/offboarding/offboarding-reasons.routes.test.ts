@@ -110,7 +110,7 @@ describe('POST/PATCH /offboarding — catégorie de motif', () => {
   it('accepte une catégorie propre au tenant', async () => {
     routeQueries({ categories: [{ key: 'salaire', label: 'Salaire' }] })
     const res = await app.inject({
-      method: 'PATCH', url: '/offboarding/case-1',
+      method: 'PATCH', url: '/offboarding/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${tokenFor(app, 'hr_officer')}` },
       payload: { reasonCategory: 'salaire' },
     })

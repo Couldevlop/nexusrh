@@ -178,6 +178,48 @@ describe('PATCH /settings/users/:id — changement de fiche liée', () => {
   })
 })
 
+/**
+ * Désactivation d'un compte : elle doit emporter les habilitations RH.
+ *
+ * Couper le login ne suffit pas — l'affectation et les délégations resteraient
+ * actives en base, et le jour où le compte est réactivé la personne
+ * retrouverait des droits que personne n'a re-validés. Pire : une délégation
+ * reçue par un compte désactivé laisse un tiers agir en son nom.
+ */
+describe('PATCH /settings/users/:id — désactivation et habilitations', () => {
+  it('is_active: false révoque les droits et les délégations', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ role: 'hr_officer', is_active: true, employee_id: null }] }) // before
+      .mockResolvedValueOnce({ rows: [{ id: USER, email: 'k@sotra.ci', role: 'hr_officer', is_active: false, employee_id: null }] }) // UPDATE users
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${USER}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { is_active: false },
+    })
+    expect(res.statusCode).toBe(200)
+    const sqls = queryMock.mock.calls.map((c) => String(c[0]).replace(/\s+/g, ' '))
+    expect(sqls.some((q) => q.includes('UPDATE') && q.includes('hab_assignments') && q.includes('revoked_at'))).toBe(true)
+    expect(sqls.some((q) => q.includes('UPDATE') && q.includes('hab_delegations') && q.includes('revoked_at'))).toBe(true)
+    expect(sqls.some((q) => q.includes('audit_log'))).toBe(true)
+  })
+
+  it('une réactivation (is_active: true) ne révoque rien', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ role: 'hr_officer', is_active: false, employee_id: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: USER, email: 'k@sotra.ci', role: 'hr_officer', is_active: true, employee_id: null }] })
+      .mockResolvedValue({ rows: [] })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${USER}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      payload: { is_active: true },
+    })
+    expect(res.statusCode).toBe(200)
+    const sqls = queryMock.mock.calls.map((c) => String(c[0]))
+    expect(sqls.some((q) => q.includes('hab_assignments'))).toBe(false)
+  })
+})
+
 describe('GET /settings/users — fiche liée (explicite ou repli email)', () => {
   it('expose le nom de la fiche et le type de lien', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: USER, employee_id: EMP, employee_first_name: 'Kouassi', employee_last_name: 'Coulibaly', employee_link: 'explicit' }] })

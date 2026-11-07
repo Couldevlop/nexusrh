@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
@@ -6,6 +6,8 @@ import { analyzeRetentionRisk } from '../../services/retention-analysis.service.
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { isMasked } from '../../services/sensitive-mask.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -102,6 +104,11 @@ async function isOwnEmployeeRecord(
   return r.rows.length > 0
 }
 
+/** Périmètre filiale (habilitations) : l'employé cible est-il dans le périmètre de l'acteur ? */
+async function targetInHrScope(request: FastifyRequest, employeeId: string): Promise<boolean> {
+  return employeeInHrScope(request.user.schemaName, employeeId, await requestHrScope(request, 'e'))
+}
+
 function auditLogCareer(
   schema: string, userId: string, action: string,
   entityId: string | null, changes: Record<string, unknown>, ip: string | null,
@@ -180,6 +187,10 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
         if (!allowed) return reply.status(403).send({ error: 'Vous ne pouvez consulter que les compétences de votre équipe directe' })
       }
       try {
+        // Périmètre filiale : hors périmètre = introuvable (le self-service reste libre).
+        if (role !== 'employee' && !(await targetInHrScope(request, employeeId))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         const res = await pool.query(`
           SELECT es.*, cs.name AS skill_name, cs.category
           FROM "${schema}".employee_skills es
@@ -214,6 +225,9 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(403).send({ error: 'Vous ne pouvez modifier que les compétences de votre équipe directe' })
       }
       try {
+        if (!(await targetInHrScope(request, body.employee_id))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         for (const skill of body.skills) {
           await pool.query(`
             INSERT INTO "${schema}".employee_skills (employee_id, skill_id, level, target_level, updated_at)
@@ -244,7 +258,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
                  FROM "${schema}".evaluations ev
                  JOIN "${schema}".employees e ON e.id = ev.employee_id
                  LEFT JOIN "${schema}".employees ev2 ON ev2.id = ev.evaluator_id
-                 WHERE 1=1`
+                 WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (request.user.role === 'manager') {
@@ -290,6 +304,9 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(403).send({ error: 'Vous ne pouvez évaluer que votre équipe directe' })
       }
       try {
+        if (!(await targetInHrScope(request, body.employee_id))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         const evaluatorRes = await pool.query(
           actorEmployeeSql(schema), [request.user.email]
         )
@@ -373,7 +390,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
       values.push(id)
       try {
         const res = await pool.query(
-          `UPDATE "${schema}".evaluations SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
+          `UPDATE "${schema}".evaluations SET ${updates.join(', ')} WHERE id = $${values.length} AND ${await requestEmployeeScope(request, 'evaluations.employee_id')} RETURNING *`,
           values
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Évaluation introuvable' })
@@ -469,7 +486,7 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
           JOIN "${schema}".evaluations ev ON ev.employee_id = e.id
             AND ev.year = $1 AND ev.type = 'annual' AND ev.status = 'completed'
           LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-          WHERE e.is_active = true AND e.deleted_at IS NULL
+          WHERE e.is_active = true AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}
           ORDER BY ev.global_score DESC NULLS LAST
         `, [parseInt(year)])
         return reply.send({ data: res.rows })
@@ -492,7 +509,12 @@ const careersRoutes: FastifyPluginAsync = async (fastify) => {
       const allowed = await userCanActOnEmployee(schema, request.user.role, request.user.email, employeeId)
       if (!allowed) return reply.status(403).send({ error: 'Accès interdit (hors équipe directe)' })
       try {
-        const result = await analyzeRetentionRisk(pool, schema, employeeId)
+        if (!(await targetInHrScope(request, employeeId))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
+        const result = await analyzeRetentionRisk(pool, schema, employeeId, {
+          hideAmounts: isMasked(await requestSensitiveCtx(request)),
+        })
         if (!result) return reply.status(404).send({ error: 'Employé introuvable' })
         return reply.send({ data: result })
       } catch (err) {

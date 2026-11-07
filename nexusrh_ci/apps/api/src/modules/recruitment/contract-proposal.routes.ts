@@ -25,6 +25,7 @@ import { pool } from '../../db/pool.js'
 import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestEmployeeScope, denyUnlessSensitive } from '../../utils/hr-scope.js'
 import { renderHrDocumentPdf } from './hr-document-pdf.js'
 import { actorUuid } from './stage-history.js'
 import { fileProposalForHiredApplication } from './hire.service.js'
@@ -85,6 +86,8 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant de candidature invalide.' })
+      // Le texte de la proposition contient le salaire : pas de lecture sans la case sensible.
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         await ensureRecruitmentSchemaMigrated(schema)
         const [enabled, rows] = await Promise.all([
@@ -125,6 +128,7 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Données invalides' })
       }
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         if (!(await isContractGenerationEnabled(schema))) {
           return reply.status(403).send(CONTRACT_GENERATION_DISABLED)
@@ -179,6 +183,7 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant de candidature invalide.' })
       const q = pdfQuerySchema.safeParse(request.query ?? {})
       if (!q.success) return reply.status(400).send({ error: 'Version invalide.' })
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         await ensureRecruitmentSchemaMigrated(schema)
         const found = await getProposalPdf(schema, id, q.data.version)
@@ -209,7 +214,7 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
         }>(
           `SELECT id, title, file_name, size_bytes, version, is_current, created_at
              FROM "${schema}".employee_documents
-            WHERE employee_id = $1 AND category = $2
+            WHERE employee_id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_documents.employee_id')}
             ORDER BY is_current DESC, created_at DESC`,
           [employeeId, CONTRACT_PROPOSAL_CATEGORY],
         )
@@ -235,10 +240,11 @@ const contractProposalRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(docId)) return reply.status(400).send({ error: 'Identifiant de document invalide.' })
       const q = fileQuerySchema.safeParse(request.query ?? {})
       if (!q.success) return reply.status(400).send({ error: 'Paramètre invalide.' })
+      if (await denyUnlessSensitive(request, reply)) return
       try {
         const r = await pool.query<{ id: string; employee_id: string; bytes: Buffer; file_name: string }>(
           `SELECT id, employee_id, bytes, file_name FROM "${schema}".employee_documents
-            WHERE id = $1 AND category = $2 LIMIT 1`,
+            WHERE id = $1 AND category = $2 AND ${await requestEmployeeScope(request, 'employee_documents.employee_id')} LIMIT 1`,
           [docId, CONTRACT_PROPOSAL_CATEGORY],
         )
         const row = r?.rows?.[0]

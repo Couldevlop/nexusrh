@@ -19,6 +19,8 @@ import { ensureRecruitmentSchemaMigrated } from '../../db/provisioning.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest, badRequestFromZod } from '../../utils/http-errors.js'
 import { screeningRepo, type PendingRow } from './screening.repository.js'
+import { requestSensitiveCtx, SENSITIVE_DOCUMENT_DENIED } from '../../utils/hr-scope.js'
+import { isMasked, redactRuleTexts } from '../../services/sensitive-mask.js'
 import {
   sanitizeQuestions, sanitizeCriteria, evaluateQuestions, evaluateScreening,
   combineVerdicts, type ScreeningQuestion, type CandidateExtracted,
@@ -135,6 +137,17 @@ function evaluateBatch(
   }
 }
 
+/** Compteurs par règle : le motif « Prétention salariale » cite le montant du candidat. */
+function redactCounters(counters: Counters, ctx: Parameters<typeof isMasked>[0]): Counters {
+  if (!isMasked(ctx)) return counters
+  const merged = new Map<string, number>()
+  for (const { rule, count } of counters.byRule) {
+    const r = redactRuleTexts([rule], ctx)[0]!
+    merged.set(r, (merged.get(r) ?? 0) + count)
+  }
+  return { ...counters, byRule: [...merged.entries()].map(([rule, count]) => ({ rule, count })) }
+}
+
 const screeningRoutes: FastifyPluginAsync = async (fastify) => {
   /** Migration paresseuse — APRÈS `authenticate`, jamais en hook d'instance. */
   async function ensureSchema(request: FastifyRequest): Promise<void> {
@@ -207,9 +220,15 @@ const screeningRoutes: FastifyPluginAsync = async (fastify) => {
         ? sanitizeQuestions(parsed.data.questions)
         : await repo.getQuestions(id)
 
+      // Un plafond de prétention salariale + les compteurs par règle = oracle sur
+      // expected_salary (dichotomie) : réservé à la case données sensibles.
+      const maskCtx = await requestSensitiveCtx(request)
+      if (isMasked(maskCtx) && (sanitizeCriteria(criteria ?? {}).maxExpectedSalary ?? 0) > 0) {
+        return reply.status(403).send({ error: SENSITIVE_DOCUMENT_DENIED })
+      }
       const rows = await repo.listPending(id)
       const { counters } = evaluateBatch(rows, criteria, questions)
-      return reply.send({ data: counters })
+      return reply.send({ data: redactCounters(counters, maskCtx) })
     },
   })
 
@@ -238,7 +257,7 @@ const screeningRoutes: FastifyPluginAsync = async (fastify) => {
         changes: { total: counters.total, pass: counters.pass, flagged: counters.flagged },
         ip: request.ip ?? null,
       })
-      return reply.send({ data: counters })
+      return reply.send({ data: redactCounters(counters, await requestSensitiveCtx(request)) })
     },
   })
 
@@ -261,7 +280,9 @@ const screeningRoutes: FastifyPluginAsync = async (fastify) => {
       ])
       // Les libellés accompagnent les réponses : la file est lisible sans avoir
       // à recouper avec la définition de l'offre.
-      return reply.send({ data: { items, questions, limit, offset } })
+      const maskCtx = await requestSensitiveCtx(request)
+      const safeItems = items.map((it) => ({ ...it, screening_failed_rules: redactRuleTexts(it.screening_failed_rules ?? [], maskCtx) }))
+      return reply.send({ data: { items: safeItems, questions, limit, offset } })
     },
   })
 

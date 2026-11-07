@@ -134,6 +134,11 @@ export class HireError extends Error {
 export interface HireActor {
   userId: string
   ip: string | null
+  /**
+   * Périmètre filiale de l'acteur (habilitations) : fragment SQL sur l'alias
+   * `e` (cf. hrScopeSql). Absent ou 'TRUE' = aucune restriction.
+   */
+  scopeSql?: string
 }
 
 interface ApplicationForHire {
@@ -235,7 +240,7 @@ async function findEmployee(db: TxClient, schema: string, where: string, value: 
 }
 
 /** Pré-remplissage de la modale d'embauche (lecture seule). null = candidature inconnue. */
-export async function getHirePrefill(schema: string, applicationId: string): Promise<(ReturnType<typeof buildHirePrefill> & {
+export async function getHirePrefill(schema: string, applicationId: string, scopeSql = 'TRUE'): Promise<(ReturnType<typeof buildHirePrefill> & {
   firstName: string; lastName: string; email: string | null; phone: string | null
   employeeId: string | null; existingEmployeeId: string | null
 }) | null> {
@@ -248,10 +253,17 @@ export async function getHirePrefill(schema: string, applicationId: string): Pro
     const existing = email
       ? await findEmployee(client, schema, 'lower(email) = $1 AND deleted_at IS NULL', email)
       : null
+    // Périmètre filiale : un salarié existant hors périmètre n'est pas révélé.
+    const inScope = async (id: string | null): Promise<string | null> => {
+      if (!id || scopeSql === 'TRUE') return id
+      const r = await client.query(`SELECT 1 FROM "${schema}".employees e WHERE e.id = $1::uuid AND ${scopeSql}`, [id])
+      return r.rows.length > 0 ? id : null
+    }
     return {
       ...buildHirePrefill(app),
       firstName: app.first_name, lastName: app.last_name, email, phone: app.phone,
-      employeeId: app.employee_id, existingEmployeeId: existing?.id ?? app.internal_employee_id ?? null,
+      employeeId: await inScope(app.employee_id),
+      existingEmployeeId: await inScope(existing?.id ?? app.internal_employee_id ?? null),
     }
   } finally {
     client.release()
@@ -316,6 +328,14 @@ export async function hireApplication(
       if (!email && !toComplete.includes('email')) toComplete.push('email')
 
       const prefill = buildHirePrefill(app, overrides)
+      // Périmètre filiale : on n'embauche pas dans une filiale hors périmètre.
+      if (actor.scopeSql && actor.scopeSql !== 'TRUE') {
+        const ok = await client.query(
+          `SELECT 1 FROM (SELECT $1::uuid AS legal_entity_id) e WHERE ${actor.scopeSql}`,
+          [prefill.legalEntityId ?? null],
+        )
+        if (ok.rows.length === 0) throw new HireError(404, 'Candidature introuvable', 'OUT_OF_SCOPE')
+      }
       const ctx = await loadEmployeeTenantContext(client, schema, prefill.legalEntityId)
       const pack = ctx.legislation.legislationPack
       let baseSalary = prefill.baseSalary
@@ -382,6 +402,14 @@ export async function hireApplication(
         hire_date: body.hireDate ?? null,
         deleted_at: null,
       }
+    }
+
+    // Fiche existante reliée : elle doit elle aussi être dans le périmètre.
+    if (status !== 'created' && actor.scopeSql && actor.scopeSql !== 'TRUE') {
+      const ok = await client.query(
+        `SELECT 1 FROM "${schema}".employees e WHERE e.id = $1::uuid AND ${actor.scopeSql}`, [employee.id],
+      )
+      if (ok.rows.length === 0) throw new HireError(404, 'Candidature introuvable', 'OUT_OF_SCOPE')
     }
 
     if (app.employee_id !== employee.id) {

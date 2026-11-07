@@ -15,6 +15,10 @@ import { createPayslipLabelResolver, loadPayslipCountryLabels } from '../../serv
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import {
+  requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope, countEmployeesOutOfScope, periodHasOutOfScopeSlips, requestPeriodVisibility, SHARED_PERIOD_ERROR,
+} from '../../utils/hr-scope.js'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { loadPayslipMentions } from '../../services/payslip-mentions.service.js'
 import { notifyPayrollValidators } from '../../services/payroll-validation-alerts.service.js'
 import {
@@ -138,7 +142,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsedBody.error.flatten() })
       }
       const { employeeId, month } = parsedBody.data
+      if (isSelfAction(request, employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const schema = request.user.schemaName
+      // Habilitations : périmètre filiale (fragment SQL sur l'alias `e`).
+      const scopeSql = await requestHrScope(request, 'e')
 
       // Toute la simulation est encadrée : une donnée employé/tenant incohérente
       // (filiale orpheline, pack indisponible, colonne legacy) doit produire un
@@ -168,13 +175,14 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
          ) oc ON true
          WHERE e.id = $1
            AND (e.deleted_at IS NULL OR COALESCE(e.exit_date, oc.departure_date) >= $2::date)
+           AND ${scopeSql}
          LIMIT 1`,
         [employeeId, `${previousMonth(month)}-01`, `${month}-01`]
       ).catch(() => rawPool.query<CalcEmployee>(
-        `SELECT id, base_salary, marital_status, children_count,
-                first_name, last_name, cnps_number, nni,
-                mobile_money_provider, mobile_money_phone, hire_date, legal_entity_id
-         FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+        `SELECT e.id, e.base_salary, e.marital_status, e.children_count,
+                e.first_name, e.last_name, e.cnps_number, e.nni,
+                e.mobile_money_provider, e.mobile_money_phone, e.hire_date, e.legal_entity_id
+         FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${scopeSql} LIMIT 1`,
         [employeeId]
       ))
       const emp = empRes.rows[0]
@@ -362,6 +370,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: bodyParsed.error.flatten() })
       }
       const { legalEntityId } = bodyParsed.data
+      // Habilitations : filiale demandée hors périmètre = introuvable (avant tout 422/409/écriture).
+      if (legalEntityId && !(await legalEntityInHrScope(schema, legalEntityId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Filiale introuvable ou inactive' })
+      }
 
       const tenantRes = await rawPool.query<{
         id: string; has_subsidiaries: boolean; at_rate: string
@@ -430,6 +442,11 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Actifs + sortants du mois (bulletin de solde), scope filiale si applicable
       const emps = { rows: await loadPayrollPopulation(schema, month, { legalEntityId: legalEntityId ?? null }) }
+      // Habilitations : la clôture génère les bulletins de TOUTE la population ; un RH
+      // restreint ne la lance que si elle ne contient aucun employé d'une autre filiale.
+      if (await countEmployeesOutOfScope(schema, emps.rows.map(e => e.id), await requestHrScope(request, 'e')) > 0) {
+        return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+      }
       const { year, monthNum } = parsed
       const workingDaysMonth = getWorkingDays(year, monthNum)
 
@@ -666,7 +683,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
                   ui.last_name  AS initiator_last_name
              FROM "${schema}".pay_periods p
              LEFT JOIN "${schema}".users ui ON ui.id = p.initiated_by
-             WHERE p.month = $1 AND p.parent_period_id IS NULL LIMIT 1`,
+             WHERE p.month = $1 AND p.parent_period_id IS NULL AND ${await requestPeriodVisibility(request, 'p')} LIMIT 1`,
           [month],
         )
         if (!period.rows[0]) return reply.status(404).send({ error: 'Période introuvable' })
@@ -704,6 +721,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         const loaded = await loadPendingPeriod(schema, month)
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period: p, circuit, approvals, users, state } = loaded
+        if (await periodHasOutOfScopeSlips(schema, p.id, await requestHrScope(request, 'e'))) {
+          return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+        }
 
         const decision = decideOnPeriod(state, p, request.user)
         if (!decision.allowed) {
@@ -783,6 +803,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         const loaded = await loadPendingPeriod(schema, month)
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period: p, state } = loaded
+        if (await periodHasOutOfScopeSlips(schema, p.id, await requestHrScope(request, 'e'))) {
+          return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+        }
 
         const decision = decideOnPeriod(state, p, request.user)
         if (!decision.allowed) {
@@ -827,6 +850,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         const loaded = await loadPendingPeriod(schema, month)
         if ('status' in loaded) return reply.status(loaded.status).send({ error: loaded.error })
         const { period: p, approvals } = loaded
+        if (await periodHasOutOfScopeSlips(schema, p.id, await requestHrScope(request, 'e'))) {
+          return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
+        }
         if (p.initiated_by !== request.user.sub) {
           return reply.status(403).send({ error: 'Seul l\'initiateur de la clôture peut annuler son initiation.' })
         }
@@ -865,7 +891,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       let sql = `SELECT ps.*, e.first_name, e.last_name, e.cnps_number
                  FROM "${schema}".pay_slips ps
                  JOIN "${schema}".employees e ON e.id = ps.employee_id
-                 WHERE 1=1`
+                 WHERE 1=1 AND ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (month)      { sql += ` AND ps.month = $${idx++}`; params.push(month) }
@@ -924,7 +950,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
            FROM "${schema}".pay_slips ps
            JOIN "${schema}".employees e ON e.id = ps.employee_id
            LEFT JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id
-          WHERE ps.id = $1 LIMIT 1`,
+          WHERE ps.id = $1 AND ${await requestHrScopeUnlessSelf(request, 'e')} LIMIT 1`,
         [id],
       )
       if (!slipRes.rows[0]) return reply.status(404).send({ error: 'Bulletin introuvable' })
@@ -1270,9 +1296,40 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['payroll'], summary: 'Périodes de paie' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      const scopeSql = await requestHrScope(request, 'e')
+      const visibility = await requestPeriodVisibility(request, 'pp')
       const res = await rawPool.query<PeriodForValidation & Record<string, unknown>>(
-        `SELECT * FROM "${schema}".pay_periods ORDER BY month DESC`
+        scopeSql === 'TRUE'
+          ? `SELECT * FROM "${schema}".pay_periods ORDER BY month DESC`
+          // Habilitations : seules les périodes portant un bulletin du périmètre (ou vides et
+          // rattachées à une filiale du périmètre) sont listées : ni statut ni clôtureur d'ailleurs.
+          : `SELECT pp.* FROM "${schema}".pay_periods pp WHERE ${visibility} ORDER BY pp.month DESC`
       )
+      if (scopeSql !== 'TRUE') {
+        // Totaux recalculés sur les SEULS bulletins du périmètre, déclinaisons filiales
+        // comprises (une parente n'a pas de bulletin direct) ; jamais les totaux stockés.
+        const tot = await rawPool.query<{
+          period_id: string; gross: string; net: string; cnps: string; its: string
+        }>(
+          `SELECT pp.id AS period_id, SUM(ps.gross_salary) AS gross, SUM(ps.net_payable) AS net,
+                  SUM(COALESCE(ps.total_cnps_sal,0) + COALESCE(ps.total_cnps_pat,0)) AS cnps, SUM(COALESCE(ps.its,0)) AS its
+             FROM "${schema}".pay_periods pp
+             JOIN "${schema}".pay_periods c ON c.id = pp.id OR c.parent_period_id = pp.id
+             JOIN "${schema}".pay_slips ps ON ps.period_id = c.id
+             JOIN "${schema}".employees e ON e.id = ps.employee_id
+            WHERE pp.id = ANY($1::uuid[]) AND ${scopeSql}
+            GROUP BY pp.id`,
+          [res.rows.map(r => String(r.id))],
+        )
+        const byPeriod = new Map(tot.rows.map(t => [String(t.period_id), t]))
+        for (const row of res.rows) {
+          const t = byPeriod.get(String(row.id))
+          row.total_gross = t ? t.gross : null
+          row.total_net = t ? t.net : null
+          row.total_cnps = t ? t.cnps : null
+          row.total_its = t ? t.its : null
+        }
+      }
       // Valideur attendu (nom + fonction + échéance) des périodes en validation
       const pendingWith = await describePendingPeriods(rawPool, schema, res.rows)
         .catch(() => new Map<string, ReturnType<typeof pendingWithOf>>())
@@ -1320,7 +1377,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
          FROM "${schema}".pay_slips ps
          JOIN "${schema}".employees e ON e.id = ps.employee_id
          LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-         WHERE ps.month LIKE $1
+         WHERE ps.month LIKE $1 AND ${await requestHrScope(request, 'e')}
          ORDER BY ps.month, e.last_name`,
         [`${year}-%`]
       )
@@ -1420,7 +1477,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.status(403).send({ error: 'Vous ne pouvez simuler que sur votre propre profil' })
           }
         }
-        // admin/hr_manager/hr_officer : portée tenant globale, pas de check
+        // RH : l'employé cible doit être dans le périmètre filiale (404 sinon).
+        if (role !== 'employee' && !(await employeeInHrScope(schema, body.employee_id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
       }
       // Sans employee_id, un employee simule implicitement sur lui-même : OK
 
@@ -1455,12 +1515,10 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       // OWASP A09 : trace de la simulation (action sensible — préparation
       // d'offre, négociation). Non bloquant si audit_log absent.
       auditTenant(schema, { userId: request.user.sub, action: 'payroll.simulated', entity: 'payroll_simulation', entityId: body.employee_id ?? null, changes: {
-           baseSalary: body.baseSalary,
+           // Noms de champs seulement : jamais les montants (audit sans valeur personnelle).
+           simulatedFields: ['baseSalary', 'grossSalary', 'netPayable', 'employerCost'],
            hasAbsence: !!body.absence,
            variableElementsCount: Object.keys(body.variableElements ?? {}).length,
-           grossSalary: result.grossSalary,
-           netPayable: result.netPayable,
-           employerCost: result.employerCost,
          }, ip: request.ip ?? null })
 
       return reply.send({

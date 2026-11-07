@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { config } from '../../config.js'
@@ -18,6 +19,9 @@ import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@ne
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
+import { HAB_FILIALE_PREFIX, HAB_GROUP_NAME, revokeHabilitationOnRoleChange } from '../../db/habilitations-bootstrap.js'
+import { revokeAllForUser } from '../../services/habilitation.service.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
@@ -156,6 +160,8 @@ const createLegalEntitySchema = z.object({
   legislation_pack_code: z.string().max(50).optional().nullable(),
   // Responsable paie de la filiale (RAF) : reçoit la paie déclinée et la soumet.
   raf_user_id:           z.string().uuid().optional().nullable(),
+  // Filiale « siège social » : couverte par le sous-groupe RH Siège (habilitations).
+  isHeadOffice:          z.boolean().optional(),
 }).strict()
 
 /** Rôles pouvant tenir la paie d'une filiale (RAF). */
@@ -169,6 +175,11 @@ async function isValidRaf(schema: string, userId: string): Promise<boolean> {
     [userId, [...RAF_ROLES]],
   )
   return (r.rowCount ?? 0) > 0
+}
+
+/** Ajoute `isHeadOffice` (camelCase) à une ligne legal_entities, sans retirer is_head_office. */
+function withHeadOffice<T extends Record<string, unknown>>(row: T): T & { isHeadOffice: boolean } {
+  return { ...row, isHeadOffice: row['is_head_office'] === true }
 }
 
 const patchLegalEntitySchema = createLegalEntitySchema.partial().extend({
@@ -1480,7 +1491,20 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // JWT (7j) via /auth/refresh. cf. plugins/auth.ts (token-epoch).
         // Le lien de fiche est porté par le JWT (employeeId) : un changement de
         // fiche invalide aussi les sessions pour ne pas agir sous l'ancienne.
+        // Habilitations : quitter un rôle RH (hr_manager, hr_officer, raf_site)
+        // révoque l'affectation active (revoked_at + audit habilitation.revoked).
+        if (roleChanged && role !== undefined) {
+          await revokeHabilitationOnRoleChange(schema, id, role, request.user.sub, request.ip ?? null)
+        }
         const becameInactive = is_active === false
+        // Désactivation : couper le login ne suffit pas. L'affectation et les
+        // délégations (données comme reçues) doivent tomber avec le compte —
+        // sinon une réactivation rendrait des droits que personne n'a
+        // re-validés, et une délégation reçue laisserait un tiers agir au nom
+        // d'un compte désactivé.
+        if (becameInactive) {
+          await revokeAllForUser(schema, id, 'user_disabled')
+        }
         if (roleChanged || becameInactive || linkChanged) {
           try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
         }
@@ -1814,7 +1838,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           LEFT JOIN "${schema}".employees e ON e.legal_entity_id = le.id AND e.is_active = true AND e.deleted_at IS NULL
           GROUP BY le.id ORDER BY le.name
         `)
-        return reply.send({ data: res.rows })
+        return reply.send({ data: res.rows.map(withHeadOffice) })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1841,16 +1865,37 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const atErr = atRateError(body.at_rate ?? 0.02, body.legislation_pack_code, body.country_code)
         if (atErr) return reply.status(400).send({ error: atErr })
-        const res = await pool.query<{ id: string }>(`
-          INSERT INTO "${schema}".legal_entities
-            (name, rccm, cnps_number, dgi_number, address, city, legal_form,
-             collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+        // Une seule instruction = une seule transaction : la filiale et son
+        // sous-groupe « RH Filiale <nom> » (habilitations) naissent ensemble. Le
+        // siège social n'a pas de sous-groupe propre (couvert par « RH Siège »).
+        // Renommer la filiale ne renomme pas le sous-groupe.
+        const res = await pool.query<{ id: string; _hab_group_ok?: boolean }>(`
+          WITH ins AS (
+            INSERT INTO "${schema}".legal_entities
+              (name, rccm, cnps_number, dgi_number, address, city, legal_form,
+               collective_agreement, at_rate, country_code, legislation_pack_code, raf_user_id,
+               is_head_office)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+          ), sg AS (
+            INSERT INTO "${schema}".hab_subgroups (group_id, name, kind, legal_entity_id)
+            SELECT g.id, left($15 || ins.name, 150), 'entity', ins.id
+              FROM ins CROSS JOIN "${schema}".hab_groups g
+             WHERE g.name = $14 AND ins.is_head_office = false
+            ON CONFLICT (legal_entity_id) DO NOTHING
+          )
+          SELECT ins.*, EXISTS (SELECT 1 FROM "${schema}".hab_groups WHERE name = $14) AS _hab_group_ok
+            FROM ins
         `, [body.name, body.rccm ?? null, body.cnps_number ?? null, body.dgi_number ?? null,
             body.address ?? null, body.city ?? 'Abidjan', body.legal_form ?? 'SARL',
             body.collective_agreement ?? null, body.at_rate ?? 0.02,
-            body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null])
-        const created = res.rows[0]
+            body.country_code ?? 'CIV', body.legislation_pack_code ?? null, body.raf_user_id ?? null,
+            body.isHeadOffice ?? false, HAB_GROUP_NAME, HAB_FILIALE_PREFIX])
+        const { _hab_group_ok: habGroupOk, ...created } = res.rows[0] ?? ({} as { id?: string; _hab_group_ok?: boolean })
+        if (habGroupOk === false) {
+          // Groupe racine absent ou renommé : la filiale est créée SANS sous-groupe
+          // (rattrapé au prochain démarrage par ensureHabilitationStructure).
+          fastify.log.error({ schema }, `habilitations : groupe « ${HAB_GROUP_NAME} » introuvable, sous-groupe de filiale non créé`)
+        }
         // Déclarer une filiale active le workflow paie multi-filiales du tenant :
         // sinon le lien « Paie multi-filiales » (qui porte l'initiation du draft)
         // reste masqué dans la sidebar (conditionné à tenantConfig.hasSubsidiaries).
@@ -1870,11 +1915,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // OWASP A09 — création d'entité légale = action critique (numéros CNPS/DGI officiels)
         auditLogSettings(
           schema, request.user.sub, 'settings.legal_entity_created',
-          created?.id ?? null,
-          { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate },
+          created.id ?? null,
+          { name: body.name, cnpsNumber: body.cnps_number, dgiNumber: body.dgi_number, atRate: body.at_rate,
+            isHeadOffice: body.isHeadOffice ?? false },
           request.ip ?? null,
         )
-        return reply.status(201).send({ data: created })
+        return reply.status(201).send({ data: created.id ? withHeadOffice(created) : undefined })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -1898,9 +1944,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
       const body = parsed.data as Record<string, unknown>
+      // isHeadOffice (camelCase API) -> colonne is_head_office.
+      if ('isHeadOffice' in body) { body.is_head_office = body.isHeadOffice; delete body.isHeadOffice }
       const allowed = ['name','rccm','cnps_number','dgi_number','address','city',
         'legal_form','collective_agreement','at_rate','country_code','legislation_pack_code','is_active',
-        'raf_user_id']
+        'raf_user_id','is_head_office']
       const updates: string[] = []
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
@@ -1940,7 +1988,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           { modifiedFields: Object.keys(changedFields), changes: changedFields },
           request.ip ?? null,
         )
-        return reply.send({ data: res.rows[0] })
+        return reply.send({ data: res.rows[0] ? withHeadOffice(res.rows[0]) : res.rows[0] })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })
@@ -2161,11 +2209,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureMigrated(schema)
       const { month } = request.query as { month?: string }
       try {
+        // Périmètre filiale : un RH borné à une filiale ne voit que SES salariés
+        // (sinon il lirait les primes de toute l'entreprise — IDOR).
+        const scope = await requestHrScope(request, 'e')
         const res = await pool.query(`
           SELECT ve.*, e.first_name, e.last_name, e.employee_number AS registration_number
           FROM "${schema}".variable_elements ve
           JOIN "${schema}".employees e ON e.id = ve.employee_id
-          WHERE ($1::text IS NULL OR ve.month = $1)
+          WHERE ($1::text IS NULL OR ve.month = $1) AND ${scope}
           ORDER BY e.last_name, e.first_name, ve.rule_code
         `, [month || null])
         return reply.send({ data: res.rows })
@@ -2186,7 +2237,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Élément variable invalide', issues: parsed.error.flatten() })
       }
       const body = parsed.data
+      if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       try {
+        // Périmètre filiale : pas d'élément variable sur un salarié hors
+        // périmètre (404, jamais 403 : le 403 révélerait son existence).
+        if (!(await employeeInHrScope(schema, body.employee_id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         // Le moteur de paie lit les éléments variables par period_id (colonne
         // NOT NULL) : on résout la période depuis le mois. Sans période ouverte
         // pour ce mois → 400 clair (au lieu d'un 500 NOT NULL).
@@ -2219,8 +2276,21 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant invalide' })
       try {
-        await pool.query(`DELETE FROM "${schema}".variable_elements WHERE id = $1`, [id])
+        // Garde « propre dossier » ET périmètre filiale : on retrouve le
+        // salarié visé avant de supprimer, borné au périmètre — un élément
+        // d'une autre filiale est donc introuvable (404), et le DELETE porte
+        // le même périmètre pour qu'aucune course ne le contourne.
+        const scope = await requestEmployeeScope(request, 'variable_elements.employee_id')
+        const target = await pool.query<{ employee_id: string }>(
+          `SELECT employee_id FROM "${schema}".variable_elements WHERE id = $1 AND ${scope}`, [id])
+        const targetEmp = target.rows[0]?.employee_id
+        if (!targetEmp) return reply.status(404).send({ error: 'Élément variable introuvable' })
+        if (isSelfAction(request, targetEmp)) {
+          return reply.status(403).send({ error: SELF_ACTION_ERROR })
+        }
+        await pool.query(`DELETE FROM "${schema}".variable_elements WHERE id = $1 AND ${scope}`, [id])
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)

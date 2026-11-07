@@ -461,6 +461,42 @@ describe('PATCH /settings/users/:id', () => {
     expect(setTokenEpochMock).toHaveBeenCalledWith(UUID_A)
   })
 
+  it('hr_officer → employee : l\'affectation d\'habilitation active est révoquée (revoked_at) + audit habilitation.revoked (reason role_changed)', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql)
+      if (s.includes('SELECT role, is_active')) return { rows: [{ role: 'hr_officer', is_active: true }] }
+      if (s.includes('UPDATE "tenant_sotra".users')) return { rows: [{ id: UUID_A, role: 'employee', is_active: true }] }
+      if (s.includes('hab_assignments SET revoked_at')) return { rows: [{ id: 'as-1' }], rowCount: 1 }
+      return { rows: [] }
+    })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+      payload: { role: 'employee' },
+    })
+    expect(res.statusCode).toBe(200)
+    const revoke = queryMock.mock.calls.find(c => String(c[0]).includes('hab_assignments SET revoked_at'))
+    expect(revoke?.[1]).toEqual([UUID_A])
+    await new Promise((r) => setTimeout(r, 0))
+    const audit = queryMock.mock.calls.find(c => String(c[0]).includes('audit_log') && c[1]?.[1] === 'habilitation.revoked')
+    expect(audit).toBeDefined()
+    expect(JSON.parse(String(audit![1]![4]))).toMatchObject({ reason: 'role_changed', newRole: 'employee' })
+  })
+
+  it('hr_officer → hr_manager : reste dans la grille, aucune révocation', async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      const s = String(sql)
+      if (s.includes('SELECT role, is_active')) return { rows: [{ role: 'hr_officer', is_active: true }] }
+      if (s.includes('UPDATE "tenant_sotra".users')) return { rows: [{ id: UUID_A, role: 'hr_manager', is_active: true }] }
+      return { rows: [] }
+    })
+    const res = await app.inject({
+      method: 'PATCH', url: `/settings/users/${UUID_A}`, headers: auth(tokenFor(app, 'admin')),
+      payload: { role: 'hr_manager' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(queryMock.mock.calls.some(c => String(c[0]).includes('hab_assignments'))).toBe(false)
+  })
+
   it('change is_active seul (même rôle) → audit user.updated (200) + invalide les sessions existantes', async () => {
     queryMock
       .mockResolvedValueOnce({ rows: [{ role: 'employee', is_active: true }] })
@@ -1211,11 +1247,21 @@ describe('POST /settings/variable-elements', () => {
 // ════════════════════════════════════════════════════════════════════════════
 describe('DELETE /settings/variable-elements/:id', () => {
   it('supprime (200)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] })
+    // L'élément doit d'abord être retrouvé (garde « propre dossier » +
+    // périmètre filiale) : sans ligne, la route répond 404.
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: UUID_B }], rowCount: 1 })
     const res = await app.inject({
       method: 'DELETE', url: `/settings/variable-elements/${UUID_A}`, headers: auth(tokenFor(app, 'hr_manager')),
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  it('404 si l\'élément est introuvable ou hors périmètre', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    const res = await app.inject({
+      method: 'DELETE', url: `/settings/variable-elements/${UUID_A}`, headers: auth(tokenFor(app, 'hr_manager')),
+    })
+    expect(res.statusCode).toBe(404)
   })
 
   it('500 si DB échoue', async () => {

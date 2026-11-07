@@ -415,6 +415,8 @@
       "raf": "Subsidiary payroll officer (RAF)",
       "rafNone": "— None —",
       "rafHint": "Receives the dispatched payroll of the subsidiary and submits it. Role: subsidiary RAF, admin or HR director.",
+      "headOffice": "Head office",
+      "headOfficeHint": "Employees of this subsidiary fall under the HR Head Office subgroup (no dedicated HR Subsidiary subgroup).",
       "collectiveAgreementPlaceholder": "e.g. CI Urban Transport Agreement",
       "address": "Address",
       "cancel": "Cancel",
