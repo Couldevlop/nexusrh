@@ -38,6 +38,10 @@ interface PlatformSettings {
   // ── Mise hors ligne (tenant / cabinet) : variable système ──
   offline_message_default?: string
   offline_message_required?: boolean
+  // ── Modèle IA auto-hébergé (dernier recours de l'assistante) ──
+  ai_local_api_url?: string | null
+  ai_local_model?: string | null
+  ai_local_label?: string | null
   aiConfigured: boolean
   smtpConfigured: boolean
   version: string
@@ -711,6 +715,34 @@ export default function PlatformSettings() {
                 <p className="text-xs text-muted-foreground mt-2">
                   {t('settings.ai.modelNote')}
                 </p>
+              </div>
+
+              {/* Modèle auto-hébergé : l'assistante répond avec lui quand aucune
+                  clé externe n'est disponible, au lieu de se déclarer en panne.
+                  Trois champs, parce que le protocole est le même pour tous les
+                  serveurs OpenAI-compatibles : changer de modèle demain ne
+                  demande ni déploiement ni modification du chart. */}
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">{t('settings.ai.localTitle')}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t('settings.ai.localDesc')}</p>
+                </div>
+                <Field label={t('settings.ai.localUrl')}>
+                  <input className={inputCls} placeholder="http://lucie-7b.nexusrh-ci.svc.cluster.local:8000/v1"
+                    value={settings.ai_local_api_url ?? ''}
+                    onChange={e => update('ai_local_api_url', e.target.value)} />
+                </Field>
+                <Field label={t('settings.ai.localModel')}>
+                  <input className={inputCls} placeholder="lucie-7b"
+                    value={settings.ai_local_model ?? ''}
+                    onChange={e => update('ai_local_model', e.target.value)} />
+                </Field>
+                <Field label={t('settings.ai.localLabel')}>
+                  <input className={inputCls} placeholder="Lucie 7B"
+                    value={settings.ai_local_label ?? ''}
+                    onChange={e => update('ai_local_label', e.target.value)} />
+                </Field>
+                <p className="text-xs text-muted-foreground">{t('settings.ai.localHint')}</p>
               </div>
             </>
           )}

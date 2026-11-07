@@ -991,6 +991,17 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS offline_message_required boolean NOT NULL DEFAULT true`,
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS offline_message text`,
 
+    // ── Modèle IA auto-hébergé (dernier recours de l'assistante) ──────────────
+    // Une API OpenAI-compatible du cluster : Lucie 7B aujourd'hui, Qwen ou
+    // autre demain — le protocole ne change pas, seuls l'adresse, le nom du
+    // modèle et le libellé affiché bougent. D'où trois colonnes et zéro code à
+    // reprendre le jour où le modèle change.
+    // Réglé par le super_admin (jamais par un tenant : ce serait un canal
+    // d'exfiltration des données RH envoyées au modèle — A10/SSRF).
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_api_url text`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_model varchar(100)`,
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_label varchar(60)`,
+
     // ── Singleton : une SEULE ligne de configuration plateforme ───────────────
     // Corrige un bug historique : les routes faisaient `INSERT ... DEFAULT VALUES
     // ON CONFLICT DO NOTHING` sans contrainte d'unicité → une nouvelle ligne à

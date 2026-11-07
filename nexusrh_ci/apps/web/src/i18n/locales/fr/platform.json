@@ -596,7 +596,13 @@
         "retentionRoles": "Admin, RH Manager"
       },
       "modelTitle": "Modèle utilisé",
-      "modelNote": "Calibré contexte ivoirien : Code du Travail CI, CNPS 2024, barème ITS/DGI, OHADA, Mobile Money CI"
+      "modelNote": "Calibré contexte ivoirien : Code du Travail CI, CNPS 2024, barème ITS/DGI, OHADA, Mobile Money CI",
+      "localTitle": "Modèle auto-hébergé (dernier recours)",
+      "localDesc": "Une API OpenAI-compatible hébergée sur votre cluster (vLLM, Ollama…). L'assistante y répond quand aucune clé Claude ni Mistral n'est disponible, au lieu de se déclarer en panne. Elle ne passe jamais devant une clé qui fonctionne.",
+      "localUrl": "Adresse de l'API (vide = repli désactivé)",
+      "localModel": "Nom du modèle servi",
+      "localLabel": "Libellé affiché aux utilisateurs",
+      "localHint": "Le protocole est le même pour tous ces serveurs : changer de modèle (Lucie, Qwen, Llama…) ne demande qu'une adresse et un nom — aucun déploiement. Les questions envoyées à ce modèle ne sortent pas de votre infrastructure."
     },
     "legal": {
       "title": "Informations légales — OpenLab Consulting",

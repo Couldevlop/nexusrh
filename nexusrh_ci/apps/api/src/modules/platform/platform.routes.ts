@@ -24,6 +24,7 @@ import {
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { auditPlatform } from '../../utils/audit-log.js'
+import { isUsableModelUrl } from '../../services/ai-credentials.service.js'
 
 // Codes pays ISO-2 de platform.country_configs → ISO-3 des packs de législation.
 const ISO2_TO_ISO3: Record<string, string> = {
@@ -1042,6 +1043,10 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
         'lockout_enabled','lockout_max_attempts','lockout_window_minutes','lockout_duration_minutes',
         // ── Mise hors ligne (variable système : message + caractère obligatoire) ──
         'offline_message_default','offline_message_required',
+        // ── Modèle IA auto-hébergé (dernier recours de l'assistante) ──
+        // Réservé au super_admin : l'adresse décide où partent les questions
+        // RH envoyées au modèle (A10). Un tenant n'y touche jamais.
+        'ai_local_api_url','ai_local_model','ai_local_label',
       ]
       // OWASP A03 — coercition de type avant écriture (les toggles/nombres
       // arrivent parfois en string depuis le frontend). Les booleans/ints sont
@@ -1068,6 +1073,16 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           if (k === 'password_max_age_days') v = Math.min(n, 3650)
           else if (k === 'password_history_count') v = Math.min(n, 50)
           else v = n
+        } else if (k === 'ai_local_api_url') {
+          // Vider le champ désactive le repli ; sinon l'URL doit être utilisable,
+          // faute de quoi l'assistante répondrait 503 sans qu'on sache pourquoi.
+          const raw = String(rawV ?? '').trim()
+          if (raw && !isUsableModelUrl(raw)) {
+            return reply.status(400).send({ error: 'Adresse du modèle invalide (http(s) attendu, sans identifiants)' })
+          }
+          v = raw || null
+        } else if (k === 'ai_local_model' || k === 'ai_local_label') {
+          v = String(rawV ?? '').trim().slice(0, k === 'ai_local_label' ? 60 : 100) || null
         } else if (k === 'offline_message_default') {
           // OWASP A03 — texte libre borné (affiché tel quel, jamais interprété)
           v = String(rawV ?? '').slice(0, 2000)

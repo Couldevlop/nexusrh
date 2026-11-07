@@ -40,6 +40,18 @@ AI_MAX_TOKENS=4096
 AI_TEMPERATURE=0.3
 AI_SYSTEM_LOCALE=ci  # calibration contexte ivoirien
 
+# ── IA : modèle LOCAL de dernier recours (facultatif) ─────────────────────────
+# Une API OpenAI-compatible hébergée par l'exploitant (vLLM, Ollama,
+# llama.cpp…). Renseignée, l'assistante répond avec ce modèle quand aucune clé
+# Claude ni Mistral n'est disponible — au lieu de renvoyer « IA indisponible ».
+# Elle ne passe JAMAIS devant une clé qui fonctionne, et seul l'exploitant la
+# configure : un tenant ne peut pas faire pointer l'IA vers un serveur à lui.
+# Laisser AI_LOCAL_API_URL vide désactive le repli (comportement d'avant).
+AI_LOCAL_API_URL=
+AI_LOCAL_MODEL=mistral-7b-instruct
+# Facultative : un service interne au cluster n'exige pas de jeton.
+AI_LOCAL_API_KEY=
+
 # Email
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587

@@ -1,6 +1,7 @@
 /**
- * Chat IA via Mistral (API OpenAI-compatible : /chat/completions, streaming SSE,
- * function calling). Sert d'équivalent au chemin Anthropic du module ai.routes,
+ * Chat IA sur une API OpenAI-compatible (/chat/completions, streaming SSE,
+ * function calling) : Mistral, et tout serveur qui parle le même protocole —
+ * c'est par là que passe le modèle LOCAL de dernier recours (vLLM, Ollama…). Sert d'équivalent au chemin Anthropic du module ai.routes,
  * pour que les tenants basculés sur Mistral aient TOUT en Mistral — chat compris.
  *
  * - Streaming texte renvoyé via le callback `onText` (même rendu SSE que Claude).
@@ -17,7 +18,12 @@ import type { AiToolContext, AiToolDef } from './ai-tools.js'
 import { executeAiTool } from './ai-tools.js'
 
 export interface MistralChatArgs {
-  apiKey:        string
+  /**
+   * Jeton d'authentification, FACULTATIF : un serveur local dans le cluster
+   * n'en demande pas. Absent, aucun en-tête `Authorization` n'est envoyé —
+   * plutôt que « Bearer null », que certaines passerelles rejettent.
+   */
+  apiKey?:       string | null
   apiUrl:        string   // ex. https://api.mistral.ai/v1
   model:         string
   systemPrompt:  string
@@ -66,7 +72,7 @@ export async function streamMistralChat(a: MistralChatArgs): Promise<MistralChat
     const res = await fetch(`${a.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${a.apiKey}`,
+        ...(a.apiKey ? { 'Authorization': `Bearer ${a.apiKey}` } : {}),
         'Content-Type':  'application/json',
         'Accept':        'text/event-stream',
       },

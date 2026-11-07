@@ -3,7 +3,7 @@ import { isInManagerScope } from '../../services/manager-scope.service.js'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
-import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { loadLocalModel, resolveAiCreds, selectChatProvider } from '../../services/ai-credentials.service.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { generateHRDocument } from '../../services/hr-document-generator.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
@@ -221,21 +221,25 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // plateforme (env). OWASP A03 — on expose le FOURNISSEUR (Claude/Mistral)
       // pour l'affichage « Propulsé par … », mais jamais le nom exact du modèle.
       const creds = await resolveAiCreds(request.user.schemaName)
-      // Même logique de sélection que POST /chat : le provider que le chat
-      // utilisera réellement (préférence + repli sur l'autre si clé manquante).
-      const provider: 'mistral' | 'claude' | null =
-        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
-        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
-        : creds.mistral.apiKey ? 'mistral'
-        : creds.claude.apiKey ? 'claude'
-        : null
+      // MÊME fonction que POST /chat : l'écran ne peut pas annoncer une IA que
+      // la route refuserait.
+      const local = await loadLocalModel()
+      const provider = selectChatProvider(creds, local)
       const available = provider !== null
       return reply.send({
         available,
         provider,
-        message: available
-          ? 'Assistant IA disponible'
-          : 'Clé API IA non configurée (plateforme ou tenant). Contactez votre administrateur.',
+        // Le modèle auto-hébergé n'est pas un service équivalent : il tourne
+        // chez l'exploitant, sans quota externe, et l'écran a le droit de le
+        // dire. Le libellé vient des réglages plateforme — « Lucie 7B »
+        // aujourd'hui, autre chose demain, sans retoucher le code.
+        local: provider === 'local',
+        localLabel: provider === 'local' ? local!.label : null,
+        message: provider === 'local'
+          ? `Assistant IA disponible (${local!.label})`
+          : available
+            ? 'Assistant IA disponible'
+            : 'Clé API IA non configurée (plateforme ou tenant), et aucun modèle local. Contactez votre administrateur.',
       })
     },
   })
@@ -278,24 +282,28 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // Sélection du fournisseur : préférence tenant/plateforme, avec repli sur
       // l'autre si sa clé manque. Le chat tourne donc sur Mistral OU Claude —
       // un tenant basculé sur Mistral a tout en Mistral, chat compris.
-      const provider: 'mistral' | 'claude' | null =
-        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
-        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
-        : creds.mistral.apiKey ? 'mistral'
-        : creds.claude.apiKey ? 'claude'
-        : null
+      // DERNIER RECOURS : un modèle LOCAL (API OpenAI-compatible hébergée par
+      // l'exploitant). Sans clé Claude ni Mistral, le chat répondait 503 — une
+      // assistante muette. Le modèle local n'est jamais PRÉFÉRÉ : il prend la
+      // main seulement quand il n'y a plus rien d'autre, et il est réglé par le
+      // SUPER_ADMIN (réglages plateforme, ou variables d'environnement en
+      // repli) — jamais par un tenant : ce serait un canal d'exfiltration des
+      // données RH envoyées au modèle (A10/SSRF).
+      const local = await loadLocalModel()
+      const provider = selectChatProvider(creds, local)
       if (!provider) {
         return reply.status(503).send({
           error: 'IA non disponible',
-          message: 'Aucune clé API IA configurée (ni tenant ni plateforme).',
+          message: 'Aucune clé API IA configurée (ni tenant ni plateforme), et aucun modèle local.',
         })
       }
 
       // Source de la clé effective (tenant vs plateforme) + modèle réellement
       // utilisé : ne tracker la conso (platform.ai_usage) QUE si la clé est celle
-      // du super_admin (source='platform').
-      const keySource = creds[provider].source
-      const usedModel = creds[provider].model
+      // du super_admin (source='platform'). Le modèle local ne consomme aucun
+      // quota facturé : sa source reste nulle.
+      const keySource = provider === 'local' ? null : creds[provider].source
+      const usedModel = provider === 'local' ? local!.model : creds[provider].model
 
       let tenantInfo = sanitizeForPrompt(context?.tenantName, 100) || 'Entreprise CI'
       let tenantId: string | null = null
@@ -384,11 +392,13 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       })
 
       try {
-        if (provider === 'mistral') {
+        if (provider === 'mistral' || provider === 'local') {
+          // Même protocole dans les deux cas : seules l'adresse, la clé (ici
+          // facultative) et le modèle changent.
           const r = await streamMistralChat({
-            apiKey:        creds.mistral.apiKey!,
-            apiUrl:        config.mistral.apiUrl,
-            model:         creds.mistral.model,
+            apiKey:        provider === 'local' ? local!.apiKey : creds.mistral.apiKey!,
+            apiUrl:        provider === 'local' ? local!.apiUrl : config.mistral.apiUrl,
+            model:         usedModel,
             systemPrompt,
             messages,
             tools:         buildToolsForRole(request.user.role),
@@ -405,7 +415,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           auditLogAi(
             schema, request.user.sub, 'ai.chat',
             {
-              provider:     'mistral',
+              provider,
               keySource,
               inputTokens:  r.usage.input_tokens,
               outputTokens: r.usage.output_tokens,
