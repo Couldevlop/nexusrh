@@ -330,3 +330,18 @@ describe('Donner une délégation (sinon on ne peut que révoquer)', () => {
     expect(Math.round(max / 86_400_000)).toBeGreaterThan(88)
   })
 })
+
+describe('Exporter la piste d\'audit', () => {
+  it('télécharge le CSV avec les filtres en cours (flux authentifié, pas un lien nu)', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:audit'), revokeObjectURL: vi.fn() })
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.audit'))
+    await screen.findByText('hr.employees.view')
+    fireEvent.change(screen.getByLabelText('audit.filters.result'), { target: { value: 'denied' } })
+    await waitFor(() => expect(lastAuditParams.result).toBe('denied'))
+    fireEvent.click(screen.getByText('audit.export'))
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/habilitations/audit', {
+      params: { result: 'denied', format: 'csv' }, responseType: 'blob',
+    }))
+  })
+})

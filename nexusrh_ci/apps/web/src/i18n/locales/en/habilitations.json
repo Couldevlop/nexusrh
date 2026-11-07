@@ -131,6 +131,7 @@
   },
   "audit": {
     "intro": "Every action taken by authorised users, denied attempts included.",
+    "export": "Export to CSV",
     "empty": "No action in this period.",
     "filters": {
       "result": "Outcome",

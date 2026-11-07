@@ -317,6 +317,24 @@ export default function HabilitationsPage() {
     return userId
   }
 
+  /**
+   * Export CSV de la piste, AVEC les filtres en cours : un contrôleur part de
+   * ce qu'il a sous les yeux. Téléchargement par le flux authentifié (comme le
+   * PDF d'une fiche) et non par un lien nu : la piste porte des adresses, des
+   * matricules et des routes, elle ne s'ouvre pas sans jeton.
+   */
+  const exportAudit = async (): Promise<void> => {
+    const res = await api.get('/habilitations/audit', {
+      params: { ...auditParams, format: 'csv' }, responseType: 'blob',
+    })
+    const url = URL.createObjectURL(new Blob([res.data as Blob], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `piste-audit-habilitations-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const setAuditFilter = (key: keyof AuditFilters, value: string): void =>
     setAuditFilters((prev) => ({ ...prev, [key]: value }))
 
@@ -800,6 +818,13 @@ export default function HabilitationsPage() {
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm"
               />
             </label>
+            <button
+              onClick={() => void exportAudit()}
+              className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+            >
+              <FileText className="h-3 w-3" />
+              {t('audit.export')}
+            </button>
           </div>
 
           {auditQ.isLoading ? <p className="text-sm text-muted-foreground">{t('loading')}</p> : null}

@@ -131,6 +131,7 @@
   },
   "audit": {
     "intro": "Toutes les actions des personnes habilitées, accès refusés compris.",
+    "export": "Exporter en CSV",
     "empty": "Aucune action sur cette période.",
     "filters": {
       "result": "Résultat",
