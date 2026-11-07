@@ -11,8 +11,11 @@ import { requestHrScopeFactory, requestHrScope, employeeInHrScope, requestSensit
 import { isMasked } from '../../services/sensitive-mask.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import {
-  CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, type LegislationPack,
+  CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, isSupportedCountry,
+  type LegislationPack,
 } from '../../services/legislation-packs.js'
+import { computeSeniority } from '../../services/payroll-simulator.service.js'
+import { transportZoneFromCity } from '../../services/payroll-engine-ci.js'
 import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
 // renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
@@ -48,12 +51,40 @@ const chatSchema = z.object({
   }).strict().optional(),
 }).strict()
 
+// Simulateur de salaire : les champs qui CHANGENT le net doivent tous pouvoir
+// être saisis, et le pays doit être choisi — le simulateur était figé sur la
+// Côte d'Ivoire alors que seize packs existent.
 const simulateItsSchema = z.object({
   baseSalary:     z.number().int().min(1).max(100_000_000),
   maritalStatus:  z.enum(['single', 'married', 'divorced', 'widowed']).optional(),
   childrenCount:  z.number().int().min(0).max(30).optional(),
   atRate:         z.number().min(0).max(0.10).optional(),
   primes:         z.number().int().min(0).max(100_000_000).optional(),
+  /** Pays ISO-3 ; à défaut, le pays par défaut du tenant. */
+  countryCode:    z.string().length(3).optional(),
+  /**
+   * Prime de transport, SÉPARÉE des autres primes : elle est exonérée dans la
+   * limite du plafond de la zone de travail (CI : 30 000 Abidjan / 24 000
+   * Bouaké / 20 000 ailleurs). Confondue avec `primes`, elle était imposée en
+   * totalité et le simulateur annonçait un net trop faible.
+   */
+  transportAllowance: z.number().int().min(0).max(10_000_000).optional(),
+  /** Ville de travail : détermine le plafond exonéré de la prime de transport. */
+  city:           z.string().max(100).optional(),
+  /**
+   * Conjoint sans emploi : bénéficiaire CMU supplémentaire si le salarié est
+   * marié. Le moteur l'a toujours su, la route ne le passait jamais.
+   */
+  cmuSpouseCovered:   z.boolean().optional(),
+  /** Enfants de moins de 21 ans (CMU) — à défaut, les enfants à charge. */
+  cmuChildrenCovered: z.number().int().min(0).max(30).optional(),
+  /** Date d'embauche : ouvre la prime d'ancienneté du pack. */
+  hireDate:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Mois simulé (AAAA-MM), pour l'ancienneté. Défaut : mois courant. */
+  payMonth:       z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  /** Mois incomplet : jours travaillés / jours ouvrables. */
+  workedDays:       z.number().int().min(0).max(31).optional(),
+  workingDaysMonth: z.number().int().min(1).max(31).optional(),
 }).strict()
 
 // AI-006/007 — génération de documents RH (CDI/CDD/certificat/attestation).
@@ -440,12 +471,13 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
     },
   })
 
-  // POST /ai/simulate-its — simulateur ITS (réforme 2024) avec RICF par parts.
-  // Le calcul est délégué au moteur de paie (pack CIV-2024) : une seule source
-  // de vérité pour le barème, les parts et les cotisations.
+  // POST /ai/simulate-its — simulateur de salaire (impôt sur salaires + CNPS +
+  // CMU), pour le PAYS choisi. Le calcul est délégué au moteur de paie et au
+  // pack du pays : une seule source de vérité pour le barème, les parts, les
+  // cotisations et les exonérations.
   fastify.post('/simulate-its', {
     preHandler: [fastify.authenticate],
-    schema: { tags: ['ai'], summary: 'Simulateur ITS CI 2024 (barème sur 100 % du brut + RICF par parts)' },
+    schema: { tags: ['ai'], summary: 'Simulateur de salaire (impôt + cotisations) — pays du tenant ou pays choisi' },
     config: AI_SIMULATE_RATE_LIMIT,
     handler: async (request, reply) => {
       // OWASP A03 — validation Zod stricte
@@ -456,15 +488,67 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       const {
         baseSalary, maritalStatus = 'single', childrenCount = 0,
         atRate = 0.020, primes = 0,
+        countryCode, transportAllowance = 0, city,
+        cmuSpouseCovered, cmuChildrenCovered,
+        hireDate, payMonth, workedDays, workingDaysMonth,
       } = parsed.data
 
-      // Les primes saisies sont traitées comme du salaire imposable et soumis
-      // à cotisations (brut mensuel complet, mois plein).
-      const brut = baseSalary + primes
+      // Pays : celui demandé, sinon celui du tenant, sinon le pack par défaut.
+      if (countryCode && !isSupportedCountry(countryCode)) {
+        return reply.status(400).send({
+          error: `Pays non pris en charge : ${countryCode}`,
+          message: 'Aucun pack législatif pour ce pays. Choisissez un pays de la liste.',
+        })
+      }
+      let pack: LegislationPack | null = countryCode ? getPackByCountry(countryCode) : null
+      if (!pack) {
+        try {
+          const t = await rawPool.query<{ default_country_code: string | null }>(
+            `SELECT default_country_code FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+            [request.user.schemaName],
+          )
+          pack = getPackByCountry(t.rows[0]?.default_country_code ?? null)
+        } catch { /* repli pack par défaut */ }
+      }
+      const effectivePack = pack ?? DEFAULT_LEGISLATION_PACK
+
+      // Prime d'ancienneté : seulement si une date d'embauche est fournie ET
+      // que le pack porte une règle d'ancienneté (sinon aucune prime inventée).
+      const month = payMonth ?? new Date().toISOString().slice(0, 7)
+      let seniorityAmount = 0
+      if (hireDate) {
+        try {
+          seniorityAmount = computeSeniority({
+            pack: effectivePack, hireDate, payMonth: month,
+            baseSalary, categoryMinimum: effectivePack.smigMensuel,
+          }).amount
+        } catch {
+          // Date d'embauche postérieure au mois simulé, ou format impossible :
+          // pas de prime plutôt qu'une erreur sur un écran de simulation.
+          seniorityAmount = 0
+        }
+      }
+
+      // Les primes ordinaires sont du salaire imposable et soumis à cotisations.
+      // La prime de transport, elle, passe par un ÉLÉMENT VARIABLE : le moteur
+      // lui applique le plafond exonéré de la zone de travail.
+      const brut = baseSalary + primes + seniorityAmount
+      const variableElements: Record<string, number> = transportAllowance > 0
+        ? { PRIME_TRANSPORT: transportAllowance }
+        : {}
+      const days = {
+        worked: workedDays ?? workingDaysMonth ?? 26,
+        month:  workingDaysMonth ?? 26,
+      }
       const simuler = (enfants: number) => calculatePayrollCI({
-        baseSalary: brut, workedDays: 26, workingDaysMonth: 26, atRate,
-        maritalStatus, childrenCount: enfants, variableElements: {},
-        legislationPack: CIV_2024,
+        baseSalary: brut, workedDays: days.worked, workingDaysMonth: days.month, atRate,
+        maritalStatus, childrenCount: enfants, variableElements,
+        legislationPack: effectivePack,
+        transportZone: transportZoneFromCity(city),
+        cmu: {
+          spouseCovered:   cmuSpouseCovered ?? null,
+          childrenCovered: cmuChildrenCovered ?? null,
+        },
       })
       const r = simuler(childrenCount)
       const plus1 = simuler(childrenCount + 1)
@@ -474,30 +558,61 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       const cmuCost = plus1.cmuSal - r.cmuSal
       const netDelta = plus1.netPayable - r.netPayable
       const plafondAtteint = (plus1.partsFiscales ?? 0) === (r.partsFiscales ?? 0)
-      const fcfa = (n: number) => n.toLocaleString('fr-CI')
-      const cmuNote = cmuCost > 0 ? `, CMU de l'enfant +${fcfa(cmuCost)} FCFA` : ''
+      const devise = currencyLabel(effectivePack.currency)
+      const plafondParts = effectivePack.reductionChargesFamille?.plafondParts ?? 5
+      const fcfa = (n: number) => n.toLocaleString('fr-FR').replace(/[  ]/g, ' ')
+      const cmuNote = cmuCost > 0 ? `, CMU de l'enfant +${fcfa(cmuCost)} ${devise}` : ''
       const itsReason = itsGain > 0
-        ? `impôt −${fcfa(itsGain)} FCFA`
+        ? `impôt −${fcfa(itsGain)} ${devise}`
         : plafondAtteint
-          ? `impôt inchangé : le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint`
+          ? `impôt inchangé : le plafond de ${plafondParts} parts est déjà atteint`
           : `impôt inchangé : il est déjà entièrement couvert par la réduction pour charges de famille`
       const message = netDelta > 0
-        ? `Avec 1 enfant de plus, le net augmenterait de ${fcfa(netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+        ? `Avec 1 enfant de plus, le net augmenterait de ${fcfa(netDelta)} ${devise}/mois (${itsReason}${cmuNote})`
         : netDelta < 0
-          ? `Avec 1 enfant de plus, le net baisserait de ${fcfa(-netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+          ? `Avec 1 enfant de plus, le net baisserait de ${fcfa(-netDelta)} ${devise}/mois (${itsReason}${cmuNote})`
           : itsGain === 0 && plafondAtteint
-            ? `Le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
+            ? `Le plafond de ${plafondParts} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
             : itsGain === 0
               ? `L'impôt est déjà entièrement couvert par la réduction pour charges de famille`
               : `Avec 1 enfant de plus, le net ne change pas (${itsReason}${cmuNote})`
 
       return reply.send({
-        input:       { baseSalary, primes, brut, maritalStatus, childrenCount, atRate },
+        input: {
+          baseSalary, primes, brut, maritalStatus, childrenCount, atRate,
+          transportAllowance, city: city ?? null,
+          cmuSpouseCovered: cmuSpouseCovered ?? null,
+          cmuChildrenCovered: cmuChildrenCovered ?? null,
+          hireDate: hireDate ?? null, payMonth: month,
+          seniorityAmount,
+          workedDays: days.worked, workingDaysMonth: days.month,
+          countryCode: effectivePack.countryCode,
+          packCode: effectivePack.code,
+        },
         cnps:        { salarial: r.totalCnpsSal, patronal: r.totalCnpsPat },
         its:         { base: r.baseImposable, brut: r.itsBrut, credit: r.reductionImpot, parts: r.partsFiscales ?? 1, net: r.its },
         cmu:         { salarial: r.cmuSal, patronal: r.cmuPat },
         net:         { payable: r.netPayable, smigCompliant: r.smigCompliant },
         employerCost: r.employerCost,
+        // Le DÉTAIL vient du moteur, pour le pays retenu. L'écran recopiait les
+        // plafonds (3 375 000 / 75 000) et les taux (6,3 / 7,7 / 5,75 %)
+        // ivoiriens en dur : faux dès qu'on simule un autre pays.
+        lines: r.lines,
+        // Barème et références du pays, pour que l'écran les affiche sans les
+        // réécrire.
+        pack: {
+          code:          effectivePack.code,
+          countryCode:   effectivePack.countryCode,
+          name:          effectivePack.name,
+          currency:      effectivePack.currency,
+          currencyLabel: devise,
+          smigMensuel:   effectivePack.smigMensuel,
+          usable:        effectivePack.status === 'active',
+          brackets:      effectivePack.tranchesImpotSalaire,
+          transportExoneration: effectivePack.primeTransportExoneree ?? null,
+          hasCmu:        !!effectivePack.cmu,
+          hasSeniorityBonus: !!effectivePack.seniorityBonus,
+        },
         simulation: {
           avecUnEnfantSupp: {
             its: plus1.its,
@@ -509,7 +624,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             message,
           },
         },
-        currency: 'XOF',
+        currency: effectivePack.currency,
       })
     },
   })

@@ -370,8 +370,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // Retourne le pack législatif appliqué (SMIG, barème impôt, cotisations
   // sociales, conventions/congés) + la liste des pays sélectionnables. Choisir
   // un pays installe automatiquement toute la configuration paie/RH du pays.
+  // Lecture ouverte aux rôles RH : le simulateur de salaire a besoin de la
+  // liste des pays pris en charge et du pays du tenant, et il est accessible
+  // aux responsables et gestionnaires RH. L'ÉCRITURE (PUT) reste à l'admin :
+  // changer de pays change barème, cotisations et devise.
   fastify.get('/legislation', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
