@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { resolvePayrollContext } from './payroll-context-resolver.js'
-import { CIV_2024, SEN_2024, BEN_2024 } from './legislation-packs.js'
+import { CIV_2024, SEN_2024, BEN_2024, COUNTRY_TO_PACK_CODE, DEFAULT_LEGISLATION_PACK } from './legislation-packs.js'
 
 const TENANT_MONO = {
   id: 't1', hasSubsidiaries: false, atRate: 0.03, defaultCountryCode: 'CIV',
@@ -190,5 +190,36 @@ describe('resolvePayrollContext — Sécurité (OWASP A04)', () => {
     })
     expect(r.legislationPack).toBe(BEN_2024)
     expect(r.legislationPack.status).toBe('active')
+  })
+})
+
+/**
+ * Régression du 07/11/2026 — la table pays → pack était DUPLIQUÉE ici et dans
+ * legislation-packs.ts. La copie locale s'était arrêtée à neuf pays alors que
+ * seize packs existent : un tenant ghanéen, camerounais, gabonais, congolais,
+ * centrafricain, équato-guinéen ou bissau-guinéen se voyait appliquer le pack
+ * IVOIRIEN — SMIG 75 000 FCFA, CNPS CI, barème ITS CI, devise XOF — sans le
+ * moindre avertissement. Le résolveur consomme désormais la table canonique.
+ */
+describe('Tout pays pris en charge résout SON pack, jamais celui de la CI par défaut', () => {
+  for (const [country, packCode] of Object.entries(COUNTRY_TO_PACK_CODE)) {
+    it(`${country} → ${packCode}`, () => {
+      const ctx = resolvePayrollContext({
+        tenant: { id: 't', hasSubsidiaries: false, atRate: 0.02, defaultCountryCode: country },
+        employee: { id: 'e', legalEntityId: null },
+      })
+      expect(ctx.legislationPackCode).toBe(packCode)
+      if (country !== 'CIV') {
+        expect(ctx.legislationPack.countryCode, `${country} retombe sur un autre pays`).toBe(country)
+      }
+    })
+  }
+
+  it('un pays NON pris en charge retombe explicitement sur le pack par défaut', () => {
+    const ctx = resolvePayrollContext({
+      tenant: { id: 't', hasSubsidiaries: false, atRate: 0.02, defaultCountryCode: 'FRA' },
+      employee: { id: 'e', legalEntityId: null },
+    })
+    expect(ctx.legislationPackCode).toBe(DEFAULT_LEGISLATION_PACK.code)
   })
 })

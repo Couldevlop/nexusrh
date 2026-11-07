@@ -6,6 +6,8 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { isSelfAction, isUuid, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { requestHrScope, requestEmployeeScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
 import { maskSensitive, maskSensitiveRows } from '../../services/sensitive-mask.js'
+import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
+import { DEFAULT_LEGISLATION_PACK, type LegislationPack } from '../../services/legislation-packs.js'
 
 // OWASP A03 — validation stricte du body POST /contracts (whitelist de champs
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
@@ -26,6 +28,62 @@ const createContractSchema = z.object({
   non_competition_clause:  z.boolean().optional(),
   telecommuting_days:      z.number().int().min(0).max(7).optional(),
 })
+  // Un contrat à durée déterminée SANS terme est irrégulier (art. 15.4 CT CI) :
+  // la base en portait pourtant, `end_date` n'étant qu'`optional()`. Le terme
+  // est exigé pour tous les contrats à durée déterminée, et jamais antérieur au
+  // début. La durée maximale, elle, dépend du pays : elle est vérifiée dans le
+  // handler, où le pack du tenant est accessible.
+  .superRefine((c, ctx) => {
+    if (FIXED_TERM_TYPES.includes(c.type) && !c.end_date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom, path: ['end_date'],
+        message: `Un contrat ${c.type.toUpperCase()} doit porter une date de fin (terme)`,
+      })
+    }
+    if (c.end_date && c.end_date <= c.start_date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom, path: ['end_date'],
+        message: 'La date de fin doit être postérieure à la date de début',
+      })
+    }
+  })
+
+// OWASP A03 — le renouvellement lisait son corps sans aucune validation
+// (`request.body as {…}`) : ni format de date, ni borne de salaire.
+const renewContractSchema = z.object({
+  new_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
+  base_salary:  z.number().int().positive().max(100_000_000).optional(),
+})
+
+/** Types de contrats à terme : une date de fin y est constitutive. */
+const FIXED_TERM_TYPES: readonly string[] = ['cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']
+
+/**
+ * Pack législatif du pays du tenant — résolu UNE fois par requête (durée du
+ * CDD, renouvellements, période d'essai en dépendent). Repli sur le pack par
+ * défaut si la lecture échoue : jamais d'exception sur un chemin de création.
+ *
+ * Une règle absente du pack n'est PAS appliquée : on ne transpose pas le droit
+ * ivoirien aux quinze autres pays couverts.
+ */
+async function tenantPack(schema: string): Promise<LegislationPack> {
+  try {
+    const ctx = await loadEmployeeTenantContext(pool, schema, null)
+    return ctx.legislation.legislationPack
+  } catch {
+    return DEFAULT_LEGISLATION_PACK
+  }
+}
+
+/** Mois entiers écoulés entre deux dates ISO, arrondis au mois commencé. */
+function monthsBetween(startIso: string, endIso: string): number {
+  const [sy, sm, sd] = startIso.split('-').map(Number) as [number, number, number]
+  const [ey, em, ed] = endIso.split('-').map(Number) as [number, number, number]
+  const months = (ey - sy) * 12 + (em - sm)
+  // Un terme au 31/12/2027 pour un début au 01/01/2026 fait 24 mois, pas 23 :
+  // le jour de fin complète le dernier mois dès qu'il atteint la veille.
+  return ed >= sd - 1 ? months : months - 1
+}
 
 function auditLogContract(
   schema: string, userId: string, action: string,
@@ -125,29 +183,44 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
+      // Pack du pays : durée maximale du contrat à terme, puis période d'essai.
+      const pack = await tenantPack(schema)
+      if (body.end_date && FIXED_TERM_TYPES.includes(body.type)) {
+        const rule = pack.fixedTermContract
+        if (rule && monthsBetween(body.start_date, body.end_date) > rule.maxMonths) {
+          return reply.status(400).send({
+            error: `Un contrat à durée déterminée ne peut excéder ${rule.maxMonths} mois (${rule.maxMonths / 12} ans), renouvellements compris`,
+          })
+        }
+      }
       try {
         // Périmètre filiale : l'employé visé doit être dans le périmètre (sinon 404).
         const empScope = await requestHrScope(request, 'employees')
         if (!(await employeeInHrScope(schema, body.employee_id, await requestHrScope(request, 'e')))) {
           return reply.status(404).send({ error: 'Employé introuvable' })
         }
-        // Calcul automatique de la fin de période d'essai selon Code du Travail CI
+        // Fin de période d'essai calculée d'après le PACK du pays du tenant
+        // (CI : 15 jours employé / 1 mois cadre, art. 14 CT). Les 15 et 30
+        // jours étaient écrits en dur : faux pour les quinze autres pays
+        // couverts. Un pack sans règle d'essai ne calcule rien — la valeur
+        // saisie fait foi.
         let trialEndDate = body.trial_end_date || null
         if (!trialEndDate && body.start_date) {
-          const start = new Date(body.start_date)
-          // CDI : 15 jours employé / 1 mois cadre (Code Travail CI)
-          const trialDays = body.job_level?.toLowerCase().includes('cadre') ? 30 : 15
-          const trialEnd = new Date(start)
-          trialEnd.setDate(trialEnd.getDate() + trialDays)
-          trialEndDate = trialEnd.toISOString().split('T')[0]!
+          const trial = pack.trialPeriodDays
+          if (trial) {
+            const isExecutive = /cadre|executive|manager/i.test(body.job_level ?? '')
+            const trialEnd = new Date(body.start_date)
+            trialEnd.setDate(trialEnd.getDate() + (isExecutive ? trial.executive : trial.employee))
+            trialEndDate = trialEnd.toISOString().split('T')[0]!
+          }
         }
 
         const res = await pool.query(`
           INSERT INTO "${schema}".contracts
             (employee_id, type, start_date, end_date, trial_end_date, base_salary,
              working_hours, convention, job_title, job_level, cnps_affiliation,
-             ohada_clause, non_competition_clause, telecommuting_days, status)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'active')
+             ohada_clause, non_competition_clause, telecommuting_days, status, renewal_count)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'active',0)
           RETURNING *
         `, [
           body.employee_id, body.type, body.start_date, body.end_date || null,
@@ -285,8 +358,15 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
-      const body = request.body as { new_end_date: string; base_salary?: number }
       if (!isUuid(id)) return reply.status(400).send({ error: 'Identifiant de contrat invalide' })
+      const parsedRenew = renewContractSchema.safeParse(request.body)
+      if (!parsedRenew.success) {
+        return reply.status(400).send({
+          error: 'Données de renouvellement invalides',
+          details: parsedRenew.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const body = parsedRenew.data
       try {
         const orig = await pool.query(
           `SELECT * FROM "${schema}".contracts WHERE id = $1 AND ${await requestEmployeeScope(request, 'contracts.employee_id')}`, [id]
@@ -297,11 +377,46 @@ const contractsRoutes: FastifyPluginAsync = async (fastify) => {
         }
         if (orig.rows[0].type !== 'cdd') return reply.status(400).send({ error: 'Seuls les CDD sont renouvelables' })
 
+        // Le renouvellement PROLONGE : un terme plus proche serait une rupture
+        // anticipée déguisée, qui passe par /terminate et sa traçabilité.
+        const current = orig.rows[0] as { start_date: string | Date; end_date: string | Date | null; renewal_count: number | null }
+        const iso = (d: string | Date | null): string | null =>
+          d == null ? null : (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10))
+        const currentEnd = iso(current.end_date)
+        if (currentEnd && body.new_end_date <= currentEnd) {
+          return reply.status(400).send({
+            error: `Le renouvellement doit prolonger le contrat : terme actuel ${currentEnd}`,
+          })
+        }
+
+        // Bornes du pays : nombre de renouvellements, puis durée totale.
+        const rule = (await tenantPack(schema)).fixedTermContract
+        const already = Number(current.renewal_count ?? 0)
+        if (rule && already >= rule.maxRenewals) {
+          return reply.status(400).send({
+            error: `Ce CDD a déjà été renouvelé ${already} fois : le maximum légal est de ${rule.maxRenewals} renouvellements`,
+          })
+        }
+        const startIso = iso(current.start_date)
+        if (rule && startIso && monthsBetween(startIso, body.new_end_date) > rule.maxMonths) {
+          return reply.status(400).send({
+            error: `Renouvellements compris, un CDD ne peut excéder ${rule.maxMonths} mois (${rule.maxMonths / 12} ans)`,
+          })
+        }
+
         const res = await pool.query(`
           UPDATE "${schema}".contracts
-          SET end_date = $1, base_salary = COALESCE($2, base_salary), updated_at = now()
+          SET end_date = $1, base_salary = COALESCE($2, base_salary),
+              renewal_count = COALESCE(renewal_count, 0) + 1, updated_at = now()
           WHERE id = $3 RETURNING *
         `, [body.new_end_date, body.base_salary || null, id])
+
+        // OWASP A09 — un renouvellement change le terme : il se trace.
+        auditLogContract(schema, request.user.sub, 'contract.renewed', id, {
+          employeeId: String(orig.rows[0].employee_id ?? ''),
+          newEndDate: body.new_end_date,
+          renewalCount: already + 1,
+        }, request.ip ?? null)
         return reply.send({ data: maskSensitive(res.rows[0], await requestSensitiveCtx(request)) })
       } catch (err) {
         fastify.log.error(err)

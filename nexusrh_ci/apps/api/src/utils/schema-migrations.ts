@@ -32,6 +32,9 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     // sans réécriture de table) ; no-op si déjà 255.
     `ALTER TABLE "${schemaName}".employees ALTER COLUMN nni TYPE varchar(255)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS cnps_number varchar(50)`,
+    // Compteur de renouvellements des CDD : sans lui, la borne légale du pays
+    // (2 renouvellements en CI) ne peut pas être appliquée.
+    `ALTER TABLE "${schemaName}".contracts ADD COLUMN IF NOT EXISTS renewal_count int NOT NULL DEFAULT 0`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS mobile_money_provider varchar(20)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS mobile_money_phone varchar(20)`,
     `ALTER TABLE "${schemaName}".employees ADD COLUMN IF NOT EXISTS marital_status varchar(20)`,

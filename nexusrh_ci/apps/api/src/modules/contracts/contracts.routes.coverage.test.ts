@@ -159,6 +159,8 @@ describe('POST /contracts — branches restantes', () => {
 
   it('calcule une période d\'essai de 30 jours pour un cadre (201)', async () => {
     queryMock
+      // Pack du pays du tenant (essai, bornes du CDD) — lu une fois par requête.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'c-1', trial_end_date: '2026-01-31' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValue({ rows: [] })     // audit best-effort
@@ -176,6 +178,8 @@ describe('POST /contracts — branches restantes', () => {
 
   it('respecte le trial_end_date fourni explicitement (201)', async () => {
     queryMock
+      // Pack du pays du tenant (essai, bornes du CDD) — lu une fois par requête.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'c-2' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValue({ rows: [] })     // audit best-effort
@@ -192,6 +196,8 @@ describe('POST /contracts — branches restantes', () => {
 
   it('persiste tous les champs optionnels fournis (working_hours, end_date, clauses…) (201)', async () => {
     queryMock
+      // Durée maximale du CDD : lecture du pays du tenant (pack législatif).
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'c-3' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValue({ rows: [] })     // audit best-effort
@@ -219,6 +225,8 @@ describe('POST /contracts — branches restantes', () => {
 
   it('crée un contrat minimal sans job_title ni working_hours (défauts appliqués) (201)', async () => {
     queryMock
+      // Pack du pays du tenant (essai, bornes du CDD) — lu une fois par requête.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'c-4' }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValue({ rows: [] })     // audit best-effort
@@ -378,8 +386,11 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
 
   it('renouvelle un CDD avec nouveau salaire (200)', async () => {
     queryMock
-      .mockResolvedValueOnce({ rows: [{ id: 'c-1', type: 'cdd' }] }) // SELECT orig
+      .mockResolvedValueOnce({ rows: [{ id: 'c-1', type: 'cdd', start_date: '2026-01-01', end_date: '2026-06-30', renewal_count: 0 }] }) // SELECT orig
+      // Bornes du pays (renouvellements, durée totale) : lecture du tenant.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'c-1', type: 'cdd', end_date: '2027-01-01' }] }) // UPDATE
+      .mockResolvedValue({ rows: [] }) // trace d'audit du renouvellement (best-effort)
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
       method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/renew',

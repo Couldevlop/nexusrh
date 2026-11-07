@@ -550,6 +550,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     ohada_clause          boolean DEFAULT true,
     non_competition_clause boolean DEFAULT false,
     telecommuting_days    int DEFAULT 0,
+    -- Renouvellements déjà consommés (CDD) : la borne légale du pays
+    -- (pack.fixedTermContract) est inapplicable sans compteur.
+    renewal_count         int NOT NULL DEFAULT 0,
     status                varchar(20) DEFAULT 'active',
     signature_status      varchar(30),
     file_url              text,
