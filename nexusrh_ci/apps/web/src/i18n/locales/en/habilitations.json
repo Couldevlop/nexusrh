@@ -82,7 +82,21 @@
     "revokeKind": "rights removal",
     "sodTitle": "Sensitive combinations found",
     "acceptSod": "I acknowledge this combination",
-    "rejectReason": "Reason for rejection"
+    "rejectReason": "Reason for rejection",
+    "new": "Draft a form",
+    "form": {
+      "intro": "The N+1 and N+2 approvers are derived from the employee's reporting line: they are not entered here.",
+      "subgroup": "Subgroup",
+      "target": "Authorised employee",
+      "kind": "Type",
+      "kindGrant": "Grant rights",
+      "kindRevoke": "Remove rights",
+      "effectiveFrom": "Effective from",
+      "motive": "Reason",
+      "submit": "Create the form",
+      "cancel": "Cancel",
+      "error": "The form could not be created. Check the subgroup, the employee and the boxes ticked."
+    }
   },
   "delegations": {
     "intro": "Delegate form drafting while you are away.",
@@ -90,7 +104,15 @@
     "until": "Until",
     "revoke": "Revoke",
     "revoked": "revoked",
-    "expired": "expired"
+    "expired": "expired",
+    "form": {
+      "title": "Grant a delegation",
+      "delegate": "Delegate",
+      "endsAt": "Until",
+      "maxDays": "Maximum duration: {{days}} days. The delegate cannot delegate in turn.",
+      "submit": "Grant the delegation",
+      "error": "The delegation could not be created. Check the delegate and the end date."
+    }
   },
   "preview": {
     "title": "What this person can see",
@@ -109,6 +131,7 @@
   },
   "audit": {
     "intro": "Every action taken by authorised users, denied attempts included.",
+    "export": "Export to CSV",
     "empty": "No action in this period.",
     "filters": {
       "result": "Outcome",
