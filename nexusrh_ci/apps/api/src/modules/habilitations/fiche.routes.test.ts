@@ -239,3 +239,17 @@ describe('Lecture', () => {
     expect(d.events).toHaveLength(1)
   })
 })
+
+describe('GET /habilitations/fiches/:id/pdf', () => {
+  it('un acteur télécharge le PDF (200, application/pdf)', async () => {
+    const res = await app.inject({ method: 'GET', url: `/habilitations/fiches/${FICHE}/pdf`, headers: auth(app, N1, 'manager') })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/pdf')
+    expect(res.rawPayload.subarray(0, 4).toString()).toBe('%PDF')
+  })
+
+  it('hors circuit : 404, sans révéler la fiche', async () => {
+    const res = await app.inject({ method: 'GET', url: `/habilitations/fiches/${FICHE}/pdf`, headers: auth(app, TARGET, 'employee') })
+    expect(res.statusCode).toBe(404)
+  })
+})

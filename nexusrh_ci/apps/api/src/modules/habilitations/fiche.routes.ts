@@ -21,6 +21,7 @@ import {
   createFiche, submitFiche, validateFiche, rejectFiche, editFiche, applyFiche,
   listFiches, getFicheWithEvents, FicheError,
 } from './fiche.service.js'
+import { renderFichePdf } from './fiche-pdf.js'
 
 const createSchema = z.object({
   targetUserId: z.string(),
@@ -175,6 +176,29 @@ const ficheRoutes: FastifyPluginAsync = async (fastify) => {
           request.user.schemaName, id, request.user.sub, request.user.role, parsed.data.reason, undefined, request.ip,
         )
         return reply.send({ data: fiche })
+      } catch (err) {
+        return sendFicheError(reply, err)
+      }
+    },
+  })
+
+  fastify.get('/fiches/:id/pdf', {
+    preHandler: [fastify.authenticate, ensureTenantSchemaHook],
+    schema: { tags: ['habilitations'], summary: 'Fiche au format PDF' },
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!isUuid(id)) return badRequest(reply, 'Identifiant invalide')
+      const schema = request.user.schemaName
+      try {
+        // Même porte que la lecture : hors circuit, la fiche n'existe pas.
+        const found = await getFicheWithEvents(schema, id, request.user.sub, request.user.role)
+        if (!found) return reply.status(404).send({ error: 'Fiche introuvable' })
+        const { pdf, number } = await renderFichePdf(schema, id)
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Disposition', `inline; filename="fiche-${number}.pdf"`)
+          .header('Content-Security-Policy', "default-src 'none'")
+          .send(Buffer.from(pdf))
       } catch (err) {
         return sendFicheError(reply, err)
       }
