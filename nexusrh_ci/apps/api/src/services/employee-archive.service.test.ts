@@ -7,6 +7,23 @@
  * sont best-effort (une table absente n'interrompt pas l'archivage).
  */
 import { describe, it, expect, vi } from 'vitest'
+
+// La cascade reçoit son pool en paramètre, mais la coupure des habilitations
+// (`revokeAllForUser`) importe le pool global : on neutralise `pg` et la
+// configuration pour que ce banc reste un test de la cascade, sans dépendre de
+// variables d'environnement.
+vi.mock('pg', () => ({
+  Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() })),
+}))
+vi.mock('../config.js', () => ({
+  config: {
+    env: 'test',
+    jwt: { secret: 'test-secret-minimum-32-characters-ok!', expiresIn: '1h' },
+    database: { url: 'postgresql://test', poolMin: 1, poolMax: 2 },
+    redis: { url: 'redis://localhost:6380' },
+  },
+}))
+
 import { archiveEmployeeCascade } from './employee-archive.service.js'
 
 const SCHEMA = 'tenant_sotra'
@@ -28,22 +45,23 @@ describe('archiveEmployeeCascade', () => {
     const { pool, query } = makePool([
       { rows: [] },                       // 1. UPDATE employees
       { rows: [] },                       // 2. UPDATE users
+      { rows: [] },                       // 2 bis. SELECT users (comptes liés : habilitations coupées)
       { rows: [{ id: 'c1' }] },           // 3. UPDATE contracts → terminated
       { rows: [{ id: 'd1' }, { id: 'd2' }] }, // 4. UPDATE disciplinary_actions → cancelled
       { rows: [{ id: 's1' }] },           // 5. UPDATE signature_requests → cancelled
     ])
     const res = await archiveEmployeeCascade(pool, SCHEMA, EMP)
-    expect(res).toEqual({ terminatedContracts: 1, cancelledDiscipline: 2, cancelledSignatures: 1 })
+    expect(res).toEqual({ terminatedContracts: 1, cancelledDiscipline: 2, cancelledSignatures: 1, revokedHabilitations: 0 })
 
     const sqls = query.mock.calls.map(c => c[0] as string)
     expect(sqls[0]).toMatch(/UPDATE "tenant_sotra"\.employees SET deleted_at = now\(\), is_active = false/)
     expect(sqls[0]).toMatch(/deleted_at IS NULL/)        // idempotent
-    expect(sqls[2]).toMatch(/UPDATE "tenant_sotra"\.contracts[\s\S]*status = 'terminated'/)
-    expect(sqls[2]).toMatch(/status = 'active'/)         // n'agit que sur les actifs
-    expect(sqls[3]).toMatch(/UPDATE "tenant_sotra"\.disciplinary_actions[\s\S]*status = 'cancelled'/)
-    expect(sqls[3]).toMatch(/NOT IN \('closed', 'cancelled'\)/)
-    expect(sqls[4]).toMatch(/UPDATE "tenant_sotra"\.signature_requests[\s\S]*status = 'cancelled'/)
-    expect(sqls[4]).toMatch(/status IN \('draft', 'pending'\)/)
+    expect(sqls[3]).toMatch(/UPDATE "tenant_sotra"\.contracts[\s\S]*status = 'terminated'/)
+    expect(sqls[3]).toMatch(/status = 'active'/)         // n'agit que sur les actifs
+    expect(sqls[4]).toMatch(/UPDATE "tenant_sotra"\.disciplinary_actions[\s\S]*status = 'cancelled'/)
+    expect(sqls[4]).toMatch(/NOT IN \('closed', 'cancelled'\)/)
+    expect(sqls[5]).toMatch(/UPDATE "tenant_sotra"\.signature_requests[\s\S]*status = 'cancelled'/)
+    expect(sqls[5]).toMatch(/status IN \('draft', 'pending'\)/)
     // toutes les requêtes ciblent bien l'employé
     for (const c of query.mock.calls) expect(c[1]).toEqual([EMP])
   })
@@ -52,12 +70,13 @@ describe('archiveEmployeeCascade', () => {
     const { pool } = makePool([
       { rows: [] },                          // employees
       new Error('relation users does not exist'),   // users (catché)
+      new Error('relation users does not exist'),   // SELECT users (catché)
       new Error('relation contracts does not exist'), // contracts (catché)
       new Error('relation disciplinary_actions does not exist'), // discipline (catché)
       new Error('relation signature_requests does not exist'),   // signatures (catché)
     ])
     const res = await archiveEmployeeCascade(pool, SCHEMA, EMP)
     // L'archivage de l'employé (étape 1) a réussi ; les compteurs retombent à 0.
-    expect(res).toEqual({ terminatedContracts: 0, cancelledDiscipline: 0, cancelledSignatures: 0 })
+    expect(res).toEqual({ terminatedContracts: 0, cancelledDiscipline: 0, cancelledSignatures: 0, revokedHabilitations: 0 })
   })
 })

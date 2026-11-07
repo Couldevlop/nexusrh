@@ -20,6 +20,7 @@ import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { HAB_FILIALE_PREFIX, HAB_GROUP_NAME, revokeHabilitationOnRoleChange } from '../../db/habilitations-bootstrap.js'
+import { revokeAllForUser } from '../../services/habilitation.service.js'
 import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
@@ -1495,6 +1496,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           await revokeHabilitationOnRoleChange(schema, id, role, request.user.sub, request.ip ?? null)
         }
         const becameInactive = is_active === false
+        // Désactivation : couper le login ne suffit pas. L'affectation et les
+        // délégations (données comme reçues) doivent tomber avec le compte —
+        // sinon une réactivation rendrait des droits que personne n'a
+        // re-validés, et une délégation reçue laisserait un tiers agir au nom
+        // d'un compte désactivé.
+        if (becameInactive) {
+          await revokeAllForUser(schema, id, 'user_disabled')
+        }
         if (roleChanged || becameInactive || linkChanged) {
           try { await setTokenEpoch(id) } catch { /* fail-open : Redis indisponible */ }
         }

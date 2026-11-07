@@ -102,6 +102,7 @@ describe('DELETE /employees/:id — archivage + cascade contrats', () => {
       .mockResolvedValueOnce({ rows: [{ first_name: 'Kouassi', last_name: 'Jean', email: 'k@x.ci', job_title: 'Chauffeur' }] }) // snapshot
       .mockResolvedValueOnce({ rows: [] })                       // UPDATE employees deleted_at
       .mockResolvedValueOnce({ rows: [] })                       // UPDATE users
+      .mockResolvedValueOnce({ rows: [] })                       // SELECT users (comptes liés : habilitations coupées)
       .mockResolvedValueOnce({ rows: [{ id: CONTRACT }] })       // UPDATE contracts RETURNING
     const res = await app.inject({
       method: 'DELETE', url: `/employees/${EMP}`,
