@@ -82,7 +82,21 @@
     "revokeKind": "retrait de droits",
     "sodTitle": "Cumuls sensibles relevés",
     "acceptSod": "J'ai pris connaissance du cumul",
-    "rejectReason": "Motif du refus"
+    "rejectReason": "Motif du refus",
+    "new": "Rédiger une fiche",
+    "form": {
+      "intro": "Le validateur N+1 et le N+2 sont déduits de la hiérarchie du collaborateur : ils ne se saisissent pas ici.",
+      "subgroup": "Sous-groupe",
+      "target": "Collaborateur habilité",
+      "kind": "Nature",
+      "kindGrant": "Attribution de droits",
+      "kindRevoke": "Retrait de droits",
+      "effectiveFrom": "Date d'effet",
+      "motive": "Motif",
+      "submit": "Créer la fiche",
+      "cancel": "Annuler",
+      "error": "La fiche n'a pas pu être créée. Vérifiez le sous-groupe, le collaborateur et les cases cochées."
+    }
   },
   "delegations": {
     "intro": "Déléguer la rédaction de fiches pendant une absence.",
@@ -90,7 +104,15 @@
     "until": "Jusqu'au",
     "revoke": "Révoquer",
     "revoked": "révoquée",
-    "expired": "échue"
+    "expired": "échue",
+    "form": {
+      "title": "Donner une délégation",
+      "delegate": "Délégataire",
+      "endsAt": "Jusqu'au",
+      "maxDays": "Durée maximale : {{days}} jours. Le délégataire ne peut pas déléguer à son tour.",
+      "submit": "Donner la délégation",
+      "error": "La délégation n'a pas pu être créée. Vérifiez le délégataire et la date de fin."
+    }
   },
   "preview": {
     "title": "Ce que voit cette personne",
