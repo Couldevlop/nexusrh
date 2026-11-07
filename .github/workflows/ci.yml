@@ -1,12 +1,29 @@
 name: Quality & Security — NexusRH CI
 
+# Déclenchement sans doublon.
+#
+# Une branche de travail qui porte une PR recevait DEUX exécutions pour le même
+# commit : une sur `push` (feat/**, fix/**…) et une sur `pull_request`. Même
+# SHA, mêmes tests, deux fois le temps de calcul — et chaque contrôle affiché
+# en double dans la PR.
+#
+# `push` ne garde donc que les branches durables (main, develop), où un commit
+# peut arriver sans PR et où le contenu fusionné diffère de la tête de la PR.
+# Les branches de travail sont couvertes par `pull_request`, qui teste la
+# fusion prévue : c'est ce qui compte avant de fusionner.
 on:
   push:
-    branches: [ main, develop, 'feat/**', 'fix/**', 'hotfix/**' ]
+    branches: [ main, develop ]
     paths: [ 'nexusrh_ci/**', '.github/workflows/**' ]
   pull_request:
     branches: [ main, develop ]
-    paths: [ 'nexusrh_ci/**' ]
+    paths: [ 'nexusrh_ci/**', '.github/workflows/**' ]
+
+# Une poussée en remplace une autre sur la même référence : seul le dernier
+# état est intéressant. Jamais sur main — un commit fusionné n'est pas annulé.
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
