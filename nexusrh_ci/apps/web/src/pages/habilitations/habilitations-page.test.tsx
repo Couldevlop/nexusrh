@@ -220,8 +220,11 @@ describe('Onglet Délégations', () => {
   it('liste les délégations et permet de les révoquer', async () => {
     renderPage()
     fireEvent.click(await screen.findByText('tabs.delegations'))
-    expect(await screen.findByText(/rh@sotra.ci|u-rh/)).toBeTruthy()
-    fireEvent.click(screen.getByText('delegations.revoke'))
+    // L'adresse figure aussi dans le choix du délégataire du formulaire :
+    // la ligne de la LISTE est ciblée par son bouton de révocation.
+    const revoke = await screen.findByText('delegations.revoke')
+    expect(revoke.closest('li')?.textContent).toMatch(/rh@sotra\.ci|u-rh/)
+    fireEvent.click(revoke)
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/habilitations/delegations/d-1'))
   })
 
@@ -268,5 +271,77 @@ describe('Aperçu « Ce que voit X »', () => {
     fireEvent.click(await screen.findByText('preview.open'))
     expect(await screen.findByText(/masked/)).toBeTruthy()
     expect(getMock).toHaveBeenCalledWith('/habilitations/preview/u-rh')
+  })
+})
+
+describe('Rédiger une fiche (circuit inatteignable sans cet écran)', () => {
+  it('crée la fiche pour le collaborateur choisi, dans le sous-groupe choisi', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.fiches'))
+    fireEvent.click(await screen.findByText('fiche.new'))
+    fireEvent.change(await screen.findByLabelText('fiche.form.subgroup'), { target: { value: SIEGE } })
+    fireEvent.change(screen.getByLabelText('fiche.form.target'), { target: { value: 'u-rh' } })
+    fireEvent.change(screen.getByLabelText('fiche.form.motive'), { target: { value: 'Prise de poste' } })
+    fireEvent.click(screen.getByLabelText('employees:view'))
+    fireEvent.click(screen.getByText('fiche.form.submit'))
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/habilitations/fiches', {
+      targetUserId: 'u-rh', subgroupId: SIEGE, permissions: ['employees:view'],
+      motive: 'Prise de poste', kind: 'grant',
+    }))
+  })
+
+  it('la grille du formulaire est bornée au plafond du sous-groupe', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.fiches'))
+    fireEvent.click(await screen.findByText('fiche.new'))
+    fireEvent.change(await screen.findByLabelText('fiche.form.subgroup'), { target: { value: SIEGE } })
+    // Hors plafond du sous-groupe « RH Siège » : la case existe mais reste fermée.
+    expect((screen.getByLabelText('payroll:close') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('employees:view') as HTMLInputElement).disabled).toBe(false)
+  })
+
+  it('refuse d\'envoyer sans collaborateur ni sous-groupe', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.fiches'))
+    fireEvent.click(await screen.findByText('fiche.new'))
+    fireEvent.click(await screen.findByText('fiche.form.submit'))
+    expect(postMock).not.toHaveBeenCalledWith('/habilitations/fiches', expect.anything())
+  })
+})
+
+describe('Donner une délégation (sinon on ne peut que révoquer)', () => {
+  it('crée la procuration avec le délégataire et la date de fin', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.delegations'))
+    fireEvent.change(await screen.findByLabelText('delegations.form.delegate'), { target: { value: 'u-rh' } })
+    fireEvent.change(screen.getByLabelText('delegations.form.endsAt'), { target: { value: '2026-12-01' } })
+    fireEvent.click(screen.getByText('delegations.form.submit'))
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/habilitations/delegations', {
+      delegateId: 'u-rh', endsAt: '2026-12-01',
+    }))
+  })
+
+  it('borne la date de fin à 90 jours, comme le serveur', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.delegations'))
+    const input = await screen.findByLabelText('delegations.form.endsAt') as HTMLInputElement
+    const max = new Date(input.max).getTime() - Date.now()
+    expect(Math.round(max / 86_400_000)).toBeLessThanOrEqual(90)
+    expect(Math.round(max / 86_400_000)).toBeGreaterThan(88)
+  })
+})
+
+describe('Exporter la piste d\'audit', () => {
+  it('télécharge le CSV avec les filtres en cours (flux authentifié, pas un lien nu)', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:audit'), revokeObjectURL: vi.fn() })
+    renderPage()
+    fireEvent.click(await screen.findByText('tabs.audit'))
+    await screen.findByText('hr.employees.view')
+    fireEvent.change(screen.getByLabelText('audit.filters.result'), { target: { value: 'denied' } })
+    await waitFor(() => expect(lastAuditParams.result).toBe('denied'))
+    fireEvent.click(screen.getByText('audit.export'))
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/habilitations/audit', {
+      params: { result: 'denied', format: 'csv' }, responseType: 'blob',
+    }))
   })
 })

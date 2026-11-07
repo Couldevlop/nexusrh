@@ -28,7 +28,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 import { PermissionGrid } from '@/components/habilitations/PermissionGrid'
 import { PreviewDrawer } from '@/components/habilitations/PreviewDrawer'
-import { isFicheEditable } from '@/lib/habilitations'
+import { isFicheEditable, MAX_DELEGATION_DAYS } from '@/lib/habilitations'
 
 type Tab = 'structure' | 'fiches' | 'delegations' | 'audit'
 
@@ -193,6 +193,69 @@ export default function HabilitationsPage() {
     URL.revokeObjectURL(url)
   }
 
+  /**
+   * Rédaction d'une fiche. Sans cet écran, `POST /habilitations/fiches`
+   * n'était appelé nulle part : aucune fiche ne pouvait naître, donc tout le
+   * circuit N+1 / N+2, l'application des droits et le PDF restaient
+   * inatteignables depuis l'interface.
+   *
+   * Le N+1 et le N+2 ne sont PAS demandés ici : le serveur les déduit de la
+   * hiérarchie du collaborateur visé — deux sources pour la même décision
+   * finiraient par diverger.
+   */
+  const [newFiche, setNewFiche] = useState<{
+    targetUserId: string; subgroupId: string; permissions: string[]
+    motive: string; effectiveFrom: string; kind: 'grant' | 'revoke'
+  } | null>(null)
+
+  /** Utilisateurs du tenant : cibles possibles d'une fiche, membres compris. */
+  const usersQ = useQuery({
+    queryKey: ['habilitations', 'tenant-users'],
+    queryFn: async () => (await api.get('/settings/users')).data.data as Array<{ id: string; email: string }>,
+    enabled: role === 'admin' && tab === 'fiches',
+  })
+
+  const subgroups = useMemo(
+    () => (structure?.groups ?? []).flatMap((g) => g.subgroups),
+    [structure],
+  )
+  const members = useMemo(() => subgroups.flatMap((sg) => sg.members), [subgroups])
+  /** Cibles : les membres déjà rattachés ET les autres comptes du tenant. */
+  const targetOptions = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const m of members) byId.set(m.userId, m.email)
+    for (const u of usersQ.data ?? []) if (!byId.has(u.id)) byId.set(u.id, u.email)
+    byId.delete(me) // personne ne rédige sa propre fiche (refusé par le serveur)
+    return [...byId.entries()].map(([id, email]) => ({ id, email }))
+  }, [members, usersQ.data, me])
+
+  const newFicheSubgroup = useMemo(
+    () => subgroups.find((sg) => sg.id === newFiche?.subgroupId) ?? null,
+    [subgroups, newFiche?.subgroupId],
+  )
+
+  const createFiche = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) =>
+      (await api.post('/habilitations/fiches', payload)).data,
+    onSuccess: () => {
+      setNewFiche(null)
+      void qc.invalidateQueries({ queryKey: ['habilitations', 'fiches'] })
+    },
+  })
+
+  const submitNewFiche = (): void => {
+    if (!newFiche || !newFiche.targetUserId || !newFiche.subgroupId) return
+    const payload: Record<string, unknown> = {
+      targetUserId: newFiche.targetUserId,
+      subgroupId: newFiche.subgroupId,
+      permissions: newFiche.permissions,
+      kind: newFiche.kind,
+    }
+    if (newFiche.motive.trim() !== '') payload.motive = newFiche.motive.trim()
+    if (newFiche.effectiveFrom !== '') payload.effectiveFrom = newFiche.effectiveFrom
+    createFiche.mutate(payload)
+  }
+
   // ── Onglet Délégations ───────────────────────────────────────────────────
   const delegationsQ = useQuery({
     queryKey: ['habilitations', 'delegations'],
@@ -201,6 +264,29 @@ export default function HabilitationsPage() {
   const revokeDelegation = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/habilitations/delegations/${id}`)).data,
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['habilitations', 'delegations'] }),
+  })
+
+  /**
+   * Donner une procuration. Sans ce formulaire, l'onglet ne savait que
+   * révoquer des délégations qu'aucun écran ne pouvait créer.
+   *
+   * La borne de 90 jours est posée sur le champ (attribut `max`) comme elle
+   * l'est côté serveur : la refuser sur place évite un aller-retour, et le
+   * serveur reste l'autorité.
+   */
+  const [newDelegation, setNewDelegation] = useState({ delegateId: '', endsAt: '' })
+  const maxDelegationDate = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + MAX_DELEGATION_DAYS)
+    return d.toISOString().slice(0, 10)
+  }, [])
+  const createDelegation = useMutation({
+    mutationFn: async (payload: { delegateId: string; endsAt: string }) =>
+      (await api.post('/habilitations/delegations', payload)).data,
+    onSuccess: () => {
+      setNewDelegation({ delegateId: '', endsAt: '' })
+      void qc.invalidateQueries({ queryKey: ['habilitations', 'delegations'] })
+    },
   })
 
   // ── Onglet Piste d'audit ─────────────────────────────────────────────────
@@ -229,6 +315,24 @@ export default function HabilitationsPage() {
       }
     }
     return userId
+  }
+
+  /**
+   * Export CSV de la piste, AVEC les filtres en cours : un contrôleur part de
+   * ce qu'il a sous les yeux. Téléchargement par le flux authentifié (comme le
+   * PDF d'une fiche) et non par un lien nu : la piste porte des adresses, des
+   * matricules et des routes, elle ne s'ouvre pas sans jeton.
+   */
+  const exportAudit = async (): Promise<void> => {
+    const res = await api.get('/habilitations/audit', {
+      params: { ...auditParams, format: 'csv' }, responseType: 'blob',
+    })
+    const url = URL.createObjectURL(new Blob([res.data as Blob], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `piste-audit-habilitations-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const setAuditFilter = (key: keyof AuditFilters, value: string): void =>
@@ -362,6 +466,109 @@ export default function HabilitationsPage() {
 
       {tab === 'fiches' ? (
         <section className="space-y-4">
+          {role === 'admin' ? (
+            <div className="max-w-2xl space-y-3 rounded-lg border border-border p-4">
+              {newFiche === null ? (
+                <button
+                  onClick={() => setNewFiche({
+                    targetUserId: '', subgroupId: '', permissions: [],
+                    motive: '', effectiveFrom: '', kind: 'grant',
+                  })}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+                >
+                  {t('fiche.new')}
+                </button>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{t('fiche.form.intro')}</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{t('fiche.form.subgroup')}</span>
+                      <select
+                        aria-label={t('fiche.form.subgroup')}
+                        value={newFiche.subgroupId}
+                        onChange={(e) => setNewFiche({ ...newFiche, subgroupId: e.target.value, permissions: [] })}
+                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                      >
+                        <option value="">—</option>
+                        {subgroups.map((sg) => <option key={sg.id} value={sg.id}>{sg.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{t('fiche.form.target')}</span>
+                      <select
+                        aria-label={t('fiche.form.target')}
+                        value={newFiche.targetUserId}
+                        onChange={(e) => setNewFiche({ ...newFiche, targetUserId: e.target.value })}
+                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                      >
+                        <option value="">—</option>
+                        {targetOptions.map((u) => <option key={u.id} value={u.id}>{u.email}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{t('fiche.form.kind')}</span>
+                      <select
+                        aria-label={t('fiche.form.kind')}
+                        value={newFiche.kind}
+                        onChange={(e) => setNewFiche({ ...newFiche, kind: e.target.value as 'grant' | 'revoke' })}
+                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                      >
+                        <option value="grant">{t('fiche.form.kindGrant')}</option>
+                        <option value="revoke">{t('fiche.form.kindRevoke')}</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{t('fiche.form.effectiveFrom')}</span>
+                      <input
+                        type="date"
+                        aria-label={t('fiche.form.effectiveFrom')}
+                        value={newFiche.effectiveFrom}
+                        onChange={(e) => setNewFiche({ ...newFiche, effectiveFrom: e.target.value })}
+                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1 text-sm">
+                    <span className="font-medium">{t('fiche.form.motive')}</span>
+                    <textarea
+                      aria-label={t('fiche.form.motive')}
+                      value={newFiche.motive}
+                      onChange={(e) => setNewFiche({ ...newFiche, motive: e.target.value })}
+                      rows={2}
+                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                    />
+                  </label>
+
+                  <PermissionGrid
+                    value={newFiche.permissions}
+                    onChange={(next) => setNewFiche({ ...newFiche, permissions: next })}
+                    ceiling={newFicheSubgroup?.ceiling ?? null}
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={submitNewFiche}
+                      disabled={newFiche.targetUserId === '' || newFiche.subgroupId === ''}
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
+                    >
+                      {t('fiche.form.submit')}
+                    </button>
+                    <button
+                      onClick={() => setNewFiche(null)}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+                    >
+                      {t('fiche.form.cancel')}
+                    </button>
+                  </div>
+                  {createFiche.isError ? (
+                    <p className="text-xs text-destructive">{t('fiche.form.error')}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
+
           {fichesQ.isLoading ? <p className="text-sm text-muted-foreground">{t('loading')}</p> : null}
           {fiches.length === 0 && !fichesQ.isLoading ? <p className="text-sm text-muted-foreground">{t('fiche.empty')}</p> : null}
 
@@ -486,6 +693,51 @@ export default function HabilitationsPage() {
       {tab === 'delegations' ? (
         <section className="space-y-3">
           <p className="text-sm text-muted-foreground">{t('delegations.intro')}</p>
+
+          <div className="max-w-2xl space-y-3 rounded-lg border border-border p-4">
+            <p className="text-sm font-medium">{t('delegations.form.title')}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span>{t('delegations.form.delegate')}</span>
+                <select
+                  aria-label={t('delegations.form.delegate')}
+                  value={newDelegation.delegateId}
+                  onChange={(e) => setNewDelegation({ ...newDelegation, delegateId: e.target.value })}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  <option value="">—</option>
+                  {members
+                    .filter((m) => m.userId !== me)
+                    .map((m) => <option key={m.userId} value={m.userId}>{m.email}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>{t('delegations.form.endsAt')}</span>
+                <input
+                  type="date"
+                  aria-label={t('delegations.form.endsAt')}
+                  value={newDelegation.endsAt}
+                  max={maxDelegationDate}
+                  onChange={(e) => setNewDelegation({ ...newDelegation, endsAt: e.target.value })}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('delegations.form.maxDays', { days: MAX_DELEGATION_DAYS })}
+            </p>
+            <button
+              onClick={() => createDelegation.mutate(newDelegation)}
+              disabled={newDelegation.delegateId === '' || newDelegation.endsAt === ''}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
+            >
+              {t('delegations.form.submit')}
+            </button>
+            {createDelegation.isError ? (
+              <p className="text-xs text-destructive">{t('delegations.form.error')}</p>
+            ) : null}
+          </div>
+
           {(delegationsQ.data ?? []).length === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
               {t('delegations.empty')}
@@ -566,6 +818,13 @@ export default function HabilitationsPage() {
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm"
               />
             </label>
+            <button
+              onClick={() => void exportAudit()}
+              className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+            >
+              <FileText className="h-3 w-3" />
+              {t('audit.export')}
+            </button>
           </div>
 
           {auditQ.isLoading ? <p className="text-sm text-muted-foreground">{t('loading')}</p> : null}

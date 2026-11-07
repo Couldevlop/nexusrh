@@ -71,3 +71,11 @@ export function hasHabExtra(permissions: string[] | null, extra: HabExtra): bool
   if (permissions === null) return false
   return permissions.includes(extra)
 }
+
+/**
+ * Durée maximale d'une délégation, en jours. Même borne que le serveur
+ * (`MAX_DELEGATION_DAYS` de `delegation.routes.ts`) : elle est posée sur le
+ * champ de saisie pour refuser sur place une date impossible, le serveur
+ * restant l'autorité qui tranche.
+ */
+export const MAX_DELEGATION_DAYS = 90
