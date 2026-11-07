@@ -21,6 +21,7 @@ import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.servi
 import { auditTenant } from '../../utils/audit-log.js'
 import { HAB_FILIALE_PREFIX, HAB_GROUP_NAME, revokeHabilitationOnRoleChange } from '../../db/habilitations-bootstrap.js'
 import { revokeAllForUser } from '../../services/habilitation.service.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import { canonicalEmployeeMmProvider } from '../../services/mobile-money-providers.js'
 import { MANAGER_SCOPES } from '../../services/manager-scope.service.js'
 import { fieldDefinitionsSchema, parseFieldDefinitions } from '../../services/employee-custom-fields.service.js'
@@ -2208,11 +2209,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureMigrated(schema)
       const { month } = request.query as { month?: string }
       try {
+        // Périmètre filiale : un RH borné à une filiale ne voit que SES salariés
+        // (sinon il lirait les primes de toute l'entreprise — IDOR).
+        const scope = await requestHrScope(request, 'e')
         const res = await pool.query(`
           SELECT ve.*, e.first_name, e.last_name, e.employee_number AS registration_number
           FROM "${schema}".variable_elements ve
           JOIN "${schema}".employees e ON e.id = ve.employee_id
-          WHERE ($1::text IS NULL OR ve.month = $1)
+          WHERE ($1::text IS NULL OR ve.month = $1) AND ${scope}
           ORDER BY e.last_name, e.first_name, ve.rule_code
         `, [month || null])
         return reply.send({ data: res.rows })
@@ -2235,6 +2239,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const body = parsed.data
       if (isSelfAction(request, body.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       try {
+        // Périmètre filiale : pas d'élément variable sur un salarié hors
+        // périmètre (404, jamais 403 : le 403 révélerait son existence).
+        if (!(await employeeInHrScope(schema, body.employee_id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         // Le moteur de paie lit les éléments variables par period_id (colonne
         // NOT NULL) : on résout la période depuis le mois. Sans période ouverte
         // pour ce mois → 400 clair (au lieu d'un 500 NOT NULL).
@@ -2269,14 +2278,19 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'Identifiant invalide' })
       try {
-        // Garde « propre dossier » : on retrouve le salarié visé avant de supprimer.
+        // Garde « propre dossier » ET périmètre filiale : on retrouve le
+        // salarié visé avant de supprimer, borné au périmètre — un élément
+        // d'une autre filiale est donc introuvable (404), et le DELETE porte
+        // le même périmètre pour qu'aucune course ne le contourne.
+        const scope = await requestEmployeeScope(request, 'variable_elements.employee_id')
         const target = await pool.query<{ employee_id: string }>(
-          `SELECT employee_id FROM "${schema}".variable_elements WHERE id = $1`, [id])
+          `SELECT employee_id FROM "${schema}".variable_elements WHERE id = $1 AND ${scope}`, [id])
         const targetEmp = target.rows[0]?.employee_id
-        if (targetEmp && isSelfAction(request, targetEmp)) {
+        if (!targetEmp) return reply.status(404).send({ error: 'Élément variable introuvable' })
+        if (isSelfAction(request, targetEmp)) {
           return reply.status(403).send({ error: SELF_ACTION_ERROR })
         }
-        await pool.query(`DELETE FROM "${schema}".variable_elements WHERE id = $1`, [id])
+        await pool.query(`DELETE FROM "${schema}".variable_elements WHERE id = $1 AND ${scope}`, [id])
         return reply.send({ success: true })
       } catch (err) {
         fastify.log.error(err)

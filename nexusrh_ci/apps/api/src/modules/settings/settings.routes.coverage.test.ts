@@ -1247,11 +1247,21 @@ describe('POST /settings/variable-elements', () => {
 // ════════════════════════════════════════════════════════════════════════════
 describe('DELETE /settings/variable-elements/:id', () => {
   it('supprime (200)', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [] })
+    // L'élément doit d'abord être retrouvé (garde « propre dossier » +
+    // périmètre filiale) : sans ligne, la route répond 404.
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: UUID_B }], rowCount: 1 })
     const res = await app.inject({
       method: 'DELETE', url: `/settings/variable-elements/${UUID_A}`, headers: auth(tokenFor(app, 'hr_manager')),
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  it('404 si l\'élément est introuvable ou hors périmètre', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    const res = await app.inject({
+      method: 'DELETE', url: `/settings/variable-elements/${UUID_A}`, headers: auth(tokenFor(app, 'hr_manager')),
+    })
+    expect(res.statusCode).toBe(404)
   })
 
   it('500 si DB échoue', async () => {
