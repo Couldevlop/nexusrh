@@ -11,6 +11,8 @@ import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 import { platformRenameStatements } from '../db/platform-rename.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
+import { habilitationTableStatements } from '../db/habilitations.js'
+import { runHabilitationBootstrap } from '../db/habilitations-bootstrap.js'
 
 const migratedSchemas = new Set<string>()
 
@@ -64,6 +66,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     ...employeeDocumentsTableStatements(schemaName),
     // ── Propositions de contrat (recrutement), versionnées ──────────────────
     ...contractProposalsTableStatements(schemaName),
+    // ── Habilitations RH (groupes, fiches, délégations, règles SoD) ────────
+    ...habilitationTableStatements(schemaName),
     // Reprise : la proposition générée au recrutement avait été versée en
     // `signed_contract` → re-catégorisée `contract_proposal` (idempotent).
     ...contractProposalRecategorizeStatements(schemaName),
@@ -267,6 +271,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS raf_user_id uuid`,
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`,
     `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS legislation_pack_code varchar(20)`,
+    // Filiale « siège social » : couverte par le sous-groupe RH Siège (habilitations).
+    `ALTER TABLE "${schemaName}".legal_entities    ADD COLUMN IF NOT EXISTS is_head_office boolean NOT NULL DEFAULT false`,
     `ALTER TABLE "${schemaName}".employees         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".pay_slips         ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
     `ALTER TABLE "${schemaName}".cnps_declarations ADD COLUMN IF NOT EXISTS legal_entity_id uuid`,
@@ -900,6 +906,10 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     await pool.query(sql).catch(() => undefined)
   }
 
+  // Habilitations RH : structure par défaut + reprise d'office des tenants existants
+  // (une seule fois, marqueur platform.tenants.hab_bootstrapped_at). Ne lève jamais.
+  await runHabilitationBootstrap(schemaName)
+
   migratedSchemas.add(schemaName)
 }
 
@@ -1011,6 +1021,10 @@ export async function ensurePlatformSchema(): Promise<void> {
     // Génération de PROPOSITION de contrat au recrutement (opt-in, admin tenant).
     // DEFAULT false + lecture fail-closed : cf. contract-proposal.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS contract_generation_enabled boolean NOT NULL DEFAULT false`,
+    // Habilitations RH : contrôle par la grille actif seulement si true (tenants existants : false).
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS habilitations_enforced boolean NOT NULL DEFAULT false`,
+    // Marqueur de la reprise d'office des habilitations (NULL = jamais reprise).
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS hab_bootstrapped_at timestamptz`,
 
     // ── Bulletin de paie personnalisable par tenant (logo, colonnes, couleur) ──
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS payslip_config jsonb NOT NULL DEFAULT '{}'`,

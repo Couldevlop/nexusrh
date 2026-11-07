@@ -41,6 +41,13 @@ export interface AuthUser {
   agencyId?: string
 }
 
+/** Périmètre d'habilitation renvoyé par l'API (lecture seule côté écran). */
+export interface HabScope {
+  kind: string
+  legalEntityId: string | null
+  allEntities: boolean
+}
+
 interface AuthState {
   user: AuthUser | null
   token: string | null
@@ -52,6 +59,20 @@ interface AuthState {
   // Contexte cabinet sauvegardé pendant une session scopée (pour le restaurer).
   _agencyToken: string | null
   _agencyUser: AuthUser | null
+  /**
+   * Habilitations RH — droits EFFECTIFS de l'utilisateur, tels que l'API les
+   * calcule (`/auth/me`, et dès le login pour un salarié habilité).
+   * `null` = aucune affectation : l'accès reste celui du rôle, et l'interface
+   * ne masque rien (comportement historique). Liste vide = affectation
+   * inactive : tout est refusé côté serveur.
+   *
+   * Ce n'est JAMAIS une autorité : l'API décide. Le front s'en sert pour ne
+   * pas proposer un écran qui répondrait 403.
+   */
+  habPermissions: string[] | null
+  habScope: HabScope | null
+
+  setHabilitations: (permissions: string[] | null, scope: HabScope | null) => void
 
   setAuth: (user: AuthUser, token: string, refreshToken: string, tenantConfig: TenantConfig | null, agencyConfig?: AgencyConfig | null) => void
   setToken: (token: string) => void
@@ -129,10 +150,18 @@ export const useAuthStore = create<AuthState>()(
       activeTenant: null,
       _agencyToken: null,
       _agencyUser: null,
+      habPermissions: null,
+      habScope: null,
+
+      setHabilitations: (permissions, scope) => set({ habPermissions: permissions, habScope: scope }),
 
       setAuth: (user, token, refreshToken, tenantConfig, agencyConfig = null) => {
+        // Une nouvelle session repart sans habilitations connues : elles sont
+        // relues à l'ouverture (login puis /auth/me). Garder celles de la
+        // session précédente masquerait des écrans à tort.
         set({ user, token, refreshToken, tenantConfig, agencyConfig,
-          activeTenant: null, _agencyToken: null, _agencyUser: null })
+          activeTenant: null, _agencyToken: null, _agencyUser: null,
+          habPermissions: null, habScope: null })
         if (tenantConfig) applyTenantTheme(tenantConfig)
         else if (agencyConfig) applyAgencyTheme(agencyConfig)
         if (typeof window !== 'undefined') {
@@ -162,6 +191,8 @@ export const useAuthStore = create<AuthState>()(
           // Sauvegarde du contexte cabinet (la 1re activation seulement).
           _agencyToken: cur._agencyToken ?? cur.token,
           _agencyUser: cur._agencyUser ?? cur.user,
+          habPermissions: null,
+          habScope: null,
         })
         applyTenantTheme(tenantConfig)
         if (typeof window !== 'undefined') {
@@ -196,7 +227,8 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         set({ user: null, token: null, refreshToken: null, tenantConfig: null,
-          agencyConfig: null, activeTenant: null, _agencyToken: null, _agencyUser: null })
+          agencyConfig: null, activeTenant: null, _agencyToken: null, _agencyUser: null,
+          habPermissions: null, habScope: null })
         resetTheme()
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('nexusrh:logout'))

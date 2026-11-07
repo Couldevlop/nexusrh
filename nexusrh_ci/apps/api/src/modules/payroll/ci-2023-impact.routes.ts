@@ -45,6 +45,7 @@ import { computeCmu, isCmuSpouseToVerify } from '../../services/payroll-engine-c
 import { employeeCmu } from '../../services/final-payslip.service.js'
 import { encodeField } from '../sage/sage.service.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
+import { requestHrScope } from '../../utils/hr-scope.js'
 
 /** Plafonds CNPS appliqués à tort après le 31/12/2022 (historique, pas une valeur en vigueur). */
 export const CNPS_PLAFONDS_AVANT_2023 = { retraite: 1_647_315, atPf: 70_000 } as const
@@ -428,6 +429,10 @@ const ci2023ImpactRoutes: FastifyPluginAsync = async (fastify) => {
         )
         const tenant = tenantRes.rows[0]
         const tenantAtRate = Number(tenant?.at_rate ?? CIV_2024.tauxAtDefaultPatronal) || CIV_2024.tauxAtDefaultPatronal
+        // Périmètre filiale (habilitations RH) : un RH borné à une filiale ne
+        // chiffre que SES salariés. 'TRUE' pour l'admin du tenant et le DRH
+        // habilité sur toutes les filiales — le rapport reste alors complet.
+        const scope = await requestHrScope(request, 'e')
         const slips = await rawPool.query<ImpactSlipRow>(
           `SELECT ps.id, ps.employee_id, ps.month, ps.gross_salary, ps.lines, ps.legal_entity_id,
                   e.first_name, e.last_name, e.employee_number, e.marital_status, e.children_count,
@@ -437,7 +442,7 @@ const ci2023ImpactRoutes: FastifyPluginAsync = async (fastify) => {
              JOIN "${schema}".pay_periods pp ON pp.id = ps.period_id
              LEFT JOIN "${schema}".employees e ON e.id = ps.employee_id
              LEFT JOIN "${schema}".legal_entities le ON le.id = ps.legal_entity_id
-            WHERE pp.status = 'closed' AND ps.month >= $1
+            WHERE pp.status = 'closed' AND ps.month >= $1 AND ${scope}
             ORDER BY ps.month, e.last_name, e.first_name`,
           [IMPACT_FROM_MONTH],
         )
@@ -456,6 +461,7 @@ const ci2023ImpactRoutes: FastifyPluginAsync = async (fastify) => {
             WHERE pp.status <> 'closed'
               AND ve.rule_code IN ('HEURES_SUPP_NUIT', 'HEURES_SUPP_FERIE')
               AND ve.amount <> 0
+              AND ${scope}
             ORDER BY pp.month, e.last_name, e.first_name`,
         )
         const report = buildImpactReport(slips.rows, tenant?.default_country_code ?? null, tenantAtRate, openVe.rows)

@@ -18,7 +18,7 @@
  *    interpolation entre guillemets d'identifiant uniquement.
  *  - OWASP A09 : chaque export est journalisé dans audit_log (non bloquant).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import {
@@ -34,6 +34,7 @@ import {
   type EmpNode,
 } from './org-chart.service.js'
 import { renderOrgChartPdf } from './org-chart-pdf.js'
+import { requestHrScope } from '../../utils/hr-scope.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 
@@ -48,10 +49,11 @@ const SELECT_DEPTS = (schema: string) =>
   `SELECT id, name, code, manager_id, parent_id FROM "${schema}".departments ORDER BY name`
 
 // OWASP A02 — aucun champ sensible (base_salary, nni, iban…) n'est sélectionné.
-const SELECT_EMPS = (schema: string) =>
-  `SELECT id, first_name, last_name, job_title, department_id, manager_id, profile_photo_url
-   FROM "${schema}".employees
-   WHERE is_active = true AND deleted_at IS NULL`
+// Habilitations : `scopeSql` = périmètre filiale de l'utilisateur (alias `e`).
+const SELECT_EMPS = (schema: string, scopeSql: string) =>
+  `SELECT e.id, e.first_name, e.last_name, e.job_title, e.department_id, e.manager_id, e.profile_photo_url
+   FROM "${schema}".employees e
+   WHERE e.is_active = true AND e.deleted_at IS NULL AND ${scopeSql}`
 
 function auditExport(
   schema: string,
@@ -63,10 +65,12 @@ function auditExport(
   auditTenant(schema, { userId: userId ?? null, action: 'orgchart.export', entity: 'org_chart', entityId: null, changes: { format, type }, ip: ip })
 }
 
-async function fetchData(schema: string): Promise<{ depts: DeptRow[]; emps: EmpRow[] }> {
+async function fetchData(request: FastifyRequest): Promise<{ depts: DeptRow[]; emps: EmpRow[] }> {
+  const schema = request.user.schemaName
+  const scopeSql = await requestHrScope(request, 'e')
   const [d, e] = await Promise.all([
     rawPool.query<DeptRow>(SELECT_DEPTS(schema)),
-    rawPool.query<EmpRow>(SELECT_EMPS(schema)),
+    rawPool.query<EmpRow>(SELECT_EMPS(schema, scopeSql)),
   ])
   return { depts: d.rows, emps: e.rows }
 }
@@ -87,7 +91,7 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['org-chart'], summary: 'Organigramme par direction/service' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
-      const { depts, emps } = await fetchData(schema)
+      const { depts, emps } = await fetchData(request)
       const tree = buildDepartmentTree(depts, emps)
       return reply.send({ data: tree })
     },
@@ -100,7 +104,7 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { rootEmployeeId } = request.query as { rootEmployeeId?: string }
-      const { depts, emps } = await fetchData(schema)
+      const { depts, emps } = await fetchData(request)
       const tree = buildReportingTree(emps, rootEmployeeId ?? null, deptNameMap(depts))
       return reply.send({ data: tree })
     },
@@ -113,7 +117,7 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const q = exportQuerySchema.parse(request.query)
-      const { depts, emps } = await fetchData(schema)
+      const { depts, emps } = await fetchData(request)
       const svg = q.type === 'reporting'
         ? renderSvg(layoutForest<EmpNode>(buildReportingTree(emps, q.rootEmployeeId ?? null, deptNameMap(depts)), empLines), 'Organigramme hierarchique')
         : renderSvg(layoutForest<DeptNode>(buildDepartmentTree(depts, emps), deptLines), 'Organigramme par service')
@@ -131,7 +135,7 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply: FastifyReply) => {
       const schema = request.user.schemaName
       const q = exportQuerySchema.parse(request.query)
-      const { depts, emps } = await fetchData(schema)
+      const { depts, emps } = await fetchData(request)
       const layout = q.type === 'reporting'
         ? layoutForest<EmpNode>(buildReportingTree(emps, q.rootEmployeeId ?? null, deptNameMap(depts)), empLines)
         : layoutForest<DeptNode>(buildDepartmentTree(depts, emps), deptLines)

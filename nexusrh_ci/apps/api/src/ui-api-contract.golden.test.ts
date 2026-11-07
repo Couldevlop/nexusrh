@@ -71,6 +71,12 @@ const PREFIX: Record<string, string> = {
   // (interviewSimRoutes @ /interview-sim) et public (interviewSimPublicRoutes @
   // /public/interview-sim, déclaré dans EXTRA_PUBLIC_ROUTES ci-dessous).
   'interview-sim/interview-sim.routes.ts': '/interview-sim',
+  // Habilitations RH : quatre plugins montés sur le MÊME préfixe
+  // (structure / fiches / délégations / piste d'audit), cf. app.ts.
+  'habilitations/structure.routes.ts': '/habilitations',
+  'habilitations/fiche.routes.ts': '/habilitations',
+  'habilitations/delegation.routes.ts': '/habilitations',
+  'habilitations/audit.routes.ts': '/habilitations',
 }
 
 function walk(dir: string, exts: RegExp): string[] {

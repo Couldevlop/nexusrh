@@ -12,9 +12,11 @@
  *  - OWASP A09 : chaque création/modification/suppression journalisée (audit_log).
  *  - Isolation tenant : schemaName du token (validé par le plugin auth).
  */
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 import {
   DISCIPLINE_TYPES,
   DISCIPLINE_STATUSES,
@@ -67,7 +69,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       let sql = `SELECT d.*, e.first_name, e.last_name, e.employee_number
                  FROM "${schema}".disciplinary_actions d
                  JOIN "${schema}".employees e ON e.id = d.employee_id
-                 WHERE 1=1`
+                 WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let i = 1
       if (employeeId) { sql += ` AND d.employee_id = $${i++}`; params.push(employeeId) }
@@ -88,7 +90,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
         `SELECT d.*, e.first_name, e.last_name FROM "${schema}".disciplinary_actions d
-         JOIN "${schema}".employees e ON e.id = d.employee_id WHERE d.id = $1 LIMIT 1`,
+         JOIN "${schema}".employees e ON e.id = d.employee_id WHERE d.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
         [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
@@ -110,6 +112,11 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       const body = parsed.data
+      if (isSelfAction(request, body.employeeId)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
+      // Périmètre filiale : pas de sanction sur un salarié hors périmètre.
+      if (!(await employeeInHrScope(schema, body.employeeId, await requestHrScope(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const res = await rawPool.query(
         `INSERT INTO "${schema}".disciplinary_actions
            (employee_id, type, reason, description, action_date, document_url, issued_by, status)
@@ -140,10 +147,11 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
 
-      const cur = await rawPool.query<{ status: DisciplineStatus }>(
-        `SELECT status FROM "${schema}".disciplinary_actions WHERE id = $1 LIMIT 1`, [id],
+      const cur = await rawPool.query<{ status: DisciplineStatus; employee_id: string }>(
+        `SELECT status, employee_id FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'disciplinary_actions.employee_id')} LIMIT 1`, [id],
       )
       if (!cur.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
+      if (isSelfAction(request, cur.rows[0].employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
 
       // OWASP A03 — transition de statut contrôlée par le domaine.
       if (body.status && !canTransition(cur.rows[0].status, body.status)) {
@@ -182,7 +190,7 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".disciplinary_actions WHERE id = $1 RETURNING id`, [id],
+        `DELETE FROM "${schema}".disciplinary_actions WHERE id = $1 AND ${await requestEmployeeScope(request, 'disciplinary_actions.employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Sanction introuvable' })
       audit(schema, request.user.sub, 'discipline.deleted', id, {}, request.ip ?? null)

@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.service.js'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
@@ -14,6 +15,9 @@ import { canonicalEmployeeMmProvider } from '../../services/mobile-money-provide
 import { isValidSocialId } from './social-id.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestHrScopeUnlessSelf, employeeInHrScope, legalEntityInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
+import { isMasked, csvCell } from '../../services/sensitive-mask.js'
+import { presentEmployeeRow } from '../../services/employee-presenter.js'
 import { EMPLOYEE_NUMBER_MAX_LENGTH } from '../../db/employee-number.js'
 import {
   isInManagerScope, managerScopeSql, resolveManagerEmployeeId,
@@ -22,7 +26,7 @@ import {
 import { loadEmployeeTenantContext } from '../../services/employee-tenant-context.service.js'
 import { currencyLabel, type LegislationPack } from '../../services/legislation-packs.js'
 import {
-  parseFieldDefinitions, redactCustomFields, validateCustomFieldValues,
+  parseFieldDefinitions, validateCustomFieldValues,
   type CustomFieldError,
 } from '../../services/employee-custom-fields.service.js'
 
@@ -283,16 +287,20 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '20', 10) || 20))
       const offset = (page - 1) * limit
       const schema = request.user.schemaName
+      // Données sensibles masquées hors case dédiée (habilitations).
+      const maskCtx = await requestSensitiveCtx(request)
 
       // Clause WHERE commune (filtres) — réutilisée par le COUNT et la page.
-      let where = ` WHERE e.deleted_at IS NULL`
+      let where = ` WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
 
       if (isActive === 'true') { where += ` AND e.is_active = true` }
       if (departmentId) { where += ` AND e.department_id = $${idx++}`; params.push(departmentId) }
       if (search) {
-        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx} OR e.cnps_number LIKE $${idx} OR lower(e.employee_number) LIKE $${idx})`
+        // N° CNPS masqué : il ne sert pas de critère (sinon oracle de la valeur cachée).
+        const cnpsClause = isMasked(maskCtx) ? '' : ` OR e.cnps_number LIKE $${idx}`
+        where += ` AND (lower(e.first_name) LIKE $${idx} OR lower(e.last_name) LIKE $${idx}${cnpsClause} OR lower(e.employee_number) LIKE $${idx})`
         params.push(`%${search.toLowerCase()}%`); idx++
       }
       // Si manager : filtre équipe directe (OWASP A01 fail-closed : sans dossier
@@ -332,20 +340,25 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // RIB : jamais le chiffré dans la liste ; RH → RIB MASQUÉ (4 derniers
       // caractères) pour l'affichage du mode de paiement. Compte lié : RH only.
       const isHr = ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)
-      for (const row of res.rows as Array<Record<string, unknown>>) {
-        const iban = isHr && typeof row.iban === 'string' ? decryptIfPresent(row.iban) : null
+      // Masqué : le RIB n'est même pas déchiffré.
+      const masked = isMasked(maskCtx)
+      // Champs personnalisés sensibles : réservés aux rôles RH disposant de la case
+      // données sensibles (A01). L'ordre (expurger, retirer les chiffrés, masquer)
+      // est porté par presentEmployeeRow, commun à liste / détail / POST / PATCH.
+      const redactCustom = !isHr || masked
+      const defs = redactCustom && res.rows.length ? await loadCustomFieldDefinitions(schema) : []
+      const listRows = (res.rows as Array<Record<string, unknown>>).map((row) => {
+        const hadIban = typeof row.iban === 'string' && row.iban !== ''
+        const iban = isHr && !masked && hadIban ? decryptIfPresent(row.iban as string) : null
         row.iban_masked = iban ? maskIban(iban) : null
         delete row.iban
         if (!isHr) { row.linked_user_id = null; row.linked_user_role = null }
-      }
+        // iban_masked porte l'information « un RIB existe » : on l'annonce masqué.
+        if (masked && hadIban) row.iban_masked = 'x'
+        return presentEmployeeRow(row, { ctx: maskCtx, defs, redactCustom, secrets: 'drop' })
+      })
 
-      // Champs personnalisés sensibles : réservés aux rôles RH (A01).
-      if (!isHr && res.rows.length) {
-        const defs = await loadCustomFieldDefinitions(schema)
-        for (const row of res.rows) row.custom_fields = redactCustomFields(defs, row.custom_fields)
-      }
-
-      return reply.send({ data: res.rows, total, page, limit })
+      return reply.send({ data: listRows, total, page, limit })
     },
   })
 
@@ -392,6 +405,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       // pool module-level
       const schema = request.user.schemaName
+      // Périmètre filiale (habilitations) : hors périmètre = 404, sans fuite d'existence.
+      // Le self-service (rôle effectif employee) n'est jamais filtré.
+      const hrScope = await requestHrScopeUnlessSelf(request, 'e')
 
       const res = await pool.query(
         `SELECT e.*, d.name AS department_name,
@@ -407,13 +423,16 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
             ORDER BY (u.employee_id = e.id) DESC NULLS LAST
             LIMIT 1
          ) lu ON true
-         WHERE e.id = $1 AND e.deleted_at IS NULL LIMIT 1`,
+         WHERE e.id = $1 AND e.deleted_at IS NULL AND ${hrScope} LIMIT 1`,
         [id]
       )
 
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       const emp = res.rows[0]
+      // Habilitations : données sensibles masquées hors case dédiée, sauf son propre dossier.
+      const hab = await requestSensitiveCtx(request)
+      const maskCtx = emp.email === request.user.email || (hab !== null && hab.selfEmployeeId === emp.id) ? null : hab
 
       // OWASP A01 — contrôle d'accès fin par rôle :
       // - employee : uniquement son propre dossier
@@ -436,13 +455,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const canSeeSensitive =
         ['admin', 'hr_manager', 'hr_officer'].includes(request.user.role) ||
         emp.email === request.user.email
-      if (canSeeSensitive) {
+      // Masqué : jamais déchiffré (presentEmployeeRow met le chiffré à null).
+      const showClear = canSeeSensitive && !isMasked(maskCtx)
+      if (showClear) {
         if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
         if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
-      } else {
-        delete emp.nni
-        delete emp.iban
-        emp.custom_fields = redactCustomFields(await loadCustomFieldDefinitions(schema), emp.custom_fields)
       }
       // Compte utilisateur lié : information d'administration, rôles RH seulement.
       if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)) {
@@ -460,7 +477,12 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         emp.seniority_months = months
         emp.seniority_label = `${Math.floor(months / 12)} an(s) ${months % 12} mois`
       }
-      return reply.send({ data: emp })
+      const detailRedact = !canSeeSensitive || isMasked(maskCtx)
+      return reply.send({ data: presentEmployeeRow(emp, {
+        ctx: maskCtx, redactCustom: detailRedact,
+        defs: detailRedact ? await loadCustomFieldDefinitions(schema) : [],
+        secrets: showClear ? 'keep' : 'drop',
+      }) })
     },
   })
 
@@ -479,6 +501,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const body = parsed.data
       const schema = request.user.schemaName
+
+      // Périmètre filiale : on ne crée pas un employé hors de son périmètre.
+      if (!(await legalEntityInHrScope(schema, body.legalEntityId, await requestHrScope(request, 'e')))) {
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
+      }
 
       // Pays de l'employé (filiale ou tenant) + champs personnalisés du tenant.
       const ctx = await loadEmployeeTenantContext(pool, schema, body.legalEntityId)
@@ -523,7 +550,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       afterEmployeeCreated(pool, schema, created, body,
         { userId: request.user.sub, ip: request.ip ?? null }, { startOnboarding: true })
 
-      return reply.status(201).send({ data: created })
+      const createCtx = await requestSensitiveCtx(request)
+      return reply.status(201).send({ data: presentEmployeeRow(created as Record<string, unknown>, {
+        ctx: createCtx, redactCustom: isMasked(createCtx),
+        defs: isMasked(createCtx) ? await loadCustomFieldDefinitions(schema) : [], secrets: 'drop',
+      }) })
     },
   })
 
@@ -542,6 +573,13 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (request.user.role === 'employee' && request.user.employeeId !== id) {
         return reply.status(403).send({ error: 'Vous ne pouvez modifier que votre propre profil' })
       }
+      // Habilitations : aucune action RH sur son propre dossier (le self-service
+      // du rôle effectif employee reste autorisé, filtré ci-dessous).
+      if (isSelfAction(request, id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
+      // Périmètre filiale : un employé hors périmètre est introuvable (404).
+      if (!(await employeeInHrScope(request.user.schemaName, id, await requestHrScopeUnlessSelf(request, 'e')))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       // OWASP A03 : Zod parse + whitelist
       const parsed = patchEmployeeSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -558,6 +596,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         for (const k of Object.keys(body)) {
           if (!EMPLOYEE_SELF_FIELDS.has(k)) delete body[k]
         }
+      } else if (body.legalEntityId !== undefined
+          && !(await legalEntityInHrScope(request.user.schemaName, body.legalEntityId as string | null,
+                                          await requestHrScope(request, 'e')))) {
+        // Pas de déplacement d'un employé vers une filiale hors périmètre.
+        return reply.status(403).send({ error: 'Filiale hors de votre périmètre' })
       }
 
       const schema = request.user.schemaName
@@ -640,7 +683,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       let res
       try {
         res = await pool.query(
-          `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+          `UPDATE "${schema}".employees SET ${sets.join(', ')} WHERE id = $${idx} AND ${await requestHrScopeUnlessSelf(request, 'employees')} RETURNING *`,
           vals
         )
       } catch (err) {
@@ -657,6 +700,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       // EMP-010 — historise un changement de salaire dans hr_events (non bloquant).
+      // ATTENTION : hr_events (description + metadata) contient les montants de salaire.
+      // Aucune route ne la lit aujourd'hui ; toute lecture future DOIT passer par
+      // maskSensitive (services/sensitive-mask.ts), sinon elle contourne le masquage.
       if (body.baseSalary != null && Number(body.baseSalary) !== oldSalary) {
         const newSalary = Number(body.baseSalary)
         const evtType = oldSalary != null && newSalary > oldSalary ? 'augmentation' : 'salary_change'
@@ -675,7 +721,11 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         bySelf: request.user.role === 'employee',
       }, request.ip ?? null)
 
-      return reply.send({ data: res.rows[0] })
+      const patchCtx = await requestSensitiveCtx(request)
+      return reply.send({ data: presentEmployeeRow(res.rows[0] as Record<string, unknown>, {
+        ctx: patchCtx, redactCustom: isMasked(patchCtx),
+        defs: isMasked(patchCtx) ? await loadCustomFieldDefinitions(schema) : [], secrets: 'drop',
+      }) })
     },
   })
 
@@ -690,7 +740,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const res = await pool.query<{ legal_entity_id: string | null }>(
-          `SELECT legal_entity_id FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+          `SELECT legal_entity_id FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')} LIMIT 1`,
           [id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -718,7 +768,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const res = await pool.query<{ interview_focus: unknown }>(
-          `SELECT interview_focus FROM "${schema}".employees WHERE id = $1 LIMIT 1`,
+          `SELECT interview_focus FROM "${schema}".employees e WHERE e.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`,
           [id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -745,7 +795,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const res = await pool.query<{ id: string }>(
           `UPDATE "${schema}".employees SET interview_focus = $1, updated_at = now()
-           WHERE id = $2 RETURNING id`,
+           WHERE id = $2 AND ${await requestHrScope(request, 'employees')} RETURNING id`,
           [JSON.stringify(focus), id],
         )
         if (!res.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
@@ -767,6 +817,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // pool module-level
       const schema = request.user.schemaName
       try {
+        // Périmètre filiale : employé hors périmètre = introuvable.
+        if (!(await employeeInHrScope(schema, id, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         const pending: Array<{ type: string; label: string; path: string; count: number }> = []
 
         const absRes = await pool.query(
@@ -803,16 +857,16 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) {
         return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       }
+      if (isSelfAction(request, id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
       const schema = request.user.schemaName
       try {
         // OWASP A09 : snapshot AVANT archivage pour la trace audit (sinon on
-        // perd le nom/email/poste qui ont été supprimés)
+        // perd l'identité qui a été supprimée). Identité minimale : matricule + nom.
         const snapshot = await pool.query<{
-          first_name: string; last_name: string; email: string | null
-          job_title: string | null
+          first_name: string; last_name: string; employee_number: string | null
         }>(
-          `SELECT first_name, last_name, email, job_title
-             FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL`,
+          `SELECT first_name, last_name, employee_number
+             FROM "${schema}".employees e WHERE e.id = $1 AND e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`,
           [id],
         )
         if (!snapshot.rows[0]) {
@@ -825,10 +879,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         // d'un dossier de sortie (offboarding).
         const cascade = await archiveEmployeeCascade(pool, schema, id)
         auditLogEmployee(schema, request.user.sub, 'employee.archived', id, {
+          employeeNumber: snapshot.rows[0].employee_number,
           firstName: snapshot.rows[0].first_name,
           lastName:  snapshot.rows[0].last_name,
-          email:     snapshot.rows[0].email,
-          jobTitle:  snapshot.rows[0].job_title,
           terminatedContracts: cascade.terminatedContracts,
           cancelledDiscipline: cascade.cancelledDiscipline,
           cancelledSignatures: cascade.cancelledSignatures,
@@ -858,7 +911,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // pool module-level
       const schema = request.user.schemaName
       const res = await pool.query(
-        `SELECT d.*, e.first_name AS manager_first_name, e.last_name AS manager_last_name
+        `SELECT d.*,
+                CASE WHEN ${await requestHrScope(request, 'e')} THEN e.first_name END AS manager_first_name,
+                CASE WHEN ${await requestHrScope(request, 'e')} THEN e.last_name END AS manager_last_name
          FROM "${schema}".departments d
          LEFT JOIN "${schema}".employees e ON e.id = d.manager_id
          ORDER BY d.name`
@@ -877,10 +932,10 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const res = await pool.query(
-        `SELECT id, first_name, last_name, job_title
-         FROM "${schema}".employees
-         WHERE deleted_at IS NULL AND is_active = true
-         ORDER BY last_name, first_name`
+        `SELECT e.id, e.first_name, e.last_name, e.job_title
+         FROM "${schema}".employees e
+         WHERE e.deleted_at IS NULL AND e.is_active = true AND ${await requestHrScope(request, 'e')}
+         ORDER BY e.last_name, e.first_name`
       )
       return reply.send({ data: res.rows })
     },
@@ -893,6 +948,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['employees'], summary: 'Export CSV de la liste des employés' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      const maskCtx = await requestSensitiveCtx(request)
       const res = await pool.query(
         `SELECT e.employee_number, e.last_name, e.first_name, e.email, e.phone,
                 e.job_title, e.professional_category, d.name AS department,
@@ -900,7 +956,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
                 e.base_salary, e.currency, e.is_active
          FROM "${schema}".employees e
          LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-         WHERE e.deleted_at IS NULL
+         WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}
          ORDER BY e.last_name, e.first_name`,
       )
       const headers = ['Matricule', 'Nom', 'Prénom', 'Email', 'Téléphone', 'Poste', 'Catégorie',
@@ -911,8 +967,8 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         lines.push([
           r.employee_number, r.last_name, r.first_name, r.email, r.phone,
           r.job_title, r.professional_category, r.department, r.contract_type,
-          r.hire_date, r.cnps_number,
-          r.base_salary != null ? Math.round(Number(r.base_salary)) : '', // FCFA entier
+          r.hire_date, csvCell(r.cnps_number, maskCtx),
+          csvCell(r.base_salary != null ? Math.round(Number(r.base_salary)) : '', maskCtx), // FCFA entier, « Réservé » si masqué
           r.currency ?? 'XOF', r.is_active ? 'Oui' : 'Non',
         ].map(enc).join(';'))
       }
@@ -963,7 +1019,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         const url = employeePhotoUrl(id)
         const upd = await pool.query(
           `UPDATE "${schema}".employees SET profile_photo_url = $1, updated_at = now()
-           WHERE id = $2 AND deleted_at IS NULL RETURNING id`, [url, id])
+           WHERE id = $2 AND deleted_at IS NULL AND ${await requestHrScopeUnlessSelf(request, 'employees')} RETURNING id`, [url, id])
         if (!upd.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
         await pool.query(
           `INSERT INTO "${schema}".employee_photos (employee_id, mime, bytes, size_bytes, uploaded_by)
@@ -1001,7 +1057,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT p.mime, p.bytes, e.email, e.manager_id
            FROM "${schema}".employee_photos p
            JOIN "${schema}".employees e ON e.id = p.employee_id
-          WHERE p.employee_id = $1 AND e.deleted_at IS NULL LIMIT 1`, [id])
+          WHERE p.employee_id = $1 AND e.deleted_at IS NULL AND ${await requestHrScopeUnlessSelf(request, 'e')} LIMIT 1`, [id])
       const row = res.rows[0]
       if (!row) return reply.status(404).send({ error: 'Photo introuvable' })
 

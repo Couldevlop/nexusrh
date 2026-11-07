@@ -5,6 +5,7 @@ import { managerScopeSql } from '../../services/manager-scope.service.js'
 import { renderAttestationPdf } from './training-attestation-pdf.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestHrScopeUnlessSelf, requestEmployeeScopeUnlessSelf, employeeInHrScope } from '../../utils/hr-scope.js'
 
 const rawPool = pool
 
@@ -96,6 +97,8 @@ export const EFFECTIVE_SESSION_STATUS_SQL = `CASE WHEN ts.status = 'planned'
 async function enrollEmployeesBulk(
   schema: string, sessionId: string, employeeIds: string[],
   actorId: string, ip: string | null,
+  /** Périmètre filiale de l'acteur, sur la table `employees` non aliasée ('TRUE' = aucune restriction). */
+  scopeSql = 'TRUE',
 ): Promise<BulkEnrollResult> {
   const unique = [...new Set(employeeIds)]
   const result: BulkEnrollResult = { ok: true, added: 0, skippedDuplicates: 0, skippedFull: 0, skippedInvalid: 0 }
@@ -112,7 +115,7 @@ async function enrollEmployeesBulk(
 
   // OWASP A01 — ne conserver que les employés réels du tenant.
   const valid = await pool.query<{ id: string }>(
-    `SELECT id FROM "${schema}".employees WHERE id = ANY($1::uuid[]) AND is_active = true`, [unique],
+    `SELECT id FROM "${schema}".employees WHERE id = ANY($1::uuid[]) AND is_active = true AND ${scopeSql}`, [unique],
   )
   const validSet = new Set(valid.rows.map((r) => r.id))
 
@@ -321,7 +324,8 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
         let enrollment: BulkEnrollResult | undefined
         if (body.employee_ids && body.employee_ids.length > 0) {
           enrollment = await enrollEmployeesBulk(
-            schema, session.id, body.employee_ids, request.user.sub, request.ip ?? null)
+            schema, session.id, body.employee_ids, request.user.sub, request.ip ?? null,
+            await requestHrScope(request, 'employees'))
         }
         return reply.status(201).send({ data: session, enrollment })
       } catch (err) {
@@ -347,7 +351,9 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
         })
       }
       try {
-        const r = await enrollEmployeesBulk(schema, id, parsed.data.employee_ids, request.user.sub, request.ip ?? null)
+        const r = await enrollEmployeesBulk(
+          schema, id, parsed.data.employee_ids, request.user.sub, request.ip ?? null,
+          await requestHrScope(request, 'employees'))
         if (!r.ok) return reply.status(404).send({ error: 'Session introuvable' })
         return reply.status(201).send({ data: r })
       } catch (err) {
@@ -378,7 +384,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
                  JOIN "${schema}".employees e ON e.id = te.employee_id
                  JOIN "${schema}".training_sessions ts ON ts.id = te.session_id
                  JOIN "${schema}".trainings t ON t.id = ts.training_id
-                 WHERE 1=1`
+                 WHERE ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let idx = 1
       if (session_id)  { sql += ` AND te.session_id = $${idx++}`; params.push(session_id) }
@@ -439,6 +445,10 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const body = parsed.data
         employeeId = body.employee_id
+        // Périmètre filiale : inscription d'un salarié hors périmètre = introuvable.
+        if (!(await employeeInHrScope(schema, employeeId, await requestHrScope(request, 'e')))) {
+          return reply.status(404).send({ error: 'Employé introuvable' })
+        }
         if (request.user.role === 'manager') {
           // OWASP A01 — un manager ne peut inscrire QUE son périmètre
           // (équipe directe ou branche, cf. manager-scope.service)
@@ -507,7 +517,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       try {
         const enr = await pool.query<{ id: string; employee_id: string; status: string }>(
-          `SELECT id, employee_id, status FROM "${schema}".training_enrollments WHERE id = $1 LIMIT 1`, [id],
+          `SELECT id, employee_id, status FROM "${schema}".training_enrollments WHERE id = $1 AND ${await requestEmployeeScopeUnlessSelf(request, 'training_enrollments.employee_id')} LIMIT 1`, [id],
         )
         const row = enr.rows[0]
         if (!row) return reply.status(404).send({ error: 'Inscription introuvable' })
@@ -564,7 +574,7 @@ const trainingRoutes: FastifyPluginAsync = async (fastify) => {
             JOIN "${schema}".training_sessions ts ON ts.id = te.session_id
             JOIN "${schema}".trainings t ON t.id = ts.training_id
             JOIN "${schema}".employees e ON e.id = te.employee_id
-           WHERE te.id = $1 LIMIT 1
+           WHERE te.id = $1 AND ${await requestHrScopeUnlessSelf(request, 'e')} LIMIT 1
         `, [id])
         const row = res.rows[0]
         if (!row) return reply.status(404).send({ error: 'Inscription introuvable' })

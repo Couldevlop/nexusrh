@@ -27,6 +27,13 @@ vi.mock('../../config.js', () => ({
   },
 }))
 
+// Périmètre filiale (habilitations) : accès hérité (aucune affectation) -> aucune requête
+// de contexte, les mocks séquentiels de ce fichier restent alignés sur les agrégats.
+vi.mock('../../services/habilitation.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/habilitation.service.js')>()
+  return { ...actual, loadHabContext: vi.fn().mockResolvedValue(null) }
+})
+
 import authPlugin from '../../plugins/auth.js'
 import reportingRoutes from './reporting.routes.js'
 

@@ -102,6 +102,7 @@ describe('DELETE /employees/:id — archivage + cascade contrats', () => {
       .mockResolvedValueOnce({ rows: [{ first_name: 'Kouassi', last_name: 'Jean', email: 'k@x.ci', job_title: 'Chauffeur' }] }) // snapshot
       .mockResolvedValueOnce({ rows: [] })                       // UPDATE employees deleted_at
       .mockResolvedValueOnce({ rows: [] })                       // UPDATE users
+      .mockResolvedValueOnce({ rows: [] })                       // SELECT users (comptes liés : habilitations coupées)
       .mockResolvedValueOnce({ rows: [{ id: CONTRACT }] })       // UPDATE contracts RETURNING
     const res = await app.inject({
       method: 'DELETE', url: `/employees/${EMP}`,
@@ -137,6 +138,7 @@ describe('GET /contracts — visibilité archive (employé supprimé)', () => {
 describe('POST /contracts/:id/terminate — rupture + désactivation employé', () => {
   it('rompt le contrat et désactive l\'employé lié (cohérence inverse)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [] })                     // SELECT titulaire (garde « propre dossier »)
       .mockResolvedValueOnce({ rows: [{ employee_id: EMP }] }) // UPDATE contracts RETURNING employee_id
       .mockResolvedValueOnce({ rows: [] })                     // UPDATE employees is_active=false
       .mockResolvedValueOnce({ rows: [] })                     // INSERT hr_events

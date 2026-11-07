@@ -55,11 +55,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 // directe (AUTH-007), sans créer de boucle de redirection.
 export function RhDashboardGuard({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
+  const habPermissions = useAuthStore((s) => s.habPermissions)
+  const habilitated = (habPermissions?.length ?? 0) > 0
   const mfaPending = useMfaPending()
   if (!user) return <Navigate to="/login" replace />
   if (mfaPending) return <Navigate to={MFA_SETUP_PATH} replace />
   if (user.role === 'super_admin') return <Navigate to="/platform/dashboard" replace />
-  if (user.role === 'employee') return <Navigate to="/mon-espace" replace />
+  // Un salarié HABILITÉ par fiche travaille en RH : le renvoyer au
+  // self-service lui cacherait ce qu'il a été habilité à faire. Il garde son
+  // espace personnel par l'entrée épinglée « Mon espace ».
+  if (user.role === 'employee' && !habilitated) return <Navigate to="/mon-espace" replace />
   return <>{children}</>
 }
 

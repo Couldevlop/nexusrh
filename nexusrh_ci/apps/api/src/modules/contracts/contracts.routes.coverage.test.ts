@@ -255,7 +255,7 @@ describe('PATCH /contracts/:id', () => {
   it('refuse un hr_officer (403)', async () => {
     const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({
-      method: 'PATCH', url: '/contracts/c-1',
+      method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
       payload: { base_salary: 400000 },
     })
@@ -265,7 +265,7 @@ describe('PATCH /contracts/:id', () => {
   it('refuse un body sans champ autorisé (400)', async () => {
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'PATCH', url: '/contracts/c-1',
+      method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
       payload: { champ_inconnu: 'x' },
     })
@@ -273,10 +273,11 @@ describe('PATCH /contracts/:id', () => {
   })
 
   it('met à jour plusieurs champs autorisés (200)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'c-1', base_salary: 400000 }] }) // UPDATE
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'PATCH', url: '/contracts/c-1',
+      method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
       payload: { base_salary: 400000, status: 'active', job_title: 'Chef comptable' },
     })
@@ -284,10 +285,11 @@ describe('PATCH /contracts/:id', () => {
   })
 
   it('404 si le contrat est introuvable', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT propriétaire
     queryMock.mockResolvedValueOnce({ rows: [] }) // UPDATE : aucune ligne
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'PATCH', url: '/contracts/c-x',
+      method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000002',
       headers: { authorization: `Bearer ${token}` },
       payload: { status: 'suspended' },
     })
@@ -295,10 +297,11 @@ describe('PATCH /contracts/:id', () => {
   })
 
   it('renvoie 500 si l\'UPDATE échoue', async () => {
-    queryMock.mockRejectedValueOnce(new Error('update failed'))
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
+    queryMock.mockRejectedValueOnce(new Error('update failed'))         // UPDATE
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'PATCH', url: '/contracts/c-1',
+      method: 'PATCH', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
       payload: { status: 'active' },
     })
@@ -310,13 +313,14 @@ describe('PATCH /contracts/:id', () => {
 describe('POST /contracts/:id/terminate — branches restantes', () => {
   it('utilise le commentaire par défaut quand comment absent (200)', async () => {
     queryMock
+      .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
       .mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // UPDATE contracts
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValueOnce({ rows: [] }) // INSERT hr_events
       .mockResolvedValue({ rows: [] })     // audit best-effort
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/terminate',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
       headers: { authorization: `Bearer ${token}` },
       payload: { termination_date: '2026-06-30', termination_reason: 'dismissal' },
     })
@@ -326,10 +330,11 @@ describe('POST /contracts/:id/terminate — branches restantes', () => {
   })
 
   it('renvoie 500 si la base échoue', async () => {
-    queryMock.mockRejectedValueOnce(new Error('db down'))
+    queryMock.mockResolvedValueOnce({ rows: [{ employee_id: 'emp-1' }] }) // SELECT propriétaire
+    queryMock.mockRejectedValueOnce(new Error('db down'))               // UPDATE contracts
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/terminate',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/terminate',
       headers: { authorization: `Bearer ${token}` },
       payload: { termination_date: '2026-06-30', termination_reason: 'other' },
     })
@@ -342,7 +347,7 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
   it('refuse un hr_officer (403)', async () => {
     const token = tokenFor(app, 'hr_officer')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/renew',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/renew',
       headers: { authorization: `Bearer ${token}` },
       payload: { new_end_date: '2027-01-01' },
     })
@@ -353,7 +358,7 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
     queryMock.mockResolvedValueOnce({ rows: [] }) // SELECT orig
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-x/renew',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000002/renew',
       headers: { authorization: `Bearer ${token}` },
       payload: { new_end_date: '2027-01-01' },
     })
@@ -364,7 +369,7 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'c-1', type: 'cdi' }] }) // SELECT orig
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/renew',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/renew',
       headers: { authorization: `Bearer ${token}` },
       payload: { new_end_date: '2027-01-01' },
     })
@@ -377,7 +382,7 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'c-1', type: 'cdd', end_date: '2027-01-01' }] }) // UPDATE
     const token = tokenFor(app, 'hr_manager')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/renew',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/renew',
       headers: { authorization: `Bearer ${token}` },
       payload: { new_end_date: '2027-01-01', base_salary: 400000 },
     })
@@ -390,7 +395,7 @@ describe('POST /contracts/:id/renew — renouvellement CDD', () => {
     queryMock.mockRejectedValueOnce(new Error('db down'))
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'POST', url: '/contracts/c-1/renew',
+      method: 'POST', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001/renew',
       headers: { authorization: `Bearer ${token}` },
       payload: { new_end_date: '2027-01-01' },
     })
@@ -487,7 +492,7 @@ describe('DELETE /contracts/:id — branches restantes', () => {
       .mockResolvedValue({ rows: [] })     // audit best-effort
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'DELETE', url: '/contracts/c-gone',
+      method: 'DELETE', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000002',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
@@ -500,7 +505,7 @@ describe('DELETE /contracts/:id — branches restantes', () => {
     queryMock.mockRejectedValueOnce(new Error('db down'))
     const token = tokenFor(app, 'admin')
     const res = await app.inject({
-      method: 'DELETE', url: '/contracts/c-1',
+      method: 'DELETE', url: '/contracts/aaaaaaaa-0000-4000-8000-000000000001',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(500)

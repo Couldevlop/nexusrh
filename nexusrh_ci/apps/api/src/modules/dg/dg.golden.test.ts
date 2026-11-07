@@ -153,7 +153,12 @@ describe('GOLDEN vue DG — dashboard 360°', () => {
 
 describe('GOLDEN vue DG — intégration rôle dg', () => {
   it('login : un utilisateur dg est redirigé vers /dg', () => {
-    expect(authRoutes).toMatch(/user\.role === 'dg' \? '\/dg'/)
+    // La redirection post-login est sortie de auth.routes.ts (service pur
+    // `postLoginRedirect`, habilitations tâche 11) : la garantie est la même,
+    // son lieu a changé — et le login l'appelle bien.
+    const redirect = read('modules', 'auth', 'post-login-redirect.ts')
+    expect(redirect).toMatch(/role === 'dg'\) return '\/dg'/)
+    expect(authRoutes).toContain('postLoginRedirect')
   })
 
   it('l\'admin tenant peut attribuer le rôle dg (TENANT_ROLES)', () => {

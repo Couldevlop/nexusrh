@@ -17,7 +17,7 @@
  *   manager                   : parcours de SON équipe (lecture + avancement)
  *   employee                  : son propre parcours uniquement (A01)
  */
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import {
@@ -34,6 +34,7 @@ import { generateOnboardingPlan } from '../../services/onboarding-ai.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
+import { requestHrScope, requestEmployeeScope } from '../../utils/hr-scope.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -119,6 +120,17 @@ async function managerOwnsJourney(schema: string, managerEmail: string, journeyI
     )
     return !!r.rows[0]
   } catch { return false }
+}
+
+/**
+ * Périmètre filiale (habilitations) d'une étape : son parcours doit appartenir
+ * à un employé du périmètre. 'TRUE' sans restriction (SQL hérité inchangé).
+ */
+async function stepScope(request: FastifyRequest, schema: string): Promise<string> {
+  const sc = await requestEmployeeScope(request, 'oj.employee_id')
+  return sc === 'TRUE'
+    ? 'TRUE'
+    : `EXISTS (SELECT 1 FROM "${schema}".onboarding_journeys oj WHERE oj.id = onboarding_steps.journey_id AND ${sc})`
 }
 
 const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
@@ -306,7 +318,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
         FROM "${schema}".onboarding_journeys j
         JOIN "${schema}".employees e ON e.id = j.employee_id
         LEFT JOIN "${schema}".departments d ON d.id = e.department_id
-        WHERE e.deleted_at IS NULL`
+        WHERE e.deleted_at IS NULL AND ${await requestHrScope(request, 'e')}`
       const params: unknown[] = []
       let i = 1
       if (status && ['in_progress', 'completed', 'cancelled'].includes(status)) {
@@ -338,7 +350,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const emp = await pool.query<{ id: string; job_title: string | null; job_level: string | null; department_id: string | null; hire_date: string | null }>(
         `SELECT id, job_title, job_level, department_id, hire_date
-         FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL LIMIT 1`, [employeeId])
+         FROM "${schema}".employees WHERE id = $1 AND deleted_at IS NULL AND ${await requestHrScope(request, 'employees')} LIMIT 1`, [employeeId])
       if (!emp.rows[0]) return reply.status(404).send({ error: 'Employé introuvable' })
 
       const tpl = await pool.query<{ id: string; name: string }>(
@@ -378,7 +390,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
          JOIN "${schema}".employees e ON e.id = j.employee_id
          LEFT JOIN "${schema}".departments d ON d.id = e.department_id
          LEFT JOIN "${schema}".employees m ON m.id = e.manager_id
-         WHERE j.id = $1 LIMIT 1`, [id])
+         WHERE j.id = $1 AND ${await requestHrScope(request, 'e')} LIMIT 1`, [id])
       if (!j.rows[0]) return reply.status(404).send({ error: 'Parcours introuvable' })
       const steps = await pool.query(
         `SELECT * FROM "${schema}".onboarding_steps WHERE journey_id = $1
@@ -398,7 +410,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return reply.status(400).send({ error: 'status invalide (in_progress | cancelled)' })
       const schema = request.user.schemaName
       const r = await pool.query(
-        `UPDATE "${schema}".onboarding_journeys SET status = $2, updated_at = now() WHERE id = $1 RETURNING id`,
+        `UPDATE "${schema}".onboarding_journeys SET status = $2, updated_at = now() WHERE id = $1 AND ${await requestEmployeeScope(request, 'onboarding_journeys.employee_id')} RETURNING id`,
         [id, parsed.data.status])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Parcours introuvable' })
       auditLogOnboarding(schema, request.user.sub, 'onboarding.journey.status_changed', id,
@@ -420,7 +432,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return reply.status(400).send({ error: 'Étape invalide' })
       const s = parsed.data
       const schema = request.user.schemaName
-      const exists = await pool.query(`SELECT 1 FROM "${schema}".onboarding_journeys WHERE id = $1 LIMIT 1`, [id])
+      const exists = await pool.query(`SELECT 1 FROM "${schema}".onboarding_journeys WHERE id = $1 AND ${await requestEmployeeScope(request, 'onboarding_journeys.employee_id')} LIMIT 1`, [id])
       if (!exists.rows[0]) return reply.status(404).send({ error: 'Parcours introuvable' })
       const r = await pool.query<{ id: string }>(
         `INSERT INTO "${schema}".onboarding_steps
@@ -450,7 +462,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
 
       const step = await pool.query<{ id: string; journey_id: string }>(
-        `SELECT id, journey_id FROM "${schema}".onboarding_steps WHERE id = $1 LIMIT 1`, [id])
+        `SELECT id, journey_id FROM "${schema}".onboarding_steps WHERE id = $1 AND ${await stepScope(request, schema)} LIMIT 1`, [id])
       if (!step.rows[0]) return reply.status(404).send({ error: 'Étape introuvable' })
       const journeyId = step.rows[0].journey_id
 
@@ -506,7 +518,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
       const schema = request.user.schemaName
       const r = await pool.query<{ journey_id: string }>(
-        `DELETE FROM "${schema}".onboarding_steps WHERE id = $1 RETURNING journey_id`, [id])
+        `DELETE FROM "${schema}".onboarding_steps WHERE id = $1 AND ${await stepScope(request, schema)} RETURNING journey_id`, [id])
       if (!r.rows[0]) return reply.status(404).send({ error: 'Étape introuvable' })
       await refreshJourneyStatus(pool, schema, r.rows[0].journey_id)
       auditLogOnboarding(schema, request.user.sub, 'onboarding.step.deleted', id, {}, request.ip ?? null)

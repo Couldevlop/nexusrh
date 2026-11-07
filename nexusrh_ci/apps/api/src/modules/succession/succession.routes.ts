@@ -7,7 +7,7 @@
  * SÉCURITÉ : OWASP A01 (RBAC RH ; suppression admin/hr_manager), A03 (Zod
  * safeParse), A09 (audit_log).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import {
@@ -19,6 +19,7 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'readonly'] as const
 const WRITE_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
@@ -54,6 +55,37 @@ function audit(
   auditTenant(schema, { userId: userId ?? null, action: action, entity: entity, entityId: id, changes: changes, ip: ip })
 }
 
+/**
+ * Périmètre filiale (habilitations) d'un plan : un plan sans titulaire est un
+ * poste (pas de donnée personnelle) et reste visible ; avec titulaire, celui-ci
+ * doit être dans le périmètre de l'acteur. 'TRUE' sans restriction.
+ */
+async function planScope(request: FastifyRequest, column = 'succession_plans.incumbent_employee_id'): Promise<string> {
+  const sc = await requestEmployeeScope(request, column)
+  return sc === 'TRUE' ? 'TRUE' : `(${column} IS NULL OR ${sc})`
+}
+
+/** Le salarié visé (titulaire / successeur) est-il dans le périmètre de l'acteur ? */
+async function targetInHrScope(request: FastifyRequest, employeeId: string): Promise<boolean> {
+  return employeeInHrScope(request.user.schemaName, employeeId, await requestHrScope(request, 'e'))
+}
+
+const SHARED_PLAN_ERROR =
+  'Plan partagé avec une autre filiale : action réservée à un RH habilité sur toutes les filiales'
+
+/** Un plan dont le vivier contient des salariés hors périmètre ne peut pas être supprimé par un RH limité à une filiale. */
+async function planHasForeignCandidates(request: FastifyRequest, planId: string): Promise<boolean> {
+  const sc = await requestHrScope(request, 'hs')
+  if (sc === 'TRUE') return false
+  const r = await rawPool.query(
+    `SELECT 1 FROM "${request.user.schemaName}".succession_candidates cand
+       JOIN "${request.user.schemaName}".employees hs ON hs.id = cand.employee_id
+      WHERE cand.plan_id = $1 AND NOT COALESCE((${sc}), false) LIMIT 1`,
+    [planId],
+  )
+  return r.rows.length > 0
+}
+
 const successionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
 
@@ -67,10 +99,11 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT p.*, e.first_name AS incumbent_first_name, e.last_name AS incumbent_last_name
          FROM "${schema}".succession_plans p
          LEFT JOIN "${schema}".employees e ON e.id = p.incumbent_employee_id
+         WHERE ${await planScope(request, 'p.incumbent_employee_id')}
          ORDER BY p.created_at DESC`,
       )
       const cands = await rawPool.query<{ plan_id: string; readiness: string }>(
-        `SELECT plan_id, readiness FROM "${schema}".succession_candidates`,
+        `SELECT plan_id, readiness FROM "${schema}".succession_candidates WHERE ${await requestEmployeeScope(request, 'succession_candidates.employee_id')}`,
       )
       const byPlan = new Map<string, string[]>()
       for (const c of cands.rows) {
@@ -94,14 +127,14 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const p = await rawPool.query(
-        `SELECT * FROM "${schema}".succession_plans WHERE id = $1 LIMIT 1`, [id],
+        `SELECT * FROM "${schema}".succession_plans WHERE id = $1 AND ${await planScope(request)} LIMIT 1`, [id],
       )
       if (!p.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
       const c = await rawPool.query(
         `SELECT sc.*, e.first_name, e.last_name, e.job_title
          FROM "${schema}".succession_candidates sc
          JOIN "${schema}".employees e ON e.id = sc.employee_id
-         WHERE sc.plan_id = $1 ORDER BY sc.created_at`, [id],
+         WHERE sc.plan_id = $1 AND ${await requestHrScope(request, 'e')} ORDER BY sc.created_at`, [id],
       )
       return reply.send({ data: { ...(p.rows[0] as Record<string, unknown>), candidates: c.rows } })
     },
@@ -116,6 +149,9 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = createPlanSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      if (b.incumbentEmployeeId && !(await targetInHrScope(request, b.incumbentEmployeeId))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const res = await rawPool.query(
         `INSERT INTO "${schema}".succession_plans
            (position_title, incumbent_employee_id, criticality, notes, created_by, status)
@@ -147,10 +183,13 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       if (b.status !== undefined)              { sets.push(`status = $${i++}`); params.push(b.status) }
       if (b.notes !== undefined)               { sets.push(`notes = $${i++}`); params.push(b.notes) }
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
+      if (b.incumbentEmployeeId && !(await targetInHrScope(request, b.incumbentEmployeeId))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       sets.push(`updated_at = now()`)
       params.push(id)
       const res = await rawPool.query(
-        `UPDATE "${schema}".succession_plans SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params,
+        `UPDATE "${schema}".succession_plans SET ${sets.join(', ')} WHERE id = $${i} AND ${await planScope(request)} RETURNING *`, params,
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
       audit(schema, request.user.sub, 'succession.plan_updated', 'succession_plan', id, b as Record<string, unknown>, request.ip ?? null)
@@ -165,8 +204,17 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
+      // Visibilité d'abord : un plan masqué répond 404 (jamais 409, qui révélerait son existence).
+      const delSc = await planScope(request)
+      if (delSc !== 'TRUE') {
+        const visible = await rawPool.query(
+          `SELECT 1 FROM "${schema}".succession_plans WHERE id = $1 AND ${delSc} LIMIT 1`, [id],
+        )
+        if (!visible.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
+      }
+      if (await planHasForeignCandidates(request, id)) return reply.status(409).send({ error: SHARED_PLAN_ERROR, statusCode: 409 })
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".succession_plans WHERE id = $1 RETURNING id`, [id],
+        `DELETE FROM "${schema}".succession_plans WHERE id = $1 AND ${delSc} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
       await rawPool.query(`DELETE FROM "${schema}".succession_candidates WHERE plan_id = $1`, [id]).catch(() => undefined)
@@ -185,6 +233,17 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       const parsed = candidateSchema.safeParse(request.body)
       if (!parsed.success) return badRequest(reply)
       const b = parsed.data
+      // Périmètre filiale : le plan doit être visible et le successeur dans le périmètre.
+      const planSc = await planScope(request)
+      if (planSc !== 'TRUE') {
+        const visible = await rawPool.query(
+          `SELECT 1 FROM "${schema}".succession_plans WHERE id = $1 AND ${planSc} LIMIT 1`, [id],
+        )
+        if (!visible.rows[0]) return reply.status(404).send({ error: 'Plan introuvable' })
+      }
+      if (!(await targetInHrScope(request, b.employeeId))) {
+        return reply.status(404).send({ error: 'Employé introuvable' })
+      }
       const ins = await rawPool.query<{ id: string }>(
         `INSERT INTO "${schema}".succession_candidates (plan_id, employee_id, readiness, notes)
          VALUES ($1,$2,$3,$4) ON CONFLICT (plan_id, employee_id) DO NOTHING RETURNING id`,
@@ -214,7 +273,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       if (sets.length === 0) return badRequest(reply, 'Aucun champ à mettre à jour')
       params.push(id)
       const res = await rawPool.query(
-        `UPDATE "${schema}".succession_candidates SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params,
+        `UPDATE "${schema}".succession_candidates SET ${sets.join(', ')} WHERE id = $${i} AND ${await requestEmployeeScope(request, 'succession_candidates.employee_id')} RETURNING *`, params,
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Successeur introuvable' })
       audit(schema, request.user.sub, 'succession.candidate_updated', 'succession_candidate', id, b as Record<string, unknown>, request.ip ?? null)
@@ -230,7 +289,7 @@ const successionRoutes: FastifyPluginAsync = async (fastify) => {
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
-        `DELETE FROM "${schema}".succession_candidates WHERE id = $1 RETURNING id`, [id],
+        `DELETE FROM "${schema}".succession_candidates WHERE id = $1 AND ${await requestEmployeeScope(request, 'succession_candidates.employee_id')} RETURNING id`, [id],
       )
       if (!res.rows[0]) return reply.status(404).send({ error: 'Successeur introuvable' })
       audit(schema, request.user.sub, 'succession.candidate_removed', 'succession_candidate', id, {}, request.ip ?? null)
