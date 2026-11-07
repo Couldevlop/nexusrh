@@ -53,9 +53,9 @@ const auth = () => ({ authorization: `Bearer ${app.jwt.sign({
   sub: 'u-drh', tenantId: 't1', schemaName: 'tenant_sotra', role: 'hr_manager',
   email: 'drh@sotra.ci', firstName: 'D', lastName: 'R', employeeId: ME,
 })}` })
-// Ecritures METIER : la trace d'audit des habilitations (tache 13) est ecrite
-// sur CHAQUE requete d'un habilite, refus compris -- c'est le but ; elle
-// n'entre donc pas dans l'invariant « aucune ecriture » d'un refus.
+// Écritures MÉTIER : la trace d'audit des habilitations (tâche 13) est écrite
+// sur CHAQUE requête d'un habilité, refus compris — c'est le but ; elle
+// n'entre donc pas dans l'invariant « aucune écriture » d'un refus.
 const writes = () => queryMock.mock.calls
   .filter((c) => /\b(INSERT|UPDATE|DELETE)\b/i.test(String(c[0])))
   .filter((c) => !/audit_log/i.test(String(c[0])))
@@ -76,9 +76,9 @@ beforeEach(() => {
 })
 
 /**
- * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
- * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
- * n'entre pas dans l'invariant « aucune requete ».
+ * Requêtes MÉTIER : la trace d'audit des habilitations (tâche 13) est écrite
+ * sur chaque requête d'un habilité, refus compris — c'est le but ; elle
+ * n'entre pas dans l'invariant « aucune requête ».
  */
 const businessQueries = () =>
   queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))

@@ -74,9 +74,9 @@ beforeEach(() => {
 })
 
 /**
- * Requetes METIER : la trace d'audit des habilitations (tache 13) est ecrite
- * sur chaque requete d'un habilite, refus compris -- c'est le but ; elle
- * n'entre pas dans l'invariant « la base n'est pas touchee ».
+ * Requêtes MÉTIER : la trace d'audit des habilitations (tâche 13) est écrite
+ * sur chaque requête d'un habilité, refus compris — c'est le but ; elle
+ * n'entre pas dans l'invariant « la base n'est pas touchée ».
  */
 const businessQueries = () =>
   queryMock.mock.calls.filter((c) => !/audit_log/i.test(String(c[0])))

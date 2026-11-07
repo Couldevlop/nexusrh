@@ -106,3 +106,19 @@ describe('habTraceEntry', () => {
     expect(habTraceEntry({ method: 'GET', routeUrl: '/employees', statusCode: 500 }, { subgroupId: null })).toBeNull()
   })
 })
+
+describe('habTraceEntry — la trace ne grossit pas à la demande du client', () => {
+  it('borne le nombre de noms de filtres', () => {
+    const many = Array.from({ length: 50 }, (_, i) => `f${i}`)
+    const e = habTraceEntry({ method: 'GET', routeUrl: '/employees', statusCode: 200, filterKeys: many }, { subgroupId: null })
+    expect((e?.changes.filters as string[]).length).toBeLessThanOrEqual(20)
+  })
+
+  it('écarte un nom de filtre absurde (clé fabriquée par l\'appelant)', () => {
+    const e = habTraceEntry(
+      { method: 'GET', routeUrl: '/employees', statusCode: 200, filterKeys: ['search', 'x'.repeat(500)] },
+      { subgroupId: null },
+    )
+    expect(e?.changes.filters).toEqual(['search'])
+  })
+})

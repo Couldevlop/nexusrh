@@ -80,6 +80,23 @@ export interface HabTraceRoute extends HabTraceInput {
   filterKeys?: readonly string[] | undefined
 }
 
+/** Bornes des noms de filtres tracés : ils viennent de l'URL de l'appelant. */
+const MAX_FILTER_KEYS = 20
+const MAX_FILTER_KEY_LENGTH = 40
+
+/**
+ * Noms de filtres retenus pour la trace. Les clés de requête sont choisies par
+ * l'APPELANT : sans borne, il pourrait faire grossir chaque ligne d'audit à
+ * volonté (et rendre la piste illisible) avec cinquante paramètres inventés.
+ * On garde les noms plausibles, au plus vingt.
+ */
+function sanitizeFilterKeys(keys: readonly string[] | undefined): string[] {
+  if (!keys || keys.length === 0) return []
+  return keys
+    .filter((k) => k.length > 0 && k.length <= MAX_FILTER_KEY_LENGTH)
+    .slice(0, MAX_FILTER_KEYS)
+}
+
 export interface HabTraceEntry {
   action: string
   entity: string
@@ -105,7 +122,8 @@ export function habTraceEntry(
     result,
     subgroupId: ctx.subgroupId,
   }
-  if (route.filterKeys && route.filterKeys.length > 0) changes.filters = [...route.filterKeys]
+  const filters = sanitizeFilterKeys(route.filterKeys)
+  if (filters.length > 0) changes.filters = filters
   if (result === 'masked' && route.maskedFields) changes.maskedFields = [...route.maskedFields]
   return {
     action: `hr.${perm.fn}.${perm.action}`,

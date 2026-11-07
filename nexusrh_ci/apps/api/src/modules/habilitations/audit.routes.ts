@@ -23,6 +23,7 @@ import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { badRequest, badRequestFromZod } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { assertValidSchemaName } from '../../utils/schema-name.js'
 import { encodeField } from '../sage/sage.service.js'
 import { HAB_DENIED_RESULTS, HAB_RESULTS } from './hab-trace.js'
 
@@ -91,6 +92,9 @@ const auditRoutes: FastifyPluginAsync = async (fastify) => {
       if (page < 1 || page > MAX_PAGE) return badRequest(reply, 'Page hors bornes')
 
       const schema = request.user.schemaName
+      // Défense en profondeur : le nom de schéma vient du jeton (déjà validé
+      // par plugins/auth) et il est interpolé comme identifiant SQL ici.
+      assertValidSchemaName(schema)
       const where: string[] = ["l.action LIKE 'hr.%'"]
       const params: unknown[] = []
       const bind = (value: unknown): string => {

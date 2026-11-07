@@ -149,6 +149,9 @@ const delegationRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['habilitations'], summary: 'Mes délégations (données et reçues)' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
+      // Défense en profondeur : le nom de schéma vient du jeton (déjà validé
+      // par plugins/auth) et il est interpolé comme identifiant SQL ici.
+      assertValidSchemaName(schema)
       try {
         const res = await pool.query(
           `SELECT d.id::text AS id, d.delegator_id::text AS delegator_id,
@@ -177,6 +180,9 @@ const delegationRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) return badRequestFromZod(reply, parsed.error)
       const { delegateId, endsAt } = parsed.data
       const schema = request.user.schemaName
+      // Défense en profondeur : le nom de schéma vient du jeton (déjà validé
+      // par plugins/auth) et il est interpolé comme identifiant SQL ici.
+      assertValidSchemaName(schema)
       const me = request.user.sub
 
       if (!isUuid(delegateId)) return badRequest(reply, 'Identifiant invalide')
@@ -251,6 +257,9 @@ const delegationRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       if (!isUuid(id)) return badRequest(reply, 'Identifiant invalide')
       const schema = request.user.schemaName
+      // Défense en profondeur : le nom de schéma vient du jeton (déjà validé
+      // par plugins/auth) et il est interpolé comme identifiant SQL ici.
+      assertValidSchemaName(schema)
       const isAdmin = request.user.role === 'admin'
       const res = await pool.query<{ id: string }>(
         `UPDATE "${schema}".hab_delegations
