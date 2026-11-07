@@ -77,6 +77,7 @@ import interviewSimRoutes, { interviewSimPublicRoutes } from './modules/intervie
 import dgRoutes from './modules/dg/dg.routes.js'
 import employerBrandRoutes from './modules/employer-brand/employer-brand.routes.js'
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js'
+import habilitationStructureRoutes from './modules/habilitations/structure.routes.js'
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -441,6 +442,8 @@ export async function buildApp() {
   await fastify.register(dgRoutes,           { prefix: '/dg' })
   // Badgeuse / Pointage — module opt-in (attendance), enforcement via le hook modules.
   await fastify.register(attendanceRoutes,   { prefix: '/attendance' })
+  // Habilitations RH — administration de la grille, réservée à l'admin du tenant.
+  await fastify.register(habilitationStructureRoutes, { prefix: '/habilitations' })
   await fastify.register(interviewSimRoutes, { prefix: '/interview-sim' })
   await fastify.register(interviewSimPublicRoutes, { prefix: '/public/interview-sim' })
 
