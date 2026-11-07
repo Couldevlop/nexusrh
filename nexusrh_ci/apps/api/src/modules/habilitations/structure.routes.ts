@@ -116,11 +116,14 @@ async function readEnforced(schema: string): Promise<boolean> {
 }
 
 const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', ensureTenantSchemaHook)
+  // `ensureTenantSchemaHook` est placé DANS la chaîne preHandler de chaque
+  // route, après l'authentification : un hook d'instance (`addHook`) s'exécute
+  // AVANT le preHandler de la route, donc avant `authorize()` — il ne verrait
+  // pas `request.user` et la migration paresseuse ne se ferait jamais.
 
   // ── Lecture de la structure ────────────────────────────────────────────────
   fastify.get('/structure', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Groupes, sous-groupes, plafonds et membres' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
@@ -189,7 +192,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Groupes et sous-groupes ────────────────────────────────────────────────
   fastify.post('/groups', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Créer un groupe' },
     handler: async (request, reply) => {
       const parsed = groupSchema.safeParse(request.body)
@@ -211,7 +214,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   fastify.post('/subgroups', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Créer un sous-groupe plafonné' },
     handler: async (request, reply) => {
       const parsed = subgroupSchema.safeParse(request.body)
@@ -251,7 +254,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   fastify.patch('/subgroups/:id/ceiling', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Modifier le plafond d\'un sous-groupe' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
@@ -281,7 +284,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Modèles de fiche ───────────────────────────────────────────────────────
   fastify.get('/templates', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Modèles de fiche' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
@@ -293,7 +296,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   fastify.post('/templates', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Créer un modèle de fiche' },
     handler: async (request, reply) => {
       const parsed = templateSchema.safeParse(request.body)
@@ -320,7 +323,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   // La clé est l'identifiant stable d'un modèle (UNIQUE en base) : elle sert de
   // paramètre de chemin, le plan ne fixant pas la forme de cette route.
   fastify.patch('/templates/:key', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Modifier un modèle de fiche' },
     handler: async (request, reply) => {
       const { key } = request.params as { key: string }
@@ -347,7 +350,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Règles de cumul sensible (séparation des tâches) ───────────────────────
   fastify.get('/sod-rules', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Règles de cumul sensible' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
@@ -360,7 +363,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   fastify.patch('/sod-rules/:id', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Activer ou désactiver une règle de cumul' },
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
@@ -384,7 +387,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Premier responsable (avant toute fiche) ────────────────────────────────
   fastify.post('/bootstrap-user', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Habiliter le premier responsable' },
     handler: async (request, reply) => {
       const parsed = bootstrapSchema.safeParse(request.body)
@@ -428,7 +431,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── « Ce que voit X » ──────────────────────────────────────────────────────
   fastify.get('/preview/:userId', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Aperçu des droits et du périmètre d\'un utilisateur' },
     handler: async (request, reply) => {
       const { userId } = request.params as { userId: string }
@@ -482,7 +485,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Rapport de reprise et activation ──────────────────────────────────────
   fastify.get('/takeover-report', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Rapport de reprise avant activation' },
     handler: async (request, reply) => {
       const schema = request.user.schemaName
@@ -515,7 +518,7 @@ const habilitationStructureRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   fastify.post('/enforcement', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin'), ensureTenantSchemaHook],
     schema: { tags: ['habilitations'], summary: 'Activer ou suspendre le contrôle par la grille' },
     handler: async (request, reply) => {
       const parsed = enforcementSchema.safeParse(request.body)
