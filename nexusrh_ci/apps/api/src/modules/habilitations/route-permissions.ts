@@ -161,6 +161,9 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // elle existe, sinon validate / export / delete). Le DRH possède toutes les
   // cases. Invariant : takeover-fidelity.test.ts.
   'GET /attendance/payroll-link': { fn: 'hr_settings', action: 'configure' },
+  // Rapport d'impact paie CI 2023 : lecture seule, mais il chiffre un écart de
+  // paramétrage — il reste dans la case « paramétrage de la paie » du DRH.
+  'GET /payroll/ci-2023-impact': { fn: 'payroll', action: 'configure' },
   'GET /employer-brand/overview': { fn: 'climate', action: 'export' },
   'GET /cnps/declarations/:id/neva': { fn: 'declarations', action: 'validate' },
   'GET /cnps/rns/fields': { fn: 'declarations', action: 'validate' },

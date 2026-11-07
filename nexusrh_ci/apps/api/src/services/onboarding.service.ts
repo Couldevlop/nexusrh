@@ -79,6 +79,16 @@ export function computeDueDate(hireDate: string | null, offsetDays: number): str
 }
 
 /**
+ * Échéance bornée au jour de création du parcours : les étapes « avant
+ * l'arrivée » (J-7/J-3/J-2) d'une embauche saisie le jour même seraient sinon
+ * déjà en retard à la création. Format ISO AAAA-MM-JJ → comparaison lexicale.
+ */
+export function clampDueDate(due: string | null, today: string = new Date().toISOString().slice(0, 10)): string | null {
+  if (!due) return null
+  return due < today ? today : due
+}
+
+/**
  * Instancie un parcours pour un employé depuis un modèle.
  * @returns l'id du parcours créé, ou null si le modèle n'a pas d'étapes.
  */
@@ -115,7 +125,7 @@ export async function startOnboardingJourney(
        VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, $8)`,
       [
         journeyId, s.title, s.description, s.phase, s.owner_role,
-        computeDueDate(employee.hire_date, s.due_offset_days), s.sort_order,
+        clampDueDate(computeDueDate(employee.hire_date, s.due_offset_days)), s.sort_order,
         JSON.stringify(s.resources ?? []),
       ],
     )

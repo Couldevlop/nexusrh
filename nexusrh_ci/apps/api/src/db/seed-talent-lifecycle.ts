@@ -49,8 +49,8 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
   if (!(await hasRows('offboarding_cases'))) {
     const checklist = JSON.stringify([
       { key: 'badge', label: 'Restitution du badge', done: true },
-      { key: 'materiel_informatique', label: 'Restitution du materiel informatique (PC)', done: false },
-      { key: 'acces_si', label: 'Revocation des acces SI', done: false },
+      { key: 'materiel_informatique', label: 'Restitution du matériel informatique (PC)', done: false },
+      { key: 'acces_si', label: 'Révocation des accès SI', done: false },
       { key: 'documents_rh', label: 'Remise des documents RH (certificat, solde)', done: false },
     ])
     const cases: Array<{ type: string; status: string; notice: boolean }> = [
@@ -70,21 +70,21 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
   // 3. Enquete climat social (1 ouverte + reponses)
   if (!(await hasRows('climate_surveys'))) {
     const questions = JSON.stringify([
-      { key: 'q1', label: 'Etes-vous satisfait de votre environnement de travail ?', type: 'scale' },
-      { key: 'q2', label: "Recommanderiez-vous l'entreprise a un proche ?", type: 'boolean' },
-      { key: 'q3', label: 'Une suggestion pour ameliorer le quotidien ?', type: 'text' },
+      { key: 'q1', label: 'Êtes-vous satisfait de votre environnement de travail ?', type: 'scale' },
+      { key: 'q2', label: "Recommanderiez-vous l'entreprise à un proche ?", type: 'boolean' },
+      { key: 'q3', label: 'Une suggestion pour améliorer le quotidien ?', type: 'text' },
     ])
     const s = await pool.query<{ id: string }>(
       `INSERT INTO "${schema}".climate_surveys (title, description, status, anonymous, questions)
        VALUES ($1,$2,'open',true,$3) RETURNING id`,
-      [`Barometre social ${year}`, "Enquete d'engagement trimestrielle", questions],
+      [`Baromètre social ${year}`, "Enquête d'engagement trimestrielle", questions],
     )
     const surveyId = s.rows[0]?.id
     if (surveyId) {
       const answers = [
-        { q1: 5, q2: true, q3: 'Tres bonne ambiance' }, { q1: 3, q2: false, q3: '' },
-        { q1: 4, q2: true, q3: 'Plus de teletravail' }, { q1: 4, q2: true, q3: '' },
-        { q1: 2, q2: false, q3: 'Charge de travail elevee' }, { q1: 5, q2: true, q3: '' },
+        { q1: 5, q2: true, q3: 'Très bonne ambiance' }, { q1: 3, q2: false, q3: '' },
+        { q1: 4, q2: true, q3: 'Plus de télétravail' }, { q1: 4, q2: true, q3: '' },
+        { q1: 2, q2: false, q3: 'Charge de travail élevée' }, { q1: 5, q2: true, q3: '' },
       ]
       for (let i = 0; i < Math.min(answers.length, ids.length); i++) {
         await pool.query(
@@ -101,7 +101,7 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
     const plan = await pool.query<{ id: string }>(
       `INSERT INTO "${schema}".succession_plans (position_title, incumbent_employee_id, criticality, status, notes)
        VALUES ($1,$2,'critical','active',$3) RETURNING id`,
-      ['Directeur des Operations', ids[0] ?? null, 'Poste cle identifie en comite de direction'],
+      ['Directeur des Opérations', ids[0] ?? null, 'Poste clé identifié en comite de direction'],
     )
     const planId = plan.rows[0]?.id
     if (planId) {
@@ -121,7 +121,7 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
     const comps: Array<[string, string, number]> = [
       ['Communication', 'Comportementales', 3], ['Leadership', 'Management', 4],
       ['Excel / Bureautique', 'Techniques', 3], ['Gestion de projet', 'Management', 4],
-      ['Analyse de donnees', 'Techniques', 5], ['Service client', 'Metier', 3],
+      ['Analyse de données', 'Techniques', 5], ['Service client', 'Métier', 3],
     ]
     const compIds: string[] = []
     for (const [label, cat, bl] of comps) {
@@ -132,8 +132,8 @@ export async function seedTalentLifecycleBulk(pool: Pool, schema: string, employ
       if (r.rows[0]) compIds.push(r.rows[0].id)
     }
     const profiles: Array<{ title: string; mission: string; level: string; reqs: Array<[number, number]> }> = [
-      { title: "Chef d'equipe", mission: 'Encadrer une equipe operationnelle', level: 'Maitrise', reqs: [[0, 3], [1, 4], [3, 3]] },
-      { title: 'Analyste', mission: 'Produire les analyses et reportings', level: 'Confirme', reqs: [[2, 4], [4, 5], [0, 3]] },
+      { title: "Chef d'équipe", mission: 'Encadrer une équipe opérationnelle', level: 'Maîtrise', reqs: [[0, 3], [1, 4], [3, 3]] },
+      { title: 'Analyste', mission: 'Produire les analyses et reportings', level: 'Confirmé', reqs: [[2, 4], [4, 5], [0, 3]] },
     ]
     for (const p of profiles) {
       const r = await pool.query<{ id: string }>(

@@ -1,6 +1,6 @@
 {
   "title": "Tableau de bord",
-  "defaultTenant": "NexusRH CI",
+  "defaultTenant": "NexusRH",
   "actions": {
     "excel": "Excel",
     "pdf": "PDF",
@@ -109,7 +109,7 @@
         "Calcul de l'ITS pour un salaire de 350 000 FCFA ?"
       ],
       "manager": [
-        "Comment approuver une absence sur NexusRH CI ?",
+        "Comment approuver une absence sur NexusRH ?",
         "Quelles sont mes obligations envers mon équipe ?",
         "Délai préavis pour un salarié de 3 ans d'ancienneté ?"
       ]

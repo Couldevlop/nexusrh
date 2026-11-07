@@ -373,8 +373,8 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-33-1', article_numero: 'Art. 33.1', livre: LI,
     titre: 'Titre VI — Rémunération', chapitre: 'Chap. III — Heures supplémentaires',
     titre_article: 'Heures supplémentaires — Majorations légales',
-    texte: 'Les heures supplémentaires effectuées au-delà de 40h/semaine sont majorées de : 15% pour les 8 premières heures supp. (41e–48e h), 50% pour les heures de nuit (20h–5h) et du dimanche, 100% pour les jours fériés. Le repos compensateur peut remplacer la majoration.',
-    keywords: ['heures supplémentaires', 'majoration 15%', 'majoration 50%', 'nuit', 'dimanche', 'férié'], payroll_codes: ['1400', '1500'] },
+    texte: 'Les heures supplémentaires effectuées au-delà de 40h/semaine sont majorées au minimum de (décret n° 2024-898 du 16/10/2024, art. 25, qui abroge le décret n° 96-203 avec les mêmes taux) : 15% de la 41e à la 46e heure, 50% au-delà de la 46e heure, 75% pour les heures de nuit, 75% pour les heures de jour des dimanches et jours fériés, 100% pour les heures de nuit des dimanches et jours fériés. Le repos compensateur peut remplacer la majoration.',
+    keywords: ['heures supplémentaires', 'majoration 15%', 'majoration 50%', 'majoration 75%', 'majoration 100%', 'nuit', 'dimanche', 'férié'], payroll_codes: ['1400', '1450', '1500', '1520', '1550'] },
 
   { ...P, source: CT, article_id: 'art-33-2', article_numero: 'Art. 33.2', livre: LI,
     titre: 'Titre VI — Rémunération', chapitre: 'Chap. III — Heures supplémentaires',
@@ -595,13 +595,13 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-55-2', article_numero: 'Art. 55.2',
     livre: 'Livre V — Protection sociale', titre: 'Titre I — CNPS',
     titre_article: 'Cotisations CNPS 2024 — Taux et plafonds',
-    texte: 'Cotisations CNPS 2024 : Retraite : 6,3% salarié + 7,7% patronal (plafond 1 647 315 FCFA/mois). Prestations familiales : 5% patronal (plafond 70 000 FCFA/mois). Assurance maternité : 0,75% patronal (plafond 70 000 FCFA/mois). AT : 2 à 5% patronal selon secteur (plafond 70 000 FCFA/mois).',
+    texte: 'Cotisations CNPS (plafonds en vigueur depuis le 01/01/2023, communiqué CNPS / décret n° 2022-986) : Retraite : 6,3% salarié + 7,7% patronal (plafond 3 375 000 FCFA/mois, 45 × SMIG). Prestations familiales : 5% patronal (plafond 75 000 FCFA/mois). Assurance maternité : 0,75% patronal (plafond 75 000 FCFA/mois). AT : 2 à 5% patronal selon secteur (plafond 75 000 FCFA/mois). CMU : 500 FCFA salarié + 500 FCFA employeur par bénéficiaire et par mois.',
     keywords: ['CNPS', 'taux cotisations', 'retraite 6,3%', '7,7%', 'prestations familiales', 'plafond'], payroll_codes: ['2000', '3000', '3100', '3200', '3300'] },
 
   { ...P, source: CT, article_id: 'art-55-3', article_numero: 'Art. 55.3',
     livre: 'Livre V — Protection sociale', titre: 'Titre I — CNPS',
     titre_article: 'Allocations familiales CNPS',
-    texte: 'Les allocations familiales sont versées aux salariés pour leurs enfants à charge de moins de 21 ans (25 ans s\'ils poursuivent des études). Montant : 2 000 FCFA/mois par enfant. Elles sont financées par la cotisation patronale de 5% dans la limite du plafond de 70 000 FCFA.',
+    texte: 'Les allocations familiales sont versées aux salariés pour leurs enfants à charge de moins de 21 ans (25 ans s\'ils poursuivent des études). Montant : 2 000 FCFA/mois par enfant. Elles sont financées par la cotisation patronale de 5% dans la limite du plafond de 75 000 FCFA.',
     keywords: ['allocations familiales', '2000 FCFA', 'enfant charge', 'CNPS', 'cotisation patronale'] },
 
   { ...P, source: CT, article_id: 'art-55-4', article_numero: 'Art. 55.4',

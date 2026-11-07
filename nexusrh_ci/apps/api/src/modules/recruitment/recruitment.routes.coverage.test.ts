@@ -594,6 +594,18 @@ describe('POST /recruitment/applications', () => {
     expect(res.json().error).toMatch(/email ou un téléphone/)
   })
 
+  it('refuse en 400 un email accentué avec un message français clair', async () => {
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recruitment/applications',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { job_id: '11111111-1111-1111-1111-111111111111', first_name: 'Serge', last_name: 'Dème', email: 'serge.dème@email.com' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toMatch(/Adresse email invalide.*sans accent/)
+  })
+
   it('retourne 500 sur erreur DB', async () => {
     queryMock.mockRejectedValueOnce(new Error('boom'))
     const token = tokenFor(app, 'hr_officer')
@@ -1339,6 +1351,7 @@ describe('POST /recruitment/public/:slug/jobs/:jobId/apply — branches restante
     })
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.body).issues).toBeTruthy()
+    expect(JSON.parse(res.body).error).toMatch(/Adresse email invalide/)
   })
 
   it('409 si le même email a déjà postulé', async () => {

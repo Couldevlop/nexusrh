@@ -439,7 +439,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
               await sendAbsenceRequestEmail({
                 to: row.manager_email, managerName: row.manager_first || 'Manager', employeeName,
                 absenceType: row.type_label || 'Absence', startDate: body.startDate, endDate: body.endDate, days,
-                reason: body.reason ?? null, tenantName: mail?.name || 'NexusRH CI',
+                reason: body.reason ?? null, tenantName: mail?.name || 'NexusRH',
                 primaryColor: mail?.primaryColor ?? null, approvalUrl: `${config.appUrl}/absences`,
                 from: mail?.from, replyTo: mail?.from, smtp: mail?.smtp ?? null,
               }).catch(() => undefined)

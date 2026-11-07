@@ -3,16 +3,17 @@
     "skipToContent": "Aller au contenu"
   },
   "hero": {
-    "eyebrow": "SIRH · Côte d'Ivoire",
-    "title": "SIRH Côte d'Ivoire : la paie juste du premier coup",
-    "lead": "NexusRH CI gère la paie et les ressources humaines de votre entreprise selon le droit ivoirien : CNPS, ITS, Code du travail, FDFP, DISA. Pas un logiciel étranger qu'on adapte — un système écrit pour la Côte d'Ivoire.",
+    "eyebrow": "SIRH · Côte d'Ivoire et UEMOA",
+    "title": "SIRH Côte d'Ivoire et UEMOA : la paie juste du premier coup",
+    "lead": "NexusRH gère la paie et les ressources humaines de votre entreprise selon le droit social de votre pays : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC.",
     "editor": "Édité par OpenLab Consulting, Abidjan",
     "ctaApp": "Accéder à NexusRH",
-    "ctaDemo": "Demander une démo"
+    "ctaDemo": "Demander une démo",
+    "reference": "Pays de référence, la Côte d'Ivoire : CNPS à double plafond, ITS réforme 2024, DISA, FDFP et Code du travail ivoirien sont appliqués dans le calcul."
   },
   "video": {
     "label": "Présentation",
-    "docTitle": "NexusRH CI — présentation",
+    "docTitle": "NexusRH — présentation",
     "caption": "Le produit en mouvement : paie, dossiers salariés, absences, recrutement, pilotage.",
     "unsupported": "Votre navigateur ne peut pas lire cette vidéo.",
     "download": "Télécharger la vidéo"
@@ -20,52 +21,52 @@
   "proof": {
     "eyebrow": "Ce qui change tout",
     "title": "Le double plafond CNPS",
-    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 70 000 FCFA — c'est-à-dire presque toujours.",
+    "lead": "La CNPS applique deux plafonds différents selon la branche. Un moteur de paie générique n'en connaît qu'un, et se trompe dès qu'un salaire dépasse 75 000 FCFA, c'est-à-dire presque toujours.",
     "case": "Exemple : salaire brut de 2 000 000 FCFA",
     "table": {
       "code": "Code",
       "label": "Rubrique",
-      "base": "Base plafonnée",
+      "base": "Assiette",
       "rate": "Taux",
       "amount": "Montant"
     },
     "rows": {
       "retirement": "CNPS Retraite (part salariale)",
-      "retirementNote": "Plafond retraite : 1 647 315 FCFA",
+      "retirementNote": "Plafond retraite : 3 375 000 FCFA (décret n° 2022-986)",
       "accident": "CNPS Accidents du travail",
-      "accidentNote": "Plafond AT / PF / Maternité : 70 000 FCFA",
+      "accidentNote": "Plafond AT / PF / maternité : 75 000 FCFA",
       "family": "CNPS Prestations familiales",
       "its": "ITS (barème progressif sur 100 % du brut, 1 part)"
     },
-    "note": "Les mêmes 2 000 000 FCFA produisent trois bases de calcul différentes. NexusRH CI applique la bonne à chaque ligne, et le bulletin est en FCFA entiers — jamais de centimes."
+    "note": "Les mêmes 2 000 000 FCFA donnent deux assiettes : 75 000 FCFA pour les accidents du travail, les prestations familiales et la maternité, le brut entier pour la retraite (sous son plafond de 3 375 000 FCFA) et pour l'ITS. NexusRH applique la bonne à chaque ligne, en FCFA entiers, jamais de centimes."
   },
   "audience": {
     "eyebrow": "Pour qui",
     "title": "Des entreprises qui doivent rendre des comptes",
     "sme": {
-      "title": "PME et ETI ivoiriennes",
+      "title": "PME et ETI",
       "text": "De dix à plusieurs milliers de salariés, avec une équipe RH qui n'a pas le temps de vérifier chaque taux à la main."
     },
     "group": {
       "title": "Groupes et filiales",
-      "text": "Plusieurs sociétés, plusieurs pays, un seul système. Chaque filiale garde ses règles ; la direction voit l'ensemble."
+      "text": "Plusieurs sociétés, un seul système. Chaque filiale a ses salariés, sa paie et ses déclarations ; la direction voit l'ensemble."
     },
     "public": {
-      "title": "Secteur public et ONG",
-      "text": "Traçabilité complète des décisions et des paiements, hébergement des données en Côte d'Ivoire si vous l'exigez."
+      "title": "Secteur public, banques et ONG",
+      "text": "Traçabilité complète des décisions et des paiements, et installation sur votre propre infrastructure si vos données ne doivent pas en sortir."
     },
     "agency": {
-      "title": "Cabinets RH et comptables",
-      "text": "Un cabinet gère plusieurs entreprises clientes depuis un seul compte, sans jamais mélanger leurs données."
+      "title": "Cabinets",
+      "text": "Un cabinet de recrutement ou de conseil RH gère plusieurs entreprises clientes depuis un seul compte, sans jamais mélanger leurs données."
     }
   },
   "compliance": {
-    "eyebrow": "Conformité",
-    "title": "Le droit ivoirien dans le moteur, pas dans un paramétrage",
-    "lead": "Ces règles ne sont pas des options à configurer : elles sont écrites dans le calcul, testées et mises à jour à chaque évolution légale.",
+    "eyebrow": "Conformité · exemple de la Côte d'Ivoire",
+    "title": "Exemple en Côte d'Ivoire : le droit dans le moteur, pas dans un paramétrage",
+    "lead": "La Côte d'Ivoire est le pays de référence. Ses règles ne sont pas des options à configurer : elles sont écrites dans le calcul, testées et mises à jour à chaque évolution légale.",
     "cnps": {
       "title": "CNPS 2024",
-      "text": "Double plafond retraite et AT/PF/Maternité, taux par branche, taux accident du travail selon votre secteur — commerce, BTP, industrie, extraction."
+      "text": "Double plafond : retraite jusqu'à 3 375 000 FCFA, accidents du travail, prestations familiales et maternité jusqu'à 75 000 FCFA. Taux accident du travail selon le secteur. CMU : 1 000 FCFA par bénéficiaire et par mois, à parts égales entre salarié et employeur."
     },
     "its": {
       "title": "ITS et DGI",
@@ -89,38 +90,14 @@
     }
   },
   "modules": {
-    "eyebrow": "Couverture",
-    "title": "Tout le cycle de vie du salarié",
-    "lead": "Chaque module s'active ou se désactive par entreprise. Vous ne payez pas pour ce que vous n'utilisez pas, et l'interface ne montre que ce qui vous concerne.",
-    "payroll": {
-      "title": "Paie et déclarations",
-      "items": "Moteur de paie ivoirien · Bulletins personnalisables par blocs · Éléments variables · Clôture de période · Déclarations CNPS · DISA annuelle · FDFP · Registre du personnel · Export vers SAGE"
-    },
-    "people": {
-      "title": "Dossiers du personnel",
-      "items": "Fiches salariés · Contrats OHADA et avenants · Documents et photos · Départements et sites · Organigramme · Registre disciplinaire · Sortie et solde de tout compte"
-    },
-    "time": {
-      "title": "Temps et absences",
-      "items": "Congés en jours ouvrables · Maladie, maternité, paternité · Soldes calculés automatiquement · Circuit de validation · Badgeuse et pointages · Heures supplémentaires"
-    },
-    "talent": {
-      "title": "Talents et carrières",
-      "items": "Référentiel de postes et compétences · Évaluations · Calibrage 9 cases · Plans de succession · Mobilités internes · Formation et sessions · Climat social anonyme"
-    },
-    "hiring": {
-      "title": "Recrutement",
-      "items": "Offres au format APEC · Page carrières publique · Candidatures et pré-tri automatique · Sourcing assisté · Simulations d'entretien · Intégration des nouveaux arrivants"
-    },
-    "steering": {
-      "title": "Pilotage et administration",
-      "items": "Tableaux de bord par rôle · Vue direction générale 360° · Rapports et exports · Notes de frais · Paramétrage de l'entreprise · Journal d'audit · API et connecteurs"
-    }
+    "eyebrow": "Fonctionnalités",
+    "title": "Tout le cycle de vie du salarié, en six domaines",
+    "lead": "Chaque module s'active ou se désactive par entreprise : l'interface ne montre que ce que vous utilisez. Les droits suivent le rôle de chaque utilisateur."
   },
   "pay": {
     "eyebrow": "Versement",
     "title": "Du bulletin au salarié, sans ressaisie",
-    "lead": "La paie ne s'arrête pas au calcul. NexusRH CI produit le paiement lui-même, dans les deux formes utilisées en Côte d'Ivoire.",
+    "lead": "La paie ne s'arrête pas au calcul. NexusRH produit le paiement lui-même, par Mobile Money ou par virement bancaire.",
     "mobile": {
       "title": "Mobile Money",
       "text": "Wave, MTN et Orange, en direct ou via l'agrégateur CinetPay. Numéros validés au format ivoirien, statut de chaque versement suivi jusqu'à confirmation."
@@ -133,14 +110,14 @@
   "multi": {
     "eyebrow": "Groupes",
     "title": "Plusieurs sociétés, plusieurs pays",
-    "lead": "Un groupe ivoirien qui s'étend en zone UEMOA ou CEMAC garde un seul système. Chaque pays applique sa propre législation ; la consolidation reste possible.",
+    "lead": "Un groupe garde un seul système pour toutes ses sociétés. Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC.",
     "entities": {
       "title": "Filiales",
-      "text": "Chaque société a ses salariés, sa paie et ses déclarations. Les responsables de site ne voient que leur périmètre."
+      "text": "Chaque société a ses salariés, sa paie et ses déclarations, avec son propre circuit de validation."
     },
     "packs": {
-      "title": "Packs pays",
-      "text": "Seize jeux de règles UEMOA et CEMAC prêts à l'emploi, avec leurs cotisations et leurs barèmes propres."
+      "title": "Couverture pays",
+      "text": "Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC."
     },
     "consolidation": {
       "title": "Consolidation",
@@ -177,32 +154,32 @@
       "text": "Chaque entreprise dispose de son propre schéma de base de données. Ce n'est pas un filtre applicatif : les données de deux clients ne cohabitent jamais dans les mêmes tables."
     },
     "rbac": {
-      "title": "Sept rôles, des droits stricts",
-      "text": "Un manager voit son équipe, un salarié voit son dossier, un responsable de site voit son périmètre. Les droits sont vérifiés côté serveur, pas seulement dans l'affichage."
+      "title": "Contrôle d'accès par rôles",
+      "text": "Un manager voit son équipe, un salarié voit son dossier. Les droits sont vérifiés côté serveur, pas seulement dans l'affichage."
     },
     "mfa": {
       "title": "Double authentification",
-      "text": "Exigible pour tous les comptes, avec codes de secours. Verrouillage après échecs répétés, expiration des mots de passe, refus des mots de passe présents dans une fuite connue."
+      "text": "Code TOTP et codes de secours, exigibles pour tous les comptes. Verrouillage après échecs répétés, expiration des mots de passe, refus des mots de passe présents dans une fuite connue."
     },
     "crypto": {
-      "title": "Chiffrement des données sensibles",
-      "text": "Numéros d'identification, coordonnées bancaires et secrets de connexion sont chiffrés au repos. Les échanges passent exclusivement par HTTPS."
+      "title": "Chiffrement AES-256",
+      "text": "Secrets et données sensibles (identifiants, coordonnées bancaires, clés de connexion) chiffrés au repos en AES-256. Échanges exclusivement en HTTPS."
     },
     "audit": {
       "title": "Journal d'audit",
-      "text": "Qui a consulté, modifié, validé, exporté — et quand. Exigence de traçabilité de la loi ivoirienne sur la cybercriminalité, et condition d'un contrôle serein."
+      "text": "Qui a consulté, modifié, validé, exporté — et quand."
     },
     "hosting": {
       "title": "Hébergement souverain",
-      "text": "Les entreprises publiques et les banques peuvent exiger que les fichiers restent en Côte d'Ivoire. Le stockage bascule alors sur une infrastructure locale."
+      "text": "En on-premise, vos données restent dans votre infrastructure, dans le pays de votre choix."
     },
     "sso": {
-      "title": "SSO et supervision",
+      "title": "SSO et SIEM",
       "text": "Connexion fédérée OIDC, SAML ou LDAP avec votre annuaire, et export des événements de sécurité vers votre SIEM."
     },
     "signature": {
       "title": "Signature électronique",
-      "text": "Contrats et documents signés dans l'application, avec circuit de signataires et preuve de consentement horodatée."
+      "text": "Contrats et documents signés dans l'application, circuit de signataires tracé au journal d'audit."
     }
   },
   "contact": {
@@ -257,7 +234,10 @@
     "compliance": "Conformité",
     "modules": "Modules",
     "security": "Sécurité",
-    "demo": "Démo"
+    "demo": "Démo",
+    "deploy": "Déploiement",
+    "faq": "FAQ",
+    "menu": "Menu"
   },
   "footerNav": {
     "product": "Produit",
@@ -282,13 +262,324 @@
     "mobileMoney": "Salaires par Mobile Money",
     "westAfrica": "SIRH Afrique de l'Ouest",
     "guideIts": "Guide : calcul de l'ITS 2024",
-    "guideCnps": "Guide : cotisations CNPS 2024"
+    "guideCnps": "Guide : cotisations CNPS 2024",
+    "deployLink": "SaaS ou on-premise",
+    "faqLink": "Questions fréquentes",
+    "trustLink": "L'éditeur"
   },
   "links": {
     "payroll": "Le logiciel de paie en détail (CNPS, ITS, DISA)",
     "its": "Comment se calcule l'ITS 2024 ?",
     "cnps": "Les cotisations CNPS 2024, branche par branche",
     "mobileMoney": "Payer les salaires par Mobile Money",
-    "westAfrica": "Les pays pris en charge en Afrique de l'Ouest"
+    "westAfrica": "Afrique de l'Ouest : la paie multi-filiales"
+  },
+  "stats": {
+    "modulesLabel": "Modules activables",
+    "modulesText": "Chaque module s'active ou se désactive par entreprise."
+  },
+  "domains": {
+    "people": {
+      "title": "Administration du personnel",
+      "modules": {
+        "records": {
+          "title": "Dossiers salariés",
+          "text": "Fiche complète, documents, champs personnalisés propres à votre entreprise, import CSV des données existantes."
+        },
+        "contracts": {
+          "title": "Contrats OHADA",
+          "text": "CDI, CDD, essai, stage, apprentissage : modèles, avenants et ruptures, contrat signé archivé au dossier."
+        },
+        "orgChart": {
+          "title": "Organigramme",
+          "text": "Construit à partir des services et des rattachements hiérarchiques, navigable équipe par équipe, exportable en PDF."
+        },
+        "discipline": {
+          "title": "Gestion disciplinaire",
+          "text": "Avertissements et sanctions avec leur suivi, accès réservé aux responsables RH."
+        },
+        "offboarding": {
+          "title": "Offboarding et solde de tout compte",
+          "text": "Motif de départ, checklist de restitution, estimation du solde : congés non pris, préavis, indemnité de licenciement."
+        },
+        "dg": {
+          "title": "Vue direction générale 360°",
+          "text": "Effectifs, masse salariale, paie, absences et validations en attente sur un seul écran, activée à la demande de l'entreprise."
+        }
+      }
+    },
+    "payroll": {
+      "title": "Paie et conformité",
+      "modules": {
+        "engine": {
+          "title": "Moteur de paie par pays",
+          "text": "Règles du pays de chaque société ; en Côte d'Ivoire : CNPS à double plafond, ITS 2024 avec RICF. Éléments variables, bulletins par blocs, clôture de période."
+        },
+        "declarations": {
+          "title": "Déclarations CNPS, DISA et FDFP",
+          "text": "Déclaration CNPS mensuelle, DISA annuelle sur les douze bulletins, contribution FDFP, registre du personnel."
+        },
+        "mobileMoney": {
+          "title": "Salaires par Mobile Money",
+          "text": "Wave, MTN et Orange, en direct ou via l'agrégateur CinetPay, avec suivi du statut de chaque versement."
+        },
+        "bank": {
+          "title": "Virement bancaire",
+          "text": "Fichier de virement au format de votre banque, décrit une fois à partir d'un fichier exemple puis réutilisé chaque mois."
+        },
+        "sage": {
+          "title": "Interface SAGE",
+          "text": "Si vous gardez SAGE pour la paie : export CSV paramétrable des salariés, des éléments variables et de la paie."
+        },
+        "expenses": {
+          "title": "Notes de frais",
+          "text": "Saisie par le salarié, validation par le manager, remboursement suivi."
+        }
+      }
+    },
+    "time": {
+      "title": "Temps et présence",
+      "modules": {
+        "leave": {
+          "title": "Congés et absences",
+          "text": "Règles du pays ; en Côte d'Ivoire : 2,2 jours ouvrables par mois, jours d'ancienneté et jours fériés. Maternité, paternité, circuit de validation."
+        },
+        "attendance": {
+          "title": "Badgeuse et pointage",
+          "text": "Récupération des pointages depuis votre badgeuse, calcul des présences, absences et retards, consultation par le salarié."
+        },
+        "attendancePay": {
+          "title": "Lien pointage → paie",
+          "text": "Retenue au prorata du seul temps non travaillé (absences injustifiées, retards), désactivée par défaut et jamais d'amende forfaitaire."
+        }
+      }
+    },
+    "talent": {
+      "title": "Talents",
+      "modules": {
+        "recruitment": {
+          "title": "Recrutement",
+          "text": "Offres structurées, candidatures, pré-tri selon les critères que vous fixez, suivi en tableau par étape."
+        },
+        "agency": {
+          "title": "Cabinets de recrutement",
+          "text": "Le cabinet travaille pour plusieurs entreprises clientes depuis un seul compte, chaque entreprise restant isolée."
+        },
+        "competencies": {
+          "title": "Référentiel postes et compétences",
+          "text": "Fiches de poste, compétences graduées de 1 à 6, comparaison entre postes."
+        },
+        "calibration": {
+          "title": "Calibrage 9-box",
+          "text": "Sessions de calibrage performance × potentiel, positions avant et après, recommandations."
+        },
+        "succession": {
+          "title": "Plans de succession",
+          "text": "Postes clés, viviers de successeurs, niveau de préparation, postes à risque repérés."
+        },
+        "mobility": {
+          "title": "Mobilités internes",
+          "text": "Demandes de mobilité, écart entre les compétences du salarié et celles du poste visé, décision par la DRH."
+        },
+        "training": {
+          "title": "Formation",
+          "text": "Catalogue, sessions, inscriptions par le salarié, suivi FDFP."
+        }
+      }
+    },
+    "experience": {
+      "title": "Expérience collaborateur",
+      "modules": {
+        "selfService": {
+          "title": "Espace salarié",
+          "text": "Bulletins, congés, pointages, notes de frais, formation et offres internes, au même endroit."
+        },
+        "onboarding": {
+          "title": "Onboarding",
+          "text": "Parcours d'intégration par étapes, avec un responsable et une échéance pour chacune ; le nouvel arrivant suit le sien."
+        },
+        "climate": {
+          "title": "Climat social",
+          "text": "Enquêtes anonymes ; les résultats ne s'affichent qu'agrégés, au-delà d'un nombre minimal de réponses."
+        },
+        "employerBrand": {
+          "title": "Marque employeur",
+          "text": "Page carrières publique de l'entreprise, et indicateurs agrégés : sources de candidatures, entonnoir de recrutement, départs."
+        },
+        "interviewSim": {
+          "title": "Simulations d'entretien",
+          "text": "Candidats et salariés s'entraînent en privé à l'entretien, à partir d'une offre publiée."
+        },
+        "assistant": {
+          "title": "Assistant IA",
+          "text": "Il répond sur vos propres données, dans la limite des droits de la personne qui pose la question."
+        }
+      }
+    },
+    "security": {
+      "title": "Sécurité et intégrations",
+      "modules": {
+        "sso": {
+          "title": "SSO OIDC, SAML, LDAP",
+          "text": "Connexion fédérée avec votre annuaire d'entreprise."
+        },
+        "siem": {
+          "title": "Export SIEM",
+          "text": "Événements de sécurité transmis à votre SIEM, en JSON ou CEF, signés HMAC."
+        },
+        "signature": {
+          "title": "Signature électronique",
+          "text": "Circuit de signataires séquentiel ou parallèle, chaque étape tracée au journal d'audit."
+        },
+        "classification": {
+          "title": "Classification des données",
+          "text": "Quatre niveaux : public, interne, confidentiel, restreint."
+        },
+        "integrations": {
+          "title": "API et webhooks",
+          "text": "Webhooks sortants signés HMAC, clés d'API entrantes limitées à des portées précises."
+        },
+        "audit": {
+          "title": "Journal d'audit",
+          "text": "Qui a consulté, modifié, validé, exporté — et quand."
+        }
+      }
+    }
+  },
+  "deploy": {
+    "eyebrow": "Déploiement",
+    "title": "Deux modes de déploiement : SaaS ou on-premise",
+    "lead": "Le même logiciel, les mêmes fonctionnalités. Vous choisissez où il tourne et qui l'exploite.",
+    "saas": {
+      "title": "SaaS",
+      "tag": "Hébergé par OpenLab Consulting",
+      "p1": "Hébergé et maintenu par OpenLab Consulting",
+      "p2": "Mises à jour continues, sans intervention de votre part",
+      "p3": "Mise en route rapide : aucune infrastructure à préparer",
+      "p4": "Accès par navigateur web, sans logiciel à installer"
+    },
+    "onprem": {
+      "title": "On-premise",
+      "tag": "Sur vos serveurs ou dans votre datacenter",
+      "p1": "Installé sur vos serveurs ou dans le datacenter de votre choix",
+      "p2": "Vos données restent dans votre infrastructure",
+      "p3": "Adapté aux banques, au secteur public et aux organisations soumises à des exigences de souveraineté",
+      "p4": "Déploiement conteneurisé",
+      "p5": "Mises à jour livrées par OpenLab Consulting"
+    },
+    "table": {
+      "caption": "Comparatif des deux modes",
+      "criterion": "Critère",
+      "saas": "SaaS",
+      "onprem": "On-premise"
+    },
+    "rows": {
+      "hosting": {
+        "label": "Hébergement",
+        "saas": "Par OpenLab Consulting",
+        "onprem": "Sur vos serveurs ou dans le datacenter de votre choix"
+      },
+      "data": {
+        "label": "Données",
+        "saas": "Isolées dans un schéma de base dédié à votre entreprise",
+        "onprem": "Restent dans votre infrastructure"
+      },
+      "updates": {
+        "label": "Mises à jour",
+        "saas": "Continues",
+        "onprem": "Livrées par OpenLab Consulting"
+      },
+      "start": {
+        "label": "Mise en route",
+        "saas": "Rapide, sans infrastructure",
+        "onprem": "Déploiement conteneurisé sur votre infrastructure"
+      },
+      "access": {
+        "label": "Accès",
+        "saas": "Navigateur web",
+        "onprem": "Navigateur web, sur votre réseau"
+      },
+      "fit": {
+        "label": "Pour qui",
+        "saas": "PME, ETI, groupes, cabinets",
+        "onprem": "Banques, secteur public, organisations soumises à des exigences de souveraineté"
+      }
+    },
+    "cta": "Demander une démo",
+    "more": "SaaS ou on-premise : le comparatif détaillé"
+  },
+  "trust": {
+    "eyebrow": "Confiance",
+    "title": "Qui édite NexusRH, et comment vos données sont traitées",
+    "lead": "Un éditeur identifié, joignable à Abidjan, et des engagements écrits dans des documents publics.",
+    "publisher": {
+      "title": "L'éditeur",
+      "name": "OpenLab Consulting",
+      "text": "Société de conseil et d'ingénierie logicielle établie à Abidjan, Côte d'Ivoire."
+    },
+    "labels": {
+      "address": "Adresse",
+      "phones": "Téléphones",
+      "emails": "E-mails",
+      "whatsapp": "WhatsApp",
+      "hours": "Support",
+      "web": "Site web"
+    },
+    "supportHours": "Lundi à vendredi, 7h30 – 18h00 (heure d'Abidjan)",
+    "data": {
+      "title": "Protection des données",
+      "text": "NexusRH est conçu pour accompagner la conformité à la loi n° 2013-450 relative à la protection des données à caractère personnel (ARTCI). Les données de chaque entreprise sont isolées dans un schéma de base dédié."
+    },
+    "compliance": {
+      "title": "Conformité sociale et fiscale",
+      "text": "Exemple en Côte d'Ivoire, pays de référence : Code du travail ivoirien, CNPS, ITS (réforme 2024), DISA ; contrats OHADA. Appliqués dans le calcul de paie."
+    },
+    "legalTitle": "Documents publics"
+  },
+  "faq": {
+    "eyebrow": "Questions fréquentes",
+    "title": "Vos questions, nos réponses",
+    "items": {
+      "modes": {
+        "q": "NexusRH est-il disponible en SaaS ou en on-premise ?",
+        "a": "Les deux. En SaaS, le logiciel est hébergé et maintenu par OpenLab Consulting, avec des mises à jour continues. En on-premise, il est installé sur vos serveurs ou dans le datacenter de votre choix, en déploiement conteneurisé, et OpenLab Consulting vous livre les mises à jour."
+      },
+      "hosting": {
+        "q": "Où sont hébergées les données ?",
+        "a": "En SaaS, sur une infrastructure exploitée par OpenLab Consulting, chaque entreprise disposant de son propre schéma de base de données. En on-premise, vos données restent dans votre infrastructure, dans le pays de votre choix. Dans les deux cas, les secrets et données sensibles sont chiffrés au repos en AES-256."
+      },
+      "compliance": {
+        "q": "Le calcul de paie est-il conforme à la CNPS et à l'ITS 2024 ?",
+        "a": "En Côte d'Ivoire, pays de référence : oui. Le moteur applique le double plafond CNPS (75 000 FCFA pour accidents du travail, prestations familiales et maternité, 3 375 000 FCFA pour la retraite), la CMU (1 000 FCFA par bénéficiaire et par mois, partagés à parts égales) et le barème ITS de la réforme 2024, sur 100 % du brut imposable, puis la réduction pour charges de famille (RICF). La DISA annuelle et la déclaration CNPS mensuelle sont produites à partir des bulletins."
+      },
+      "mobileMoney": {
+        "q": "Peut-on payer les salaires par Mobile Money ?",
+        "a": "Oui : Wave, MTN et Orange, en direct ou via l'agrégateur CinetPay. Les numéros sont contrôlés au format ivoirien et le statut de chaque versement est suivi. Le virement bancaire est aussi disponible, au format de fichier de votre banque."
+      },
+      "migration": {
+        "q": "Comment reprendre nos données depuis Excel ou SAGE ?",
+        "a": "Par import de fichiers CSV, qu'Excel et la plupart des logiciels savent produire : des modèles sont fournis pour les salariés, les services, les absences, l'historique des bulletins, les contrats, les comptes Mobile Money et les notes de frais. Si vous gardez SAGE pour la paie, l'interface SAGE exporte salariés, éléments variables et paie."
+      },
+      "groups": {
+        "q": "NexusRH gère-t-il plusieurs filiales ?",
+        "a": "Oui. Chaque société du groupe a ses salariés, sa paie et ses déclarations, avec son propre circuit de validation, et la direction garde une vue consolidée."
+      },
+      "coverage": {
+        "q": "Quels pays sont couverts ?",
+        "a": "Paie : Côte d'Ivoire et UEMOA, extensible aux autres pays de la CEDEAO et de la CEMAC. La Côte d'Ivoire est le pays de référence ; pour les autres pays, chaque paramétrage est revu avec votre expert paie local avant la première paie."
+      },
+      "languages": {
+        "q": "Le logiciel est-il disponible en français et en anglais ?",
+        "a": "Oui. L'interface est entièrement disponible en français et en anglais ; chaque utilisateur choisit sa langue."
+      },
+      "trial": {
+        "q": "Peut-on essayer avant de s'engager ?",
+        "a": "Oui. Demandez une démonstration sur vos propres cas de paie avec le formulaire de cette page. OpenLab Consulting peut ensuite ouvrir un environnement d'essai, limité à 20 salariés et 10 utilisateurs."
+      },
+      "support": {
+        "q": "Comment joindre le support ?",
+        "a": "Par téléphone au +225 07 09 33 42 38 ou au +225 07 49 43 92 03, par WhatsApp au +225 07 49 43 92 03, par e-mail à support@nexusrh-ci.com, du lundi au vendredi de 7h30 à 18h00, heure d'Abidjan."
+      }
+    }
   }
 }

@@ -13,6 +13,12 @@
         "author": "Couldevlop",
         "reason": "Recette paie oct. 2026 — réforme ITS (ordonnance n° 2023-719) : barème 0/16/21/24/28/32 % sur 100 % du brut imposable, sans abattement ni déduction CNPS, RICF par parts ; complément exact des indemnités d'absence",
         "deltaSummary": "baseImposable 116536 → 148076 ; netPayable 340671 → 340672 ; grossSalary 349999 → 350000 ; employerCost 366825 → 366826 ; indemniteAbsence 201923 → 201924"
+      },
+      {
+        "date": "2026-11-04",
+        "author": "Couldevlop",
+        "reason": "Valeurs CI en vigueur depuis le 01/01/2023 — plafond retraite CNPS 3 375 000 et plafond AT/PF/maternité 75 000 (communiqué CNPS du 11/01/2023, décret n° 2022-986) ; CMU 500 salarié + 500 employeur par bénéficiaire (loi n° 2014-131), conjoint non couvert par défaut. Recalcul manuel (deltas), sans régénération depuis le moteur",
+        "deltaSummary": "cnpsPfPat 4025 → 4312; cnpsAtPat 1400 → 1500; totalCnpsPat 16826 → 17213; totalDeductions 9328 → 10328; netPayable 340672 → 339672; employerCost 366826 → 368213; ligne 3100 3500 → 3750; ligne 3200 525 → 562; ligne 3300 1400 → 1500; ligne 2200 None → 1000; ligne 3400 None → 1000"
       }
     ]
   },
@@ -35,15 +41,15 @@
     "grossSalary": 350000,
     "cnpsRetraiteSal": 9328,
     "cnpsRetraitePat": 11401,
-    "cnpsPfPat": 4025,
-    "cnpsAtPat": 1400,
+    "cnpsPfPat": 4312,
+    "cnpsAtPat": 1500,
     "totalCnpsSal": 9328,
-    "totalCnpsPat": 16826,
+    "totalCnpsPat": 17213,
     "baseImposable": 148076,
     "its": 0,
-    "totalDeductions": 9328,
-    "netPayable": 340672,
-    "employerCost": 366826,
+    "totalDeductions": 10328,
+    "netPayable": 339672,
+    "employerCost": 368213,
     "workingDays": 11,
     "smigCompliant": true,
     "indemniteAbsence": 201924,
@@ -56,10 +62,12 @@
       { "code": "1700", "type": "earning",                 "amount": 201924 },
       { "code": "2000", "type": "employee_contribution",   "amount":   9328 },
       { "code": "2100", "type": "employee_contribution",   "amount":      0 },
+      { "code": "2200", "type": "employee_contribution",   "amount":   1000 },
       { "code": "3000", "type": "employer_contribution",   "amount":  11401 },
-      { "code": "3100", "type": "employer_contribution",   "amount":   3500 },
-      { "code": "3200", "type": "employer_contribution",   "amount":    525 },
-      { "code": "3300", "type": "employer_contribution",   "amount":   1400 }
+      { "code": "3100", "type": "employer_contribution",   "amount":   3750 },
+      { "code": "3200", "type": "employer_contribution",   "amount":    562 },
+      { "code": "3300", "type": "employer_contribution",   "amount":   1500 },
+      { "code": "3400", "type": "employer_contribution",   "amount":   1000 }
     ]
   }
 }

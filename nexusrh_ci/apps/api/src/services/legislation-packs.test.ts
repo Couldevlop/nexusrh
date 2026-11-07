@@ -23,8 +23,8 @@ describe('LegislationPack — pack par défaut CIV-2024', () => {
 
   it('CIV-2024 reflète les constantes CI 2024 (CNPS + ITS réformé)', () => {
     expect(CIV_2024.smigMensuel).toBe(75_000)
-    expect(CIV_2024.plafondCnpsRetraite).toBe(1_647_315)
-    expect(CIV_2024.plafondCnpsAtPf).toBe(70_000)
+    expect(CIV_2024.plafondCnpsRetraite).toBe(3_375_000)        // communiqué CNPS 01/2023 (45 × SMIG)
+    expect(CIV_2024.plafondCnpsAtPf).toBe(75_000)               // = SMIG
     expect(CIV_2024.tauxCotisationRetraiteSalarie).toBe(0.063)
     expect(CIV_2024.tauxCotisationRetraitePatronal).toBe(0.077)
     expect(CIV_2024.tauxCotisationPfPatronal).toBe(0.05)

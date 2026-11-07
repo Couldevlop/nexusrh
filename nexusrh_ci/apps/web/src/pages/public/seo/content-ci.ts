@@ -8,19 +8,19 @@
  */
 import type { SeoPageContent } from './types'
 
-const UPDATED = '2026-10-29'
+const UPDATED = '2026-11-04'
 
 export const PAYROLL_CI: SeoPageContent = {
   path: '/logiciel-paie-cote-divoire',
   lang: 'fr',
   kind: 'landing',
-  title: "Logiciel de paie Côte d'Ivoire : CNPS, ITS 2024, DISA | NexusRH",
+  title: "Logiciel de paie Côte d'Ivoire : CNPS, ITS, DISA | NexusRH",
   description:
     "Logiciel de paie ivoirien en ligne : CNPS à double plafond, ITS 2024 avec RICF, " +
     'DISA, bulletins en FCFA et versement Mobile Money. Édité à Abidjan.',
   h1: "Logiciel de paie pour la Côte d'Ivoire",
   lead:
-    "NexusRH CI calcule la paie selon les règles ivoiriennes en vigueur : cotisations CNPS avec " +
+    "NexusRH calcule la paie selon les règles ivoiriennes en vigueur : cotisations CNPS avec " +
     "leurs deux plafonds, ITS réformé au 1er janvier 2024, réduction pour charges de famille, " +
     'puis produit les bulletins, les déclarations et le paiement des salaires.',
   crumb: 'Logiciel de paie',
@@ -30,7 +30,8 @@ export const PAYROLL_CI: SeoPageContent = {
       h2: 'Ce que le moteur de paie applique',
       blocks: [
         { type: 'ul', items: [
-          'CNPS : retraite 6,3 % salarié et 7,7 % employeur, plafonnée à 1 647 315 FCFA par mois ; prestations familiales (5 %), maternité (0,75 %) et accident du travail (2 à 5 % selon le secteur) plafonnées à 70 000 FCFA.',
+          'CNPS : retraite 6,3 % salarié et 7,7 % employeur, plafonnée à 3 375 000 FCFA par mois (décret n° 2022-986) ; prestations familiales (5 %), maternité (0,75 %) et accident du travail (2 à 5 % selon le secteur) plafonnées à 75 000 FCFA.',
+          'CMU : 1 000 FCFA par bénéficiaire et par mois, à parts égales entre salarié et employeur (loi n° 2014-131).',
           "ITS : barème mensuel 0 / 16 / 21 / 24 / 28 / 32 % appliqué à 100 % du brut imposable (ordonnance n° 2023-719), sans abattement, puis réduction d'impôt pour charges de famille (RICF) selon le nombre de parts.",
           "Assiettes : primes d'ancienneté et de rendement, heures supplémentaires, indemnité de congés, gratifications et avantages en nature sont soumis à la CNPS et à l'ITS ; la prime de transport est exonérée jusqu'à 30 000 FCFA à Abidjan, 24 000 à Bouaké et 20 000 dans les autres villes.",
           'Contrôle du SMIG (75 000 FCFA par mois) et montants en FCFA entiers, sans centimes, sur chaque bulletin.',
@@ -68,7 +69,7 @@ export const PAYROLL_CI: SeoPageContent = {
         { type: 'p', text:
           "Une fois la paie validée, les salaires sont versés par Mobile Money (Wave, MTN, Orange) ou par virement, " +
           "avec un fichier au format de votre banque. Les entreprises qui conservent Sage Paie peuvent utiliser " +
-          "NexusRH CI en amont et exporter employés, éléments variables et résultats de paie." },
+          "NexusRH en amont et exporter employés, éléments variables et résultats de paie." },
         { type: 'links', items: [
           { to: '/paiement-salaires-mobile-money', label: 'Payer les salaires par Mobile Money ou virement' },
           { to: '/gestion-conges-cote-divoire', label: 'La gestion des congés, reliée à la paie' },
@@ -80,9 +81,9 @@ export const PAYROLL_CI: SeoPageContent = {
     { q: 'La réforme ITS du 1er janvier 2024 est-elle appliquée ?',
       a: "Oui. L'ancien régime (IS, CN, IGR, abattement de 15 %) n'est plus utilisé : le barème 2024 s'applique à 100 % du brut imposable, puis la RICF est déduite selon le nombre de parts." },
     { q: 'Le double plafond CNPS est-il géré ?',
-      a: 'Oui. La retraite est plafonnée à 1 647 315 FCFA par mois ; prestations familiales, maternité et accident du travail le sont à 70 000 FCFA. Les deux plafonds ne sont jamais confondus.' },
+      a: 'Oui. La retraite est plafonnée à 3 375 000 FCFA par mois ; prestations familiales, maternité et accident du travail le sont à 75 000 FCFA. Les deux plafonds ne sont jamais confondus.' },
     { q: 'Peut-on garder Sage Paie ?',
-      a: 'Oui. Une interface exporte au format CSV les employés, les éléments variables et les résultats de paie vers Sage. La paie native de NexusRH CI reste disponible.' },
+      a: 'Oui. Une interface exporte au format CSV les employés, les éléments variables et les résultats de paie vers Sage. La paie native de NexusRH reste disponible.' },
   ],
   related: ['/guides/calcul-its-2024-cote-divoire', '/guides/cotisations-cnps-2024', '/gestion-conges-cote-divoire', '/sirh-afrique-ouest'],
 }
@@ -91,13 +92,13 @@ export const LEAVE_CI: SeoPageContent = {
   path: '/gestion-conges-cote-divoire',
   lang: 'fr',
   kind: 'landing',
-  title: "Gestion des congés Côte d'Ivoire : 2,2 jours par mois | NexusRH",
+  title: "Congés en Côte d'Ivoire : 2,2 jours par mois | NexusRH",
   description:
     "Congés payés selon le Code du travail ivoirien : 2,2 jours ouvrables par mois, jours " +
     "d'ancienneté, fériés, maternité 14 semaines. Soldes et paie reliés.",
   h1: "Gestion des congés en Côte d'Ivoire",
   lead:
-    'NexusRH CI calcule les droits à congés comme le prévoit le Code du travail ivoirien : en jours ouvrables, ' +
+    'NexusRH calcule les droits à congés comme le prévoit le Code du travail ivoirien : en jours ouvrables, ' +
     "avec les jours supplémentaires d'ancienneté et les jours fériés, puis reporte les absences sur la paie.",
   crumb: 'Gestion des congés',
   updated: UPDATED,
@@ -154,7 +155,7 @@ export const LEAVE_CI: SeoPageContent = {
       ],
     },
   ],
-  related: ['/logiciel-paie-cote-divoire', '/guides/cotisations-cnps-2024', '/paiement-salaires-mobile-money'],
+  related: ['/logiciel-paie-cote-divoire', '/guides/cotisations-cnps-2024', '/paiement-salaires-mobile-money', '/sirh-afrique-ouest'],
 }
 
 export const MOBILE_MONEY: SeoPageContent = {
@@ -168,7 +169,7 @@ export const MOBILE_MONEY: SeoPageContent = {
   h1: 'Payer les salaires par Mobile Money ou virement',
   lead:
     "En Côte d'Ivoire, une partie des salariés est payée sur un portefeuille mobile, l'autre sur un compte bancaire. " +
-    'NexusRH CI gère les deux à partir de la paie validée, sans ressaisie des montants.',
+    'NexusRH gère les deux à partir de la paie validée, sans ressaisie des montants.',
   crumb: 'Mobile Money',
   updated: UPDATED,
   sections: [
@@ -187,7 +188,7 @@ export const MOBILE_MONEY: SeoPageContent = {
       h2: 'Virement bancaire au format de votre banque',
       blocks: [
         { type: 'p', text:
-          "Chaque salarié a son mode de paiement dans sa fiche (Mobile Money ou virement). Pour les virements, NexusRH CI " +
+          "Chaque salarié a son mode de paiement dans sa fiche (Mobile Money ou virement). Pour les virements, NexusRH " +
           "produit un fichier par banque. Le format est décrit une fois à partir d'un fichier d'exemple fourni par la banque, " +
           'versionné, puis réutilisé chaque mois ; le fichier peut être envoyé depuis l’adresse e-mail de votre entreprise.' },
       ],
@@ -288,7 +289,7 @@ export const GUIDE_ITS: SeoPageContent = {
       ],
     },
     {
-      h2: "Calculer l'ITS dans NexusRH CI",
+      h2: "Calculer l'ITS dans NexusRH",
       blocks: [
         { type: 'p', text:
           "Le moteur de paie applique ce barème et la RICF à chaque bulletin, à partir de la situation de famille " +
@@ -300,7 +301,7 @@ export const GUIDE_ITS: SeoPageContent = {
       ],
     },
   ],
-  related: ['/guides/cotisations-cnps-2024', '/logiciel-paie-cote-divoire'],
+  related: ['/guides/cotisations-cnps-2024', '/logiciel-paie-cote-divoire', '/sirh-afrique-ouest'],
 }
 
 export const GUIDE_CNPS: SeoPageContent = {
@@ -309,7 +310,7 @@ export const GUIDE_CNPS: SeoPageContent = {
   kind: 'guide',
   title: 'Cotisations CNPS 2024 : taux, double plafond et exemple',
   description:
-    'Taux CNPS 2024 salarié et employeur, plafonds de 1 647 315 et 70 000 FCFA, taux accident du ' +
+    'Taux CNPS salarié et employeur, plafonds de 3 375 000 et 75 000 FCFA, taux accident du ' +
     'travail par secteur et un calcul complet à 2 000 000 FCFA.',
   h1: 'Cotisations CNPS 2024 : taux et plafonds',
   lead:
@@ -325,20 +326,23 @@ export const GUIDE_CNPS: SeoPageContent = {
         { type: 'table', caption: 'Cotisations CNPS 2024 (plafonds mensuels en FCFA)',
           head: ['Branche', 'Salarié', 'Employeur', 'Plafond mensuel'],
           rows: [
-            ['Retraite', '6,3 %', '7,7 %', '1 647 315'],
-            ['Prestations familiales', '—', '5 %', '70 000'],
-            ['Maternité', '—', '0,75 %', '70 000'],
-            ['Accident du travail', '—', '2 à 5 %', '70 000'],
+            ['Retraite', '6,3 %', '7,7 %', '3 375 000'],
+            ['Prestations familiales', '—', '5 %', '75 000'],
+            ['Maternité', '—', '0,75 %', '75 000'],
+            ['Accident du travail', '—', '2 à 5 %', '75 000'],
           ] },
+        { type: 'p', text: 'CMU : 1 000 FCFA par bénéficiaire et par mois, à parts égales entre salarié et employeur (loi n° 2014-131).' },
       ],
     },
     {
       h2: 'Le double plafond',
       blocks: [
         { type: 'p', text:
-          "La retraite se calcule sur le salaire dans la limite de 1 647 315 FCFA par mois. Les prestations familiales, " +
-          "la maternité et l'accident du travail se calculent sur 70 000 FCFA au plus. Appliquer un plafond unique à toutes " +
-          "les branches est l'erreur la plus fréquente : elle fausse les cotisations dès que le salaire dépasse 70 000 FCFA." },
+          "La retraite se calcule sur le salaire dans la limite de 3 375 000 FCFA par mois (décret n° 2022-986). Les " +
+          "prestations familiales, la maternité et l'accident du travail se calculent sur 75 000 FCFA au plus. Ces deux plafonds " +
+          "s'appliquent depuis le 1er janvier 2023. Appliquer un " +
+          "plafond unique à toutes les branches est l'erreur la plus fréquente : elle fausse les cotisations dès que le " +
+          "salaire dépasse 75 000 FCFA." },
       ],
     },
     {
@@ -350,18 +354,20 @@ export const GUIDE_CNPS: SeoPageContent = {
       ],
     },
     {
-      h2: 'Exemple : salaire brut de 2 000 000 FCFA (commerce)',
+      h2: 'Exemple : salaire brut de 4 000 000 FCFA (commerce)',
       blocks: [
         { type: 'table', caption: 'Cotisations CNPS mensuelles (FCFA, arrondies au franc)',
           head: ['Branche', 'Assiette', 'Taux', 'Montant'],
           rows: [
-            ['Retraite — part salarié', '1 647 315', '6,3 %', '103 781'],
-            ['Retraite — part employeur', '1 647 315', '7,7 %', '126 843'],
-            ['Prestations familiales', '70 000', '5 %', '3 500'],
-            ['Maternité', '70 000', '0,75 %', '525'],
-            ['Accident du travail', '70 000', '2 %', '1 400'],
+            ['Retraite — part salarié', '2 000 000', '6,3 %', '126 000'],
+            ['Retraite — part employeur', '2 000 000', '7,7 %', '154 000'],
+            ['Prestations familiales', '75 000', '5 %', '3 750'],
+            ['Maternité', '75 000', '0,75 %', '562'],
+            ['Accident du travail', '75 000', '2 %', '1 500'],
+            ['CMU (1 bénéficiaire)', '1 000 par bénéficiaire', '50 % / 50 %', '500 + 500'],
           ],
-          note: 'Total salarié : 103 781 FCFA. Total employeur : 132 268 FCFA.' },
+          note: 'Le salaire reste sous le plafond retraite de 3 375 000 FCFA : la retraite porte sur tout le brut. ' +
+            'Total salarié : 126 500 FCFA (CMU comprise). Total employeur : 160 312 FCFA (CMU comprise).' },
         { type: 'p', text:
           "Ce que la CNPS retient sur le salaire n'est pas déduit de l'assiette de l'ITS depuis la réforme 2024 : " +
           "les deux calculs partent du même brut." },
@@ -372,7 +378,7 @@ export const GUIDE_CNPS: SeoPageContent = {
       blocks: [
         { type: 'p', text:
           "Les cotisations sont déclarées à la CNPS à partir des bulletins ; chaque année, la DISA récapitule les salaires " +
-          "de chaque salarié sur les douze mois. NexusRH CI produit les deux à partir de la paie clôturée." },
+          "de chaque salarié sur les douze mois. NexusRH produit les deux à partir de la paie clôturée." },
         { type: 'links', items: [
           { to: '/logiciel-paie-cote-divoire', label: 'Le logiciel de paie ivoirien' },
           { to: '/guides/calcul-its-2024-cote-divoire', label: "Le calcul de l'ITS 2024" },
@@ -380,5 +386,5 @@ export const GUIDE_CNPS: SeoPageContent = {
       ],
     },
   ],
-  related: ['/guides/calcul-its-2024-cote-divoire', '/logiciel-paie-cote-divoire', '/gestion-conges-cote-divoire'],
+  related: ['/guides/calcul-its-2024-cote-divoire', '/logiciel-paie-cote-divoire', '/gestion-conges-cote-divoire', '/sirh-afrique-ouest'],
 }

@@ -505,7 +505,7 @@ describe('GET /platform/tenants/:id/admin-status', () => {
 // ─── GET /platform/settings ──────────────────────────────────────────────────
 describe('GET /platform/settings', () => {
   it('table existante → 200 + flags dérivés', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH CI', maintenance_mode: false }] })
+    queryMock.mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH', maintenance_mode: false }] })
     const res = await app.inject({ method: 'GET', url: '/platform/settings', headers: hSuper() })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
@@ -518,10 +518,10 @@ describe('GET /platform/settings', () => {
       .mockRejectedValueOnce(new Error('relation platform.platform_settings does not exist')) // SELECT initial
       .mockResolvedValueOnce({ rows: [] }) // CREATE TABLE
       .mockResolvedValueOnce({ rows: [] }) // INSERT DEFAULT
-      .mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH CI' }] }) // relecture
+      .mockResolvedValueOnce({ rows: [{ app_name: 'NexusRH' }] }) // relecture
     const res = await app.inject({ method: 'GET', url: '/platform/settings', headers: hSuper() })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).data.app_name).toBe('NexusRH CI')
+    expect(JSON.parse(res.body).data.app_name).toBe('NexusRH')
   })
 })
 
@@ -615,6 +615,15 @@ describe('GET /platform/legal-constants', () => {
     expect(JSON.parse(params[2]!)).toEqual({ CONGES_JOURS_PAR_MOIS: 2.2 })
     expect(String(seed?.[0])).toContain("constants->'CONGES_JOURS_PAR_MOIS' = '2.5'::jsonb")
     expect(String(seed?.[0])).toContain('ELSE platform.legal_constants.constants')
+    // Plafonds CNPS en vigueur depuis le 01/01/2023 (communiqué CNPS) : seed
+    // + migration ciblée des seules valeurs encore égales aux anciennes.
+    const seeded = JSON.parse(params[0]!) as { PLAFOND_CNPS_RETRAITE_MENSUEL: number; PLAFOND_CNPS_AT_PF_MENSUEL: number }
+    expect(seeded.PLAFOND_CNPS_RETRAITE_MENSUEL).toBe(3_375_000)
+    expect(seeded.PLAFOND_CNPS_AT_PF_MENSUEL).toBe(75_000)
+    expect(String(seed?.[0])).toContain("constants->'PLAFOND_CNPS_RETRAITE_MENSUEL' = '1647315'::jsonb")
+    expect(String(seed?.[0])).toContain('{"PLAFOND_CNPS_RETRAITE_MENSUEL": 3375000}')
+    expect(String(seed?.[0])).toContain("constants->'PLAFOND_CNPS_AT_PF_MENSUEL' = '70000'::jsonb")
+    expect(String(seed?.[0])).toContain('{"PLAFOND_CNPS_AT_PF_MENSUEL": 75000}')
   })
   it('SELECT échoue → data vide (catch)', async () => {
     queryMock

@@ -82,6 +82,14 @@ describe('GET /training/catalog', () => {
     expect(JSON.parse(res.body).data).toHaveLength(1)
   })
 
+  it('catalogue : les sessions échues ne sont plus comptées (statut effectif)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'hr_manager')
+    await app.inject({ method: 'GET', url: '/training/catalog', headers: { authorization: `Bearer ${token}` } })
+    const sql = String(queryMock.mock.calls[0]![0]).replace(/\s+/g, ' ')
+    expect(sql).toContain("ELSE ts.status END = 'planned'")
+  })
+
   it('applique les filtres is_fdfp_eligible + category', async () => {
     queryMock.mockResolvedValueOnce({ rows: [] })
     const token = tokenFor(app, 'admin')
@@ -229,9 +237,27 @@ describe('GET /training/sessions', () => {
     })
     expect(res.statusCode).toBe(200)
     const call = queryMock.mock.calls[0]!
-    expect(String(call[0])).toContain('ts.status = $1')
+    expect(String(call[0])).toContain('ELSE ts.status END = $1')
     expect(String(call[0])).toContain('ts.training_id = $2')
     expect(call[1]).toEqual(['planned', UUID_A])
+  })
+
+  it('statut effectif : planned échue → completed (CASE à la lecture, annulée inchangée)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] })
+    const token = tokenFor(app, 'admin')
+    await app.inject({
+      method: 'GET', url: '/training/sessions',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const sql = String(queryMock.mock.calls[0]![0]).replace(/\s+/g, ' ')
+    expect(sql).toContain("CASE WHEN ts.status = 'planned' AND COALESCE(ts.end_date, ts.start_date) < CURRENT_DATE THEN 'completed' ELSE ts.status END AS effective_status")
+  })
+
+  it('réponse : effective_status remis dans status (forme inchangée)', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: 's1', status: 'planned', effective_status: 'completed' }] })
+    const token = tokenFor(app, 'admin')
+    const res = await app.inject({ method: 'GET', url: '/training/sessions', headers: { authorization: `Bearer ${token}` } })
+    expect(JSON.parse(res.body).data).toEqual([{ id: 's1', status: 'completed' }])
   })
 
   it('erreur DB → 500', async () => {
@@ -386,6 +412,24 @@ describe('POST /training/enroll — branches restantes', () => {
     })
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.body).error).toContain('complète')
+  })
+
+  it.each([
+    ['completed', /terminée/],
+    ['cancelled', /annulée/],
+  ])('session %s (échue ou annulée) → 409, aucune inscription', async (status, msg) => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })  // duplicate check empty
+      .mockResolvedValueOnce({ rows: [{ max_places: 20, enrolled: 1, effective_status: status }] })
+    const token = tokenFor(app, 'hr_officer')
+    const res = await app.inject({
+      method: 'POST', url: '/training/enroll',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { session_id: UUID_A, employee_id: UUID_B },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toMatch(msg)
+    expect(queryMock).toHaveBeenCalledTimes(2)
   })
 
   it('erreur DB → 500', async () => {

@@ -3,6 +3,7 @@
   "subtitle": "Faites signer électroniquement vos documents RH avec piste d'audit.",
   "loading": "Chargement…",
   "loadError": "Impossible de charger les demandes.",
+  "errors": { "generic": "Une erreur est survenue. Réessayez.", "dismiss": "Fermer" },
   "tabs": { "requests": "Demandes", "mine": "À signer" },
   "statuses": {
     "draft": "Brouillon",

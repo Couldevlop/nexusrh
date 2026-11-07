@@ -40,19 +40,21 @@ const periods = [
   { id: CHILD, month: '2026-10', status: 'sent_to_sites', legal_entity_id: 'le-1', legislation_pack_code: 'BFA-2024', parent_period_id: PARENT, total_gross: null, total_net: null, completed_by_site_at: null },
 ]
 
-function sheet(over: { ready?: boolean; missing?: string[]; validated?: boolean } = {}) {
+function sheet(over: { ready?: boolean; missing?: string[]; validated?: boolean; warnings?: string[] } = {}) {
   const validated = over.validated ?? false
+  const warnings = over.warnings ?? []
   return {
     period: { id: CHILD, month: '2026-10', status: 'sent_to_sites', legislationPackCode: 'BFA-2024' },
     codes: [{ code: 'PRIME_PANIER', label: 'Prime de panier', unit: 'fcfa' }, { code: 'ABSENCE_INJ', label: 'Absences', unit: 'days' }],
     editable: true,
     rows: [{
-      id: EMP, name: 'Issa Ouédraogo', missing: over.missing ?? [], values: {},
+      id: EMP, name: 'Issa Ouédraogo', missing: over.missing ?? [], warnings, values: {},
       validation: validated ? { mode: 'none', validatedAt: null, valid: true } : null, variablesValidated: validated,
     }],
     readiness: {
       smig: 45000, totalEmployees: 1, validatedCount: validated ? 1 : 0, incompleteCount: (over.missing ?? []).length ? 1 : 0,
       dataComplete: !(over.missing ?? []).length, variablesValidated: validated, ready: over.ready ?? false,
+      cmuSpouseToVerify: warnings.includes('cmu_spouse_to_verify') ? [{ id: EMP, name: 'Issa Ouédraogo' }] : [],
     },
   }
 }
@@ -94,6 +96,16 @@ describe('RafPeriodsPage', () => {
     expect(link.getAttribute('href')).toBe(`/employees/${EMP}`)
     expect(screen.getByText(/missing\.cnps_number/)).toBeTruthy()
     expect(screen.getByText(/sheet\.validatedCounter/).textContent).toContain('"validated":0,"total":1')
+  })
+
+  it('CMU — conjoint à vérifier : avertissement NON bloquant (Soumettre reste actif)', async () => {
+    setup(sheet({ ready: true, validated: true, warnings: ['cmu_spouse_to_verify'] }))
+    fireEvent.click(await screen.findByText('prepare'))
+    expect(await screen.findByText(/sheet\.cmuSpouseToVerifyTitle/)).toBeTruthy()
+    expect(screen.getByText('sheet.cmuSpouseToVerifyHint')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Issa Ouédraogo' }).getAttribute('href')).toBe(`/employees/${EMP}`)
+    const submit = await screen.findByRole('button', { name: 'submit' }, { timeout: 4000 })
+    expect((submit as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('RAF site : pas de lien vers la fiche salarié (route non autorisée)', async () => {

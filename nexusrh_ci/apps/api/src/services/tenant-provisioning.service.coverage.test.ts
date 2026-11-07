@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../config.js', () => ({
-  config: { appUrl: 'http://localhost:3001', smtp: { from: 'NexusRH CI <noreply@nexusrh-ci.com>' } },
+  config: { appUrl: 'http://localhost:3001', smtp: { from: 'NexusRH <noreply@nexusrh-ci.com>' } },
 }))
 
 const provisionMock = vi.fn().mockResolvedValue(undefined)

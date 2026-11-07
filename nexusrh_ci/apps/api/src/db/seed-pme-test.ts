@@ -90,7 +90,7 @@ const PERIOD_MONTH  = '2024-12'
 const WORKING_DAYS  = 26     // déc. 2024 : lun-sam, 5 dimanches exclus
 
 async function main() {
-  console.log('NexusRH CI — Seed PME-Test (scénario maternité + AT)')
+  console.log('NexusRH — Seed PME-Test (scénario maternité + AT)')
 
   // Reset propre
   await pool.query(`DROP SCHEMA IF EXISTS "${TENANT_SCHEMA}" CASCADE`)

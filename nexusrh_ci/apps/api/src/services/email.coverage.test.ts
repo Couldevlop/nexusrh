@@ -24,7 +24,7 @@ const { sendMailMock, createTransportMock, configMock } = vi.hoisted(() => {
       secure: false,
       user: 'infos@openlabconsulting.com',
       pass: 'app-password-16c',
-      from: 'NexusRH CI <noreply@nexusrh-ci.com>',
+      from: 'NexusRH <noreply@nexusrh-ci.com>',
     },
   }
   return { sendMailMock, createTransportMock, configMock }
@@ -56,7 +56,7 @@ beforeEach(() => {
   configMock.smtp.host = 'smtp.gmail.com'
   configMock.smtp.user = 'infos@openlabconsulting.com'
   configMock.smtp.pass = 'app-password-16c'
-  configMock.smtp.from = 'NexusRH CI <noreply@nexusrh-ci.com>'
+  configMock.smtp.from = 'NexusRH <noreply@nexusrh-ci.com>'
 })
 
 describe('sendWelcomeTenantEmail — branches logo / expéditeur', () => {
@@ -84,7 +84,7 @@ describe('sendWelcomeTenantEmail — branches logo / expéditeur', () => {
       logoUrl: null,
     })
     const mail = lastMail()
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.replyTo).toBeUndefined()
     expect(mail.html).not.toContain('<img')
     expect(mail.html).toContain('BE') // initiales de "Beta SARL"
@@ -111,7 +111,7 @@ describe('sendEmployeeWelcomeEmail — branches logo / expéditeur', () => {
       primaryColor: '#16A34A', loginUrl: 'http://x/login', tempPassword: 'CI_EMP2!',
     })
     const mail = lastMail()
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.replyTo).toBeUndefined()
     expect(mail.html).not.toContain('<img')
     expect(mail.html).toContain('GA')
@@ -129,7 +129,7 @@ describe('sendWelcomeAgencyEmail — email cabinet de recrutement', () => {
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const mail = lastMail()
     expect(mail.to).toBe('owner@cabinet.ci')
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.subject).toContain('Talents CI')
     expect(mail.html).toContain('CI_AGENCY9!')
     expect(mail.html).toContain('https://app/login')
@@ -159,7 +159,7 @@ describe('sendPasswordResetEmail — reset administratif (mot de passe temporair
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const mail = lastMail()
     expect(mail.to).toBe('admin@sotra.ci')
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.subject).toContain('SOTRA')
     expect(mail.html).toContain('CI_RESET7!')
     expect(mail.html).toContain('Abidjan')
@@ -174,7 +174,7 @@ describe('sendPasswordResetEmail — reset administratif (mot de passe temporair
     })
     const mail = lastMail()
     expect(mail.html).toContain('CI_RESET8!')
-    expect(mail.html).toContain('NexusRH CI')
+    expect(mail.html).toContain('NexusRH')
   })
 
   it('sans ville (champ absent) : branche par défaut', async () => {
@@ -195,7 +195,7 @@ describe('sendPasswordResetLinkEmail — lien magique self-service', () => {
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const mail = lastMail()
     expect(mail.to).toBe('user@acme.ci')
-    expect(mail.from).toBe('NexusRH CI <noreply@nexusrh-ci.com>')
+    expect(mail.from).toBe('NexusRH <noreply@nexusrh-ci.com>')
     expect(mail.html).toContain('https://app/reset-password?token=XYZ')
     expect(mail.html).toContain('15 minutes')
     expect(mail.text).toContain('https://app/reset-password?token=XYZ')

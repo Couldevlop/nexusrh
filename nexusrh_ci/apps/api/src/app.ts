@@ -42,6 +42,7 @@ import employeesRoutes  from './modules/employees/employees.routes.js'
 import absencesRoutes   from './modules/absences/absences.routes.js'
 import payrollRoutes    from './modules/payroll/payroll.routes.js'
 import payrollWorkflowRoutes from './modules/payroll/payroll-workflow.routes.js'
+import ci2023ImpactRoutes from './modules/payroll/ci-2023-impact.routes.js'
 import cnpsRoutes       from './modules/cnps/cnps.routes.js'
 import mobileMoneyRoutes  from './modules/mobile-money/mobile-money.routes.js'
 import bankTransferRoutes from './modules/bank-transfer/bank-transfer.routes.js'
@@ -392,6 +393,7 @@ export async function buildApp() {
   await fastify.register(employeesRoutes,    { prefix: '/employees' })
   await fastify.register(absencesRoutes,     { prefix: '/absences' })
   await fastify.register(payrollRoutes,      { prefix: '/payroll' })
+  await fastify.register(ci2023ImpactRoutes, { prefix: '/payroll' })
   await fastify.register(payrollWorkflowRoutes, { prefix: '/payroll-workflow' })
   await fastify.register(cnpsRoutes,         { prefix: '/cnps' })
   await fastify.register(mobileMoneyRoutes,  { prefix: '/mobile-money' })

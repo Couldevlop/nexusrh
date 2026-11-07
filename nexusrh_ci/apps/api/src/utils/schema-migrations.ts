@@ -6,8 +6,10 @@ import { pool } from '../db/pool.js'
 import { adminEmployeeLinkStatements } from '../db/admin-employee.js'
 import { employeeNumberStatements } from '../db/employee-number.js'
 import { payrollReminderTableStatements } from '../db/payroll-reminders.js'
+import { ciCmuEmployeeColumnMigrations, ciOvertimeRuleMigrations } from '../db/payroll-rules-ci-2023.js'
 import { disaPerEntityStatements } from '../db/disa-records.js'
 import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
+import { platformRenameStatements } from '../db/platform-rename.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
 import { habilitationTableStatements } from '../db/habilitations.js'
 import { runHabilitationBootstrap } from '../db/habilitations-bootstrap.js'
@@ -891,6 +893,13 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     ...adminEmployeeLinkStatements(schemaName),
     // ── Relances des valideurs de la paie (idempotence par niveau / fenêtre) ──
     ...payrollReminderTableStatements(schemaName),
+    // ── Paie CI : valeurs en vigueur depuis le 01/01/2023 ─────────────────────
+    // CMU (loi n° 2014-131) : conjoint sans emploi (nullable, NULL = à
+    // renseigner) ; enfants de moins de 21 ans couverts (NULL = enfants à charge).
+    ...ciCmuEmployeeColumnMigrations(schemaName),
+    // Heures supplémentaires (décret n° 2024-898, art. 25) : libellés d'origine
+    // des rubriques 1400 / 1500 / 1550 mis à jour, rubriques 1450 / 1520 ajoutées.
+    ...ciOvertimeRuleMigrations(schemaName),
   ]
 
   for (const sql of alters) {
@@ -1216,6 +1225,9 @@ export async function ensurePlatformSchema(): Promise<void> {
       updated_at     timestamptz NOT NULL DEFAULT now(),
       UNIQUE (role_key, langue)
     )`,
+
+    // ── Renommage produit : met à jour les anciennes valeurs par défaut uniquement ──
+    ...platformRenameStatements(),
   ]
   for (const sql of alters) {
     await pool.query(sql).catch(() => undefined)

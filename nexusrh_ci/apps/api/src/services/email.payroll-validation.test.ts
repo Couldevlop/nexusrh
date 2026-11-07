@@ -15,7 +15,7 @@ const { sendMailMock, createTransportMock, assertSafeMock } = vi.hoisted(() => {
 vi.mock('nodemailer', () => ({ default: { createTransport: createTransportMock }, createTransport: createTransportMock }))
 vi.mock('@nexusrhci/shared/ssrf-guard', () => ({ assertSafeSmtpHost: assertSafeMock }))
 vi.mock('../config.js', () => ({
-  config: { env: 'test', appUrl: 'http://localhost:3001', smtp: { host: 'smtp.platform', port: 587, secure: false, user: 'u', pass: 'p', from: 'NexusRH CI <noreply@nexusrh-ci.com>' } },
+  config: { env: 'test', appUrl: 'http://localhost:3001', smtp: { host: 'smtp.platform', port: 587, secure: false, user: 'u', pass: 'p', from: 'NexusRH <noreply@nexusrh-ci.com>' } },
 }))
 
 import { sendPayrollValidationEmail } from './email.js'

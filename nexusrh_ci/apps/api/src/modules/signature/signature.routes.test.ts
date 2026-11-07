@@ -69,6 +69,15 @@ describe('OWASP A01 — RBAC gestion', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+  it('création : e-mail de signataire invalide → message précis (400)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/signature/requests',
+      headers: { authorization: `Bearer ${token(app, 'hr_manager')}` },
+      payload: { title: 'CDI', signatories: [{ name: 'A' }, { name: 'B', email: 'pas-un-email@@x' }] },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('E-mail du signataire n° 2 invalide')
+  })
   it('suppression réservée admin/hr_manager — hr_officer refusé (403)', async () => {
     const res = await app.inject({
       method: 'DELETE', url: '/signature/requests/11111111-1111-1111-1111-111111111111',

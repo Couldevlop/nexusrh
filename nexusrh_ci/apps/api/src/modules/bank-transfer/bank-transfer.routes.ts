@@ -101,7 +101,7 @@ async function hasForeignTransfers(schema: string, month: string, bank: string, 
 /** Gabarit Excel historique — repli quand la banque n'a pas de profil actif. */
 async function buildLegacyXlsx(bank: string, month: string, rows: BankFileRow[], tenantName: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'NexusRH CI'
+  wb.creator = 'NexusRH'
   const ws = wb.addWorksheet(`Virements ${month}`)
   ws.mergeCells('A1:G1')
   ws.getCell('A1').value = `Ordre de virement des salaires — ${tenantName} — ${bank} — Période ${month}`
@@ -312,7 +312,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       const rows = await fetchTransfers(schema, month, bank, await requestHrScope(request, 'e'))
       if (rows.length === 0) return reply.status(404).send({ error: 'Aucun virement pour cette banque/période' })
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
-      const file = await generateFile(schema, bank, month, rows, tenant.rows[0]?.name ?? 'NexusRH CI')
+      const file = await generateFile(schema, bank, month, rows, tenant.rows[0]?.name ?? 'NexusRH')
       auditBank(schema, request.user.sub, 'bank_transfer.file_downloaded', { month, bank, count: rows.length, templateVersion: file.templateVersion }, request.ip ?? null)
       reply.header('Content-Type', file.mime)
       reply.header('Cache-Control', 'no-store')
@@ -341,7 +341,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       // Config email du TENANT : l'expéditeur (from) et le serveur SMTP sont ceux
       // paramétrés par le tenant (repli plateforme si non configuré).
       const mail = await loadTenantMailBySchema(schema).catch(() => null)
-      const tenantName = mail?.name ?? 'NexusRH CI'
+      const tenantName = mail?.name ?? 'NexusRH'
       const tenantFrom = mail?.from
       const tenantSmtp = mail?.smtp ?? null
 
@@ -667,7 +667,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       // Le total et le nombre de lignes portent sur les virements de l'utilisateur
       // (périmètre filiale) : un RH restreint ne voit que sa part ; l'envoi à la banque
       // (POST /send) est refusé en 409 si la période contient d'autres filiales.
-      const ctx = buildContext(row.bank_name, parsed.data.month, tenant.rows[0]?.name ?? 'NexusRH CI', dir, allRows)
+      const ctx = buildContext(row.bank_name, parsed.data.month, tenant.rows[0]?.name ?? 'NexusRH', dir, allRows)
 
       const table = previewTable(row.spec, sample, ctx)
       const built = row.spec.output === 'xlsx' ? null : await buildBankFileAsync(row.spec, sample, ctx)
@@ -709,7 +709,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
       if (rows.length === 0) return reply.status(404).send({ error: 'Aucun virement pour cette banque/période' })
       const tenant = await rawPool.query<{ name: string }>(`SELECT name FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema]).catch(() => ({ rows: [] as Array<{ name: string }> }))
       const dir = await loadDirectory(schema, row.bank_name)
-      const ctx = buildContext(row.bank_name, month, tenant.rows[0]?.name ?? 'NexusRH CI', dir, rows)
+      const ctx = buildContext(row.bank_name, month, tenant.rows[0]?.name ?? 'NexusRH', dir, rows)
       const built = await buildBankFileAsync(row.spec, rows, ctx)
 
       auditBank(schema, request.user.sub, 'bank_transfer.template_test_file', { bank: row.bank_name, version: row.version, month, count: rows.length }, request.ip ?? null)

@@ -13,6 +13,15 @@
 import type { Pool } from 'pg'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+/**
+ * Partie locale d'email ASCII : retire les diacritiques (NFD + marques combinantes),
+ * passe en minuscules et ne garde que a-z0-9. Les emails de démo doivent passer
+ * la validation z.string().email() de l'API (signature électronique, etc.).
+ */
+export function asciiEmailPart(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
@@ -704,7 +713,7 @@ export async function seedApplicationsForJob(
                  CASE WHEN $7::int IS NULL THEN NULL ELSE now() END)
          ON CONFLICT DO NOTHING`,
         [jobId, fn, ln,
-         `${fn.toLowerCase().replace(/[^a-z]/g, '')}.${ln.toLowerCase().replace(/[^a-z]/g, '')}@email.com`,
+         `${asciiEmailPart(fn)}.${asciiEmailPart(ln)}@email.com`,
          `+22507${randInt(10000000, 99999999)}`, stage,
          aiScore, aiRec,
          hasAi ? `Profil ${aiRec === 'strong_yes' ? 'très aligné' : 'aligné'} avec les prérequis du poste.` : null,

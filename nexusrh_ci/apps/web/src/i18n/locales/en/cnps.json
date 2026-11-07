@@ -202,7 +202,7 @@
       "checkMobileLabel": "Mobile Money",
       "checkMobileDesc": "Number registered per employee",
       "checkPlafondsLabel": "CNPS ceilings",
-      "checkPlafondsDesc": "Retirement 1,647,315 FCFA · AT/PF 70,000 FCFA",
+      "checkPlafondsDesc": "Retirement 3,375,000 FCFA · AT/PF 75,000 FCFA",
       "runAudit": "Run audit ({{count}} check)",
       "runAudit_other": "Run audit ({{count}} checks)",
       "analyzing": "Analysis in progress…",
