@@ -10,6 +10,7 @@ import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import { config } from '../../config.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { requestHrScope, requestEmployeeScope, employeeInHrScope } from '../../utils/hr-scope.js'
+import { loadInterimContext } from '../../services/interim.service.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import { isInManagerScope, managerScopeSql } from '../../services/manager-scope.service.js'
 import {
@@ -163,6 +164,9 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       // Circuit de validation : étape courante, échéance, droit d'agir.
       const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
       const managerOf = await loadManagerMap(rawPool, schema)
+      // Continuité : absents du jour et suppléants déclarés, pour que le
+      // suppléant voie bien les demandes dont il a la charge.
+      const interim = await loadInterimContext(schema, rawPool)
       const actor = managerEmpId
         ? { role: request.user.role, userId: request.user.sub, employeeId: managerEmpId }
         : await actorOf(schema, request.user)
@@ -176,7 +180,7 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
             status: PENDING_STATUSES.includes(String(row.status)) ? 'submitted' : String(row.status),
             submittedAt: new Date(String(row.created_at ?? new Date().toISOString())),
             trail: Array.isArray(row.approval_trail) ? row.approval_trail as ApprovalTrailEntry[] : [],
-          }, actor),
+          }, actor, interim),
         }))
         // Manager : son périmètre + ce qui attend son visa. RH : une absence en
         // attente ne lui apparaît qu'une fois les visas hiérarchiques obtenus.
@@ -483,15 +487,27 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       // Circuit N+1 … N+n → RH (OWASP A01) : le valideur de l'étape agit ;
       // l'équipe RH prend la main une fois l'échéance dépassée. Jamais sur soi.
       const actor = await actorOf(schema, request.user)
-      const ev = evaluateRequest(settings, await loadManagerMap(rawPool, schema), {
+      const workflowRequest = {
         employeeId: absence.employee_id, validationLevel: absence.validation_level, status: 'submitted',
         submittedAt: new Date(absence.created_at ?? Date.now()), trail: absence.approval_trail ?? [],
-      }, actor)
+      }
+      const managerOf = await loadManagerMap(rawPool, schema)
+      let ev = evaluateRequest(settings, managerOf, workflowRequest, actor)
+      // Continuité : chargée SEULEMENT si la décision est refusée. Le valideur
+      // légitime de l'étape ne paie aucune requête de plus ; ce n'est que
+      // lorsqu'on dit non qu'on vérifie si une absence constatée ou un
+      // suppléant déclaré ouvre malgré tout l'étape à cet acteur.
+      if (!ev.decision.allowed) {
+        ev = evaluateRequest(settings, managerOf, workflowRequest, actor,
+          await loadInterimContext(schema, rawPool))
+      }
       if (!ev.decision.allowed) {
         return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'absence') })
       }
       const { steps, index, step } = ev
       const override = ev.decision.override
+      // Décision prise au titre d'un intérim : qui est remplacé, et pourquoi.
+      const interimGrant = ev.decision.allowed ? ev.decision.interim : undefined
       const isApproved = step.kind === 'hr'
       const nextLevel = index + 1
 
@@ -503,7 +519,8 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
          WHERE id = $5 RETURNING *`,
         [nextLevel, isApproved ? 'approved' : 'submitted',
          isApproved ? request.user.sub : null,
-         isApproved ? new Date() : null, id, JSON.stringify([trailEntry(index, step, actor, override)])]
+         isApproved ? new Date() : null, id,
+         JSON.stringify([trailEntry(index, step, actor, override, new Date(), interimGrant)])]
       )
 
       if (isApproved) {
@@ -579,10 +596,20 @@ const absencesRoutes: FastifyPluginAsync = async (fastify) => {
       // jamais par le demandeur lui-même.
       const actor = await actorOf(schema, request.user)
       const settings = await loadWorkflowSettings(rawPool, schema, 'absences')
-      const ev = evaluateRequest(settings, await loadManagerMap(rawPool, schema), {
+      const workflowRequest = {
         employeeId: absence.employee_id, validationLevel: absence.validation_level ?? 0, status: 'submitted',
         submittedAt: new Date(absence.created_at ?? Date.now()), trail: absence.approval_trail ?? [],
-      }, actor)
+      }
+      const managerOf = await loadManagerMap(rawPool, schema)
+      let ev = evaluateRequest(settings, managerOf, workflowRequest, actor)
+      // Continuité : chargée SEULEMENT si la décision est refusée. Le valideur
+      // légitime de l'étape ne paie aucune requête de plus ; ce n'est que
+      // lorsqu'on dit non qu'on vérifie si une absence constatée ou un
+      // suppléant déclaré ouvre malgré tout l'étape à cet acteur.
+      if (!ev.decision.allowed) {
+        ev = evaluateRequest(settings, managerOf, workflowRequest, actor,
+          await loadInterimContext(schema, rawPool))
+      }
       if (!ev.decision.allowed) {
         return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'absence') })
       }

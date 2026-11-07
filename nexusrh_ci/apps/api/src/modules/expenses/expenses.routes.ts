@@ -9,6 +9,7 @@ import { initiateTransfer, normalizeMmProvider } from '../../services/mobile-mon
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { loadInterimContext } from '../../services/interim.service.js'
 import { managerScopeSql } from '../../services/manager-scope.service.js'
 import { requestHrScope, requestHrScopeUnlessSelf, requestEmployeeScopeUnlessSelf, employeeInHrScope } from '../../utils/hr-scope.js'
 import {
@@ -240,11 +241,13 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         const actor = managerEmpId
           ? { role: request.user.role, userId: request.user.sub, employeeId: managerEmpId }
           : await actorOf(schema, request.user)
+        // Continuité : absents du jour et suppléants déclarés.
+        const interim = await loadInterimContext(schema, pool)
         const data = rows
           .map(({ in_scope: inScope, ...row }) => ({
             ...row,
             inScope: inScope !== false,
-            workflow: summarize(settings, managerOf, toWorkflowRequest(row), actor),
+            workflow: summarize(settings, managerOf, toWorkflowRequest(row), actor, interim),
           }))
           .filter((row) => managerEmpId !== null
             ? row.inScope || row.workflow.canAct
@@ -468,7 +471,14 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         if (isSelfAction(request, report.employee_id)) return reply.status(403).send({ error: SELF_ACTION_ERROR })
         const actor = await actorOf(schema, request.user)
         const settings = await loadWorkflowSettings(pool, schema, 'expenses')
-        const ev = evaluateRequest(settings, await loadManagerMap(pool, schema), toWorkflowRequest(report), actor)
+        const managerOf = await loadManagerMap(pool, schema)
+        const workflowRequest = toWorkflowRequest(report)
+        let ev = evaluateRequest(settings, managerOf, workflowRequest, actor)
+        // Continuité chargée seulement en cas de refus (cf. absences).
+        if (!ev.decision.allowed) {
+          ev = evaluateRequest(settings, managerOf, workflowRequest, actor,
+            await loadInterimContext(schema, pool))
+        }
         if (!ev.decision.allowed) {
           return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'note de frais') })
         }
@@ -541,7 +551,14 @@ const expensesRoutes: FastifyPluginAsync = async (fastify) => {
         if (report.status !== 'submitted') return reply.status(400).send({ error: 'Note non refusable' })
         const actor = await actorOf(schema, request.user)
         const settings = await loadWorkflowSettings(pool, schema, 'expenses')
-        const ev = evaluateRequest(settings, await loadManagerMap(pool, schema), toWorkflowRequest(report), actor)
+        const managerOf = await loadManagerMap(pool, schema)
+        const workflowRequest = toWorkflowRequest(report)
+        let ev = evaluateRequest(settings, managerOf, workflowRequest, actor)
+        // Continuité chargée seulement en cas de refus (cf. absences).
+        if (!ev.decision.allowed) {
+          ev = evaluateRequest(settings, managerOf, workflowRequest, actor,
+            await loadInterimContext(schema, pool))
+        }
         if (!ev.decision.allowed) {
           return reply.status(403).send({ error: denialMessage(ev.decision.reason, ev.step, 'note de frais') })
         }

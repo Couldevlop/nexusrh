@@ -6,6 +6,7 @@ import { disaPerEntityStatements } from './disa-records.js'
 import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
 import { habilitationTableStatements } from './habilitations.js'
+import { interimTableStatements } from './interims.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 import { CI_OVERTIME_RULES, ciCmuEmployeeColumnMigrations } from './payroll-rules-ci-2023.js'
@@ -1230,6 +1231,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
 
   // Habilitations RH (groupes, fiches, délégations, règles SoD)
   for (const stmt of habilitationTableStatements(schemaName)) await q(stmt)
+
+  // Intérims de validation (continuité du circuit pendant les congés)
+  for (const stmt of interimTableStatements(schemaName)) await q(stmt)
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.refresh_tokens (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

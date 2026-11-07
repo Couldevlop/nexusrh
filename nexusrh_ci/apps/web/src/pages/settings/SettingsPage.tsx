@@ -18,6 +18,7 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import InterimsCard from './InterimsCard'
 import DepartureReasonsCard from './DepartureReasonsCard'
 import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
@@ -3040,6 +3041,9 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           {save.isError && <span role="alert" className="text-xs text-destructive">{saveError ?? t('workflow.saveError')}</span>}
         </div>
       </div>
+
+      {/* Continuité pendant les congés : qui décide à la place d'un valideur absent. */}
+      <InterimsCard />
 
       <div className="rounded-xl border border-border bg-card p-6 space-y-3">
         <h2 className="font-semibold">{t('workflow.constants.title')}</h2>

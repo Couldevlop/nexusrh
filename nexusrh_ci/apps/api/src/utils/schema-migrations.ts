@@ -12,6 +12,7 @@ import { employeeDocumentsTableStatements } from '../db/employee-documents.js'
 import { platformRenameStatements } from '../db/platform-rename.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
 import { habilitationTableStatements } from '../db/habilitations.js'
+import { interimTableStatements } from '../db/interims.js'
 import { runHabilitationBootstrap } from '../db/habilitations-bootstrap.js'
 
 const migratedSchemas = new Set<string>()
@@ -71,6 +72,8 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     ...contractProposalsTableStatements(schemaName),
     // ── Habilitations RH (groupes, fiches, délégations, règles SoD) ────────
     ...habilitationTableStatements(schemaName),
+    // ── Intérims de validation : qui remplace qui pendant un congé ─────────
+    ...interimTableStatements(schemaName),
     // Reprise : la proposition générée au recrutement avait été versée en
     // `signed_contract` → re-catégorisée `contract_proposal` (idempotent).
     ...contractProposalRecategorizeStatements(schemaName),

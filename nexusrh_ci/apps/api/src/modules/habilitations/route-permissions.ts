@@ -175,6 +175,14 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   'GET /settings/workflow': { fn: 'hr_settings', action: 'configure' },
   'GET /settings/workflow/hr-team': { fn: 'hr_settings', action: 'configure' },
   'GET /settings/workflow/unlinked-managers': { fn: 'hr_settings', action: 'configure' },
+  // Intérims de validation : DÉSIGNER qui décide pendant un congé modifie le
+  // circuit (configure) ; voir quels congés de valideurs sont couverts est une
+  // consultation, que le gestionnaire RH garde — c'est lui qui relance les
+  // dossiers en attente. La liste des intérims, elle, n'est pas dans la grille :
+  // elle est ouverte à tout utilisateur, qui doit savoir ce qu'on attend de lui.
+  'GET /settings/interims/coverage': { fn: 'hr_settings', action: 'view' },
+  'POST /settings/interims': { fn: 'hr_settings', action: 'configure' },
+  'DELETE /settings/interims/:id': { fn: 'hr_settings', action: 'configure' },
   'GET /settings/import/users-status': { fn: 'hr_settings', action: 'configure' },
   'GET /referentiels/stats': { fn: 'hr_settings', action: 'configure' },
   'POST /onboarding/templates': { fn: 'lifecycle', action: 'validate' },

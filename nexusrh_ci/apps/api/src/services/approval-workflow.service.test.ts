@@ -3,6 +3,7 @@ import {
   checkNotice, decideActor, DEFAULT_NOTICE, evaluateRequest, hrCanSee, initialValidationLevel,
   managerChain, parseWorkflowSettings, planSteps, stepsFor, summarize, type Actor,
 } from './approval-workflow.service.js'
+import { EMPTY_INTERIM } from './interim.service.js'
 
 // Hiérarchie : emp → n1 → n2 → n3 (n3 sans responsable)
 const managerOf = new Map<string, string | null>([
@@ -77,7 +78,7 @@ describe('échéances (SLA) et résumé', () => {
   it('1 jour pour le N+1, puis 2 jours pour la RH à partir du visa', () => {
     const s = settings(1)
     const req = { employeeId: 'emp', validationLevel: 0, status: 'submitted', submittedAt, trail: [] }
-    const atN1 = evaluateRequest(s, managerOf, req, actor('manager', 'n1'), new Date(submittedAt.getTime() + 23 * HOUR))
+    const atN1 = evaluateRequest(s, managerOf, req, actor('manager', 'n1'), EMPTY_INTERIM, new Date(submittedAt.getTime() + 23 * HOUR))
     expect(atN1.overdue).toBe(false)
     expect(atN1.dueAt.toISOString()).toBe('2026-10-21T08:00:00.000Z')
 
@@ -85,7 +86,7 @@ describe('échéances (SLA) et résumé', () => {
     const atHr = evaluateRequest(s, managerOf, {
       ...req, validationLevel: 1,
       trail: [{ step: 1, kind: 'manager', by: 'u-n1', byEmployeeId: 'n1', at: visaAt }],
-    }, actor('hr_manager', 'rh'), new Date('2026-10-23T11:00:00Z'))
+    }, actor('hr_manager', 'rh'), EMPTY_INTERIM, new Date('2026-10-23T11:00:00Z'))
     expect(atHr.step.kind).toBe('hr')
     expect(atHr.dueAt.toISOString()).toBe('2026-10-23T10:00:00.000Z')
     expect(atHr.overdue).toBe(true)
@@ -94,7 +95,7 @@ describe('échéances (SLA) et résumé', () => {
   it('résumé : étape suivante, échéance, valideur désigné', () => {
     const sum = summarize(settings(2), managerOf,
       { employeeId: 'emp', validationLevel: 1, status: 'submitted', submittedAt, trail: [] },
-      actor('manager', 'n2'), submittedAt)
+      actor('manager', 'n2'), EMPTY_INTERIM, submittedAt)
     expect(sum).toMatchObject({ totalSteps: 3, doneSteps: 1, next: { kind: 'manager', level: 2 }, canAct: true, designated: true })
   })
 
