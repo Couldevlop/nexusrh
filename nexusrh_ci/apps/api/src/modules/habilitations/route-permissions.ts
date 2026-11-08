@@ -128,6 +128,9 @@ export const EXACT_ROUTES: Readonly<Record<string, RoutePermission>> = {
   // (réservé DRH : voir « Routes réservées au DRH » plus bas pour la case).
   'POST /settings/payslip-template/preview': { fn: 'payroll', action: 'configure' },
   // Import en masse (employés, bulletins, contrats…) : opération de paramétrage.
+  // Lecture seule d'un classeur déposé : ne crée rien, mais rend le contenu
+  // d'un fichier de reprise — donc même porte que l'import lui-même.
+  'POST /settings/import/parse': { fn: 'hr_settings', action: 'configure' },
   'POST /settings/import/:type': { fn: 'hr_settings', action: 'configure' },
   // Notes de frais : la soumission est une saisie, pas une clôture.
   'PATCH /expenses/:id/submit': { fn: 'expenses', action: 'update' },
