@@ -102,7 +102,7 @@
     "export": "Exporter la piste (CSV scellé)",
     "exporting": "Export en cours…",
     "exported": "Export téléchargé. Condensé SHA-256 : {{sha}}…",
-    "exportedUnsealed": "Export téléchargé, mais NON SCELLé. Condensé SHA-256 : {{sha}}… — aucune clé de scellement n’est configurée sur la plateforme : le fichier est exact, mais un tiers ne peut pas prouver qu’il vient bien de cette application.",
+    "exportedUnsealed": "Export téléchargé, mais NON SCELLÉ. Condensé SHA-256 : {{sha}}… — aucune clé de scellement n’est configurée sur la plateforme : le fichier est exact, mais un tiers ne peut pas prouver qu’il vient bien de cette application.",
     "exportError": "L'export n'a pas pu être produit.",
     "purgeTitle": "Rétention",
     "purgeHint": "Applique la durée de conservation définie par la plateforme. La purge écrit d'abord un marqueur dans la piste — la période effacée reste donc documentée — puis supprime les entrées plus anciennes.",

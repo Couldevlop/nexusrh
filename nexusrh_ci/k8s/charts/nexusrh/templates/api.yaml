@@ -125,6 +125,17 @@ spec:
                   name: nexusrh-app-secrets
                   key: encryption-key
                   optional: true
+            # Scellement HMAC des exports de piste d'audit. optional:true → le
+            # pod démarre sans elle ; les exports restent exacts mais NON
+            # scellés, et l'écran le dit au lieu de promettre un sceau absent.
+            # Ne se fait pas tourner à la légère : changer la clé rend
+            # invérifiables tous les sceaux émis auparavant.
+            - name: AUDIT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: audit-signing-key
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
