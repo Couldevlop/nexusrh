@@ -7,6 +7,7 @@ import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
 import { habilitationTableStatements } from './habilitations.js'
 import { interimTableStatements } from './interims.js'
+import { auditChainStatements, auditPurgeFunctionStatements } from './audit-chain.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 import { CI_OVERTIME_RULES, ciCmuEmployeeColumnMigrations } from './payroll-rules-ci-2023.js'
@@ -1228,6 +1229,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     user_agent text,
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
+
+  // Piste d'audit opposable : chaînage cryptographique + ajout seul + purge
+  // de rétention. Posé juste après la table, avant toute écriture possible.
+  for (const stmt of auditChainStatements(schemaName)) await q(stmt)
+  for (const stmt of auditPurgeFunctionStatements(schemaName)) await q(stmt)
 
   // Habilitations RH (groupes, fiches, délégations, règles SoD)
   for (const stmt of habilitationTableStatements(schemaName)) await q(stmt)

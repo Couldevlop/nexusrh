@@ -13,6 +13,7 @@ import { platformRenameStatements } from '../db/platform-rename.js'
 import { contractProposalsTableStatements, contractProposalRecategorizeStatements } from '../db/contract-proposals.js'
 import { habilitationTableStatements } from '../db/habilitations.js'
 import { interimTableStatements } from '../db/interims.js'
+import { auditChainStatements, auditPurgeFunctionStatements } from '../db/audit-chain.js'
 import { runHabilitationBootstrap } from '../db/habilitations-bootstrap.js'
 
 const migratedSchemas = new Set<string>()
@@ -74,6 +75,11 @@ export async function ensureTenantSchema(schemaName: string): Promise<void> {
     ...habilitationTableStatements(schemaName),
     // ── Intérims de validation : qui remplace qui pendant un congé ─────────
     ...interimTableStatements(schemaName),
+    // Piste d'audit opposable (chaînage, ajout seul, purge de rétention) :
+    // rejouable, et sans effet sur les entrées écrites avant le chaînage —
+    // elles restent lisibles, simplement non chaînées.
+    ...auditChainStatements(schemaName),
+    ...auditPurgeFunctionStatements(schemaName),
     // Reprise : la proposition générée au recrutement avait été versée en
     // `signed_contract` → re-catégorisée `contract_proposal` (idempotent).
     ...contractProposalRecategorizeStatements(schemaName),
@@ -1001,6 +1007,11 @@ export async function ensurePlatformSchema(): Promise<void> {
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_api_url text`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_model varchar(100)`,
     `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS ai_local_label varchar(60)`,
+
+    // ── Rétention de la piste d'audit ────────────────────────────────────────
+    // 0 = conservation sans limite (défaut) : la durée de conservation est une
+    // décision juridique du client, jamais un réglage que l'éditeur impose.
+    `ALTER TABLE platform.platform_settings ADD COLUMN IF NOT EXISTS audit_retention_days int NOT NULL DEFAULT 0`,
 
     // ── Singleton : une SEULE ligne de configuration plateforme ───────────────
     // Corrige un bug historique : les routes faisaient `INSERT ... DEFAULT VALUES

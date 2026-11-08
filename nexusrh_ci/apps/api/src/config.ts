@@ -90,6 +90,12 @@ const envSchema = z.object({
   AI_LOCAL_MODEL:   z.string().default('mistral-7b-instruct'),
   AI_LOCAL_API_KEY: z.string().optional(),
 
+  // Sceau des exports de piste d'audit (HMAC-SHA256). Sans clé, l'export reste
+  // produit mais le manifeste indique `sealed: false` : un export qui se
+  // présenterait comme scellé sans l'être vaudrait moins que pas de sceau.
+  // Jamais de valeur par défaut : un secret partagé publiquement ne scelle rien.
+  AUDIT_SIGNING_KEY: z.string().optional(),
+
   SMTP_HOST:   z.string().default('smtp.gmail.com'),
   SMTP_PORT:   z.coerce.number().default(587),
   SMTP_SECURE: z.string().transform(v => v === 'true').default('false'),
@@ -231,6 +237,11 @@ export const config = {
     apiKey: env.MISTRAL_API_KEY,
     model:  env.MISTRAL_MODEL,
     apiUrl: env.MISTRAL_API_URL,
+  },
+
+  /** Scellement des exports d'audit : `null` = exports non scellés. */
+  audit: {
+    signingKey: env.AUDIT_SIGNING_KEY ?? null,
   },
 
   /** Modèle local (dernier recours) : `apiUrl` vide = non configuré. */
