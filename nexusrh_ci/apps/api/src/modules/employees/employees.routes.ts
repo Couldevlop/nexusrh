@@ -29,6 +29,7 @@ import {
   parseFieldDefinitions, validateCustomFieldValues,
   type CustomFieldError,
 } from '../../services/employee-custom-fields.service.js'
+import { refuserExportSiClassifie, CATEGORIES } from '../../utils/classification-guard.js'
 
 // SMIG du pays de l'employé (pack législatif), plus de 75 000 FCFA en dur.
 function smigError(pack: LegislationPack, baseSalary: number): string | null {
@@ -947,6 +948,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     schema: { tags: ['employees'], summary: 'Export CSV de la liste des employés' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.remuneration)) return reply
       const schema = request.user.schemaName
       const maskCtx = await requestSensitiveCtx(request)
       const res = await pool.query(

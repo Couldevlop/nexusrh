@@ -104,6 +104,15 @@ export default function ClassificationPage() {
       {tab === 'levels' && (
         <div className="space-y-4">
           <p className="max-w-3xl text-sm text-muted-foreground">{t('levels.intro')}</p>
+          {/* Ce que la grille FAIT. Sans ce rappel, un administrateur règle
+              les niveaux sans savoir ce qui s'applique réellement — et la
+              grille redevient un document. */}
+          <div className="max-w-3xl space-y-1 rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">{t('levels.enforcementTitle')}</p>
+            <p>{t('levels.enforcementExport')}</p>
+            <p>{t('levels.enforcementMask')}</p>
+            <p>{t('levels.enforcementSelf')}</p>
+          </div>
           {!canConfigureLevels && (
             <p className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground"><ShieldAlert className="h-3.5 w-3.5" /> {t('levels.readOnlyHint')}</p>
           )}

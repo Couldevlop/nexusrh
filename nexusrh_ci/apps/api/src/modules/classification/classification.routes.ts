@@ -15,6 +15,7 @@ import { isValidLevel, roleCanAccess, roleCanExport, accessRequiresAudit, type L
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { invalidateClassificationPolicy } from '../../services/classification-policy.service.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'readonly', 'dg'] as const
 const CATEGORY_ROLES = ['admin', 'hr_manager'] as const
@@ -88,6 +89,7 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
       if (!res.rows[0]) return reply.status(404).send({ error: 'Niveau introuvable' })
       // entity_id est de type uuid : on ne peut pas y mettre le numéro de niveau.
       // Le niveau concerné est journalisé dans le payload `changes` (A09).
+      invalidateClassificationPolicy(schema)
       audit(schema, request.user.sub, 'classification.level_updated', null, { level, ...b }, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
     },
@@ -119,6 +121,7 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
         [b.categoryKey, b.label, b.level, b.examples ?? null, b.notes ?? null],
       )
       if (!res.rows[0]) return reply.status(409).send({ error: 'Catégorie déjà existante', statusCode: 409 })
+      invalidateClassificationPolicy(schema)
       audit(schema, request.user.sub, 'classification.category_created', (res.rows[0] as { id: string }).id, { categoryKey: b.categoryKey, level: b.level }, request.ip ?? null)
       return reply.status(201).send({ data: res.rows[0] })
     },
@@ -145,6 +148,7 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
       params.push(id)
       const res = await rawPool.query(`UPDATE "${schema}".data_classification_categories SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
       if (!res.rows[0]) return reply.status(404).send({ error: 'Catégorie introuvable' })
+      invalidateClassificationPolicy(schema)
       audit(schema, request.user.sub, 'classification.category_updated', id, b as Record<string, unknown>, request.ip ?? null)
       return reply.send({ data: res.rows[0] })
     },
@@ -159,6 +163,7 @@ const classificationRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const res = await rawPool.query(`DELETE FROM "${schema}".data_classification_categories WHERE id = $1 RETURNING id`, [id])
       if (!res.rows[0]) return reply.status(404).send({ error: 'Catégorie introuvable' })
+      invalidateClassificationPolicy(schema)
       audit(schema, request.user.sub, 'classification.category_deleted', id, {}, request.ip ?? null)
       return reply.send({ data: { id } })
     },

@@ -13,6 +13,7 @@ import {
 } from '../../services/termination-rules.service.js'
 import { resolvePayrollContext } from '../../services/payroll-context-resolver.js'
 import { currencyLabel, type LegislationPack } from '../../services/legislation-packs.js'
+import { refuserExportSiClassifie, CATEGORIES } from '../../utils/classification-guard.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -418,6 +419,9 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
     config: HEAVY_EXPORT_RATE_LIMIT,
     schema: { tags: ['cnps'], summary: 'Exporter la déclaration CNPS (CSV e-CNPS)' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.remuneration)) return reply
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide (UUID requis)' })
       const schema = request.user.schemaName

@@ -3,7 +3,10 @@
   "subtitle": "Classement des données RH à 4 niveaux : règles d'accès, d'export et de traçabilité par niveau.",
   "loading": "Chargement…",
   "loadError": "Impossible de charger les données.",
-  "tabs": { "levels": "Niveaux", "categories": "Catégories de données" },
+  "tabs": {
+    "levels": "Niveaux",
+    "categories": "Catégories de données"
+  },
   "levelNames": {
     "1": "Public",
     "2": "Interne",
@@ -29,7 +32,11 @@
     "save": "Enregistrer",
     "saving": "Enregistrement…",
     "cancel": "Annuler",
-    "readOnlyHint": "Lecture seule — seul l'administrateur peut modifier les règles."
+    "readOnlyHint": "Lecture seule — seul l'administrateur peut modifier les règles.",
+    "enforcementTitle": "Ce que la grille applique",
+    "enforcementExport": "Export refusé quand le niveau ou le rôle ne l'autorise pas : liste des employés, livre de paie, exports SAGE et déclaration CNPS. Chaque refus est consigné dans la piste d'audit.",
+    "enforcementMask": "Masquage des rémunérations sur les écrans et documents (fiche salarié, contrats, carrière, sortie, recrutement, reporting, assistante) pour les rôles exclus du niveau concerné.",
+    "enforcementSelf": "Deux limites volontaires : la grille ne peut que resserrer — elle ne rouvre jamais ce que les habilitations ferment — et elle ne s'applique pas au salarié consultant son propre dossier."
   },
   "categories": {
     "intro": "Cartographie des catégories de données RH et de leur niveau de classification.",

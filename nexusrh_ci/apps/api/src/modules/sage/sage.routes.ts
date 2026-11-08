@@ -18,6 +18,7 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { requestHrScope } from '../../utils/hr-scope.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { refuserExportSiClassifie, CATEGORIES } from '../../utils/classification-guard.js'
 
 const CONFIG_ROLES = ['admin', 'hr_manager'] as const
 const PERIOD_RE = /^\d{4}-\d{2}$/
@@ -140,6 +141,9 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...CONFIG_ROLES)],
     schema: { tags: ['sage'], summary: 'Exporter les employés (format SAGE)' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.remuneration)) return reply
       const schema = request.user.schemaName
       const filter = parseEntityFilter(request.query)
       if (!filter.ok) return badRequest(reply, INVALID_ENTITY)
@@ -171,6 +175,9 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...CONFIG_ROLES)],
     schema: { tags: ['sage'], summary: 'Exporter les éléments variables d\'une période' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.remuneration)) return reply
       const schema = request.user.schemaName
       const period = (request.query as { period?: string }).period
       if (!period || !PERIOD_RE.test(period)) return badRequest(reply, 'period (YYYY-MM) requis')
@@ -204,6 +211,9 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...CONFIG_ROLES)],
     schema: { tags: ['sage'], summary: 'Exporter les résultats de paie d\'une période' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.payslips)) return reply
       const schema = request.user.schemaName
       const period = (request.query as { period?: string }).period
       if (!period || !PERIOD_RE.test(period)) return badRequest(reply, 'period (YYYY-MM) requis')

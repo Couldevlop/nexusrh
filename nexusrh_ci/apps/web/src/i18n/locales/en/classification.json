@@ -3,7 +3,10 @@
   "subtitle": "4-level HR data classification: per-level access, export and audit rules.",
   "loading": "Loading…",
   "loadError": "Unable to load data.",
-  "tabs": { "levels": "Levels", "categories": "Data categories" },
+  "tabs": {
+    "levels": "Levels",
+    "categories": "Data categories"
+  },
   "levelNames": {
     "1": "Public",
     "2": "Internal",
@@ -29,7 +32,11 @@
     "save": "Save",
     "saving": "Saving…",
     "cancel": "Cancel",
-    "readOnlyHint": "Read-only — only the administrator can edit the rules."
+    "readOnlyHint": "Read-only — only the administrator can edit the rules.",
+    "enforcementTitle": "What the grid enforces",
+    "enforcementExport": "Exports are refused when the level or the role does not allow them: employee list, payroll ledger, SAGE exports and CNPS declaration. Every refusal is recorded in the audit trail.",
+    "enforcementMask": "Pay data is masked on screens and documents (employee record, contracts, career, offboarding, recruitment, reporting, assistant) for roles excluded from the level.",
+    "enforcementSelf": "Two deliberate limits: the grid can only tighten — it never reopens what permissions close — and it does not apply to an employee viewing their own record."
   },
   "categories": {
     "intro": "Mapping of HR data categories to their classification level.",

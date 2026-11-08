@@ -7,7 +7,22 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+// Les routes d'export consultent d'abord la grille de classification du
+// tenant. Ces deux lectures sont court-circuitées ICI, au niveau du mock `pg`,
+// et non ajoutées en tête de chaque test : les bancs de ce fichier enchaînent
+// des `mockResolvedValueOnce` dans l'ordre des requêtes métier, et faire
+// consommer deux réponses de plus à chaque chaîne les aurait tous décalés.
+// Grille vide = aucune politique appliquée, donc comportement historique —
+// l'application de la grille est vérifiée par
+// `modules/classification/classification-enforcement.test.ts`.
+const SANS_GRILLE = /classification_levels|data_classification_categories/
+vi.mock('pg', () => ({
+  Pool: vi.fn(() => ({
+    query: (sql: string, params?: unknown[]) =>
+      SANS_GRILLE.test(String(sql)) ? Promise.resolve({ rows: [] }) : queryMock(sql, params),
+    end: vi.fn(),
+  })),
+}))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
