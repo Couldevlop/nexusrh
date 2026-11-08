@@ -155,6 +155,26 @@ describe('Export probant', () => {
     click.mockRestore()
   })
 
+  it('export NON scellé : le dit, au lieu de laisser croire au sceau promis', async () => {
+    const createUrl = vi.fn(() => 'blob:piste')
+    Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    monter(); ouvrirOnglet()
+    // En production, AUDIT_SIGNING_KEY manquait : l'API renvoie « none » et
+    // l'écran annonçait quand même un export probant. Un fichier qu'aucune
+    // clé ne scelle n'est pas opposable : il faut que ça se voie.
+    get.mockResolvedValueOnce({
+      data: new Blob(['seq;id\r\n']),
+      headers: { 'x-audit-sha256': 'f'.repeat(64), 'x-audit-seal': 'none' },
+    })
+    cliquer(/trail\.export$/)
+
+    await waitFor(() => expect(screen.getByText(/trail\.exportedUnsealed/)).toBeTruthy())
+    expect(screen.queryByText(/trail\.exported\[/)).toBeNull()
+    click.mockRestore()
+  })
+
   it('échec d’export : le dit, et ne laisse pas croire au téléchargement', async () => {
     monter(); ouvrirOnglet()
     get.mockRejectedValueOnce(new Error('503'))

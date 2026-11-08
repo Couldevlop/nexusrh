@@ -273,3 +273,38 @@ describe('Purge', () => {
     expect(d.query).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * L'ORDRE de la chaîne, et le piège d'alias de PostgreSQL.
+ *
+ * Les deux requêtes exposent `seq::text AS seq` — un bigint dépasse la
+ * précision d'un nombre JavaScript. Or PostgreSQL résout `ORDER BY seq`
+ * d'abord sur le NOM DE SORTIE : le tri portait donc sur le texte, soit
+ * 1, 10, 100, …, 99. Constaté en production, où l'export livrait ses lignes
+ * dans cet ordre. Deux conséquences, graves toutes les deux :
+ *   — le contrôle d'intégrité remonte la chaîne dans le désordre et annonce
+ *     une rupture sur une piste intacte, dès qu'elle dépasse neuf entrées ;
+ *   — l'export probant livre un fichier qu'un tiers ne peut pas rechaîner.
+ *
+ * Le tri doit porter sur la COLONNE, désignée de façon qualifiée : une
+ * référence qualifiée ne peut pas coïncider avec un nom de sortie.
+ */
+describe('Ordre de la chaîne', () => {
+  const trie = (d: ReturnType<typeof db>) => {
+    const [premierAppel] = d.query.mock.calls
+    expect(premierAppel).toBeDefined()
+    return /ORDER BY\s+(\S+)\s+ASC/i.exec(String(premierAppel?.[0]))?.[1] ?? ''
+  }
+
+  it('le contrôle trie sur la colonne, pas sur son alias textuel', async () => {
+    const d = db([])
+    await verifyChain('tenant_x', d)
+    expect(trie(d)).toBe('"tenant_x".audit_log.seq')
+  })
+
+  it('l’export trie sur la colonne, pas sur son alias textuel', async () => {
+    const d = db([])
+    await exportAudit('tenant_x', d)
+    expect(trie(d)).toBe('"tenant_x".audit_log.seq')
+  })
+})

@@ -138,7 +138,11 @@ export async function verifyChain(
             to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
             prev_hash, entry_hash
        FROM "${schema}".audit_log
-      ORDER BY seq ASC
+      -- Qualifié À DESSEIN : un ORDER BY seq nu se résoudrait sur le NOM DE SORTIE,
+      -- donc sur seq::text, et trierait 1, 10, 100, …, 99 — chaîne remontée
+      -- dans le désordre, rupture annoncée à tort. Une référence qualifiée ne
+      -- peut pas coïncider avec un alias de sortie.
+      ORDER BY "${schema}".audit_log.seq ASC
       LIMIT $1`,
     [limit],
   )
@@ -235,7 +239,11 @@ export async function exportAudit(
             prev_hash, entry_hash
        FROM "${schema}".audit_log
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY seq ASC
+      -- Qualifié À DESSEIN : un ORDER BY seq nu se résoudrait sur le NOM DE SORTIE,
+      -- donc sur seq::text, et trierait 1, 10, 100, …, 99 — chaîne remontée
+      -- dans le désordre, rupture annoncée à tort. Une référence qualifiée ne
+      -- peut pas coïncider avec un alias de sortie.
+      ORDER BY "${schema}".audit_log.seq ASC
       LIMIT $${params.length}`,
     params,
   )

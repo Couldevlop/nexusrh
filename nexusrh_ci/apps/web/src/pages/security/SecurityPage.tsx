@@ -116,7 +116,15 @@ export default function SecurityPage() {
       // L'empreinte et le sceau voyagent en en-têtes : les afficher permet au
       // destinataire de vérifier le fichier sans accès à l'application.
       const h = res.headers as Record<string, string>
-      setFlash({ ok: true, msg: t('trail.exported', { sha: (h['x-audit-sha256'] ?? '').slice(0, 16) }) })
+      const sha = (h['x-audit-sha256'] ?? '').slice(0, 16)
+      // Un sceau absent se DIT. La plateforme n'a pas toujours de clé de
+      // scellement : sans elle le fichier reste exact mais n'est plus
+      // opposable, et annoncer « export probant » serait mentir au client.
+      const seal = h['x-audit-seal']
+      const scelle = Boolean(seal) && seal !== 'none'
+      setFlash(scelle
+        ? { ok: true, msg: t('trail.exported', { sha }) }
+        : { ok: true, msg: t('trail.exportedUnsealed', { sha }) })
     } catch {
       setFlash({ ok: false, msg: t('trail.exportError') })
     } finally {
