@@ -623,6 +623,42 @@
       "reports_other": "{{count}} reports",
       "more_one": "… and {{count}} more",
       "more_other": "… and {{count}} more"
+    },
+    "interims": {
+      "title": "Approval stand-ins",
+      "description": "A circuit must not stop because someone is on leave. A stand-in decides in place of the absent approver, on their steps and nowhere else. Nothing needs declaring for management levels: an approved absence already opens the step to the level above and to the HR team.",
+      "coverageTitle": "Approvers on leave",
+      "noLeave": "No upcoming leave for people who hold an approval step.",
+      "uncoveredWarning": "{{count}} leave with no stand-in: requests waiting on these approvers will not be processed.",
+      "uncoveredWarning_other": "{{count}} leaves with no stand-in: requests waiting on these approvers will not be processed.",
+      "covered": "Stand-in appointed",
+      "designate": "Appoint a stand-in",
+      "datesFromLeave": "The stand-in will cover exactly the leave, {{start}} to {{end}}: no dates to enter.",
+      "standIn": "Stand-in",
+      "choose": "Choose…",
+      "declare": "Save stand-in",
+      "declaring": "Saving…",
+      "declareError": "The stand-in could not be saved.",
+      "cancel": "Cancel",
+      "leavePending": "leave still to approve",
+      "listTitle": "Recorded stand-ins",
+      "none": "No stand-in recorded.",
+      "replaces": "stands in for",
+      "sourceLeave": "dates taken from the leave",
+      "sourceManual": "dates entered manually",
+      "active": "Active",
+      "revoked": "Revoked",
+      "ended": "Ended",
+      "revokeAction": "Revoke",
+      "roles": {
+        "admin": "Administrator",
+        "hr_manager": "HR manager",
+        "hr_officer": "HR officer",
+        "manager": "Line manager",
+        "dg": "Executive management",
+        "employee": "Employee",
+        "readonly": "Read-only"
+      }
     }
   },
   "connectivity": {

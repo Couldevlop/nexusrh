@@ -45,6 +45,18 @@ vi.mock('../../services/ai-credentials.service.js', () => ({
     mistral: { apiKey: null,          model: 'mistral-large' },
     preferredProvider: 'claude',
   }),
+  // Sélection du fournisseur : fonction RÉELLE (elle décide du 503 et du repli
+  // sur le modèle local — la doubler ferait passer le test à côté du sujet).
+  // Aucun modèle auto-hébergé dans ces scénarios : on teste le comportement
+  // avec et sans clé externe, pas le repli (cf. ai-local-fallback.test.ts).
+  loadLocalModel: async () => null,
+  localModel: () => null,
+  selectChatProvider: (c: { preferredProvider: string; claude: { apiKey: string | null }; mistral: { apiKey: string | null } }, local: unknown) =>
+    (c.preferredProvider === 'mistral' && c.mistral.apiKey ? 'mistral'
+      : c.preferredProvider === 'claude' && c.claude.apiKey ? 'claude'
+      : c.mistral.apiKey ? 'mistral'
+      : c.claude.apiKey ? 'claude'
+      : local ? 'local' : null),
 }))
 
 vi.mock('../../config.js', () => ({

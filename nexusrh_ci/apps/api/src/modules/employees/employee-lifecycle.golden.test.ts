@@ -98,6 +98,8 @@ describe('Cycle de vie collaborateur — recrutement → sortie', () => {
 
   it('2. CONTRAT : création d\'un CDI OHADA → 201', async () => {
     queryMock
+      // Pack du pays du tenant : période d'essai et bornes du contrat à terme.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: CONTRACT, employee_id: EMP, status: 'active' }] }) // INSERT contracts
       .mockResolvedValueOnce({ rows: [] })                                                      // UPDATE employees salaire
     const res = await app.inject({

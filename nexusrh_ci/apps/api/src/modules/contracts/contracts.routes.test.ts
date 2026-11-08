@@ -115,6 +115,8 @@ describe('POST /contracts — validation Zod (OWASP A03)', () => {
 
   it('accepte un body valide, persiste et trace audit_log contract.created', async () => {
     queryMock
+      // Pack du pays du tenant (essai, bornes du CDD) — lu une fois par requête.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'con-1', type: 'cdi', base_salary: 350000 }] }) // INSERT
       .mockResolvedValueOnce({ rows: [] }) // UPDATE employees
       .mockResolvedValueOnce({ rows: [] }) // INSERT audit_log

@@ -596,7 +596,13 @@
         "retentionRoles": "Admin, HR Manager"
       },
       "modelTitle": "Model used",
-      "modelNote": "Calibrated to the Ivorian context: CI Labour Code, CNPS 2024, ITS/DGI scale, OHADA, Mobile Money CI"
+      "modelNote": "Calibrated to the Ivorian context: CI Labour Code, CNPS 2024, ITS/DGI scale, OHADA, Mobile Money CI",
+      "localTitle": "Self-hosted model (last resort)",
+      "localDesc": "An OpenAI-compatible API hosted on your cluster (vLLM, Ollama…). The assistant answers through it when no Claude or Mistral key is available, instead of reporting itself out of service. It never takes precedence over a working key.",
+      "localUrl": "API address (empty = fallback disabled)",
+      "localModel": "Served model name",
+      "localLabel": "Label shown to users",
+      "localHint": "All these servers speak the same protocol: switching model (Lucie, Qwen, Llama…) only takes an address and a name — no deployment. Questions sent to this model never leave your infrastructure."
     },
     "legal": {
       "title": "Legal information — OpenLab Consulting",

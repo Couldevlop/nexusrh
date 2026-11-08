@@ -208,6 +208,26 @@ export interface LegislationPack {
    */
   primeTransportExoneree?: { defaut: number; parZone?: Readonly<Record<string, number>> }
 
+  /**
+   * Période d'essai par défaut, en jours, pour un salarié et pour un cadre.
+   * ABSENT = pas de calcul automatique : la fin d'essai reste celle que l'on
+   * saisit. On ne transpose jamais les 15 jours / 1 mois ivoiriens à un autre
+   * pays.
+   *
+   * Côte d'Ivoire : 15 jours (employé) · 1 mois (cadre), renouvelable une fois.
+   */
+  trialPeriodDays?: { employee: number; executive: number }
+
+  /**
+   * Contrat à durée déterminée : durée maximale (renouvellements compris) et
+   * nombre de renouvellements autorisés. ABSENT = aucune borne appliquée pour
+   * ce pays — on ne transpose jamais la règle d'un pays à un autre, et on
+   * n'affiche alors aucune limite à l'écran.
+   *
+   * Côte d'Ivoire : 2 ans et 2 renouvellements (art. 15.4 du Code du travail).
+   */
+  fixedTermContract?: { maxMonths: number; maxRenewals: number }
+
   /** Prime d'ancienneté légale / conventionnelle (absent = saisie manuelle) */
   seniorityBonus?: SeniorityBonusRule
 
@@ -503,6 +523,10 @@ export const CIV_2024: LegislationPack = {
     GRATIFICATION:     { social: true, tax: true },
     AVANTAGE_NATURE:   { social: true, tax: true },
   },
+  // Essai : 15 jours (employé) · 1 mois (cadre) — art. 14 CT CI.
+  trialPeriodDays: { employee: 15, executive: 30 },
+  // CDD : 2 ans au total, 2 renouvellements (art. 15.4 CT CI).
+  fixedTermContract: { maxMonths: 24, maxRenewals: 2 },
   primeTransportExoneree: {
     defaut: 30_000,
     parZone: { abidjan: 30_000, bouake: 24_000, autres: 20_000 },
@@ -1286,7 +1310,15 @@ export function getLegislationPack(code: string | null | undefined): Legislation
 
 // Mapping pays ISO-3 → pack législatif applicable. Sert au paramétrage tenant :
 // l'admin choisit un PAYS, le pack correspondant s'installe automatiquement.
-const COUNTRY_TO_PACK_CODE: Record<string, string> = {
+/**
+ * Pays ISO-3 → code de pack. SOURCE UNIQUE : le résolveur de contexte de paie
+ * en tenait une COPIE, restée bloquée à neuf pays — un tenant camerounais,
+ * ghanéen, gabonais, congolais, centrafricain, équato-guinéen ou
+ * bissau-guinéen se voyait donc appliquer la législation IVOIRIENNE (SMIG,
+ * CNPS, ITS, devise) sans le moindre avertissement. Ne jamais redupliquer
+ * cette table.
+ */
+export const COUNTRY_TO_PACK_CODE: Record<string, string> = {
   CIV: 'CIV-2024', BEN: 'BEN-2024', TGO: 'TGO-2024', BFA: 'BFA-2024',
   SEN: 'SEN-2024', MLI: 'MLI-2024', NER: 'NER-2024', TCD: 'TCD-2024', NGA: 'NGA-2024',
   CMR: 'CMR-2024', GAB: 'GAB-2024', COG: 'COG-2024', CAF: 'CAF-2024',

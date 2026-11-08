@@ -13,6 +13,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { pool } from '../../db/pool.js'
+import { loadInterimContext } from '../../services/interim.service.js'
 import { actorEmployeeSql } from '../../utils/actor-employee.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
 import {
@@ -101,6 +102,9 @@ async function pendingFor(
   schema: string, module: ApprovalModule, actor: Actor, managerOf: Map<string, string | null>, now: Date = new Date(),
 ): Promise<PendingApproval[]> {
   const settings = await loadWorkflowSettings(pool, schema, module)
+  // Continuité : un suppléant voit les demandes dont il a la charge pendant
+  // l'absence du valideur, sinon la bannière resterait vide pour lui.
+  const interim = await loadInterimContext(schema, pool)
   const res = await pool.query<PendingRow>(pendingSql(schema, module))
   const out: PendingApproval[] = []
   for (const row of res?.rows ?? []) {
@@ -111,7 +115,7 @@ async function pendingFor(
       status: 'submitted',
       submittedAt: new Date(row.submitted_at),
       trail: Array.isArray(row.approval_trail) ? row.approval_trail : [],
-    }, actor, now)
+    }, actor, interim, now)
     const visible = workflow.canAct || (isHrDecisionRole(actor.role) && hrCanSee(module, workflow))
     if (!visible) continue
     const dueMs = workflow.dueAt ? Date.parse(workflow.dueAt) - now.getTime() : Number.POSITIVE_INFINITY

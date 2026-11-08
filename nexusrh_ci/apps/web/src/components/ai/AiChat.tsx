@@ -12,6 +12,10 @@ import MarkdownMessage from './MarkdownMessage'
 const PROVIDER_LABELS: Record<string, string> = {
   mistral: 'Mistral AI',
   claude:  'Claude (Anthropic)',
+  // Le modèle auto-hébergé est nommé par l'exploitant (réglages plateforme) :
+  // « Lucie 7B » aujourd'hui, autre chose demain. Ce repli ne sert que si le
+  // libellé n'a pas été renseigné.
+  local:   'modèle local',
 }
 
 interface Message {
@@ -32,14 +36,21 @@ export default function AiChat() {
   const [streaming, setStreaming] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const { data: statusData } = useQuery<{ available: boolean; provider?: 'mistral' | 'claude' | null; message: string }>({
+  const { data: statusData } = useQuery<{
+    available: boolean; provider?: 'mistral' | 'claude' | 'local' | null
+    local?: boolean; localLabel?: string | null; message: string
+  }>({
     queryKey: ['ai-status'],
     queryFn: () => api.get('/ai/status').then(r => r.data),
     staleTime: 60_000,
   })
 
   const aiAvailable = statusData?.available ?? false
-  const providerLabel = statusData?.provider ? (PROVIDER_LABELS[statusData.provider] ?? 'IA') : 'IA'
+  // Le libellé du modèle auto-hébergé vient du serveur : l'écran n'annonce pas
+  // « Lucie » quand c'est un autre modèle qui répond.
+  const providerLabel = statusData?.provider
+    ? (statusData.localLabel || PROVIDER_LABELS[statusData.provider] || 'IA')
+    : 'IA'
   const suggestionRole = SUGGESTION_ROLES.includes((user?.role ?? '') as typeof SUGGESTION_ROLES[number])
     ? (user?.role as typeof SUGGESTION_ROLES[number])
     : 'hr_manager'

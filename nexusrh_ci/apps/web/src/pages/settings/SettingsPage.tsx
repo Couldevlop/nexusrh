@@ -18,6 +18,7 @@ import PayslipBuilder from './PayslipBuilder'
 import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
+import InterimsCard from './InterimsCard'
 import DepartureReasonsCard from './DepartureReasonsCard'
 import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
@@ -2091,16 +2092,21 @@ interface ImportTemplate {
   endpoint: string
 }
 
-const IMPORT_TEMPLATES: ImportTemplate[] = [
+// Exporte le catalogue : un banc vérifie que les modèles téléchargeables
+// couvrent bien toutes les colonnes que le serveur lit (import-templates.test.ts).
+export const IMPORT_TEMPLATES: ImportTemplate[] = [
   {
     id: 'employees',
     icon: Users2,
     color: 'bg-blue-100 text-blue-600',
     endpoint: '/settings/import/employees',
-    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville','matricule'],
+    // heures_hebdo / categorie / iban / banque : lues par le serveur depuis
+    // toujours, mais absentes du modèle — RIB, banque, temps de travail et
+    // catégorie conventionnelle étaient donc perdus à chaque reprise.
+    headers: ['prenom','nom','email','date_naissance','telephone','poste','departement','date_embauche','salaire_brut','type_contrat','statut','sexe','numero_cnps','ville','matricule','heures_hebdo','categorie','iban','banque'],
     example: [
-      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan','MAT00101'],
-      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan',''],
+      ['Kouamé','Konan','k.konan@entreprise.ci','1985-03-15','+225 07 12 34 56','Développeur Senior','Engineering','2022-01-10','450000','CDI','active','M','CI-123456','Abidjan','MAT00101','40','C5','CI05 CI00 1234 5678 9012 34','SGBCI'],
+      ['Aminata','Traoré','a.traore@entreprise.ci','1990-07-22','+225 05 98 76 54','Chef de projet','Direction','2021-06-01','650000','CDI','active','F','CI-789012','Abidjan','','40','M1','',''],
     ],
   },
   {
@@ -3035,6 +3041,9 @@ function WorkflowTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           {save.isError && <span role="alert" className="text-xs text-destructive">{saveError ?? t('workflow.saveError')}</span>}
         </div>
       </div>
+
+      {/* Continuité pendant les congés : qui décide à la place d'un valideur absent. */}
+      <InterimsCard />
 
       <div className="rounded-xl border border-border bg-card p-6 space-y-3">
         <h2 className="font-semibold">{t('workflow.constants.title')}</h2>

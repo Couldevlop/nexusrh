@@ -28,6 +28,7 @@ import {
   type ApprovalForValidation, type PayrollCircuit, type PayrollLevelState,
   type PayrollUser, type PeriodForValidation,
 } from '../../services/payroll-validation.service.js'
+import { refuserExportSiClassifie, CATEGORIES } from '../../utils/classification-guard.js'
 
 // OWASP A03 — motif de rejet (commentaire obligatoire) / commentaire d'annulation / visa
 const rejectBodySchema = z.object({
@@ -1347,6 +1348,9 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     schema: { tags: ['payroll'], summary: 'Export livre de paie annuel — inspecteurs du travail CI' },
     handler: async (request, reply) => {
+      // Grille de classification du tenant : si elle ferme l'export de cette
+      // catégorie à ce rôle, le refus vient AVANT toute lecture de données.
+      if (await refuserExportSiClassifie(request, reply, CATEGORIES.payslips)) return reply
       const { year } = request.params as { year: string }
       const schema = request.user.schemaName
 

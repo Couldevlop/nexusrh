@@ -1712,6 +1712,8 @@ describe('POST /settings/import/:type — branches complémentaires', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] }) // SELECT employee
       .mockResolvedValueOnce({ rows: [] })                 // SELECT existing pay_slip
       .mockResolvedValueOnce({ rows: [{ id: 'per-1' }] }) // SELECT pay_periods
+      // Devise du pays du tenant (pack législatif) écrite sur le bulletin.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockRejectedValueOnce(new Error('boom'))            // INSERT pay_slip échoue
       .mockResolvedValueOnce({ rows: [] })                 // audit_log
     const res = await app.inject({

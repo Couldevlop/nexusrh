@@ -78,13 +78,36 @@ describe('Migration multi-pays — backward-compat sur données existantes', () 
   })
 
   // ── 1. NON-DESTRUCTIF ──────────────────────────────────────────────────────
+  /**
+   * Une définition de routine n'est pas une exécution : `CREATE OR REPLACE
+   * FUNCTION … DELETE FROM …` installe du code, il ne supprime rien au moment
+   * de la migration. La fonction de purge de rétention de la piste d'audit est
+   * dans ce cas. L'exclusion est donc faite ici, et refermée aussitôt par le
+   * test suivant : aucune routine autre que la purge ne peut contenir de
+   * suppression sans faire échouer l'invariant.
+   */
+  const estDefinitionDeRoutine = (s: string) => /^CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\b/i.test(s)
+
   it('ne contient AUCUN statement destructif de données', () => {
     const destructive = flat.filter((s) =>
+      !estDefinitionDeRoutine(s) &&
       /\bDROP\s+TABLE\b|\bDROP\s+COLUMN\b|\bTRUNCATE\b|\bDELETE\s+FROM\b|\bDROP\s+SCHEMA\b/i.test(
         s,
       ),
     )
     expect(destructive).toEqual([])
+  })
+
+  it('la seule routine qui supprime des lignes est la purge de rétention', () => {
+    // Sans ce garde-fou, l'exclusion ci-dessus suffirait à faire passer une
+    // migration destructive déguisée en fonction.
+    const routinesDestructives = flat.filter((s) =>
+      estDefinitionDeRoutine(s) && /\bDELETE\s+FROM\b|\bTRUNCATE\b|\bDROP\s+TABLE\b/i.test(s),
+    )
+    expect(routinesDestructives).toHaveLength(1)
+    expect(routinesDestructives[0]).toMatch(/audit_log_purge\(p_keep_days int\)/)
+    // Et elle n'efface que sous la barre de rétention, jamais tout le journal.
+    expect(routinesDestructives[0]).toMatch(/DELETE FROM .*\.audit_log WHERE created_at < v_cutoff/)
   })
 
   it('les DROP CONSTRAINT sont des bascules de clé sûres (IF EXISTS uniquement)', () => {

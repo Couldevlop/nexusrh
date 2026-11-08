@@ -24,6 +24,7 @@
  * soumission, en lecture seule tant qu'elle n'est pas à son niveau.
  */
 import type { Pool } from 'pg'
+import { EMPTY_INTERIM, type InterimContext } from './interim.service.js'
 
 export type ApprovalModule = 'absences' | 'expenses'
 
@@ -62,12 +63,25 @@ export interface ApprovalTrailEntry {
   at: string
   override?: boolean
   onCreation?: boolean
+  /** Décision prise au titre d'un intérim (suppléance déclarée ou absence). */
+  interim?: InterimGrant
 }
 
 export type DenialReason = 'self' | 'not_your_step' | 'awaiting_designated'
 
+/**
+ * Décision prise au titre d'un intérim : qui est remplacé, et pourquoi le
+ * suppléant a pu agir (suppléant DÉCLARÉ, ou valideur ABSENT et étape reprise
+ * par le niveau supérieur / l'équipe RH). Tracé dans la piste de validation.
+ */
+export interface InterimGrant {
+  /** Valideur remplacé : employé pour une étape hiérarchique, utilisateur pour l'étape RH. */
+  replaced: string
+  cause: 'declared' | 'absence'
+}
+
 export type ActorDecision =
-  | { allowed: true; override: boolean }
+  | { allowed: true; override: boolean; interim?: InterimGrant }
   | { allowed: false; reason: DenialReason }
 
 export interface Actor { role: string; employeeId: string | null; userId: string }
@@ -175,17 +189,49 @@ export function decideActor(
   step: WorkflowStep,
   actor: Actor,
   requesterEmployeeId: string,
-  ctx: { overdue: boolean; hrValidatorUserId: string | null } = { overdue: false, hrValidatorUserId: null },
+  ctx: {
+    overdue: boolean
+    hrValidatorUserId: string | null
+    /** Absents du jour et suppléants déclarés (continuité des validations). */
+    interim?: InterimContext
+    /**
+     * Responsables des étapes SUIVANTES (N+2…) : eux seuls, et l'équipe RH,
+     * reprennent l'étape d'un responsable absent. Jamais un niveau inférieur.
+     */
+    upperApprovers?: ReadonlySet<string>
+  } = { overdue: false, hrValidatorUserId: null },
 ): ActorDecision {
   if (actor.employeeId && actor.employeeId === requesterEmployeeId) return { allowed: false, reason: 'self' }
-  // Étape hiérarchique : seul le responsable concerné vise (la RH n'agit
-  // qu'une fois la demande arrivée à son niveau ; les retards sont relancés).
+  const interim = ctx.interim ?? EMPTY_INTERIM
+  // Étape hiérarchique : le responsable concerné vise. S'il est absent, son
+  // suppléant déclaré agit ; à défaut, le niveau SUPÉRIEUR ou l'équipe RH
+  // reprend l'étape, pour que son équipe n'attende pas son retour.
   if (step.kind === 'manager') {
-    if (actor.employeeId && actor.employeeId === step.approverEmployeeId) return { allowed: true, override: false }
+    const approver = step.approverEmployeeId
+    if (actor.employeeId && actor.employeeId === approver) return { allowed: true, override: false }
+    if (actor.employeeId && interim.standInEmployees.get(approver)?.has(actor.employeeId)) {
+      return { allowed: true, override: true, interim: { replaced: approver, cause: 'declared' } }
+    }
+    if (interim.absentEmployeeIds.has(approver)) {
+      const isUpperManager = !!actor.employeeId && (ctx.upperApprovers?.has(actor.employeeId) ?? false)
+      if (isUpperManager || isHrDecisionRole(actor.role)) {
+        return { allowed: true, override: true, interim: { replaced: approver, cause: 'absence' } }
+      }
+    }
     return { allowed: false, reason: 'not_your_step' }
   }
   if (!isHrDecisionRole(actor.role)) return { allowed: false, reason: 'not_your_step' }
-  if (!ctx.hrValidatorUserId || ctx.hrValidatorUserId === actor.userId) return { allowed: true, override: false }
+  const designated = ctx.hrValidatorUserId
+  if (!designated || designated === actor.userId) return { allowed: true, override: false }
+  // Suppléant déclaré du valideur RH désigné : il agit à sa place.
+  if (interim.standInUsers.get(designated)?.has(actor.userId)) {
+    return { allowed: true, override: true, interim: { replaced: designated, cause: 'declared' } }
+  }
+  // Valideur RH désigné absent : l'équipe reprend la main SANS attendre
+  // l'échéance — attendre n'apportait rien, il ne reviendra pas plus tôt.
+  if (interim.absentUserIds.has(designated)) {
+    return { allowed: true, override: true, interim: { replaced: designated, cause: 'absence' } }
+  }
   // Valideur RH désigné en retard : toute l'équipe RH prend la main (escalade).
   if (ctx.overdue) return { allowed: true, override: true }
   return { allowed: false, reason: 'awaiting_designated' }
@@ -321,13 +367,23 @@ export function evaluateRequest(
   managerOf: ReadonlyMap<string, string | null>,
   request: WorkflowRequest,
   actor: Actor,
+  interim: InterimContext = EMPTY_INTERIM,
   now: Date = new Date(),
 ): Evaluation {
   const steps = stepsFor(settings.levels, managerOf, request.employeeId)
   const { index, step } = currentStep(steps, request.validationLevel)
   const dueAt = stepDueAt(step, stepEnteredAt(request.trail, request.submittedAt), settings)
   const overdue = now.getTime() > dueAt.getTime()
-  const decision = decideActor(step, actor, request.employeeId, { overdue, hrValidatorUserId: settings.hrValidatorUserId })
+  // Responsables des étapes suivantes : eux seuls reprennent l'étape d'un
+  // responsable absent (le niveau supérieur, jamais un subordonné).
+  const upperApprovers = new Set(
+    steps.slice(index + 1)
+      .filter((st): st is Extract<WorkflowStep, { kind: 'manager' }> => st.kind === 'manager')
+      .map((st) => st.approverEmployeeId),
+  )
+  const decision = decideActor(step, actor, request.employeeId, {
+    overdue, hrValidatorUserId: settings.hrValidatorUserId, interim, upperApprovers,
+  })
   return { steps, index, step, dueAt, overdue, decision }
 }
 
@@ -348,9 +404,10 @@ export function summarize(
   managerOf: ReadonlyMap<string, string | null>,
   request: WorkflowRequest,
   actor: Actor,
+  interim: InterimContext = EMPTY_INTERIM,
   now: Date = new Date(),
 ): WorkflowSummary {
-  const ev = evaluateRequest(settings, managerOf, request, actor, now)
+  const ev = evaluateRequest(settings, managerOf, request, actor, interim, now)
   if (request.status !== 'submitted') {
     return { totalSteps: ev.steps.length, doneSteps: ev.steps.length, next: null, dueAt: null, overdue: false, canAct: false, designated: false }
   }
@@ -372,10 +429,12 @@ export function summarize(
 
 /** Entrée de piste d'audit pour une action à l'étape `index`. */
 export function trailEntry(
-  index: number, step: WorkflowStep, actor: Actor, override: boolean, now: Date = new Date(),
+  index: number, step: WorkflowStep, actor: Actor, override: boolean,
+  now: Date = new Date(), interim?: InterimGrant,
 ): ApprovalTrailEntry {
   return {
     step: index + 1, kind: step.kind, by: actor.userId, byEmployeeId: actor.employeeId,
     at: now.toISOString(), ...(override ? { override: true } : {}),
+    ...(interim ? { interim } : {}),
   }
 }

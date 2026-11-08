@@ -70,8 +70,8 @@
     "line1": "• CDD : durée max 2 ans, 2 renouvellements, délai de carence = 1/3 de la durée",
     "line2": "• Essai CDI : 15 jours (employé) · 1 mois (cadre) — renouvelable 1 fois",
     "line3": "• Contrat d'apprentissage : FDFP + visa Direction Emploi obligatoire",
-    "line4": "• Préavis CDI (< 1 an) : 1 mois · (1–5 ans) : 2 mois · (> 5 ans) : 3 mois",
-    "line5": "• SMIG mensuel : <strong>75 000 FCFA</strong> (revalorisation 2026)"
+    "line4": "• Préavis (cat. 1–5 mensualisées) : ≤ 6 ans 1 mois · ≤ 11 ans 2 mois · ≤ 16 ans 3 mois · > 16 ans 4 mois — cadres et maîtrise : 3 mois, 4 mois au-delà de 16 ans",
+    "line5": "• SMIG mensuel : <strong>75 000 FCFA</strong> (en vigueur depuis le 01/01/2023)"
   },
   "detail": {
     "title": "Contrat — {{name}}",

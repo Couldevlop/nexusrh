@@ -24,6 +24,19 @@ import {
 import { auditTenant } from '../../utils/audit-log.js'
 import { badRequest } from '../../utils/http-errors.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { config } from '../../config.js'
+import { exportAudit, purgeAudit, verifyChain } from '../../services/audit-integrity.service.js'
+
+/** Codes PostgreSQL « table/colonne/fonction absente » : tenant non migré. */
+function isMissingSchemaObject(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  return code === '42P01' || code === '42703' || code === '42883'
+}
+
+/** Date ISO courte, sans surprise d'interprétation côté SQL. */
+function isIsoDate(v: unknown): boolean {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
+}
 
 const ADMIN = ['admin'] as const
 const tuple = (a: readonly string[]) => a as unknown as [string, ...string[]]
@@ -270,6 +283,114 @@ const securityRoutes: FastifyPluginAsync = async (fastify) => {
         forwarded: !!cfg?.enabled && shouldForward(cfg.categories ?? [], e.action),
       }))
       return reply.send({ data })
+    },
+  })
+
+  // ── Piste d'audit opposable ───────────────────────────────────────────────
+  // Trois gestes, et le même but : pouvoir SOUTENIR devant un tiers que le
+  // journal n'a pas été retouché. Le contrôle recalcule la chaîne, l'export
+  // produit une pièce vérifiable hors ligne, la purge applique la rétention
+  // sans effacer en silence.
+
+  fastify.get('/audit/verify', {
+    preHandler: [fastify.authorize(...ADMIN)],
+    schema: { tags: ['security'], summary: "Contrôler l'intégrité de la piste d'audit" },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      try {
+        const verdict = await verifyChain(schema, rawPool)
+        // Le contrôle est lui-même journalisé : qui a vérifié, et quand.
+        audit(schema, request.user.sub, 'audit.verified',
+          { intact: verdict.intact, checked: verdict.checked }, request.ip ?? null)
+        return reply.send({ data: verdict })
+      } catch (err) {
+        // Tenant provisionné avant le chaînage : la piste existe, mais aucune
+        // entrée n'est chaînée. Ce n'est pas une panne, et surtout pas une
+        // altération : le dire tel quel.
+        if (isMissingSchemaObject(err)) {
+          return reply.send({ data: { checked: 0, intact: true, brokenAt: null, lastHash: null, purgeMarkers: 0, chained: false } })
+        }
+        throw err
+      }
+    },
+  })
+
+  fastify.get('/audit/export', {
+    preHandler: [fastify.authorize(...ADMIN)],
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    schema: { tags: ['security'], summary: "Exporter la piste d'audit (CSV + manifeste scellé)" },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      const q = request.query as { from?: string; to?: string; format?: string }
+      const from = isIsoDate(q.from) ? q.from! : null
+      const to   = isIsoDate(q.to)   ? q.to!   : null
+      if ((q.from && !from) || (q.to && !to)) {
+        return badRequest(reply, 'Dates attendues au format ISO (AAAA-MM-JJ)')
+      }
+      try {
+        const result = await exportAudit(schema, rawPool, {
+          from, to, signingKey: config.audit.signingKey,
+        })
+        // L'export d'une piste d'audit est lui-même un acte à tracer : il sort
+        // des données nominatives de l'application.
+        audit(schema, request.user.sub, 'audit.exported',
+          { entries: result.manifest.entries, from, to, sealed: result.manifest.sealed,
+            sha256: result.manifest.sha256 },
+          request.ip ?? null)
+
+        if (q.format === 'csv') {
+          const name = `audit-${schema}-${new Date().toISOString().slice(0, 10)}.csv`
+          return reply
+            .header('Content-Type', 'text/csv; charset=utf-8')
+            .header('Content-Disposition', `attachment; filename="${name}"`)
+            // Le manifeste voyage en en-têtes quand seul le CSV est téléchargé :
+            // le destinataire reçoit le fichier ET de quoi le vérifier.
+            .header('X-Audit-Sha256', result.manifest.sha256)
+            .header('X-Audit-Seal', result.manifest.seal ?? 'none')
+            .header('X-Audit-Entries', String(result.manifest.entries))
+            .header('X-Audit-Chain-Intact', String(result.manifest.chain.intact))
+            // BOM : Excel, qui est l'outil du destinataire, lit l'UTF-8 sans
+            // lui comme du latin-1 et abîme les accents.
+            .send('\uFEFF' + result.csv)
+        }
+        return reply.send({ data: result })
+      } catch (err) {
+        if (isMissingSchemaObject(err)) {
+          return reply.status(503).send({ error: "Piste d'audit non initialisée sur ce tenant" })
+        }
+        throw err
+      }
+    },
+  })
+
+  fastify.post('/audit/purge', {
+    preHandler: [fastify.authorize(...ADMIN)],
+    config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
+    schema: { tags: ['security'], summary: "Appliquer la rétention de la piste d'audit" },
+    handler: async (request, reply) => {
+      const schema = request.user.schemaName
+      // La durée vient des réglages PLATEFORME, pas du corps de la requête :
+      // un administrateur de tenant ne doit pas pouvoir raccourcir la
+      // conservation à la demande pour faire disparaître une période.
+      let keepDays = 0
+      try {
+        const r = await rawPool.query<{ audit_retention_days: number | null }>(
+          `SELECT audit_retention_days FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1`,
+        )
+        keepDays = Number(r.rows[0]?.audit_retention_days ?? 0)
+      } catch { /* colonne absente : conservation sans limite */ }
+      if (!Number.isFinite(keepDays) || keepDays <= 0) {
+        return badRequest(reply, "Aucune durée de conservation n'est définie : la piste est conservée sans limite")
+      }
+      try {
+        const res = await purgeAudit(schema, rawPool, keepDays)
+        return reply.send({ data: { ...res, keepDays } })
+      } catch (err) {
+        if (isMissingSchemaObject(err)) {
+          return reply.status(503).send({ error: "Piste d'audit non initialisée sur ce tenant" })
+        }
+        throw err
+      }
     },
   })
 }
