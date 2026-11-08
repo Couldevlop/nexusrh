@@ -18,6 +18,7 @@ import { isSupportedCountry, getLegislationPack, getPackByCountry, DEFAULT_LEGIS
 import { isSafeOutboundUrl, assertSafeOutboundHost, SsrfBlockedError } from '@nexusrhci/shared/ssrf-guard'
 import { describeDbError } from '../../utils/db-error.js'
 import { scanBuffer, scanRejectionMessage } from '../../services/antivirus.service.js'
+import { lireClasseurImport, WorkbookRejectedError } from './import-workbook.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { HAB_FILIALE_PREFIX, HAB_GROUP_NAME, revokeHabilitationOnRoleChange } from '../../db/habilitations-bootstrap.js'
 import { revokeAllForUser } from '../../services/habilitation.service.js'
@@ -2570,6 +2571,42 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur lors de la génération des accès' })
+      }
+    },
+  })
+
+  // ── POST /settings/import/parse ─────────────────────────────────────────────
+  //
+  // Convertit un classeur Excel déposé en `{ headers, rows }` — exactement ce
+  // qu'un CSV produit côté navigateur. Cette route ne CRÉE rien : elle lit, et
+  // le client renvoie ensuite le résultat à POST /import/:type, qui garde sa
+  // liste blanche, sa validation et sa piste d'audit.
+  //
+  // Pourquoi ici et pas dans le navigateur : lire un .xlsx y imposerait une
+  // bibliothèque entière dans le bundle, alors que le serveur en a déjà une.
+  // Pourquoi une route de LECTURE séparée plutôt qu'un upload vers l'import :
+  // le chemin d'écriture n'a pas à apprendre un second format d'entrée.
+  fastify.post('/import/parse', {
+    preHandler: [fastify.authorize('admin', 'hr_manager')],
+    config: IMPORT_RATE_LIMIT,
+    schema: { tags: ['settings'], summary: 'Lire un classeur Excel de reprise (ne crée rien)' },
+    handler: async (request, reply) => {
+      const file = await request.file()
+      if (!file) return reply.status(400).send({ error: 'Aucun fichier reçu.' })
+      const buf = await file.toBuffer()
+      // OWASP A08 — analyse antivirale (désactivée si CLAMAV_HOST absent).
+      const av = await scanBuffer(buf)
+      if (!av.clean) return reply.status(400).send({ error: scanRejectionMessage(av) })
+      try {
+        // Le fichier n'est JAMAIS conservé : on en extrait les cellules, on
+        // jette les octets.
+        const table = await lireClasseurImport(buf)
+        reply.header('Cache-Control', 'no-store')
+        return reply.send({ data: table })
+      } catch (err) {
+        if (err instanceof WorkbookRejectedError) return reply.status(400).send({ error: err.message })
+        request.log.error({ err }, 'Lecture du classeur de reprise impossible')
+        return reply.status(400).send({ error: "Classeur illisible. Vérifiez qu'il s'agit bien d'un .xlsx." })
       }
     },
   })

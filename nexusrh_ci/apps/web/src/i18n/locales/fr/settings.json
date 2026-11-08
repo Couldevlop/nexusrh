@@ -458,7 +458,7 @@
       }
     },
     "validation": {
-      "wrongFormat": "Format incorrect — seuls les fichiers .csv sont acceptés",
+      "wrongFormat": "Format incorrect — seuls les fichiers .csv et .xlsx sont acceptés",
       "emptyFile": "Le fichier est vide ou ne contient pas de données",
       "missingCols_one": "{{count}} colonne manquante",
       "missingCols_other": "{{count}} colonnes manquantes",
@@ -467,7 +467,7 @@
     },
     "header": {
       "title": "Reprise de données historiques",
-      "description": "Téléchargez le modèle CSV de chaque section, renseignez-le avec vos données, puis uploadez-le directement sur la carte. Les colonnes en rouge indiquent une non-conformité bloquante. L'import est incrémental — les doublons sont ignorés."
+      "description": "Téléchargez le modèle de chaque section, renseignez-le avec vos données (Excel convient : réenregistrez en .xlsx si vous préférez), puis uploadez-le directement sur la carte. Les colonnes en rouge indiquent une non-conformité bloquante. L'import est incrémental — les doublons sont ignorés."
     },
     "generateUsers": {
       "title": "Générer les accès utilisateurs",
@@ -516,6 +516,7 @@
       "warnings_other": "{{count}} avertissement(s)",
       "importAnother": "Importer un autre fichier",
       "importing": "Import en cours...",
+      "reading": "Lecture du classeur...",
       "validateAndImport": "Valider et importer"
     }
   },

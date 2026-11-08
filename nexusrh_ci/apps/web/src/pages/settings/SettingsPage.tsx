@@ -19,6 +19,7 @@ import EmployeeFieldsTab from './EmployeeFieldsTab'
 import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
 import InterimsCard from './InterimsCard'
+import { lireFichierImport, extensionAcceptee, IMPORT_ACCEPT_ATTR, ImportFileError, type ImportTable } from './import-file'
 import DepartureReasonsCard from './DepartureReasonsCard'
 import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
@@ -2180,18 +2181,6 @@ export const IMPORT_TEMPLATES: ImportTemplate[] = [
   },
 ]
 
-function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-  const clean = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  const lines = clean.split('\n').filter(l => l.trim())
-  if (!lines[0]) return { headers: [], rows: [] }
-  const sep = lines[0].includes(';') ? ';' : ','
-  const splitLine = (l: string) => l.split(sep).map(v => v.trim().replace(/^"|"$/g, ''))
-  return {
-    headers: splitLine(lines[0]),
-    rows: lines.slice(1).map(splitLine).filter(r => r.some(v => v)),
-  }
-}
-
 function generateCSV(template: ImportTemplate): string {
   const bom = '﻿'
   const lines = [
@@ -2232,11 +2221,11 @@ interface ValidationIssue {
   details?: string[]
 }
 
-function validateFile(file: File, template: ImportTemplate, text: string): ValidationIssue[] {
+function validateFile(file: File, template: ImportTemplate, table: ImportTable): ValidationIssue[] {
   const issues: ValidationIssue[] = []
-  const { headers, rows } = parseCSV(text)
+  const { headers, rows } = table
 
-  if (!file.name.toLowerCase().endsWith('.csv')) {
+  if (!extensionAcceptee(file.name)) {
     issues.push({ type: 'wrong_format', messageKey: 'dataImport.validation.wrongFormat' })
     return issues
   }
@@ -2273,6 +2262,8 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
   const [open, setOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [table, setTable] = useState<ImportTable | null>(null)
+  const [reading, setReading] = useState(false)
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -2286,20 +2277,34 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
     setResult(null)
     setServerError(null)
     setIssues([])
-    const text = await f.text()
-    setIssues(validateFile(f, template, text))
+    setTable(null)
+    // Lecture UNE seule fois : un classeur part au serveur pour être lu,
+    // et le renvoyer à l'upload ferait payer deux fois le même trajet.
+    if (!extensionAcceptee(f.name)) { setIssues(validateFile(f, template, { headers: [], rows: [] })); return }
+    setReading(true)
+    try {
+      const lue = await lireFichierImport(f)
+      setTable(lue)
+      setIssues(validateFile(f, template, lue))
+    } catch (err) {
+      // Le motif vient du serveur et dit ce qui cloche dans le classeur :
+      // l'afficher vaut mieux qu'un « format invalide » générique.
+      setServerError(err instanceof ImportFileError ? err.message : t('dataImport.card.serverErrorDefault'))
+    } finally {
+      setReading(false)
+    }
   }
 
   async function handleUpload() {
-    if (!file || blockingIssues.length > 0) return
+    if (!file || !table || blockingIssues.length > 0) return
     setUploading(true)
     setServerError(null)
     try {
-      const text = await file.text()
-      const { headers, rows } = parseCSV(text)
+      const { headers, rows } = table
       const res = await api.post<ImportResult>(template.endpoint, { headers, rows })
       setResult(res.data)
       setFile(null)
+      setTable(null)
       setIssues([])
       onSuccess()
     } catch (err: unknown) {
@@ -2389,7 +2394,7 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
                   <p className="text-xs text-muted-foreground">{t('dataImport.card.dropHint')}</p>
                   <label className="mt-2 inline-block cursor-pointer rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
                     {t('dataImport.card.browse')}
-                    <input type="file" accept=".csv" className="hidden"
+                    <input type="file" accept={IMPORT_ACCEPT_ATTR} className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = '' }} />
                   </label>
                 </>
@@ -2491,10 +2496,12 @@ function TemplateImportCard({ template, onSuccess }: { template: ImportTemplate;
           {file && !result && (
             <button
               onClick={() => void handleUpload()}
-              disabled={uploading || blockingIssues.length > 0}
+              disabled={uploading || reading || blockingIssues.length > 0}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
             >
-              {uploading
+              {reading
+                ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> {t('dataImport.card.reading')}</>
+                : uploading
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> {t('dataImport.card.importing')}</>
                 : <><Upload className="h-3.5 w-3.5" /> {t('dataImport.card.validateAndImport')}</>
               }

@@ -458,7 +458,7 @@
       }
     },
     "validation": {
-      "wrongFormat": "Incorrect format — only .csv files are accepted",
+      "wrongFormat": "Incorrect format — only .csv and .xlsx files are accepted",
       "emptyFile": "The file is empty or contains no data",
       "missingCols_one": "{{count}} missing column",
       "missingCols_other": "{{count}} missing columns",
@@ -467,7 +467,7 @@
     },
     "header": {
       "title": "Historical data migration",
-      "description": "Download the CSV template for each section, fill it in with your data, then upload it directly on the card. Columns in red indicate a blocking non-conformity. The import is incremental — duplicates are ignored."
+      "description": "Download each section's template, fill it in with your data (Excel is fine: save it as .xlsx if you prefer), then upload it directly on the card. Columns in red indicate a blocking non-conformity. The import is incremental — duplicates are ignored."
     },
     "generateUsers": {
       "title": "Generate user access",
@@ -516,6 +516,7 @@
       "warnings_other": "{{count}} warning(s)",
       "importAnother": "Import another file",
       "importing": "Importing...",
+      "reading": "Reading workbook...",
       "validateAndImport": "Validate and import"
     }
   },
