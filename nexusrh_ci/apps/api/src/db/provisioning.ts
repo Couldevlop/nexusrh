@@ -6,6 +6,8 @@ import { disaPerEntityStatements } from './disa-records.js'
 import { employeeDocumentsTableStatements } from './employee-documents.js'
 import { contractProposalsTableStatements } from './contract-proposals.js'
 import { habilitationTableStatements } from './habilitations.js'
+import { interimTableStatements } from './interims.js'
+import { auditChainStatements, auditPurgeFunctionStatements } from './audit-chain.js'
 import { pool } from './pool.js'
 import { employeeNumberSetupStatements } from './employee-number.js'
 import { CI_OVERTIME_RULES, ciCmuEmployeeColumnMigrations } from './payroll-rules-ci-2023.js'
@@ -550,6 +552,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     ohada_clause          boolean DEFAULT true,
     non_competition_clause boolean DEFAULT false,
     telecommuting_days    int DEFAULT 0,
+    -- Renouvellements déjà consommés (CDD) : la borne légale du pays
+    -- (pack.fixedTermContract) est inapplicable sans compteur.
+    renewal_count         int NOT NULL DEFAULT 0,
     status                varchar(20) DEFAULT 'active',
     signature_status      varchar(30),
     file_url              text,
@@ -1225,8 +1230,16 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     created_at timestamptz NOT NULL DEFAULT now()
   )`)
 
+  // Piste d'audit opposable : chaînage cryptographique + ajout seul + purge
+  // de rétention. Posé juste après la table, avant toute écriture possible.
+  for (const stmt of auditChainStatements(schemaName)) await q(stmt)
+  for (const stmt of auditPurgeFunctionStatements(schemaName)) await q(stmt)
+
   // Habilitations RH (groupes, fiches, délégations, règles SoD)
   for (const stmt of habilitationTableStatements(schemaName)) await q(stmt)
+
+  // Intérims de validation (continuité du circuit pendant les congés)
+  for (const stmt of interimTableStatements(schemaName)) await q(stmt)
 
   await q(`CREATE TABLE IF NOT EXISTS ${s}.refresh_tokens (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

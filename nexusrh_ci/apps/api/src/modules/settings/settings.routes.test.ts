@@ -506,6 +506,8 @@ describe('POST /settings/import/:type — nouveaux types (whitelist élargie)', 
       .mockResolvedValueOnce({ rows: [{ id: 'emp-1' }] })   // SELECT employees
       .mockResolvedValueOnce({ rows: [] })                   // SELECT existing pay_slip
       .mockResolvedValueOnce({ rows: [{ id: 'per-1' }] })   // SELECT pay_periods
+      // Devise du pays du tenant (pack législatif) écrite sur le bulletin.
+      .mockResolvedValueOnce({ rows: [{ id: 't1', default_country_code: 'CIV', at_rate: '0.020' }] })
       .mockResolvedValueOnce({ rows: [] })                   // INSERT pay_slips
       .mockResolvedValueOnce({ rows: [] })                   // audit_log
 

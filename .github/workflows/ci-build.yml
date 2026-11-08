@@ -13,6 +13,11 @@ on:
         default: preprod
         type: choice
         options: [ preprod, production ]
+      ignorer_les_tests:
+        description: "Déployer SANS attendre les tests (urgence — à justifier)"
+        required: false
+        default: false
+        type: boolean
 
 # Deux déploiements ne se marchent pas dessus : le suivant attend le précédent.
 # Jamais d'annulation — un déploiement interrompu en plein `rollout` laisse le
@@ -31,9 +36,112 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # ── Le déploiement attend les tests du MÊME commit ─────────────────────────
+  #
+  # Jusqu'ici, « Build & Deploy » et « Quality & Security » partaient en
+  # parallèle sur un push `main` : rien n'empêchait un commit aux tests rouges
+  # d'arriver en production, et l'échec des tests n'était constaté qu'après.
+  #
+  # Pourquoi attendre le run de `ci.yml` plutôt que rejouer les tests ici :
+  # les deux workflows se déclenchent sur le même push, donc rejouer
+  # typecheck + 6 500 tests dans ce workflow les exécuterait DEUX fois pour le
+  # même commit — exactement le doublon qu'on venait de supprimer des
+  # déclencheurs. Ce job ne calcule rien : il interroge l'API et attend un
+  # verdict.
+  #
+  # Pas d'interblocage possible : les chemins qui déclenchent ce workflow
+  # (`nexusrh_ci/**`) déclenchent aussi `ci.yml`, qui couvre en plus
+  # `.github/workflows/**`. Un run de qualité existe donc toujours pour un
+  # commit qui arrive ici.
+  quality-gate:
+    name: Tests du commit (Quality & Security)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+    - name: Attendre le verdict des tests
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.ignorer_les_tests != true }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        # Deux délais distincts, parce que les deux pannes sont différentes :
+        # un run qui n'APPARAÎT jamais (workflow non déclenché) se constate en
+        # quelques minutes ; un run qui tourne, lui, a besoin du temps des
+        # tests. Un seul délai long aurait fait attendre 45 minutes pour
+        # conclure à une absence.
+        limite_apparition=$(( $(date +%s) + 600 ))
+        limite_verdict=$(( $(date +%s) + 3600 ))
+        vu=0
+
+        while : ; do
+          # Sans --paginate : avec --jq, gh concatene la sortie page par page
+          # et produit plusieurs tableaux JSON colles, que `jq length`
+          # refuse. Un commit n'a de toute facon jamais 100 runs.
+          reponse=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=100" \
+            --jq '[.workflow_runs[] | {status, conclusion, html_url}]')
+
+          nombre=$(printf '%s' "$reponse" | jq 'length')
+
+          if [ "$nombre" -eq 0 ]; then
+            if [ "$(date +%s)" -ge "$limite_apparition" ]; then
+              echo "::error::Aucun run « Quality & Security » pour le commit ${SHA}. Le déploiement est refusé : rien ne prouve que ce commit passe les tests."
+              exit 1
+            fi
+            echo "En attente du démarrage de « Quality & Security » pour ${SHA}…"
+            sleep 20
+            continue
+          fi
+
+          if [ "$vu" -eq 0 ]; then
+            echo "$nombre run(s) trouvé(s) pour ${SHA}."
+            vu=1
+          fi
+
+          # Un seul run vert suffit : selon la façon dont la PR a été fusionnée,
+          # le verdict peut venir de l'événement `push` ou de `pull_request`,
+          # sur le même arbre.
+          if [ "$(printf '%s' "$reponse" | jq '[.[] | select(.conclusion == "success")] | length')" -gt 0 ]; then
+            echo "Tests verts pour ${SHA} : le déploiement peut partir."
+            printf '%s' "$reponse" | jq -r '.[] | "\(.conclusion // .status)\t\(.html_url)"'
+            exit 0
+          fi
+
+          # Plus rien en cours et aucun succès : inutile d'attendre l'heure.
+          if [ "$(printf '%s' "$reponse" | jq '[.[] | select(.status != "completed")] | length')" -eq 0 ]; then
+            echo "::error::Les tests du commit ${SHA} ne sont pas verts — déploiement refusé."
+            printf '%s' "$reponse" | jq -r '.[] | "\(.conclusion // .status)\t\(.html_url)"' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if [ "$(date +%s)" -ge "$limite_verdict" ]; then
+            echo "::error::Les tests du commit ${SHA} n'ont pas rendu de verdict en une heure — déploiement refusé par prudence."
+            exit 1
+          fi
+          echo "Tests en cours pour ${SHA}…"
+          sleep 20
+        done
+
+    # Une sortie de secours qui ne laisse aucun doute sur ce qui a été fait :
+    # un déploiement non testé doit se lire dans l'historique du run.
+    - name: Déploiement sans tests (demandé explicitement)
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.ignorer_les_tests == true }}
+      run: |
+        echo "::warning::Déploiement lancé SANS attendre les tests, à la demande de ${{ github.actor }}."
+        echo "⚠️ Les tests n'ont pas été exigés pour ce déploiement (demandé par ${{ github.actor }})." >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build, Scan & Push
     runs-on: ubuntu-latest
+    # Le contrôle précède le BUILD, et pas seulement le déploiement : ce job
+    # pousse aussi le tag `:latest`, et les déploiements tirent `:latest` avec
+    # `imagePullPolicy: Always`. Une image publiée depuis un commit non testé
+    # partirait en production au premier `rollout restart`, sans repasser par
+    # ici.
+    needs: [ quality-gate ]
     outputs:
       short-sha: ${{ steps.sha.outputs.short }}
       owner: ${{ steps.owner.outputs.name }}

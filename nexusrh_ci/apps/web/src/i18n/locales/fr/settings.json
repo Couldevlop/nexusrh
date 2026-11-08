@@ -623,6 +623,42 @@
       "reports_other": "{{count}} collaborateurs",
       "more_one": "… et {{count}} autre",
       "more_other": "… et {{count}} autres"
+    },
+    "interims": {
+      "title": "Intérims de validation",
+      "description": "Pendant un congé, le circuit ne doit pas s'arrêter. Un suppléant décide à la place du valideur absent, sur ses étapes et nulle part ailleurs. Rien n'est à déclarer pour les niveaux hiérarchiques : une absence approuvée ouvre déjà l'étape au niveau supérieur et à l'équipe RH.",
+      "coverageTitle": "Congés des valideurs",
+      "noLeave": "Aucun congé à venir pour les personnes qui portent une étape de validation.",
+      "uncoveredWarning": "{{count}} congé sans suppléant désigné : les demandes en attente de ces valideurs ne seront pas traitées.",
+      "uncoveredWarning_other": "{{count}} congés sans suppléant désigné : les demandes en attente de ces valideurs ne seront pas traitées.",
+      "covered": "Suppléant désigné",
+      "designate": "Désigner un suppléant",
+      "datesFromLeave": "La suppléance couvrira exactement le congé, du {{start}} au {{end}} : aucune date à saisir.",
+      "standIn": "Suppléant",
+      "choose": "Choisir…",
+      "declare": "Enregistrer l'intérim",
+      "declaring": "Enregistrement…",
+      "declareError": "L'intérim n'a pas pu être enregistré.",
+      "cancel": "Annuler",
+      "leavePending": "congé encore à valider",
+      "listTitle": "Suppléances enregistrées",
+      "none": "Aucun intérim enregistré.",
+      "replaces": "remplace",
+      "sourceLeave": "période reprise du congé",
+      "sourceManual": "période saisie",
+      "active": "En cours",
+      "revoked": "Révoqué",
+      "ended": "Terminé",
+      "revokeAction": "Révoquer",
+      "roles": {
+        "admin": "Administrateur",
+        "hr_manager": "Responsable RH",
+        "hr_officer": "Gestionnaire RH",
+        "manager": "Responsable hiérarchique",
+        "dg": "Direction générale",
+        "employee": "Salarié",
+        "readonly": "Consultation"
+      }
     }
   },
   "connectivity": {

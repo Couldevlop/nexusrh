@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ShieldHalf, Plus, Trash2, Send, CheckCircle2, XCircle } from 'lucide-react'
+import { ShieldHalf, Plus, Trash2, Send, CheckCircle2, XCircle, FileDown, ShieldCheck, Eraser } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-type Tab = 'sso' | 'siem' | 'events'
+type Tab = 'sso' | 'siem' | 'events' | 'trail'
 const SSO_PROVIDERS = ['oidc', 'saml', 'ldap'] as const
 const ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'dg', 'raf_site'] as const
 const SIEM_TRANSPORTS = ['webhook', 'syslog_http'] as const
@@ -21,6 +21,13 @@ interface SiemConfig {
   enabled: boolean; transport: string; endpoint?: string | null; format: string; categories: string[]; secretSet: boolean
 }
 interface SecurityEventRow { id: string; action: string; category: string; userId: string | null; ip: string | null; at: string; forwarded: boolean }
+interface ChainVerdict {
+  checked: number; intact: boolean; purgeMarkers: number
+  brokenAt: { seq: string; id: string; reason: string } | null
+  lastHash: string | null
+  /** false = tenant provisionné avant le chaînage : rien à contrôler encore. */
+  chained?: boolean
+}
 
 const CAT_STYLE: Record<string, string> = {
   auth: 'bg-sky-100 text-sky-800', rbac: 'bg-amber-100 text-amber-800',
@@ -87,6 +94,41 @@ export default function SecurityPage() {
   // ── Events ──
   const eventsQ = useQuery({ queryKey: ['security', 'events'], enabled: tab === 'events', queryFn: async () => (await api.get('/security/events')).data.data as SecurityEventRow[] })
 
+  // ── Piste d'audit opposable ──────────────────────────────────────────────
+  // Le contrôle n'est PAS lancé à l'ouverture de l'onglet : il relit toute la
+  // piste pour recalculer la chaîne. C'est un geste délibéré, pas un
+  // rafraîchissement d'écran.
+  const verifyM = useMutation({
+    mutationFn: async () => (await api.get('/security/audit/verify')).data.data as ChainVerdict,
+    onError: () => setFlash({ ok: false, msg: t('trail.verifyError') }),
+  })
+  const [exporting, setExporting] = useState(false)
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await api.get('/security/audit/export', { responseType: 'blob', params: { format: 'csv' } })
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `piste-audit-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      // L'empreinte et le sceau voyagent en en-têtes : les afficher permet au
+      // destinataire de vérifier le fichier sans accès à l'application.
+      const h = res.headers as Record<string, string>
+      setFlash({ ok: true, msg: t('trail.exported', { sha: (h['x-audit-sha256'] ?? '').slice(0, 16) }) })
+    } catch {
+      setFlash({ ok: false, msg: t('trail.exportError') })
+    } finally {
+      setExporting(false)
+    }
+  }
+  const purgeM = useMutation({
+    mutationFn: async () => (await api.post('/security/audit/purge')).data.data as { purged: number; keepDays: number },
+    onSuccess: (d) => setFlash({ ok: true, msg: t('trail.purged', { count: d.purged, days: d.keepDays }) }),
+    onError: () => setFlash({ ok: false, msg: t('trail.purgeUnset') }),
+  })
+
   const toggleCategory = (c: string) => setSiem((s) => s ? { ...s, categories: s.categories.includes(c) ? s.categories.filter((x) => x !== c) : [...s.categories, c] } : s)
   const TabBtn = ({ value, label }: { value: Tab; label: string }) => (
     <button type="button" onClick={() => setTab(value)}
@@ -115,6 +157,7 @@ export default function SecurityPage() {
         <TabBtn value="sso" label={t('tabs.sso')} />
         <TabBtn value="siem" label={t('tabs.siem')} />
         <TabBtn value="events" label={t('tabs.events')} />
+        <TabBtn value="trail" label={t('tabs.trail')} />
       </div>
 
       {/* ── SSO / AD ── */}
@@ -236,6 +279,66 @@ export default function SecurityPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+      {/* ── Piste d'audit opposable ── */}
+      {tab === 'trail' && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('trail.intro')}</p>
+
+          {/* Contrôle d'intégrité */}
+          <div className="max-w-2xl space-y-3 rounded-xl border border-border bg-card p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4" /> {t('trail.verifyTitle')}</h2>
+            <p className="text-xs text-muted-foreground">{t('trail.verifyHint')}</p>
+            <button type="button" disabled={verifyM.isPending} onClick={() => verifyM.mutate()} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
+              {verifyM.isPending ? t('trail.verifying') : t('trail.verify')}
+            </button>
+            {verifyM.data && (
+              <div className={cn('space-y-1 rounded-lg border p-3 text-sm',
+                verifyM.data.chained === false ? 'border-border bg-muted/40'
+                  : verifyM.data.intact ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-rose-300 bg-rose-50 text-rose-900')}>
+                {verifyM.data.chained === false ? (
+                  <p>{t('trail.notChained')}</p>
+                ) : verifyM.data.intact ? (
+                  <>
+                    <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="h-4 w-4" /> {t('trail.intact', { count: verifyM.data.checked })}</p>
+                    {verifyM.data.purgeMarkers > 0 && <p className="text-xs">{t('trail.purgeMarkers', { count: verifyM.data.purgeMarkers })}</p>}
+                    {verifyM.data.lastHash && (
+                      <p className="text-xs">
+                        {t('trail.lastHash')} <span className="font-mono">{verifyM.data.lastHash.slice(0, 32)}…</span>
+                      </p>
+                    )}
+                    <p className="text-xs">{t('trail.lastHashHint')}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="flex items-center gap-2 font-medium"><XCircle className="h-4 w-4" /> {t('trail.broken')}</p>
+                    <p className="text-xs">{t(`trail.reason.${verifyM.data.brokenAt?.reason}`, { defaultValue: verifyM.data.brokenAt?.reason ?? '' })}</p>
+                    <p className="text-xs">{t('trail.brokenAt', { seq: verifyM.data.brokenAt?.seq, id: verifyM.data.brokenAt?.id })}</p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Export probant */}
+          <div className="max-w-2xl space-y-3 rounded-xl border border-border bg-card p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><FileDown className="h-4 w-4" /> {t('trail.exportTitle')}</h2>
+            <p className="text-xs text-muted-foreground">{t('trail.exportHint')}</p>
+            <button type="button" disabled={exporting} onClick={handleExport} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+              <FileDown className="h-3.5 w-3.5" /> {exporting ? t('trail.exporting') : t('trail.export')}
+            </button>
+          </div>
+
+          {/* Rétention */}
+          <div className="max-w-2xl space-y-3 rounded-xl border border-border bg-card p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><Eraser className="h-4 w-4" /> {t('trail.purgeTitle')}</h2>
+            <p className="text-xs text-muted-foreground">{t('trail.purgeHint')}</p>
+            <button type="button" disabled={purgeM.isPending} onClick={() => purgeM.mutate()} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+              {purgeM.isPending ? t('trail.purging') : t('trail.purge')}
+            </button>
+          </div>
         </div>
       )}
     </div>

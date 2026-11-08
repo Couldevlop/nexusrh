@@ -3,7 +3,7 @@ import { isInManagerScope } from '../../services/manager-scope.service.js'
 import { z } from 'zod'
 import { config } from '../../config.js'
 import { pool as rawPool } from '../../db/pool.js'
-import { resolveAiCreds } from '../../services/ai-credentials.service.js'
+import { loadLocalModel, resolveAiCreds, selectChatProvider } from '../../services/ai-credentials.service.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { generateHRDocument } from '../../services/hr-document-generator.service.js'
 import { buildToolsForRole, executeAiTool } from './ai-tools.js'
@@ -11,8 +11,13 @@ import { requestHrScopeFactory, requestHrScope, employeeInHrScope, requestSensit
 import { isMasked } from '../../services/sensitive-mask.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import {
-  CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, type LegislationPack,
+  CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, isSupportedCountry,
+  type LegislationPack,
 } from '../../services/legislation-packs.js'
+import { computeOvertime, computeSeniority } from '../../services/payroll-simulator.service.js'
+import { QUALIFICATION_KEYS, positionProfile } from '../../services/qualification-levels.service.js'
+import { categoryLevel } from '../../services/termination-rules.service.js'
+import { transportZoneFromCity } from '../../services/payroll-engine-ci.js'
 import { streamMistralChat } from './ai-mistral-chat.js'
 // Type-only (zéro coût runtime — le client reste importé dynamiquement) :
 // renommé pour ne pas être masqué par `const Anthropic = (await import(...))`.
@@ -48,12 +53,95 @@ const chatSchema = z.object({
   }).strict().optional(),
 }).strict()
 
+/**
+ * Durée hebdomadaire retenue à défaut de saisie, pour le taux horaire des
+ * heures supplémentaires. 40 h est la durée légale en Côte d'Ivoire (CT art.
+ * 21.2) comme dans la plupart des pays des packs ; un contrat qui s'en écarte
+ * (42 h, 48 h agricole) se saisit dans le champ.
+ */
+const DEFAULT_WEEKLY_HOURS = 40
+
+// Simulateur de salaire : les champs qui CHANGENT le net doivent tous pouvoir
+// être saisis, et le pays doit être choisi — le simulateur était figé sur la
+// Côte d'Ivoire alors que seize packs existent.
 const simulateItsSchema = z.object({
   baseSalary:     z.number().int().min(1).max(100_000_000),
   maritalStatus:  z.enum(['single', 'married', 'divorced', 'widowed']).optional(),
   childrenCount:  z.number().int().min(0).max(30).optional(),
   atRate:         z.number().min(0).max(0.10).optional(),
   primes:         z.number().int().min(0).max(100_000_000).optional(),
+  /** Pays ISO-3 ; à défaut, le pays par défaut du tenant. */
+  countryCode:    z.string().length(3).optional(),
+  /**
+   * Prime de transport, SÉPARÉE des autres primes : elle est exonérée dans la
+   * limite du plafond de la zone de travail (CI : 30 000 Abidjan / 24 000
+   * Bouaké / 20 000 ailleurs). Confondue avec `primes`, elle était imposée en
+   * totalité et le simulateur annonçait un net trop faible.
+   */
+  transportAllowance: z.number().int().min(0).max(10_000_000).optional(),
+  /** Ville de travail : détermine le plafond exonéré de la prime de transport. */
+  city:           z.string().max(100).optional(),
+  /**
+   * Conjoint sans emploi : bénéficiaire CMU supplémentaire si le salarié est
+   * marié. Le moteur l'a toujours su, la route ne le passait jamais.
+   */
+  cmuSpouseCovered:   z.boolean().optional(),
+  /** Enfants de moins de 21 ans (CMU) — à défaut, les enfants à charge. */
+  cmuChildrenCovered: z.number().int().min(0).max(30).optional(),
+  /** Date d'embauche : ouvre la prime d'ancienneté du pack. */
+  hireDate:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Mois simulé (AAAA-MM), pour l'ancienneté. Défaut : mois courant. */
+  payMonth:       z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  /** Mois incomplet : jours travaillés / jours ouvrables. */
+  workedDays:       z.number().int().min(0).max(31).optional(),
+  workingDaysMonth: z.number().int().min(1).max(31).optional(),
+  /**
+   * Catégorie professionnelle (libellé de la grille : « 5e catégorie »,
+   * « Agent de maîtrise », « Cadre »). Sert au repère de classification et au
+   * préavis ; son MINIMUM conventionnel, lui, change un montant.
+   */
+  professionalCategory: z.string().max(50).optional(),
+  /**
+   * Minimum conventionnel de la catégorie. C'est l'assiette de la prime
+   * d'ancienneté quand le pack le prévoit (CI : CCI art. 55, assiette =
+   * minimum catégoriel). À défaut, le salaire minimum légal était pris, ce
+   * qui sous-estimait la prime de toutes les catégories supérieures.
+   */
+  categoryMinimum: z.number().int().min(0).max(100_000_000).optional(),
+  /**
+   * Ancienneté en années révolues — saisie directe, à la place de la date
+   * d'embauche (les deux sont acceptées ; la date l'emporte).
+   */
+  seniorityYears: z.number().int().min(0).max(60).optional(),
+  /** Niveau de qualification (diplôme) : REPÈRE, ne change aucun montant. */
+  qualificationLevel: z.enum(QUALIFICATION_KEYS).optional(),
+  /** Durée hebdomadaire contractuelle, pour le taux horaire des heures supp. */
+  weeklyHours: z.number().min(1).max(84).optional(),
+  /**
+   * Heures supplémentaires par nature. Les majorations viennent du pack ; une
+   * nature que le pays ne paramètre pas est refusée, jamais inventée.
+   */
+  overtimeHours: z.object({
+    weekly:             z.number().min(0).max(200).optional(),
+    weeklyBeyond:       z.number().min(0).max(200).optional(),
+    night:              z.number().min(0).max(200).optional(),
+    sunday:             z.number().min(0).max(200).optional(),
+    holiday:            z.number().min(0).max(200).optional(),
+    sundayHolidayNight: z.number().min(0).max(200).optional(),
+  }).strict().optional(),
+  /** Avantages en nature (logement, véhicule, électricité…) : soumis. */
+  benefitsInKind: z.number().int().min(0).max(100_000_000).optional(),
+  /**
+   * Second scénario, à profil identique : le simulateur sert AVANT l'embauche
+   * (quel net pour quel coût) et pour une REVALORISATION (ce que change une
+   * augmentation). Seuls le salaire de base et les primes bougent — tout le
+   * reste du profil est volontairement commun aux deux scénarios, sinon
+   * l'écart ne serait plus attribuable à l'augmentation.
+   */
+  comparison: z.object({
+    baseSalary: z.number().int().min(1).max(100_000_000),
+    primes:     z.number().int().min(0).max(100_000_000).optional(),
+  }).strict().optional(),
 }).strict()
 
 // AI-006/007 — génération de documents RH (CDI/CDD/certificat/attestation).
@@ -133,21 +221,25 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // plateforme (env). OWASP A03 — on expose le FOURNISSEUR (Claude/Mistral)
       // pour l'affichage « Propulsé par … », mais jamais le nom exact du modèle.
       const creds = await resolveAiCreds(request.user.schemaName)
-      // Même logique de sélection que POST /chat : le provider que le chat
-      // utilisera réellement (préférence + repli sur l'autre si clé manquante).
-      const provider: 'mistral' | 'claude' | null =
-        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
-        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
-        : creds.mistral.apiKey ? 'mistral'
-        : creds.claude.apiKey ? 'claude'
-        : null
+      // MÊME fonction que POST /chat : l'écran ne peut pas annoncer une IA que
+      // la route refuserait.
+      const local = await loadLocalModel()
+      const provider = selectChatProvider(creds, local)
       const available = provider !== null
       return reply.send({
         available,
         provider,
-        message: available
-          ? 'Assistant IA disponible'
-          : 'Clé API IA non configurée (plateforme ou tenant). Contactez votre administrateur.',
+        // Le modèle auto-hébergé n'est pas un service équivalent : il tourne
+        // chez l'exploitant, sans quota externe, et l'écran a le droit de le
+        // dire. Le libellé vient des réglages plateforme — « Lucie 7B »
+        // aujourd'hui, autre chose demain, sans retoucher le code.
+        local: provider === 'local',
+        localLabel: provider === 'local' ? local!.label : null,
+        message: provider === 'local'
+          ? `Assistant IA disponible (${local!.label})`
+          : available
+            ? 'Assistant IA disponible'
+            : 'Clé API IA non configurée (plateforme ou tenant), et aucun modèle local. Contactez votre administrateur.',
       })
     },
   })
@@ -190,24 +282,28 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // Sélection du fournisseur : préférence tenant/plateforme, avec repli sur
       // l'autre si sa clé manque. Le chat tourne donc sur Mistral OU Claude —
       // un tenant basculé sur Mistral a tout en Mistral, chat compris.
-      const provider: 'mistral' | 'claude' | null =
-        creds.preferredProvider === 'mistral' && creds.mistral.apiKey ? 'mistral'
-        : creds.preferredProvider === 'claude' && creds.claude.apiKey ? 'claude'
-        : creds.mistral.apiKey ? 'mistral'
-        : creds.claude.apiKey ? 'claude'
-        : null
+      // DERNIER RECOURS : un modèle LOCAL (API OpenAI-compatible hébergée par
+      // l'exploitant). Sans clé Claude ni Mistral, le chat répondait 503 — une
+      // assistante muette. Le modèle local n'est jamais PRÉFÉRÉ : il prend la
+      // main seulement quand il n'y a plus rien d'autre, et il est réglé par le
+      // SUPER_ADMIN (réglages plateforme, ou variables d'environnement en
+      // repli) — jamais par un tenant : ce serait un canal d'exfiltration des
+      // données RH envoyées au modèle (A10/SSRF).
+      const local = await loadLocalModel()
+      const provider = selectChatProvider(creds, local)
       if (!provider) {
         return reply.status(503).send({
           error: 'IA non disponible',
-          message: 'Aucune clé API IA configurée (ni tenant ni plateforme).',
+          message: 'Aucune clé API IA configurée (ni tenant ni plateforme), et aucun modèle local.',
         })
       }
 
       // Source de la clé effective (tenant vs plateforme) + modèle réellement
       // utilisé : ne tracker la conso (platform.ai_usage) QUE si la clé est celle
-      // du super_admin (source='platform').
-      const keySource = creds[provider].source
-      const usedModel = creds[provider].model
+      // du super_admin (source='platform'). Le modèle local ne consomme aucun
+      // quota facturé : sa source reste nulle.
+      const keySource = provider === 'local' ? null : creds[provider].source
+      const usedModel = provider === 'local' ? local!.model : creds[provider].model
 
       let tenantInfo = sanitizeForPrompt(context?.tenantName, 100) || 'Entreprise CI'
       let tenantId: string | null = null
@@ -296,11 +392,13 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       })
 
       try {
-        if (provider === 'mistral') {
+        if (provider === 'mistral' || provider === 'local') {
+          // Même protocole dans les deux cas : seules l'adresse, la clé (ici
+          // facultative) et le modèle changent.
           const r = await streamMistralChat({
-            apiKey:        creds.mistral.apiKey!,
-            apiUrl:        config.mistral.apiUrl,
-            model:         creds.mistral.model,
+            apiKey:        provider === 'local' ? local!.apiKey : creds.mistral.apiKey!,
+            apiUrl:        provider === 'local' ? local!.apiUrl : config.mistral.apiUrl,
+            model:         usedModel,
             systemPrompt,
             messages,
             tools:         buildToolsForRole(request.user.role),
@@ -317,7 +415,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           auditLogAi(
             schema, request.user.sub, 'ai.chat',
             {
-              provider:     'mistral',
+              provider,
               keySource,
               inputTokens:  r.usage.input_tokens,
               outputTokens: r.usage.output_tokens,
@@ -440,12 +538,13 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
     },
   })
 
-  // POST /ai/simulate-its — simulateur ITS (réforme 2024) avec RICF par parts.
-  // Le calcul est délégué au moteur de paie (pack CIV-2024) : une seule source
-  // de vérité pour le barème, les parts et les cotisations.
+  // POST /ai/simulate-its — simulateur de salaire (impôt sur salaires + CNPS +
+  // CMU), pour le PAYS choisi. Le calcul est délégué au moteur de paie et au
+  // pack du pays : une seule source de vérité pour le barème, les parts, les
+  // cotisations et les exonérations.
   fastify.post('/simulate-its', {
     preHandler: [fastify.authenticate],
-    schema: { tags: ['ai'], summary: 'Simulateur ITS CI 2024 (barème sur 100 % du brut + RICF par parts)' },
+    schema: { tags: ['ai'], summary: 'Simulateur de salaire (impôt + cotisations) — pays du tenant ou pays choisi' },
     config: AI_SIMULATE_RATE_LIMIT,
     handler: async (request, reply) => {
       // OWASP A03 — validation Zod stricte
@@ -456,48 +555,256 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       const {
         baseSalary, maritalStatus = 'single', childrenCount = 0,
         atRate = 0.020, primes = 0,
+        countryCode, transportAllowance = 0, city,
+        cmuSpouseCovered, cmuChildrenCovered,
+        hireDate, payMonth, workedDays, workingDaysMonth,
+        professionalCategory, categoryMinimum, seniorityYears,
+        qualificationLevel, weeklyHours = DEFAULT_WEEKLY_HOURS, overtimeHours,
+        benefitsInKind = 0, comparison,
       } = parsed.data
 
-      // Les primes saisies sont traitées comme du salaire imposable et soumis
-      // à cotisations (brut mensuel complet, mois plein).
-      const brut = baseSalary + primes
-      const simuler = (enfants: number) => calculatePayrollCI({
-        baseSalary: brut, workedDays: 26, workingDaysMonth: 26, atRate,
-        maritalStatus, childrenCount: enfants, variableElements: {},
-        legislationPack: CIV_2024,
+      // Pays : celui demandé, sinon celui du tenant, sinon le pack par défaut.
+      if (countryCode && !isSupportedCountry(countryCode)) {
+        return reply.status(400).send({
+          error: `Pays non pris en charge : ${countryCode}`,
+          message: 'Aucun pack législatif pour ce pays. Choisissez un pays de la liste.',
+        })
+      }
+      let pack: LegislationPack | null = countryCode ? getPackByCountry(countryCode) : null
+      if (!pack) {
+        try {
+          const t = await rawPool.query<{ default_country_code: string | null }>(
+            `SELECT default_country_code FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+            [request.user.schemaName],
+          )
+          pack = getPackByCountry(t.rows[0]?.default_country_code ?? null)
+        } catch { /* repli pack par défaut */ }
+      }
+      const effectivePack = pack ?? DEFAULT_LEGISLATION_PACK
+
+      // Prime d'ancienneté : seulement si l'ancienneté est connue (date
+      // d'embauche OU années révolues saisies) ET que le pack porte une règle
+      // d'ancienneté (sinon aucune prime inventée).
+      //
+      // L'assiette est le MINIMUM CATÉGORIEL quand le pack le prévoit (CI :
+      // CCI art. 55). Faute de minimum saisi, le salaire minimum légal sert de
+      // repli — c'est ce qui se passait pour tout le monde, et cela sous-estime
+      // la prime de chaque catégorie au-dessus du minimum légal.
+      const month = payMonth ?? new Date().toISOString().slice(0, 7)
+      const effectiveCategoryMinimum = categoryMinimum ?? effectivePack.smigMensuel
+      // Années saisies → date d'embauche équivalente au 1er du mois simulé.
+      const effectiveHireDate = hireDate
+        ?? (seniorityYears !== undefined
+          ? `${String(Number(month.slice(0, 4)) - seniorityYears).padStart(4, '0')}-${month.slice(5, 7)}-01`
+          : null)
+      let seniority: { amount: number; years: number; rate: number | null } = { amount: 0, years: 0, rate: null }
+      if (effectiveHireDate) {
+        try {
+          const s = computeSeniority({
+            pack: effectivePack, hireDate: effectiveHireDate, payMonth: month,
+            baseSalary, categoryMinimum: effectiveCategoryMinimum,
+          })
+          seniority = { amount: s.amount, years: s.years, rate: s.rule?.rate ?? null }
+        } catch {
+          // Date d'embauche postérieure au mois simulé, ou format impossible :
+          // pas de prime plutôt qu'une erreur sur un écran de simulation.
+          seniority = { amount: 0, years: 0, rate: null }
+        }
+      }
+      const seniorityAmount = seniority.amount
+
+      // Heures supplémentaires : montants calculés par le service à partir du
+      // taux horaire et des MAJORATIONS DU PACK. Une nature que le pays ne
+      // paramètre pas est refusée — on n'invente pas une majoration.
+      let overtime: { lines: ReturnType<typeof computeOvertime>['lines']; elements: Record<string, number>; total: number }
+        = { lines: [], elements: {}, total: 0 }
+      if (overtimeHours && Object.values(overtimeHours).some((h) => (h ?? 0) > 0)) {
+        try {
+          const ot = computeOvertime(effectivePack, baseSalary, weeklyHours, {
+            weekly:  overtimeHours.weekly  ?? 0,
+            night:   overtimeHours.night   ?? 0,
+            sunday:  overtimeHours.sunday  ?? 0,
+            holiday: overtimeHours.holiday ?? 0,
+            ...(overtimeHours.weeklyBeyond       !== undefined ? { weeklyBeyond: overtimeHours.weeklyBeyond } : {}),
+            ...(overtimeHours.sundayHolidayNight !== undefined ? { sundayHolidayNight: overtimeHours.sundayHolidayNight } : {}),
+          })
+          overtime = {
+            lines: ot.lines,
+            elements: ot.variableElements as Record<string, number>,
+            total: ot.lines.reduce((s, l) => s + l.amount, 0),
+          }
+        } catch (err) {
+          return reply.status(400).send({
+            error: err instanceof Error ? err.message : 'Heures supplémentaires non paramétrées pour ce pays',
+            code: 'OVERTIME_NOT_CONFIGURED',
+          })
+        }
+      }
+
+      // Les primes ordinaires sont du salaire imposable et soumis à cotisations.
+      // La prime de transport, elle, passe par un ÉLÉMENT VARIABLE : le moteur
+      // lui applique le plafond exonéré de la zone de travail.
+      const brut = baseSalary + primes + seniorityAmount
+      const variableElements: Record<string, number> = {
+        ...overtime.elements,
+        ...(transportAllowance > 0 ? { PRIME_TRANSPORT: transportAllowance } : {}),
+        ...(benefitsInKind > 0 ? { AVANTAGE_NATURE: benefitsInKind } : {}),
+      }
+      const days = {
+        worked: workedDays ?? workingDaysMonth ?? 26,
+        month:  workingDaysMonth ?? 26,
+      }
+      const simuler = (enfants: number, brutSimule: number = brut) => calculatePayrollCI({
+        baseSalary: brutSimule, workedDays: days.worked, workingDaysMonth: days.month, atRate,
+        maritalStatus, childrenCount: enfants, variableElements,
+        legislationPack: effectivePack,
+        transportZone: transportZoneFromCity(city),
+        cmu: {
+          spouseCovered:   cmuSpouseCovered ?? null,
+          childrenCovered: cmuChildrenCovered ?? null,
+        },
       })
       const r = simuler(childrenCount)
       const plus1 = simuler(childrenCount + 1)
+
+      // Second scénario (embauche projetée ou revalorisation). L'ancienneté est
+      // recalculée sur le nouveau salaire : quand le pack assoit la prime sur
+      // le salaire réel (et non sur le minimum catégoriel), une augmentation
+      // emporte la prime avec elle.
+      let comparisonView: Record<string, unknown> | null = null
+      if (comparison) {
+        const cPrimes = comparison.primes ?? primes
+        let cSeniority = 0
+        if (effectiveHireDate) {
+          try {
+            cSeniority = computeSeniority({
+              pack: effectivePack, hireDate: effectiveHireDate, payMonth: month,
+              baseSalary: comparison.baseSalary, categoryMinimum: effectiveCategoryMinimum,
+            }).amount
+          } catch { cSeniority = 0 }
+        }
+        const cBrut = comparison.baseSalary + cPrimes + cSeniority
+        const c = simuler(childrenCount, cBrut)
+        comparisonView = {
+          input: {
+            baseSalary: comparison.baseSalary, primes: cPrimes,
+            brut: cBrut, seniorityAmount: cSeniority,
+          },
+          cnps:         { salarial: c.totalCnpsSal, patronal: c.totalCnpsPat },
+          cmu:          { salarial: c.cmuSal, patronal: c.cmuPat },
+          its:          { base: c.baseImposable, brut: c.itsBrut, credit: c.reductionImpot, parts: c.partsFiscales ?? 1, net: c.its },
+          net:          { payable: c.netPayable, smigCompliant: c.smigCompliant },
+          employerCost: c.employerCost,
+          lines:        c.lines,
+          /** Écarts (positifs = en hausse par rapport au premier scénario). */
+          delta: {
+            baseSalary:   comparison.baseSalary - baseSalary,
+            brut:         cBrut - brut,
+            netPayable:   c.netPayable - r.netPayable,
+            its:          c.its - r.its,
+            cnpsSal:      c.totalCnpsSal - r.totalCnpsSal,
+            employerCost: c.employerCost - r.employerCost,
+            /** Hausse du brut en %, à une décimale. */
+            brutPct:      Math.round(((cBrut - brut) / brut) * 1000) / 10,
+            /** Part de l'augmentation qui arrive réellement dans la poche. */
+            netSharePct:  cBrut === brut ? null
+              : Math.round(((c.netPayable - r.netPayable) / (cBrut - brut)) * 1000) / 10,
+          },
+        }
+      }
       // Effet d'un enfant de plus sur le net : économie d'ITS (RICF) MOINS la
       // CMU de l'enfant (500 F jusqu'au 6e, 1 000 F au-delà — loi n° 2014-131).
       const itsGain = r.its - plus1.its
       const cmuCost = plus1.cmuSal - r.cmuSal
       const netDelta = plus1.netPayable - r.netPayable
       const plafondAtteint = (plus1.partsFiscales ?? 0) === (r.partsFiscales ?? 0)
-      const fcfa = (n: number) => n.toLocaleString('fr-CI')
-      const cmuNote = cmuCost > 0 ? `, CMU de l'enfant +${fcfa(cmuCost)} FCFA` : ''
+      const devise = currencyLabel(effectivePack.currency)
+      const plafondParts = effectivePack.reductionChargesFamille?.plafondParts ?? 5
+      const fcfa = (n: number) => n.toLocaleString('fr-FR').replace(/[  ]/g, ' ')
+      const cmuNote = cmuCost > 0 ? `, CMU de l'enfant +${fcfa(cmuCost)} ${devise}` : ''
       const itsReason = itsGain > 0
-        ? `impôt −${fcfa(itsGain)} FCFA`
+        ? `impôt −${fcfa(itsGain)} ${devise}`
         : plafondAtteint
-          ? `impôt inchangé : le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint`
+          ? `impôt inchangé : le plafond de ${plafondParts} parts est déjà atteint`
           : `impôt inchangé : il est déjà entièrement couvert par la réduction pour charges de famille`
       const message = netDelta > 0
-        ? `Avec 1 enfant de plus, le net augmenterait de ${fcfa(netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+        ? `Avec 1 enfant de plus, le net augmenterait de ${fcfa(netDelta)} ${devise}/mois (${itsReason}${cmuNote})`
         : netDelta < 0
-          ? `Avec 1 enfant de plus, le net baisserait de ${fcfa(-netDelta)} FCFA/mois (${itsReason}${cmuNote})`
+          ? `Avec 1 enfant de plus, le net baisserait de ${fcfa(-netDelta)} ${devise}/mois (${itsReason}${cmuNote})`
           : itsGain === 0 && plafondAtteint
-            ? `Le plafond de ${CIV_2024.reductionChargesFamille?.plafondParts ?? 5} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
+            ? `Le plafond de ${plafondParts} parts est déjà atteint : un enfant de plus ne change pas l'impôt`
             : itsGain === 0
               ? `L'impôt est déjà entièrement couvert par la réduction pour charges de famille`
               : `Avec 1 enfant de plus, le net ne change pas (${itsReason}${cmuNote})`
 
       return reply.send({
-        input:       { baseSalary, primes, brut, maritalStatus, childrenCount, atRate },
+        input: {
+          baseSalary, primes, brut, maritalStatus, childrenCount, atRate,
+          transportAllowance, city: city ?? null,
+          cmuSpouseCovered: cmuSpouseCovered ?? null,
+          cmuChildrenCovered: cmuChildrenCovered ?? null,
+          hireDate: effectiveHireDate, payMonth: month,
+          seniorityAmount,
+          workedDays: days.worked, workingDaysMonth: days.month,
+          countryCode: effectivePack.countryCode,
+          packCode: effectivePack.code,
+          professionalCategory: professionalCategory ?? null,
+          categoryLevel: categoryLevel(professionalCategory),
+          categoryMinimum: effectiveCategoryMinimum,
+          categoryMinimumProvided: categoryMinimum !== undefined,
+          qualificationLevel: qualificationLevel ?? null,
+          weeklyHours,
+          benefitsInKind,
+        },
+        /** Ancienneté retenue : années révolues, taux du pack, assiette. */
+        seniority: {
+          years:  seniority.years,
+          rate:   seniority.rate,
+          base:   effectivePack.seniorityBonus?.base === 'category_minimum' ? effectiveCategoryMinimum : baseSalary,
+          amount: seniorityAmount,
+          source: effectivePack.seniorityBonus?.source ?? null,
+        },
+        /** Heures supplémentaires : une ligne par nature, majoration du pack. */
+        overtime: { lines: overtime.lines, total: overtime.total, hourlyRate: Math.round(baseSalary / ((weeklyHours * 52) / 12)) },
+        /** Conformité des minima : légal, et conventionnel si saisi. */
+        compliance: {
+          smig: r.smigCompliant,
+          smigMinimum: effectivePack.smigMensuel,
+          categoryMinimum: categoryMinimum === undefined ? null : baseSalary >= categoryMinimum,
+        },
+        /** Repère de classification — informatif, aucun montant n'en dépend. */
+        positioning: positionProfile({ qualificationKey: qualificationLevel, baseSalary }),
+        /**
+         * Second scénario et écarts : embauche projetée, ou revalorisation.
+         * `null` quand aucun n'a été demandé.
+         */
+        comparison: comparisonView,
         cnps:        { salarial: r.totalCnpsSal, patronal: r.totalCnpsPat },
         its:         { base: r.baseImposable, brut: r.itsBrut, credit: r.reductionImpot, parts: r.partsFiscales ?? 1, net: r.its },
         cmu:         { salarial: r.cmuSal, patronal: r.cmuPat },
         net:         { payable: r.netPayable, smigCompliant: r.smigCompliant },
         employerCost: r.employerCost,
+        // Le DÉTAIL vient du moteur, pour le pays retenu. L'écran recopiait les
+        // plafonds (3 375 000 / 75 000) et les taux (6,3 / 7,7 / 5,75 %)
+        // ivoiriens en dur : faux dès qu'on simule un autre pays.
+        lines: r.lines,
+        // Barème et références du pays, pour que l'écran les affiche sans les
+        // réécrire.
+        pack: {
+          code:          effectivePack.code,
+          countryCode:   effectivePack.countryCode,
+          name:          effectivePack.name,
+          currency:      effectivePack.currency,
+          currencyLabel: devise,
+          smigMensuel:   effectivePack.smigMensuel,
+          usable:        effectivePack.status === 'active',
+          brackets:      effectivePack.tranchesImpotSalaire,
+          transportExoneration: effectivePack.primeTransportExoneree ?? null,
+          hasCmu:        !!effectivePack.cmu,
+          hasSeniorityBonus: !!effectivePack.seniorityBonus,
+          /** Natures d'heures supplémentaires paramétrées, et leurs majorations. */
+          overtimeRates: effectivePack.leaveRules?.overtimeRates ?? null,
+        },
         simulation: {
           avecUnEnfantSupp: {
             its: plus1.its,
@@ -509,7 +816,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             message,
           },
         },
-        currency: 'XOF',
+        currency: effectivePack.currency,
       })
     },
   })

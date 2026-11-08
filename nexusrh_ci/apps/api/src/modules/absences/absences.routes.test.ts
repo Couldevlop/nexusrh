@@ -74,8 +74,12 @@ beforeAll(async () => {
 
 afterAll(async () => { await app.close() })
 
+// Défaut : « la base n'a rien renvoyé ». Les scénarios ci-dessous enchaînent des
+// `mockResolvedValueOnce` dans l'ordre des requêtes de la route ; sans ce repli,
+// toute requête AJOUTÉE à une route (la continuité d'un circuit, par exemple)
+// transformerait une assertion de statut en 500 sur un `undefined`.
 beforeEach(() => {
-  queryMock.mockReset()
+  queryMock.mockReset().mockResolvedValue({ rows: [] })
 })
 
 // Mock pg routé par fragment SQL (l'ordre des requêtes du circuit de validation

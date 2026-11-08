@@ -19,6 +19,91 @@ import { isValidSchemaName } from '../utils/schema-name.js'
 
 export type AiProvider = 'claude' | 'mistral'
 
+/** Modèle local de dernier recours : une API OpenAI-compatible, clé facultative. */
+export interface LocalModel {
+  apiUrl: string
+  model:  string
+  apiKey: string | null
+  /** Libellé affiché à l'utilisateur (« Lucie 7B », « Qwen 2.5 »…). */
+  label:  string
+}
+
+/**
+ * Modèle auto-hébergé configuré par VARIABLE D'ENVIRONNEMENT, s'il y en a un.
+ *
+ * Seule l'URL décide : la clé est facultative (un service interne au cluster
+ * n'en demande pas).
+ */
+export function localModel(): LocalModel | null {
+  const apiUrl = (config.aiLocal?.apiUrl ?? '').trim()
+  if (!apiUrl) return null
+  return {
+    apiUrl,
+    model: config.aiLocal.model,
+    apiKey: config.aiLocal.apiKey ?? null,
+    label: DEFAULT_LOCAL_LABEL,
+  }
+}
+
+/** Libellé affiché quand l'exploitant n'en a pas choisi un. */
+export const DEFAULT_LOCAL_LABEL = 'modèle local'
+
+/**
+ * Une URL de modèle est-elle utilisable ?
+ *
+ * http(s) seulement, et pas de crédentials dans l'URL. Les adresses privées
+ * sont ici LÉGITIMES — c'est précisément un service du cluster — donc le
+ * garde-fou SSRF habituel ne s'applique pas : ce qui protège, c'est que seul le
+ * super_admin écrit cette valeur.
+ */
+export function isUsableModelUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+    if (u.username || u.password) return false
+    return u.hostname.length > 0
+  } catch { return false }
+}
+
+/**
+ * Modèle auto-hébergé effectif : la configuration PLATEFORME (réglée par le
+ * super_admin dans l'écran Paramètres) passe devant les variables
+ * d'environnement.
+ *
+ * Pourquoi la base plutôt que l'environnement seul : changer de modèle ne doit
+ * pas demander un redéploiement ni une modification du chart Helm. Lucie 7B
+ * aujourd'hui, Qwen demain — même protocole OpenAI-compatible, donc l'adresse
+ * et le nom suffisent. L'environnement reste le repli, pour une installation
+ * qui préfère tout décrire en variables.
+ *
+ * Non bloquant : toute erreur de lecture → repli sur l'environnement.
+ */
+export async function loadLocalModel(): Promise<LocalModel | null> {
+  const fromEnv = localModel()
+  try {
+    const res = await pool.query<{
+      ai_local_api_url: string | null; ai_local_model: string | null; ai_local_label: string | null
+    }>(
+      `SELECT ai_local_api_url, ai_local_model, ai_local_label
+         FROM platform.platform_settings ORDER BY created_at ASC LIMIT 1`,
+    )
+    const r = res.rows[0]
+    const apiUrl = (r?.ai_local_api_url ?? '').trim()
+    if (!apiUrl) return fromEnv
+    if (!isUsableModelUrl(apiUrl)) return fromEnv
+    return {
+      apiUrl,
+      // Le nom du modèle est obligatoire côté serveur OpenAI-compatible : à
+      // défaut, celui de l'environnement, qui a au moins une valeur par défaut.
+      model: (r?.ai_local_model ?? '').trim() || config.aiLocal?.model || 'local',
+      apiKey: config.aiLocal?.apiKey ?? null,
+      label:  (r?.ai_local_label ?? '').trim() || DEFAULT_LOCAL_LABEL,
+    }
+  } catch {
+    return fromEnv
+  }
+}
+
 /** D'où provient la clé effective : du tenant, de la plateforme, ou aucune. */
 export type KeySource = 'tenant' | 'platform' | null
 
@@ -133,4 +218,26 @@ export function maskKey(apiKey: string | null | undefined): string | null {
   if (!apiKey) return null
   const last4 = apiKey.slice(-4)
   return `••••••••${last4}`
+}
+
+/** Fournisseur qui servira réellement le chat. */
+export type ChatProvider = 'claude' | 'mistral' | 'local'
+
+/**
+ * Choix du fournisseur du chat, en UN seul endroit.
+ *
+ * `GET /ai/status` et `POST /ai/chat` répondaient chacun avec leur propre copie
+ * de cette cascade : le jour où l'une a changé, l'écran a annoncé une IA
+ * disponible que la route refusait. La règle vit donc ici, et les deux l'appellent.
+ *
+ * Ordre : préférence du tenant si sa clé existe → l'autre fournisseur clé en
+ * main → le modèle LOCAL en dernier recours → rien.
+ */
+export function selectChatProvider(creds: AiCreds, local: LocalModel | null): ChatProvider | null {
+  if (creds.preferredProvider === 'mistral' && creds.mistral.apiKey) return 'mistral'
+  if (creds.preferredProvider === 'claude'  && creds.claude.apiKey)  return 'claude'
+  if (creds.mistral.apiKey) return 'mistral'
+  if (creds.claude.apiKey)  return 'claude'
+  if (local) return 'local'
+  return null
 }

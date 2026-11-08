@@ -25,6 +25,7 @@ import {
 } from './discipline.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import { ensureTenantSchemaHook } from '../../utils/tenant-schema-hook.js'
+import { refuserAccesSiRestreint, journaliserAccesClassifie, CATEGORIES } from '../../utils/classification-guard.js'
 
 const READ_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
 const DELETE_ROLES = ['admin', 'hr_manager'] as const
@@ -64,8 +65,13 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...READ_ROLES)],
     schema: { tags: ['discipline'], summary: 'Liste des sanctions disciplinaires' },
     handler: async (request, reply) => {
+      // Niveau 4 (Restreint) : la grille du tenant décide qui accède aux
+      // sanctions. Le refus est un 404 — dire « interdit » confirmerait
+      // l'existence de la sanction.
+      if (await refuserAccesSiRestreint(request, reply, CATEGORIES.disciplinary)) return reply
       const schema = request.user.schemaName
       const { employeeId, status, type } = request.query as Record<string, string>
+      await journaliserAccesClassifie(request, CATEGORIES.disciplinary, { view: 'list' })
       let sql = `SELECT d.*, e.first_name, e.last_name, e.employee_number
                  FROM "${schema}".disciplinary_actions d
                  JOIN "${schema}".employees e ON e.id = d.employee_id
@@ -86,6 +92,10 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...READ_ROLES)],
     schema: { tags: ['discipline'], summary: 'Détail d\'une sanction' },
     handler: async (request, reply) => {
+      // Niveau 4 (Restreint) : la grille du tenant décide qui accède aux
+      // sanctions. Le refus est un 404 — dire « interdit » confirmerait
+      // l'existence de la sanction.
+      if (await refuserAccesSiRestreint(request, reply, CATEGORIES.disciplinary)) return reply
       const schema = request.user.schemaName
       const { id } = request.params as { id: string }
       const res = await rawPool.query(
@@ -103,6 +113,10 @@ const disciplineRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...READ_ROLES)],
     schema: { tags: ['discipline'], summary: 'Enregistrer une sanction' },
     handler: async (request, reply) => {
+      // Niveau 4 (Restreint) : la grille du tenant décide qui accède aux
+      // sanctions. Le refus est un 404 — dire « interdit » confirmerait
+      // l'existence de la sanction.
+      if (await refuserAccesSiRestreint(request, reply, CATEGORIES.disciplinary)) return reply
       const schema = request.user.schemaName
       const parsed = createSchema.safeParse(request.body)
       if (!parsed.success) {

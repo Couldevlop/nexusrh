@@ -5,12 +5,21 @@
   "loadError": "Unable to load configuration.",
   "saved": "Configuration saved.",
   "saveError": "Save error.",
-  "tabs": { "sso": "SSO / Directory", "siem": "SIEM", "events": "Events" },
+  "tabs": {
+    "sso": "SSO / Directory",
+    "siem": "SIEM",
+    "events": "Events",
+    "trail": "Audit trail"
+  },
   "sso": {
     "intro": "Delegate authentication to your identity provider (Azure AD / Entra, ADFS, Okta, Keycloak…). Users whose email belongs to a managed domain are authenticated via SSO.",
     "enabled": "Enable SSO for this tenant",
     "provider": "Protocol",
-    "providers": { "oidc": "OpenID Connect (OIDC)", "saml": "SAML 2.0", "ldap": "LDAP / Active Directory" },
+    "providers": {
+      "oidc": "OpenID Connect (OIDC)",
+      "saml": "SAML 2.0",
+      "ldap": "LDAP / Active Directory"
+    },
     "issuer": "Issuer / Metadata URL",
     "clientId": "Client ID",
     "clientSecret": "Client secret",
@@ -32,10 +41,16 @@
     "intro": "Forward security events (logins, sensitive data access, configuration changes) to your SIEM sink in real time.",
     "enabled": "Enable SIEM export",
     "transport": "Transport",
-    "transports": { "webhook": "HTTPS webhook", "syslog_http": "Syslog over HTTP" },
+    "transports": {
+      "webhook": "HTTPS webhook",
+      "syslog_http": "Syslog over HTTP"
+    },
     "endpoint": "Collector URL",
     "format": "Format",
-    "formats": { "json": "JSON", "cef": "CEF (ArcSight)" },
+    "formats": {
+      "json": "JSON",
+      "cef": "CEF (ArcSight)"
+    },
     "secret": "HMAC secret (request signing)",
     "secretSet": "Secret saved (leave empty to keep)",
     "categories": "Forwarded event categories",
@@ -63,5 +78,36 @@
     "forwarded": "SIEM forwarded"
   },
   "save": "Save",
-  "saving": "Saving…"
+  "saving": "Saving…",
+  "trail": {
+    "intro": "The audit trail is chained: every entry carries the digest of the previous one. Altering or removing a row breaks the chain and becomes detectable.",
+    "verifyTitle": "Integrity check",
+    "verifyHint": "Recomputes the digest chain over the whole log. The check itself is recorded in the trail.",
+    "verify": "Check the trail",
+    "verifying": "Checking…",
+    "verifyError": "The integrity check could not complete.",
+    "intact": "Trail intact: {{count}} entry/entries checked, no break.",
+    "broken": "Break detected: the trail has been altered.",
+    "brokenAt": "First break at position {{seq}} (entry {{id}}).",
+    "reason": {
+      "hash_mismatch": "The entry's content no longer matches its digest: it was rewritten.",
+      "broken_link": "An entry is missing: the next link points to an absent entry."
+    },
+    "purgeMarkers": "{{count}} retention purge(s) recorded: erased periods are documented in the trail.",
+    "lastHash": "Last digest:",
+    "lastHashHint": "Keep this digest outside the application (minutes, safe): it will later prove the trail was not rebuilt.",
+    "notChained": "This tenant was created before chaining: existing entries are not chained, new ones are. No alteration is reported.",
+    "exportTitle": "Evidential export",
+    "exportHint": "Produces a CSV file containing the digests, together with its SHA-256 hash and an HMAC seal. A third party can verify it without access to the application. The export is recorded in the trail.",
+    "export": "Export the trail (sealed CSV)",
+    "exporting": "Exporting…",
+    "exported": "Export downloaded. SHA-256 hash: {{sha}}…",
+    "exportError": "The export could not be produced.",
+    "purgeTitle": "Retention",
+    "purgeHint": "Applies the retention period set by the platform. The purge first writes a marker into the trail — so the erased period stays documented — then deletes older entries.",
+    "purge": "Apply retention",
+    "purging": "Purging…",
+    "purged": "{{count}} entry/entries deleted (retention: {{days}} days). A marker was recorded in the trail.",
+    "purgeUnset": "The platform has not set a retention period: the trail is kept indefinitely."
+  }
 }

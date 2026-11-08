@@ -97,10 +97,25 @@ describe('GET /settings/legislation', () => {
     expect(data.pack.currency).toBe('XOF')
   })
 
-  it('refuse un rôle non-admin (RBAC)', async () => {
+  // La LECTURE est ouverte aux rôles RH depuis le 07/11/2026 : le simulateur de
+  // salaire, accessible aux responsables et gestionnaires RH, a besoin du pays
+  // du tenant et de la liste des pays pris en charge. L'ÉCRITURE (PUT, plus
+  // bas) reste réservée à l'admin : changer de pays change barème, cotisations
+  // et devise.
+  it('ouvre la lecture aux rôles RH', async () => {
+    for (const role of ['hr_manager', 'hr_officer']) {
+      queryMock.mockResolvedValueOnce({ rows: [{ default_country_code: 'CIV' }] })
+      const res = await app.inject({
+        method: 'GET', url: '/settings/legislation', headers: auth(tokenFor(app, role)),
+      })
+      expect(res.statusCode, role).toBe(200)
+    }
+  })
+
+  it('refuse un rôle sans besoin de paie (RBAC)', async () => {
     const res = await app.inject({
       method: 'GET', url: '/settings/legislation',
-      headers: auth(tokenFor(app, 'hr_manager')),
+      headers: auth(tokenFor(app, 'manager')),
     })
     expect(res.statusCode).toBe(403)
   })

@@ -50,6 +50,7 @@ import recruitmentRoutes  from './modules/recruitment/recruitment.routes.js'
 import trainingRoutes     from './modules/training/training.routes.js'
 import expensesRoutes     from './modules/expenses/expenses.routes.js'
 import approvalsRoutes    from './modules/approvals/approvals.routes.js'
+import interimsRoutes     from './modules/interims/interims.routes.js'
 import reportingRoutes    from './modules/reporting/reporting.routes.js'
 import careersRoutes      from './modules/careers/careers.routes.js'
 import settingsRoutes     from './modules/settings/settings.routes.js'
@@ -402,6 +403,7 @@ export async function buildApp() {
   await fastify.register(trainingRoutes,    { prefix: '/training' })
   await fastify.register(expensesRoutes,    { prefix: '/expenses' })
   await fastify.register(approvalsRoutes,   { prefix: '/approvals' })
+  await fastify.register(interimsRoutes,    { prefix: '/settings' })
   await fastify.register(reportingRoutes,   { prefix: '/reporting' })
   await fastify.register(careersRoutes,     { prefix: '/careers' })
   await fastify.register(settingsRoutes,    { prefix: '/settings' })

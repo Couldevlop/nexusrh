@@ -230,6 +230,20 @@ async function tenantDefaultSmig(schema: string): Promise<number> {
   }
 }
 
+/**
+ * Devise du pays par défaut du tenant (même résolution que la paie). Un bulletin
+ * repris pour un tenant ghanéen n'est pas en XOF : la valeur par défaut de la
+ * colonne ne vaut que pour la zone UEMOA.
+ */
+async function tenantCurrency(schema: string): Promise<string> {
+  try {
+    const ctx = await loadEmployeeTenantContext(pool, schema, null)
+    return ctx.legislation.legislationPack.currency
+  } catch {
+    return DEFAULT_LEGISLATION_PACK.currency
+  }
+}
+
 function generateTempPassword(): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
   const lower = 'abcdefghijkmnpqrstuvwxyz'
@@ -356,11 +370,26 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // Retourne le pack législatif appliqué (SMIG, barème impôt, cotisations
   // sociales, conventions/congés) + la liste des pays sélectionnables. Choisir
   // un pays installe automatiquement toute la configuration paie/RH du pays.
+  // Lecture ouverte aux rôles RH : le simulateur de salaire a besoin de la
+  // liste des pays pris en charge et du pays du tenant, et il est accessible
+  // aux responsables et gestionnaires RH. L'ÉCRITURE (PUT) reste à l'admin :
+  // changer de pays change barème, cotisations et devise.
+  // `?country=ISO3` retourne le pack d'un AUTRE pays, en lecture seule : le
+  // simulateur en a besoin pour adapter son formulaire (natures d'heures
+  // supplémentaires, santé, ancienneté, devise) AVANT de lancer un calcul.
+  // Cela ne change rien au paramétrage du tenant — seul le PUT le fait.
   fastify.get('/legislation', {
-    preHandler: [fastify.authorize('admin')],
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer')],
     handler: async (request, reply) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
+      const asked = (request.query as { country?: string } | undefined)?.country
+      if (asked !== undefined) {
+        if (!/^[A-Za-z]{3}$/.test(asked) || !isSupportedCountry(asked.toUpperCase())) {
+          return reply.status(400).send({ error: `Pays non pris en charge : ${asked}` })
+        }
+        return reply.send({ data: buildLegislationConfig(asked.toUpperCase()) })
+      }
       try {
         const res = await pool.query<{ default_country_code: string | null }>(
           `SELECT default_country_code FROM platform.tenants WHERE id = $1 LIMIT 1`, [tenantId],
@@ -2716,17 +2745,30 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
               periodId = np.rows[0].id
             }
             try {
+              // Colonnes RÉELLES de pay_slips : `total_cnps_sal`, `its`,
+              // `total_deductions` — et `base_salary`, NOT NULL. L'ancienne
+              // version citait employee_contributions / net_before_tax /
+              // income_tax, qui n'ont jamais existé : chaque ligne échouait.
+              // Invariant protégé par import-schema-conformity.golden.test.ts.
+              const brutLigne = parseInt(get(row, 'salaire_brut')) || 0
+              const cnpsSal   = parseInt(get(row, 'cotis_cnps_sal')) || 0
+              const itsLigne  = parseInt(get(row, 'its')) || 0
               await pool.query(`
-                INSERT INTO "${schema}".pay_slips (employee_id, period_id, month, gross_salary, employee_contributions, net_before_tax, income_tax, net_payable, employer_cost, status)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'generated')
+                INSERT INTO "${schema}".pay_slips
+                  (employee_id, period_id, month, base_salary, gross_salary,
+                   total_cnps_sal, its, total_deductions, net_payable, employer_cost,
+                   currency, status)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'generated')
               `, [
                 emp.rows[0].id, periodId, month,
-                parseInt(get(row, 'salaire_brut')) || 0,
-                parseInt(get(row, 'cotis_cnps_sal')) || 0,
-                (parseInt(get(row, 'salaire_brut')) || 0) - (parseInt(get(row, 'cotis_cnps_sal')) || 0),
-                parseInt(get(row, 'its')) || 0,
+                // Le modèle ne porte qu'un salaire : il sert de base et de brut.
+                brutLigne, brutLigne,
+                cnpsSal, itsLigne,
+                // Retenues salariales = CNPS salarié + impôt sur salaire.
+                cnpsSal + itsLigne,
                 parseInt(get(row, 'net_paye')) || 0,
                 parseInt(get(row, 'cout_employeur')) || 0,
+                await tenantCurrency(schema),
               ])
               inserted++
             } catch (e) { errors.push(`Ligne ${i + 2}: ${(e as Error).message}`); skipped++ }

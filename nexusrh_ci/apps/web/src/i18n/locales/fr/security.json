@@ -5,12 +5,21 @@
   "loadError": "Impossible de charger la configuration.",
   "saved": "Configuration enregistrée.",
   "saveError": "Erreur lors de l'enregistrement.",
-  "tabs": { "sso": "SSO / Annuaire", "siem": "SIEM", "events": "Événements" },
+  "tabs": {
+    "sso": "SSO / Annuaire",
+    "siem": "SIEM",
+    "events": "Événements",
+    "trail": "Piste d'audit"
+  },
   "sso": {
     "intro": "Déléguez l'authentification à votre fournisseur d'identité (Azure AD / Entra, ADFS, Okta, Keycloak…). Les utilisateurs dont l'e-mail relève d'un domaine géré sont authentifiés via le SSO.",
     "enabled": "Activer le SSO pour ce tenant",
     "provider": "Protocole",
-    "providers": { "oidc": "OpenID Connect (OIDC)", "saml": "SAML 2.0", "ldap": "LDAP / Active Directory" },
+    "providers": {
+      "oidc": "OpenID Connect (OIDC)",
+      "saml": "SAML 2.0",
+      "ldap": "LDAP / Active Directory"
+    },
     "issuer": "Issuer / Metadata URL",
     "clientId": "Client ID",
     "clientSecret": "Client secret",
@@ -32,10 +41,16 @@
     "intro": "Transmettez en temps réel les événements de sécurité (connexions, accès aux données sensibles, changements de configuration) vers votre puits SIEM.",
     "enabled": "Activer l'export SIEM",
     "transport": "Transport",
-    "transports": { "webhook": "Webhook HTTPS", "syslog_http": "Syslog via HTTP" },
+    "transports": {
+      "webhook": "Webhook HTTPS",
+      "syslog_http": "Syslog via HTTP"
+    },
     "endpoint": "URL du collecteur",
     "format": "Format",
-    "formats": { "json": "JSON", "cef": "CEF (ArcSight)" },
+    "formats": {
+      "json": "JSON",
+      "cef": "CEF (ArcSight)"
+    },
     "secret": "Secret HMAC (signature des envois)",
     "secretSet": "Secret enregistré (laisser vide pour conserver)",
     "categories": "Catégories d'événements transmises",
@@ -63,5 +78,36 @@
     "forwarded": "Transmis SIEM"
   },
   "save": "Enregistrer",
-  "saving": "Enregistrement…"
+  "saving": "Enregistrement…",
+  "trail": {
+    "intro": "La piste d'audit est chaînée : chaque entrée porte l'empreinte de la précédente. Toute modification ou suppression d'une ligne rompt la chaîne et devient détectable.",
+    "verifyTitle": "Contrôle d'intégrité",
+    "verifyHint": "Recalcule la chaîne d'empreintes sur l'ensemble du journal. Le contrôle est lui-même consigné dans la piste.",
+    "verify": "Contrôler la piste",
+    "verifying": "Contrôle en cours…",
+    "verifyError": "Le contrôle d'intégrité n'a pas pu aboutir.",
+    "intact": "Piste intacte : {{count}} entrée(s) contrôlée(s), aucune rupture.",
+    "broken": "Rupture détectée : la piste a été modifiée.",
+    "brokenAt": "Première rupture au rang {{seq}} (entrée {{id}}).",
+    "reason": {
+      "hash_mismatch": "Le contenu de l'entrée ne correspond plus à son empreinte : elle a été réécrite.",
+      "broken_link": "Une entrée manque : le maillon suivant pointe vers une entrée absente."
+    },
+    "purgeMarkers": "{{count}} purge(s) de rétention consignée(s) : les périodes effacées sont documentées dans la piste.",
+    "lastHash": "Dernière empreinte :",
+    "lastHashHint": "Conservez cette empreinte hors de l'application (procès-verbal, coffre) : elle permettra plus tard de prouver que la piste n'a pas été reconstruite.",
+    "notChained": "Ce tenant a été créé avant le chaînage : les entrées existantes ne sont pas chaînées, les nouvelles le sont. Aucune altération n'est signalée.",
+    "exportTitle": "Export probant",
+    "exportHint": "Produit un fichier CSV contenant les empreintes, accompagné de son condensé SHA-256 et d'un sceau HMAC. Un tiers peut le vérifier sans accéder à l'application. L'export est consigné dans la piste.",
+    "export": "Exporter la piste (CSV scellé)",
+    "exporting": "Export en cours…",
+    "exported": "Export téléchargé. Condensé SHA-256 : {{sha}}…",
+    "exportError": "L'export n'a pas pu être produit.",
+    "purgeTitle": "Rétention",
+    "purgeHint": "Applique la durée de conservation définie par la plateforme. La purge écrit d'abord un marqueur dans la piste — la période effacée reste donc documentée — puis supprime les entrées plus anciennes.",
+    "purge": "Appliquer la rétention",
+    "purging": "Purge en cours…",
+    "purged": "{{count}} entrée(s) supprimée(s) (conservation : {{days}} jours). Un marqueur a été consigné dans la piste.",
+    "purgeUnset": "Aucune durée de conservation n'est définie par la plateforme : la piste est conservée sans limite."
+  }
 }

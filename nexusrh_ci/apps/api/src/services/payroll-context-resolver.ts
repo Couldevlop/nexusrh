@@ -33,6 +33,7 @@
  *   - A09 (Audit) : caller doit logger toute résolution par fallback
  */
 import {
+  COUNTRY_TO_PACK_CODE,
   DEFAULT_LEGISLATION_PACK,
   LEGISLATION_PACKS,
   type LegislationPack,
@@ -71,17 +72,12 @@ export interface ResolvedPayrollContext {
 // Mapping pays ISO alpha-3 → code pack par défaut, si ni `defaultPackCode` ni
 // `legislationPackCode` filiale n'est défini. Permet une config minimale :
 // l'admin choisit juste un pays, le pack actif correspondant est appliqué.
-const COUNTRY_TO_PACK: Record<string, string> = {
-  CIV: 'CIV-2024',
-  BEN: 'BEN-2024',
-  TGO: 'TGO-2024',
-  BFA: 'BFA-2024',
-  SEN: 'SEN-2024',
-  MLI: 'MLI-2024',
-  NER: 'NER-2024',
-  TCD: 'TCD-2024',
-  NGA: 'NGA-2024',
-}
+// Table pays → pack : importée, jamais recopiée. La copie locale qui vivait
+// ici s'était arrêtée à neuf pays alors que seize packs existent : tout tenant
+// d'un pays ajouté depuis (Ghana, Cameroun, Gabon, Congo, Centrafrique,
+// Guinée équatoriale, Guinée-Bissau) retombait silencieusement sur le pack
+// ivoirien — SMIG, cotisations, barème d'impôt et devise d'un autre pays.
+const COUNTRY_TO_PACK = COUNTRY_TO_PACK_CODE
 
 function packFromCode(code: string | null | undefined): { pack: LegislationPack; code: string } {
   if (code && LEGISLATION_PACKS[code]) {
