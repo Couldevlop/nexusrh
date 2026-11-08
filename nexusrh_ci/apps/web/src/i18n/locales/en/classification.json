@@ -35,7 +35,7 @@
     "readOnlyHint": "Read-only — only the administrator can edit the rules.",
     "enforcementTitle": "What the grid enforces",
     "enforcementExport": "Exports are refused when the level or the role does not allow them: employee list, payroll ledger, SAGE exports and CNPS declaration. Every refusal is recorded in the audit trail.",
-    "enforcementMask": "Pay data is masked on screens and documents (employee record, contracts, career, offboarding, recruitment, reporting, assistant) for roles excluded from the level.",
+    "enforcementMask": "Level 4 data (disciplinary actions) is refused with a 404 for roles that are not allowed: a 403 would confirm the action exists. Every authorised view is logged.",
     "enforcementSelf": "Two deliberate limits: the grid can only tighten — it never reopens what permissions close — and it does not apply to an employee viewing their own record."
   },
   "categories": {

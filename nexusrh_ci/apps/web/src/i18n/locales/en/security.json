@@ -102,6 +102,7 @@
     "export": "Export the trail (sealed CSV)",
     "exporting": "Exporting…",
     "exported": "Export downloaded. SHA-256 hash: {{sha}}…",
+    "exportedUnsealed": "Export downloaded, but NOT SEALED. SHA-256 hash: {{sha}}… — no signing key is configured on the platform: the file is accurate, but a third party cannot prove it came from this application.",
     "exportError": "The export could not be produced.",
     "purgeTitle": "Retention",
     "purgeHint": "Applies the retention period set by the platform. The purge first writes a marker into the trail — so the erased period stays documented — then deletes older entries.",

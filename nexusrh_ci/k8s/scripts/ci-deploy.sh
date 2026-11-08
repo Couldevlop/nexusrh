@@ -72,8 +72,37 @@ echo "OK garde-fous : namespace=$NS_CHART, exception WAF presente"
 REV_AVANT=$(helm list -n "$NS" -o json | sed -n 's/.*"revision":"\([0-9]*\)".*/\1/p' | head -1)
 echo "OK revision helm avant deploiement : ${REV_AVANT:-inconnue}  (retour arriere : helm rollback nexusrh-ci ${REV_AVANT:-N} -n $NS)"
 
+# -- Dependances Helm --------------------------------------------------------
+# `helm dependency update` retelechargeait les quatre sous-charts a CHAQUE
+# deploiement, dont meilisearch depuis GitHub Releases. Un 504 de GitHub a donc
+# fait echouer deux fois de suite (08/11/2026) un deploiement dont toutes les
+# dependances etaient DEJA sur le disque -- une panne de production causee par
+# l'indisponibilite d'un tiers, sans aucun rapport avec le code livre.
+#
+# On ne telecharge plus que ce qui manque. `helm dependency list` donne un
+# statut par dependance ; tant qu'elles sont toutes `ok`, il n'y a rien a aller
+# chercher.
+if helm dependency list "$CHART" | awk 'NR > 1 && NF >= 4 && $4 != "ok" { manque = 1 } END { exit manque ? 0 : 1 }'; then
+  echo "   dependances helm incompletes : telechargement"
+  helm dependency list "$CHART" | awk 'NR > 1 && NF >= 4 && $4 != "ok" { print "     manquant : " $1 " " $2 }'
+  # Trois tentatives : une indisponibilite passagere d'un depot de charts ne
+  # doit pas suffire a interrompre un deploiement.
+  essai=1
+  until helm dependency update "$CHART"; do
+    if [ "$essai" -ge 3 ]; then
+      echo "ERREUR : impossible de recuperer les dependances helm apres 3 tentatives." >&2
+      echo "         La production n'a pas ete touchee." >&2
+      exit 1
+    fi
+    essai=$((essai + 1))
+    echo "   echec du telechargement, nouvelle tentative ($essai/3) dans 15 s" >&2
+    sleep 15
+  done
+else
+  echo "OK dependances helm deja presentes : aucun telechargement"
+fi
+
 # -- Helm --------------------------------------------------------------------
-helm dependency update "$CHART"
 kubectl delete deployment nexusrh-ci-infra-redis -n "$NS" --ignore-not-found=true
 
 # values.prod.yaml utilise tag: latest + imagePullPolicy: Always ; le build a
