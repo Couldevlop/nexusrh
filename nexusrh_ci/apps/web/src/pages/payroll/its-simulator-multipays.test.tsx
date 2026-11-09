@@ -440,3 +440,25 @@ describe('Ce qui est affiché vient du serveur', () => {
     await waitFor(() => expect(screen.getByText(/simulator.title Côte d'Ivoire/)).toBeTruthy())
   })
 })
+
+describe('Changer de pays APRÈS un calcul', () => {
+  it('les repères légaux suivent le nouveau pays, sans attendre un recalcul', async () => {
+    // Constaté en production : après un calcul, l'écran gardait le SMIG et le
+    // barème du pays CALCULÉ. En passant du Sénégal au Bénin, la RH
+    // lisait encore « salaire minimum légal : 64 710 FCFA » — le minimum d'un
+    // AUTRE pays — tant qu'elle n'avait pas recliqué sur Calculer. Un repère
+    // légal faux est pire que pas de repère.
+    renderPage()
+    await ready()
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+
+    countryPack = pack({ smigMensuel: 52_000 })
+    fireEvent.change(countrySelect(), { target: { value: 'GHA' } })
+
+    await waitFor(() => expect(screen.getByText(/simulator.smigHint 52 000/)).toBeTruthy())
+    // Le titre, lui, continue de nommer le pays réellement simulé : c'est
+    // un fait sur le résultat affiché, pas un repère légal pour la saisie.
+    expect(screen.queryByText(/simulator.smigHint 75 000/)).toBeNull()
+  })
+})

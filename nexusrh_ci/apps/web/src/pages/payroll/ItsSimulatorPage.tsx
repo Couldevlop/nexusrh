@@ -246,10 +246,19 @@ export default function ItsSimulatorPage() {
   const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`
 
   const brut = result ? result.input.brut : brutMensuel + primes
-  const smig = result?.pack.smigMensuel ?? formPack?.smigMensuel ?? 0
-  const brackets = result?.pack.brackets ?? formPack?.tranchesImpotSalaire ?? []
+  // Un résultat porte sur le pays AVEC LEQUEL il a été calculé. Dès que
+  // l'utilisateur en choisit un autre, ce résultat ne décrit plus l'écran :
+  // le laisser piloter les repères affichait le SMIG et le barème du pays
+  // précédent jusqu'au recalcul — un minimum légal faux, présenté comme
+  // celui du pays sélectionné.
+  const resultatDuPaysAffiche = result && result.input.countryCode === pays ? result : null
+  const smig = resultatDuPaysAffiche?.pack.smigMensuel ?? formPack?.smigMensuel ?? 0
+  const brackets = resultatDuPaysAffiche?.pack.brackets ?? formPack?.tranchesImpotSalaire ?? []
+  // Le TITRE, lui, nomme le pays RÉELLEMENT simulé par le serveur, même s'il
+  // diffère de la sélection : si le moteur retombe sur un autre pack, le titre
+  // doit le dire plutôt que de reprendre docilement la liste déroulante.
   const packName = result?.pack.name ?? packQ.data?.countryLabel ?? tenantQ.data?.countryLabel ?? ''
-  const packUsable = result ? result.pack.usable : (formPack?.status ?? 'active') === 'active'
+  const packUsable = resultatDuPaysAffiche ? resultatDuPaysAffiche.pack.usable : (formPack?.status ?? 'active') === 'active'
 
   const tauxEffort = result
     ? Math.round((result.cnps.salarial + result.its.net + (result.cmu?.salarial ?? 0)) / result.input.brut * 1000) / 10
