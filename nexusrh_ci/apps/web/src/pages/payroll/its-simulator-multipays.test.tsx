@@ -129,9 +129,16 @@ const ready = async () => {
 
 /** Pack renvoyé pour `?country=` ; par défaut le même que celui du tenant. */
 let countryPack: Record<string, unknown> | null = null
+/**
+ * Grille de classification du tenant, PAR PAYS — le serveur ne rend que les
+ * catégories applicables au pays demandé. Vide par défaut : la grande majorité
+ * des tests de ce banc décrivent un tenant qui n'en a pas paramétré.
+ */
+let grille: Record<string, Array<{ key: string; label: string; minimum: number | null; countryCode: string | null }>> = {}
 
 beforeEach(() => {
   countryPack = null
+  grille = {}
   getMock.mockReset().mockImplementation((url: string) => {
     if (url.startsWith('/settings/legislation')) {
       const m = /country=([A-Za-z]{3})/.exec(url)
@@ -141,6 +148,11 @@ beforeEach(() => {
         })
       }
       return Promise.resolve({ data: { data: legislation() } })
+    }
+    if (url.startsWith('/settings/professional-categories')) {
+      const m = /country=([A-Za-z]{3})/.exec(url)
+      const pays = m ? m[1]!.toUpperCase() : ''
+      return Promise.resolve({ data: { data: grille[pays] ?? [] } })
     }
     return Promise.resolve({ data: { data: [] } })
   })
@@ -438,5 +450,127 @@ describe('Ce qui est affiché vient du serveur', () => {
     expect(screen.getByText(/simulator.title Sénégal/)).toBeTruthy()
     clickCalculate()
     await waitFor(() => expect(screen.getByText(/simulator.title Côte d'Ivoire/)).toBeTruthy())
+  })
+})
+
+describe('Changer de pays APRÈS un calcul', () => {
+  it('les repères légaux suivent le nouveau pays, sans attendre un recalcul', async () => {
+    // Constaté en production : après un calcul, l'écran gardait le SMIG et le
+    // barème du pays CALCULÉ. En passant du Sénégal au Bénin, la RH
+    // lisait encore « salaire minimum légal : 64 710 FCFA » — le minimum d'un
+    // AUTRE pays — tant qu'elle n'avait pas recliqué sur Calculer. Un repère
+    // légal faux est pire que pas de repère.
+    renderPage()
+    await ready()
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+
+    countryPack = pack({ smigMensuel: 52_000 })
+    fireEvent.change(countrySelect(), { target: { value: 'GHA' } })
+
+    await waitFor(() => expect(screen.getByText(/simulator.smigHint 52 000/)).toBeTruthy())
+    // Le titre, lui, continue de nommer le pays réellement simulé : c'est
+    // un fait sur le résultat affiché, pas un repère légal pour la saisie.
+    expect(screen.queryByText(/simulator.smigHint 75 000/)).toBeNull()
+  })
+})
+describe('Catégorie professionnelle — grille du tenant', () => {
+  const CADRE = { key: 'cadre', label: 'Cadre', minimum: 450_000, countryCode: null }
+  const CINQ  = { key: 'ci_5e', label: '5e catégorie', minimum: 120_000, countryCode: 'CIV' }
+  const SANS  = { key: 'stage', label: 'Stagiaire', minimum: null, countryCode: null }
+  /** Le champ Catégorie est le premier contrôle de la section Classification. */
+  const champCategorie = () => screen.getByLabelText('simulator.categoryLabel') as HTMLElement
+  const listeCategorie = () =>
+    [...document.querySelectorAll('select')].find(s =>
+      [...s.options].some(o => o.value === 'cadre' || o.value === '__free__')) as HTMLSelectElement
+
+  it('sans grille paramétrée, la catégorie reste en SAISIE LIBRE', async () => {
+    // Zéro régression pour un tenant qui n'a rien configuré : aucune grille
+    // n'est fournie par défaut, parce qu'un minimum conventionnel ne vient pas
+    // de la loi mais de l'accord signé par le client.
+    renderPage()
+    await ready()
+    expect(champCategorie().tagName).toBe('INPUT')
+    expect(listeCategorie()).toBeUndefined()
+  })
+
+  it('avec une grille, la catégorie devient une LISTE DÉROULANTE', async () => {
+    grille = { SEN: [CADRE] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    expect([...listeCategorie().options].map(o => o.value)).toEqual(['', 'cadre', '__free__'])
+  })
+
+  it('choisir une catégorie envoie son libellé ET pré-remplit le minimum conventionnel', async () => {
+    // C'est l'intérêt de la grille : le minimum conventionnel n'est plus à
+    // retrouver dans la convention collective à chaque simulation.
+    grille = { SEN: [CADRE] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    fireEvent.change(listeCategorie(), { target: { value: 'cadre' } })
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    expect(payload().professionalCategory).toBe('Cadre')
+    expect(payload().categoryMinimum).toBe(450_000)
+  })
+
+  it('une catégorie SANS minimum n’en invente pas un', async () => {
+    grille = { SEN: [SANS] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    fireEvent.change(listeCategorie(), { target: { value: 'stage' } })
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    expect(payload().professionalCategory).toBe('Stagiaire')
+    expect(payload().categoryMinimum).toBeUndefined()
+  })
+
+  it('changer de catégorie RÉÉCRIT le minimum, sans garder celui de la précédente', async () => {
+    // Même défaut que le SMIG figé : un minimum laissé là par la catégorie
+    // d'avant décrirait une autre sélection que celle affichée.
+    grille = { SEN: [CADRE, SANS] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    fireEvent.change(listeCategorie(), { target: { value: 'cadre' } })
+    fireEvent.change(listeCategorie(), { target: { value: 'stage' } })
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    expect(payload().categoryMinimum).toBeUndefined()
+  })
+
+  it('« Autre » rouvre la saisie libre sans perdre la liste', async () => {
+    grille = { SEN: [CADRE] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    fireEvent.change(listeCategorie(), { target: { value: '__free__' } })
+    const libre = screen.getByLabelText('simulator.categoryLabel') as HTMLInputElement
+    fireEvent.change(libre, { target: { value: 'Hors grille' } })
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    expect(payload().professionalCategory).toBe('Hors grille')
+  })
+
+  it('changer de PAYS relâche la catégorie qui n’appartient pas à sa grille', async () => {
+    // Une grille signée en Côte d'Ivoire n'engage pas une filiale ghanéenne :
+    // laisser la catégorie sélectionnée enverrait au moteur un minimum
+    // conventionnel qui n'est pas celui du pays simulé — exactement le défaut
+    // corrigé sur le SMIG affiché.
+    grille = { SEN: [CINQ], GHA: [] }
+    renderPage()
+    await ready()
+    await waitFor(() => expect(listeCategorie()).toBeDefined())
+    fireEvent.change(listeCategorie(), { target: { value: 'ci_5e' } })
+
+    fireEvent.change(countrySelect(), { target: { value: 'GHA' } })
+    await waitFor(() => expect(champCategorie().tagName).toBe('INPUT'))
+    clickCalculate()
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    expect(payload().professionalCategory).toBeUndefined()
+    expect(payload().categoryMinimum).toBeUndefined()
   })
 })

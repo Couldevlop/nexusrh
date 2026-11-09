@@ -59,7 +59,13 @@ export async function lireFichierImport(file: File): Promise<ImportTable> {
   const form = new FormData()
   form.append('file', file, file.name)
   try {
-    const res = await api.post<{ data: ImportTable }>('/settings/import/parse', form)
+    // L'en-tête est OBLIGATOIRE : l'instance axios pose 'application/json' par
+    // défaut, axios v1 sérialise alors le FormData, et @fastify/multipart
+    // répond 406 « the request is not multipart ». Même contrainte que les
+    // autres uploads du web.
+    const res = await api.post<{ data: ImportTable }>('/settings/import/parse', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return res.data.data
   } catch (err: unknown) {
     const e = err as { response?: { data?: { error?: string } } }

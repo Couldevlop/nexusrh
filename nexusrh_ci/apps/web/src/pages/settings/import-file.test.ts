@@ -81,6 +81,17 @@ describe('Lecture d’un classeur', () => {
     expect((corps as FormData).get('file')).toBeTruthy()
   })
 
+  it('pose l’en-tête multipart, sans quoi axios sérialise le FormData en JSON', async () => {
+    // Constaté en production : l'instance axios pose 'application/json' par
+    // défaut, axios v1 sérialise alors le FormData, et @fastify/multipart
+    // répond 406 « the request is not multipart ». Le fichier n'arrive jamais.
+    post.mockResolvedValueOnce({ data: { data: TABLE } })
+    await lireFichierImport(fichier('r.xlsx'))
+    const [, , options] = post.mock.calls[0]!
+    expect((options as { headers?: Record<string, string> })?.headers?.['Content-Type'])
+      .toBe('multipart/form-data')
+  })
+
   it('reprend TEL QUEL le motif de refus du serveur', async () => {
     // « Trop de colonnes (max 50) » est actionnable ; « échec » ne l'est pas.
     post.mockRejectedValueOnce({ response: { data: { error: 'Trop de colonnes (max 50).' } } })
