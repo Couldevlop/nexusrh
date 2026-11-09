@@ -38,6 +38,22 @@ type OvertimeKind = (typeof OVERTIME_KINDS)[number]
 
 interface QualificationLevel { key: string; label: string; yearsAfterBac: number; usualJobLevel: string }
 
+/**
+ * Catégorie de la grille de classification du tenant
+ * (`GET /settings/professional-categories`, paramétrée par l'admin dans
+ * Paramètres → Législation). Elle porte le minimum conventionnel, qui n'est pas
+ * une valeur légale : il vient de la convention collective signée par le
+ * client. Grille non paramétrée → saisie libre, comme avant.
+ */
+interface ProfessionalCategory {
+  key: string
+  label: string
+  minimum: number | null
+  countryCode: string | null
+}
+/** Valeur de la liste déroulante qui rouvre la saisie libre. */
+const CATEGORIE_LIBRE = '__free__'
+
 /** Pack législatif, tel que le serveur le sert (extrait utile à l'écran). */
 interface PackView {
   code: string
@@ -148,6 +164,7 @@ export default function ItsSimulatorPage() {
   const [avantages, setAvantages] = useState(0)
   // Profil
   const [categorie, setCategorie] = useState('')
+  const [categorieKey, setCategorieKey] = useState('')
   const [minCategoriel, setMinCategoriel] = useState<string>('')
   const [qualification, setQualification] = useState('')
   const [situation, setSituation] = useState<MaritalStatus>('married')
@@ -183,9 +200,69 @@ export default function ItsSimulatorPage() {
     staleTime: 10 * 60 * 1000,
   })
 
+  // Grille de classification du tenant, RESTREINTE au pays sélectionné : une
+  // grille signée en Côte d'Ivoire ne propose pas son minimum conventionnel à
+  // une embauche béninoise. Le serveur applique le filtre ; la page ne décide
+  // rien. Grille absente → `[]`, et le champ reste en saisie libre.
+  const categoriesQ = useQuery({
+    queryKey: ['settings', 'professional-categories', pays],
+    queryFn: async () =>
+      (await api.get(`/settings/professional-categories?country=${pays}`)).data.data as ProfessionalCategory[],
+    enabled: !!pays,
+    staleTime: 10 * 60 * 1000,
+  })
+  const categories = categoriesQ.data ?? []
+
   useEffect(() => {
     if (!pays && tenantQ.data?.countryCode) setPays(tenantQ.data.countryCode)
   }, [tenantQ.data?.countryCode, pays])
+
+  /**
+   * Change le pays simulé, en RELÂCHANT la catégorie professionnelle.
+   *
+   * Une catégorie appartient à la grille d'un pays : la garder enverrait au
+   * moteur un minimum conventionnel qui n'est pas celui du pays simulé. Le
+   * relâchement se fait ICI, au changement de pays, et non à l'arrivée de la
+   * nouvelle grille : pendant le chargement, le champ est déjà revenu en saisie
+   * libre et un calcul lancé à cet instant emporterait l'ancienne catégorie.
+   */
+  const changerPays = (code: string) => {
+    setPays(code)
+    setCategorieKey('')
+    setCategorie('')
+    setMinCategoriel('')
+  }
+
+  // Filet : la grille peut aussi changer sous les pieds de l'écran (l'admin la
+  // modifie dans un autre onglet). Une sélection qui n'y est plus est relâchée.
+  useEffect(() => {
+    if (!categorieKey || categorieKey === CATEGORIE_LIBRE) return
+    if (categoriesQ.isPending || categories.length === 0) return
+    if (categories.some((c) => c.key === categorieKey)) return
+    setCategorieKey('')
+    setCategorie('')
+    setMinCategoriel('')
+  }, [categorieKey, categories, categoriesQ.isPending])
+
+  /**
+   * Choix dans la liste : le libellé part au moteur, et le minimum
+   * conventionnel est pré-rempli depuis la grille.
+   *
+   * Le minimum est TOUJOURS réécrit, même quand la catégorie n'en porte pas :
+   * laisser celui de la catégorie précédente afficherait un repère qui ne
+   * décrit plus la sélection. Il reste modifiable à la main.
+   */
+  const choisirCategorie = (key: string) => {
+    setCategorieKey(key)
+    if (key === '' || key === CATEGORIE_LIBRE) {
+      setCategorie('')
+      setMinCategoriel('')
+      return
+    }
+    const c = categories.find((x) => x.key === key)
+    setCategorie(c?.label ?? '')
+    setMinCategoriel(c?.minimum != null ? String(c.minimum) : '')
+  }
 
   const formPack = packQ.data?.pack ?? tenantQ.data?.pack ?? null
   const overtimeRates = formPack?.leaveRules?.overtimeRates ?? {}
@@ -304,7 +381,7 @@ export default function ItsSimulatorPage() {
             <h2 className="font-semibold flex items-center gap-2"><Globe2 className="h-4 w-4" /> {t('simulator.countrySection')}</h2>
             <div className="space-y-1.5">
               <label className={labelCls}>{t('simulator.countryLabel')}</label>
-              <select className={inputCls} value={pays} onChange={e => setPays(e.target.value)}>
+              <select className={inputCls} value={pays} onChange={e => changerPays(e.target.value)}>
                 {(tenantQ.data?.available ?? []).map(c => (
                   <option key={c.countryCode} value={c.countryCode}>
                     {c.name}{c.status === 'stub' ? ` — ${t('simulator.countryStub')}` : ''}
@@ -372,8 +449,32 @@ export default function ItsSimulatorPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className={labelCls}>{t('simulator.categoryLabel')}</label>
-                <input type="text" className={inputCls} value={categorie} placeholder={t('simulator.categoryPlaceholder')}
-                  onChange={e => setCategorie(e.target.value)} maxLength={50} />
+                {/* Grille paramétrée par l'admin du tenant → liste déroulante,
+                    qui pré-remplit aussi le minimum conventionnel. Pas de
+                    grille → saisie libre, à l'identique d'avant. */}
+                {categories.length > 0 ? (
+                  <>
+                    <select className={inputCls} value={categorieKey}
+                      onChange={e => choisirCategorie(e.target.value)}>
+                      <option value="">{t('simulator.categoryNone')}</option>
+                      {categories.map(c => (
+                        <option key={c.key} value={c.key}>
+                          {c.label}{c.minimum != null ? ` — ${money(c.minimum)}` : ''}
+                        </option>
+                      ))}
+                      <option value={CATEGORIE_LIBRE}>{t('simulator.categoryFree')}</option>
+                    </select>
+                    {categorieKey === CATEGORIE_LIBRE && (
+                      <input type="text" className={inputCls} value={categorie}
+                        placeholder={t('simulator.categoryPlaceholder')} aria-label={t('simulator.categoryLabel')}
+                        onChange={e => setCategorie(e.target.value)} maxLength={50} />
+                    )}
+                  </>
+                ) : (
+                  <input type="text" className={inputCls} value={categorie} placeholder={t('simulator.categoryPlaceholder')}
+                    aria-label={t('simulator.categoryLabel')}
+                    onChange={e => setCategorie(e.target.value)} maxLength={50} />
+                )}
               </div>
               <div className="space-y-1.5">
                 <label className={labelCls}>{t('simulator.categoryMinimumLabel', { currency: devise })}</label>
@@ -381,6 +482,7 @@ export default function ItsSimulatorPage() {
                   onChange={e => setMinCategoriel(e.target.value)} min={0} step={5000} />
               </div>
             </div>
+            {categories.length > 0 && <p className={hintCls}>{t('simulator.categoryFromGrid')}</p>}
             <p className={hintCls}>
               {seniorityOnCategory ? t('simulator.categoryMinimumHintSeniority') : t('simulator.categoryMinimumHint')}
             </p>

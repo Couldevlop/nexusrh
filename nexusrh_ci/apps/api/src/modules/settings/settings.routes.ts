@@ -30,6 +30,10 @@ import {
   DEFAULT_DEPARTURE_REASON_CATEGORIES, departureReasonCategoriesSchema, parseDepartureReasonCategories,
 } from '../../services/departure-reasons.service.js'
 import {
+  professionalCategoriesSchema, parseProfessionalCategories, categoriesForCountry,
+  PROFESSIONAL_CATEGORIES_MAX,
+} from '../../services/professional-categories.service.js'
+import {
   effectiveTerminationRules, parseTerminationRules, terminationRulesSchema,
 } from '../../services/termination-rules.service.js'
 import { effectiveLeavePolicy, leavePolicySchema, parseLeavePolicy } from '../../services/paid-leave.service.js'
@@ -555,6 +559,94 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           after: (next ?? DEFAULT_DEPARTURE_REASON_CATEGORIES).map((c) => c.key),
         }, request.ip ?? null)
         return reply.send({ data: next ?? parseDepartureReasonCategories(null), customized: next !== null })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── GET /settings/professional-categories — grille de classification ──────
+  // Grille de la convention collective du tenant. Liste VIDE si rien n'est
+  // paramétré : les écrans retombent alors sur la saisie libre. `?country=XXX`
+  // ne rend que les catégories applicables à ce pays (une grille signée dans un
+  // pays ne vaut pas dans un autre).
+  fastify.get('/professional-categories', {
+    preHandler: [fastify.authorize('admin', 'hr_manager', 'hr_officer', 'readonly', 'dg')],
+    schema: { tags: ['settings'], summary: 'Grille des catégories professionnelles du tenant' },
+    handler: async (request, reply) => {
+      const asked = (request.query as { country?: string } | undefined)?.country
+      let pays: string | null = null
+      if (asked !== undefined && asked !== '') {
+        if (!/^[A-Za-z]{3}$/.test(asked) || !isSupportedCountry(asked.toUpperCase())) {
+          return reply.status(400).send({ error: `Pays non pris en charge : ${asked}` })
+        }
+        pays = asked.toUpperCase()
+      }
+      try {
+        const res = await pool.query<{ professional_categories: unknown }>(
+          `SELECT professional_categories FROM platform.tenants WHERE schema_name = $1 LIMIT 1`,
+          [request.user.schemaName],
+        )
+        if (!res.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        const raw = res.rows[0].professional_categories
+        const toutes = parseProfessionalCategories(raw)
+        return reply.send({
+          data: pays === null ? toutes : categoriesForCountry(toutes, pays),
+          configured: toutes.length > 0,
+          max: PROFESSIONAL_CATEGORIES_MAX,
+        })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: 'Erreur serveur' })
+      }
+    },
+  })
+
+  // ── PUT /settings/professional-categories — définit la grille (admin) ──────
+  // OWASP A03 : clés/libellés/montants validés, clés uniques, pays connu du
+  // catalogue ; A09 : audité (la grille porte des minima conventionnels, donc
+  // des conséquences de paie). `reset` efface la grille et rend la saisie libre.
+  fastify.put('/professional-categories', {
+    preHandler: [fastify.authorize('admin')],
+    config: SETTINGS_WRITE_RATE_LIMIT,
+    schema: { tags: ['settings'], summary: 'Définit la grille des catégories professionnelles' },
+    handler: async (request, reply) => {
+      const parsed = z.union([
+        z.object({ categories: professionalCategoriesSchema }).strict(),
+        z.object({ reset: z.literal(true) }).strict(),
+      ]).safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Grille de catégories invalide',
+          details: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        })
+      }
+      const next = 'categories' in parsed.data ? parsed.data.categories : null
+      // Un pays inconnu du catalogue rendrait la catégorie INVISIBLE partout :
+      // refusé à l'écriture plutôt que découvert plus tard sur un écran vide.
+      const inconnu = (next ?? []).find((c) => c.countryCode !== null && !isSupportedCountry(c.countryCode))
+      if (inconnu) {
+        return reply.status(400).send({ error: `Pays non pris en charge : ${inconnu.countryCode}` })
+      }
+      const schema = request.user.schemaName
+      try {
+        const before = await pool.query<{ professional_categories: unknown }>(
+          `SELECT professional_categories FROM platform.tenants WHERE schema_name = $1 LIMIT 1`, [schema],
+        )
+        if (!before.rows[0]) return reply.status(404).send({ error: 'Tenant introuvable' })
+        await pool.query(
+          `UPDATE platform.tenants SET professional_categories = $1::jsonb, updated_at = now() WHERE schema_name = $2`,
+          [next === null ? null : JSON.stringify(next), schema],
+        )
+        auditLogSettings(schema, request.user.sub, 'settings.professional_categories_updated', request.user.tenantId ?? null, {
+          // Les minima font partie du changement audité : c'est ce qui pèse sur
+          // la paie, pas la liste des intitulés.
+          before: parseProfessionalCategories(before.rows[0].professional_categories)
+            .map((c) => ({ key: c.key, minimum: c.minimum, countryCode: c.countryCode })),
+          after: (next ?? []).map((c) => ({ key: c.key, minimum: c.minimum, countryCode: c.countryCode })),
+        }, request.ip ?? null)
+        return reply.send({ data: next ?? [], configured: next !== null })
       } catch (err) {
         fastify.log.error(err)
         return reply.status(500).send({ error: 'Erreur serveur' })

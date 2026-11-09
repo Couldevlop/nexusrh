@@ -1068,6 +1068,12 @@ export async function ensurePlatformSchema(): Promise<void> {
     // services/departure-reasons.service.ts.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS departure_reason_categories jsonb`,
 
+    // ── Grille de classification professionnelle (admin tenant) ──────────────
+    // [{ key, label, minimum, countryCode }] ; NULL = aucune grille, les écrans
+    // retombent sur la saisie libre. Vient de la convention collective du
+    // client : AUCUNE valeur par défaut. Cf. services/professional-categories.service.ts.
+    `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS professional_categories jsonb`,
+
     // ── Règles de rupture propres au tenant (convention collective) ──────────
     // NULL = règles du pack législatif du pays de l'employé. Cf. offboarding.
     `ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS termination_rules jsonb`,

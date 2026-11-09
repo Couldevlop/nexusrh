@@ -887,6 +887,38 @@
     "saved": "Politique de congés enregistrée.",
     "save": "Enregistrer"
   },
+  "professionalCategories": {
+    "title": "Catégories professionnelles",
+    "sourceTenant": "Grille de votre convention collective",
+    "sourceNone": "Aucune grille — la catégorie se saisit librement",
+    "hint": "Les catégories de votre convention collective, avec leur minimum conventionnel. Une fois la grille définie, le simulateur de salaire propose la liste au lieu d'une saisie libre et pré-remplit le minimum. Tant qu'elle est vide, rien ne change : aucune grille n'est fournie par défaut, car un minimum conventionnel ne vient pas de la loi mais de l'accord que vous avez signé.",
+    "create": "Définir la grille",
+    "edit": "Modifier",
+    "reset": "Effacer la grille",
+    "label": "Libellé",
+    "labelPlaceholder": "5e catégorie, Agent de maîtrise, Cadre…",
+    "key": "Clé",
+    "keyHint": "La clé est technique : elle identifie la catégorie et se génère depuis le libellé. La modifier n'affecte pas les simulations déjà faites.",
+    "minimum": "Minimum ({{currency}})",
+    "minimumUnset": "non renseigné",
+    "country": "Pays",
+    "countryHint": "« Tous les pays » convient si vous n'exercez que dans un pays. Rattachez une catégorie à un pays pour qu'elle ne soit proposée que dans les simulations de ce pays : une grille signée dans un pays n'y engage pas vos autres filiales.",
+    "allCountries": "Tous les pays",
+    "add": "Ajouter une catégorie",
+    "remove": "Supprimer",
+    "up": "Monter",
+    "down": "Descendre",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "errors": {
+      "empty": "Au moins une catégorie est requise (pour tout effacer, utilisez « Effacer la grille »).",
+      "label": "Chaque catégorie doit avoir un libellé.",
+      "key": "Clé invalide : minuscules, chiffres et _ (40 max), commençant par une lettre.",
+      "duplicate": "Deux catégories portent la même clé.",
+      "minimum": "Le minimum doit être un montant entier supérieur à zéro, ou être laissé vide."
+    }
+  },
   "departureReasons": {
     "title": "Catégories de motifs de départ",
     "sourceDefault": "Liste par défaut (non personnalisée).",

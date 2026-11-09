@@ -20,6 +20,7 @@ import TerminationRulesCard from './TerminationRulesCard'
 import LeavePolicyCard from './LeavePolicyCard'
 import InterimsCard from './InterimsCard'
 import { lireFichierImport, extensionAcceptee, IMPORT_ACCEPT_ATTR, ImportFileError, type ImportTable } from './import-file'
+import ProfessionalCategoriesCard from './ProfessionalCategoriesCard'
 import DepartureReasonsCard from './DepartureReasonsCard'
 import { payrollApproverCapacity } from './payroll-approver-capacity'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
@@ -349,6 +350,11 @@ function LegislationTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
       {/* Congés payés : acquisition, contrôle du solde, allocation */}
       <LeavePolicyCard qc={qc} />
+
+      {/* Classification : grille de la convention collective du tenant.
+          Alimente la liste déroulante « Catégorie professionnelle » du
+          simulateur de paie, avec le minimum conventionnel de chaque catégorie. */}
+      <ProfessionalCategoriesCard qc={qc} countries={cfg.available} currency={pack.currency} />
 
       {/* Sorties : catégories de motifs de départ (liste du tenant) */}
       <DepartureReasonsCard qc={qc} />

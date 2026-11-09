@@ -887,6 +887,38 @@
     "saved": "Leave policy saved.",
     "save": "Save"
   },
+  "professionalCategories": {
+    "title": "Professional categories",
+    "sourceTenant": "Grid from your collective agreement",
+    "sourceNone": "No grid — the category is typed in freely",
+    "hint": "The categories of your collective agreement, with their contractual minimum. Once the grid is defined, the salary simulator offers the list instead of free text and pre-fills the minimum. While it is empty nothing changes: no grid is supplied by default, because a contractual minimum does not come from the law but from the agreement you signed.",
+    "create": "Define the grid",
+    "edit": "Edit",
+    "reset": "Clear the grid",
+    "label": "Label",
+    "labelPlaceholder": "Grade 5, Supervisor, Manager…",
+    "key": "Key",
+    "keyHint": "The key is technical: it identifies the category and is generated from the label. Changing it does not affect simulations already run.",
+    "minimum": "Minimum ({{currency}})",
+    "minimumUnset": "not set",
+    "country": "Country",
+    "countryHint": "“All countries” is right if you operate in a single country. Tie a category to a country so it is only offered in simulations for that country: a grid signed in one country does not bind your other subsidiaries.",
+    "allCountries": "All countries",
+    "add": "Add a category",
+    "remove": "Remove",
+    "up": "Move up",
+    "down": "Move down",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "errors": {
+      "empty": "At least one category is required (to clear everything, use “Clear the grid”).",
+      "label": "Every category must have a label.",
+      "key": "Invalid key: lowercase letters, digits and _ (40 max), starting with a letter.",
+      "duplicate": "Two categories share the same key.",
+      "minimum": "The minimum must be a whole amount greater than zero, or be left empty."
+    }
+  },
   "departureReasons": {
     "title": "Departure reason categories",
     "sourceDefault": "Default list (not customized).",
