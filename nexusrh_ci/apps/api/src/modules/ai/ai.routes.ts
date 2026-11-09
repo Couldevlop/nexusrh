@@ -302,8 +302,11 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       // utilisé : ne tracker la conso (platform.ai_usage) QUE si la clé est celle
       // du super_admin (source='platform'). Le modèle local ne consomme aucun
       // quota facturé : sa source reste nulle.
-      const keySource = provider === 'local' ? null : creds[provider].source
-      const usedModel = provider === 'local' ? local!.model : creds[provider].model
+      // Calculés POUR LE FOURNISSEUR RÉELLEMENT UTILISÉ : en cas de bascule sur
+      // le modèle local, la conso ne doit pas être imputée à la clé plateforme
+      // d'un fournisseur qui n'a rien répondu.
+      const keySourceDe = (p: typeof provider) => p === 'local' ? null : creds[p].source
+      const modeleDe    = (p: typeof provider) => p === 'local' ? local!.model : creds[p].model
 
       let tenantInfo = sanitizeForPrompt(context?.tenantName, 100) || 'Entreprise CI'
       let tenantId: string | null = null
@@ -391,13 +394,22 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         'Access-Control-Allow-Origin': '*',
       })
 
-      try {
-        if (provider === 'mistral' || provider === 'local') {
+      // Émission effective : une bascule de fournisseur n'est honnête que tant
+      // que RIEN n'est parti au navigateur. Après le premier mot, rejouer la
+      // requête collerait deux réponses bout à bout dans la même bulle.
+      let texteEmis = false
+      const ecrire = (text: string) => { texteEmis = true; reply.raw.write(`data: ${JSON.stringify({ text })}\n\n`) }
+
+      /** Une tentative complète auprès d'un fournisseur donné. */
+      const executer = async (prov: typeof provider) => {
+        const keySource = keySourceDe(prov)
+        const usedModel = modeleDe(prov)
+        if (prov === 'mistral' || prov === 'local') {
           // Même protocole dans les deux cas : seules l'adresse, la clé (ici
           // facultative) et le modèle changent.
           const r = await streamMistralChat({
-            apiKey:        provider === 'local' ? local!.apiKey : creds.mistral.apiKey!,
-            apiUrl:        provider === 'local' ? local!.apiUrl : config.mistral.apiUrl,
+            apiKey:        prov === 'local' ? local!.apiKey : creds.mistral.apiKey!,
+            apiUrl:        prov === 'local' ? local!.apiUrl : config.mistral.apiUrl,
             model:         usedModel,
             systemPrompt,
             messages,
@@ -406,7 +418,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             pool:          rawPool,
             maxTokens:     config.ai.maxTokens,
             maxToolRounds: 5,
-            onText:        (text) => reply.raw.write(`data: ${JSON.stringify({ text })}\n\n`),
+            onText:        ecrire,
           })
           reply.raw.write(`data: ${JSON.stringify({ done: true, usage: r.usage, stopReason: r.stopReason, toolsUsed: r.toolsUsed })}\n\n`)
           if (keySource === 'platform') {
@@ -415,7 +427,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           auditLogAi(
             schema, request.user.sub, 'ai.chat',
             {
-              provider,
+              provider: prov,
               keySource,
               inputTokens:  r.usage.input_tokens,
               outputTokens: r.usage.output_tokens,
@@ -457,7 +469,7 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
 
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-              reply.raw.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
+              ecrire(chunk.delta.text)
             }
           }
 
@@ -518,6 +530,25 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           },
           request.ip ?? null,
         )
+        }
+      }
+
+      try {
+        try {
+          await executer(provider)
+        } catch (err) {
+          // Le défaut constaté en production : une clé Mistral PRÉSENTE mais
+          // inopérante faisait échouer le chat, alors qu'un modèle auto-hébergé
+          // était disponible. `selectChatProvider` ne regarde que l'EXISTENCE
+          // d'une clé ; une clé morte, révoquée ou à quota épuisé masquait donc
+          // le repli local indéfiniment. On bascule ici sur l'ÉCHEC, pas sur
+          // l'absence — et seulement si rien n'a encore été écrit au client.
+          if (provider === 'local' || !local || texteEmis) throw err
+          fastify.log.warn(
+            { err: err instanceof Error ? err.message : 'unknown', schema, provider, action: 'ai.chat.failover' },
+            'Fournisseur IA externe en échec : bascule sur le modèle auto-hébergé',
+          )
+          await executer('local')
         }
       } catch (err) {
         // OWASP A10 — masquer les détails d'erreur Anthropic au client.
