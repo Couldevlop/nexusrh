@@ -217,7 +217,19 @@ export interface AuditExport {
  */
 export async function exportAudit(
   schema: string, db: Db,
-  opts: { from?: string | null; to?: string | null; limit?: number; signingKey?: string | null } = {},
+  opts: {
+    from?: string | null; to?: string | null; limit?: number; signingKey?: string | null
+    /**
+     * Préfixe le CSV d'un BOM UTF-8, pour un téléchargement destiné à Excel.
+     *
+     * Le BOM fait partie du fichier, donc de ce qui est haché et scellé : sans
+     * ce drapeau, l'appelant l'ajoutait APRÈS coup et l'empreinte décrivait un
+     * octet de moins que le fichier reçu. Un auditeur qui recalculait le
+     * SHA-256 du fichier obtenait une valeur différente et concluait à une
+     * falsification sur un export parfaitement authentique.
+     */
+    bom?: boolean
+  } = {},
 ): Promise<AuditExport> {
   assertValidSchemaName(schema)
   const limit = Math.min(Math.max(opts.limit ?? 100_000, 1), 500_000)
@@ -259,7 +271,10 @@ export async function exportAudit(
   }
   // CRLF : le fichier s'ouvre tel quel dans Excel, qui reste l'outil du
   // destinataire. Le séparateur ';' suit la même raison (locale FR).
-  const csv = lines.join('\r\n') + '\r\n'
+  // Le BOM, s'il est demandé, est préfixé ICI : l'empreinte et le sceau portent
+  // sur l'artefact TEL QU'IL EST LIVRÉ, octet pour octet. C'est la seule
+  // propriété qui rend le contrôle faisable par le destinataire.
+  const csv = (opts.bom ? '﻿' : '') + lines.join('\r\n') + '\r\n'
 
   const sha256 = createHash('sha256').update(csv, 'utf8').digest('hex')
   const key = (opts.signingKey ?? '').trim()

@@ -308,3 +308,37 @@ describe('Ordre de la chaîne', () => {
     expect(trie(d)).toBe('"tenant_x".audit_log.seq')
   })
 })
+describe('L’empreinte décrit le fichier LIVRÉ', () => {
+  /**
+   * Le téléchargement CSV porte un BOM UTF-8, sans quoi Excel — l'outil du
+   * destinataire — lit l'UTF-8 comme du latin-1 et abîme les accents.
+   *
+   * Le BOM était ajouté par la route APRÈS le calcul : l'empreinte et le sceau
+   * décrivaient trois octets de moins que le fichier reçu. Un auditeur qui
+   * recalculait le SHA-256 du fichier obtenait une autre valeur et concluait à
+   * une falsification sur un export authentique. Un contrôle qui crie au loup
+   * ne sert plus de preuve.
+   */
+  it('le BOM demandé fait partie de ce qui est haché et scellé', async () => {
+    const rows = chain(2)
+    const { csv, manifest } = await exportAudit('tenant_x', db(rows), { bom: true, signingKey: 'k' })
+    expect(csv.startsWith('﻿')).toBe(true)
+    // Ce que ferait l'auditeur : sha256sum sur le fichier reçu.
+    expect(createHash('sha256').update(csv, 'utf8').digest('hex')).toBe(manifest.sha256)
+    expect(createHmac('sha256', 'k').update(csv, 'utf8').digest('hex')).toBe(manifest.seal)
+  })
+
+  it('sans BOM, l’empreinte décrit le CSV nu — les deux formes restent cohérentes', async () => {
+    const rows = chain(2)
+    const { csv, manifest } = await exportAudit('tenant_x', db(rows), { signingKey: 'k' })
+    expect(csv.startsWith('﻿')).toBe(false)
+    expect(createHash('sha256').update(csv, 'utf8').digest('hex')).toBe(manifest.sha256)
+  })
+
+  it('les deux formes n’ont PAS la même empreinte : ce sont deux fichiers', async () => {
+    const rows = chain(2)
+    const nu = await exportAudit('tenant_x', db(rows))
+    const avec = await exportAudit('tenant_x', db(rows), { bom: true })
+    expect(avec.manifest.sha256).not.toBe(nu.manifest.sha256)
+  })
+})

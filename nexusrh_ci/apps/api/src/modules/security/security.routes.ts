@@ -330,6 +330,11 @@ const securityRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const result = await exportAudit(schema, rawPool, {
           from, to, signingKey: config.audit.signingKey,
+          // BOM : Excel, qui est l'outil du destinataire, lit l'UTF-8 sans lui
+          // comme du latin-1 et abîme les accents. Il est demandé au service
+          // pour que l'empreinte et le sceau portent sur le fichier livré, et
+          // non sur un contenu amputé de ces trois octets.
+          bom: q.format === 'csv',
         })
         // L'export d'une piste d'audit est lui-même un acte à tracer : il sort
         // des données nominatives de l'application.
@@ -349,9 +354,9 @@ const securityRoutes: FastifyPluginAsync = async (fastify) => {
             .header('X-Audit-Seal', result.manifest.seal ?? 'none')
             .header('X-Audit-Entries', String(result.manifest.entries))
             .header('X-Audit-Chain-Intact', String(result.manifest.chain.intact))
-            // BOM : Excel, qui est l'outil du destinataire, lit l'UTF-8 sans
-            // lui comme du latin-1 et abîme les accents.
-            .send('\uFEFF' + result.csv)
+            // `result.csv` part TEL QUEL : le BOM y est déjà, et c'est sur cette
+            // chaîne exacte que l'empreinte et le sceau ont été calculés.
+            .send(result.csv)
         }
         return reply.send({ data: result })
       } catch (err) {
