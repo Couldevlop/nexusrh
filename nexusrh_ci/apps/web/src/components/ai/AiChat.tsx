@@ -80,7 +80,12 @@ export default function AiChat() {
           'Authorization': `Bearer ${useAuthStore.getState().token}`,
         },
         body: JSON.stringify({
-          messages: newMessages,
+          // Les bulles VIDES ne partent jamais au serveur. Un tour en échec
+          // laissait une bulle assistant à '' dans l'historique ; au message
+          // suivant, le schéma (content.min(1)) rejetait TOUTE la requête en
+          // 400, et l'écran affichait « Erreur IA » sans que l'IA soit en
+          // cause. La conversation restait morte jusqu'à rechargement.
+          messages: newMessages.filter(m => m.content.trim().length > 0),
           context: {
             tenantName: tenantConfig?.name,
             userRole: user?.role,
@@ -94,7 +99,17 @@ export default function AiChat() {
       const decoder = new TextDecoder()
       let assistantContent = ''
 
-      while (reader) {
+      // Écrit le texte accumulé dans la bulle en cours. Centralisé : l'erreur
+      // DOIT s'afficher comme le texte, sinon elle reste invisible.
+      const rendre = () => setMessages(prev => {
+        const next = [...prev]
+        const last = next[next.length - 1]
+        if (last?.role === 'assistant') last.content = assistantContent
+        return next
+      })
+
+      let interrompu = false
+      while (reader && !interrompu) {
         const { done, value } = await reader.read()
         if (done) break
         const chunk = decoder.decode(value)
@@ -103,15 +118,19 @@ export default function AiChat() {
           if (!line.startsWith('data: ')) continue
           try {
             const data = JSON.parse(line.slice(6)) as { text?: string; done?: boolean; error?: string }
-            if (data.error) { assistantContent += `\n\n❌ ${data.error}`; break }
+            if (data.error) {
+              // Le `break` ne sortait que de la boucle sur les lignes, et SANS
+              // écrire : le message d'erreur du serveur n'arrivait jamais à
+              // l'écran, et la bulle restait vide — ce qui cassait le tour
+              // suivant. On affiche, puis on arrête vraiment la lecture.
+              assistantContent += assistantContent ? `\n\n❌ ${data.error}` : `❌ ${data.error}`
+              rendre()
+              interrompu = true
+              break
+            }
             if (data.text) {
               assistantContent += data.text
-              setMessages(prev => {
-                const next = [...prev]
-                const last = next[next.length - 1]
-                if (last?.role === 'assistant') last.content = assistantContent
-                return next
-              })
+              rendre()
             }
           } catch { /* ignore parse errors */ }
         }
