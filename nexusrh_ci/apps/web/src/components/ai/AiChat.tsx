@@ -80,12 +80,20 @@ export default function AiChat() {
           'Authorization': `Bearer ${useAuthStore.getState().token}`,
         },
         body: JSON.stringify({
-          // Les bulles VIDES ne partent jamais au serveur. Un tour en échec
-          // laissait une bulle assistant à '' dans l'historique ; au message
-          // suivant, le schéma (content.min(1)) rejetait TOUTE la requête en
-          // 400, et l'écran affichait « Erreur IA » sans que l'IA soit en
-          // cause. La conversation restait morte jusqu'à rechargement.
-          messages: newMessages.filter(m => m.content.trim().length > 0),
+          // Ce qui part au serveur ne contient QUE `role` et `content`.
+          //
+          // Deux défauts tenaient ici, tous deux rendus en « Erreur IA » sans
+          // que l'IA soit en cause — le schéma d'entrée est `.strict()` et
+          // exige `content.min(1)`, donc un seul message fautif fait rejeter
+          // TOUTE la requête en 400 :
+          //  - une bulle assistant restée VIDE après un tour en échec ;
+          //  - le drapeau `streaming`, propre à l'affichage, posé à `false`
+          //    sur chaque bulle à la fin du tour. Dès le DEUXIÈME message,
+          //    l'historique en portait, et plus aucune conversation
+          //    n'aboutissait jusqu'à rechargement de la page.
+          messages: newMessages
+            .filter(m => m.content.trim().length > 0)
+            .map(({ role, content }) => ({ role, content })),
           context: {
             tenantName: tenantConfig?.name,
             userRole: user?.role,
