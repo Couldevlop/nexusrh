@@ -143,6 +143,27 @@ describe('Ce qui part au serveur', () => {
     }
   })
 
+  it('ne porte QUE role et content — pas le drapeau d’affichage `streaming`', async () => {
+    // Constaté en production le 11/11/2026 : le schéma d'entrée est
+    // `.strict()`. `streaming` est posé à `false` sur chaque bulle à la fin
+    // d'un tour ; dès le DEUXIÈME message, l'historique en portait et la
+    // requête entière partait en 400 — « Erreur IA » sans rapport avec l'IA,
+    // sur TOUTE conversation, même quand le premier tour avait réussi.
+    fetchMock
+      .mockResolvedValueOnce(fluxSSE([`data: ${JSON.stringify({ text: 'Première réponse.' })}`]))
+      .mockResolvedValueOnce(fluxSSE([`data: ${JSON.stringify({ text: 'Deuxième réponse.' })}`]))
+    afficher()
+    await ouvrir()
+    await envoyer('première question')
+    await waitFor(() => expect(screen.getByText(/Première réponse/)).toBeTruthy())
+    await envoyer('deuxième question')
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    for (const m of corps(1).messages) {
+      expect(Object.keys(m).sort()).toEqual(['content', 'role'])
+    }
+  })
+
   it('conserve l’historique utile : la question d’avant est toujours transmise', async () => {
     // Filtrer les bulles vides ne doit pas amputer le contexte : l'assistante
     // perdrait le fil de la conversation.
