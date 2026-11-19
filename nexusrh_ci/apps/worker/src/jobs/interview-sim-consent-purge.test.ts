@@ -6,7 +6,7 @@ const { loggerMock } = vi.hoisted(() => ({
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
 
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
 
 import { processInterviewSimConsentPurgeJob, clampRetentionMonths } from './interview-sim-consent-purge.js'

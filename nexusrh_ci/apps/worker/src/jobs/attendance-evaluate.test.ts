@@ -7,7 +7,7 @@ const { loggerMock } = vi.hoisted(() => ({
 }))
 const { evaluateEscalationSpy } = vi.hoisted(() => ({ evaluateEscalationSpy: vi.fn() }))
 
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
 
 // Spy sur `evaluateEscalation` tout en exécutant la VRAIE implémentation (le

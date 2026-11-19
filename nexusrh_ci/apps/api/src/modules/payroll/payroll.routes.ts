@@ -1427,7 +1427,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
   // - A07 : rate-limit 30 req/min (calcul CPU + DB lookup)
   // - A09 : audit log des simulations sensibles (offre d'embauche, négociation)
   const simulationSchema = z.object({
-    employee_id:      z.string().uuid().optional(),
+    employee_id:      z.string().guid().optional(),
     baseSalary:       z.number().int().min(0).max(50_000_000),
     workedDays:       z.number().int().min(0).max(31),
     workingDaysMonth: z.number().int().min(20).max(31),

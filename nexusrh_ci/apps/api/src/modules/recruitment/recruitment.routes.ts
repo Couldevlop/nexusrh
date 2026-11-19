@@ -58,7 +58,7 @@ const publicApplySchema = z.object({
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
   /** Réponses aux questions éliminatoires de l'offre, indexées par id de question. */
-  answers:      z.record(z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
+  answers:      z.record(z.string(), z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
 })
 
 // Limite de taille du CV déposé via la page carrières publique (5 Mo) — plus
@@ -117,8 +117,8 @@ const stageBodySchema = z.object({
   rejection_note: z.string().max(REJECTION_NOTE_MAX).optional(),
   employee: z.object({
     hireDate: z.string().regex(ISO_DATE_RE, 'Date attendue au format YYYY-MM-DD').optional(),
-    departmentId: z.string().uuid().nullable().optional(),
-    legalEntityId: z.string().uuid().nullable().optional(),
+    departmentId: z.string().guid().nullable().optional(),
+    legalEntityId: z.string().guid().nullable().optional(),
     baseSalary: z.number().int().min(0).max(100_000_000).optional(),
     contractType: z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
     jobTitle: z.string().trim().min(1).max(100).optional(),
@@ -702,7 +702,7 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       // REC-004 — validation Zod stricte + téléphone CI (+225 suivi de 8 à 10 chiffres)
       const CI_PHONE_RE = /^\+225\d{8,10}$/
       const rhApplicationSchema = z.object({
-        job_id:       z.string().uuid('Offre invalide'),
+        job_id:       z.string().guid('Offre invalide'),
         first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
         last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
         email:        z.preprocess(v => (v === '' ? undefined : v), z.string().email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase().optional()),

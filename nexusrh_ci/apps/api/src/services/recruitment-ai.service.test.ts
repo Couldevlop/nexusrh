@@ -11,9 +11,9 @@ vi.mock('../config.js', () => ({
 
 const createMock = vi.fn()
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     messages: { create: createMock },
-  })),
+  }) }),
 }))
 
 // Mock sourcing-config pour éviter les appels DB (timeout) en tests unitaires.

@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn().mockResolvedValue({ rows: [] }),
 }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../config.js', () => ({
   config: {
     env: 'test',

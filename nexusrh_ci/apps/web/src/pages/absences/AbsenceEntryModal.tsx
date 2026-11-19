@@ -29,7 +29,12 @@ const schema = z.object({
   message: 'entry.validation.endBeforeStart',
   path: ['endDate'],
 })
-type FormData = z.infer<typeof schema>
+// zod 4 distingue l'ENTREE de la SORTIE : un champ `.default(...)` est
+// optionnel en entree (le formulaire peut ne pas le fournir) et garanti en
+// sortie (zod l'a rempli). react-hook-form prend les deux, le 3e parametre
+// de type portant les valeurs transformees remises a handleSubmit.
+type FormInput = z.input<typeof schema>
+type FormData = z.output<typeof schema>
 
 interface EmployeeOption { id: string; first_name: string; last_name: string; job_title?: string | null }
 
@@ -64,7 +69,7 @@ export default function AbsenceEntryModal({ onClose, onCreated }: {
   }, [employeesData, filter])
   const absenceTypes = typesData?.data ?? []
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(schema),
     defaultValues: { halfDay: false, multipleBirth: false, illnessExtension: false },
   })

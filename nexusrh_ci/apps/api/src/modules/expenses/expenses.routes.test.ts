@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 vi.mock('../../services/redis.js', () => ({

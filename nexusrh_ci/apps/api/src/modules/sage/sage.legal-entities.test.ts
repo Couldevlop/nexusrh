@@ -17,11 +17,11 @@ const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 // `modules/classification/classification-enforcement.test.ts`.
 const SANS_GRILLE = /classification_levels|data_classification_categories/
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({
+  Pool: vi.fn(function () { return ({
     query: (sql: string, params?: unknown[]) =>
       SANS_GRILLE.test(String(sql)) ? Promise.resolve({ rows: [] }) : queryMock(sql, params),
     end: vi.fn(),
-  })),
+  }) }),
 }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),

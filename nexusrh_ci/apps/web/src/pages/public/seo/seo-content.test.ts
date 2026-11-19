@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { renderToString } from 'react-dom/server'
-import { StaticRouter } from 'react-router-dom/server'
+import { StaticRouter } from 'react-router-dom'
 import { createElement } from 'react'
 import { LEGISLATION_PACKS, CIV_2024 } from '../../../../../api/src/services/legislation-packs'
 import { SEO_PATHS } from './paths'

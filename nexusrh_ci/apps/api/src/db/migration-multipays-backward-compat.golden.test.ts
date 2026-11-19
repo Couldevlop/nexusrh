@@ -40,11 +40,11 @@ vi.mock('pg', () => ({
   // provisionTenantSchema utilise désormais une transaction via pool.connect() :
   // le client transactionnel route ses query() vers le même queryMock pour que
   // les assertions sur le DDL exécuté restent valables (BEGIN/COMMIT inclus).
-  Pool: vi.fn(() => ({
+  Pool: vi.fn(function () { return ({
     query: queryMock,
     end: vi.fn(),
     connect: vi.fn().mockResolvedValue({ query: queryMock, release: vi.fn() }),
-  })),
+  }) }),
 }))
 
 vi.mock('../config.js', () => ({

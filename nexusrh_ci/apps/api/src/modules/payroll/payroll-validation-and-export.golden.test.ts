@@ -27,7 +27,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
   // connect() : transaction du renvoi en préparation (même routeur SQL)
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn(), connect: vi.fn(async () => ({ query: queryMock, release: vi.fn() })) })),
+  Pool: vi.fn(function () { return ({ query: queryMock, end: vi.fn(), connect: vi.fn(async () => ({ query: queryMock, release: vi.fn() })) }) }),
 }))
 
 vi.mock('../../services/redis.js', () => ({

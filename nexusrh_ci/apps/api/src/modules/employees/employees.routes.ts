@@ -141,10 +141,10 @@ const createEmployeeSchema = z.object({
   cnpsNumber:          cnpsField,
   mobileMoneyProvider: mmProviderField,
   mobileMoneyPhone:    mmPhoneField,
-  departmentId:        z.string().uuid().optional(),
-  managerId:           z.string().uuid().optional(),
+  departmentId:        z.string().guid().optional(),
+  managerId:           z.string().guid().optional(),
   // MPF-005 — rattachement à une filiale (legal_entity) pour la paie multi-pays
-  legalEntityId:       z.string().uuid().optional(),
+  legalEntityId:       z.string().guid().optional(),
   jobTitle:            z.string().max(200).optional(),
   jobLevel:            z.string().max(50).optional(),
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
@@ -163,7 +163,7 @@ const createEmployeeSchema = z.object({
   nationality:         z.string().trim().min(2).max(100).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
   // Champs personnalisés du tenant — validés contre leur définition au handler.
-  customFields:        z.record(z.unknown()).optional(),
+  customFields:        z.record(z.string(), z.unknown()).optional(),
   // Matricule : facultatif, généré automatiquement (MAT00001…) si absent.
   employeeNumber:      employeeNumberField,
 })
@@ -181,10 +181,10 @@ const patchEmployeeSchema = z.object({
   cnpsNumber:          cnpsField,
   mobileMoneyProvider: mmProviderField,
   mobileMoneyPhone:    mmPhoneField,
-  departmentId:        z.string().uuid().nullable().optional(),
-  managerId:           z.string().uuid().nullable().optional(),
+  departmentId:        z.string().guid().nullable().optional(),
+  managerId:           z.string().guid().nullable().optional(),
   // MPF-005 — réaffectation d'un employé à une autre filiale (ou détachement)
-  legalEntityId:       z.string().uuid().nullable().optional(),
+  legalEntityId:       z.string().guid().nullable().optional(),
   jobTitle:            z.string().max(200).optional(),
   jobLevel:            z.string().max(50).optional(),
   contractType:        z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
@@ -208,7 +208,7 @@ const patchEmployeeSchema = z.object({
   isActive:            z.boolean().optional(),
   profilePhotoUrl:     z.string().max(2000).optional(),
   address:             z.string().max(500).optional(),
-  customFields:        z.record(z.unknown()).optional(),
+  customFields:        z.record(z.string(), z.unknown()).optional(),
   // Matricule modifiable par les RH (vide = inchangé : un matricule ne s'efface pas).
   employeeNumber:      employeeNumberField,
 }).strict()

@@ -59,10 +59,34 @@ const createTemplateSchema = z.object({
   description:  z.string().max(2000).optional(),
   seniority:    z.enum(ONBOARDING_SENIORITIES).optional().default('any'),
   jobKeywords:  z.string().max(500).optional(),
-  departmentId: z.string().uuid().nullable().optional(),
+  departmentId: z.string().guid().nullable().optional(),
   isDefault:    z.boolean().optional().default(false),
   isActive:     z.boolean().optional().default(true),
   steps:        z.array(templateStepSchema).max(60).optional().default([]),
+}).strict()
+
+/**
+ * Mise a jour partielle d'un modele — volontairement SANS `.default()`.
+ *
+ * `createTemplateSchema.partial()` ne convient pas sous zod 4 : rendre un
+ * champ optionnel n'y neutralise plus son defaut interne. Un PATCH n'envoyant
+ * que `steps` se voyait donc injecter seniority='any', isDefault=false et
+ * isActive=true, et le handler construisait un UPDATE qui ECRASAIT trois
+ * colonnes que l'appelant n'avait jamais envoyees. zod 3 neutralisait ces
+ * defauts, d'ou le comportement attendu par les tests.
+ *
+ * Les defauts des ETAPES restent en place : une etape transmise est creee
+ * entierement, ses champs non fournis doivent bien etre remplis.
+ */
+const patchTemplateSchema = z.object({
+  name:         z.string().min(1).max(200).optional(),
+  description:  z.string().max(2000).optional(),
+  seniority:    z.enum(ONBOARDING_SENIORITIES).optional(),
+  jobKeywords:  z.string().max(500).optional(),
+  departmentId: z.string().guid().nullable().optional(),
+  isDefault:    z.boolean().optional(),
+  isActive:     z.boolean().optional(),
+  steps:        z.array(templateStepSchema).max(60).optional(),
 }).strict()
 
 const patchStepSchema = z.object({
@@ -218,7 +242,7 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { id } = request.params as { id: string }
       if (!UUID_RE.test(id)) return reply.status(400).send({ error: 'id invalide' })
-      const parsed = createTemplateSchema.partial().safeParse(request.body)
+      const parsed = patchTemplateSchema.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'Modèle invalide' })
       const b = parsed.data
       const schema = request.user.schemaName
@@ -341,8 +365,8 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['onboarding'], summary: 'Démarrer un parcours pour un employé' },
     handler: async (request, reply) => {
       const parsed = z.object({
-        employeeId: z.string().uuid(),
-        templateId: z.string().uuid(),
+        employeeId: z.string().guid(),
+        templateId: z.string().guid(),
       }).strict().safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'employeeId et templateId (UUID) requis' })
       const schema = request.user.schemaName

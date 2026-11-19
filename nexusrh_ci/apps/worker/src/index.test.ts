@@ -34,12 +34,12 @@ const { upsertMock, connectionStub, loggerMock } = vi.hoisted(() => {
 })
 
 vi.mock('bullmq', () => ({
-  Worker: vi.fn(() => ({ on: vi.fn(), close: vi.fn(async () => undefined) })),
-  Queue: vi.fn(() => ({ upsertJobScheduler: upsertMock })),
+  Worker: vi.fn(function () { return ({ on: vi.fn(), close: vi.fn(async () => undefined) }) }),
+  Queue: vi.fn(function () { return ({ upsertJobScheduler: upsertMock }) }),
 }))
 vi.mock('./redis.js', () => ({ createClient: () => connectionStub }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn(), end: vi.fn() })), Client: vi.fn(() => ({ connect: vi.fn(), query: vi.fn(), end: vi.fn() })) }))
-vi.mock('ioredis', () => ({ Redis: vi.fn(() => connectionStub), default: vi.fn(() => connectionStub) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn(), end: vi.fn() }) }), Client: vi.fn(function () { return ({ connect: vi.fn(), query: vi.fn(), end: vi.fn() }) }) }))
+vi.mock('ioredis', () => ({ Redis: vi.fn(function () { return connectionStub }), default: vi.fn(function () { return connectionStub }) }))
 vi.mock('./logger.js', () => ({ logger: loggerMock }))
 
 // Les handlers de jobs ouvrent des pools PG a l'import : on les neutralise,
@@ -58,8 +58,30 @@ vi.mock('./jobs/interview-sim-consent-purge.js', () => ({ processInterviewSimCon
 vi.mock('./jobs/platform-report.js', () => ({ processPlatformReportJob: vi.fn(async () => undefined) }))
 
 
-/** Laisse tourner les promesses en attente déclenchées par un évènement. */
-const flush = () => new Promise((r) => setTimeout(r, 10))
+const tick = () => new Promise((r) => setTimeout(r, 10))
+
+/**
+ * Laisse tourner les promesses en attente déclenchées par un évènement.
+ *
+ * Attend une CONDITION plutôt qu'un délai fixe. L'ancienne version dormait
+ * 10 ms et vérifiait ensuite : sous charge (suite complète du monorepo en
+ * parallèle), la chaîne de planification n'avait pas fini et l'assertion
+ * tombait à 0 appel, alors que le test passe en isolation. Un test ne doit pas
+ * dépendre d'une marge de temporisation.
+ *
+ * Sans condition, on retombe sur un simple délai de stabilisation — nécessaire
+ * pour les assertions « rien de PLUS ne s'est produit », qu'aucune condition ne
+ * peut exprimer.
+ */
+async function flush(until?: () => boolean, timeoutMs = 20_000): Promise<void> {
+  if (!until) { await tick(); return }
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    await tick()
+    if (until()) return
+    if (Date.now() > deadline) return // laisse l'assertion rapporter l'écart réel
+  }
+}
 
 describe('amorçage du worker', () => {
   beforeEach(() => {
@@ -68,7 +90,7 @@ describe('amorçage du worker', () => {
 
   it('pose les planifications au démarrage', async () => {
     await import('./index.js')
-    await flush()
+    await flush(() => upsertMock.mock.calls.length >= 5)
     // legislation-watch, attendance, interview-sim-consent-purge (1 chacun) et
     // platform-report (2 : hebdomadaire + mensuel) sont inconditionnels ;
     // legal-watch dépend de LEGAL_WATCH_ENABLED.
@@ -77,11 +99,13 @@ describe('amorçage du worker', () => {
 
   it('les réarme quand Redis se reconnecte', async () => {
     await import('./index.js')
+    // `import` est servi par le CACHE ESM (le test 1 a deja execute le module) :
+    // rien ne repart ici, on laisse juste retomber ce qui serait en vol.
     await flush()
     upsertMock.mockClear()
 
     connectionStub.emit('ready')
-    await flush()
+    await flush(() => upsertMock.mock.calls.length >= 5)
 
     expect(
       upsertMock.mock.calls.length,
@@ -92,6 +116,8 @@ describe('amorçage du worker', () => {
 
   it('ne réarme pas deux fois en parallèle si Redis bat de l’aile', async () => {
     await import('./index.js')
+    // `import` est servi par le CACHE ESM (le test 1 a deja execute le module) :
+    // rien ne repart ici, on laisse juste retomber ce qui serait en vol.
     await flush()
     upsertMock.mockClear()
 

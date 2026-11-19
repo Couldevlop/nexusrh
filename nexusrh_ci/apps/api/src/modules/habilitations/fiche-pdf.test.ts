@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), end: vi.fn() }) }) }))
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',

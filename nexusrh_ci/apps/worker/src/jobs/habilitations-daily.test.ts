@@ -14,7 +14,7 @@ const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 const { loggerMock } = vi.hoisted(() => ({
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../logger.js', () => ({ logger: loggerMock }))
 
 import { processHabilitationsDailyJob } from './habilitations-daily.js'

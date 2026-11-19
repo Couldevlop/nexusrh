@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../../db/pool.js', () => ({ pool: { query: queryMock } }))
 // Même patron que recruitment.routes.test.ts existant : remplacement complet
 // (pas de spread ../orig()) — évite de charger le vrai provisioning.ts (et ses

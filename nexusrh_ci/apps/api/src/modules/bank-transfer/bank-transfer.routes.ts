@@ -193,7 +193,7 @@ function maskAccount(value: string | null): string | null {
  * bancaire mal détecté en produit une par colonne.
  */
 function messageDeValidation(err: z.ZodError): string {
-  const nom = (path: Array<string | number>): string => {
+  const nom = (path: ReadonlyArray<PropertyKey>): string => {
     const i = path.indexOf('columns')
     const champ = String(path[path.length - 1] ?? '')
     const libelle: Record<string, string> = {
@@ -207,11 +207,11 @@ function messageDeValidation(err: z.ZodError): string {
     return i >= 0 ? `${quoi} de colonne` : quoi
   }
   const raison = (issue: z.ZodIssue): string => {
-    if (issue.code === 'too_big' && issue.type === 'string') return `trop long (maximum ${issue.maximum} caractères)`
-    if (issue.code === 'too_small' && issue.type === 'string') return 'vide ou trop court'
+    if (issue.code === 'too_big' && issue.origin === 'string') return `trop long (maximum ${issue.maximum} caractères)`
+    if (issue.code === 'too_small' && issue.origin === 'string') return 'vide ou trop court'
     if (issue.code === 'too_big') return `au-delà du maximum autorisé (${issue.maximum})`
     if (issue.code === 'too_small') return `en deçà du minimum autorisé (${issue.minimum})`
-    if (issue.code === 'invalid_enum_value') return 'avec une valeur non autorisée'
+    if (issue.code === 'invalid_value') return 'avec une valeur non autorisée'
     if (issue.code === 'unrecognized_keys') return 'inattendu'
     if (issue.code === 'invalid_type') return 'du mauvais type'
     return issue.message

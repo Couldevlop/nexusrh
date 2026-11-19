@@ -23,7 +23,7 @@ const okResolve = (raw: string) => ({
 vi.mock('../utils/schema-migrations.js', () => ({
   ensureTenantSchema: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() }) }) }))
 vi.mock('../config.js', () => ({ config: { database: { url: 'postgresql://test' } } }))
 
 import {

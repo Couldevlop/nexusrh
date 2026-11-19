@@ -10,7 +10,7 @@ vi.mock('../config.js', () => ({
 
 const createMock = vi.fn()
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({ messages: { create: createMock } })),
+  default: vi.fn().mockImplementation(function () { return ({ messages: { create: createMock } }) }),
 }))
 
 import { analyzeLegalDiff, __internals } from './legal-diff.service.js'

@@ -110,11 +110,11 @@ const { state, queryMock, auditMock, emitMock } = vi.hoisted(() => {
 })
 
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({
+  Pool: vi.fn(function () { return ({
     query: queryMock,
     connect: vi.fn(async () => ({ query: queryMock, release: vi.fn() })),
     end: vi.fn(),
-  })),
+  }) }),
 }))
 vi.mock('../../config.js', () => ({
   config: { env: 'test', database: { url: 'postgresql://test', poolMin: 1, poolMax: 2 } },

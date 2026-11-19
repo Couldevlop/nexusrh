@@ -10,7 +10,7 @@
  * (pages d'atterrissage + guides) et les pages légales, 100 % statiques.
  */
 import { renderToString } from 'react-dom/server'
-import { StaticRouter } from 'react-router-dom/server'
+import { StaticRouter } from 'react-router-dom'
 import { Route, Routes } from 'react-router-dom'
 import i18n from '@/i18n'
 import HomePage from '@/pages/public/HomePage'

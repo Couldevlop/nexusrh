@@ -28,7 +28,12 @@ const schema = z.object({
   hasSubsidiaries: z.boolean().default(false),
   defaultCountryCode: z.string().length(3).default('CIV'),
 })
-type FormData = z.infer<typeof schema>
+// zod 4 distingue l'ENTREE de la SORTIE : un champ `.default(...)` est
+// optionnel en entree (le formulaire peut ne pas le fournir) et garanti en
+// sortie (zod l'a rempli). react-hook-form prend les deux, le 3e parametre
+// de type portant les valeurs transformees remises a handleSubmit.
+type FormInput = z.input<typeof schema>
+type FormData = z.output<typeof schema>
 
 const SECTORS = [
   { value: 'commerce',   atRate: '2%' },
@@ -71,7 +76,7 @@ export default function PlatformTenantNew() {
   // édité manuellement (PLT-003).
   const [slugEdited, setSlugEdited] = useState(false)
 
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       planType: 'trial', sector: 'services', city: 'Abidjan',

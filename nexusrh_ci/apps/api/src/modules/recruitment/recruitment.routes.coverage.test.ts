@@ -38,7 +38,7 @@ const { queryMock, connectMock, clientQueryMock, releaseMock } = vi.hoisted(() =
 })
 
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, connect: connectMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return ({ query: queryMock, connect: connectMock, end: vi.fn() }) }),
 }))
 
 vi.mock('../../services/redis.js', () => ({

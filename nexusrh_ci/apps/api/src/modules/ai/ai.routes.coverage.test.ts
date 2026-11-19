@@ -14,7 +14,7 @@ const { queryMock, anthropicStreamMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 vi.mock('../../services/redis.js', () => ({
@@ -33,9 +33,9 @@ vi.mock('../../utils/schema-name.js', () => ({
 }))
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     messages: { stream: anthropicStreamMock },
-  })),
+  }) }),
 }))
 
 // Par défaut : clé Claude présente (repli plateforme). Surchargée par test au besoin.

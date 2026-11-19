@@ -7,7 +7,7 @@ const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 // sans ralentir la suite (production : 8 s).
 vi.hoisted(() => { process.env['EMAIL_WAIT_MS'] = '50' })
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 const { setTokenEpochMock } = vi.hoisted(() => ({

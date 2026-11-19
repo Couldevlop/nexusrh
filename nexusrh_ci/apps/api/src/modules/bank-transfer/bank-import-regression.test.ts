@@ -19,7 +19,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import ExcelJS from 'exceljs'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, connect: vi.fn(), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: queryMock, connect: vi.fn(), end: vi.fn() }) }) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
