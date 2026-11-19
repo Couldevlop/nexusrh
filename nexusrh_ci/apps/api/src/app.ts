@@ -109,6 +109,14 @@ export async function buildApp() {
     // Sous `routerOptions` : l'emplacement racine est déprécié depuis Fastify 5
     // et disparaît en Fastify 6.
     routerOptions: { maxParamLength: 1000 },
+    // Le démarrage enregistre une quarantaine de modules de routes. Le défaut
+    // Fastify de 10 s laissait `security-authz-sweep.golden.test.ts` — qui monte
+    // l'application ENTIÈRE pour balayer toutes les routes — à ~9,4 s de boot :
+    // sur une machine chargée (CI, ou suite complète en parallèle), le boot
+    // dépassait le seuil et le test échouait en « Plugin did not start in time »
+    // alors qu'il passe en isolation. Un invariant de sécurité ne doit pas être
+    // instable à cause d'une marge de temporisation.
+    pluginTimeout: 60_000,
   })
 
   // ── Plugins globaux ──────────────────────────────────────────────────────────
