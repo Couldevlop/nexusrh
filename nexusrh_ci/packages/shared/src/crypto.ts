@@ -1,6 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 
 const ALGO = 'aes-256-gcm'
+/** Longueur du tag d'authentification GCM, imposée en chiffrement ET en déchiffrement. */
+const TAG_BYTES = 16
 const KEY_HEX = process.env.ENCRYPTION_KEY ?? ''
 
 /**
@@ -31,7 +33,7 @@ function getKey(): Buffer {
 
 export function encrypt(plain: string): string {
   const iv = randomBytes(12)
-  const cipher = createCipheriv(ALGO, getKey(), iv)
+  const cipher = createCipheriv(ALGO, getKey(), iv, { authTagLength: TAG_BYTES })
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
   const tag = cipher.getAuthTag()
   return `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`
@@ -40,7 +42,13 @@ export function encrypt(plain: string): string {
 export function decrypt(stored: string): string {
   const [ivHex, tagHex, encHex] = stored.split(':')
   if (!ivHex || !tagHex || !encHex) throw new Error('Invalid encrypted format')
-  const decipher = createDecipheriv(ALGO, getKey(), Buffer.from(ivHex, 'hex'))
+  // Node accepte par défaut des tags GCM de 4, 8, 12, 13, 14, 15 ou 16 octets.
+  // Sans ces deux garde-fous, quelqu'un capable d'écrire dans la colonne
+  // chiffrée y dépose un cryptogramme à tag tronqué à 4 octets : la résistance
+  // à la falsification tombe de 2^128 à 2^32, soit une force brute réalisable.
+  // `encrypt` n'émet QUE des tags de 16 octets — rien de légitime n'est refusé.
+  if (tagHex.length !== TAG_BYTES * 2) throw new Error('Invalid encrypted format')
+  const decipher = createDecipheriv(ALGO, getKey(), Buffer.from(ivHex, 'hex'), { authTagLength: TAG_BYTES })
   decipher.setAuthTag(Buffer.from(tagHex, 'hex'))
   return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8')
 }

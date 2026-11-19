@@ -24,25 +24,36 @@
   "packageManager": "pnpm@9.1.0",
   "pnpm": {
     "overrides": {
-      "fast-uri": "^3.1.5",
-      "brace-expansion@^1": "^1.1.18",
-      "brace-expansion@^2": "^2.1.4",
+      "fast-uri": "^3.1.9",
+      "brace-expansion@^1": "^1.1.21",
+      "brace-expansion@^2": "^2.1.7",
+      "brace-expansion@^5": "^5.0.12",
       "ws": "^8.21.3",
       "js-cookie": "^3.0.8",
       "fast-xml-builder": "^1.1.7",
       "postcss": "^8.5.26",
       "nanoid": "^3.3.18",
       "js-yaml": "^4.3.1",
-      "fast-xml-parser": "^5.7.0",
+      "fast-xml-parser": "^5.12.0",
       "uuid": "^11.1.1",
       "@hapi/wreck": "^18.1.2",
-      "joi": "^17.13.4",
+      "joi": "^17.13.9",
       "@opentelemetry/core": "^2.8.0",
       "@remix-run/router": "^1.23.3",
       "react-router": "^6.30.4",
-      "vite": "^6.4.3",
+      "vite": "^6.4.4",
       "@babel/core": "^7.29.6",
-      "esbuild": "^0.25.12"
+      "esbuild": "^0.25.12",
+      "undici": "^7.30.1",
+      "@fastify/busboy": "^3.2.2",
+      "fast-jwt": "^6.3.4",
+      "source-map-js": "^1.2.2",
+      "tinypool": "^2.1.2",
+      "follow-redirects": "^1.16.2",
+      "postcss-selector-parser": "^6.1.5",
+      "browserslist": "^4.28.7",
+      "baseline-browser-mapping": "^2.11.0",
+      "fast-copy": "^3.1.0"
     }
   }
 }
