@@ -413,6 +413,18 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
       // compte pas comme texte emis, donc une bascule reste possible apres lui.
       reply.raw.write(': ouverture du flux\n\n')
 
+      // Le delai de la passerelle ne porte pas que sur le premier octet : il
+      // s'applique ENTRE DEUX LECTURES. Le modele de secours met plus de 30 s
+      // a produire son premier mot sur un prompt portant l'instantane des
+      // donnees, et la connexion etait coupee avant. Un signe de vie
+      // periodique l'en empeche, sans dependre d'un reglage d'infrastructure.
+      const SIGNE_DE_VIE_MS = 10_000
+      const signeDeVie = setInterval(() => {
+        if (!reply.raw.writableEnded) reply.raw.write(': en cours\n\n')
+      }, SIGNE_DE_VIE_MS)
+      // Un minuteur qui survit a la requete ecrirait sur un flux clos.
+      signeDeVie.unref?.()
+
       // Émission effective : une bascule de fournisseur n'est honnête que tant
       // que RIEN n'est parti au navigateur. Après le premier mot, rejouer la
       // requête collerait deux réponses bout à bout dans la même bulle.
@@ -630,6 +642,7 @@ donnée demandée n'y figure pas, dis qu'elle n'est pas accessible.`
           request.ip ?? null,
         )
       } finally {
+        clearInterval(signeDeVie)
         reply.raw.end()
       }
     },

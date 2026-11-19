@@ -21,7 +21,7 @@
  * Ce qui n'est PAS changé : l'ordre de préférence. Le modèle local reste le
  * dernier choix, jamais préféré à une clé qui fonctionne.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock, anthropicStreamMock, mistralChatMock, usageMock, LOCAL } = vi.hoisted(() => ({
@@ -391,5 +391,66 @@ describe('Ouverture immédiate du flux', () => {
     const premiere = res.body.split('\n')[0]!
     expect(premiere.startsWith('data: ')).toBe(false)
     expect(premiere.startsWith(':')).toBe(true)
+  })
+})
+
+/**
+ * Le flux doit RESTER ouvert pendant que le modèle réfléchit.
+ *
+ * Suite du constat du 19/11/2026. Ouvrir le flux tout de suite a bien réglé
+ * l'attente des en-têtes (premier octet en 93 ms au lieu d'une coupure), mais
+ * l'appel tombait toujours en erreur réseau à 30,1 s, sans aucune trame reçue.
+ *
+ * Le délai de la passerelle ne s'applique pas qu'au premier octet : il
+ * s'applique ENTRE DEUX LECTURES. Le modèle de secours met plus de 30 s à
+ * produire son premier mot sur un prompt portant l'instantané des données —
+ * pendant ce temps rien ne circule, et nginx coupe.
+ *
+ * Un commentaire SSE est donc émis périodiquement tant que le modèle n'a pas
+ * répondu. C'est la pratique courante du protocole : l'écran l'ignore, il ne
+ * vaut pas texte émis, et il ne dépend d'aucun réglage d'infrastructure.
+ */
+describe('Maintien du flux pendant la réflexion du modèle', () => {
+  beforeEach(() => {
+    anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
+    queryMock.mockReset().mockResolvedValue({ rows: [{ count: '84', total: '84', status: 'closed', month: '2026-10' }] })
+  })
+
+  afterEach(() => { vi.useRealTimers() })
+
+  it('émet un signe de vie tant que le modèle n’a pas répondu', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let liberer!: () => void
+    let entre!: () => void
+    const reflexion = new Promise<void>(r => { liberer = r })
+    // Le minuteur n'existe qu'une fois le flux ouvert : avancer l'horloge
+    // avant que le handler n'y soit arrivé ne déclencherait rien.
+    const modeleAppele = new Promise<void>(r => { entre = r })
+    mistralChatMock.mockImplementation(async (a: { onText: (t: string) => void }) => {
+      entre()
+      await reflexion
+      a.onText('84 employés actifs.')
+      return { usage: { input_tokens: 5, output_tokens: 9 }, stopReason: 'end_turn', toolsUsed: [], rounds: 0 }
+    })
+
+    const promesse = chat()
+    await modeleAppele
+    // Bien au-delà du délai de lecture de la passerelle (30 s) : sans signe de
+    // vie, la connexion serait coupée avant le premier mot du modèle.
+    await vi.advanceTimersByTimeAsync(45_000)
+    liberer()
+    const res = await promesse
+
+    const signes = res.body.split('\n').filter(l => l.startsWith(':')).length
+    expect(signes).toBeGreaterThan(1)
+  })
+
+  it('arrête le signe de vie une fois la réponse terminée', async () => {
+    // Sinon le minuteur survivrait à la requête et écrirait sur un flux clos.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    mistralChatMock.mockImplementation(reponseLocale('84 employés actifs.'))
+
+    await chat()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
