@@ -193,7 +193,11 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs = 15_000): Pr
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const res = await fetch(safe.url.toString(), { ...init, signal: ctrl.signal, dispatcher: safe.dispatcher })
+    // `redirect: 'error'` APRÈS `...init` pour qu'il prime toujours : une
+    // redirection 30x ne doit pas être suivie, sinon l'épinglage DNS serait
+    // contourné (la cible de redirection échapperait à la validation). Aligne
+    // cet appel sur les autres sorties (SSO, webhooks).
+    const res = await fetch(safe.url.toString(), { ...init, signal: ctrl.signal, redirect: 'error', dispatcher: safe.dispatcher })
     // OWASP A10 — lecture BORNÉE : l'`apiUrl` provient d'une config tenant ; on
     // compte les octets en flux et on annule au-delà du cap plutôt que de
     // bufferiser une réponse potentiellement illimitée (DoS mémoire).
