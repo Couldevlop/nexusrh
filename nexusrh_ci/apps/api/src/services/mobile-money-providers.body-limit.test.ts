@@ -108,3 +108,25 @@ describe('fetchJson — corps de réponse borné (A10-3)', () => {
     expect(r).toMatchObject({ success: true, status: 'completed', transactionId: 'WAVE-777' })
   })
 })
+
+/**
+ * Correctif de durcissement (revue sécurité 19/11/2026) : l'appel sortant
+ * Mobile Money refuse de suivre une redirection, comme les autres sorties (SSO,
+ * webhooks). Sans cela, une cible qui répond 30x pourrait renvoyer vers une
+ * adresse échappant à la validation — l'épinglage DNS la clouerait, mais le
+ * refus explicite ferme la question au lieu de dépendre d'un seul rempart.
+ */
+describe('fetchJson — pas de suivi de redirection (A10)', () => {
+  it('passe redirect:"error" à fetch, après le spread de l’init', async () => {
+    waveTenantConfig()
+    fetchSpy.mockResolvedValue({ ok: true, status: 200, body: null, headers: { get: () => null } })
+
+    await initiateTransfer('tenant_x', 'wave', PAYMENT)
+
+    expect(fetchSpy).toHaveBeenCalled()
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit
+    expect(init.redirect).toBe('error')
+    // L'init métier (méthode POST) n'est pas écrasé par l'option de sécurité.
+    expect(init.method).toBe('POST')
+  })
+})
