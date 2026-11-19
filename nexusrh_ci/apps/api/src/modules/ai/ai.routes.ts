@@ -399,7 +399,19 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         'Cache-Control': 'no-cache',
         'Connection':    'keep-alive',
         'Access-Control-Allow-Origin': '*',
+        // Sans quoi nginx accumule le flux au lieu de le relayer au fil de
+        // l'eau : la reponse n'arriverait qu'une fois le modele terminé.
+        'X-Accel-Buffering': 'no',
       })
+
+      // `writeHead` n'ecrit RIEN sur la socket : en Node les en-tetes ne
+      // partent qu'au premier `write`. Tant que le modele n'a pas produit son
+      // premier mot, la passerelle ne voit aucun octet et coupe en 504 — ce
+      // qui est arrive des que l'instantane des donnees a allonge le prompt du
+      // modele de secours. Ce commentaire SSE pousse donc les en-tetes tout de
+      // suite. Ce n'est pas une ligne `data:` : l'ecran l'ignore, et il ne
+      // compte pas comme texte emis, donc une bascule reste possible apres lui.
+      reply.raw.write(': ouverture du flux\n\n')
 
       // Émission effective : une bascule de fournisseur n'est honnête que tant
       // que RIEN n'est parti au navigateur. Après le premier mot, rejouer la

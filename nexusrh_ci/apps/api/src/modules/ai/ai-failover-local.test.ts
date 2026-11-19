@@ -336,3 +336,60 @@ describe('Lecture directe des données pour le modèle de secours', () => {
     expect(envoye.system).not.toContain("DONNÉES DE L'ENTREPRISE")
   })
 })
+
+/**
+ * Le flux doit s'OUVRIR tout de suite, sans attendre le premier mot du modèle.
+ *
+ * Constaté en production le 19/11/2026, juste après la mise en service de la
+ * lecture directe : l'assistante affichait « Erreur IA », et l'appel à
+ * `/api/ai/chat` tombait en 504 Gateway Time-out de nginx à 30,1 s.
+ *
+ * `reply.raw.writeHead()` n'écrit RIEN sur la socket en Node : les en-têtes ne
+ * partent qu'au premier `write()`. Tant que le modèle n'avait pas produit son
+ * premier mot, la passerelle ne voyait aucun octet et coupait. L'instantané des
+ * données allonge le prompt du modèle de secours, donc son temps de première
+ * réponse : ce qui passait de justesse est passé au-dessus du seuil.
+ *
+ * Deux propriétés tenues ici, indépendantes de la vitesse du modèle :
+ *  1. un commentaire SSE part AVANT l'appel au modèle, ce qui pousse les
+ *     en-têtes sur la socket ;
+ *  2. `X-Accel-Buffering: no`, sans quoi nginx accumulerait le flux au lieu de
+ *     le relayer au fil de l'eau.
+ *
+ * Le commentaire n'est pas une ligne `data:` : l'écran l'ignore, et il ne vaut
+ * pas émission de texte — une bascule de secours reste donc possible après lui.
+ */
+describe('Ouverture immédiate du flux', () => {
+  beforeEach(() => {
+    anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
+    queryMock.mockReset().mockResolvedValue({ rows: [{ count: '84', total: '84', status: 'closed', month: '2026-10' }] })
+  })
+
+  it('demande à la passerelle de ne pas accumuler le flux', async () => {
+    mistralChatMock.mockImplementation(reponseLocale('84 employés actifs.'))
+
+    const res = await chat()
+    expect(res.headers['x-accel-buffering']).toBe('no')
+  })
+
+  it('écrit sur la socket même quand le modèle ne répond JAMAIS', async () => {
+    // Le cas qui coupait en production : aucun mot ne sort du modèle, donc
+    // sans écriture préalable la passerelle n'aurait vu aucun octet. Ici le
+    // modèle échoue — le commentaire d'ouverture doit tout de même être parti,
+    // et précéder la première trame de données.
+    mistralChatMock.mockRejectedValue(new Error('délai dépassé côté modèle'))
+
+    const res = await chat()
+    expect(res.body.startsWith(':')).toBe(true)
+    expect(res.body.indexOf(':')).toBeLessThan(res.body.indexOf('data: '))
+  })
+
+  it('n’émet pas de ligne de données que l’écran prendrait pour une réponse', async () => {
+    mistralChatMock.mockImplementation(reponseLocale('84 employés actifs.'))
+
+    const res = await chat()
+    const premiere = res.body.split('\n')[0]!
+    expect(premiere.startsWith('data: ')).toBe(false)
+    expect(premiere.startsWith(':')).toBe(true)
+  })
+})
