@@ -202,3 +202,69 @@ describe('Ce qui ne change pas', () => {
     expect(mistralChatMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Dire QUEL modèle a répondu, et s'il a pu lire les données du tenant.
+ *
+ * Constaté en production le 19/11/2026 sur SOTRA, compte admin : à la question
+ * « combien d'employés actifs avons-nous ? » (84 au tableau de bord),
+ * l'assistante a répondu qu'elle n'avait pas accès aux données internes, puis a
+ * inventé « Nombre d'employés actifs = Masse salariale totale − Employés… ».
+ * Le flux portait `toolsUsed: []` et `usage: 0/0`, et le bandeau annonçait
+ * toujours « Propulsé par Mistral AI ».
+ *
+ * Deux causes cumulées :
+ *  1. `/ai/status` ne teste que l'EXISTENCE d'une clé : après une bascule de
+ *     secours, il continue d'annoncer le fournisseur externe. Le bandeau
+ *     mentait sur l'auteur de la réponse.
+ *  2. Le modèle de secours est servi par une API OpenAI-compatible qui IGNORE
+ *     le bloc `tools` : il ne peut structurellement pas lire les données du
+ *     tenant, et comble le vide en inventant.
+ *
+ * Le flux porte donc désormais le fournisseur réel et sa capacité à lire les
+ * données, pour que l'écran puisse le dire au lieu de laisser passer une
+ * réponse inventée pour un chiffre maison.
+ */
+describe('Le flux annonce le modèle qui a réellement répondu', () => {
+  /** Dernier événement `done` du flux SSE. */
+  function evenementFinal(corps: string): Record<string, unknown> {
+    const ligne = corps.split('\n').filter(l => l.startsWith('data: ') && l.includes('"done"')).pop()
+    if (!ligne) throw new Error('aucun événement de fin dans le flux')
+    return JSON.parse(ligne.slice(6)) as Record<string, unknown>
+  }
+
+  it('nomme le modèle de secours — pas le fournisseur externe en échec', async () => {
+    anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
+    mistralChatMock.mockImplementation(reponseLocale('Le SMIG ivoirien est de 75 000 FCFA.'))
+
+    const fin = evenementFinal((await chat()).body)
+    expect(fin.provider).toBe('local')
+    expect(fin.providerLabel).toBe(LOCAL.label)
+  })
+
+  it('signale que le modèle de secours ne sait pas lire les données du tenant', async () => {
+    anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
+    mistralChatMock.mockImplementation(reponseLocale('réponse générale'))
+
+    const fin = evenementFinal((await chat()).body)
+    // C'est ce drapeau qui autorise l'écran à poser l'avertissement : sans lui,
+    // une réponse de culture générale est indiscernable d'un chiffre maison.
+    expect(fin.toolsSupported).toBe(false)
+    expect(fin.toolsUsed).toEqual([])
+  })
+
+  it('n’affuble PAS d’avertissement une réponse d’un fournisseur qui lit les données', async () => {
+    anthropicStreamMock.mockImplementation(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'content_block_delta', delta: { type: 'text_delta', text: '84 employés actifs.' } }
+      },
+      finalMessage: vi.fn().mockResolvedValue({
+        usage: { input_tokens: 10, output_tokens: 20 }, stop_reason: 'end_turn',
+      }),
+    }))
+
+    const fin = evenementFinal((await chat()).body)
+    expect(fin.provider).toBe('claude')
+    expect(fin.toolsSupported).toBe(true)
+  })
+})

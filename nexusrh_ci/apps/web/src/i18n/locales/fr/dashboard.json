@@ -113,7 +113,8 @@
         "Quelles sont mes obligations envers mon équipe ?",
         "Délai préavis pour un salarié de 3 ans d'ancienneté ?"
       ]
-    }
+    },
+    "noTenantData": "Réponse fournie par le modèle de secours {{provider}}, qui ne peut pas consulter les données de votre entreprise : les chiffres cités ne proviennent pas de NexusRH. Pour une réponse chiffrée sur vos données, contactez votre administrateur."
   },
   "export": {
     "dashboardTitle": "=== TABLEAU DE BORD RH ===",

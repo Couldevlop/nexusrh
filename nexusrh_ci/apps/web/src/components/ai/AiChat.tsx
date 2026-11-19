@@ -46,11 +46,18 @@ export default function AiChat() {
   })
 
   const aiAvailable = statusData?.available ?? false
+  // Fournisseur ayant REELLEMENT repondu au dernier echange, annonce par le
+  // serveur en fin de flux. `/ai/status` ne teste que l'EXISTENCE d'une cle :
+  // quand la cle externe est morte ou a quota epuise, le serveur bascule sur
+  // le modele de secours sans que ce statut change. Le bandeau affichait donc
+  // « Mistral AI » alors qu'un tout autre modele repondait.
+  const [providerServi, setProviderServi] = useState<{ label: string; toolsSupported: boolean } | null>(null)
   // Le libellé du modèle auto-hébergé vient du serveur : l'écran n'annonce pas
   // « Lucie » quand c'est un autre modèle qui répond.
-  const providerLabel = statusData?.provider
-    ? (statusData.localLabel || PROVIDER_LABELS[statusData.provider] || 'IA')
-    : 'IA'
+  const providerLabel = providerServi?.label
+    ?? (statusData?.provider
+      ? (statusData.localLabel || PROVIDER_LABELS[statusData.provider] || 'IA')
+      : 'IA')
   const suggestionRole = SUGGESTION_ROLES.includes((user?.role ?? '') as typeof SUGGESTION_ROLES[number])
     ? (user?.role as typeof SUGGESTION_ROLES[number])
     : 'hr_manager'
@@ -125,7 +132,28 @@ export default function AiChat() {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           try {
-            const data = JSON.parse(line.slice(6)) as { text?: string; done?: boolean; error?: string }
+            const data = JSON.parse(line.slice(6)) as {
+              text?: string; done?: boolean; error?: string
+              provider?: 'mistral' | 'claude' | 'local'
+              providerLabel?: string
+              toolsUsed?: string[]
+              toolsSupported?: boolean
+            }
+            if (data.done) {
+              if (data.providerLabel) {
+                setProviderServi({ label: data.providerLabel, toolsSupported: data.toolsSupported !== false })
+              }
+              // Une reponse qui n'a consulte AUCUN outil n'est pas fondee sur
+              // les donnees du tenant. Quand le modele qui repond ne sait pas
+              // les lire, il comble le vide : en recette, il a invente une
+              // formule (« effectif actif = masse salariale - employes »).
+              // On le dit, au lieu de laisser la reponse passer pour un chiffre
+              // maison.
+              if (data.toolsSupported === false && (data.toolsUsed?.length ?? 0) === 0) {
+                assistantContent += `\n\n> ⚠️ ${t('aiChat.noTenantData', { provider: data.providerLabel ?? '' })}`
+                rendre()
+              }
+            }
             if (data.error) {
               // Le `break` ne sortait que de la boucle sur les lignes, et SANS
               // écrire : le message d'erreur du serveur n'arrivait jamais à

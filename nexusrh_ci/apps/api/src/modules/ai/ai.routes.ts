@@ -185,6 +185,13 @@ function auditLogAi(
   auditTenant(schema, { userId: userId, action: action, entity: 'ai', entityId: null, changes: changes, ip: ip })
 }
 
+/** Libellés affichables des fournisseurs externes. Le modèle de secours porte
+ *  son propre libellé, saisi par le super_admin (`ai_local_label`). */
+const PROVIDER_LABELS: Record<'mistral' | 'claude', string> = {
+  mistral: 'Mistral AI',
+  claude:  'Claude (Anthropic)',
+}
+
 // Tracking de conso IA SUR LA CLÉ PLATEFORME uniquement (key_source='platform').
 // Upsert agrégé (tenant × provider × modèle × mois) dans platform.ai_usage —
 // permet au super_admin de connaître le coût refacturable par tenant. Non
@@ -420,7 +427,23 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             maxToolRounds: 5,
             onText:        ecrire,
           })
-          reply.raw.write(`data: ${JSON.stringify({ done: true, usage: r.usage, stopReason: r.stopReason, toolsUsed: r.toolsUsed })}\n\n`)
+          // `provider` est celui qui a REELLEMENT repondu, pas celui annonce au
+          // chargement par /ai/status : ce dernier ne teste que l'EXISTENCE
+          // d'une cle, si bien qu'une bascule de secours restait invisible et
+          // que le bandeau continuait d'afficher le fournisseur externe.
+          reply.raw.write(`data: ${JSON.stringify({
+            done: true,
+            usage: r.usage,
+            stopReason: r.stopReason,
+            toolsUsed: r.toolsUsed,
+            provider: prov,
+            providerLabel: prov === 'local' ? local!.label : PROVIDER_LABELS[prov],
+            // Le modele de secours est servi par une API qui ignore le bloc
+            // `tools` : il ne peut structurellement pas lire les donnees du
+            // tenant. Sans ce drapeau, l'utilisateur ne distingue pas une
+            // reponse fondee sur ses chiffres d'une reponse de culture generale.
+            toolsSupported: prov !== 'local',
+          })}\n\n`)
           if (keySource === 'platform') {
             recordPlatformAiUsage(schema, tenantId, 'mistral', usedModel, r.usage.input_tokens, r.usage.output_tokens)
           }
@@ -508,6 +531,9 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
           usage: usageTotal,
           stopReason: finalMsg.stop_reason,
           toolsUsed,
+          provider: 'claude',
+          providerLabel: PROVIDER_LABELS.claude,
+          toolsSupported: true,
         })}\n\n`)
 
         if (keySource === 'platform') {
