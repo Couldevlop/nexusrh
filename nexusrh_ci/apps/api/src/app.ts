@@ -32,6 +32,7 @@ import corsPlugin    from './plugins/cors.js'
 import swaggerPlugin from './plugins/swagger.js'
 import { ensurePlatformSchema } from './utils/schema-migrations.js'
 import { describeDbError } from './utils/db-error.js'
+import { findInvalidUuidParam } from './utils/uuid-params.js'
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoutes       from './modules/auth/auth.routes.js'
@@ -380,6 +381,28 @@ export async function buildApp() {
       }
     } catch {
       // Vérification impossible (DB) : fail-open, cohérent avec la maintenance.
+    }
+  })
+
+  // ── Paramètres de route UUID (OWASP A03/A05 — robustesse) ───────────────────
+  // `GET /employees/pas-un-uuid` transmettait la chaîne à PostgreSQL, qui levait
+  // `22P02` (string_to_uuid) ; l'erreur remontait non interceptée en **500**.
+  // Pas une injection — les requêtes sont paramétrées, c'est bien pourquoi
+  // PostgreSQL se plaint du type — mais un 500 sur un chemin trivialement
+  // atteignable signale qu'un handler a échoué sans maîtrise, et consomme une
+  // connexion du pool. 31 routes à `:id` étaient concernées.
+  //
+  // En `preValidation` : la phase précède le `preHandler` par route qui porte
+  // l'autorisation, donc un UUID malformé est écarté avant toute requête DB.
+  // Un UUID *valide* n'est pas touché et suit le parcours d'authentification
+  // habituel — l'invariant « sans jeton → 401 » reste intact pour lui.
+  fastify.addHook('preValidation', async (request, reply) => {
+    const bad = findInvalidUuidParam(request.params)
+    if (bad) {
+      return reply.status(400).send({
+        error: `Le paramètre « ${bad} » doit être un identifiant valide.`,
+        statusCode: 400,
+      })
     }
   })
 
