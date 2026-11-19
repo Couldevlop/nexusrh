@@ -8,7 +8,7 @@ import axios from 'axios'
 import { MailCheck, ArrowLeft } from 'lucide-react'
 
 const schema = z.object({
-  email: z.string().email('auth:validation.emailInvalid').max(254),
+  email: z.email('auth:validation.emailInvalid').max(254),
 })
 type Form = z.infer<typeof schema>
 

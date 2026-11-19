@@ -27,19 +27,19 @@ const DELETE_ROLES = ['admin', 'hr_manager'] as const
 
 const createPlanSchema = z.object({
   positionTitle: z.string().min(1).max(200),
-  incumbentEmployeeId: z.string().guid().nullable().optional(),
+  incumbentEmployeeId: z.guid().nullable().optional(),
   criticality: z.enum(CRITICALITY_LEVELS).optional(),
   notes: z.string().max(2000).optional(),
 })
 const updatePlanSchema = z.object({
   positionTitle: z.string().min(1).max(200).optional(),
-  incumbentEmployeeId: z.string().guid().nullable().optional(),
+  incumbentEmployeeId: z.guid().nullable().optional(),
   criticality: z.enum(CRITICALITY_LEVELS).optional(),
   status: z.enum(PLAN_STATUSES).optional(),
   notes: z.string().max(2000).optional(),
 })
 const candidateSchema = z.object({
-  employeeId: z.string().guid(),
+  employeeId: z.guid(),
   readiness: z.enum(READINESS_LEVELS).optional(),
   notes: z.string().max(2000).optional(),
 })

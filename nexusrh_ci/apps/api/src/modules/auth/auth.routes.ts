@@ -77,7 +77,7 @@ const DUMMY_BCRYPT_HASH = '$2a$12$YmZvc2htYWxlc3BoZXJlb.uPnVfM7g8e4PYJVxLLDh89gG
 
 // OWASP A03 — schémas Zod stricts
 const loginSchema = z.object({
-  email:    z.string().email().max(254),
+  email:    z.email().max(254),
   password: z.string().min(1).max(256),
 }).strict()
 

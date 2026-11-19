@@ -1,5 +1,5 @@
 /**
- * Golden — données de démo : emails ASCII (compatibles z.string().email() de
+ * Golden — données de démo : emails ASCII (compatibles z.email() de
  * l'API de signature) et libellés français accentués du seed talent.
  */
 import { describe, it, expect } from 'vitest'
@@ -13,10 +13,10 @@ describe('asciiEmailPart', () => {
     expect(asciiEmailPart('Aïcha')).toBe('aicha')
     expect(asciiEmailPart('N’Guessan Éric')).toBe('nguessaneric')
   })
-  it('produit un email accepté par z.string().email()', () => {
+  it('produit un email accepté par z.email()', () => {
     const email = `${asciiEmailPart('Serge')}.${asciiEmailPart('Dème')}@email.com`
     expect(email).toBe('serge.deme@email.com')
-    expect(z.string().email().safeParse(email).success).toBe(true)
+    expect(z.email().safeParse(email).success).toBe(true)
   })
 })
 

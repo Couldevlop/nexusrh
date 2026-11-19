@@ -39,7 +39,7 @@ const analyzeSchema = z.object({
   article_id:     z.string().regex(ARTICLE_ID_RE).max(50).optional(),
   country_code:   z.string().regex(COUNTRY_CODE_RE).default('CIV'),
   source:         z.string().regex(SOURCE_CODE_RE).min(1).max(30),
-  source_url:     z.string().url().max(2000).optional(),
+  source_url:     z.url().max(2000).optional(),
   source_type:    z.enum(['manual', 'scraper', 'upload']).default('manual'),
   proposed_text:  z.string().min(10).max(30_000),
   context:        z.string().max(2000).optional(),

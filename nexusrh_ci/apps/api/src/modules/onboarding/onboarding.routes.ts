@@ -59,7 +59,7 @@ const createTemplateSchema = z.object({
   description:  z.string().max(2000).optional(),
   seniority:    z.enum(ONBOARDING_SENIORITIES).optional().default('any'),
   jobKeywords:  z.string().max(500).optional(),
-  departmentId: z.string().guid().nullable().optional(),
+  departmentId: z.guid().nullable().optional(),
   isDefault:    z.boolean().optional().default(false),
   isActive:     z.boolean().optional().default(true),
   steps:        z.array(templateStepSchema).max(60).optional().default([]),
@@ -83,7 +83,7 @@ const patchTemplateSchema = z.object({
   description:  z.string().max(2000).optional(),
   seniority:    z.enum(ONBOARDING_SENIORITIES).optional(),
   jobKeywords:  z.string().max(500).optional(),
-  departmentId: z.string().guid().nullable().optional(),
+  departmentId: z.guid().nullable().optional(),
   isDefault:    z.boolean().optional(),
   isActive:     z.boolean().optional(),
   steps:        z.array(templateStepSchema).max(60).optional(),
@@ -365,8 +365,8 @@ const onboardingRoutes: FastifyPluginAsync = async (fastify) => {
     schema: { tags: ['onboarding'], summary: 'Démarrer un parcours pour un employé' },
     handler: async (request, reply) => {
       const parsed = z.object({
-        employeeId: z.string().guid(),
-        templateId: z.string().guid(),
+        employeeId: z.guid(),
+        templateId: z.guid(),
       }).strict().safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'employeeId et templateId (UUID) requis' })
       const schema = request.user.schemaName

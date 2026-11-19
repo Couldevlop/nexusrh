@@ -27,7 +27,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const signatorySchema = z.object({
   name: z.string().min(1).max(150),
-  email: z.string().email().max(180).optional().nullable(),
+  email: z.email().max(180).optional().nullable(),
   employeeId: z.string().regex(UUID_RE).optional().nullable(),
 })
 const createSchema = z.object({
@@ -37,7 +37,7 @@ const createSchema = z.object({
   documentUrl: z.string().max(2000).optional().nullable(),
   message: z.string().max(2000).optional().nullable(),
   sequential: z.boolean().optional(),
-  expiresAt: z.string().datetime().optional().nullable(),
+  expiresAt: z.iso.datetime().optional().nullable(),
   signatories: z.array(signatorySchema).min(1).max(20),
 })
 /**

@@ -170,7 +170,7 @@ const mfaDisableSchema = z.object({
 }).strict()
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.email().max(254),
 }).strict()
 
 const resetPasswordSchema = z.object({

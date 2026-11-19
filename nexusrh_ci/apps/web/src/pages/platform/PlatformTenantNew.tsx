@@ -17,7 +17,7 @@ const schema = z.object({
   city:           z.string().min(1, 'cityRequired'),
   cnpsNumber:     z.string().optional(),
   dgiNumber:      z.string().optional(),
-  adminEmail:     z.string().email('emailInvalid'),
+  adminEmail:     z.email('emailInvalid'),
   adminFirstName: z.string().min(1, 'firstNameRequired'),
   adminLastName:  z.string().min(1, 'lastNameRequired'),
   adminPhone:     z.string().optional(),

@@ -78,9 +78,9 @@ export function paymentOverridesError(o: HireOverrides): string | null {
   return null
 }
 
-/** Même règle que l'API de signature et de création d'employé (z.string().email()). */
+/** Même règle que l'API de signature et de création d'employé (z.email()). */
 export function isValidEmail(email: string): boolean {
-  return z.string().email().max(255).safeParse(email).success
+  return z.email().max(255).safeParse(email).success
 }
 
 /** Conditions mémorisées à la génération du contrat (POST /applications/:id/contract). */

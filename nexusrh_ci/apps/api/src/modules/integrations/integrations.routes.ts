@@ -53,7 +53,7 @@ function headerKeys(headers: Record<string, string> | null | undefined): string[
 // ── Schémas Zod (OWASP A03) ───────────────────────────────────────────────────
 const webhookBody = z.object({
   name: z.string().min(1).max(150),
-  target_url: z.string().url().max(2000),
+  target_url: z.url().max(2000),
   events: z.array(z.enum(EVENT_KEYS as [string, ...string[]])).min(1),
   headers: z.record(z.string(), z.string().max(200)).optional(),
   is_active: z.boolean().optional(),
@@ -63,12 +63,12 @@ const webhookPatch = webhookBody.partial()
 const apiKeyBody = z.object({
   name: z.string().min(1).max(150),
   scopes: z.array(z.enum(API_SCOPES as unknown as [string, ...string[]])).min(1),
-  expires_at: z.string().datetime().optional(),
+  expires_at: z.iso.datetime().optional(),
 }).strict()
 
 const connectorBody = z.object({
   name: z.string().min(1).max(150),
-  base_url: z.string().url().max(2000),
+  base_url: z.url().max(2000),
   auth_type: z.enum(['none', 'bearer', 'basic', 'api_key']).optional(),
   auth_secret: z.string().max(2000).optional(),
   auth_header_name: z.string().max(80).optional(),
