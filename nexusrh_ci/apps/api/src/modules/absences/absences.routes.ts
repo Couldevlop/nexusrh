@@ -24,12 +24,12 @@ import { checkPaidLeaveRequest, loadLeavePolicyForEmployee, refreshPaidLeaveBala
 
 // OWASP A03 (input validation) — schema strict pour POST /absences
 const createAbsenceSchema = z.object({
-  absenceTypeId: z.string().uuid('absenceTypeId doit être un UUID'),
+  absenceTypeId: z.string().guid('absenceTypeId doit être un UUID'),
   startDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
   endDate:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
   halfDay:       z.boolean().optional(),
   reason:        z.string().max(1000).optional(),
-  employeeId:    z.string().uuid().optional(),
+  employeeId:    z.string().guid().optional(),
   // Maternité : prolongations légales déclarées (pack du pays)
   maternity: z.object({
     multipleBirth: z.boolean().optional(),

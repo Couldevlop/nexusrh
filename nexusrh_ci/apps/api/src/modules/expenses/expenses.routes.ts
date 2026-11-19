@@ -48,7 +48,7 @@ const expenseLineSchema = z.object({
 const createExpenseSchema = z.object({
   title:       z.string().min(1).max(200).trim(),
   month:       z.string().regex(/^\d{4}-\d{2}$/).optional(),
-  employee_id: z.string().uuid().optional(),
+  employee_id: z.string().guid().optional(),
   lines:       z.array(expenseLineSchema).max(50).optional(),
 }).strict()
 

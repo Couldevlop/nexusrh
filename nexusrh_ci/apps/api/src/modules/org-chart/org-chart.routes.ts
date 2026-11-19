@@ -42,7 +42,7 @@ const READ_ROLES = ['admin', 'hr_manager', 'hr_officer', 'manager', 'readonly'] 
 
 const exportQuerySchema = z.object({
   type: z.enum(['departments', 'reporting']).default('departments'),
-  rootEmployeeId: z.string().uuid().optional(),
+  rootEmployeeId: z.string().guid().optional(),
 })
 
 const SELECT_DEPTS = (schema: string) =>

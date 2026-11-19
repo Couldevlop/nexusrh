@@ -31,7 +31,7 @@ const READ_ROLES = ['admin', 'hr_manager', 'hr_officer'] as const
 const DELETE_ROLES = ['admin', 'hr_manager'] as const
 
 const createSchema = z.object({
-  employeeId: z.string().uuid('employeeId doit être un UUID'),
+  employeeId: z.string().guid('employeeId doit être un UUID'),
   type: z.enum(DISCIPLINE_TYPES),
   reason: z.string().min(1, 'Motif requis').max(2000),
   description: z.string().max(5000).optional(),

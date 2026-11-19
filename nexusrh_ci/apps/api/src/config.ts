@@ -20,7 +20,7 @@ const envSchema = z.object({
   ENCRYPTION_KEY:        z.string().length(64, 'ENCRYPTION_KEY doit être 64 caractères hex (32 bytes)').optional(),
   JWT_SECRET:            z.string().min(32),
   // Swagger /docs : exposé uniquement hors production, sauf override explicite.
-  ENABLE_DOCS:           z.string().transform(v => v === 'true').default('false'),
+  ENABLE_DOCS:           z.string().transform(v => v === 'true').prefault('false'),
   /**
    * OWASP A07 — nombre de proxys de confiance DEVANT l'API, ou liste de CIDR.
    *
@@ -98,7 +98,7 @@ const envSchema = z.object({
 
   SMTP_HOST:   z.string().default('smtp.gmail.com'),
   SMTP_PORT:   z.coerce.number().default(587),
-  SMTP_SECURE: z.string().transform(v => v === 'true').default('false'),
+  SMTP_SECURE: z.string().transform(v => v === 'true').prefault('false'),
   SMTP_USER:   z.string().default(''),
   SMTP_PASS:   z.string().default(''),
   SMTP_FROM:   z.string().default('NexusRH <noreply@nexusrh-ci.com>'),
@@ -108,7 +108,7 @@ const envSchema = z.object({
   S3_SECRET_KEY:       z.string().default('minioadmin'),
   S3_BUCKET:           z.string().default('nexusrhci'),
   S3_REGION:           z.string().default('af-west-1'),
-  S3_FORCE_PATH_STYLE: z.string().transform(v => v === 'true').default('true'),
+  S3_FORCE_PATH_STYLE: z.string().transform(v => v === 'true').prefault('true'),
 
   MEILISEARCH_URL:        z.string().default('http://localhost:7701'),
   MEILISEARCH_MASTER_KEY: z.string().default('nexusrhci-dev-master-key'),
@@ -128,13 +128,13 @@ const envSchema = z.object({
   ORANGE_MONEY_MERCHANT_KEY:  z.string().optional(),
   ORANGE_MONEY_WEBHOOK_SECRET: z.string().optional(),
 
-  FEATURE_AI_ASSISTANT:     z.string().transform(v => v === 'true').default('true'),
-  FEATURE_MOBILE_MONEY:     z.string().transform(v => v === 'true').default('true'),
-  FEATURE_CNPS_AUTO_EXPORT: z.string().transform(v => v === 'true').default('true'),
-  FEATURE_DISA_GENERATOR:   z.string().transform(v => v === 'true').default('true'),
-  FEATURE_FDFP_MODULE:      z.string().transform(v => v === 'true').default('true'),
-  FEATURE_OHADA_CONTRACTS:  z.string().transform(v => v === 'true').default('true'),
-  FEATURE_OFFLINE_PWA:      z.string().transform(v => v === 'true').default('true'),
+  FEATURE_AI_ASSISTANT:     z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_MOBILE_MONEY:     z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_CNPS_AUTO_EXPORT: z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_DISA_GENERATOR:   z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_FDFP_MODULE:      z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_OHADA_CONTRACTS:  z.string().transform(v => v === 'true').prefault('true'),
+  FEATURE_OFFLINE_PWA:      z.string().transform(v => v === 'true').prefault('true'),
 })
 
 const parsed = envSchema.safeParse(process.env)

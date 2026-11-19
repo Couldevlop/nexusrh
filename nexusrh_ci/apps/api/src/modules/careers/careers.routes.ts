@@ -18,9 +18,9 @@ const createSkillSchema = z.object({
 }).strict()
 
 const upsertEmployeeSkillsSchema = z.object({
-  employee_id: z.string().uuid(),
+  employee_id: z.string().guid(),
   skills:      z.array(z.object({
-    skill_id:     z.string().uuid(),
+    skill_id:     z.string().guid(),
     level:        z.number().int().min(0).max(5),
     target_level: z.number().int().min(0).max(5).optional(),
   })).min(1).max(200),
@@ -32,7 +32,7 @@ const upsertEmployeeSkillsSchema = z.object({
 const SCORE_0_5 = z.number().min(0).max(5)
 
 const createEvaluationSchema = z.object({
-  employee_id:       z.string().uuid(),
+  employee_id:       z.string().guid(),
   // Inclut trial_end (fin d'essai) et exit (entretien de sortie) proposés par
   // l'UI — sinon ces choix renvoyaient un 400 à la création de l'entretien.
   type:              z.enum(['annual', 'mid_year', 'probation', '360', 'manager_review', 'trial_end', 'exit']).optional(),

@@ -121,7 +121,7 @@ const disaGenerateSchema = z.object({
 }).strict()
 
 const cessationEventSchema = z.object({
-  employeeId: z.string().uuid(),
+  employeeId: z.string().guid(),
   exitDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format YYYY-MM-DD requis'),
   reason:     z.enum(['resignation', 'dismissal', 'conventional', 'end_of_cdd', 'retirement', 'other']),
   comment:    z.string().max(1000).optional(),

@@ -77,7 +77,9 @@ const HEX_COLOR_RE     = /^#[0-9a-fA-F]{6}$/
 // Borne haute des quotas : très au-dessus du plan `enterprise` (9999) tout en
 // excluant les valeurs absurdes qui fausseraient la facturation et les KPI.
 const MAX_QUOTA = 1_000_000
-const quota = z.number({ invalid_type_error: 'Valeur numérique attendue' })
+const quota = z.number({
+  error: (iss) => (iss.input === undefined ? undefined : 'Valeur numérique attendue'),
+})
   .int('Nombre entier attendu').nonnegative('Valeur négative interdite').max(MAX_QUOTA)
 // Booléens historiquement tolérants (true | 'true' | 1 | '1') — la coercition
 // applicative est conservée telle quelle en aval pour ne rien casser.

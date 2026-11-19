@@ -188,7 +188,7 @@ const SCOPE_CONSISTENCY_MESSAGE =
 
 const scheduleBody = z.object({
   scope: z.enum(['tenant', 'department', 'employee'], {
-    errorMap: () => ({ message: "scope doit être 'tenant', 'department' ou 'employee'" }),
+    error: () => "scope doit être 'tenant', 'department' ou 'employee'",
   }),
   scope_id: scheduleScopeId,
   expected_start: scheduleTime,
@@ -352,7 +352,7 @@ async function resolveSelfEmployeeId(schema: string, email: string): Promise<str
 const manualPunchBody = z.object({
   employeeId: z.string().regex(UUID_RE, 'employeeId invalide (uuid attendu)'),
   direction: z.enum(['in', 'out', 'unknown'], {
-    errorMap: () => ({ message: "direction doit être 'in', 'out' ou 'unknown'" }),
+    error: () => "direction doit être 'in', 'out' ou 'unknown'",
   }),
   punchedAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'punchedAt doit être une date/heure ISO valide'),
   reason: z.string().max(500).optional(),
@@ -378,7 +378,7 @@ const WARNING_STATUSES = ['active', 'explained', 'contested', 'closed'] as const
 
 const warningPatchBody = z.object({
   status: z.enum(['explained', 'contested', 'closed'], {
-    errorMap: () => ({ message: "status doit être 'explained', 'contested' ou 'closed'" }),
+    error: () => "status doit être 'explained', 'contested' ou 'closed'",
   }),
 }).strict()
 

@@ -13,7 +13,7 @@ import { DEFAULT_LEGISLATION_PACK, type LegislationPack } from '../../services/l
 // et types). Rejette les types inattendus et les enums hors liste légale OHADA/CI.
 const CONTRACT_TYPES = ['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition'] as const
 const createContractSchema = z.object({
-  employee_id:             z.string().uuid(),
+  employee_id:             z.string().guid(),
   type:                    z.enum(CONTRACT_TYPES),
   start_date:              z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
   end_date:                z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
