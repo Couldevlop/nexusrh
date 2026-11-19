@@ -314,3 +314,50 @@ export async function executeAiTool(
     return { error: 'Données indisponibles pour cette question (erreur interne ou module non provisionné)' }
   }
 }
+
+/**
+ * Lecture DIRECTE des données du tenant, sans passer par le modèle.
+ *
+ * Les outils ci-dessus ne partent que si le modèle émet un `tool_call`. Or le
+ * modèle de secours est servi par une API OpenAI-compatible qui IGNORE le bloc
+ * `tools` : le déclencheur ne se produit jamais, et le modèle — faute de
+ * chiffres — en invente (constaté le 19/11/2026 : « effectif actif = masse
+ * salariale totale − employés »). La base était accessible, personne ne
+ * l'interrogeait.
+ *
+ * On exécute donc les outils NOUS-MÊMES et on injecte le résultat dans le
+ * contexte. Mêmes fonctions, mêmes garde-fous : `executeAiTool` revérifie
+ * l'autorisation rôle→outil et applique le périmètre filiale. Rien n'est
+ * accessible ici qui ne le serait par un appel d'outil ordinaire.
+ *
+ * Réservé au modèle AUTO-HÉBERGÉ : les données restent alors chez
+ * l'exploitant. Vers un fournisseur externe capable d'appeler les outils, on
+ * garde l'appel à la demande, qui n'envoie que ce dont la question a besoin.
+ */
+export async function readTenantSnapshot(
+  pool: Pool,
+  ctx: AiToolContext,
+): Promise<string | null> {
+  const outils = buildToolsForRole(ctx.role)
+  if (outils.length === 0) return null
+
+  const resultats = await Promise.all(
+    outils.map(async (t) => {
+      // Un outil en échec ne doit jamais faire tomber la réponse entière :
+      // `executeAiTool` renvoie déjà { error } plutôt que de lever.
+      const r = await executeAiTool(pool, ctx, t.name, {})
+      return { nom: t.name, valeur: r }
+    }),
+  )
+
+  const utiles = resultats.filter(r => !('error' in r.valeur))
+  if (utiles.length === 0) return null
+
+  const lignes = utiles.map(r => `- ${r.nom} : ${JSON.stringify(r.valeur)}`)
+  return lignes.join('\n')
+}
+
+/** Noms des outils effectivement lus par `readTenantSnapshot`. */
+export function snapshotToolNames(role: string): string[] {
+  return buildToolsForRole(role).map(t => t.name)
+}

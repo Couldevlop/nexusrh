@@ -182,3 +182,55 @@ describe('Ce qui part au serveur', () => {
     expect(envoyes.map(m => m.content)).toContain('Première réponse.')
   })
 })
+
+/**
+ * Une réponse non fondée sur les données doit le DIRE.
+ *
+ * Constaté en production le 19/11/2026 sur SOTRA (compte admin) : à « combien
+ * d'employés actifs avons-nous ? » — 84 au tableau de bord — l'assistante a
+ * répondu qu'elle n'avait pas accès aux données, puis a inventé la formule
+ * « effectif actif = masse salariale totale − employés… ». Le bandeau
+ * annonçait « Mistral AI » alors que le flux ne portait aucun appel d'outil.
+ *
+ * Le serveur indique maintenant qui a répondu et si ce modèle sait lire les
+ * données du tenant ; l'écran doit en tirer un avertissement visible, sans
+ * l'imposer aux réponses légitimement fondées.
+ */
+describe('Réponse d’un modèle qui ne lit pas les données du tenant', () => {
+  it('ajoute un avertissement explicite sous la réponse', async () => {
+    fetchMock.mockResolvedValueOnce(fluxSSE([
+      `data: ${JSON.stringify({ text: 'Je dirais environ 120 employés.' })}`,
+      `data: ${JSON.stringify({ done: true, toolsUsed: [], provider: 'local', providerLabel: 'Lucie 7B', toolsSupported: false })}`,
+    ]))
+    afficher()
+    await ouvrir()
+    await envoyer('Combien d’employés actifs avons-nous ?')
+    await waitFor(() => expect(screen.getByText(/aiChat\.noTenantData/)).toBeTruthy())
+  })
+
+  it('n’avertit PAS quand le modèle a consulté les données', async () => {
+    fetchMock.mockResolvedValueOnce(fluxSSE([
+      `data: ${JSON.stringify({ text: '84 employés actifs.' })}`,
+      `data: ${JSON.stringify({ done: true, toolsUsed: ['get_headcount'], provider: 'claude', providerLabel: 'Claude (Anthropic)', toolsSupported: true })}`,
+    ]))
+    afficher()
+    await ouvrir()
+    await envoyer('Combien d’employés actifs avons-nous ?')
+    await waitFor(() => expect(screen.getByText(/84 employés actifs/)).toBeTruthy())
+    expect(screen.queryByText(/aiChat\.noTenantData/)).toBeNull()
+  })
+
+  it('n’avertit PAS un fournisseur externe resté sans appel d’outil', async () => {
+    // Une question de droit social n'a aucune raison de déclencher un outil :
+    // l'avertissement ne porte que sur l'INCAPACITÉ du modèle à les lire.
+    fetchMock.mockResolvedValueOnce(fluxSSE([
+      `data: ${JSON.stringify({ text: 'Le SMIG est de 75 000 FCFA.' })}`,
+      `data: ${JSON.stringify({ done: true, toolsUsed: [], provider: 'mistral', providerLabel: 'Mistral AI', toolsSupported: true })}`,
+    ]))
+    afficher()
+    await ouvrir()
+    await envoyer('Quel est le SMIG ?')
+    await waitFor(() => expect(screen.getByText(/75 000 FCFA/)).toBeTruthy())
+    expect(screen.queryByText(/aiChat\.noTenantData/)).toBeNull()
+  })
+})

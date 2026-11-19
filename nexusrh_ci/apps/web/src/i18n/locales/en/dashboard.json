@@ -113,7 +113,8 @@
         "What are my obligations toward my team?",
         "Notice period for an employee with 3 years of seniority?"
       ]
-    }
+    },
+    "noTenantData": "Answer produced by the fallback model {{provider}}, which cannot read your company's data: any figures quoted do not come from NexusRH. For an answer based on your data, contact your administrator."
   },
   "export": {
     "dashboardTitle": "=== HR DASHBOARD ===",
