@@ -242,13 +242,15 @@ describe('Le flux annonce le modèle qui a réellement répondu', () => {
     expect(fin.providerLabel).toBe(LOCAL.label)
   })
 
-  it('signale que le modèle de secours ne sait pas lire les données du tenant', async () => {
+  it('signale une réponse dont les données du tenant N’ONT PAS pu être lues', async () => {
     anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
     mistralChatMock.mockImplementation(reponseLocale('réponse générale'))
+    // Base injoignable : la lecture directe ne ramène rien, et le modèle de
+    // secours n'appelle pas d'outil. La réponse n'est donc fondée sur AUCUN
+    // chiffre du tenant — c'est le seul cas qui justifie encore l'avertissement.
+    queryMock.mockReset().mockRejectedValue(new Error('base injoignable'))
 
     const fin = evenementFinal((await chat()).body)
-    // C'est ce drapeau qui autorise l'écran à poser l'avertissement : sans lui,
-    // une réponse de culture générale est indiscernable d'un chiffre maison.
     expect(fin.toolsSupported).toBe(false)
     expect(fin.toolsUsed).toEqual([])
   })
@@ -266,5 +268,71 @@ describe('Le flux annonce le modèle qui a réellement répondu', () => {
     const fin = evenementFinal((await chat()).body)
     expect(fin.provider).toBe('claude')
     expect(fin.toolsSupported).toBe(true)
+  })
+})
+
+/**
+ * Le modèle de secours doit répondre AVEC les chiffres du tenant.
+ *
+ * Correction du constat du 19/11/2026. Les outils de lecture existent et
+ * interrogent bien la base (SQL cadré par rôle et périmètre filiale) — mais ils
+ * ne partent que si le modèle émet un `tool_call`. Le serveur llama.cpp du
+ * modèle de secours IGNORE le bloc `tools` : le déclencheur ne se produisait
+ * jamais. La base était accessible, personne ne l'interrogeait, et le modèle
+ * inventait (« effectif actif = masse salariale totale − employés »).
+ *
+ * Le serveur lit donc les données lui-même et les met sous les yeux du modèle.
+ */
+describe('Lecture directe des données pour le modèle de secours', () => {
+  function evenementFinal(corps: string): Record<string, unknown> {
+    const ligne = corps.split('\n').filter(l => l.startsWith('data: ') && l.includes('"done"')).pop()
+    if (!ligne) throw new Error('aucun événement de fin dans le flux')
+    return JSON.parse(ligne.slice(6)) as Record<string, unknown>
+  }
+
+  beforeEach(() => {
+    anthropicStreamMock.mockRejectedValue(new Error('429 quota dépassé'))
+    // Les outils lisent la base : on sert un effectif identifiable.
+    queryMock.mockReset().mockResolvedValue({ rows: [{ count: '84', total: '84', status: 'closed', month: '2026-10' }] })
+  })
+
+  it('met les chiffres du tenant dans le contexte envoyé au modèle', async () => {
+    mistralChatMock.mockImplementation(reponseLocale('84 employés actifs.'))
+
+    await chat()
+    const envoye = mistralChatMock.mock.calls[0]![0] as { systemPrompt: string }
+    expect(envoye.systemPrompt).toContain("DONNÉES DE L'ENTREPRISE")
+    expect(envoye.systemPrompt).toContain('get_headcount')
+    // L'interdiction d'inventer accompagne les chiffres : sans elle, un petit
+    // modèle complète volontiers les trous.
+    expect(envoye.systemPrompt).toMatch(/N'invente jamais/)
+  })
+
+  it('compte ces données comme consultées, et n’avertit donc plus', async () => {
+    mistralChatMock.mockImplementation(reponseLocale('84 employés actifs.'))
+
+    const fin = evenementFinal((await chat()).body)
+    expect(fin.toolsUsed).toContain('get_headcount')
+    // L'avertissement « réponse non fondée sur vos données » n'a plus lieu
+    // d'être : les chiffres ont bien été lus dans NexusRH.
+    expect(fin.toolsSupported).toBe(true)
+  })
+
+  it('n’injecte RIEN pour un fournisseur externe, qui appelle les outils lui-même', async () => {
+    // Vers un fournisseur externe, l'appel à la demande n'envoie que ce dont la
+    // question a besoin : injecter d'office exporterait des données du tenant
+    // hors de l'infrastructure sans nécessité.
+    anthropicStreamMock.mockImplementation(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Réponse Claude.' } }
+      },
+      finalMessage: vi.fn().mockResolvedValue({
+        usage: { input_tokens: 10, output_tokens: 20 }, stop_reason: 'end_turn',
+      }),
+    }))
+
+    await chat()
+    const envoye = anthropicStreamMock.mock.calls[0]![0] as { system: string }
+    expect(envoye.system).not.toContain("DONNÉES DE L'ENTREPRISE")
   })
 })

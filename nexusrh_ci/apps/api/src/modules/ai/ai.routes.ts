@@ -6,7 +6,7 @@ import { pool as rawPool } from '../../db/pool.js'
 import { loadLocalModel, resolveAiCreds, selectChatProvider } from '../../services/ai-credentials.service.js'
 import { analyzeRetentionRisk } from '../../services/retention-analysis.service.js'
 import { generateHRDocument } from '../../services/hr-document-generator.service.js'
-import { buildToolsForRole, executeAiTool } from './ai-tools.js'
+import { buildToolsForRole, executeAiTool, readTenantSnapshot, snapshotToolNames } from './ai-tools.js'
 import { requestHrScopeFactory, requestHrScope, employeeInHrScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
 import { isMasked } from '../../services/sensitive-mask.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
@@ -412,21 +412,46 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
         const keySource = keySourceDe(prov)
         const usedModel = modeleDe(prov)
         if (prov === 'mistral' || prov === 'local') {
+          const toolCtx = { schemaName: schema, role: request.user.role, hrScope: toolHrScope, maskSensitive: toolMask }
+
+          // Le modèle auto-hébergé est servi par une API qui IGNORE le bloc
+          // `tools` : il n'émet jamais de `tool_call`, donc aucune requête ne
+          // part, et faute de chiffres il en invente. On lit donc les données
+          // NOUS-MÊMES et on les lui met sous les yeux. Mêmes fonctions et
+          // mêmes garde-fous que l'appel d'outil ordinaire (autorisation
+          // rôle→outil et périmètre filiale revérifiés dans `executeAiTool`).
+          const snapshot = prov === 'local' ? await readTenantSnapshot(rawPool, toolCtx) : null
+          const promptServi = snapshot
+            ? `${systemPrompt}
+
+DONNÉES DE L'ENTREPRISE, lues à l'instant dans NexusRH (chiffres FAISANT FOI) :
+${snapshot}
+
+Réponds à partir de CES chiffres quand la question porte sur l'entreprise, et
+cite-les tels quels. N'invente jamais une valeur absente de ce bloc : si la
+donnée demandée n'y figure pas, dis qu'elle n'est pas accessible.`
+            : systemPrompt
+
           // Même protocole dans les deux cas : seules l'adresse, la clé (ici
           // facultative) et le modèle changent.
           const r = await streamMistralChat({
             apiKey:        prov === 'local' ? local!.apiKey : creds.mistral.apiKey!,
             apiUrl:        prov === 'local' ? local!.apiUrl : config.mistral.apiUrl,
             model:         usedModel,
-            systemPrompt,
+            systemPrompt:  promptServi,
             messages,
             tools:         buildToolsForRole(request.user.role),
-            toolCtx:       { schemaName: schema, role: request.user.role, hrScope: toolHrScope, maskSensitive: toolMask },
+            toolCtx,
             pool:          rawPool,
             maxTokens:     config.ai.maxTokens,
             maxToolRounds: 5,
             onText:        ecrire,
           })
+          // Les données lues d'office comptent comme consultées : la réponse
+          // EST fondée sur les chiffres du tenant, même sans `tool_call`.
+          const outilsLus = snapshot
+            ? Array.from(new Set([...r.toolsUsed, ...snapshotToolNames(request.user.role)]))
+            : r.toolsUsed
           // `provider` est celui qui a REELLEMENT repondu, pas celui annonce au
           // chargement par /ai/status : ce dernier ne teste que l'EXISTENCE
           // d'une cle, si bien qu'une bascule de secours restait invisible et
@@ -435,14 +460,13 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
             done: true,
             usage: r.usage,
             stopReason: r.stopReason,
-            toolsUsed: r.toolsUsed,
+            toolsUsed: outilsLus,
             provider: prov,
             providerLabel: prov === 'local' ? local!.label : PROVIDER_LABELS[prov],
-            // Le modele de secours est servi par une API qui ignore le bloc
-            // `tools` : il ne peut structurellement pas lire les donnees du
-            // tenant. Sans ce drapeau, l'utilisateur ne distingue pas une
-            // reponse fondee sur ses chiffres d'une reponse de culture generale.
-            toolsSupported: prov !== 'local',
+            // Faux UNIQUEMENT quand les donnees du tenant n'ont pas pu etre
+            // mises sous les yeux du modele : c'est ce qui autorise l'ecran a
+            // signaler une reponse non fondee sur les chiffres de l'entreprise.
+            toolsSupported: prov !== 'local' || snapshot !== null,
           })}\n\n`)
           if (keySource === 'platform') {
             recordPlatformAiUsage(schema, tenantId, 'mistral', usedModel, r.usage.input_tokens, r.usage.output_tokens)
@@ -457,7 +481,11 @@ cette information n'est pas accessible avec le rôle de l'utilisateur.`
               messageCount: messages.length,
               totalChars,
               stopReason:   r.stopReason,
-              toolsUsed:    r.toolsUsed,
+              toolsUsed:    outilsLus,
+              // Lecture d'office : les donnees ont ete consultees sans que le
+              // modele les demande. La piste d'audit doit le dire, sinon
+              // « qui a interroge quoi via l'IA » devient faux.
+              snapshotInjecte: snapshot !== null,
               toolRounds:   r.rounds,
             },
             request.ip ?? null,
