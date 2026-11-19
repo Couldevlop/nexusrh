@@ -36,13 +36,13 @@ const createAgencyBody = z.object({
   name: z.string().min(1).max(255),
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/),
   city: z.string().max(100).optional(),
-  contactEmail: z.string().email().optional(),
+  contactEmail: z.email().optional(),
   contactPhone: z.string().max(30).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  logoUrl: z.string().url().or(z.literal('')).optional(),
-  senderEmail: z.string().email().optional(),
+  logoUrl: z.url().or(z.literal('')).optional(),
+  senderEmail: z.email().optional(),
   senderName: z.string().max(150).optional(),
-  ownerEmail: z.string().email(),
+  ownerEmail: z.email(),
   ownerFirstName: z.string().min(1).max(100).optional().default('Admin'),
   ownerLastName: z.string().min(1).max(100).optional().default('Cabinet'),
 }).strict()
@@ -50,12 +50,12 @@ const createAgencyBody = z.object({
 const patchAgencyBody = z.object({
   name: z.string().min(1).max(255).optional(),
   city: z.string().max(100).optional(),
-  contactEmail: z.string().email().or(z.literal('')).optional(),
+  contactEmail: z.email().or(z.literal('')).optional(),
   contactPhone: z.string().max(30).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   // null = pas de logo (valeur renvoyée telle quelle par GET /agency/me).
-  logoUrl: z.string().url().or(z.literal('')).nullable().optional(),
-  senderEmail: z.string().email().or(z.literal('')).optional(),
+  logoUrl: z.url().or(z.literal('')).nullable().optional(),
+  senderEmail: z.email().or(z.literal('')).optional(),
   senderName: z.string().max(150).optional(),
 }).strict()
 
@@ -82,7 +82,7 @@ async function updateAgency(id: string, b: z.infer<typeof patchAgencyBody>): Pro
 const activateBody = z.object({ tenantId: z.string().regex(UUID_RE, 'tenantId invalide') }).strict()
 
 const createMemberBody = z.object({
-  email: z.string().email(),
+  email: z.email(),
   firstName: z.string().min(1).max(100).optional().default('Membre'),
   lastName: z.string().min(1).max(100).optional().default('Cabinet'),
   role: z.enum(['agency_owner', 'agency_member']).optional().default('agency_member'),
@@ -106,8 +106,8 @@ const createClientTenantBody = z.object({
   rccm: z.string().max(100).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  logoUrl: z.string().url().or(z.literal('')).optional(),
-  adminEmail: z.string().email(),
+  logoUrl: z.url().or(z.literal('')).optional(),
+  adminEmail: z.email(),
   adminFirstName: z.string().min(1).max(100).optional().default('Admin'),
   adminLastName: z.string().min(1).max(100).optional().default('Tenant'),
   seedDemoData: z.boolean().optional(),

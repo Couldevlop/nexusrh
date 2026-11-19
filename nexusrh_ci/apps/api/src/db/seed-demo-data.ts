@@ -16,7 +16,7 @@ import type { Pool } from 'pg'
 /**
  * Partie locale d'email ASCII : retire les diacritiques (NFD + marques combinantes),
  * passe en minuscules et ne garde que a-z0-9. Les emails de démo doivent passer
- * la validation z.string().email() de l'API (signature électronique, etc.).
+ * la validation z.email() de l'API (signature électronique, etc.).
  */
 export function asciiEmailPart(value: string): string {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')

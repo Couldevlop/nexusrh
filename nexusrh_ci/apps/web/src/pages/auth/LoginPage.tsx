@@ -22,7 +22,7 @@ import { Loader2, Eye, EyeOff, ShieldCheck, CheckCircle } from "lucide-react";
 // Les messages portent une clé i18n (namespace auth) résolue à l'affichage.
 
 const loginSchema = z.object({
-  email: z.string().email("auth:validation.emailInvalid"),
+  email: z.email("auth:validation.emailInvalid"),
   password: z.string().min(1, "auth:validation.passwordRequired"),
 });
 

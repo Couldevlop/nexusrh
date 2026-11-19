@@ -53,7 +53,7 @@ const EMAIL_INVALID_MESSAGE = 'Adresse email invalide : utilisez uniquement des 
 const publicApplySchema = z.object({
   first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
   last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
-  email:        z.string().email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase(),
+  email:        z.email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase(),
   phone:        z.string().max(30).optional(),
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
@@ -117,8 +117,8 @@ const stageBodySchema = z.object({
   rejection_note: z.string().max(REJECTION_NOTE_MAX).optional(),
   employee: z.object({
     hireDate: z.string().regex(ISO_DATE_RE, 'Date attendue au format YYYY-MM-DD').optional(),
-    departmentId: z.string().guid().nullable().optional(),
-    legalEntityId: z.string().guid().nullable().optional(),
+    departmentId: z.guid().nullable().optional(),
+    legalEntityId: z.guid().nullable().optional(),
     baseSalary: z.number().int().min(0).max(100_000_000).optional(),
     contractType: z.enum(['cdi', 'cdd', 'saisonnier', 'apprentissage', 'stage', 'mise_a_disposition']).optional(),
     jobTitle: z.string().trim().min(1).max(100).optional(),
@@ -702,10 +702,10 @@ const recruitmentRoutes: FastifyPluginAsync = async (fastify) => {
       // REC-004 — validation Zod stricte + téléphone CI (+225 suivi de 8 à 10 chiffres)
       const CI_PHONE_RE = /^\+225\d{8,10}$/
       const rhApplicationSchema = z.object({
-        job_id:       z.string().guid('Offre invalide'),
+        job_id:       z.guid('Offre invalide'),
         first_name:   z.string().min(1, 'Prénom requis').max(100).trim(),
         last_name:    z.string().min(1, 'Nom requis').max(100).trim(),
-        email:        z.preprocess(v => (v === '' ? undefined : v), z.string().email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase().optional()),
+        email:        z.preprocess(v => (v === '' ? undefined : v), z.email(EMAIL_INVALID_MESSAGE).max(255).toLowerCase().optional()),
         phone:        z.preprocess(v => (v === '' ? undefined : v),
                         z.string().refine(s => CI_PHONE_RE.test(String(s).replace(/\s/g, '')),
                           'Téléphone CI invalide : +225 suivi de 8 à 10 chiffres').optional()),

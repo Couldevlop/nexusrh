@@ -331,7 +331,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
         month: z.string().regex(MONTH_RE, 'Format YYYY-MM requis'),
         banks: z.array(z.object({
           name: z.string().min(1).max(100),
-          email: z.string().email('Email banque invalide').max(255),
+          email: z.email('Email banque invalide').max(255),
         })).min(1).max(50),
       }).strict().safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: messageDeValidation(parsed.error), issues: parsed.error.flatten() })
@@ -397,7 +397,7 @@ const bankTransferRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const parsed = z.object({
         bank: z.string().min(1).max(100),
-        email: z.string().email().max(255).optional(),
+        email: z.email().max(255).optional(),
         orderingAccount: z.string().max(60).optional(),
         orderingLabel: z.string().max(140).optional(),
       }).strict().safeParse(request.body)

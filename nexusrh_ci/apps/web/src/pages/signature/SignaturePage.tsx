@@ -31,7 +31,7 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 interface EmployeeRow { id: string; first_name: string; last_name: string; email: string | null }
-/** Contrôle d'email de base (même esprit que z.string().email() de l'API : pas d'accent ni d'espace). */
+/** Contrôle d'email de base (même esprit que z.email() de l'API : pas d'accent ni d'espace). */
 const BASIC_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/
 
 interface DraftSignatory { employeeId: string; name: string; email: string }

@@ -48,8 +48,8 @@ const createTenantBodySchema = z.object({
   rccm: z.string().max(100).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur hex requise').optional(),
   secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  logoUrl: z.string().url().or(z.literal('')).optional(),
-  adminEmail: z.string().email('Email admin invalide'),
+  logoUrl: z.url().or(z.literal('')).optional(),
+  adminEmail: z.email('Email admin invalide'),
   adminFirstName: z.string().min(1).max(100).optional().default('Admin'),
   adminLastName: z.string().min(1).max(100).optional().default('Tenant'),
   adminPhone: z.string().max(30).optional(),
@@ -84,7 +84,7 @@ const quota = z.number({
 // Booléens historiquement tolérants (true | 'true' | 1 | '1') — la coercition
 // applicative est conservée telle quelle en aval pour ne rien casser.
 const looseBool = z.union([z.boolean(), z.string().max(5), z.number().int().min(0).max(1)])
-const httpUrl = (max: number) => z.string().url('URL invalide').max(max).refine(
+const httpUrl = (max: number) => z.url('URL invalide').max(max).refine(
   (v) => { try { return ['http:', 'https:'].includes(new URL(v).protocol) } catch { return false } },
   'Seuls les schémas http(s) sont autorisés',
 )
@@ -95,13 +95,13 @@ const tenantPatchBody = z.object({
   status:               z.enum(TENANT_STATUSES),
   primary_color:        z.string().regex(HEX_COLOR_RE, 'Couleur hexadécimale attendue (#RRGGBB)'),
   secondary_color:      z.string().regex(HEX_COLOR_RE, 'Couleur hexadécimale attendue (#RRGGBB)'),
-  // `z.string().url()` seul accepterait `javascript:` / `data:` (il délègue à
+  // `z.url()` seul accepterait `javascript:` / `data:` (il délègue à
   // `new URL()`, qui ne filtre aucun schéma) : le logo étant réinjecté dans un
   // `src`/`href` côté front, on restreint explicitement à http(s).
   logo_url:             z.union([httpUrl(2000), z.literal(''), z.null()]),
   max_users:            quota,
   max_employees:        quota,
-  trial_ends_at:        z.union([z.string().datetime({ offset: true }), z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]),
+  trial_ends_at:        z.union([z.iso.datetime({ offset: true }), z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]),
   city:                 z.string().trim().max(100),
   sector:               z.string().trim().max(50),
   has_subsidiaries:     z.boolean(),

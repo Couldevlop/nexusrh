@@ -28,10 +28,10 @@ const DELETE_ROLES = ['admin', 'hr_manager'] as const
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const bloom = z.number().int().min(1).max(6)
 
-const assessSchema = z.object({ competencyId: z.string().guid(), level: bloom })
+const assessSchema = z.object({ competencyId: z.guid(), level: bloom })
 const requestSchema = z.object({
-  employeeId: z.string().guid(),
-  targetJobProfileId: z.string().guid(),
+  employeeId: z.guid(),
+  targetJobProfileId: z.guid(),
   reason: z.string().max(2000).optional().nullable(),
 })
 const requestUpdateSchema = z.object({

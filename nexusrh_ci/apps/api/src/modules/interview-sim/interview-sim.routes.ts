@@ -53,7 +53,7 @@ const internalJobSubmitSchema = z.object({
   // vérifiée contre interview_sim_consents (scope='internal') dans le handler.
   // Sans ce champ, un employé authentifié pourrait appeler /submit DIRECTEMENT
   // sans jamais passer par /consent ni /start (contournement RGPD art. 7-1).
-  sessionId: z.string().guid(),
+  sessionId: z.guid(),
   questions: z.array(z.string().min(1).max(2000)).min(1).max(30),
   categories: z.array(z.string().max(60)).max(30).optional(),
   answers: z.array(transcriptItemSchema).min(1).max(30),
@@ -232,7 +232,7 @@ const configSchema = z.object({
 
 const publicSubmitSchema = z.object({
   consentAccepted: z.literal(true),
-  consentAt: z.string().datetime().optional(),
+  consentAt: z.iso.datetime().optional(),
   // Trace de consentement (POST .../consent) exigée AVANT la soumission —
   // vérifiée contre interview_sim_consents (scope='public') dans le handler.
   sessionId: z.string().regex(UUID_RE, 'sessionId invalide'),

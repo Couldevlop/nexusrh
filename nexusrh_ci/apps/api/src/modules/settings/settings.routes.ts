@@ -141,7 +141,7 @@ const patchTenantSchema = z.object({
   // Expéditeur email configurable par le tenant : adresse "From" des emails
   // envoyés aux membres de la société (création d'accès, réinitialisation).
   // '' / null → repli sur l'expéditeur plateforme.
-  sender_email:    z.string().email('Email expéditeur invalide').max(255).optional().nullable().or(z.literal('')),
+  sender_email:    z.email('Email expéditeur invalide').max(255).optional().nullable().or(z.literal('')),
   sender_name:     z.string().max(150).optional().nullable(),
   // Seuil d'anonymat des enquêtes climat social (nb minimal de réponses avant
   // toute restitution). coerce : le champ du formulaire arrive en chaîne.
@@ -164,7 +164,7 @@ const createLegalEntitySchema = z.object({
   country_code:          z.string().regex(/^[A-Z]{2,3}$/).optional(),
   legislation_pack_code: z.string().max(50).optional().nullable(),
   // Responsable paie de la filiale (RAF) : reçoit la paie déclinée et la soumet.
-  raf_user_id:           z.string().guid().optional().nullable(),
+  raf_user_id:           z.guid().optional().nullable(),
   // Filiale « siège social » : couverte par le sous-groupe RH Siège (habilitations).
   isHeadOffice:          z.boolean().optional(),
 }).strict()
@@ -947,7 +947,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   })
   const PAYSLIP_SCOPE = z.object({
     accentColor:      z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Couleur hex #RRGGBB attendue').nullable().optional(),
-    logoAssetId:      z.string().guid().nullable().optional(),
+    logoAssetId:      z.guid().nullable().optional(),
     showBaseColumn:   z.boolean().optional(),
     showCodeColumn:   z.boolean().optional(),
     showEmployerCost: z.boolean().optional(),
@@ -1204,7 +1204,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId
       if (!tenantId) return reply.status(403).send({ error: 'Accès interdit' })
       const parsed = z.object({
-        to: z.string().email('Email destinataire invalide').max(255).optional(),
+        to: z.email('Email destinataire invalide').max(255).optional(),
       }).strict().safeParse(request.body ?? {})
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
@@ -1432,13 +1432,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       // Sans cela, le body brut permettait d'injecter role='super_admin' à la
       // création (escalade de privilège plateforme). Aligné sur PATCH /users/:id.
       const createUserSchema = z.object({
-        email:         z.string().email().max(200),
+        email:         z.email().max(200),
         first_name:    z.string().min(1).max(100).trim(),
         last_name:     z.string().min(1).max(100).trim(),
         role:          z.enum(['admin', 'hr_manager', 'hr_officer', 'manager', 'employee', 'readonly', 'raf_site', 'dg']).optional(),
-        department_id: z.string().guid().optional(),
+        department_id: z.guid().optional(),
         // Lien EXPLICITE vers une fiche employé du même tenant (1 compte ↔ 1 fiche).
-        employee_id:   z.string().guid().optional(),
+        employee_id:   z.guid().optional(),
         is_active:     z.boolean().optional(),
       }).strict()
       const parsed = createUserSchema.safeParse(request.body)
@@ -2222,7 +2222,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const circuitSchema = z.object({
         managerSlaDays:    z.number().int().min(1).max(30).optional(),
         hrSlaDays:         z.number().int().min(1).max(30).optional(),
-        hrValidatorUserId: z.string().guid().nullable().optional(),
+        hrValidatorUserId: z.guid().nullable().optional(),
         notice: z.object({
           enabled:         z.boolean().optional(),
           typeCodes:       z.array(z.string().min(1).max(30)).max(50).optional(),
@@ -2235,7 +2235,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         // libellé de fonction et échéance (SLA) au-delà de laquelle l'équipe RH
         // prend la main. Réservé au module `payroll` (contrôlé plus bas).
         validators: z.array(z.object({
-          userId:        z.string().guid().nullable(),
+          userId:        z.guid().nullable(),
           functionLabel: z.string().trim().max(80).nullable().optional(),
           slaDays:       z.number().int().min(1).max(30).optional(),
         }).strict()).max(5).optional(),
@@ -2316,7 +2316,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   const VARIABLE_ELEMENT_AMOUNT_MIN = -100_000_000 // FCFA — plafond défensif (~100M, bien au-delà d'un salaire CI réaliste)
   const VARIABLE_ELEMENT_AMOUNT_MAX = 100_000_000
   const variableElementSchema = z.object({
-    employee_id: z.string().guid(),
+    employee_id: z.guid(),
     rule_code:   z.string().min(1).max(30).regex(/^[A-Z0-9_]+$/, 'Code rubrique invalide (majuscules/chiffres/_)'),
     month:       z.string().regex(/^\d{4}-\d{2}$/, 'Format mois invalide (YYYY-MM)'),
     amount:      z.number().int().min(VARIABLE_ELEMENT_AMOUNT_MIN).max(VARIABLE_ELEMENT_AMOUNT_MAX),

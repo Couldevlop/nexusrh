@@ -32,10 +32,10 @@ const jobProfileSchema = z.object({
   activities: z.string().max(4000).optional().nullable(),
   category: z.string().max(100).optional().nullable(),
   level: z.string().max(50).optional().nullable(),
-  departmentId: z.string().guid().optional().nullable(),
+  departmentId: z.guid().optional().nullable(),
 })
 const attachSchema = z.object({
-  competencyId: z.string().guid(),
+  competencyId: z.guid(),
   requiredLevel: z.number().int().min(BLOOM_MIN).max(BLOOM_MAX).optional(),
 })
 

@@ -39,7 +39,7 @@ const sessionUpdateSchema = z.object({
   status: z.enum(SESSION_STATUSES).optional(),
 })
 const entrySchema = z.object({
-  employeeId: z.string().guid(),
+  employeeId: z.guid(),
   performanceBefore: score.optional(),
   potentialBefore: score.optional(),
 })

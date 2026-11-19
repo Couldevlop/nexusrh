@@ -145,7 +145,7 @@ const fieldMappingSchema = z.object({
 
 const deviceBody = z.object({
   name: z.string().min(1).max(150),
-  base_url: z.string().url().max(2000),
+  base_url: z.url().max(2000),
   auth_type: z.enum(['none', 'bearer', 'basic', 'api_key']).optional(),
   auth_secret: z.string().max(2000).optional(),
   auth_header_name: z.string().max(80).optional(),

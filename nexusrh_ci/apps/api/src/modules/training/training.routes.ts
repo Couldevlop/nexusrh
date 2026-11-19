@@ -25,31 +25,31 @@ const createTrainingSchema = z.object({
 }).strict()
 
 const createSessionSchema = z.object({
-  training_id:  z.string().guid(),
+  training_id:  z.guid(),
   start_date:   z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format date YYYY-MM-DD requis'),
   end_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional(),
   location:     z.string().max(200).optional(),
   trainer:      z.string().max(200).optional(),
   max_places:   z.number().int().min(1).max(500).optional(),
   // À la planification, les RH désignent directement les employés à inscrire.
-  employee_ids: z.array(z.string().guid()).max(500).optional(),
+  employee_ids: z.array(z.guid()).max(500).optional(),
 }).strict()
 
 // Inscription RH/manager : employee_id OBLIGATOIRE (les RH désignent un employé).
 const enrollSchema = z.object({
-  session_id:   z.string().guid(),
-  employee_id:  z.string().guid(),
+  session_id:   z.guid(),
+  employee_id:  z.guid(),
 }).strict()
 
 // Auto-inscription self-service (rôle employee) : SEUL session_id est accepté.
 // L'employee_id est TOUJOURS dérivé du token (OWASP A01 — jamais de confiance
 // dans un employee_id fourni par un employee).
 const selfEnrollSchema = z.object({
-  session_id:   z.string().guid(),
+  session_id:   z.guid(),
 }).strict()
 
 const participantsSchema = z.object({
-  employee_ids: z.array(z.string().guid()).min(1).max(500),
+  employee_ids: z.array(z.guid()).min(1).max(500),
 }).strict()
 
 // OWASP A04 — bornes anti-fraude : 1 formation pro CI dépasse rarement 5M FCFA
@@ -61,7 +61,7 @@ const fdfpRequestSchema = z.object({
   // Le formulaire peut envoyer une chaîne vide quand aucune formation du
   // catalogue n'est liée : on la traite comme « absente » (sinon .optional()
   // ne s'applique pas à '' et la validation échouait en 400 à chaque envoi).
-  training_id:      z.preprocess((v) => (v === '' ? undefined : v), z.string().guid().optional()),
+  training_id:      z.preprocess((v) => (v === '' ? undefined : v), z.guid().optional()),
   session_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Format date YYYY-MM-DD requis'),
   employees_count:  z.number().int().min(1).max(FDFP_EMPLOYEES_MAX),
   total_cost:       z.number().int().min(0).max(FDFP_TOTAL_MAX),

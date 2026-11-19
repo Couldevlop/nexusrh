@@ -48,7 +48,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const reasonCategoryField = z.string().regex(DEPARTURE_REASON_KEY_RE, 'Catégorie de motif invalide')
 
 const createSchema = z.object({
-  employeeId: z.string().guid(),
+  employeeId: z.guid(),
   departureType: z.enum(DEPARTURE_TYPES),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
   reason: z.string().max(2000).optional(),
