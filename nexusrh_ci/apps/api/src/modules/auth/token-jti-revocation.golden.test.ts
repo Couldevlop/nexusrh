@@ -19,7 +19,7 @@ import bcrypt from 'bcryptjs'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 // Blacklist + époque de token EN MÉMOIRE (comportement Redis réel simulé).

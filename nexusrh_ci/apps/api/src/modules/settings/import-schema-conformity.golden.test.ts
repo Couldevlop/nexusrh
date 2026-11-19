@@ -27,11 +27,11 @@ vi.hoisted(() => { process.env.ENCRYPTION_KEY = 'a1b2c3d4'.repeat(8) })
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({
+  Pool: vi.fn(function () { return ({
     query: queryMock,
     end: vi.fn(),
     connect: vi.fn(async () => ({ query: queryMock, release: vi.fn() })),
-  })),
+  }) }),
 }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),

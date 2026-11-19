@@ -10,7 +10,7 @@ vi.hoisted(() => { process.env['ENCRYPTION_KEY'] = 'a'.repeat(64) })
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 const { setTokenEpochMock } = vi.hoisted(() => ({ setTokenEpochMock: vi.fn().mockResolvedValue(undefined) }))

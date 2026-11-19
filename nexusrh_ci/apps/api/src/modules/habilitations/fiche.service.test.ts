@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 vi.unmock('../../services/habilitation.service.js')
 // Le service importe le pool partagé pour son paramètre par défaut : config et
 // pg sont neutralisés, les tests passant leur propre simulation de base.
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }), end: vi.fn() }) }) }))
 vi.mock('../../config.js', () => ({
   config: {
     env: 'test',

@@ -55,7 +55,7 @@ const webhookBody = z.object({
   name: z.string().min(1).max(150),
   target_url: z.string().url().max(2000),
   events: z.array(z.enum(EVENT_KEYS as [string, ...string[]])).min(1),
-  headers: z.record(z.string().max(200)).optional(),
+  headers: z.record(z.string(), z.string().max(200)).optional(),
   is_active: z.boolean().optional(),
 }).strict()
 const webhookPatch = webhookBody.partial()
@@ -72,7 +72,7 @@ const connectorBody = z.object({
   auth_type: z.enum(['none', 'bearer', 'basic', 'api_key']).optional(),
   auth_secret: z.string().max(2000).optional(),
   auth_header_name: z.string().max(80).optional(),
-  default_headers: z.record(z.string().max(500)).optional(),
+  default_headers: z.record(z.string(), z.string().max(500)).optional(),
   is_active: z.boolean().optional(),
 }).strict()
 const connectorPatch = connectorBody.partial()

@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from 'vitest'
 // configuration pour que ce banc reste un test de la cascade, sans dépendre de
 // variables d'environnement.
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() })),
+  Pool: vi.fn(function () { return ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() }) }),
 }))
 vi.mock('../config.js', () => ({
   config: {

@@ -163,7 +163,7 @@ const createEmployeeSchema = z.object({
   nationality:         z.string().trim().min(2).max(100).optional(),
   childrenCount:       z.number().int().min(0).max(30).optional(),
   // Champs personnalisés du tenant — validés contre leur définition au handler.
-  customFields:        z.record(z.unknown()).optional(),
+  customFields:        z.record(z.string(), z.unknown()).optional(),
   // Matricule : facultatif, généré automatiquement (MAT00001…) si absent.
   employeeNumber:      employeeNumberField,
 })
@@ -208,7 +208,7 @@ const patchEmployeeSchema = z.object({
   isActive:            z.boolean().optional(),
   profilePhotoUrl:     z.string().max(2000).optional(),
   address:             z.string().max(500).optional(),
-  customFields:        z.record(z.unknown()).optional(),
+  customFields:        z.record(z.string(), z.unknown()).optional(),
   // Matricule modifiable par les RH (vide = inchangé : un matricule ne s'efface pas).
   employeeNumber:      employeeNumberField,
 }).strict()

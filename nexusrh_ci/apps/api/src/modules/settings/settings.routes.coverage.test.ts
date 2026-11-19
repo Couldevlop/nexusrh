@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 // renvoie { rows: [] } pour absorber les requêtes best-effort (audit_log…).
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 const { setTokenEpochMock, getTokenEpochMock } = vi.hoisted(() => ({

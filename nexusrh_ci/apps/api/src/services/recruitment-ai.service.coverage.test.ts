@@ -33,9 +33,9 @@ const { mutableConfig, createMock, loadAiModelsMock, loadSourcingSettingsMock } 
 vi.mock('../config.js', () => ({ config: mutableConfig }))
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return ({
     messages: { create: createMock },
-  })),
+  }) }),
 }))
 
 // loadAiModels / loadSourcingSettings contrôlables par test.

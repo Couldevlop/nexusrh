@@ -59,7 +59,7 @@ const updateSchema = z.object({
 })
 
 const responseSchema = z.object({
-  answers: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  answers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
 })
 
 function audit(

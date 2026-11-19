@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: vi.fn(), end: vi.fn() })),
+  Pool: vi.fn(function () { return ({ query: vi.fn(), end: vi.fn() }) }),
 }))
 const { getTokenEpochMock } = vi.hoisted(() => ({ getTokenEpochMock: vi.fn().mockResolvedValue(0) }))
 vi.mock('./services/redis.js', () => ({

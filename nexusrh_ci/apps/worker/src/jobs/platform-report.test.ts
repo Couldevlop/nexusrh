@@ -4,7 +4,7 @@ import type { Job } from 'bullmq'
 const { queryMock, sendMailMock } = vi.hoisted(() => ({
   queryMock: vi.fn(), sendMailMock: vi.fn(async (_opts: unknown) => ({ messageId: 'x' })),
 }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail: sendMailMock }) } }))
 vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 

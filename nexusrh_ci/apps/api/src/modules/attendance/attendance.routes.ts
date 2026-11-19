@@ -149,7 +149,7 @@ const deviceBody = z.object({
   auth_type: z.enum(['none', 'bearer', 'basic', 'api_key']).optional(),
   auth_secret: z.string().max(2000).optional(),
   auth_header_name: z.string().max(80).optional(),
-  default_headers: z.record(z.string().max(500)).optional(),
+  default_headers: z.record(z.string(), z.string().max(500)).optional(),
   field_mapping: fieldMappingSchema.optional(),
   poll_interval_min: z.number().int().min(1).max(1440).optional(),
   is_active: z.boolean().optional(),

@@ -58,7 +58,7 @@ const publicApplySchema = z.object({
   cover_letter: z.string().max(5000, 'Lettre de motivation trop longue (max 5000)').optional(),
   cv_text:      z.string().max(50000).optional(),
   /** Réponses aux questions éliminatoires de l'offre, indexées par id de question. */
-  answers:      z.record(z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
+  answers:      z.record(z.string(), z.union([z.boolean(), z.number(), z.string().max(200)])).optional(),
 })
 
 // Limite de taille du CV déposé via la page carrières publique (5 Mo) — plus

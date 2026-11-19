@@ -34,13 +34,13 @@ const { queryMock, anthropicStreamMock, mistralChatMock, usageMock, LOCAL } = vi
   LOCAL: { apiUrl: 'http://lucie.nexusrh.svc:8000/v1', model: 'lucie-7b', apiKey: null as string | null, label: 'Lucie 7B' },
 }))
 
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),
 }))
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({ messages: { stream: anthropicStreamMock } })),
+  default: vi.fn().mockImplementation(function () { return ({ messages: { stream: anthropicStreamMock } }) }),
 }))
 vi.mock('./ai-mistral-chat.js', () => ({ streamMistralChat: mistralChatMock }))
 

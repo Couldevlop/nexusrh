@@ -8,7 +8,7 @@ vi.mock('pg', () => {
     query: vi.fn(),
     end: vi.fn(),
   }
-  return { Pool: vi.fn(() => mockPool) }
+  return { Pool: vi.fn(function () { return mockPool }) }
 })
 
 vi.mock('../../services/redis.js', () => ({

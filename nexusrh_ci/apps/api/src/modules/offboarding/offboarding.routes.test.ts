@@ -17,7 +17,7 @@ vi.mock('../../services/paid-leave.service.js', async (importOriginal) => {
     averageRemuneration: vi.fn(async () => null),
   }
 })
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: vi.fn().mockResolvedValue(false),

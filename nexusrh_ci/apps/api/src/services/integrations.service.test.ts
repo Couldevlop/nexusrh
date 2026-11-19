@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createHmac } from 'crypto'
 
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn().mockResolvedValue({ rows: [] }), end: vi.fn() }) }) }))
 vi.mock('../config.js', () => ({ config: { database: { url: 'postgresql://test' } } }))
 
 import { hashApiKey, generateApiKey, signPayload, resolveApiKey, EVENT_KEYS, API_SCOPES } from './integrations.service.js'

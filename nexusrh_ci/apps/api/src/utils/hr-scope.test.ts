@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FastifyRequest } from 'fastify'
 
 const { queryMock, loadHab } = vi.hoisted(() => ({ queryMock: vi.fn(), loadHab: vi.fn() }))
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }) }))
 vi.mock('../config.js', () => ({
   config: { env: 'test', database: { url: 'postgresql://test' }, jwt: { secret: 'test-secret-minimum-32-characters-ok!', expiresIn: '1h' }, redis: { url: 'redis://localhost:6380' } },
 }))

@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 // Le module instancie un Pool à l'import : on le neutralise (aucun test ici ne
 // touche la DB — sourcingMaxTokens est une fonction pure).
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: vi.fn(), end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: vi.fn(), end: vi.fn() }) }) }))
 vi.mock('../config.js', () => ({ config: { database: { url: 'postgresql://test' } } }))
 
 import { sourcingMaxTokens, defaultRichnessWeights, type SourcingSettings } from './sourcing-config.service.js'

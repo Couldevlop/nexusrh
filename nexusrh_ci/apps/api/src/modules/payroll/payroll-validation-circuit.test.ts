@@ -16,10 +16,10 @@ import Fastify, { type FastifyInstance } from 'fastify'
 
 const { queryMock, releaseMock } = vi.hoisted(() => ({ queryMock: vi.fn(), releaseMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({
+  Pool: vi.fn(function () { return ({
     query: queryMock, end: vi.fn(),
     connect: vi.fn(async () => ({ query: queryMock, release: releaseMock })),
-  })),
+  }) }),
 }))
 vi.mock('../../services/redis.js', () => ({
   blacklistToken:     vi.fn().mockResolvedValue(undefined),

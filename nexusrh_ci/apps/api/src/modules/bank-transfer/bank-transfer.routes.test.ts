@@ -11,7 +11,7 @@ const { queryMock, connectMock, clientQueryMock, releaseMock } = vi.hoisted(() =
     connectMock: vi.fn().mockResolvedValue({ query: clientQueryMock, release: releaseMock }),
   }
 })
-vi.mock('pg', () => ({ Pool: vi.fn(() => ({ query: queryMock, connect: connectMock, end: vi.fn() })) }))
+vi.mock('pg', () => ({ Pool: vi.fn(function () { return ({ query: queryMock, connect: connectMock, end: vi.fn() }) }) }))
 
 vi.mock('../../services/redis.js', () => ({
   blacklistToken: vi.fn().mockResolvedValue(undefined),

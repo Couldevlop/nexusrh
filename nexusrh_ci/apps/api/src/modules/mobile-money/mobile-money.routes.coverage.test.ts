@@ -18,7 +18,7 @@ import { createHmac } from 'crypto'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('pg', () => ({
-  Pool: vi.fn(() => ({ query: queryMock, end: vi.fn() })),
+  Pool: vi.fn(function () { return { query: queryMock, end: vi.fn() } }),
 }))
 
 vi.mock('../../services/redis.js', () => ({
