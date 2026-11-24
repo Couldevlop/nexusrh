@@ -50,7 +50,7 @@ vi.mock('../../data/code-travail-nga.js', () => ({ CODE_TRAVAIL_NGA: [] }))
 // ── Mock du repository PostgreSQL ─────────────────────────────────────────────
 const {
   upsertMock, getAllActiveMock, getByIdMock, getByPayrollMock,
-  countArticlesMock, searchDbMock, hierarchyDbMock,
+  countArticlesMock, searchDbMock, hierarchyDbMock, desactiverMock,
 } = vi.hoisted(() => ({
   upsertMock: vi.fn(),
   getAllActiveMock: vi.fn(),
@@ -59,6 +59,7 @@ const {
   countArticlesMock: vi.fn(),
   searchDbMock: vi.fn(),
   hierarchyDbMock: vi.fn(),
+  desactiverMock: vi.fn(),
 }))
 
 vi.mock('./legal-articles.repository.js', () => ({
@@ -69,6 +70,7 @@ vi.mock('./legal-articles.repository.js', () => ({
   countArticles: countArticlesMock,
   searchArticlesFromDb: searchDbMock,
   getHierarchyTreeFromDb: hierarchyDbMock,
+  desactiverArticlesAbsentsDuCorpus: desactiverMock,
 }))
 
 import {
@@ -100,6 +102,9 @@ beforeEach(() => {
   countMock.mockReset()
   ensureIndexMock.mockReset()
   ensureIndexMock.mockResolvedValue(undefined)
+  desactiverMock.mockReset()
+  // Par defaut : le corpus et la base concordent, rien a retirer du service.
+  desactiverMock.mockResolvedValue([])
   upsertMock.mockReset()
   getAllActiveMock.mockReset()
   getByIdMock.mockReset()
@@ -377,5 +382,59 @@ describe('getReferentielStats', () => {
     const res = await getReferentielStats()
     expect(res.pg_count).toBe(50)
     expect(res.es_count).toBe(-1)
+  })
+})
+
+describe('seedReferentiel — retrait des articles sortis du corpus', () => {
+  beforeEach(() => {
+    desactiverMock.mockReset()
+    upsertMock.mockReset()
+    getAllActiveMock.mockReset()
+    ensureIndexMock.mockReset()
+    bulkMock.mockReset()
+    upsertMock.mockResolvedValue(2)
+    getAllActiveMock.mockResolvedValue([])
+  })
+
+  it('desactive les articles absents du corpus et les sort de l index', async () => {
+    // Le cas qui a laisse les articles fictifs visibles en production :
+    // l upsert n efface jamais, donc un article retire du fichier survivait.
+    desactiverMock.mockResolvedValue(['art-32-3', 'art-20-1'])
+
+    const r = await seedReferentiel()
+
+    expect(r.desactives).toBe(2)
+    const suppressions = bulkMock.mock.calls
+      .flatMap(([arg]) => (arg as { operations?: unknown[] })?.operations ?? [])
+      .filter((op): op is { delete: { _id: string } } =>
+        typeof op === 'object' && op !== null && 'delete' in op)
+      .map(op => op.delete._id)
+    expect(suppressions).toEqual(['art-32-3', 'art-20-1'])
+  })
+
+  it('ne touche a l index que s il y a quelque chose a retirer', async () => {
+    desactiverMock.mockResolvedValue([])
+
+    const r = await seedReferentiel()
+
+    expect(r.desactives).toBe(0)
+    const suppressions = bulkMock.mock.calls
+      .flatMap(([arg]) => (arg as { operations?: unknown[] })?.operations ?? [])
+      .filter(op => typeof op === 'object' && op !== null && 'delete' in op)
+    expect(suppressions).toHaveLength(0)
+  })
+
+  it('ne desactive que le Code du Travail ivoirien, jamais les autres pays', async () => {
+    desactiverMock.mockResolvedValue([])
+
+    await seedReferentiel()
+
+    const appel = desactiverMock.mock.calls[0]
+    expect(appel).toBeDefined()
+    const [source, pays, ids] = appel as [string, string, string[]]
+    expect(source).toBe('code_travail_ci')
+    expect(pays).toBe('CIV')
+    expect(ids).toEqual(['ci-1', 'ci-2'])
+    expect(ids).not.toContain('ben-1')
   })
 })
