@@ -18,7 +18,10 @@ export const legalArticles = droitCiSchema.table('articles', {
   // Code pays ISO-3 (CIV par défaut pour rétro-compat — étend le schéma au multi-pays)
   countryCode:    varchar('country_code', { length: 3 }).notNull().default('CIV'),
   // 'code_travail_ci' | 'code_travail_ben' | 'convention_collective_*' | 'fiscal_its' | 'ohada' ...
-  source:         varchar('source', { length: 30 }).notNull(),
+  // 60 et non 30 : les conventions interprofessionnelles du Bénin et du Togo
+  // ('convention_collective_ben_interprofessionnelle', 46 caractères) faisaient
+  // échouer l'upsert du seed, donc TOUT le seed, en silence.
+  source:         varchar('source', { length: 60 }).notNull(),
   conventionSlug: varchar('convention_slug', { length: 100 }),
   livre:          varchar('livre', { length: 200 }),
   titre:          varchar('titre', { length: 300 }),

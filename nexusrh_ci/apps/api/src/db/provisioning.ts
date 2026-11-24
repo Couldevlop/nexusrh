@@ -43,6 +43,10 @@ export async function createDroitCiSchema(): Promise<void> {
   `)
   // Extension multi-pays : country_code (CIV par défaut pour les articles existants)
   await pool.query(`ALTER TABLE droit_ci.articles ADD COLUMN IF NOT EXISTS country_code varchar(3) NOT NULL DEFAULT 'CIV'`)
+  // Élargissement de `source` : les sources multi-pays dépassent 30 caractères
+  // (convention_collective_ben_interprofessionnelle = 46). Sans cela l'upsert du
+  // référentiel échoue, et aucun article n'est mis à jour. Idempotent.
+  await pool.query(`ALTER TABLE droit_ci.articles ALTER COLUMN source TYPE varchar(60)`)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_droit_ci_source ON droit_ci.articles(source)
   `)

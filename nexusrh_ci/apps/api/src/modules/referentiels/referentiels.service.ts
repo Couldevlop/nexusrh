@@ -188,20 +188,27 @@ export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit
 export async function seedReferentiel(): Promise<{
   persisted: number; indexed: number; desactives: number
 }> {
-  // Étape 1 — retirer du service les articles qui ont quitté le corpus.
+  // Étape 1 — écrire le corpus. TOUJOURS avant la désactivation : les deux
+  // ordres donnent le même état final, mais celui-ci est le seul sûr. Les deux
+  // requêtes ne partagent pas de transaction ; désactiver d'abord ouvrirait une
+  // fenêtre où, si l'écriture échoue, la production resterait avec un Code à
+  // moitié éteint. En écrivant d'abord, un échec ne laisse rien de désactivé.
+  const persisted = await upsertArticles(ALL_COUNTRIES_ARTICLES)
+
+  // Étape 2 — retirer du service les articles qui ont quitté le corpus.
   //
   // Sans cette étape, corriger le fichier ne corrigeait rien pour les
   // utilisateurs : l'upsert n'efface jamais, et le seed au démarrage ne se
   // déclenche que sur table vide — ce qu'elle n'est jamais en production.
-  // Les articles fictifs du corpus rédigé à la main y ont survécu ainsi.
+  // Les articles erronés du corpus rédigé à la main y ont survécu ainsi.
+  //
+  // L'étape 1 vient de réécrire les textes annexes sous leur propre source :
+  // ils ne sont donc plus candidats à la désactivation, qui ne vise que les
+  // articles restés sous `code_travail_ci` et absents du fichier.
   const idsCorpus = ALL_COUNTRIES_ARTICLES
     .filter(a => a.source === 'code_travail_ci' && (a.country_code ?? 'CIV') === 'CIV')
     .map(a => a.article_id)
   const desactives = await desactiverArticlesAbsentsDuCorpus('code_travail_ci', 'CIV', idsCorpus)
-
-  // Étape 2 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
-  // Inclut désormais CIV + BEN + TGO + TCD + NGA (multi-pays)
-  const persisted = await upsertArticles(ALL_COUNTRIES_ARTICLES)
 
   // Étape 3 — ES si disponible (non bloquant)
   let indexed = 0
