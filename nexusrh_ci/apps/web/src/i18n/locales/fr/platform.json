@@ -835,5 +835,20 @@
       "approve": "Approuver et publier",
       "error": "Erreur"
     }
+  },
+  "corpus": {
+    "titre": "Corpus juridique",
+    "explication": "Articles du Code du Travail, conventions collectives et textes annexes servis dans l’écran Référentiel juridique. Après une correction du corpus, ce rechargement est nécessaire pour que les utilisateurs la voient : les articles retirés sont désactivés, les autres réécrits.",
+    "enBase": "Articles en base",
+    "indexes": "Indexés pour la recherche",
+    "indisponible": "indisponible",
+    "recharger": "Recharger le corpus",
+    "confirmer": "Confirmer le rechargement",
+    "annuler": "Annuler",
+    "demandeConfirmation": "Les articles absents du corpus seront désactivés. Confirmer ?",
+    "reindexer": "Réindexer la recherche seule",
+    "resultat": "{{persisted}} articles écrits, {{indexed}} indexés, {{desactives}} désactivés.",
+    "tropSouvent": "Trop de rechargements récents : réessayez dans quelques minutes.",
+    "echec": "Le rechargement a échoué. Rien n’a été modifié."
   }
 }

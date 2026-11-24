@@ -835,5 +835,20 @@
       "approve": "Approve and publish",
       "error": "Error"
     }
+  },
+  "corpus": {
+    "titre": "Legal corpus",
+    "explication": "Labour Code articles, collective agreements and related texts served in the Legal reference screen. After the corpus is corrected, this reload is what makes the change visible to users: removed articles are deactivated, the rest rewritten.",
+    "enBase": "Articles in database",
+    "indexes": "Indexed for search",
+    "indisponible": "unavailable",
+    "recharger": "Reload corpus",
+    "confirmer": "Confirm reload",
+    "annuler": "Cancel",
+    "demandeConfirmation": "Articles no longer in the corpus will be deactivated. Confirm?",
+    "reindexer": "Rebuild search index only",
+    "resultat": "{{persisted}} articles written, {{indexed}} indexed, {{desactives}} deactivated.",
+    "tropSouvent": "Too many recent reloads: try again in a few minutes.",
+    "echec": "The reload failed. Nothing was changed."
   }
 }

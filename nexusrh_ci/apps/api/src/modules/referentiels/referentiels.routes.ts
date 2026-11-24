@@ -119,8 +119,11 @@ export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Stats admin ──────────────────────────────────────────────────────────────
+  // super_admin inclus : c'est lui qui recharge le corpus depuis l'espace
+  // plateforme, et il lui faut l'état courant avant et après. La réponse ne
+  // contient que deux compteurs globaux, aucune donnée de tenant.
   app.get('/stats', {
-    preHandler: [app.authenticate, app.authorize('admin', 'hr_manager')],
+    preHandler: [app.authenticate, app.authorize('admin', 'hr_manager', 'super_admin')],
   }, async (_req, reply) => {
     return reply.send(await getReferentielStats())
   })
