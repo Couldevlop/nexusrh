@@ -15,6 +15,7 @@ import { CODE_TRAVAIL_TCD } from '../../data/code-travail-tcd.js'
 import { CODE_TRAVAIL_NGA } from '../../data/code-travail-nga.js'
 import {
   upsertArticles,
+  desactiverArticlesAbsentsDuCorpus,
   getAllActiveArticles,
   getArticleByIdFromDb,
   getArticlesByPayrollCodeFromDb,
@@ -184,21 +185,42 @@ export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit
  * Étape 1 : upsert tous les articles en PG (source de vérité)
  * Étape 2 : réindexer ES depuis PG
  */
-export async function seedReferentiel(): Promise<{ persisted: number; indexed: number }> {
-  // Étape 1 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
+export async function seedReferentiel(): Promise<{
+  persisted: number; indexed: number; desactives: number
+}> {
+  // Étape 1 — retirer du service les articles qui ont quitté le corpus.
+  //
+  // Sans cette étape, corriger le fichier ne corrigeait rien pour les
+  // utilisateurs : l'upsert n'efface jamais, et le seed au démarrage ne se
+  // déclenche que sur table vide — ce qu'elle n'est jamais en production.
+  // Les articles fictifs du corpus rédigé à la main y ont survécu ainsi.
+  const idsCorpus = ALL_COUNTRIES_ARTICLES
+    .filter(a => a.source === 'code_travail_ci' && (a.country_code ?? 'CIV') === 'CIV')
+    .map(a => a.article_id)
+  const desactives = await desactiverArticlesAbsentsDuCorpus('code_travail_ci', 'CIV', idsCorpus)
+
+  // Étape 2 — PostgreSQL toujours (source de vérité, ne dépend pas d'ES)
   // Inclut désormais CIV + BEN + TGO + TCD + NGA (multi-pays)
   const persisted = await upsertArticles(ALL_COUNTRIES_ARTICLES)
 
-  // Étape 2 — ES si disponible (non bloquant)
+  // Étape 3 — ES si disponible (non bloquant)
   let indexed = 0
   try {
     await ensureIndex()
+    // Un article désactivé doit disparaître de l'index : la réindexation ne
+    // lit que les articles actifs et laisserait sinon le document en place.
+    if (desactives.length > 0) {
+      await esClient.bulk({
+        refresh: true,
+        operations: desactives.map(id => ({ delete: { _index: ES_INDEX, _id: id } })),
+      })
+    }
     indexed = await reindexFromDb()
   } catch {
     // ES indisponible — les articles sont en PG, le fallback PG sera utilisé
   }
 
-  return { persisted, indexed }
+  return { persisted, indexed, desactives: desactives.length }
 }
 
 /**

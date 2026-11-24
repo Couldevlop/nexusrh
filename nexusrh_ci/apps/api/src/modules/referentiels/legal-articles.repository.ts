@@ -6,7 +6,7 @@
  * OWASP A08 : checksum SHA-256 pour détecter toute altération du texte légal
  */
 import { createHash } from 'crypto'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, notInArray } from 'drizzle-orm'
 
 export interface SearchResult { total: number; hits: ArticleInput[] }
 import { droitCiDb } from '../../db/client.js'
@@ -82,6 +82,16 @@ export async function upsertArticles(articles: ArticleInput[]): Promise<number> 
         target: legalArticles.articleId,
         set: {
           countryCode:    art.country_code ?? 'CIV',
+          // Ces colonnes n'étaient PAS mises à jour : un article conservé
+          // gardait son titre et son chapitre d'origine, même faux.
+          articleNumero:  art.article_numero,
+          source:         art.source,
+          conventionSlug: art.convention_slug,
+          livre:          art.livre,
+          titre:          art.titre,
+          chapitre:       art.chapitre,
+          section:        art.section,
+          isActive:       true,
           titreArticle:   art.titre_article,
           texte:          art.texte,
           keywords:       art.keywords ?? [],
@@ -94,6 +104,37 @@ export async function upsertArticles(articles: ArticleInput[]): Promise<number> 
     count++
   }
   return count
+}
+
+/**
+ * Désactive les articles d'une source qui ne figurent plus dans le fichier de
+ * données, et rend leurs identifiants.
+ *
+ * Désactivation et non suppression : le texte légal servi un jour donné doit
+ * rester consultable, et `articles_history` comme la piste d'audit perdraient
+ * leur objet si la ligne disparaissait.
+ *
+ * Indispensable parce que `upsertArticles` n'insère ou ne met à jour que : sans
+ * cela, un article retiré du corpus resterait servi en production. C'est
+ * exactement ce qui est arrivé aux articles fictifs du corpus rédigé à la main.
+ */
+export async function desactiverArticlesAbsentsDuCorpus(
+  source: string,
+  countryCode: string,
+  idsConserves: string[],
+): Promise<string[]> {
+  if (idsConserves.length === 0) return []
+  const touches = await droitCiDb
+    .update(legalArticles)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(and(
+      eq(legalArticles.source, source),
+      eq(legalArticles.countryCode, countryCode),
+      eq(legalArticles.isActive, true),
+      notInArray(legalArticles.articleId, idsConserves),
+    ))
+    .returning({ articleId: legalArticles.articleId })
+  return touches.map(t => t.articleId)
 }
 
 /** Tous les articles actifs et publics */
