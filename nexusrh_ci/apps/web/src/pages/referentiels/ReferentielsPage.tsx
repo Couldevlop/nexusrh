@@ -32,6 +32,7 @@ function useDebounce<T>(value: T, ms: number): T {
 const SRC = {
   code_travail_ci:      { badge: 'bg-blue-50 text-blue-700 border-blue-200', Icon: BookOpen },
   convention_collective:{ badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: Scale },
+  textes_annexes_ci:    { badge: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Scale },
 } as const
 
 // Les libellés des chips sont traduits, mais le terme de recherche reste en
@@ -135,7 +136,7 @@ export default function ReferentielsPage() {
   const countryLabel = (code: string) =>
     (COUNTRY_CODES as readonly string[]).includes(code) ? t(`countries.${code}`) : code
   const [query, setQuery]   = useState('')
-  const [source, setSource] = useState<'all' | 'code_travail_ci' | 'convention_collective'>('all')
+  const [source, setSource] = useState<'all' | 'code_travail_ci' | 'convention_collective' | 'textes_annexes_ci'>('all')
   const [countryFilter, setCountryFilter] = useState<string | null>(null)
   const [modal, setModal]   = useState<ArticleHit | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['code_travail_ci']))
@@ -406,14 +407,17 @@ export default function ReferentielsPage() {
 
           {/* Source tabs */}
           <div className="flex gap-1.5 mb-5">
-            {(['all','code_travail_ci','convention_collective'] as const).map(k => (
+            {(['all','code_travail_ci','convention_collective','textes_annexes_ci'] as const).map(k => (
               <button key={k} onClick={() => setSource(k)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
                   source === k
                     ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                     : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600'
                 }`}>
-                {k === 'all' ? t('tabs.all') : k === 'code_travail_ci' ? t('tabs.codeTravail') : t('tabs.conventions')}
+                {k === 'all' ? t('tabs.all')
+                  : k === 'code_travail_ci' ? t('tabs.codeTravail')
+                  : k === 'convention_collective' ? t('tabs.conventions')
+                  : t('tabs.annexes')}
               </button>
             ))}
           </div>
@@ -475,7 +479,9 @@ export default function ReferentielsPage() {
                   >
                     <div className="flex items-start gap-3">
                       <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
-                        hit.source === 'code_travail_ci' ? 'bg-blue-50 text-blue-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                        hit.source === 'code_travail_ci' ? 'bg-blue-50 text-blue-500'
+                        : hit.source === 'textes_annexes_ci' ? 'bg-amber-50 text-amber-500'
+                        : 'bg-emerald-50 text-emerald-500'}`}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
