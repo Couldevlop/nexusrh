@@ -346,12 +346,6 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     texte: 'Le salaire comprend : le salaire de base, les primes et indemnités (ancienneté, rendement, transport, logement), les avantages en nature évalués selon les barèmes fixés par la convention collective.',
     keywords: ['salaire', 'primes', 'indemnités', 'avantages nature', 'éléments salaire'] },
 
-  { ...P, source: CT, article_id: 'art-32-3', article_numero: 'Art. 32.3', livre: LI,
-    titre: 'Titre VI — Rémunération', chapitre: 'Chap. I — SMIG',
-    titre_article: 'Prime d\'ancienneté — Obligation légale',
-    texte: 'Tout salarié bénéficie d\'une prime d\'ancienneté à partir de 3 ans d\'ancienneté dans l\'entreprise. Les taux minimaux : 3% à partir de 3 ans, 5% à partir de 5 ans, 8% à partir de 8 ans, 10% à partir de 10 ans. La convention collective peut prévoir des taux plus favorables.',
-    keywords: ['prime ancienneté', 'obligatoire', '3 ans', 'taux ancienneté'], payroll_codes: ['1100'] },
-
   { ...P, source: CT, article_id: 'art-32-4', article_numero: 'Art. 32.4', livre: LI,
     titre: 'Titre VI — Rémunération', chapitre: 'Chap. I — SMIG',
     titre_article: 'Égalité de rémunération H/F',
@@ -761,11 +755,11 @@ export const CONVENTIONS_COLLECTIVES: ArticleDroit[] = [
     keywords: ['indemnité transport', 'domicile travail', 'exonérée ITS', 'CNPS transport'], payroll_codes: ['1300'] },
 
   { ...P, source: 'convention_collective', convention_slug: 'interprofessionnelle_ci',
-    article_id: 'cc-ip-4', article_numero: 'Art. 22',
+    article_id: 'cc-ip-4', article_numero: 'Art. 55',
     livre: 'Convention Collective Interprofessionnelle CI', titre: 'Ancienneté',
-    titre_article: 'Prime d\'ancienneté — Convention interprofessionnelle CI',
-    texte: 'Selon la CCIP-CI : 3% après 3 ans, 5% après 5 ans, 7% après 7 ans, 10% après 10 ans, 12% après 12 ans, 15% après 15 ans et plus. La prime est calculée sur le salaire de base. Elle est due à tous les salariés sans condition.',
-    keywords: ['prime ancienneté', 'CCIP-CI', '3%', '5%', '10%', '15%'], payroll_codes: ['1100'] },
+    titre_article: 'Prime d\'ancienneté — CCI du 19 juillet 1977, art. 55',
+    texte: 'La prime d\'ancienneté n\'est pas prévue par le Code du Travail : elle est conventionnelle. CCI du 19/07/1977, art. 55 : la prime est calculée en pourcentages sur le SALAIRE MINIMUM DE LA CATÉGORIE de classement du travailleur (et non sur le salaire de base réel), le montant total de ce salaire étant déterminé en fonction de l\'horaire normal de l\'entreprise. Son montant est fixé à 2 % après 2 années d\'ancienneté, puis 1 % du salaire par année de service supplémentaire jusqu\'à la 25e année incluse : soit 2 % à 2 ans, 3 % à 3 ans, 10 % à 10 ans, et un plafond de 25 % à 25 ans. L\'ancienneté est le temps de service continu dans l\'entreprise ; y sont comptés les congés payés, les congés de maternité, les absences pour maladie professionnelle ou accident du travail et les obligations militaires.',
+    keywords: ['prime ancienneté', 'CCI 1977', 'art. 55', '2%', '1% par année', '25%', 'minimum catégoriel'], payroll_codes: ['1100'] },
 
   { ...P, source: 'convention_collective', convention_slug: 'interprofessionnelle_ci',
     article_id: 'cc-ip-5', article_numero: 'Art. 31',
@@ -793,8 +787,8 @@ export const CONVENTIONS_COLLECTIVES: ArticleDroit[] = [
     article_id: 'cc-tp-15', article_numero: 'Art. 15',
     livre: 'Convention Collective — Transport CI', titre: 'Chap. IV — Rémunération',
     titre_article: 'Primes secteur Transport CI',
-    texte: 'Primes spécifiques transport : Prime de transport : 25 000 à 45 000 FCFA selon grade. Prime de rendement : jusqu\'à 15% du salaire de base sur objectif. Prime d\'ancienneté : 5% après 3 ans, 8% après 5 ans, 12% après 10 ans. Prime de risque pour chauffeurs de nuit : +10%.',
-    keywords: ['prime transport', 'prime rendement', 'prime ancienneté', 'prime risque nuit'], payroll_codes: ['1100', '1200', '1300'] },
+    texte: 'Primes spécifiques transport : Prime de transport : 25 000 à 45 000 FCFA selon grade. Prime de rendement : jusqu\'à 15% du salaire de base sur objectif. Prime de risque pour chauffeurs de nuit : +10%.',
+    keywords: ['prime transport', 'prime rendement', 'prime risque nuit'], payroll_codes: ['1100', '1200', '1300'] },
 
   { ...P, source: 'convention_collective', convention_slug: 'transport_ci',
     article_id: 'cc-tp-20', article_numero: 'Art. 20',

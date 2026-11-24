@@ -20,6 +20,11 @@ describe('seniorityRate par pack', () => {
     ['NER', NER_2024, [[2, 0], [3, 0.03], [10, 0.10], [24, 0.24], [30, 0.24]]],
     ['BFA', BFA_2024, [[2, 0], [3, 0.05], [10, 0.12], [40, 0.42]]],
     ['TGO', TGO_2024, [[2, 0.02], [3, 0.02], [4, 0.03], [10, 0.09], [31, 0.30], [40, 0.30]]],
+    // CCGT du Bénin, art. 65 : 3 % à 3 ans, 5 % à 5 ans, puis +1 % de la 7e à la
+    // 20e année incluse. La 6e année reste à 5 % : le texte ne majore qu'à partir
+    // de la 7e. Plafond 19 %, atteint à la 20e année.
+    ['BEN', BEN_2024, [[2, 0], [3, 0.03], [4, 0.03], [5, 0.05], [6, 0.05],
+      [7, 0.06], [8, 0.07], [20, 0.19], [30, 0.19]]],
   ]
   for (const [name, pack, rows] of cases) {
     for (const [years, expected] of rows) {
@@ -28,8 +33,7 @@ describe('seniorityRate par pack', () => {
       })
     }
   }
-  it('BEN et GNB sans règle', () => {
-    expect(BEN_2024.seniorityBonus).toBeUndefined()
+  it('GNB sans règle', () => {
     expect(GNB_2024.seniorityBonus).toBeUndefined()
   })
 })
@@ -92,16 +96,22 @@ describe('computeSeniority', () => {
     expect(r.rule?.amount).toBe(15_000)
   })
   it('manuel sans règle', () => {
-    const r = computeSeniority({ pack: BEN_2024, ...common, override: 20_000 })
+    const r = computeSeniority({ pack: GNB_2024, ...common, override: 20_000 })
     expect(r.source).toBe('manual')
     expect(r.amount).toBe(20_000)
     expect(r.rule).toBeNull()
   })
-  it('BEN sans override', () => {
-    const r = computeSeniority({ pack: BEN_2024, ...common })
+  it('pack sans règle, sans override', () => {
+    const r = computeSeniority({ pack: GNB_2024, ...common })
     expect(r.source).toBe('none')
     expect(r.amount).toBe(0)
     expect(r.rule).toBeNull()
+  })
+  // Bénin : la règle s'applique désormais (CCGT art. 65, assiette = salaire de base).
+  it('BEN applique la règle sur le salaire de base', () => {
+    const r = computeSeniority({ pack: BEN_2024, ...common })
+    expect(r.source).toBe('rule')
+    expect(r.rule?.base).toBe(common.baseSalary)
   })
 })
 
