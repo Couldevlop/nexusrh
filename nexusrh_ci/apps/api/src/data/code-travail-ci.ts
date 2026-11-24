@@ -23,24 +23,26 @@
  * dominant était un décalage de numérotation — son « Art. 11.1 » reprenait en
  * réalité l'article 14.1, le véritable 11.1 traitant du placement.
  *
- * LIMITES CONNUES de cette edition, a ne pas combler de memoire :
- *  - Les articles 13.17, 16.7 et 18.14 manquent a la partie legislative du PDF
- *    source. Ils ne figurent donc pas ici : mieux vaut un trou visible qu'un
- *    texte invente. La Convention Collective du meme PDF cite bien un
- *    « Art. 16.7 » (licenciement economique), mais ce n'est PAS le notre :
- *    l'article 25.3 renvoie a « 16.7 c) » pour les absences accident du travail
- *    et maladie professionnelle. La citation suit une numerotation plus
- *    ancienne — elle a ete ecartee.
- *  - Les DISPOSITIONS PRELIMINAIRES (articles 1 a 10, non pointes) ne sont pas
- *    reprises : le format « Art. 4 » echappe au parseur, cale sur la
- *    numerotation pointee. L'article 55.1 y renvoie pourtant. A ajouter.
- *  - Les 12 entrees CGI / OHADA / decrets qui figuraient ici etaient etiquetees
- *    « Code du Travail » a tort : elles ont ete retirees. A reprendre depuis
- *    leurs textes d'origine, avec une source propre et le filtre front associe.
- *  - Les payroll_codes de l'ancien corpus (lien bulletin -> base legale) ont
- *    disparu : ils pointaient vers des numeros d'articles faux. A refaire.
+ * PERIMETRE ET LIMITES :
+ *  - Les 383 articles couvrent les DISPOSITIONS PRELIMINAIRES (art. 1 a 10,
+ *    numerotes sans point) et les 373 articles pointes de la partie
+ *    legislative, sans aucun trou de numerotation.
+ *  - Les articles 13.17, 16.7 et 18.14 avaient d'abord ete declares manquants :
+ *    c'etait un defaut du parseur, le PDF les ecrit « Art. 16. 7 », avec une
+ *    espace avant le dernier chiffre. Le motif tolere desormais ces espaces.
+ *    Recoupes avec le Journal Officiel du 14/09/2015 (n° 74), qui les confirme.
+ *  - Le lien rubrique de paie -> article (payroll_codes) a ete REFAIT : l'ancien
+ *    pointait vers des numeros faux, dont un « Art. 55.2 » inexistant pour les
+ *    cotisations CNPS. Les rubriques CNPS et ITS n'ont volontairement aucun
+ *    renvoi : aucun article du Code du Travail ne les fonde.
+ *  - Les 12 entrees CGI / OHADA / decrets ont leur propre source
+ *    (`textes_annexes_ci`) et leur onglet. Ce sont des SYNTHESES redigees, pas
+ *    du texte officiel : elles restent a reprendre depuis leurs textes sources.
  *  - Les 25 entrees de conventions collectives sectorielles n'ont PAS ete
  *    verifiees : ce PDF ne couvre que la Convention Interprofessionnelle.
+ *  - Le PDF source est une compilation re-saisie (coquilles « TRITRE »,
+ *    « PRIVITEGES ») : les articles verifies par sondage contre le Journal
+ *    Officiel concordent, mais un recoupement integral reste souhaitable.
  * ────────────────────────────────────────────────────────────────────────────
  */
 export interface ArticleDroit {
@@ -58,6 +60,56 @@ const P: Pick<ArticleDroit, 'access_level' | 'tenant_id'> = { access_level: 'pub
 const CT = 'code_travail_ci' as const
 
 export const CODE_TRAVAIL_CI: ArticleDroit[] = [
+  { ...P, source: CT, article_id: 'art-prelim-1', article_numero: 'Art. 1',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Le présent Code du travail est applicable sur tout le territoire de la République de Côte…',
+    texte: 'Le présent Code du travail est applicable sur tout le territoire de la République de Côte d\'Ivoire. Il régit des relations entre employeurs et travailleurs résultant de contrats de travail conclus pour être exécutés sur le territoire de la République de Côte d\'Ivoire. Il régit également l\'exécution occasionnelle, sur le territoire de la République de Côte d\'Ivoire, d\'un contrat de travail conclu pour être exécuté dans un autre Etat. Toutefois, cette dernière disposition n\'est pas applicable aux travailleurs déplacés pour une mission temporaire n\'excédant pas trois mois. Il s\'applique en certaines de ses dispositions aux apprentis et à toute autre personne liée à l\'entreprise en vue d\'acquérir une qualification ou une expérience professionnelle.',
+    keywords: ['occasionnelle', 'territoire', 'n\'excédant', 's\'applique', 'expérience', 'exécutés'] },
+  { ...P, source: CT, article_id: 'art-prelim-2', article_numero: 'Art. 2',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Au sens du présent Code, est considérée comme travailleur ou salarié, quels que soient son…',
+    texte: 'Au sens du présent Code, est considérée comme travailleur ou salarié, quels que soient son sexe, sa race et sa nationalité, toute personne physique qui s\'est engagée à mettre son activité professionnelle, moyennant rémunération, sous la direction et l\'autorité d\'une autre personne physique ou morale, publique ou privée, appelée employeur. Pour la détermination de la qualité de travailleur, il n\'est tenu compte ni du statut juridique de l\'employeur, ni de celui de l\'employé. Toutefois, les dispositions du présent Code ne sont pas applicables aux personnes nommées dans un emploi permanent d\'une administration publique. De même, les travailleurs employés au service de l\'Etat ou des personnes morales de droit public et qui relèvent d\'un statut particulier échappent, dans la limite de ce statut et de celle des principes généraux du droit administratif, à l\'application du présent Code.',
+    keywords: ['administration', 'nationalité', 'juridique', 'l\'employé', 'échappent', 'principes'] },
+  { ...P, source: CT, article_id: 'art-prelim-3', article_numero: 'Art. 3',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Le travail forcé, ou obligatoire est interdit de façon absolue',
+    texte: 'Le travail forcé, ou obligatoire est interdit de façon absolue. On entend par travail forcé ou obligatoire, tout travail ou service exigé d\'un individu sous la menace d\'une peine quelconque pour lequel ledit individu ne s\'est pas offert de son plein gré.',
+    keywords: ['individu', 'absolue', 'entend', 'menace', 'offert', 'exigé'] },
+  { ...P, source: CT, article_id: 'art-prelim-4', article_numero: 'Art. 4',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Sous réserve des dispositions expresses du présent Code ou de tout autre texte de nature…',
+    texte: 'Sous réserve des dispositions expresses du présent Code ou de tout autre texte de nature législative ou règlementaire protégeant les femmes et les enfants, ainsi que des dispositions relatives à la condition des étrangers, aucun employeur ne peut prendre en considération le sexe, l\'âge, l\'ascendance nationale, la race, la religion, l\'opinion politique et religieuse, l\'origine sociale, l\'appartenance ou la non-appartenance à un syndicat et l\'activité syndicale, la séropositivité ou VIH ou le Sida avérés, ou présumés, le handicap des travailleurs pour arrêter ses décisions en ce qui concerne, notamment, l\'embauchage, la conduite et la répartition du travail, la formation professionnelle, l\'avancement, la promotion, la rémunération, l\'octroi d\'avantages sociaux, la discipline, ou la rupture du contrat de travail.',
+    keywords: ['non-appartenance', 'l\'appartenance', 'séropositivité', 'l\'ascendance', 'l\'embauchage', 'l\'avancement'] },
+  { ...P, source: CT, article_id: 'art-prelim-5', article_numero: 'Art. 5',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Aucun salarié, aucune personne en formation ou en stage ne peut être sanctionné ni licencié…',
+    texte: 'Aucun salarié, aucune personne en formation ou en stage ne peut être sanctionné ni licencié pour avoir refusé de subir les agissements de harcèlement moral ou sexuel d\'un employeur, de son représentant ou de toute personne qui, abusant de l\'autorité que lui confèrent ses fonctions, a donné des ordres, proféré des menaces, imposé des contraintes ou exercé des pressions de toutes natures sur ce salarié. Aucun salarié, aucune personne en formation ou en stage ne peut être sanctionné ni licencié pour avoir témoigné des agissements définis à l\'alinéa précédent ou pour les avoir relatés. Nul ne peut prendre en considération le fait que la personne intéressée a refusé de subir les agissements de harcèlement ou qu\'une personne témoin les a relatés, pour décider, notamment en matière d\'embauche, de rémunération, de formation, d\'affectation, de qualification, de classification, de promotion professionnelle, de mutation, de résiliation, de renouvellement de contrat de travail ou de sanctions disciplinaire. Constituent un harcèlement sexuel les comportements abusifs, les menaces, les attaques, les paroles, les intimidations, les écrits, les attitudes ; les agissements répétés à l\'encontre d\'un salarié, ayant une connotation sexuelle, dont le but est d\'obtenir des faveurs de nature sexuelle à son profil ou au profit d\'un tiers. Constituent un harcèlement moral les comportements abusifs, les menaces, les attaques, les paroles, les intimidations, les écrits, les attitudes, les agissements répétés à l\'encontre d\'un salarié, ayant pour objet ou pour effet la dégradation de ses conditions de travail et qui comme tels sont susceptibles de porter atteinte à ses droits et a sa dignité, d\'altérer sa santé physique ou mentale ou de compromettre son avenir professionnel. Le harcèlement se prouve par tous moyens.',
+    keywords: ['classification', 'd\'affectation', 'comportements', 'intimidations', 'agissements', 'harcèlement'] },
+  { ...P, source: CT, article_id: 'art-prelim-6', article_numero: 'Art. 6',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Tout licenciement motivé par l\'action en justice pour faire respecter les principes et droits…',
+    texte: 'Tout licenciement motivé par l\'action en justice pour faire respecter les principes et droits fondamentaux au travail est nul et de nul effet. La réintégration du salarié licencié au mépris de cette interdiction est de droit. En cas de refus de réintégration, l\'employeur est tenu au paiement de dommages et intérêts dans les conditions de l\'article 18.15 ci-après.',
+    keywords: ['réintégration', 'fondamentaux', 'principes', 'mépris', 'interdiction', 'respecter'] },
+  { ...P, source: CT, article_id: 'art-prelim-7', article_numero: 'Art. 7',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Les dispositions prévues aux articles 4 et 5 sont affichées sur les lieux de travail ainsi que…',
+    texte: 'Les dispositions prévues aux articles 4 et 5 sont affichées sur les lieux de travail ainsi que dans les locaux ou à la porte des locaux où se fait l\'embauche. Il en est de même pour les textes pris pour l\'application desdits articles.',
+    keywords: ['affichées', 'desdits', 'l\'embauche', 'locaux', 'textes', 'lieux'] },
+  { ...P, source: CT, article_id: 'art-prelim-8', article_numero: 'Art. 8',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Sous réserve de dérogation expresse, les dispositions du présent Code sont d\'ordre public',
+    texte: 'Sous réserve de dérogation expresse, les dispositions du présent Code sont d\'ordre public. En conséquence, toute règle résultant d\'une décision unilatérale, d\'un contrat ou d\'une convention et qui ne respecte pas les dispositions dudit Code ou des textes pris pour son application est nulle de plein droit. Toutefois, le caractère d\'ordre public ne fait pas obstacle à ce que des garanties ou droits supérieurs à ceux prévus par le présent Code soient accordés aux travailleurs par décision unilatérale d\'un employeur ou d\'un groupement patronal par un contrat de travail, une convention collective ou un usage.',
+    keywords: ['conséquence', 'unilatérale', 'dérogation', 'supérieurs', 'expresse', 'respecte'] },
+  { ...P, source: CT, article_id: 'art-prelim-9', article_numero: 'Art. 9',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Les travailleurs qui bénéficient d\'avantages consentis préalablement à l\'entrée en vigueur du…',
+    texte: 'Les travailleurs qui bénéficient d\'avantages consentis préalablement à l\'entrée en vigueur du présent Code au titre d\'une décision unilatérale de l\'employeur, d\'un contrat de travail, d\'une convention collective ou d\'un accord d\'établissement continuent à en bénéficier pendant leur durée respective, lorsque ces avantages sont supérieurs à ceux qui leur sont reconnus par le présent Code.',
+    keywords: ['bénéficient', 'd\'avantages', 'unilatérale', 'continuent', 'respective', 'supérieurs'] },
+  { ...P, source: CT, article_id: 'art-prelim-10', article_numero: 'Art. 10',
+    titre: 'Dispositions préliminaires', chapitre: 'Dispositions préliminaires',
+    titre_article: 'Un exemplaire du présent Code doit être remis par l\'employeur aux représentants : - des…',
+    texte: 'Un exemplaire du présent Code doit être remis par l\'employeur aux représentants : - des délégués du personnel ; - de chaque centrale syndicale ; - du comité de santé et de sécurité au travail.',
+    keywords: ['exemplaire', 'remis', 'centrale', 'syndicale', 'représentants', 'chaque'] },
   { ...P, source: CT, article_id: 'art-11-1', article_numero: 'Art. 11.1',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 1',
     titre_article: 'Les employeurs peuvent embaucher directement leurs travailleurs',
@@ -102,7 +154,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 1',
     titre_article: 'Le nouvel employeur garde néanmoins le droit de procéder à des ruptures de contrat de travail…',
     texte: 'Le nouvel employeur garde néanmoins le droit de procéder à des ruptures de contrat de travail dans les conditions prévues au présent Code. Les salariés dont les contrats ne sont pas rompus ne peuvent prétendre à aucune indemnité du fait du changement d\'employeur.',
-    keywords: ['rompus', 'néanmoins', 'ruptures', 'd\'employeur', 'garde', 'nouvel'] },
+    keywords: ['rompus', 'néanmoins', 'ruptures', 'd\'employeur', 'nouvel', 'garde'] },
   { ...P, source: CT, article_id: 'art-11-10', article_numero: 'Art. 11.10',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 1',
     titre_article: 'Des décrets d\'application déterminent, en tant que de besoin, les modalités d\'application du…',
@@ -187,7 +239,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Les modalités du contrat stage-école sont déterminées par voie réglementaire.',
     texte: 'Les modalités du contrat stage-école sont déterminées par voie réglementaire.',
-    keywords: ['stage-école', 'déterminées', 'réglementaire', 'modalités', 'contrat'] },
+    keywords: ['stage-école', 'déterminées', 'modalités', 'réglementaire', 'contrat'] },
   { ...P, source: CT, article_id: 'art-13-14', article_numero: 'Art. 13.14',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Le contrat stage de qualification ou d\'expérience professionnelle est la convention par…',
@@ -201,13 +253,18 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-13-16', article_numero: 'Art. 13.16',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Le bénéficiaire du stage de qualification ou d\'expérience professionnelle est soumis au…',
-    texte: 'Le bénéficiaire du stage de qualification ou d\'expérience professionnelle est soumis au règlement intérieur de l\'entreprise. Art. 13. 17 Le bénéficiaire du stage de qualification ou d\'expérience professionnelle n\'est pas un salarié. Toutefois, l\'entreprise est tenue de lui verser une indemnité forfaitaire.',
-    keywords: ['bénéficiaire', 'tenue', 'forfaitaire', 'intérieur', 'd\'expérience', 'verser'] },
+    texte: 'Le bénéficiaire du stage de qualification ou d\'expérience professionnelle est soumis au règlement intérieur de l\'entreprise.',
+    keywords: ['bénéficiaire', 'intérieur', 'd\'expérience', 'stage', 'soumis', 'qualification'] },
+  { ...P, source: CT, article_id: 'art-13-17', article_numero: 'Art. 13.17',
+    titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
+    titre_article: 'Le bénéficiaire du stage de qualification ou d\'expérience professionnelle n\'est pas un salarié',
+    texte: 'Le bénéficiaire du stage de qualification ou d\'expérience professionnelle n\'est pas un salarié. Toutefois, l\'entreprise est tenue de lui verser une indemnité forfaitaire.',
+    keywords: ['tenue', 'bénéficiaire', 'forfaitaire', 'd\'expérience', 'verser', 'stage'] },
   { ...P, source: CT, article_id: 'art-13-18', article_numero: 'Art. 13.18',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Tout bénéficiaire d\'un contrat stage de qualification ou d\'expérience professionnelle reconnu…',
     texte: 'Tout bénéficiaire d\'un contrat stage de qualification ou d\'expérience professionnelle reconnu apte à tenir un emploi en rapport avec sa qualification est, pendant une période de six mois, prioritaire en cas d\'embauche audit emploi.',
-    keywords: ['prioritaire', 'audit', 'bénéficiaire', 'reconnu', 'rapport', 'd\'expérience'] },
+    keywords: ['prioritaire', 'audit', 'reconnu', 'bénéficiaire', 'rapport', 'd\'expérience'] },
   { ...P, source: CT, article_id: 'art-13-19', article_numero: 'Art. 13.19',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Au terme du stage, il est délivré au stagiaire une attestation indiquant la qualification,…',
@@ -217,7 +274,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Les modalités pratiques de mise en œuvre du contrat stage de qualification ou d\'expérience…',
     texte: 'Les modalités pratiques de mise en œuvre du contrat stage de qualification ou d\'expérience professionnelle sont déterminées par voie réglementaire.',
-    keywords: ['pratiques', 'd\'expérience', 'stage', 'qualification', 'déterminées', 'réglementaire'] },
+    keywords: ['pratiques', 'd\'expérience', 'stage', 'qualification', 'déterminées', 'modalités'] },
   { ...P, source: CT, article_id: 'art-13-21', article_numero: 'Art. 13.21',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Est appelé chantier-école toute action collective qui, à partir d\'une situation de mise au…',
@@ -242,7 +299,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'L\'employeur peut soumettre le travailleur à un stage de formation professionnelle',
     texte: 'L\'employeur peut soumettre le travailleur à un stage de formation professionnelle. Si le stage est concluant, le travailleur bénéficie des avantages rattachés à l\'emploi pour lequel le stage a été effectué. Si le travailleur quitte un établissement où il a déjà effectué un stage de formation professionnelle, il ne peut être astreint à un nouveau stage lorsqu\'il est engagé dans un autre établissement, relevant du même secteur d\'activité, en vue d\'assumer les mêmes fonctions. L\'intéressé sera confirmé dans son nouvel emploi dès qu\'il aura accompli la période d\'essai.',
-    keywords: ['concluant', 'd\'assumer', 'accompli', 'rattachés', 'astreint', 'confirmé'] },
+    keywords: ['concluant', 'd\'assumer', 'accompli', 'rattachés', 'confirmé', 'engagé'] },
   { ...P, source: CT, article_id: 'art-13-26', article_numero: 'Art. 13.26',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 3',
     titre_article: 'Le congé de formation est une période de suspension du contrat de travail qui a pour objet de…',
@@ -357,7 +414,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 5',
     titre_article: 'Le contrat de travail à durée déterminée ne peut être rompu avant terme que pour force…',
     texte: 'Le contrat de travail à durée déterminée ne peut être rompu avant terme que pour force majeure, accord commun ou faute lourde de l\'une des parties. Il peut également être rompu avant terme, pendant la période d\'essai. Toute rupture prononcée en violation des règles ci-dessus donne lieu, au profit de la partie lésée, à dommages et intérêts correspondant aux salaires et avantages de toute nature dont le salarié aurait bénéficié pendant la période restant à courir jusqu\'au terme de son contrat. Le contrat à durée déterminée à terme imprécis conclu pour le remplacement d\'un travailleur temporairement absent peut être rompu par décision unilatérale du salarié dès lors qu\'il a été exécuté pendant six mois au moins.',
-    keywords: ['temporairement', 'unilatérale', 'jusqu\'au', 'restant', 'exécuté', 'absent'] },
+    keywords: ['temporairement', 'unilatérale', 'restant', 'exécuté', 'absent', 'lésée'] },
   { ...P, source: CT, article_id: 'art-15-10', article_numero: 'Art. 15.10',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 5',
     titre_article: 'Les contrats de travail à durée déterminée qui ne satisfont pas aux exigences posées par le…',
@@ -393,6 +450,12 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre_article: 'L\'employeur doit procurer le travail convenu au lieu convenu',
     texte: 'L\'employeur doit procurer le travail convenu au lieu convenu. Il ne peut exiger un travail autre que celui prévu au contrat, sauf cas d\'urgence ou de péril et pour une tâche temporaire. Toute modification substantielle du contrat de travail requiert l\'accord préalable du salarié.',
     keywords: ['substantielle', 'requiert', 'convenu', 'péril', 'procurer', 'modification'] },
+  { ...P, source: CT, article_id: 'art-16-7', article_numero: 'Art. 16.7',
+    titre: 'Titre I — Emploi', chapitre: 'Chapitre 6',
+    titre_article: 'Le contrat de travail est suspendu, notamment : a) en cas de fermeture de l\'établissement par…',
+    texte: 'Le contrat de travail est suspendu, notamment : a) en cas de fermeture de l\'établissement par suite du départ de l\'employeur sous les drapeaux ou pour une période obligatoire d\'instruction militaire ; b) pendant la durée du service militaire du travailleur et pendant les périodes obligatoires d\'instruction militaire auxquelles il est astreint ; c) pendant la durée de l\'absence du travailleur, en cas de maladie dûment constatée par un médecin agréé dans des conditions déterminées par décret, durée limitée à six mois ; en cas de maladie de longue durée, le délai est porté à douze mois. Ce délai peut être prorogé jusqu\'au remplacement du travailleur, la liste des maladies de longue durée est déterminée par voie réglementaire ; d) pendant la période d\'indisponibilité du travailleur résultant d\'un accident du travail ou de maladie professionnelle jusqu\'à consolidation des lésions ou guérison ; e) pendant la période de garde à vue et de détention préventive du travailleur motivée par des raisons étrangères au service et lorsqu\'elle est connue de l\'employeur, dans la limite de six mois ; f) pendant les permissions exceptionnelles pouvant être accordées par l\'employeur su travailleur à l\'occasion d\'événements familiaux touchant directement son propre foyer ; g) pendant les périodes de chômage technique prévues à l\'article 16.11 cidessous.',
+    payroll_codes: ['1800', '1900'],
+    keywords: ['d\'indisponibilité', 'exceptionnelles', 'permissions', 'préventive', 'étrangères', 'militaire'] },
   { ...P, source: CT, article_id: 'art-16-8', article_numero: 'Art. 16.8',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 6',
     titre_article: 'Le contrat de travail est également suspendu pendant la période de mise en disponibilité sans…',
@@ -462,7 +525,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 8',
     titre_article: 'Si à l\'expiration du délai prévu à l\'article 16.7 c) du présent Code, le travailleur dont le…',
     texte: 'Si à l\'expiration du délai prévu à l\'article 16.7 c) du présent Code, le travailleur dont le contrat de travail a été suspendu pour cause de maladie, se trouve dans l\'incapacité de reprendre son travail, l\'employeur peut le remplacer définitivement après lui avoir signifié par tout moyen laissant trace écrire qu\'il prend acte de la rupture du contrat de travail. À cette occasion, il doit lui verser le montant des indemnités compensatrices de préavis, de congés et l\'indemnité de licenciement auxquelles le travailleur pourrait avoir droit du fait de cette rupture. Il doit tenir à sa disposition un certificat de travail accompagné d\'un relevé nominatif de salaire de l\'institution de prévoyance sociale à laquelle le travailleur est affilié. Le travailleur remplacé dans les conditions indiquées au premier alinéa du présent article, qui produit un certificat médical de guérison ou de consolidation et d\'aptitude au poste, conserve pendant un délai d\'un an, un droit de priorité de réembauchage. Ce délai est renouvelable une seule fois.',
-    keywords: ['compensatrices', 'réembauchage', 'signifié', 'occasion', 'pourrait', 'guérison'] },
+    keywords: ['compensatrices', 'réembauchage', 'signifié', 'occasion', 'pourrait', 'l\'incapacité'] },
   { ...P, source: CT, article_id: 'art-18-6', article_numero: 'Art. 18.6',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 8',
     titre_article: 'Pendant la durée du délai de préavis, l\'employeur et le travailleur sont tenus au respect de…',
@@ -501,8 +564,13 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
   { ...P, source: CT, article_id: 'art-18-13', article_numero: 'Art. 18.13',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 8',
     titre_article: 'Avant le licenciement, l\'inspecteur du travail et des lois sociales s\'assure du respect des…',
-    texte: 'Avant le licenciement, l\'inspecteur du travail et des lois sociales s\'assure du respect des critères établis et de la procédure prescrite par le présent Code. En cas de non-respect de la procédure ou des critères fixés, l\'inspecteur du travail et des lois sociales le notifie par écrit au chef d\'entreprise. L\'inspecteur du travail et des lois sociales signe avec les parties le procès-verbal de la réunion. Art. 18. 14 Lorsque le licenciement de plus d\'un travailleur intervient pour motif économique, le chef d\'entreprise remet à l\'inspecteur du travail et des lois sociales trois exemplaires du dossier complet de la décision prise. L\'employeur communique également la liste des travailleurs licenciés aux autorités chargées de la promotion de remploi et de la reconversion professionnelle.',
-    keywords: ['reconversion', 'chargées', 'complet', 'remploi', 'remet', 'non-respect'] },
+    texte: 'Avant le licenciement, l\'inspecteur du travail et des lois sociales s\'assure du respect des critères établis et de la procédure prescrite par le présent Code. En cas de non-respect de la procédure ou des critères fixés, l\'inspecteur du travail et des lois sociales le notifie par écrit au chef d\'entreprise. L\'inspecteur du travail et des lois sociales signe avec les parties le procès-verbal de la réunion.',
+    keywords: ['non-respect', 'prescrite', 's\'assure', 'critères', 'établis', 'notifie'] },
+  { ...P, source: CT, article_id: 'art-18-14', article_numero: 'Art. 18.14',
+    titre: 'Titre I — Emploi', chapitre: 'Chapitre 8',
+    titre_article: 'Lorsque le licenciement de plus d\'un travailleur intervient pour motif économique, le chef…',
+    texte: 'Lorsque le licenciement de plus d\'un travailleur intervient pour motif économique, le chef d\'entreprise remet à l\'inspecteur du travail et des lois sociales trois exemplaires du dossier complet de la décision prise. L\'employeur communique également la liste des travailleurs licenciés aux autorités chargées de la promotion de remploi et de la reconversion professionnelle.',
+    keywords: ['reconversion', 'chargées', 'complet', 'remploi', 'remet', 'exemplaires'] },
   { ...P, source: CT, article_id: 'art-18-15', article_numero: 'Art. 18.15',
     titre: 'Titre I — Emploi', chapitre: 'Chapitre 8',
     titre_article: 'Toute rupture abusive du contrat donne lieu à dommages-intérêts',
@@ -542,11 +610,13 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 1',
     titre_article: 'Dans tous les établissements soumis au présent Code, à l\'exception des établissements…',
     texte: 'Dans tous les établissements soumis au présent Code, à l\'exception des établissements agricoles, la durée normale du travail des personnels, quels que soient leur sexe et leur mode de rémunération, est fixée à quarante heures par semaine. Cette durée peut être dépassée par application des règles relatives aux équivalences, aux heures supplémentaires, à la récupération des heures de travail perdues et à la modulation. Dans les établissements agricoles et assimilés, la durée normale du travail des personnels, quels que soient leur sexe et leur mode de rémunération, est fixée à deux mille quatre cents heures par an. Cette durée peut être dépassée par application des règles relatives aux équivalences, aux heures supplémentaires et à la récupération des heures de travail perdues. Une durée de travail inférieure à la durée normale peur être stipulée dans le cadre du travail à temps partiel. Dans ce cas, le contrat doit être constaté par un écrit, ou une lettre d\'embauche mentionnant la durée du travail. Des heures complémentaires peuvent être accomplies dans des conditions et limites prévues par décret.',
+    payroll_codes: ['1400', '1450', '1500', '1520', '1550'],
     keywords: ['équivalences', 'récupération', 'inférieure', 'agricoles', 'dépassée', 'stipulée'] },
   { ...P, source: CT, article_id: 'art-21-3', article_numero: 'Art. 21.3',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 1',
     titre_article: 'Des décrets déterminent les modalités d\'application des dispositions de l\'article précédent et…',
     texte: 'Des décrets déterminent les modalités d\'application des dispositions de l\'article précédent et fixent notamment : - la répartition des heures de travail sur les jours de la semaine ; - les conditions dans lesquelles les employeurs peuvent déroger à la règle de l\'horaire collectif et pratiquer des horaires individualisés ; - s\'il y a lieu et pour certaines professions, le nombre d\'heures de présence au poste de travail réputé être équivalent à quarante heures ou à deux mille quatre cents heures de travail effectif ; - les cas et les conditions, notamment de rémunération majorée, dans lesquels peuvent être accomplies des heures supplémentaires ; - les cas et les conditions dans lesquels des interruptions collectives de travail peuvent donner lieu à une augmentation ultérieure de la durée du travail afin de compenser ces pertes d\'activité, les heures ainsi récupérées n\'étant pas considérées comme des heures supplémentaires ; - les conditions dans lesquelles les négociateurs sociaux peuvent conclure des accords de modulation instaurant, en fonction des fluctuations saisonnières prévisibles de l\'activité des entreprises, une répartition inégale des heures de travail normales sur les diverses périodes de l\'année, des périodes de moindre activité étant compensées par des périodes de plus grande activité ; - les limites dans lesquelles peuvent être accomplies des heures supplémentaires.',
+    payroll_codes: ['1400', '1450', '1500', '1520', '1550'],
     keywords: ['individualisés', 'interruptions', 'augmentation', 'négociateurs', 'fluctuations', 'prévisibles'] },
   { ...P, source: CT, article_id: 'art-22-1', article_numero: 'Art. 22.1',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 2',
@@ -597,6 +667,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 3',
     titre_article: 'La salariée a le droit de suspendre le contrat de travail pendant quatorze semaines…',
     texte: 'La salariée a le droit de suspendre le contrat de travail pendant quatorze semaines consécutives dont six semaines avant la date présumée de l\'accouchement et huit semaines après la date de celui-ci. La période postnatale des huit semaines est augmentée de deux semaines en cas de naissance multiple. La suspension peut être prolongée de trois semaines en cas de maladie dûment constatée et résultant de la grossesse ou des couches. Au cas où l\'accouchement a lieu après la date présumée, la période post-natale des huit semaines reste obligatoirement acquise à la femme. Lorsque l\'enfant reste hospitalisé, le congé post-natal est prolongé pour une période équivalente à la durée d\'hospitalisation de l\'enfant. La durée de la prolongation ne peut excéder 12 mois. Dans le cas où pendant sa grossesse, la femme a fait l\'objet d\'un changement d\'affectation, en raison de son état de grossesse, elle est réintégrée dans l\'emploi occupé avant cette affectation lorsqu\'elle reprend son travail à l\'issue de la période de suspension de son contrat pour congé de maternité.',
+    payroll_codes: ['1700'],
     keywords: ['d\'hospitalisation', 'd\'affectation', 'prolongation', 'post-natale', 'hospitalisé', 'affectation'] },
   { ...P, source: CT, article_id: 'art-23-7', article_numero: 'Art. 23.7',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 3',
@@ -647,11 +718,13 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 5',
     titre_article: 'Sauf disposition plus favorable des conventions collectives ou du contrat individuel, le…',
     texte: 'Sauf disposition plus favorable des conventions collectives ou du contrat individuel, le travailleur acquiert droit au congé payé, à la charge de l\'employeur, à raison de 2,2 jours ouvrables par mois de service effectif.',
+    payroll_codes: ['1600'],
     keywords: ['acquiert', 'favorable', 'individuel', 'effectif', 'disposition', 'ouvrables'] },
   { ...P, source: CT, article_id: 'art-25-2', article_numero: 'Art. 25.2',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 5',
     titre_article: 'Sauf disposition plus favorable des conventions collectives ou du contrat individuel, la durée…',
     texte: 'Sauf disposition plus favorable des conventions collectives ou du contrat individuel, la durée annuelle du congé défini à l\'article précédent est augmentée de : -1 jour ouvrable supplémentaire après 5 ans d\'ancienneté dans l\'entreprise; - 2 jours ouvrables supplémentaires après 10 ans ; - 3 jours ouvrables supplémentaires après 15 ans ; - 5 jours ouvrables supplémentaires après 20 ans ; - 7 jours ouvrables supplémentaires après 25 ans ; - 8 jours ouvrables supplémentaires après 30 ans. La femme salariée ou apprentie bénéficie d\'un congé supplémentaire payé sur les bases suivantes : - 2 jours ouvrables de congé supplémentaires par enfant à charge si elle a moins de 21 ans au dernier jour de la période de référence ; - 2 jours ouvrables de congé supplémentaires par enfant à charge à compter du 4e si elle a plus de 21 ans au dernier jour de la période de référence. Le travailleur titulaire de la médaille d\'honneur du travail bénéficie d\'un jour ouvrable de congé supplémentaire par an en sus du congé légal. Le travailleur logé dans l\'établissement dont il a la garde et astreint à une durée de présence de 24 heures continues par jour, a droit à un congé annuel payé de 2 semaines par an en sus du congé légal et bénéficie des dispositions de l\'alinéa 2 du présent article.',
+    payroll_codes: ['1600'],
     keywords: ['apprentie', 'référence', 'd\'honneur', 'continues', 'annuelle', 'médaille'] },
   { ...P, source: CT, article_id: 'art-25-3', article_numero: 'Art. 25.3',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 5',
@@ -677,7 +750,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 5',
     titre_article: 'L\'employeur doit verser au travailleur, pendant toute la durée du congé, une allocation au…',
     texte: 'L\'employeur doit verser au travailleur, pendant toute la durée du congé, une allocation au moins égale aux salaires et aux divers éléments de rémunération définis à l\'article 31.9. Cette allocation est versée au travailleur au moment de son départ en congé.',
-    keywords: ['divers', 'allocation', 'définis', 'versée', 'départ', 'éléments'] },
+    keywords: ['divers', 'allocation', 'définis', 'versée', 'éléments', 'départ'] },
   { ...P, source: CT, article_id: 'art-25-8', article_numero: 'Art. 25.8',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 5',
     titre_article: 'Lorsque le contrat de travail prend fin avant que le salarié n\'ait pu prendre effectivement…',
@@ -752,7 +825,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 7',
     titre_article: 'Les conditions d\'ouverture, de fonctionnement et de fermeture des économats sont fixées par…',
     texte: 'Les conditions d\'ouverture, de fonctionnement et de fermeture des économats sont fixées par décret.',
-    keywords: ['d\'ouverture', 'fermeture', 'économats', 'fonctionnement', 'fixées', 'décret'] },
+    keywords: ['d\'ouverture', 'économats', 'fermeture', 'fonctionnement', 'fixées', 'décret'] },
   { ...P, source: CT, article_id: 'art-27-3', article_numero: 'Art. 27.3',
     titre: 'Titre II — Conditions de travail', chapitre: 'Chapitre 7',
     titre_article: 'Des services sociaux, notamment des cantines, restaurants, cafétérias, crèches, terrains de…',
@@ -762,7 +835,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 1',
     titre_article: 'Par rémunération ou salaire, il faut entendre le salaire minimum catégoriel et ses accessoires…',
     texte: 'Par rémunération ou salaire, il faut entendre le salaire minimum catégoriel et ses accessoires ainsi que tous les autres avantages, payés directement ou indirectement, en espèce ou en nature, par l\'employeur au travailleur en raison de l\'emploi de ce dernier. Il ne peut être inférieur au salaire minimum catégoriel fixé par convention ou accord ou à défaut par voie réglementaire. Aucun salaire n\'est dû en cas d\'absence, en dehors des cas prévus par la réglementation et sauf accord entre les parties intéressées,',
-    keywords: ['catégoriel', 'entendre', 'espèce', 'indirectement', 'intéressées', 'directement'] },
+    keywords: ['catégoriel', 'entendre', 'espèce', 'indirectement', 'intéressées', 'accessoires'] },
   { ...P, source: CT, article_id: 'art-31-2', article_numero: 'Art. 31.2',
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 1',
     titre_article: 'Dans les conditions prévues au présent titre, tout employeur est tenu d\'assurer, pour un même…',
@@ -797,6 +870,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 1',
     titre_article: 'Un décret fixe les montants du Salaire minimum interprofessionnel garanti, en abrégé SMIG, et…',
     texte: 'Un décret fixe les montants du Salaire minimum interprofessionnel garanti, en abrégé SMIG, et du Salaire minimum agricole garanti, en abrégé SMAG, après avis de la Commission consultative du Travail. Les partenaires sociaux négocient tous les trois ans, les montants du SMIG et du SMAG au sein de la Commission consultative du Travail.',
+    payroll_codes: ['1000'],
     keywords: ['négocient', 'abrégé', 'montants', 'interprofessionnel', 'partenaires', 'garanti'] },
   { ...P, source: CT, article_id: 'art-31-9', article_numero: 'Art. 31.9',
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 1',
@@ -882,6 +956,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 4',
     titre_article: 'En dehors des prélèvements obligatoires et des consignations qui peuvent être prévues par les…',
     texte: 'En dehors des prélèvements obligatoires et des consignations qui peuvent être prévues par les Conventions collectives, il ne peut être fait de retenues sur appointements ou salaires, pour le remboursement d\'avance d\'argent consentie par l\'employeur au travailleur, que par cession volontaire de la rémunération. Les acomptes sur un salaire en cours ne sont pas considérés comme avance. La cession volontaire des traitements et salaires est souscrite par le travailleur devant le président du tribunal du lieu de sa résidence ou, à défaut, l\'inspecteur du travail et des lois sociales. Toutefois, lorsque le tribunal du Travail ou l\'inspection du travail et des lois sociales est situé à plus de vingt-cinq kilomètres du lieu de résidence du travailleur, il peut y avoir consentement réciproque et écrit entre l\'employeur et le travailleur, devant le chef de l\'unité administrative la plus proche, sur le montant de la retenue à opérer sur le salaire. L\'acte de cession doit indiquer le montant et la cause de la dette pour le paiement de laquelle la cession est consentie, ainsi que le montant de la retenue devant être opérée par l\'employeur à chaque paiement de la rémunération.',
+    payroll_codes: ['5000'],
     keywords: ['consignations', 'appointements', 'consentement', 'réciproque', 'consentie', 'retenues'] },
   { ...P, source: CT, article_id: 'art-34-2', article_numero: 'Art. 34.2',
     titre: 'Titre III — Salaire', chapitre: 'Chapitre 4',
@@ -947,7 +1022,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre IV — Santé et sécurité et organismes de santé au travail', chapitre: 'Chapitre 2',
     titre_article: 'Le Comité de Santé et Sécurité au Travail est composé, notamment, du chef d\'entreprise ou de…',
     texte: 'Le Comité de Santé et Sécurité au Travail est composé, notamment, du chef d\'entreprise ou de son représentant et des représentants du personnel dans les conditions déterminées par décret.',
-    keywords: ['composé', 'représentants', 'd\'entreprise', 'déterminées', 'comité', 'représentant'] },
+    keywords: ['composé', 'représentants', 'd\'entreprise', 'comité', 'déterminées', 'représentant'] },
   { ...P, source: CT, article_id: 'art-42-3', article_numero: 'Art. 42.3',
     titre: 'Titre IV — Santé et sécurité et organismes de santé au travail', chapitre: 'Chapitre 2',
     titre_article: 'Sans préjudice des attributions de tout délégué du personnel, le Comité de Santé et Sécurité…',
@@ -1067,7 +1142,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre V — Syndicats professionnels', chapitre: 'Chapitre 2',
     titre_article: 'Les syndicats professionnels peuvent créer, administrer ou subventionner des œuvres…',
     texte: 'Les syndicats professionnels peuvent créer, administrer ou subventionner des œuvres professionnelles telles que : - des institutions de prévoyance ; - des caisses de solidarité ; - des laboratoires ; - des champs d\'expérience ; - des œuvres d\'éducation scientifique, agricole ou sociale ; - cours et publications intéressant la profession. Les immeubles et objets mobiliers nécessaires à leurs réunions, à leurs bibliothèques et à leur cours d\'instruction professionnelle sont insaisissables.',
-    keywords: ['bibliothèques', 'd\'instruction', 'laboratoires', 'scientifique', 'administrer', 'solidarité'] },
+    keywords: ['bibliothèques', 'laboratoires', 'scientifique', 'administrer', 'solidarité', 'mobiliers'] },
   { ...P, source: CT, article_id: 'art-52-5', article_numero: 'Art. 52.5',
     titre: 'Titre V — Syndicats professionnels', chapitre: 'Chapitre 2',
     titre_article: 'Les syndicats professionnels peuvent subventionner des sociétés coopératives de production ou…',
@@ -1262,7 +1337,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre VI — Représentation des travailleurs dans l’entreprise', chapitre: 'Chapitre 3',
     titre_article: 'Les conditions d\'application du présent chapitre sont fixées par voie réglementaire.',
     texte: 'Les conditions d\'application du présent chapitre sont fixées par voie réglementaire.',
-    keywords: ['d\'application', 'réglementaire', 'fixées'] },
+    keywords: ['d\'application', 'fixées', 'réglementaire'] },
   { ...P, source: CT, article_id: 'art-71-1', article_numero: 'Art. 71.1',
     titre: 'Titre VII — Négociation collective', chapitre: 'Chapitre 1',
     titre_article: 'La Commission consultative du Travail a pour missions : - d\'étudier les problèmes concernant…',
@@ -1402,7 +1477,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre VIII — Différends relatifs au travail', chapitre: 'Chapitre 1',
     titre_article: 'Un différend individuel du travail est un litige qui oppose, en cours d\'emploi ou à l\'occasion…',
     texte: 'Un différend individuel du travail est un litige qui oppose, en cours d\'emploi ou à l\'occasion de la rupture du contrat de travail, un travailleur à son employeur ou un apprenti à son maître.',
-    keywords: ['apprenti', 'oppose', 'individuel', 'l\'occasion', 'litige', 'maître'] },
+    keywords: ['apprenti', 'oppose', 'individuel', 'litige', 'l\'occasion', 'maître'] },
   { ...P, source: CT, article_id: 'art-81-2', article_numero: 'Art. 81.2',
     titre: 'Titre VIII — Différends relatifs au travail', chapitre: 'Chapitre 1',
     titre_article: 'Tout différend individuel du travail est soumis, avant toute saisine du tribunal du travail, à…',
@@ -1567,7 +1642,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre VIII — Différends relatifs au travail', chapitre: 'Chapitre 1',
     titre_article: 'Les modalités d\'application du présent chapitre, notamment les délais de distance, sont fixés…',
     texte: 'Les modalités d\'application du présent chapitre, notamment les délais de distance, sont fixés par voie réglementaire.',
-    keywords: ['distance', 'délais', 'fixés', 'd\'application', 'réglementaire', 'modalités'] },
+    keywords: ['distance', 'délais', 'fixés', 'd\'application', 'modalités', 'réglementaire'] },
   { ...P, source: CT, article_id: 'art-81-35', article_numero: 'Art. 81.35',
     titre: 'Titre VIII — Différends relatifs au travail', chapitre: 'Chapitre 1',
     titre_article: 'Dans tous les cas d\'urgence, le juge des référés peut, dans la limite de la compétence des…',
@@ -1897,7 +1972,7 @@ export const CODE_TRAVAIL_CI: ArticleDroit[] = [
     titre: 'Titre XI — Dispositions transitoires et finales', chapitre: 'Chapitre 0',
     titre_article: 'Les dispositions d\'application de la présente loi sont fixées par voie réglementaire.',
     texte: 'Les dispositions d\'application de la présente loi sont fixées par voie réglementaire.',
-    keywords: ['d\'application', 'réglementaire', 'fixées', 'dispositions'] },
+    keywords: ['d\'application', 'fixées', 'réglementaire', 'dispositions'] },
   { ...P, source: CT, article_id: 'art-110-4', article_numero: 'Art. 110.4',
     titre: 'Titre XI — Dispositions transitoires et finales', chapitre: 'Chapitre 0',
     titre_article: 'La présente loi abroge toutes les dispositions antérieures contraires notamment la loi n°…',
@@ -2094,4 +2169,94 @@ export const CONVENTIONS_COLLECTIVES: ArticleDroit[] = [
     keywords: ['contrat saisonnier', 'récolte cacao', 'café', 'palmier', '10%', 'agro-industrie CI'] },
 ]
 
-export const ALL_ARTICLES: ArticleDroit[] = [...CODE_TRAVAIL_CI, ...CONVENTIONS_COLLECTIVES]
+// ── TEXTES ANNEXES — CGI (ITS), OHADA, décrets d'application ─────────────────
+//
+// ATTENTION : contrairement aux articles du Code du Travail ci-dessus, repris
+// mot pour mot du texte officiel, ces entrées sont des SYNTHÈSES rédigées.
+// Elles figuraient auparavant sous `source: CT`, ce qui les faisait passer
+// pour des articles du Code du Travail — elles n'en sont pas.
+// À reprendre depuis leurs textes d'origine (CGI, Actes uniformes OHADA,
+// décrets) pour atteindre le même niveau de fiabilité.
+const ANNEXE = 'textes_annexes_ci' as const
+
+export const TEXTES_ANNEXES_CI: ArticleDroit[] = [
+
+  { ...P, source: ANNEXE, article_id: 'art-23-1', article_numero: 'Art. 18.4 — Décret 96-200',
+    livre: 'Livre I — Relations individuelles de travail', titre: 'Titre III — Rupture du contrat',
+    titre_article: 'Durée du préavis de rupture',
+    texte: 'Le préavis est fixé par décret selon l\'ancienneté et la catégorie professionnelle (décret n° 96-200 du 7 mars 1996, repris par le décret n° 2026-198 ; CCI 1977 art. 34), sous réserve de dispositions plus favorables. Travailleurs payés au mois, catégories 1 à 5 : 1 mois jusqu\'à 6 ans d\'ancienneté, 2 mois de 6 à 11 ans, 3 mois de 11 à 16 ans, 4 mois au-delà. Payés à l\'heure, au jour, à la semaine ou à la quinzaine, catégories 1 à 5 : 8 jours jusqu\'à 6 mois, 15 jours de 6 mois à 1 an, puis comme les mensuels (1, 2, 3, 4 mois). 6e catégorie et au-delà (agents de maîtrise, cadres) : 3 mois jusqu\'à 16 ans, 4 mois au-delà. Incapacité permanente partielle de plus de 40 % : préavis doublé après 6 mois d\'ancienneté.',
+    keywords: ['préavis', 'durée', 'ancienneté', 'catégorie', 'cadre', 'agent de maîtrise', 'CDI', 'licenciement', 'démission'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-25-1', article_numero: 'Art. 18.16 — Décret 2017-210',
+    livre: 'Livre I — Relations individuelles de travail', titre: 'Titre III — Rupture du contrat',
+    titre_article: 'Indemnité de licenciement — Calcul',
+    texte: 'Le travailleur licencié ayant au moins un an de service effectif, hors faute lourde, a droit à une indemnité de licenciement distincte du préavis (décret n° 2017-210 du 30 mars 2017, art. 2 et 4 ; CCI 1977 art. 39). Elle est calculée, pour chaque année de présence, sur le salaire global mensuel moyen des 12 derniers mois : 30 % jusqu\'à la 5e année comprise, 35 % de la 6e à la 10e année, 40 % au-delà de la 10e année ; les fractions d\'année sont prises en compte au prorata des mois complets (ex. 13 mois d\'ancienneté, salaire moyen 250 000 FCFA : 250 000 × 30 % × 13/12 = 81 250 FCFA). L\'indemnité de départ à la retraite se calcule de la même façon (art. 5).',
+    keywords: ['indemnité licenciement', 'ancienneté', '30%', '35%', '40%', 'calcul', 'retraite'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-25-2', article_numero: 'Décret 2017-210 art. 4',
+    livre: 'Livre I — Relations individuelles de travail', titre: 'Titre III — Rupture du contrat',
+    titre_article: 'Salaire de référence pour indemnités',
+    texte: 'Le salaire de référence est le salaire global mensuel moyen des 12 mois d\'activité précédant le licenciement. Il comprend toutes les prestations constituant une contrepartie du travail, à l\'exclusion des remboursements de frais.',
+    keywords: ['salaire référence', 'indemnité licenciement', '12 mois', 'salaire global'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-its-1', article_numero: 'CGI Art. 116',
+    livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
+    titre_article: 'ITS — Barème progressif mensuel (réforme 2024)',
+    texte: 'Depuis le 1er janvier 2024 (Ordonnance n° 2023-719 du 13 septembre 2023), l\'ITS (impôt sur les traitements et salaires) remplace les anciens IS, CN et IGR. Il s\'applique sur 100 % du revenu brut imposable : l\'ancien abattement forfaitaire de 15 % est supprimé et les cotisations CNPS salariales ne sont pas déduites de l\'assiette. Barème mensuel progressif : 0–75 000 FCFA → 0 % ; 75 001–240 000 FCFA → 16 % ; 240 001–800 000 FCFA → 21 % ; 800 001–2 400 000 FCFA → 24 % ; 2 400 001–8 000 000 FCFA → 28 % ; au-delà de 8 000 000 FCFA → 32 %. La réduction d\'impôt pour charges de famille (RICF) est ensuite imputée sur l\'impôt brut. Exemples (célibataire sans enfant) : brut 200 000 → ITS 20 000 ; brut 450 000 → ITS 70 500 ; brut 1 500 000 → ITS 312 000 FCFA.',
+    payroll_codes: ['2100'],
+    keywords: ['ITS', 'impôt salaires', 'barème DGI', 'réforme 2024', 'ordonnance 2023-719', '16%', '32%', 'RICF'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-its-2', article_numero: 'CGI Art. 117',
+    livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
+    titre_article: 'ITS — Revenus exonérés',
+    texte: 'Sont exonérés d\'ITS : les indemnités journalières d\'accident du travail (AT), les indemnités de maternité versées par la CNPS, les allocations familiales CNPS, les remboursements de frais professionnels sur justificatifs, les indemnités de licenciement dans la limite légale, la prime de transport dans la limite de 30 000 F par mois (Abidjan). Les primes (ancienneté, rendement), heures supplémentaires, indemnité de congés payés, gratifications et avantages en nature sont en revanche soumis à l\'ITS et aux cotisations CNPS.',
+    payroll_codes: ['1700', '1900'],
+    keywords: ['exonération ITS', 'AT exonéré', 'maternité exonérée', 'allocations familiales'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-its-3', article_numero: 'CGI Art. 118',
+    livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
+    titre_article: 'ITS — Retenue à la source et reversement DGI',
+    texte: 'L\'ITS est retenu à la source par l\'employeur sur chaque bulletin de paie. Il doit être reversé à la DGI (Direction Générale des Impôts) au plus tard le 10 du mois suivant la paie. Le non-reversement expose l\'employeur à des pénalités de 10% et des intérêts de retard.',
+    keywords: ['retenue source ITS', 'reversement DGI', 'avant le 10', 'pénalités 10%'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-its-4', article_numero: 'CGI Art. 120',
+    livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
+    titre_article: 'ITS — Réduction d\'impôt pour charges de famille (RICF)',
+    texte: 'La RICF est imputée sur l\'ITS brut selon le nombre de parts du salarié : 1 part → 0 FCFA ; 1,5 → 5 500 ; 2 → 11 000 ; 2,5 → 16 500 ; 3 → 22 000 ; 3,5 → 27 500 ; 4 → 33 000 ; 4,5 → 38 500 ; 5 parts → 44 000 FCFA/mois (5 500 FCFA par demi-part au-delà de 1, plafond 5 parts). Parts : célibataire, divorcé ou veuf sans enfant = 1 ; marié = 2 ; + 0,5 par enfant à charge ; célibataire, divorcé ou veuf avec au moins un enfant à charge = 1,5 + 0,5 par enfant ; plafond 5 parts. L\'ITS net ne peut pas être négatif.',
+    payroll_codes: ['2100'],
+    keywords: ['RICF', 'charges de famille', 'parts', 'situation familiale', 'enfants charge', '5500 FCFA', 'réduction impôt'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-its-5', article_numero: 'CGI Art. 122',
+    livre: 'Fiscal — ITS / DGI', titre: 'Impôt sur les Traitements et Salaires',
+    titre_article: 'ITS — Déclaration annuelle des salaires DGI',
+    texte: 'Chaque employeur doit déposer auprès de la DGI, avant le 31 mars de chaque année, une déclaration récapitulative des salaires versés l\'année précédente. Cette déclaration, cohérente avec la DISA CNPS, liste par salarié : NNI, nom, prénoms, salaires bruts, cotisations, ITS payé.',
+    keywords: ['déclaration annuelle DGI', 'avant 31 mars', 'NNI', 'DISA', 'récapitulatif salaires'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-ohada-1', article_numero: 'OHADA — AUDTS',
+    livre: 'OHADA — Droit du travail', titre: 'Acte Uniforme relatif au Droit du Travail',
+    titre_article: 'Acte Uniforme OHADA — Droit du travail (AUDTS)',
+    texte: 'L\'Acte Uniforme OHADA relatif au Droit du Travail fixe les règles communes aux pays membres. En CI, il s\'applique en complément du Code du Travail CI. Les contrats de travail doivent être conformes aux deux textes. En cas de conflit, la disposition plus favorable au salarié prévaut.',
+    keywords: ['OHADA', 'AUDTS', 'acte uniforme', 'droit travail', 'harmonisation'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-ohada-2', article_numero: 'OHADA — Contrats',
+    livre: 'OHADA — Droit du travail', titre: 'Contrats de travail OHADA',
+    titre_article: 'Contrats OHADA — Mentions obligatoires',
+    texte: 'Tout contrat de travail conforme à l\'OHADA doit mentionner : identité des parties, lieu de travail, nature du poste, convention collective applicable, période d\'essai, rémunération (devise FCFA), affiliation CNPS, NNI du salarié. L\'absence de mention peut entraîner la requalification.',
+    keywords: ['contrat OHADA', 'mentions obligatoires', 'NNI', 'CNPS', 'FCFA'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-ohada-3', article_numero: 'OHADA — SYSCOHADA',
+    livre: 'OHADA — Droit du travail', titre: 'Comptabilité et charges sociales',
+    titre_article: 'SYSCOHADA — Charges de personnel CI',
+    texte: 'Selon le SYSCOHADA (Système Comptable OHADA), les charges de personnel comprennent : salaires bruts (6111), cotisations sociales patronales CNPS (6311), mutuelle et assurance complémentaire (6312), formation professionnelle FDFP (6321). Ces comptes sont obligatoires pour les entreprises CI soumises à l\'OHADA.',
+    keywords: ['SYSCOHADA', 'comptabilité', 'charges personnel', '6111', '6311', 'CNPS comptabilité'] },
+
+  { ...P, source: ANNEXE, article_id: 'art-ohada-4', article_numero: 'OHADA — RCCM',
+    livre: 'OHADA — Droit du travail', titre: 'Formalités administratives',
+    titre_article: 'RCCM — Registre du Commerce et du Crédit Mobilier',
+    texte: 'Toute entreprise établie en CI doit être immatriculée au RCCM (Registre du Commerce et du Crédit Mobilier) auprès du Tribunal de Commerce. Le numéro RCCM doit figurer sur tous les contrats de travail et bulletins de paie. Sans RCCM, l\'activité est clandestine.',
+    keywords: ['RCCM', 'immatriculation', 'registre commerce', 'Tribunal Commerce', 'entreprise CI'] },
+]
+
+export const ALL_ARTICLES: ArticleDroit[] = [
+  ...CODE_TRAVAIL_CI, ...CONVENTIONS_COLLECTIVES, ...TEXTES_ANNEXES_CI,
+]

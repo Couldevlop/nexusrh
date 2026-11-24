@@ -30,7 +30,8 @@
   "tabs": {
     "all": "Tout",
     "codeTravail": "Code du Travail",
-    "conventions": "Conventions"
+    "conventions": "Conventions",
+    "annexes": "Textes annexes"
   },
   "header": {
     "title": "Référentiel Juridique",
