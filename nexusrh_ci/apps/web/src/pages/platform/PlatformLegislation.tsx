@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { Scale, CheckCircle2, XCircle, Clock, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react'
+import CorpusJuridiqueCard from '@/components/platform/CorpusJuridiqueCard'
 
 interface PackRow {
   code: string; countryCode: string; name: string; currency: string
@@ -52,6 +53,9 @@ export default function PlatformLegislation() {
           <p className="text-sm text-muted-foreground">{t('legislation.subtitle', 'Packs législatifs (cotisations, impôt, SMIG, congés). Le code est la référence ; vos surcharges et les propositions de la veille hebdomadaire se valident ici.')}</p>
         </div>
       </div>
+
+      {/* Corpus juridique : rechargement après correction des articles */}
+      <CorpusJuridiqueCard />
 
       {/* Propositions à valider (tâche planifiée hebdomadaire) */}
       <div className="rounded-xl border border-border bg-card p-5">
