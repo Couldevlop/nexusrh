@@ -386,6 +386,7 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       let payload: {
         sub: string; schemaName: string; aud?: string; userId: string; tenantId: string | null
         pwdResetRequired?: boolean; pwdBreached?: boolean
+        pwdDaysLeft?: number | null
       }
       try {
         const decoded = fastify.jwt.verify<typeof payload>(challenge)
@@ -493,6 +494,9 @@ const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
         must_change_password: pwdResetRequired,
         passwordBreached: pwdResetRequired && payload.pwdBreached === true,
         passwordExpired:  pwdResetRequired && payload.pwdBreached !== true,
+        // Compte à rebours pour le bandeau d'avertissement (J-7 / J-2 / J-1).
+        // null = pas d'expiration configurée, donc rien à annoncer.
+        passwordExpiresInDays: payload.pwdDaysLeft ?? null,
         redirectTo: pwdResetRequired ? '/change-password' : userInfo.redirectTo,
       })
     },
@@ -792,6 +796,14 @@ export function buildMfaChallenge(
     pwdResetRequired?: boolean
     /** Motif : mot de passe présent dans une fuite (sinon = expiration). */
     pwdBreached?: boolean
+    /**
+     * Jours restants avant expiration, évalués à l'étape 1 comme le reste.
+     * Transporté ici pour la même raison : à l'étape 2, le parcours MFA ne
+     * relit pas la fiche de l'utilisateur, et sans cela le bandeau
+     * d'avertissement ne s'afficherait JAMAIS pour les comptes à MFA — soit
+     * tous les comptes en production.
+     */
+    pwdDaysLeft?: number | null
   },
 ): string {
   const f = fastify as FastifyJwtLike

@@ -20,6 +20,7 @@ const RafPeriodsPage     = lazy(() => import('@/pages/raf/RafPeriodsPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 const MfaEnrollmentPage  = lazy(() => import('@/pages/auth/MfaEnrollmentPage'))
 const ResetPasswordPage  = lazy(() => import('@/pages/auth/ResetPasswordPage'))
+const ChangePasswordPage = lazy(() => import('@/pages/auth/ChangePasswordPage'))
 const HomePage           = lazy(() => import('@/pages/public/HomePage'))
 const LegalPage          = lazy(() => import('@/pages/public/LegalPage'))
 const SeoContentPage     = lazy(() => import('@/pages/public/SeoContentPage'))
@@ -204,6 +205,12 @@ export default function App() {
               layout gardé, sinon les rôles sans accès à /settings (super_admin,
               employee…) atterrissent sur un écran vide en 403. */}
           <Route path="/mfa-setup" element={<MfaEnrollmentPage />} />
+          {/* Changement de mot de passe : hors layout gardé, comme /mfa-setup.
+              Elle doit s'ouvrir pour TOUS (super_admin, cabinet, employé) et
+              accepter un token restreint `pwdResetRequired`, qui n'autorise
+              que ce parcours. C'est la cible du bandeau d'avertissement, du
+              rappel par email et du `redirectTo` de l'API. */}
+          <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 

@@ -130,6 +130,42 @@ export function isPasswordExpired(
 }
 
 /**
+ * Combien de jours avant l'expiration du mot de passe ?
+ *
+ * Même sémantique que `isPasswordExpired`, dont c'est le pendant : les deux
+ * fonctions doivent toujours s'accorder, sinon on prévient un salarié d'une
+ * échéance que le login ne fera pas respecter, ou l'inverse.
+ *   maxAgeDays <= 0  → null (expiration désactivée : rien à annoncer)
+ *   changedAt absent → null (même grâce qu'au login)
+ *   déjà expiré      → 0, et uniquement dans ce cas : « 0 jour restant »
+ *                      équivaut exactement à « expiré au sens du login »
+ *
+ * Le calcul se fait en jours entiers restants, arrondis au plafond : à
+ * 23 h 30 de l'échéance il reste « 1 jour », pas « 0 ». C'est ce qui permet
+ * d'annoncer J-7, J-2 et J-1 sans jamais sauter un palier.
+ */
+export function daysUntilPasswordExpiry(
+  changedAt: Date | string | null | undefined,
+  maxAgeDays: number,
+  now: Date = new Date(),
+): number | null {
+  if (!maxAgeDays || maxAgeDays <= 0) return null
+  if (!changedAt) return null
+  const changed = changedAt instanceof Date ? changedAt : new Date(changedAt)
+  if (Number.isNaN(changed.getTime())) return null
+  const echeanceMs = changed.getTime() + maxAgeDays * 24 * 60 * 60 * 1000
+  const resteMs = echeanceMs - now.getTime()
+  // Strictement négatif, comme le « > » de isPasswordExpired : pile à
+  // l'échéance, le login laisse encore passer, donc on n'annonce pas 0.
+  if (resteMs < 0) return 0
+  // Tout reste, même d'une seconde, vaut au moins « 1 jour » : cela garantit
+  // l'équivalence « 0 jour restant ⟺ expiré », sur laquelle s'appuient les
+  // bandeaux et les rappels. Sans ce plancher, un compte encore valide
+  // afficherait « expiré » pendant la dernière minute.
+  return Math.max(1, Math.ceil(resteMs / (24 * 60 * 60 * 1000)))
+}
+
+/**
  * MFA effectif pour un employé tenant : durcissement uniquement.
  * Politique globale OU surcharge tenant=true. Un tenant ne peut pas assouplir.
  */

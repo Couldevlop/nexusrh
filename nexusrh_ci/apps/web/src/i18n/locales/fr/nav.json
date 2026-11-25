@@ -54,5 +54,12 @@
   "incompleteProfile": {
     "message": "Complétez votre fiche employé (poste, salaire) pour apparaître en paie.",
     "cta": "Compléter ma fiche"
+  },
+  "passwordExpiry": {
+    "tomorrow": "Votre mot de passe expire dans moins de 24 heures. Changez-le maintenant pour ne pas perdre l'accès.",
+    "inDays": "Votre mot de passe expire dans {{count}} jours.",
+    "inDays_one": "Votre mot de passe expire dans {{count}} jour.",
+    "cta": "Changer mon mot de passe",
+    "expired": "Votre mot de passe a expiré. Changez-le maintenant : votre prochaine connexion sera refusée sans cela."
   }
 }

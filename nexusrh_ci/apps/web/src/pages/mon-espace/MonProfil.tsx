@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { api, formatDate, formatFCFA } from '@/lib/api'
 import { canonicalMmProvider, paymentMethodLabel } from '@/lib/payment'
@@ -35,6 +36,9 @@ interface ProfileData {
 export default function MonProfil() {
   const { t } = useTranslation('monEspace')
   const user = useAuthStore(s => s.user)
+  const logout = useAuthStore(s => s.logout)
+  const setPasswordExpiry = useAuthStore(s => s.setPasswordExpiry)
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editPhone, setEditPhone] = useState(false)
   const [newPhone, setNewPhone] = useState('')
@@ -81,6 +85,18 @@ export default function MonProfil() {
     onSuccess: () => {
       setPwdMsg({ type: 'success', text: t('security.password.success') })
       setOldPassword(''); setNewPassword(''); setConfirmPassword('')
+      // Le compte à rebours d'expiration est persisté : sans cette purge, le
+      // bandeau continuerait d'annoncer une échéance déjà repoussée.
+      setPasswordExpiry(null)
+      // Le serveur révoque les refresh tokens ET pose une époque
+      // d'invalidation : le token en cours est périmé, le prochain appel
+      // répondrait 401. On ferme donc la session proprement plutôt que de
+      // laisser l'utilisateur buter sur une panne au premier clic.
+      setTimeout(() => {
+        try { sessionStorage.setItem('nexusrh:password-changed', '1') } catch { /* navigation privée */ }
+        logout()
+        navigate('/login', { replace: true })
+      }, 1500)
     },
     onError: (err: unknown) =>
       setPwdMsg({ type: 'error', text: apiErrorMessage(err, t('security.password.error')) }),

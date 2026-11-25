@@ -102,6 +102,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHabilitations = useAuthStore((s) => s.setHabilitations);
+  const setPasswordExpiry = useAuthStore((s) => s.setPasswordExpiry);
 
   const [error, setError] = useState<string | null>(null);
   // Mot de passe EXACT validé à la connexion — figé au moment de la soumission
@@ -121,9 +122,18 @@ export default function LoginPage() {
   // activation, le token reste restreint côté serveur → reconnexion imposée.
   const [infoMsg, setInfoMsg] = useState<string | null>(() => {
     try {
-      if (sessionStorage.getItem("nexusrh:mfa-enrolled") === null) return null;
-      sessionStorage.removeItem("nexusrh:mfa-enrolled");
-      return t("mfaEnroll.successRelogin");
+      if (sessionStorage.getItem("nexusrh:mfa-enrolled") !== null) {
+        sessionStorage.removeItem("nexusrh:mfa-enrolled");
+        return t("mfaEnroll.successRelogin");
+      }
+      // Même mécanique pour /change-password : le serveur périme tous les
+      // tokens déjà émis, donc la page nous renvoie ici. Sans ce message, la
+      // reconnexion imposée passerait pour une déconnexion inexpliquée.
+      if (sessionStorage.getItem("nexusrh:password-changed") !== null) {
+        sessionStorage.removeItem("nexusrh:password-changed");
+        return t("changePage.successNotice");
+      }
+      return null;
     } catch {
       return null;
     }
@@ -202,6 +212,8 @@ export default function LoginPage() {
         mfaSetupRequired?: boolean;
         passwordExpired?: boolean;
         passwordBreached?: boolean;
+        /** Jours restants avant expiration (null = pas d'expiration). */
+        passwordExpiresInDays?: number | null;
         // Réponse MFA 202 :
         mfaRequired?: boolean;
         challenge?: string;
@@ -256,6 +268,9 @@ export default function LoginPage() {
       // habilité, afin que la garde de /dashboard ne le renvoie pas au
       // self-service avant le premier /auth/me.
       if (res.data.permissions) setHabilitations(res.data.permissions, null);
+      // Compte à rebours avant expiration : alimente le bandeau d'avertissement.
+      // À poser APRÈS setAuth, qui remet le champ à null pour la session neuve.
+      setPasswordExpiry(res.data.passwordExpiresInDays ?? null);
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       // OWASP A07 — message d'erreur générique pour éviter l'énumération
@@ -301,6 +316,7 @@ export default function LoginPage() {
         must_change_password?: boolean;
         passwordExpired?: boolean;
         passwordBreached?: boolean;
+        passwordExpiresInDays?: number | null;
       }>("/auth/mfa/login-verify", {
         challenge: mfaChallenge,
         code: mfaCode.trim().toUpperCase(),
@@ -326,6 +342,7 @@ export default function LoginPage() {
       }
 
       setAuth(res.data.user, res.data.token, "", res.data.tenantConfig, res.data.agencyConfig ?? null);
+      setPasswordExpiry(res.data.passwordExpiresInDays ?? null);
       navigate(res.data.redirectTo ?? "/", { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: string } } };

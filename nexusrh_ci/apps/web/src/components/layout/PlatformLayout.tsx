@@ -7,6 +7,7 @@ import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import nexusrhLogo from '@/assets/NexusRH.png'
+import PasswordExpiryBanner from './PasswordExpiryBanner'
 
 const NAV = [
   { to: '/platform/dashboard',    labelKey: 'nav.dashboard',  icon: LayoutDashboard },
@@ -95,6 +96,7 @@ export default function PlatformLayout() {
       </aside>
 
       <main className="flex-1 overflow-auto bg-background">
+        <PasswordExpiryBanner />
         <Outlet />
       </main>
     </div>
