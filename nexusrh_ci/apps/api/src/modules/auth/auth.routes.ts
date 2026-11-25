@@ -10,6 +10,7 @@ import type { SecurityPolicy } from '../../services/security-policy.service.js'
 import {
   getSecurityPolicy,
   isPasswordExpired,
+  daysUntilPasswordExpiry,
   isPasswordReused,
   effectiveTenantMfaRequired,
   toLockoutPolicy,
@@ -356,6 +357,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               const challenge = buildMfaChallenge(fastify, {
                 sub: platformUser.id, schemaName: 'platform', tenantId: null,
                 pwdResetRequired: pwdState.required, pwdBreached: pwdState.breached,
+                pwdDaysLeft: daysUntilPasswordExpiry(platformUser.password_changed_at, policy.passwordMaxAgeDays, now),
               })
               auditLogAuth('platform', platformUser.id, 'auth.login.mfa_required', { scope: 'platform' }, ip, ua)
               return reply.status(202).send({
@@ -425,6 +427,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               must_change_password: pwdResetRequired,
               passwordExpired: expired,
               passwordBreached: breached,
+              passwordExpiresInDays: daysUntilPasswordExpiry(platformUser.password_changed_at, policy.passwordMaxAgeDays, now),
               user: {
                 sub:        platformUser.id,
                 tenantId:   null,
@@ -480,6 +483,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 sub: agencyUser.id, schemaName: 'platform', tenantId: null,
                 pwdResetRequired: agencyPwdState.required,
                 pwdBreached: agencyPwdState.breached,
+                pwdDaysLeft: daysUntilPasswordExpiry(agencyUser.password_changed_at, policy.passwordMaxAgeDays, now),
               })
               auditLogAuth('platform', agencyUser.id, 'auth.login.mfa_required', { scope: 'agency' }, ip, ua)
               return reply.status(202).send({
@@ -528,6 +532,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
               must_change_password: pwdResetRequired,
               passwordExpired: expired,
               passwordBreached: breached,
+              passwordExpiresInDays: daysUntilPasswordExpiry(agencyUser.password_changed_at, policy.passwordMaxAgeDays, now),
               user: {
                 sub:        agencyUser.id,
                 tenantId:   null,
@@ -599,6 +604,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           const challenge = buildMfaChallenge(fastify, {
             sub: user.id, schemaName: tenant.schema_name, tenantId: tenant.id,
             pwdResetRequired: pwdState.required, pwdBreached: pwdState.breached,
+            pwdDaysLeft: daysUntilPasswordExpiry(user.password_changed_at, policy.passwordMaxAgeDays, now),
           })
           auditLogAuth(
             tenant.schema_name, user.id, 'auth.login.mfa_required',
@@ -693,6 +699,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           mfaSetupRequired: tenantMfaPending,
           passwordExpired: expired,
           passwordBreached: breached,
+          passwordExpiresInDays: daysUntilPasswordExpiry(user.password_changed_at, policy.passwordMaxAgeDays, now),
           user: {
             sub:        user.id,
             tenantId:   tenant.id,
@@ -911,6 +918,55 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // GET /auth/me
+  /**
+   * Jours restants avant expiration pour l'utilisateur de la requête.
+   *
+   * Les trois populations vivent dans des tables distinctes et partagent
+   * `schemaName: 'platform'` pour deux d'entre elles (super_admin et
+   * cabinets) : même résolution que `/auth/change-password`, sans quoi un
+   * cabinet n'aurait jamais son avertissement. Ne lève JAMAIS : un compte à
+   * rebours indisponible ne doit pas casser `/auth/me`, dont dépend tout le
+   * chargement de l'application.
+   *
+   * TROIS RÉPONSES, PAS DEUX. `null` signifie « pas d'expiration configurée »,
+   * et le client l'applique : il efface l'alerte. `undefined` signifie « je ne
+   * sais pas » (base indisponible, ligne introuvable — le cas d'un cabinet dont
+   * la session est reportée sur un schéma tenant) : le champ est alors ABSENT
+   * de la réponse et le client garde la valeur du login. Confondre les deux
+   * ferait disparaître l'avertissement sur un incident passager.
+   */
+  async function currentPasswordDaysLeft(
+    request: { user: { sub: string; schemaName: string } },
+  ): Promise<number | null | undefined> {
+    try {
+      const user = request.user
+      if (user.schemaName !== 'platform' && !SCHEMA_NAME_RE.test(user.schemaName)) return undefined
+      const policy = await getSecurityPolicy(pool)
+      if (!policy.passwordMaxAgeDays || policy.passwordMaxAgeDays <= 0) return null
+
+      const tables = user.schemaName === 'platform'
+        ? ['platform.platform_users', 'platform.agency_users']
+        // Un cabinet agissant pour un tenant porte le schéma du tenant mais un
+        // `sub` de `platform.agency_users` : on cherche donc aussi là, sinon
+        // son avertissement disparaîtrait dès la bascule.
+        : [`"${user.schemaName}".users`, 'platform.agency_users']
+      for (const table of tables) {
+        const res = await pool.query<{ password_changed_at: string | null }>(
+          `SELECT password_changed_at FROM ${table} WHERE id = $1 LIMIT 1`,
+          [user.sub],
+        ).catch(() => ({ rows: [] as Array<{ password_changed_at: string | null }> }))
+        const row = res.rows[0]
+        if (row) {
+          return daysUntilPasswordExpiry(row.password_changed_at, policy.passwordMaxAgeDays)
+        }
+      }
+      // Aucune ligne lisible : indéterminé, et non « pas d'expiration ».
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+
   fastify.get('/me', {
     preHandler: [fastify.authenticate],
     schema: { tags: ['auth'], summary: 'Profil utilisateur courant' },
@@ -980,6 +1036,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         tenantConfig,
         permissions,
         habScope,
+        // Compte à rebours avant expiration, RELU à chaque chargement. Le
+        // chiffre posé au login vieillit : un JWT vit 7 jours, donc une
+        // session ouverte au jour 20 d'une politique à 30 jours n'aurait
+        // jamais vu venir l'échéance — précisément le silence qu'on corrige.
+        passwordExpiresInDays: await currentPasswordDaysLeft(request),
       })
     },
   })

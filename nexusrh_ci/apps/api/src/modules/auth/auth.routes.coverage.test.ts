@@ -464,7 +464,66 @@ describe('GET /auth/me', () => {
       headers: { authorization: `Bearer ${t}` } })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).tenantConfig).toBeNull()
-    expect(queryMock).not.toHaveBeenCalled()
+    // L'intention de ce cas est « aucune requête TENANT » : la route interroge
+    // bien la base pour le compte à rebours d'expiration (politique +
+    // platform_users), mais jamais platform.tenants.
+    const requetes = queryMock.mock.calls.map((c) => String(c[0]))
+    expect(requetes.some((q) => q.includes('platform.tenants'))).toBe(false)
+  })
+
+  it('renvoie le compte à rebours relu en base, et non celui figé au login', async () => {
+    // Le chiffre posé au login vieillit : un JWT vit 7 jours. Sans cette
+    // relecture, une session ouverte au jour 20 d'une politique à 30 jours
+    // n'aurait jamais vu venir l'échéance.
+    const ilYA28Jours = new Date(Date.now() - 28 * 86_400_000).toISOString()
+    queryMock.mockReset()
+    queryMock.mockImplementation((sql: string) => {
+      if (String(sql).includes('platform_settings')) {
+        return Promise.resolve({ rows: [{ password_max_age_days: 30 }], rowCount: 1 })
+      }
+      if (String(sql).includes('SELECT password_changed_at')) {
+        return Promise.resolve({ rows: [{ password_changed_at: ilYA28Jours }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 })
+    })
+    const t = app.jwt.sign({ sub: 'sa1', tenantId: null, schemaName: 'platform', role: 'super_admin',
+      email: 'sa@b.ci', firstName: 'S', lastName: 'A', employeeId: null })
+    const res = await app.inject({ method: 'GET', url: '/auth/me',
+      headers: { authorization: `Bearer ${t}` } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).passwordExpiresInDays).toBe(2)
+  })
+
+  it("ne casse pas /auth/me quand le compte à rebours est indisponible", async () => {
+    // Tout le chargement de l'application dépend de cette route : un défaut
+    // sur un avertissement ne doit jamais la faire échouer. Et le champ est
+    // ABSENT, non pas `null` : `null` veut dire « pas d'expiration » et le
+    // client l'applique en effaçant l'alerte. Sur un incident passager,
+    // l'avertissement doit survivre.
+    queryMock.mockReset()
+    queryMock.mockRejectedValue(new Error('base indisponible'))
+    const t = app.jwt.sign({ sub: 'sa1', tenantId: null, schemaName: 'platform', role: 'super_admin',
+      email: 'sa@b.ci', firstName: 'S', lastName: 'A', employeeId: null })
+    const res = await app.inject({ method: 'GET', url: '/auth/me',
+      headers: { authorization: `Bearer ${t}` } })
+    expect(res.statusCode).toBe(200)
+    expect('passwordExpiresInDays' in JSON.parse(res.body)).toBe(false)
+  })
+
+  it("annonce `null` seulement quand l'expiration est désactivée", async () => {
+    queryMock.mockReset()
+    queryMock.mockImplementation((sql: string) => {
+      if (String(sql).includes('platform_settings')) {
+        return Promise.resolve({ rows: [{ password_max_age_days: 0 }], rowCount: 1 })
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 })
+    })
+    const t = app.jwt.sign({ sub: 'sa1', tenantId: null, schemaName: 'platform', role: 'super_admin',
+      email: 'sa@b.ci', firstName: 'S', lastName: 'A', employeeId: null })
+    const res = await app.inject({ method: 'GET', url: '/auth/me',
+      headers: { authorization: `Bearer ${t}` } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).passwordExpiresInDays).toBeNull()
   })
 })
 

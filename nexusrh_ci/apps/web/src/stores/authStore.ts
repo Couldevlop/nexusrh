@@ -72,6 +72,19 @@ interface AuthState {
   habPermissions: string[] | null
   habScope: HabScope | null
 
+  /**
+   * Jours restants avant expiration du mot de passe, tels que l'API les a
+   * calculés au login (`passwordExpiresInDays`). `null` = aucune expiration
+   * configurée, donc rien à annoncer.
+   *
+   * Ce n'est pas une autorité : l'API seule décide de forcer un changement.
+   * Le front s'en sert uniquement pour avertir AVANT l'échéance, ce qui
+   * manquait — la politique à 30 jours expirait en silence et enfermait les
+   * comptes dehors.
+   */
+  passwordExpiresInDays: number | null
+  setPasswordExpiry: (days: number | null) => void
+
   setHabilitations: (permissions: string[] | null, scope: HabScope | null) => void
 
   setAuth: (user: AuthUser, token: string, refreshToken: string, tenantConfig: TenantConfig | null, agencyConfig?: AgencyConfig | null) => void
@@ -150,10 +163,13 @@ export const useAuthStore = create<AuthState>()(
       activeTenant: null,
       _agencyToken: null,
       _agencyUser: null,
+      passwordExpiresInDays: null,
       habPermissions: null,
       habScope: null,
 
       setHabilitations: (permissions, scope) => set({ habPermissions: permissions, habScope: scope }),
+
+      setPasswordExpiry: (days) => set({ passwordExpiresInDays: days }),
 
       setAuth: (user, token, refreshToken, tenantConfig, agencyConfig = null) => {
         // Une nouvelle session repart sans habilitations connues : elles sont
@@ -161,7 +177,7 @@ export const useAuthStore = create<AuthState>()(
         // session précédente masquerait des écrans à tort.
         set({ user, token, refreshToken, tenantConfig, agencyConfig,
           activeTenant: null, _agencyToken: null, _agencyUser: null,
-          habPermissions: null, habScope: null })
+          habPermissions: null, habScope: null, passwordExpiresInDays: null })
         if (tenantConfig) applyTenantTheme(tenantConfig)
         else if (agencyConfig) applyAgencyTheme(agencyConfig)
         if (typeof window !== 'undefined') {
@@ -228,7 +244,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         set({ user: null, token: null, refreshToken: null, tenantConfig: null,
           agencyConfig: null, activeTenant: null, _agencyToken: null, _agencyUser: null,
-          habPermissions: null, habScope: null })
+          habPermissions: null, habScope: null, passwordExpiresInDays: null })
         resetTheme()
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('nexusrh:logout'))

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { cn } from '@/lib/utils'
+import PasswordExpiryBanner from './PasswordExpiryBanner'
 
 export default function AgencyLayout() {
   const { t } = useTranslation('agency')
@@ -74,6 +75,7 @@ export default function AgencyLayout() {
       </aside>
 
       <main className="flex-1 overflow-auto bg-background">
+        <PasswordExpiryBanner />
         <Outlet />
       </main>
     </div>

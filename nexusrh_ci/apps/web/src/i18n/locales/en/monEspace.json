@@ -328,7 +328,7 @@
       "new": "New password (min. 8 characters)",
       "confirm": "Confirm new password",
       "submit": "Update password",
-      "success": "Password changed successfully.",
+      "success": "Password changed successfully. Signing you in again shortly…",
       "error": "Unable to change the password.",
       "tooShort": "The new password must be at least 8 characters long.",
       "mismatch": "The two passwords do not match."

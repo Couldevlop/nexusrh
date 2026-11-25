@@ -9,6 +9,7 @@ import { isModuleEnabled, type ModuleKey } from '@/lib/modules'
 import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
 import { usePendingApprovals } from '@/components/approvals/workflow'
 import { useSignedContractOptions } from '@/lib/signed-contracts'
+import PasswordExpiryBanner from './PasswordExpiryBanner'
 
 interface EmployeeNavItem {
   to: string
@@ -182,6 +183,7 @@ export default function EmployeeLayout() {
           {/* Échéances de validation : un chef d'équipe au rôle employé peut être valideur N+1 */}
           <ApprovalAlerts href={approvalsHref} />
           <main className="flex-1 overflow-auto bg-background pb-16 lg:pb-0">
+            <PasswordExpiryBanner />
             <Outlet />
           </main>
         </div>

@@ -5,6 +5,7 @@ import {
   mapSecurityPolicyRow,
   getSecurityPolicy,
   isPasswordExpired,
+  daysUntilPasswordExpiry,
   effectiveTenantMfaRequired,
   isPasswordReused,
   toLockoutPolicy,
@@ -174,5 +175,61 @@ describe('isPasswordReused — historique anti-réutilisation (OWASP A07)', () =
   })
   it('hash corrompu (type invalide) → ignoré sans exception', async () => {
     expect(await isPasswordReused('x', [123 as unknown as string])).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compte à rebours avant expiration (paliers J-7 / J-2 / J-1)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("daysUntilPasswordExpiry — compte à rebours", () => {
+  const now = new Date("2026-11-25T12:00:00Z")
+  const ilYA = (jours: number) =>
+    new Date(now.getTime() - jours * 24 * 60 * 60 * 1000).toISOString()
+
+  it("ne dit rien quand l expiration est désactivée", () => {
+    expect(daysUntilPasswordExpiry(ilYA(100), 0, now)).toBeNull()
+    expect(daysUntilPasswordExpiry(ilYA(100), -1, now)).toBeNull()
+  })
+
+  it("ne dit rien sans password_changed_at (même grâce qu au login)", () => {
+    expect(daysUntilPasswordExpiry(null, 30, now)).toBeNull()
+    expect(daysUntilPasswordExpiry(undefined, 30, now)).toBeNull()
+    expect(daysUntilPasswordExpiry("pas-une-date", 30, now)).toBeNull()
+  })
+
+  it("compte les jours restants sur une politique à 30 jours", () => {
+    expect(daysUntilPasswordExpiry(ilYA(0), 30, now)).toBe(30)
+    expect(daysUntilPasswordExpiry(ilYA(23), 30, now)).toBe(7)
+    expect(daysUntilPasswordExpiry(ilYA(28), 30, now)).toBe(2)
+    expect(daysUntilPasswordExpiry(ilYA(29), 30, now)).toBe(1)
+  })
+
+  it("renvoie 0, et jamais un négatif, quand c est déjà expiré", () => {
+    expect(daysUntilPasswordExpiry(ilYA(31), 30, now)).toBe(0)
+    expect(daysUntilPasswordExpiry(ilYA(120), 30, now)).toBe(0)
+  })
+
+  it("pile à l échéance, le login laisse encore passer : 1 jour, pas 0", () => {
+    // isPasswordExpired utilise « > » : à exactement 30 jours le compte n est
+    // pas expiré. Annoncer 0 ici casserait l équivalence avec le login.
+    expect(isPasswordExpired(ilYA(30), 30, now)).toBe(false)
+    expect(daysUntilPasswordExpiry(ilYA(30), 30, now)).toBe(1)
+  })
+
+  it("arrondit au plafond : à 23 h de l échéance il reste 1 jour, pas 0", () => {
+    const changeA = new Date(now.getTime() - (30 * 24 - 23) * 60 * 60 * 1000)
+    expect(daysUntilPasswordExpiry(changeA, 30, now)).toBe(1)
+  })
+
+  it("s accorde toujours avec isPasswordExpired", () => {
+    for (const jours of [0, 1, 15, 23, 28, 29, 29.9, 30, 31, 400]) {
+      const changeA = new Date(now.getTime() - jours * 24 * 60 * 60 * 1000).toISOString()
+      const expire = isPasswordExpired(changeA, 30, now)
+      const reste = daysUntilPasswordExpiry(changeA, 30, now)
+      // Les deux fonctions doivent dire la même chose : zéro jour restant
+      // équivaut à expiré. Un désaccord annoncerait une échéance que le login
+      // ne fait pas respecter, ou l inverse.
+      expect(reste === 0).toBe(expire)
+    }
   })
 })

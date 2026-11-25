@@ -12,6 +12,7 @@ import { processAttendanceEvaluateJob } from './jobs/attendance-evaluate.js'
 import { processAttendanceCronJob } from './jobs/attendance-cron.js'
 import { processInterviewSimConsentPurgeJob } from './jobs/interview-sim-consent-purge.js'
 import { processHabilitationsDailyJob } from './jobs/habilitations-daily.js'
+import { processPasswordExpiryNoticeJob } from './jobs/password-expiry-notice.js'
 import { processPlatformReportJob } from './jobs/platform-report.js'
 
 type AnyJob = Job<unknown, void>
@@ -140,6 +141,21 @@ async function scheduleInterviewSimConsentPurgeCron(): Promise<void> {
   logger.info({ pattern }, 'interview-sim-consent-purge: cron quotidien programmé')
 }
 
+// Rappels avant expiration du mot de passe (J-7, J-2, J-1). Programmé tôt le
+// matin, heure d'Abidjan : le salarié trouve l'avertissement en arrivant, et
+// non le soir quand il ne peut plus rien faire. La politique a expiré en
+// silence jusqu'au 25/11/2026, laissant 58 comptes sur 60 périmés.
+async function schedulePasswordExpiryCron(): Promise<void> {
+  const pattern = process.env['PASSWORD_EXPIRY_CRON'] ?? '30 6 * * *'
+  const q = new Queue('password-expiry-notice', { connection })
+  await q.upsertJobScheduler(
+    'password-expiry-notice',
+    { pattern, tz: 'Africa/Abidjan' },
+    { name: 'password-expiry-notice', data: {} },
+  )
+  logger.info({ pattern }, 'password-expiry-notice: cron quotidien programmé')
+}
+
 // Balayage quotidien des habilitations RH : il ne coupe AUCUN droit (le moteur
 // filtre les dates à chaque requête), il trace les échéances que le passage du
 // temps produit — sans quoi la piste d'audit montre des droits qui
@@ -196,6 +212,7 @@ async function registerSchedulers(): Promise<void> {
   await scheduleAttendanceCron()
   await scheduleInterviewSimConsentPurgeCron()
   await scheduleHabilitationsDailyCron()
+  await schedulePasswordExpiryCron()
   await schedulePlatformReportCrons()
 }
 
@@ -231,6 +248,7 @@ async function start(): Promise<void> {
   workers.push(createWorker('attendance-cron', processAttendanceCronJob as JobHandler))
   workers.push(createWorker('interview-sim-consent-purge', processInterviewSimConsentPurgeJob as JobHandler))
   workers.push(createWorker('habilitations-daily', processHabilitationsDailyJob as JobHandler))
+  workers.push(createWorker('password-expiry-notice', processPasswordExpiryNoticeJob as JobHandler))
   workers.push(createWorker('platform-report', processPlatformReportJob as JobHandler))
 
   await registerSchedulers()

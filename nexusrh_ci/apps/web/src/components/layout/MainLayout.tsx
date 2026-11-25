@@ -10,6 +10,7 @@ import { ActingAsBanner } from '@/components/agency/ActingAsBanner'
 import { isModuleEnabled } from '@/lib/modules'
 import ApprovalAlerts from '@/components/approvals/ApprovalAlerts'
 import IncompleteProfileBanner from './IncompleteProfileBanner'
+import PasswordExpiryBanner from './PasswordExpiryBanner'
 
 /** Route → clé du namespace `nav` (libellés traduits FR/EN). */
 const ROUTE_LABEL_KEYS: Record<string, string> = {
@@ -88,6 +89,7 @@ export default function MainLayout() {
           <ApprovalAlerts href="/approvals" />
 
           {/* Admin dont la fiche employé auto-créée n'a pas encore de salaire */}
+          <PasswordExpiryBanner />
           <IncompleteProfileBanner />
 
           <main className="flex-1 overflow-auto bg-background">

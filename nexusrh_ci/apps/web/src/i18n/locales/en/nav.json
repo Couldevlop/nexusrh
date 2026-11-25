@@ -54,5 +54,12 @@
   "incompleteProfile": {
     "message": "Complete your employee record (job title, salary) to be included in payroll.",
     "cta": "Complete my record"
+  },
+  "passwordExpiry": {
+    "tomorrow": "Your password expires in less than 24 hours. Change it now so you do not lose access.",
+    "inDays": "Your password expires in {{count}} days.",
+    "inDays_one": "Your password expires in {{count}} day.",
+    "cta": "Change my password",
+    "expired": "Your password has expired. Change it now: your next sign-in will be refused otherwise."
   }
 }
