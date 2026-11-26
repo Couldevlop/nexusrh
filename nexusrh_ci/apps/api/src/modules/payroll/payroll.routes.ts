@@ -1,3 +1,4 @@
+import { decryptStoredValue } from '@nexusrhci/shared/crypto'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
@@ -296,7 +297,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         employee: {
           id: emp.id,
           firstName: emp.first_name, lastName: emp.last_name,
-          cnpsNumber: emp.cnps_number, nni: emp.nni,
+          cnpsNumber: emp.cnps_number, nni: decryptStoredValue(emp.nni),
           mobileMoneyProvider: emp.mobile_money_provider,
           mobileMoneyPhone:    emp.mobile_money_phone,
         },
@@ -1064,7 +1065,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
           firstName: slip.first_name,
           lastName: slip.last_name,
           cnpsNumber: slip.cnps_number,
-          nni: slip.nni,
+          nni: decryptStoredValue(slip.nni),
           jobTitle: slip.job_title,
         },
         period: {
@@ -1249,7 +1250,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
         employer: { cnpsNumber: tenant?.cnps_number ?? null, city: tenant?.city ?? null, ...mentions.employer },
         employee: {
           firstName: slip.first_name, lastName: slip.last_name, jobTitle: slip.job_title,
-          cnpsNumber: slip.cnps_number, nni: slip.nni, ...mentions.employee,
+          cnpsNumber: slip.cnps_number, nni: decryptStoredValue(slip.nni), ...mentions.employee,
         },
         worked: mentions.worked,
         leaveBalance: mentions.leaveBalance,
@@ -1397,7 +1398,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
       ].map(csvCell).join(';')
 
       const rows = res.rows.map((r: Record<string, unknown>) => [
-        r.month, r.last_name, r.first_name, r.cnps_number, r.nni,
+        r.month, r.last_name, r.first_name, r.cnps_number, decryptStoredValue(r.nni as string | null),
         r.job_title, r.department_name, r.contract_type,
         r.base_salary, r.gross_salary,
         r.cnps_retraite_sal, r.cnps_pf_pat, r.cnps_at_pat, r.cnps_retraite_pat,

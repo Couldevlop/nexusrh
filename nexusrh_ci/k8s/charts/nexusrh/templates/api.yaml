@@ -125,6 +125,16 @@ spec:
                   name: nexusrh-app-secrets
                   key: encryption-key
                   optional: true
+            # Clé PRÉCÉDENTE, présente UNIQUEMENT pendant une rotation de
+            # ENCRYPTION_KEY : elle déchiffre les cryptogrammes écrits avant la
+            # rotation, et ne chiffre jamais. optional:true → absente en régime
+            # normal, et c'est l'état attendu une fois le ré-chiffrement fini.
+            - name: ENCRYPTION_KEY_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: nexusrh-app-secrets
+                  key: encryption-key-previous
+                  optional: true
             # Scellement HMAC des exports de piste d'audit. optional:true → le
             # pod démarre sans elle ; les exports restent exacts mais NON
             # scellés, et l'écran le dit au lieu de promettre un sceau absent.

@@ -22,6 +22,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn()
 vi.mock('@nexusrhci/shared/crypto', () => ({
   encrypt: (s: string) => `enc(${s})`,
   decryptIfPresent: (s: string | null | undefined) => (s ? s.replace(/^enc\(|\)$/g, '') : null),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 // Évite toute résolution DNS réelle (le vrai guard fait un lookup).
 vi.mock('@nexusrhci/shared/ssrf-guard', () => ({

@@ -90,7 +90,6 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...READ_ROLES)],
     schema: { tags: ['org-chart'], summary: 'Organigramme par direction/service' },
     handler: async (request, reply) => {
-      const schema = request.user.schemaName
       const { depts, emps } = await fetchData(request)
       const tree = buildDepartmentTree(depts, emps)
       return reply.send({ data: tree })
@@ -102,7 +101,6 @@ const orgChartRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authorize(...READ_ROLES)],
     schema: { tags: ['org-chart'], summary: 'Organigramme hiérarchique (managers)' },
     handler: async (request, reply) => {
-      const schema = request.user.schemaName
       const { rootEmployeeId } = request.query as { rootEmployeeId?: string }
       const { depts, emps } = await fetchData(request)
       const tree = buildReportingTree(emps, rootEmployeeId ?? null, deptNameMap(depts))

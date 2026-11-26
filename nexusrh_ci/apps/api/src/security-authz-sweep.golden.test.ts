@@ -94,6 +94,21 @@ const PREFIX: Record<string, string> = {
   'dg/dg.routes.ts': '/dg',
   'interview-sim/interview-sim.routes.ts': '/interview-sim',
   'public/demo.routes.ts': '/public/demo',
+  // Ajoutés le 26/11/2026. Ces neuf fichiers — 39 routes, dont TOUT le module
+  // `habilitations`, c'est-à-dire la grille de droits elle-même — étaient
+  // absents de cette table, donc écartés en silence par le `continue` de
+  // `collectRoutes`. Le balayage se présentait comme exhaustif et ne couvrait
+  // que 43 des 52 fichiers. Le test « aucun fichier de routes n'est écarté »
+  // ci-dessous rend désormais cet oubli impossible.
+  'approvals/approvals.routes.ts': '/approvals',
+  'contracts/signed-contracts.routes.ts': '/contracts/signed',
+  'habilitations/structure.routes.ts': '/habilitations',
+  'habilitations/fiche.routes.ts': '/habilitations',
+  'habilitations/delegation.routes.ts': '/habilitations',
+  'habilitations/audit.routes.ts': '/habilitations',
+  'interims/interims.routes.ts': '/settings',
+  'payroll/ci-2023-impact.routes.ts': '/payroll',
+  'recruitment/funnel-stats.routes.ts': '/recruitment',
 }
 
 /**
@@ -211,6 +226,26 @@ afterAll(async () => { await app?.close() })
 describe('Balayage autorisation — toutes les routes', () => {
   it('énumère un nombre plausible de routes', () => {
     expect(routes.length).toBeGreaterThan(300)
+  })
+
+  it('aucun fichier de routes n’est écarté du balayage', () => {
+    // LE test qui rend ce balayage digne du mot « exhaustif ». `collectRoutes`
+    // fait `continue` sur un fichier absent de PREFIX : sans ce contrôle, un
+    // module ajouté demain naîtrait avec ZÉRO test d'authentification, et rien
+    // ne le dirait — le balayage resterait vert. C'est exactement ce qui s'est
+    // produit pour neuf fichiers, module `habilitations` compris, constaté lors
+    // de l'audit du 26/11/2026.
+    const absents = walk(MODULES)
+      .map(fp => relative(MODULES, fp).split(sep).join('/'))
+      .filter(rel => !PREFIX[rel])
+    expect(
+      absents,
+      'Fichier(s) de routes absents de PREFIX, donc NON BALAYÉS :\n'
+      + absents.map(f => `  ${f}`).join('\n')
+      + '\n\nAjoutez-y leur préfixe de montage (source de vérité : app.ts).\n'
+      + 'Ne retirez jamais ce test pour faire passer une poussée : un fichier\n'
+      + 'écarté ici est un module sans aucun contrôle d\'autorisation testé.\n',
+    ).toEqual([])
   })
 
   it('aucune route protégée ne répond sans token', async () => {

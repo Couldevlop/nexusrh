@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// La cle est lue a l'IMPORT du module de chiffrement : la poser dans le corps
+// d'un test serait trop tard. `vi.hoisted` s'execute avant les imports.
+vi.hoisted(() => { process.env.ENCRYPTION_KEY = 'c'.repeat(64) })
 import { generateHRDocument } from './hr-document-generator.service.js'
 
 describe('hr-document-generator (AI-006/007)', () => {
@@ -47,5 +51,38 @@ describe('hr-document-generator (AI-006/007)', () => {
     const doc = generateHRDocument({ ...base, type: 'attestation_emploi' })
     expect(doc.markdown).toContain('Attestation d\'emploi')
     expect(doc.markdown).toContain('Chauffeur')
+  })
+})
+
+describe('NNI chiffré — colonne mixte', () => {
+  const base = {
+    tenantName: 'SOTRA', city: 'Abidjan',
+    employer: { cnpsNumber: 'CI-00123456-X', rccm: 'CI-ABJ-2005-B-123456' },
+    salary: 250000, startDate: '2026-01-15',
+  }
+
+  it('imprime le NUMÉRO, pas le cryptogramme', async () => {
+    // L'attestation lisait `employees.nni` brute. Les 157 NNI de production
+    // étant en clair, le defaut passait inaperçu ; le premier NNI saisi par
+    // l'interface est chiffré, et c'est le cryptogramme qui serait imprimé sur
+    // un document remis au salarié.
+    const { encrypt } = await import('@nexusrhci/shared/crypto')
+    const chiffre = encrypt('CI-1985-004277')
+    expect(chiffre).toContain(':')
+
+    const doc = generateHRDocument({
+      ...base, type: 'attestation_emploi',
+      employee: { firstName: 'Kouassi', lastName: 'Coulibaly', nni: chiffre, cnpsNumber: 'A789', jobTitle: 'Chauffeur' },
+    })
+    expect(doc.markdown).toContain('CI-1985-004277')
+    expect(doc.markdown).not.toContain(chiffre)
+  })
+
+  it('un NNI en clair reste imprimé tel quel', () => {
+    const doc = generateHRDocument({
+      ...base, type: 'attestation_emploi',
+      employee: { firstName: 'Kouassi', lastName: 'Coulibaly', nni: 'CI-1985-004277', cnpsNumber: 'A789', jobTitle: 'Chauffeur' },
+    })
+    expect(doc.markdown).toContain('CI-1985-004277')
   })
 })

@@ -48,11 +48,9 @@ vi.mock('../../config.js', () => ({
 
 import authPlugin from '../../plugins/auth.js'
 import settingsRoutes from './settings.routes.js'
-import { sendTestEmail, sendEmployeeWelcomeEmail } from '../../services/email.js'
-import { assertSafeOutboundHost, SsrfBlockedError } from '@nexusrhci/shared/ssrf-guard'
+import { assertSafeOutboundHost } from '@nexusrhci/shared/ssrf-guard'
 
 const TENANT = 'tenant_sotra'
-const UUID_A = '11111111-1111-1111-1111-111111111111'
 
 function tokenFor(app: FastifyInstance, role: string, tenantId: string | null = 't1') {
   return app.jwt.sign({

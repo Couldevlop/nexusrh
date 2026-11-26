@@ -12,8 +12,8 @@
   },
   "node": {
     "manager": "Head: {{name}}",
-    "headcount": "{{count}} person",
-    "headcount_plural": "{{count}} people",
+    "headcount_one": "{{count}} person",
+    "headcount_other": "{{count}} people",
     "noManager": "No head assigned",
     "noTitle": "No job title"
   },

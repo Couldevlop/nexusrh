@@ -29,8 +29,6 @@ describe('Expenses — IDOR protection', () => {
   let app: ReturnType<typeof Fastify>
 
   beforeAll(async () => {
-    const { Pool } = await import('pg')
-    const mockPool = new Pool({} as never)
 
     // Route simulant la logique GET /:id avec ownership check
     app = Fastify()
@@ -38,10 +36,7 @@ describe('Expenses — IDOR protection', () => {
 
     app.get('/expenses/:id', { preHandler: [app.authenticate] }, async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string }
-      const schema = req.user.schemaName
 
-      // Simuler la requête DB
-      const row = (mockPool.query as ReturnType<typeof vi.fn>).mock.results[0]?.value
       const report = { id, employee_email: 'other@tenant.com', title: 'Test' }
 
       if (req.user.role === 'employee' && report.employee_email !== req.user.email) {

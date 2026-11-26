@@ -28,7 +28,6 @@ async function main(): Promise<void> {
   })
 
   const timeout = setTimeout(() => {
-    // eslint-disable-next-line no-console
     console.error('[health-check] timeout Redis PING')
     client.disconnect()
     process.exit(1)
@@ -46,7 +45,6 @@ async function main(): Promise<void> {
   } catch (err) {
     clearTimeout(timeout)
     client.disconnect()
-    // eslint-disable-next-line no-console
     console.error('[health-check] échec:', err instanceof Error ? err.message : err)
     process.exit(1)
   }

@@ -11,7 +11,7 @@ import { requestHrScopeFactory, requestHrScope, employeeInHrScope, requestSensit
 import { isMasked } from '../../services/sensitive-mask.js'
 import { calculatePayrollCI } from '../../services/payroll-engine-ci.js'
 import {
-  CIV_2024, DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, isSupportedCountry,
+   DEFAULT_LEGISLATION_PACK, currencyLabel, getPackByCountry, isSupportedCountry,
   type LegislationPack,
 } from '../../services/legislation-packs.js'
 import { computeOvertime, computeSeniority } from '../../services/payroll-simulator.service.js'

@@ -336,7 +336,7 @@ export async function submitFiche(
  * étape ferait de la piste d'audit un bruit de fond.
  */
 export async function validateFiche(
-  schema: string, ficheId: string, actorId: string, role: string,
+  schema: string, ficheId: string, actorId: string, _role: string,
   opts: { acceptSod?: boolean } = {}, db: FicheDb = pool, ip: string | null = null,
 ): Promise<FicheRow> {
   assertValidSchemaName(schema)

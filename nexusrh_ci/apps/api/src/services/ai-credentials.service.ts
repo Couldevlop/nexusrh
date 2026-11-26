@@ -15,6 +15,7 @@
 import { config } from '../config.js'
 import { pool } from '../db/pool.js'
 import { decryptIfPresent } from '@nexusrhci/shared/crypto'
+import { resolveSafeOutboundResult } from '@nexusrhci/shared/ssrf-guard'
 import { isValidSchemaName } from '../utils/schema-name.js'
 
 export type AiProvider = 'claude' | 'mistral'
@@ -65,6 +66,56 @@ export function isUsableModelUrl(raw: string): boolean {
   } catch { return false }
 }
 
+/** Verdict de validation d'une adresse de modèle. */
+export type VerdictAdresseModele =
+  | { ok: true }
+  | { ok: false; raison: string }
+
+/**
+ * Une adresse de modèle est-elle sûre à appeler ? (OWASP A10 — SSRF)
+ *
+ * POURQUOI CE CONTRÔLE. `ai_local_api_url` est réglable en base depuis l'écran
+ * super_admin, puis appelée par `streamMistralChat` depuis le pod API, qui
+ * tourne DANS le cluster — et la réponse repart en flux vers l'appelant.
+ * `isUsableModelUrl` ne vérifiait que le protocole et la présence d'un hôte :
+ * l'écran de paramètres était donc un scanner du réseau interne
+ * (`169.254.169.254`, `postgres.<ns>.svc`, n'importe quel service), seule
+ * sortie réseau du produit à échapper à la garde SSRF commune.
+ *
+ * POURQUOI PAS LA GARDE SEULE. Le modèle auto-hébergé est, par construction,
+ * un service interne (`lucie-7b.<ns>.svc.cluster.local:8000`) : la garde SSRF
+ * le refuserait et couperait l'IA locale. La règle est donc :
+ *   - hôte PUBLIC  → garde SSRF commune (résolution DNS, rejet des plages
+ *     privées, épinglage) ;
+ *   - hôte INTERNE → accepté UNIQUEMENT s'il figure dans
+ *     `AI_LOCAL_ALLOWED_HOSTS` (ou s'il est l'hôte d'`AI_LOCAL_API_URL`).
+ *
+ * Autrement dit : l'exploitant déclare au déploiement où le modèle est
+ * joignable ; l'interface peut en changer, mais pas désigner un hôte interne
+ * que l'exploitant n'a pas déclaré.
+ */
+export async function verifierAdresseModele(raw: string): Promise<VerdictAdresseModele> {
+  if (!isUsableModelUrl(raw)) {
+    return { ok: false, raison: 'Adresse du modèle invalide (http(s) attendu, sans identifiants)' }
+  }
+  const u = new URL(raw)
+  const hote = u.host.toLowerCase()          // avec port
+  const hoteSeul = u.hostname.toLowerCase()  // sans port
+  // `?? []` : une configuration incomplète ne doit pas lever ici — ce service
+  // ne lève jamais (A10), il replie. Liste vide = aucun hôte interne déclaré,
+  // donc seule la garde SSRF décide.
+  const declares = config.aiLocal.allowedHosts ?? []
+  if (declares.includes(hote) || declares.includes(hoteSeul)) return { ok: true }
+  const sur = await resolveSafeOutboundResult(raw)
+  if (sur.ok) return { ok: true }
+  return {
+    ok: false,
+    raison:
+      `Hôte refusé par la garde anti-SSRF (${sur.reason}). Un hôte interne doit être `
+      + 'déclaré par l\'exploitant dans AI_LOCAL_ALLOWED_HOSTS.',
+  }
+}
+
 /**
  * Modèle auto-hébergé effectif : la configuration PLATEFORME (réglée par le
  * super_admin dans l'écran Paramètres) passe devant les variables
@@ -90,7 +141,13 @@ export async function loadLocalModel(): Promise<LocalModel | null> {
     const r = res.rows[0]
     const apiUrl = (r?.ai_local_api_url ?? '').trim()
     if (!apiUrl) return fromEnv
-    if (!isUsableModelUrl(apiUrl)) return fromEnv
+    // Seconde vérification, au point d'USAGE et pas seulement à l'écriture :
+    // la valeur peut avoir été posée avant ce contrôle, ou directement en base.
+    const verdict = await verifierAdresseModele(apiUrl)
+    if (!verdict.ok) {
+      console.warn(`[ai] adresse de modèle refusée, repli sur l'environnement — ${verdict.raison}`)
+      return fromEnv
+    }
     return {
       apiUrl,
       // Le nom du modèle est obligatoire côté serveur OpenAI-compatible : à

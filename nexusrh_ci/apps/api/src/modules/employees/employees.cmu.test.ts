@@ -25,6 +25,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn()
 vi.mock('@nexusrhci/shared/crypto', () => ({
   encryptIfPresent: vi.fn((v) => v),
   decryptIfPresent: vi.fn((v) => v),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 
 import authPlugin from '../../plugins/auth.js'

@@ -8,7 +8,7 @@
  * SÉCURITÉ : OWASP A01 (config des règles réservée admin ; lecture RH),
  * A03 (Zod safeParse + rôles/niveaux bornés), A09 (audit_log).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync,  } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { isValidLevel, roleCanAccess, roleCanExport, accessRequiresAudit, type LevelRule } from './classification.service.js'

@@ -48,11 +48,49 @@ ingress:
     # l'ingress NexusRH uniquement ; le reste de la CRS (SQLi, XSS, RCE…) reste
     # actif. Nécessite annotations-risk-level=Critical sur le contrôleur (cf. deploy.sh).
     nginx.ingress.kubernetes.io/modsecurity-snippet: "SecRuleRemoveById 911100"
+    # En-têtes de sécurité : REPRENDRE la main sur le contrôleur.
+    #
+    # Le contrôleur ingress-nginx injecte, via son ConfigMap global
+    # `web-security-headers` (namespace ingress-nginx, option `add-headers`),
+    # des valeurs qui AFFAIBLISSENT celles que l'API pose elle-même :
+    #   X-Frame-Options  : SAMEORIGIN      au lieu de DENY
+    #   X-XSS-Protection : 1; mode=block   au lieu de 0
+    # et l'en-tête HSTS perdait son `preload`. Mesuré en production le
+    # 26/11/2026 : les tests du dépôt étaient verts sur une configuration qui
+    # n'était pas celle servie.
+    #
+    # Ce ConfigMap est PARTAGÉ avec openlabconsulting.com, hébergé sur le même
+    # contrôleur : le modifier changerait la politique d'un autre site, dont le
+    # back-office a probablement besoin de SAMEORIGIN. La correction est donc
+    # posée ici, sur le seul ingress NexusRH.
+    #
+    # `X-XSS-Protection: 0` est voulu : le filtre XSS des anciens navigateurs a
+    # lui-même introduit des failles, et sa désactivation explicite est la
+    # recommandation actuelle. La CSP fait le travail.
+    #
+    # La CSP n'est volontairement PAS touchée : l'API en pose une différente
+    # pour `/docs` et pour le reste, et la politique globale du contrôleur
+    # reprend celle de l'amont quand il y en a une. Deux politiques présentes
+    # s'appliquent par intersection — c'est la plus restrictive qui gagne, donc
+    # sans risque d'affaiblissement.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_clear_headers "X-Frame-Options" "X-XSS-Protection" "Strict-Transport-Security";
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-XSS-Protection: 0";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
 
 # ── API ───────────────────────────────────────────────────────────────────────
 api:
   replicas: 2
   port: 4001
+  # Hôtes internes autorisés comme adresse de modèle IA (`hote` ou `hote:port`,
+  # séparés par des virgules). Vide = le service lucie-7b du namespace, seul
+  # hôte interne joignable par défaut. Voir AI_LOCAL_ALLOWED_HOSTS dans
+  # templates/configmap.yaml pour le pourquoi (OWASP A10).
+  aiLocalAllowedHosts: ""
+  # Hôte clamd pour l'analyse antivirale des fichiers déposés (ex.
+  # "clamav.nexusrh-ci.svc.cluster.local"). Vide = aucune analyse.
+  clamavHost: ""
   resources:
     requests:
       cpu: "200m"

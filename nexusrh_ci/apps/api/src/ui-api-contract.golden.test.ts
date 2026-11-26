@@ -72,6 +72,13 @@ const PREFIX: Record<string, string> = {
   // (interviewSimRoutes @ /interview-sim) et public (interviewSimPublicRoutes @
   // /public/interview-sim, déclaré dans EXTRA_PUBLIC_ROUTES ci-dessous).
   'interview-sim/interview-sim.routes.ts': '/interview-sim',
+  // Ajoutés le 26/11/2026 : absents de la table, donc leurs routes n'entraient
+  // pas dans l'ensemble des cibles connues. Un appel frontend vers l'une
+  // d'elles aurait été signalé comme inexistant — fausse alerte qui pousse à
+  // désactiver le test — et aucune de leurs routes n'était confrontée à l'UI.
+  'payroll/ci-2023-impact.routes.ts': '/payroll',
+  'recruitment/funnel-stats.routes.ts': '/recruitment',
+  'public/demo.routes.ts': '/public/demo',
   // Habilitations RH : quatre plugins montés sur le MÊME préfixe
   // (structure / fiches / délégations / piste d'audit), cf. app.ts.
   'habilitations/structure.routes.ts': '/habilitations',
@@ -151,6 +158,21 @@ describe('Golden Contrat UI↔API — chaque appel frontend cible un endpoint r�
 
   it('le backend expose un nombre plausible de routes (extraction OK)', () => {
     expect(routes.length).toBeGreaterThan(150)
+  })
+
+  it('aucun fichier de routes n’est absent de la table des préfixes', () => {
+    // `backendRoutes` n'itère QUE sur les entrées de PREFIX : un fichier absent
+    // laisse ses routes hors de l'ensemble des cibles connues, et tout appel
+    // frontend vers elles devient une fausse alerte — le genre de bruit qui
+    // finit par faire désactiver un test. Constaté sur 3 fichiers le 26/11/2026.
+    const absents = walk(MODULES, /\.routes\.ts$/)
+      .map(fp => fp.slice(MODULES.length + 1).split(/[\\/]/).join('/'))
+      .filter(rel => !(rel in PREFIX))
+    expect(
+      absents,
+      'Fichier(s) de routes absents de PREFIX :\n' + absents.map(f => `  ${f}`).join('\n')
+      + '\nAjoutez-y leur préfixe de montage (source de vérité : app.ts).\n',
+    ).toEqual([])
   })
 
   it('aucun appel api.* du frontend ne pointe vers un endpoint inexistant', () => {

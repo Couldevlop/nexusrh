@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import i18n from '@/i18n'
-import { api, formatFCFA } from '@/lib/api'
+import { api,  } from '@/lib/api'
 import {
   EXPERIENCE_OPTIONS, JOB_LEVEL_OPTIONS, WORK_MODE_OPTIONS,
   EDUCATION_OPTIONS, SECTOR_OPTIONS,
@@ -14,7 +14,7 @@ import {
   Wand2, Mail, Linkedin, Loader2, FileText,
   Target, Layers, Zap, TrendingUp, Quote, ShieldCheck, AlertTriangle,
   Star, Award, Send, ExternalLink, Edit3, Trash2, Pause, Play,
-  Link2, Share2, Copy, MoreHorizontal, UserPlus, Ban,
+   Share2, Copy,  UserPlus, Ban,
   FileSignature,
 } from 'lucide-react'
 import { InterviewFocusPanel } from '@/components/interview-focus/InterviewFocusPanel'
@@ -2139,18 +2139,6 @@ const COUNTRY_FLAGS: Record<string, string> = {
   NER: '🇳🇪', CMR: '🇨🇲', TCD: '🇹🇩', NGA: '🇳🇬', GHA: '🇬🇭',
 }
 
-// Catalogue pays (fallback). Le libellé est résolu via i18n au rendu —
-// repli sur le libellé statique si la clé n'existe pas (pays hors liste).
-const COUNTRY_STATIC_LABELS: Record<string, string> = {
-  CI: 'Côte d\'Ivoire', SN: 'Sénégal', BJ: 'Bénin', TG: 'Togo', CM: 'Cameroun',
-  BF: 'Burkina Faso', ML: 'Mali', NG: 'Nigeria', GH: 'Ghana', GA: 'Gabon',
-  CG: 'Congo', CD: 'RD Congo', KE: 'Kenya', TD: 'Tchad', FR: 'France',
-}
-const countryLabel = (code: string, fallback?: string) =>
-  i18n.exists(`recruitment:countries.${code}`)
-    ? i18n.t(`recruitment:countries.${code}`)
-    : (fallback ?? COUNTRY_STATIC_LABELS[code] ?? code)
-
 const COUNTRIES: Array<{ code: string; label: string; flag: string }> = [
   { code: 'CI', label: 'Côte d\'Ivoire', flag: '🇨🇮' },
   { code: 'SN', label: 'Sénégal',        flag: '🇸🇳' },
@@ -3070,7 +3058,6 @@ function ProfileCard({ profile, onContact, transferable }: {
   }
 }) {
   const { t } = useTranslation('recruitment')
-  const tier = matchTier(profile.matchScore)
   const isTransferred = transferable?.state === 'transferred'
 
   return (

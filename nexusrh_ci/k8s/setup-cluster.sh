@@ -13,35 +13,95 @@ echo " NexusRH CI — Setup cluster k3s"
 echo "========================================"
 echo ""
 
-# ── Valeurs issues de values.secret.yaml + .env ───────────────────────────────
-JWT_SECRET="Abidjan@2025@@!Azerrty?@_010405/Thomcoulwa@1451201*__03@"
-SMTP_USER="coulwao@gmail.com"
-SMTP_PASS="afma hrdo tvzi mxnk"
-SMTP_FROM="NexusRH <coulwao@gmail.com>"
-PG_PASSWORD="7ecb8a5d2116d59c82ec7b1ce70128a7b1f73f2305c56c04"
-REDIS_PASSWORD="d0e6c9ebb72c7ae899928f34b1e42842c612c883c284b3de"
-MINIO_PASSWORD="e228ff266bc4333ea1f13a439d522408bcf41a5c976dca63"
-MEILI_KEY="26044cf067f14264a90ac4ec763ed43f260f52f7bcaf3a97"
-# Clé de chiffrement AES-256 NNI/IBAN (64 hex). Régénérer en prod si besoin :
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-ENCRYPTION_KEY="9075f443fdc9a8a79beb8a0b420f4455a838e93607ef1c0bb9844302435a93d4"
+# ── Secrets : AUCUNE valeur en clair dans ce fichier ──────────────────────────
+#
+# POURQUOI. Ce fichier est versionné et le dépôt est public : une valeur écrite
+# ici est publiée. Celles qui s'y trouvaient (signature des jetons, chiffrement
+# NNI/IBAN, PostgreSQL, Redis, MinIO, Meilisearch, mot de passe d'application
+# SMTP) l'ont été du 07/06/2026 au 26/11/2026. La clé de signature permettait à
+# elle seule de forger un jeton `super_admin` sur n'importe quel tenant SANS se
+# connecter : MFA, expiration des mots de passe, verrouillage et grille
+# d'habilitations se trouvent tous APRÈS la vérification de signature.
+#
+# Ordre de résolution, pour chaque secret :
+#   1. la variable d'environnement, si elle est fournie — c'est le geste de
+#      rotation volontaire (`JWT_SECRET=$(openssl rand -hex 48) bash setup-cluster.sh`) ;
+#   2. sinon la valeur DÉJÀ dans le cluster. C'est le cas d'une ré-exécution :
+#      régénérer déconnecterait tout le monde, effacerait la clé IA en service,
+#      ou rendrait illisibles des données chiffrées avec l'ancienne clé ;
+#   3. à défaut seulement, une valeur aléatoire — première installation.
+#
+# Ce fichier ne doit plus jamais contenir d'affectation littérale. Deux filets
+# le vérifient : le golden `apps/api/src/secrets-hors-depot.golden.test.ts`
+# (tourne en local et en CI, balaie TOUS les fichiers versionnés) et le scan
+# gitleaks bloquant du workflow « Quality & Security ».
 
-# Cle de scellement HMAC des exports de piste d'audit (64 hex). Reprise du
-# cluster si elle y est deja : la REGENERER rendrait inverifiables tous les
-# sceaux deja remis a un tiers. Passer AUDIT_SIGNING_KEY dans l'environnement
-# pour en imposer une.
-AUDIT_SIGNING_KEY="${AUDIT_SIGNING_KEY:-$(kubectl get secret nexusrh-app-secrets -n "$NAMESPACE" \
-  -o jsonpath='{.data.audit-signing-key}' 2>/dev/null | base64 -d 2>/dev/null)}"
-AUDIT_SIGNING_KEY="${AUDIT_SIGNING_KEY:-$(openssl rand -hex 32)}"
+## Valeur d'une clé d'un secret déjà présent dans le cluster, ou vide.
+secret_du_cluster() {   # $1 = nom du secret, $2 = clé
+  kubectl get secret "$1" -n "$NAMESPACE" -o jsonpath="{.data.$2}" 2>/dev/null \
+    | base64 -d 2>/dev/null || true
+}
 
-# ── Clés IA ───────────────────────────────────────────────────────────────────
-# Anthropic (Claude) : laisser vide si non utilisé.
-read -rp "Anthropic API Key (sk-ant-api03-..., Entrée pour ignorer) : " ANTHROPIC_API_KEY
-ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
-# Mistral : fournisseur IA par défaut plateforme (AI_DEFAULT_PROVIDER=mistral).
-# C'est la clé qui fait fonctionner le chat IA si le tenant n'a pas la sienne.
-read -rp "Mistral API Key (Entrée pour ignorer) : " MISTRAL_API_KEY
-MISTRAL_API_KEY="${MISTRAL_API_KEY:-}"
+## Résout un secret générable : environnement, puis cluster, puis aléatoire.
+## La valeur n'est jamais affichée — seule l'origine l'est.
+resoudre() {            # $1 = variable, $2 = secret, $3 = clé, $4 = octets (déf. 32)
+  local var="$1" val="${!1:-}" octets="${4:-32}" origine="environnement"
+  if [ -z "$val" ]; then
+    val="$(secret_du_cluster "$2" "$3")"
+    origine="cluster"
+  fi
+  if [ -z "$val" ]; then
+    val="$(openssl rand -hex "$octets")"
+    origine="GÉNÉRÉE (première installation)"
+  fi
+  printf -v "$var" '%s' "$val"
+  printf '   %-20s ← %s\n' "$1" "$origine"
+}
+
+## Résout un secret NON générable (compte tiers) : environnement, cluster, saisie.
+demander() {            # $1 = variable, $2 = secret, $3 = clé, $4 = invite
+  local var="$1" val="${!1:-}" origine="environnement"
+  if [ -z "$val" ]; then
+    val="$(secret_du_cluster "$2" "$3")"
+    origine="cluster"
+  fi
+  if [ -z "$val" ]; then
+    read -rp "   $4 (Entrée pour laisser vide) : " val
+    origine="saisie"
+  fi
+  printf -v "$var" '%s' "$val"
+  printf '   %-20s ← %s\n' "$1" "$origine"
+}
+
+echo "── Résolution des secrets (aucune valeur n'est affichée) ──"
+
+# Signature des jetons : 48 octets. Fournir JWT_SECRET pour faire tourner la clé
+# — toutes les sessions en cours tombent alors, ce qui est l'effet recherché.
+resoudre JWT_SECRET         nexusrh-app-secrets        jwt-secret        48
+
+# Chiffrement AES-256 des NNI/IBAN : 32 octets = 64 hex, format exigé par
+# `config.ts`. JAMAIS régénérée en silence sur un cluster qui en a déjà une :
+# les NNI/IBAN en base deviendraient illisibles. Une rotation réelle demande un
+# ré-chiffrement (lire avec l'ancienne, écrire avec la nouvelle) AVANT le retrait.
+resoudre ENCRYPTION_KEY     nexusrh-app-secrets        encryption-key    32
+
+# Scellement HMAC des exports de piste d'audit. La régénérer rendrait
+# invérifiables tous les sceaux déjà remis à un tiers.
+resoudre AUDIT_SIGNING_KEY  nexusrh-app-secrets        audit-signing-key 32
+
+resoudre PG_PASSWORD        nexusrh-postgres-secret    postgres-password 24
+resoudre REDIS_PASSWORD     nexusrh-redis-secret       redis-password    24
+resoudre MINIO_PASSWORD     nexusrh-minio-secret       root-password     24
+resoudre MEILI_KEY          nexusrh-meilisearch-secret master-key        24
+
+# ── Comptes tiers ─────────────────────────────────────────────────────────────
+# Reprises du cluster si elles y sont déjà : une ré-exécution ne doit pas
+# effacer la clé IA qui fait tourner le chat, ni l'envoi d'emails.
+demander SMTP_USER       nexusrh-app-secrets smtp-user        "Compte SMTP (adresse)"
+demander SMTP_PASS       nexusrh-app-secrets smtp-pass        "Mot de passe d'application SMTP"
+demander SMTP_FROM       nexusrh-app-secrets smtp-from        "Expéditeur affiché"
+demander ANTHROPIC_API_KEY nexusrh-app-secrets anthropic-api-key "Clé API Anthropic"
+demander MISTRAL_API_KEY nexusrh-app-secrets mistral-api-key  "Clé API Mistral"
 
 echo ""
 echo "── Création du namespace $NAMESPACE ──"

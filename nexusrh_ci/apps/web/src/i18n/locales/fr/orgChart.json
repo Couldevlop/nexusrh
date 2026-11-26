@@ -12,8 +12,8 @@
   },
   "node": {
     "manager": "Resp. : {{name}}",
-    "headcount": "{{count}} agent",
-    "headcount_plural": "{{count}} agents",
+    "headcount_one": "{{count}} agent",
+    "headcount_other": "{{count}} agents",
     "noManager": "Responsable non défini",
     "noTitle": "Poste non renseigné"
   },

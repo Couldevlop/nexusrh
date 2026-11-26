@@ -8,7 +8,7 @@
  * SÉCURITÉ : OWASP A01 (RBAC RH ; suppression admin/hr_manager), A03 (Zod
  * safeParse + clamp Bloom 1–6), A09 (audit_log).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync,  } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import { BLOOM_MIN, BLOOM_MAX, clampBloom, compareRequirements, type RequirementItem } from './competencies.service.js'

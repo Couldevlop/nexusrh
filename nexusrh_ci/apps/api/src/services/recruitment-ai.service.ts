@@ -804,7 +804,6 @@ async function sourceWithProvider(
     // Pas de rejet à ce stade (la requête est déjà payée) ; documente pour
     // alerter le super_admin via audit_log dans une étape ultérieure.
     if (settings && settings.maxCostEurPerRequest > 0 && cost > settings.maxCostEurPerRequest) {
-      // eslint-disable-next-line no-console
       console.warn(`[sourcing] coût IA ${cost.toFixed(4)}€ > budget ${settings.maxCostEurPerRequest}€`)
     }
 

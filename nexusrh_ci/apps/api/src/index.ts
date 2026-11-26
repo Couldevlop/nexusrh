@@ -4,6 +4,7 @@ import { createPlatformSchema, createDroitCiSchema } from './db/provisioning.js'
 import { countArticles } from './modules/referentiels/legal-articles.repository.js'
 import { seedReferentiel } from './modules/referentiels/referentiels.service.js'
 import { startPayrollReminderScheduler } from './modules/payroll/payroll-reminder.scheduler.js'
+import { hasPreviousKey } from '@nexusrhci/shared/crypto'
 
 async function main() {
   // ── Initialiser le schéma platform si absent ───────────────────────────────
@@ -23,6 +24,17 @@ async function main() {
   } catch (err) {
     console.error('[DB] Erreur initialisation schéma droit_ci:', err)
     process.exit(1)
+  }
+
+  // ── Rotation de ENCRYPTION_KEY en cours ? ──────────────────────────────────
+  // Une clé précédente configurée signifie que l'ANCIENNE clé déchiffre encore
+  // : la rotation n'est pas terminée tant qu'elle est là. Sans ce rappel au
+  // démarrage, l'étape finale — ré-chiffrer puis retirer la clé précédente —
+  // s'oublie, et la clé qu'on voulait révoquer reste valable indéfiniment.
+  if (hasPreviousKey()) {
+    console.warn('[chiffrement] ⚠ ENCRYPTION_KEY_PREVIOUS est configurée : rotation EN COURS.')
+    console.warn('[chiffrement]   La cle precedente dechiffre encore les donnees. Terminer par :')
+    console.warn('[chiffrement]   1) ré-chiffrer tous les cryptogrammes, 2) retirer encryption-key-previous du secret.')
   }
 
   // ── Démarrer le serveur Fastify ────────────────────────────────────────────

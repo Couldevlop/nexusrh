@@ -23,6 +23,7 @@ vi.mock('../logger.js', () => ({ logger: loggerMock }))
 vi.mock('../redis.js', () => ({ createClient: vi.fn(function () { return ({}) }) }))
 vi.mock('@nexusrhci/shared/ssrf-guard', () => ({ resolveSafeOutboundResult: resolveMock }))
 vi.mock('@nexusrhci/shared/crypto', () => ({ decryptIfPresent: decryptIfPresentMock }))
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 vi.mock('bullmq', () => ({ Queue: vi.fn(function () { return ({ add: queueAddMock }) }) }))
 
 import { processAttendancePollJob } from './attendance-poll.js'

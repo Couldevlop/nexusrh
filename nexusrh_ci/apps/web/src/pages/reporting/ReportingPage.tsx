@@ -8,7 +8,7 @@ import {
   AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts'
 import {
-  TrendingUp, Users, CreditCard, FileText, Calendar,
+  TrendingUp, Users, CreditCard, FileText,  
   BarChart3, Download, Printer, AlertTriangle, Target,
   Activity, Percent,
 } from 'lucide-react'

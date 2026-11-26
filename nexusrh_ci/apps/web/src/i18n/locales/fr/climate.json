@@ -44,8 +44,8 @@
   },
   "results": {
     "title": "Résultats",
-    "responseCount": "{{count}} réponse",
-    "responseCount_plural": "{{count}} réponses",
+    "responseCount_one": "{{count}} réponse",
+    "responseCount_other": "{{count}} réponses",
     "average": "Moyenne",
     "yesRate": "Taux de oui",
     "noData": "Aucune réponse pour le moment.",

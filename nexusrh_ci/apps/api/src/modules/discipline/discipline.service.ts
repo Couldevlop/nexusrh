@@ -16,15 +16,6 @@ export const DISCIPLINE_TYPES = [
 ] as const
 export type DisciplineType = (typeof DISCIPLINE_TYPES)[number]
 
-// Sévérité 1..5 (utile pour tri / alertes / récidive).
-const SEVERITY: Record<DisciplineType, number> = {
-  observation: 1,
-  avertissement: 2,
-  blame: 3,
-  mise_a_pied: 4,
-  licenciement: 5,
-}
-
 export const DISCIPLINE_STATUSES = [
   'draft',
   'issued',

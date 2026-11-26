@@ -146,7 +146,7 @@ ${jsonFormat}`
 
 /** Prompt de retour : transcript encadré comme donnée non fiable (anti-injection). */
 function buildFeedbackPrompt(
-  questions: string[], transcrits: TranscriptItem[], ctx: PosteContext, categories: string[] = [],
+  _questions: string[], transcrits: TranscriptItem[], ctx: PosteContext, categories: string[] = [],
 ): string {
   const qa = transcrits
     .map((t) => {

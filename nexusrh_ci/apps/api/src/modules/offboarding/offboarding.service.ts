@@ -61,15 +61,6 @@ export function canTransition(from: OffboardingStatus, to: OffboardingStatus): b
   return STATUS_TRANSITIONS[from].includes(to)
 }
 
-/** Premier palier dont la borne haute (incluse) couvre `value` ; null = sans borne. */
-function tierFor<T>(tiers: ReadonlyArray<T>, value: number, upTo: (t: T) => number | null): T | null {
-  for (const t of tiers) {
-    const max = upTo(t)
-    if (max === null || value <= max) return t
-  }
-  return null
-}
-
 /**
  * Durée de préavis (mois) selon l'ancienneté, la catégorie et le mode de paie,
  * d'après les règles du pays (ou de la convention du tenant). Sans catégorie

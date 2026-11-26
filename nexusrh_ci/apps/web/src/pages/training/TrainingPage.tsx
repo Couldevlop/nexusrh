@@ -50,7 +50,6 @@ export default function TrainingPage() {
     title: '', description: '', duration: '', duration_unit: 'hours',
     format: 'presentiel', category: '', is_fdfp_eligible: false,
   })
-  const [selectedTraining, setSelectedTraining] = useState<string>('')
   const [newSession, setNewSession] = useState({
     training_id: '', start_date: '', end_date: '', location: '',
     trainer: '', max_places: '20',

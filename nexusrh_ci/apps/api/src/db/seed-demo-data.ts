@@ -26,10 +26,6 @@ function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function randItem<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)] as T
-}
-
 /** Mois 'YYYY-MM' décalé de `offset` mois dans le passé (0 = mois courant). */
 export function monthOffsetStr(offset: number): string {
   const d = new Date()

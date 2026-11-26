@@ -18,6 +18,9 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6380'),
 
   ENCRYPTION_KEY:        z.string().length(64, 'ENCRYPTION_KEY doit être 64 caractères hex (32 bytes)').optional(),
+  // Clé PRÉCÉDENTE, le temps d'une rotation : déchiffre l'existant, ne chiffre
+  // jamais (cf. packages/shared/src/crypto.ts).
+  ENCRYPTION_KEY_PREVIOUS: z.string().length(64, 'ENCRYPTION_KEY_PREVIOUS doit être 64 caractères hex (32 bytes)').optional(),
   JWT_SECRET:            z.string().min(32),
   // Swagger /docs : exposé uniquement hors production, sauf override explicite.
   ENABLE_DOCS:           z.string().transform(v => v === 'true').prefault('false'),
@@ -89,6 +92,19 @@ const envSchema = z.object({
   AI_LOCAL_API_URL: z.string().default(''),
   AI_LOCAL_MODEL:   z.string().default('mistral-7b-instruct'),
   AI_LOCAL_API_KEY: z.string().optional(),
+  /**
+   * Hôtes INTERNES autorisés comme adresse de modèle, séparés par des virgules
+   * (`hote` ou `hote:port`). OWASP A10.
+   *
+   * L'adresse du modèle est réglable en base depuis l'écran super_admin, puis
+   * appelée par le pod — qui tourne DANS le cluster. Sans cette liste, l'écran
+   * de paramètres devenait un scanner du réseau interne : `169.254.169.254`,
+   * `postgres.<ns>.svc`, n'importe quel service, avec la réponse renvoyée en
+   * flux à l'appelant. Un hôte PUBLIC reste validé par la garde SSRF commune ;
+   * un hôte interne doit figurer ici, c'est-à-dire avoir été déclaré par
+   * l'exploitant au déploiement et non choisi depuis l'interface.
+   */
+  AI_LOCAL_ALLOWED_HOSTS: z.string().default(''),
 
   // Sceau des exports de piste d'audit (HMAC-SHA256). Sans clé, l'export reste
   // produit mais le manifeste indique `sealed: false` : un export qui se
@@ -149,8 +165,8 @@ const env = parsed.data
 // ── Durcissement secrets (OWASP A02/A05) ──────────────────────────────────────
 // Une valeur d'exemple/faible PRÉSENTE est refusée au boot (secret prévisible →
 // JWT forgeable, ou clé de chiffrement triviale → NNI/IBAN réversibles).
-// Une ENCRYPTION_KEY ABSENTE n'est pas fatale (comportement historique : le
-// chiffrement NNI/IBAN échouera à l'usage) mais émet un avertissement marqué.
+// Une ENCRYPTION_KEY ABSENTE est désormais FATALE en production (voir plus bas) :
+// une API qui démarre sans pouvoir chiffrer NNI et IBAN ment sur son état.
 const EXAMPLE_JWT_SECRET = 'nexusrh-ci-super-secret-key-minimum-32-chars!!'
 /** true si une clé PRÉSENTE est faible (n'évalue pas l'absence — voir ci-dessous). */
 function isWeakEncryptionKey(key: string): boolean {
@@ -164,11 +180,53 @@ if (env.NODE_ENV === 'production') {
   if (env.JWT_SECRET === EXAMPLE_JWT_SECRET) {
     fatal.push('JWT_SECRET : la valeur d\'exemple est interdite en production (générer ≥ 256 bits aléatoires).')
   }
+  // Seule LA valeur d'exemple était refusée : une clé courte, répétitive ou
+  // devinable passait. Or une clé de signature publiée ou devinée permet de
+  // forger un jeton `super_admin` sur n'importe quel tenant SANS se connecter —
+  // MFA, expiration des mots de passe, verrouillage et grille d'habilitations
+  // se trouvent tous APRÈS la vérification de signature. C'est arrivé : la clé
+  // de production a séjourné six mois dans un dépôt public (constat du
+  // 26/11/2026). Deux garde-fous simples, qu'une clé aléatoire franchit sans y
+  // penser et qu'un mot de passe choisi à la main échoue.
+  if (env.JWT_SECRET.length < 48) {
+    fatal.push(`JWT_SECRET : ${env.JWT_SECRET.length} caractères, 48 minimum en production — openssl rand -hex 48.`)
+  }
+  if (new Set(env.JWT_SECRET).size < 16) {
+    fatal.push('JWT_SECRET : trop peu de caractères distincts pour une clé aléatoire (16 minimum).')
+  }
   if (env.ENCRYPTION_KEY && isWeakEncryptionKey(env.ENCRYPTION_KEY)) {
     fatal.push('ENCRYPTION_KEY présente mais faible : 64 caractères hex aléatoires requis (pas la valeur d\'exemple tout-à-zéro).')
   }
+  // DÉSORMAIS FATAL, et c'est un renversement assumé : le commit 31d53b2 avait
+  // rendu l'absence tolérable pour débloquer un déploiement. Le résultat a été
+  // une API qui démarre en annonçant qu'elle fonctionne, alors que toute
+  // création d'employé portant un NNI ou un IBAN rend un 500 — exactement
+  // l'incident constaté. Une clé qui protège des numéros d'identification
+  // nationale et des IBAN ne se devine pas à l'exécution : ou elle est là, ou
+  // l'API refuse de servir.
   if (!env.ENCRYPTION_KEY) {
-    console.warn('[config] ⚠ ENCRYPTION_KEY absente en production — le chiffrement NNI/IBAN sera indisponible (les créations d\'employés avec NNI/IBAN échoueront). Définir une clé 64-hex est fortement recommandé.')
+    fatal.push('ENCRYPTION_KEY absente : obligatoire en production (NNI/IBAN, secrets TOTP, mots de passe SMTP des tenants) — openssl rand -hex 32.')
+  }
+  if (env.ENCRYPTION_KEY_PREVIOUS) {
+    if (isWeakEncryptionKey(env.ENCRYPTION_KEY_PREVIOUS)) {
+      fatal.push('ENCRYPTION_KEY_PREVIOUS présente mais faible : 64 caractères hex attendus.')
+    }
+    if (env.ENCRYPTION_KEY_PREVIOUS === env.ENCRYPTION_KEY) {
+      // Sinon la « rotation » ne rote rien et personne ne s'en aperçoit : les
+      // deux clés étant identiques, tout continue de fonctionner.
+      fatal.push('ENCRYPTION_KEY_PREVIOUS identique à ENCRYPTION_KEY : la rotation ne change rien, retirer la clé précédente.')
+    }
+  }
+  if (!env.CLAMAV_HOST) {
+    // Le code d'analyse antivirale est correct et échoue fermé une fois
+    // configuré — mais il n'était configuré nulle part. Constaté le
+    // 26/11/2026 : aucune variable CLAMAV ni aucun déploiement clamd dans le
+    // namespace de production. Or l'un des points de dépôt est PUBLIC (CV
+    // envoyé depuis une offre d'emploi, sans authentification) : tout fichier
+    // y est stocké sans être analysé. Avertissement et non refus, parce que
+    // bloquer le démarrage de l'API couperait le service pour un composant
+    // qui n'a jamais tourné — mais l'absence cesse d'être silencieuse.
+    console.warn('[config] ⚠ CLAMAV_HOST absente en production — les fichiers déposés (CV publics, documents RH, pièces de frais) ne sont PAS analysés. Déployer clamd et renseigner CLAMAV_HOST.')
   }
   if (fatal.length > 0) {
     console.error('Configuration de production refusée (secrets non sûrs) :')
@@ -249,6 +307,17 @@ export const config = {
     apiUrl: env.AI_LOCAL_API_URL,
     model:  env.AI_LOCAL_MODEL,
     apiKey: env.AI_LOCAL_API_KEY ?? null,
+    /**
+     * Hôtes internes déclarés par l'exploitant (cf. AI_LOCAL_ALLOWED_HOSTS).
+     * L'hôte d'`AI_LOCAL_API_URL` y est joint d'office : l'avoir écrit dans
+     * l'environnement EST une déclaration d'exploitant.
+     */
+    allowedHosts: [
+      ...env.AI_LOCAL_ALLOWED_HOSTS.split(',').map(h => h.trim().toLowerCase()).filter(Boolean),
+      ...(() => {
+        try { return [new URL(env.AI_LOCAL_API_URL).host.toLowerCase()] } catch { return [] }
+      })(),
+    ],
   },
 
   smtp: {

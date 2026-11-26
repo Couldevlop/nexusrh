@@ -27,10 +27,7 @@
       ],
       "cache": false
     },
-    "lint": {
-      "outputs": []
-    },
-    "typecheck": {
+"typecheck": {
       "dependsOn": [
         "^build"
       ],

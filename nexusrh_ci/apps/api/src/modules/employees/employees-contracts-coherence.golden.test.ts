@@ -30,6 +30,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
 vi.mock('@nexusrhci/shared/crypto', () => ({
   encryptIfPresent: vi.fn((v: string | null | undefined) => (v ? `enc(${v})` : null)),
   decryptIfPresent: vi.fn((v: string | null | undefined) => v ?? null),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 vi.mock('../../services/integrations.service.js', () => ({ emitIntegrationEvent: vi.fn() }))
 vi.mock('../../services/onboarding.service.js', () => ({ autoStartOnboarding: vi.fn().mockResolvedValue(null) }))

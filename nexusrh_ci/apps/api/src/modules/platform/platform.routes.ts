@@ -12,7 +12,7 @@ import {
   invalidateOfflineStatusCache,
 } from '../../services/offline-status.service.js'
 import { createTenantWithSchema, TenantSlugConflictError, PLAN_DEFAULTS } from '../../services/tenant-provisioning.service.js'
-import { listLegislationPacks, LEGISLATION_PACKS, applyPackOverride, COUNTRY_LABELS, getPackByCountry } from '../../services/legislation-packs.js'
+import { LEGISLATION_PACKS, applyPackOverride, COUNTRY_LABELS, getPackByCountry } from '../../services/legislation-packs.js'
 import { invalidateSourcingConfigCache as invalidateConfigCache } from '../../services/sourcing-config.service.js'
 import {
   MODULE_KEYS,
@@ -24,7 +24,7 @@ import {
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { auditPlatform } from '../../utils/audit-log.js'
-import { isUsableModelUrl } from '../../services/ai-credentials.service.js'
+import { verifierAdresseModele } from '../../services/ai-credentials.service.js'
 
 // Codes pays ISO-2 de platform.country_configs → ISO-3 des packs de législation.
 const ISO2_TO_ISO3: Record<string, string> = {
@@ -1079,8 +1079,12 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
           // Vider le champ désactive le repli ; sinon l'URL doit être utilisable,
           // faute de quoi l'assistante répondrait 503 sans qu'on sache pourquoi.
           const raw = String(rawV ?? '').trim()
-          if (raw && !isUsableModelUrl(raw)) {
-            return reply.status(400).send({ error: 'Adresse du modèle invalide (http(s) attendu, sans identifiants)' })
+          if (raw) {
+            // OWASP A10 — refus AU MOMENT DE L'ÉCRITURE, avec le motif exact :
+            // un hôte interne non déclaré par l'exploitant ferait de cet écran
+            // un scanner du réseau du cluster (cf. verifierAdresseModele).
+            const verdict = await verifierAdresseModele(raw)
+            if (!verdict.ok) return reply.status(400).send({ error: verdict.raison })
           }
           v = raw || null
         } else if (k === 'ai_local_model' || k === 'ai_local_label') {
