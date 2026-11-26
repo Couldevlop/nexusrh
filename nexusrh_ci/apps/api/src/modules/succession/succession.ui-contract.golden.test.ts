@@ -2,7 +2,7 @@
  * GOLDEN — Contrat UI ↔ API du module Plans de succession.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync,  } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { MODULE_KEYS } from '../../services/tenant-modules.service.js'

@@ -8,6 +8,14 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "noImplicitReturns": true,
+    // Code mort : le compilateur en est le seul garde-fiable. L'audit du
+    // 26/11/2026 avait accumulé 65 imports, variables et paramètres jamais lus,
+    // invisibles parce qu'aucun contrôle ne les refusait. Les deux drapeaux
+    // ci-dessous échouent la compilation dès le premier, donc dès la CI.
+    // Un paramètre volontairement ignoré se préfixe par « _ », que TypeScript
+    // accepte : l'intention devient explicite au lieu d'être supposée.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,

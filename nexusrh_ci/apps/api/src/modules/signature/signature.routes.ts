@@ -8,7 +8,7 @@
  * le signataire concerné uniquement), A03 (Zod safeParse + statuts/types bornés),
  * A09 (audit_log à chaque signature/refus avec horodatage + IP).
  */
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyPluginAsync,  FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
 import {

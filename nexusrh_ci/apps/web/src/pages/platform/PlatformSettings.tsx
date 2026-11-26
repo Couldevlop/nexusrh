@@ -5,7 +5,7 @@ import { api, formatFCFA } from '@/lib/api'
 import {
   Settings, Save, Loader2, Bot, Mail, Shield,
   Bell, Building2, AlertCircle, CheckCircle, Scale, Globe,
-  Sparkles, Plus, Trash2, Edit3, RefreshCw,
+  Sparkles, Plus, Trash2, Edit3,  
 } from 'lucide-react'
 import { alertDialog, confirmDialog } from '@/components/shared/ConfirmDialog'
 

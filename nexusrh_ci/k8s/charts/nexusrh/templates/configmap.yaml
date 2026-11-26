@@ -28,5 +28,23 @@ data:
   CURRENCY: "XOF"
   TIMEZONE: "Africa/Abidjan"
   AI_SYSTEM_LOCALE: "ci"
+  # OWASP A10 — hôtes INTERNES autorisés comme adresse de modèle IA.
+  #
+  # L'adresse est réglable en base depuis l'écran super_admin ; sans cette
+  # liste, l'écran de paramètres devenait un scanner du réseau du cluster
+  # (`169.254.169.254`, `postgres.<ns>.svc`…), la réponse repartant en flux
+  # vers l'appelant. Un hôte public reste validé par la garde SSRF commune ;
+  # un hôte interne doit figurer ici — c'est-à-dire avoir été déclaré ici, au
+  # déploiement, et non choisi depuis l'interface.
+  #
+  # Retirer cette entrée ne casse pas l'API : elle rend seulement l'IA locale
+  # indisponible (repli sur Mistral/Claude), avec le motif dans les journaux.
+  # OWASP A08 — analyse antivirale des dépôts. Vide = AUCUNE analyse
+  # (l'API l'annonce au démarrage). Renseigné = tout dépôt est analysé et
+  # un fichier non analysable est REFUSÉ (échec fermé).
+  {{- with .Values.api.clamavHost }}
+  CLAMAV_HOST: {{ . | quote }}
+  {{- end }}
+  AI_LOCAL_ALLOWED_HOSTS: {{ .Values.api.aiLocalAllowedHosts | default (printf "lucie-7b.%s.svc.cluster.local:8000" $ns) | quote }}
   ECNPS_EXPORT_FORMAT: "csv"
   HOSTING_LOCATION: "cloud"

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi,  } from 'vitest'
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('./pool.js', () => ({ pool: { query: queryMock } }))

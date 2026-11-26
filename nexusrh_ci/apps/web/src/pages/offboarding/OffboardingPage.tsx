@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { DoorOpen, Plus, Calculator, Trash2, AlertCircle } from 'lucide-react'
 import { api, formatDate, formatMoney } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,7 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 /** Préavis < 1 mois affiché en jours (8 j, 15 j), sinon en mois. */
-function formatNotice(months: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+function formatNotice(months: number, t: TFunction): string {
   if (months < 1) return t('settlement.noticeDays', { count: Math.round(months * 30) })
   return t('settlement.noticeMonthsValue', { count: Math.round(months * 100) / 100 })
 }

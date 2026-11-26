@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  DEPARTURE_TYPES,
-  OFFBOARDING_STATUSES,
   DEFAULT_CHECKLIST,
-  isValidStatus,
   canTransition,
   noticeMonths,
   computeSettlement,

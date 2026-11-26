@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import {
-  EXPORT_KINDS,
   SEPARATORS,
   resolveSeparator,
   SAGE_COLUMNS,

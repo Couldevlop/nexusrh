@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CRITICALITY_LEVELS,
-  READINESS_LEVELS,
-  isValidReadiness,
   summarizeCoverage,
 } from './succession.service.js'
 

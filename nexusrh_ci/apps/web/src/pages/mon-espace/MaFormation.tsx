@@ -5,13 +5,6 @@ import { AxiosError } from 'axios'
 import { api, formatDate } from '@/lib/api'
 import { BookOpen, Clock, MapPin, CheckCircle, Info, Loader2, Download } from 'lucide-react'
 
-interface Training {
-  id: string; title: string; description: string | null
-  duration: number | null; duration_unit: string; format: string
-  category: string | null; is_fdfp_eligible: boolean
-  sessions_count: number
-}
-
 interface Session {
   id: string; training_id: string; training_title: string
   start_date: string; end_date: string | null; location: string | null
@@ -92,12 +85,6 @@ export default function MaFormation() {
     }
   }
 
-  const { data: catalogData } = useQuery<{ data: Training[] }>({
-    queryKey: ['training-catalog-emp'],
-    queryFn: () => api.get('/training/catalog').then(r => r.data),
-    enabled: tab === 'catalog',
-  })
-
   const { data: sessionsData } = useQuery<{ data: Session[] }>({
     queryKey: ['training-sessions-emp'],
     queryFn: () => api.get('/training/sessions?status=planned').then(r => r.data),
@@ -109,7 +96,6 @@ export default function MaFormation() {
     queryFn: () => api.get('/training/my-enrollments').then(r => r.data),
   })
 
-  const catalog = catalogData?.data ?? []
   const sessions = sessionsData?.data ?? []
   const enrollments = enrollmentsData?.data ?? []
   const upcoming = enrollments.filter(e => !e.completed_at)

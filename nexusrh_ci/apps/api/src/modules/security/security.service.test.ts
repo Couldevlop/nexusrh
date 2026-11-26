@@ -2,11 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   TENANT_ROLES,
   isValidTenantRole,
-  SSO_PROVIDERS,
   categorizeAction,
   shouldForward,
   formatEvent,
-  type GroupRoleMapping,
   type SecurityEvent,
 } from './security.service.js'
 

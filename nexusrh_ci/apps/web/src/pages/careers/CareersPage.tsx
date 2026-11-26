@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  Star, Target, Users, Plus, Grid3X3, TrendingUp, Award, BookOpen,
-  Briefcase, Sparkles, ChevronRight, GraduationCap, Loader2,
+  Star, Target, Users, Plus, Grid3X3, TrendingUp, Award,  
+  Briefcase, Sparkles, ChevronRight, GraduationCap,  
 } from 'lucide-react'
 
 interface Evaluation {

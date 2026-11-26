@@ -11,7 +11,7 @@ import {
   CIV_2024, BEN_2024, TGO_2024, BFA_2024, SEN_2024, MLI_2024, NER_2024,
   TCD_2024, NGA_2024, GHA_2024,
   LEGISLATION_PACKS, DEFAULT_LEGISLATION_PACK,
-  getLegislationPack, listLegislationPacks,
+  getLegislationPack,
   getPackByCountry, isSupportedCountry, listCountries,
 } from './legislation-packs.js'
 import { calculatePayrollCI, type PayrollContext } from './payroll-engine-ci.js'
@@ -130,16 +130,6 @@ describe('LegislationPack — inventaire complet', () => {
       expect(pack.labelImpotSalaire.length).toBeGreaterThan(0)
       expect(pack.labelCaisseSociale.length).toBeGreaterThan(0)
     }
-  })
-
-  it('listLegislationPacks expose les métadonnées (sans tranches/credits)', () => {
-    const list = listLegislationPacks()
-    expect(list).toHaveLength(16)
-    const civ = list.find(p => p.code === 'CIV-2024')!
-    expect(civ).toBeDefined()
-    expect(civ.status).toBe('active')
-    expect(civ.smigMensuel).toBe(75_000)
-    expect('tranchesImpotSalaire' in civ).toBe(false)
   })
 })
 

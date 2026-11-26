@@ -26,14 +26,20 @@ const { cfg } = vi.hoisted(() => ({ cfg: {
   redis: { url: 'redis://localhost:6380' },
   ai: { apiKey: null as string | null, model: 'claude-model', maxTokens: 1024, temperature: 0, defaultProvider: 'claude' },
   mistral: { apiKey: null as string | null, model: 'mistral-model', apiUrl: 'https://api.mistral.ai/v1' },
-  aiLocal: { apiUrl: '', model: 'mistral-7b-instruct', apiKey: null as string | null },
+  // `allowedHosts` : hôtes INTERNES déclarés par l'exploitant. Un hôte interne
+  // absent de cette liste est refusé — sans elle, l'écran super_admin pouvait
+  // viser n'importe quel service du cluster (A10, corrigé le 26/11/2026).
+  aiLocal: {
+    apiUrl: '', model: 'mistral-7b-instruct', apiKey: null as string | null,
+    allowedHosts: ['lucie-7b.nexusrh-ci.svc.cluster.local:8000', 'qwen.ia.svc:8000'] as string[],
+  },
 } }))
 vi.mock('../config.js', () => ({ config: cfg }))
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }))
 vi.mock('../db/pool.js', () => ({ pool: { query: queryMock } }))
 
 import {
-  DEFAULT_LOCAL_LABEL, envCreds, isUsableModelUrl, loadLocalModel, localModel,
+  DEFAULT_LOCAL_LABEL, envCreds, isUsableModelUrl, loadLocalModel, localModel, verifierAdresseModele,
   selectChatProvider, type AiCreds,
 } from './ai-credentials.service.js'
 
@@ -48,7 +54,12 @@ beforeEach(() => {
   queryMock.mockReset().mockResolvedValue({ rows: [] })
   cfg.ai.apiKey = null
   cfg.mistral.apiKey = null
-  cfg.aiLocal = { apiUrl: '', model: 'mistral-7b-instruct', apiKey: null }
+  // `allowedHosts` doit être remis ici aussi : ce `beforeEach` REMPLACE l'objet
+  // et l'oublier le rendait absent, donc tous les hôtes internes refusés.
+  cfg.aiLocal = {
+    apiUrl: '', model: 'mistral-7b-instruct', apiKey: null,
+    allowedHosts: ['lucie-7b.nexusrh-ci.svc.cluster.local:8000', 'qwen.ia.svc:8000'],
+  }
 })
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -202,6 +213,52 @@ describe('Validation de l’adresse du modèle', () => {
     for (const bad of ['', 'pas-une-url', 'file:///etc/passwd', 'ftp://h/v1',
                        'gopher://h', 'http://user:pass@h/v1']) {
       expect(isUsableModelUrl(bad), bad).toBe(false)
+    }
+  })
+})
+
+/**
+ * OWASP A10 — l'écran super_admin ne doit pas pouvoir désigner un service
+ * interne que l'exploitant n'a pas déclaré. `isUsableModelUrl` ne regardait que
+ * la forme : un hôte interne quelconque passait, et la réponse du service visé
+ * repartait en flux vers l'appelant.
+ */
+describe('Garde anti-SSRF sur l’adresse du modèle', () => {
+  it('accepte un hôte interne DÉCLARÉ par l’exploitant', async () => {
+    await expect(verifierAdresseModele('http://lucie-7b.nexusrh-ci.svc.cluster.local:8000/v1'))
+      .resolves.toEqual({ ok: true })
+    await expect(verifierAdresseModele('http://qwen.ia.svc:8000/v1'))
+      .resolves.toEqual({ ok: true })
+  })
+
+  it('refuse l’endpoint de métadonnées, cible classique du SSRF', async () => {
+    const v = await verifierAdresseModele('http://169.254.169.254/latest/meta-data/')
+    expect(v.ok).toBe(false)
+    expect(v.ok === false && v.raison).toMatch(/AI_LOCAL_ALLOWED_HOSTS/)
+  })
+
+  it('refuse un service du cluster NON déclaré — c’était le trou', async () => {
+    // Exactement ce qu'un super_admin pouvait écrire : la base du produit.
+    for (const interne of [
+      'http://nexusrh-ci-postgres-postgresql.nexusrh-ci.svc.cluster.local:5432/',
+      'http://nexusrh-ci-redis-master.nexusrh-ci.svc.cluster.local:6379/',
+      'http://127.0.0.1:4001/platform/settings',
+      'http://10.42.0.17:8000/v1',
+    ]) {
+      const v = await verifierAdresseModele(interne)
+      expect(v.ok, interne).toBe(false)
+    }
+  })
+
+  it('une configuration sans liste ne lève pas : elle replie', async () => {
+    const garde = cfg.aiLocal.allowedHosts
+    // @ts-expect-error — on simule une configuration incomplète (champ absent).
+    delete cfg.aiLocal.allowedHosts
+    try {
+      const v = await verifierAdresseModele('http://10.42.0.17:8000/v1')
+      expect(v.ok).toBe(false)
+    } finally {
+      cfg.aiLocal.allowedHosts = garde
     }
   })
 })

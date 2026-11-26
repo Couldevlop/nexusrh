@@ -2,12 +2,34 @@ import { Client } from '@elastic/elasticsearch'
 
 const isK3s = process.env.NODE_ENV === 'production' && process.env.ES_CA_CERT
 
+/**
+ * Mot de passe Elasticsearch. Le repli en dur (`nexusrhci-es-dev`) ne vaut
+ * qu'en développement : en production, une variable oubliée faisait démarrer le
+ * client avec un identifiant écrit dans le dépôt — et le dépôt est public.
+ * En production on préfère donc l'absence d'authentification à un identifiant
+ * connu de tous : la connexion échoue franchement au lieu de réussir avec un
+ * mot de passe publié. OWASP A05/A07.
+ */
+function motDePasseEs(): string | undefined {
+  const fourni = process.env.ES_PASSWORD
+  if (fourni) return fourni
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[elasticsearch] ES_PASSWORD absente en production — aucun repli, la recherche sera indisponible.')
+    return undefined
+  }
+  return 'nexusrhci-es-dev'
+}
+
+const motDePasse = motDePasseEs()
+
 export const esClient = new Client({
   node: process.env.ES_URL ?? 'http://localhost:9201',
-  auth: {
-    username: process.env.ES_USER ?? 'elastic',
-    password: process.env.ES_PASSWORD ?? 'nexusrhci-es-dev',
-  },
+  ...(motDePasse === undefined ? {} : {
+    auth: {
+      username: process.env.ES_USER ?? 'elastic',
+      password: motDePasse,
+    },
+  }),
   ...(isK3s && {
     tls: {
       ca:   process.env.ES_CA_CERT,

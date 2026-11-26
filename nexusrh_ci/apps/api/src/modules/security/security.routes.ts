@@ -11,7 +11,7 @@
  * jamais renvoyés en clair), A03 (Zod + valeurs bornées), A09 (audit_log),
  * A10 (SSRF guard sur tous les appels sortants — test SSO et envoi SIEM).
  */
-import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+import type { FastifyPluginAsync,  } from 'fastify'
 import { z } from 'zod'
 import { createHmac } from 'crypto'
 import { pool as rawPool } from '../../db/pool.js'

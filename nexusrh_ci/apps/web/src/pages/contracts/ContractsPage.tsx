@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { SignedContractsPanel } from '@/components/contracts/SignedContractsPanel'
 import {
   FileText, Plus, Eye, CheckCircle, XCircle,
-  RefreshCw, AlertTriangle, Building2, User,
+  RefreshCw, AlertTriangle, Building2,  
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────

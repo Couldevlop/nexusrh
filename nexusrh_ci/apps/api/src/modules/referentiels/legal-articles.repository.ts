@@ -6,7 +6,7 @@
  * OWASP A08 : checksum SHA-256 pour détecter toute altération du texte légal
  */
 import { createHash } from 'crypto'
-import { eq, and, inArray, notInArray } from 'drizzle-orm'
+import { eq, and,  notInArray } from 'drizzle-orm'
 
 export interface SearchResult { total: number; hits: ArticleInput[] }
 import { droitCiDb } from '../../db/client.js'

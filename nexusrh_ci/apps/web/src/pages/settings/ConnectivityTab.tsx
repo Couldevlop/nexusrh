@@ -10,7 +10,6 @@ interface EventDef { key: string; label: string }
 interface Hook { id: string; name: string; target_url: string; events: string[]; is_active: boolean; last_status: number | null; last_delivery_at: string | null }
 interface ApiKey { id: string; name: string; key_prefix: string; scopes: string[]; is_active: boolean; last_used_at: string | null; expires_at: string | null }
 interface Connector { id: string; name: string; base_url: string; auth_type: string; is_active: boolean; last_test_status: number | null; has_secret: boolean }
-interface Delivery { id: string; event: string; status: number | null; ok: boolean; response_excerpt: string | null; created_at: string }
 
 const SUB = [
   { id: 'webhooks',   labelKey: 'connectivity.sub.webhooks',   icon: Webhook },

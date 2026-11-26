@@ -63,7 +63,6 @@ vi.mock('../../services/tenant-provisioning.service.js', () => ({
 }))
 
 vi.mock('../../services/legislation-packs.js', () => ({
-  listLegislationPacks: vi.fn().mockReturnValue([]),
 }))
 
 vi.mock('../../services/sourcing-config.service.js', () => ({

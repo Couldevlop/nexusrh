@@ -1,6 +1,6 @@
 import {
   pgSchema, uuid, varchar, boolean, integer, timestamp, text,
-  numeric, date, jsonb, index,
+  numeric, date, jsonb,  
 } from 'drizzle-orm/pg-core'
 
 /**

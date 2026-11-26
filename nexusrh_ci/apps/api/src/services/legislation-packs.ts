@@ -1373,33 +1373,6 @@ export function listCountries(): Array<{
       a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1)
 }
 
-export function listLegislationPacks(): Array<Omit<LegislationPack, 'tranchesImpotSalaire' | 'creditImpotParEnfant'>> {
-  return Object.values(LEGISLATION_PACKS).map(p => ({
-    code: p.code,
-    name: p.name,
-    countryCode: p.countryCode,
-    year: p.year,
-    currency: p.currency,
-    bracketScale: p.bracketScale,
-    status: p.status,
-    smigMensuel: p.smigMensuel,
-    plafondCnpsRetraite: p.plafondCnpsRetraite,
-    plafondCnpsAtPf: p.plafondCnpsAtPf,
-    tauxCotisationRetraiteSalarie: p.tauxCotisationRetraiteSalarie,
-    tauxCotisationRetraitePatronal: p.tauxCotisationRetraitePatronal,
-    tauxCotisationPfPatronal: p.tauxCotisationPfPatronal,
-    tauxCotisationMaternitePatronal: p.tauxCotisationMaternitePatronal,
-    tauxAtDefaultPatronal: p.tauxAtDefaultPatronal,
-    abattementImpotSalaire: p.abattementImpotSalaire,
-    deduireCotisationsAssietteImpot: p.deduireCotisationsAssietteImpot ?? true,
-    creditImpotMarieSansEnfant: p.creditImpotMarieSansEnfant,
-    reductionChargesFamille: p.reductionChargesFamille,
-    labelImpotSalaire: p.labelImpotSalaire,
-    labelCaisseSociale: p.labelCaisseSociale,
-    notes: p.notes,
-  }))
-}
-
 /**
  * Applique une SURCHARGE de base de données (sous-ensemble de champs + statut) à un
  * pack défini en code. Architecture hybride : le code reste la référence versionnée ;

@@ -191,7 +191,7 @@ describe('processInterviewSimConsentPurgeJob', () => {
   })
 
   it('isolation des pannes : un tenant en échec n\'empêche pas la purge des autres', async () => {
-    queryMock.mockImplementation((sql: unknown, params?: unknown[]) => {
+    queryMock.mockImplementation((sql: unknown, _params?: unknown[]) => {
       const s = String(sql)
       if (s.includes('platform.tenants')) {
         return Promise.resolve({ rows: [{ schema_name: 'tenant_broken' }, { schema_name: 'tenant_ok' }] })

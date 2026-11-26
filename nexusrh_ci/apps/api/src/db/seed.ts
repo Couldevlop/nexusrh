@@ -93,7 +93,6 @@ const NOMS = ['Coulibaly', 'Diallo', 'Traoré', 'Koné', 'Bamba', 'Ouattara', 'C
 
 const MOBILE_PROVIDERS = ['wave', 'mtn_momo', 'orange_money'] as const
 const MARITAL_STATUSES  = ['single', 'married', 'divorced', 'widowed'] as const
-const CONTRACT_TYPES    = ['cdi', 'cdd', 'stage', 'intermittent'] as const
 
 function ciPhone(operator: string): string {
   const prefix = operator === 'mtn_momo' ? '07' : operator === 'orange_money' ? '05' : '07'

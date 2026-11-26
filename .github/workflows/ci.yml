@@ -59,14 +59,42 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with: { fetch-depth: 0 }
+    - uses: pnpm/action-setup@v3
+      with: { version: '${{ env.PNPM_VERSION }}' }
+    - uses: actions/setup-node@v4
+      with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm, cache-dependency-path: nexusrh_ci/pnpm-lock.yaml }
 
-    # Audit des dépendances
+    # ── Secrets en clair — BLOQUANT ──────────────────────────────────────────
+    #
+    # Ce job s'appelait « SAST & Secrets » et ne cherchait NI l'un NI l'autre :
+    # `pnpm audit || true` ne peut pas échouer, et Trivy en mode `fs` ne lit pas
+    # le code applicatif. Résultat : la clé de signature des jetons de
+    # production, la clé de chiffrement des NNI/IBAN et le mot de passe
+    # PostgreSQL sont restés en clair dans `k8s/setup-cluster.sh`, sur un dépôt
+    # PUBLIC, du 07/06/2026 au 26/11/2026 — six mois sans que rien ne le voie.
+    #
+    # Le détecteur est l'invariant du dépôt (`secrets-hors-depot.golden.test.ts`)
+    # plutôt qu'une action tierce : pas de jeton de licence à gérer, pas de
+    # dépendance d'approvisionnement supplémentaire dans un job qui détient
+    # `security-events: write`, et il tourne aussi en local avant la poussée.
+    - name: Install (invariant secrets)
+      run: cd nexusrh_ci && pnpm install --frozen-lockfile
+    - name: Secrets en clair dans un fichier versionné
+      run: cd nexusrh_ci/apps/api && npx vitest run src/secrets-hors-depot.golden.test.ts
+
+    # ── Dépendances vulnérables — BLOQUANT à partir de « high » ──────────────
+    # Le `|| true` est retiré : une faille haute ou critique doit arrêter la
+    # chaîne, sinon l'audit n'est qu'une ligne de journal que personne ne lit.
+    # Le seuil reste `high` pour ne pas bloquer sur une alerte modérée non
+    # exploitable ici (au 26/11/2026 : i18next, pollution de prototype).
     - name: Dependency Audit
-      run: cd nexusrh_ci && pnpm audit --audit-level=high || true
+      run: cd nexusrh_ci && pnpm audit --audit-level=high
 
     # Scan Trivy (Code source)
+    # Épinglé sur un CONDENSAT (v0.36.0) : `@master` est une référence mutable,
+    # et ce job détient `security-events: write`.
     - name: SAST — Trivy
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
       with:
         scan-type: 'fs'
         scan-ref: './nexusrh_ci'

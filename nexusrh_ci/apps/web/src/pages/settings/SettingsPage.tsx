@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
+import type {  } from 'i18next'
 import { api } from '@/lib/api'
 import { useAuthStore, type TenantConfig } from '@/stores/authStore'
 import { isModuleEnabled, type ModuleKey } from '@/lib/modules'

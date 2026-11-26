@@ -114,7 +114,7 @@ const { st, query, connect } = vi.hoisted(() => {
     if (sql.startsWith('UPDATE "t_a".hab_assignments SET revoked_at')) {
       const hit = st.assignments.filter((a) => a.userId === p[0] && !a.revokedAt)
       for (const a of hit) a.revokedAt = 'now'
-      return { rows: hit.map((a, i) => ({ id: `as${i}` })), rowCount: hit.length }
+      return { rows: hit.map((_, i) => ({ id: `as${i}` })), rowCount: hit.length }
     }
     throw new Error(`SQL non prévu : ${sql}`)
   })

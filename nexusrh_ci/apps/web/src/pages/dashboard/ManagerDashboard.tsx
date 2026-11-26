@@ -193,7 +193,7 @@ export default function ManagerDashboard() {
                 )}
               </h2>
             </div>
-            <Link to="/expenses"
+            <Link to="/expenses-rh"
               className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
               {t('manager.pending.openExpenses')} <ArrowRight className="h-3.5 w-3.5" />
             </Link>

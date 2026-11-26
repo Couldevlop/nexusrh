@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { FileSignature, Eye, Download, X, PenLine } from 'lucide-react'
 import { api, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -10,7 +11,7 @@ import {
 
 const filePath = (docId: string) => `/contracts/signed/me/${docId}/file`
 
-function itemTitle(item: SignedContractItem, t: (k: string, o?: Record<string, unknown>) => string): string {
+function itemTitle(item: SignedContractItem, t: TFunction): string {
   if (item.title) return item.title
   if (item.contractType && item.contractStartDate) {
     return t('contract.contractLabel', { type: item.contractType.toUpperCase(), date: formatDate(item.contractStartDate) })

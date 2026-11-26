@@ -17,7 +17,7 @@ type Answer = { index: number; question: string; transcript: string }
  * offre (MesOffresInternes). Éphémère : rien n'est stocké — la restitution
  * s'affiche puis disparaît à la fermeture. Miroir authentifié du flux public.
  */
-export function OfferInterviewRunner({ jobId, jobTitle, onBack }: {
+export function OfferInterviewRunner({ jobId, onBack }: {
   jobId: string
   /** Non consommé directement ici : conservé pour parité d'interface avec la modale appelante (Task 4). */
   jobTitle: string

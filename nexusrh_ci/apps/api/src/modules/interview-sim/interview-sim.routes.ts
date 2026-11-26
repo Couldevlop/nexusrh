@@ -18,7 +18,7 @@
  * APRÈS fastify.authenticate (jamais un fastify.addHook d'instance — incident
  * 19/07/2026 : hook d'instance avant authenticate → request.user indéfini).
  */
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyPluginAsync,  FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { pool } from '../../db/pool.js'

@@ -4,7 +4,7 @@ import { auditTenant } from '../../utils/audit-log.js'
 import { requestHrScope, requestEmployeeScope, declarationScope, requestSensitiveCtx } from '../../utils/hr-scope.js'
 import { isMasked, maskFields } from '../../services/sensitive-mask.js'
 import type { HabContext } from '../../services/habilitation.service.js'
-import type { FastifyRequest } from 'fastify'
+import type {  } from 'fastify'
 
 type ClosedMonthRow = {
   month: string; total_gross: number; total_net: number; total_cnps: number; total_its: number; employees_count: number

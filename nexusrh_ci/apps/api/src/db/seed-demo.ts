@@ -3,7 +3,6 @@
  * Crée 8 employés, 3 mois de bulletins, des absences et des formations
  */
 import { Pool } from 'pg'
-import bcrypt from 'bcryptjs'
 import { calculatePayrollCI } from '../services/payroll-engine-ci.js'
 import { seedTalentLifecycleBulk } from './seed-talent-lifecycle.js'
 import { jobLevelForSalary } from './job-level.js'
@@ -17,12 +16,6 @@ const EMPLOYEES = [
   { firstName: 'Fanta',    lastName: 'Camara',    gender: 'F', job: 'Chargée comm.',    dept: 'Commercial',   salary: 140_000 },
   { firstName: 'Yao',      lastName: 'Koffi',     gender: 'M', job: 'Développeur',      dept: 'IT',           salary: 250_000 },
   { firstName: 'Aminata',  lastName: 'Diallo',    gender: 'F', job: 'Juriste',          dept: 'Juridique',    salary: 200_000 },
-]
-
-const ABSENCE_TYPES = [
-  { code: 'CP',       label: 'Congés payés',         paid: true  },
-  { code: 'MALADIE',  label: 'Congé maladie',         paid: false },
-  { code: 'FAMILIAL', label: 'Événement familial',    paid: true  },
 ]
 
 const TRAININGS = [

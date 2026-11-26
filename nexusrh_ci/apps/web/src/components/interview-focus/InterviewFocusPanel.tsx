@@ -16,7 +16,6 @@ interface InterviewFocus {
   methodologies: string[]
   languages: Language[]
 }
-const EMPTY_FOCUS: InterviewFocus = { technologies: [], tools: [], methodologies: [], languages: [] }
 
 interface InterviewFocusPanelProps {
   /** Endpoint complet, ex: `/recruitment/jobs/${id}/interview-focus` ou `/employees/${id}/interview-focus`. */

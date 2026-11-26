@@ -11,7 +11,7 @@
  *         password.reset_requested/completed
  *   A10 — messages génériques côté client (anti-énumération emails)
  */
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyPluginAsync,  FastifyRequest } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { authenticator } from 'otplib'
@@ -30,7 +30,6 @@ import { resolveEnabledModules } from '../../services/tenant-modules.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 
 const SCHEMA_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/
-const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TOTP_PERIOD    = 30 // secondes (défaut otplib)
 
 /**
