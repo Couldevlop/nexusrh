@@ -112,9 +112,18 @@ IMAGES_AVANT=""
 for d in nexusrh-api nexusrh-web nexusrh-worker; do
   kubectl get deployment "$d" -n "$NS" >/dev/null 2>&1 || continue
   conteneur=$(kubectl get deployment "$d" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].name}' 2>/dev/null)
-  digest=$(kubectl get pods -n "$NS" -l "app.kubernetes.io/instance=nexusrh-ci" \
+  # Deux defauts reunis faisaient echouer TOUT le deploiement ici, en silence :
+  #   1. le selecteur portait sur app.kubernetes.io/instance=nexusrh-ci, label
+  #      que les pods ne portent PAS (ils ont app.kubernetes.io/component) :
+  #      il ne renvoyait donc aucune ligne ;
+  #   2. `grep -m1` sans correspondance sort en 1, et sous `set -euo pipefail`
+  #      cela interrompt le script — sans message, puisque grep est muet.
+  # Le prefixe du nom de pod suffit a discriminer : le selecteur est inutile.
+  # Et surtout `|| true` : cette collecte ne prepare qu'un retour arriere, elle
+  # ne doit JAMAIS pouvoir empecher un deploiement.
+  digest=$(kubectl get pods -n "$NS" \
     --field-selector=status.phase=Running -o jsonpath="{range .items[*]}{.metadata.ownerReferences[0].name}{' '}{.status.containerStatuses[0].imageID}{'\n'}{end}" 2>/dev/null \
-    | grep -m1 "^${d}-" | awk '{print $2}')
+    | grep -m1 "^${d}-" | awk '{print $2}' || true)
   if [ -n "$conteneur" ] && [ -n "$digest" ]; then
     IMAGES_AVANT="$IMAGES_AVANT$d|$conteneur|$digest
 "
