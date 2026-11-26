@@ -59,14 +59,28 @@ describe('crypto AES-256-GCM', () => {
 
   it('refuse un cryptogramme altéré', async () => {
     const { encrypt, decrypt } = await loadCrypto()
-    const [ivHex, tagHex, encHex] = encrypt('donnée sensible').split(':')
+    const parties = encrypt('donnée sensible').split(':')
+    // `noUncheckedIndexedAccess` a raison : deconstruire un split() rend
+    // `string | undefined`. Le test presupposait un format que rien ne
+    // verifiait — et c'est justement le format que ce module doit garantir.
+    // On l'affirme donc : si encrypt change de forme, ce test le DIT, au lieu
+    // de planter plus bas sur un `undefined` au message obscur.
+    expect(parties).toHaveLength(3)
+    const [ivHex, tagHex, encHex] = parties as [string, string, string]
     const flipped = (parseInt(encHex.slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0')
     expect(() => decrypt(`${ivHex}:${tagHex}:${flipped}${encHex.slice(2)}`)).toThrow()
   })
 
   it('refuse un tag altéré de longueur correcte', async () => {
     const { encrypt, decrypt } = await loadCrypto()
-    const [ivHex, tagHex, encHex] = encrypt('donnée sensible').split(':')
+    const parties = encrypt('donnée sensible').split(':')
+    // `noUncheckedIndexedAccess` a raison : deconstruire un split() rend
+    // `string | undefined`. Le test presupposait un format que rien ne
+    // verifiait — et c'est justement le format que ce module doit garantir.
+    // On l'affirme donc : si encrypt change de forme, ce test le DIT, au lieu
+    // de planter plus bas sur un `undefined` au message obscur.
+    expect(parties).toHaveLength(3)
+    const [ivHex, tagHex, encHex] = parties as [string, string, string]
     const flipped = (parseInt(tagHex.slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0')
     expect(() => decrypt(`${ivHex}:${flipped}${tagHex.slice(2)}:${encHex}`)).toThrow()
   })

@@ -52,12 +52,10 @@ export class ChunkLoadErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
     if (isChunkLoadError(error)) {
-      // eslint-disable-next-line no-console
       console.warn('[NexusRH] Stale chunk détecté, reload en cours :', error)
     } else {
       // Erreur React autre que stale chunk : on log mais on ne fait rien
       // (l'Error Boundary parent éventuel pourra la gérer)
-      // eslint-disable-next-line no-console
       console.error('[NexusRH] Erreur React non-chunk :', error, info)
     }
   }
