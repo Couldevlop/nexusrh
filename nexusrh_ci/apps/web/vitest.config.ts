@@ -11,5 +11,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Releve le delai d'attente de Testing Library : voir src/test-setup.ts.
+    setupFiles: ['./src/test-setup.ts'],
+    // Doit rester AU-DESSUS du asyncUtilTimeout de test-setup.ts.
+    testTimeout: 20_000,
   },
 })

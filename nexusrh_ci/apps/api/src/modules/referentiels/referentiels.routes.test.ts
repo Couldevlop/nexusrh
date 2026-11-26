@@ -41,10 +41,8 @@ vi.mock('./referentiels.service.js', () => ({
   getReferentielStats:      vi.fn().mockResolvedValue({ pg_count: 0, es_count: 0 }),
 }))
 
-vi.mock('../../services/elasticsearch.js', () => ({
+vi.mock('../../services/meilisearch.js', () => ({
   ensureIndex: vi.fn().mockResolvedValue(undefined),
-  esClient: {},
-  ES_INDEX: 'test',
 }))
 
 import authPlugin from '../../plugins/auth.js'

@@ -117,7 +117,6 @@ describe('EmployeesPage — édition des bénéficiaires CMU', () => {
     mockDetail({ cmu_spouse_covered: false, cmu_children_covered: null })
     renderPage()
     fireEvent.click(await screen.findByTitle('edit.title'))
-    await screen.findByText('edit.title', { selector: 'h2, h3' }).catch(() => undefined)
     await waitFor(() => expect(getMock).toHaveBeenCalledWith('/employees/e1'))
     expect(screen.queryByLabelText('form.cmu.spouseCovered')).toBeNull()
   })

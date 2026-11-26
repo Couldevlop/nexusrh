@@ -1,13 +1,16 @@
 /**
  * Service Référentiels — Architecture double couche
  *   PostgreSQL (schema droit_ci) : source de vérité persistante
- *   Elasticsearch               : moteur de recherche full-text
+ *   Meilisearch                 : moteur de recherche plein texte (index seul)
  *
- * OWASP A01 : filtre access_level:'public' sur chaque requête ES + Drizzle
- * OWASP A03 : Query DSL ES uniquement — zéro concaténation de chaînes
+ * OWASP A01 : filtre access_level = 'public' sur chaque requête moteur + Drizzle
+ * OWASP A03 : filtres par liste blanche de champs, valeurs échappées — zéro
+ *             concaténation d'une saisie utilisateur
  * OWASP A08 : checksum SHA-256 vérifié à l'indexation
  */
-import { esClient, ES_INDEX, ensureIndex } from '../../services/elasticsearch.js'
+import {
+  meiliClient, indexDroit, ensureIndex, filtreEgalite, DELAI_INDEXATION,
+} from '../../services/meilisearch.js'
 import { ALL_ARTICLES } from '../../data/code-travail-ci.js'
 import { CODE_TRAVAIL_BEN, CONVENTIONS_COLLECTIVES_BEN } from '../../data/code-travail-ben.js'
 import { CODE_TRAVAIL_TGO, CONVENTIONS_COLLECTIVES_TGO } from '../../data/code-travail-tgo.js'
@@ -63,51 +66,108 @@ export interface ArticleHit {
   highlight?: { texte?: string[]; titre_article?: string[] }
 }
 
-// OWASP A03 : Query DSL typé, jamais de string concat
+/**
+ * Convertit les documents rendus par le moteur en `ArticleHit`.
+ *
+ * `_formatted` porte les champs surlignés ; il est retiré du document pour ne
+ * pas fuiter dans la réponse de l'API, et reprojeté sous la forme `highlight`
+ * qu'attend la page Référentiels.
+ */
+function enArticles(documents: Record<string, unknown>[]): ArticleHit[] {
+  return documents.map(h => {
+    const formate = h._formatted as Record<string, string> | undefined
+    // Les champs techniques du moteur ne doivent pas fuiter dans la reponse
+    // de l'API : ils sont retires du document avant projection.
+    const { _formatted: _ignore, _rankingScore: _score, ...document } = h
+    const surligne = formate
+      ? {
+          ...(formate.texte ? { texte: [formate.texte] } : {}),
+          ...(formate.titre_article ? { titre_article: [formate.titre_article] } : {}),
+        }
+      : undefined
+    return {
+      ...(document as unknown as ArticleHit),
+      // Score de pertinence REEL : `showRankingScore` le fait rendre par le
+      // moteur, entre 0 et 1. Sans cette option Meilisearch classe sans
+      // chiffrer, et le champ `score` du contrat aurait du etre invente.
+      score: typeof h._rankingScore === 'number' ? h._rankingScore : 1,
+      ...(surligne && Object.keys(surligne).length > 0 ? { highlight: surligne } : {}),
+    }
+  })
+}
+
+/**
+ * Recherche plein texte.
+ *
+ * Meilisearch ne pondère pas les champs par un coefficient comme le
+ * `multi_match` d'Elasticsearch : il les CLASSE, dans l'ordre déclaré par
+ * `searchableAttributes` (voir `services/meilisearch.ts`). L'ancien
+ * `article_numero^5 / titre_article^3 / keywords^2 / texte` devient donc cet
+ * ordre-là. La tolérance aux fautes, que l'ancien code demandait par
+ * `fuzziness: 'AUTO'`, est native et active par défaut.
+ *
+ * OWASP A01 — `access_level = "public"` est toujours le premier filtre.
+ * OWASP A03 — aucune concaténation : `filtreEgalite` n'accepte qu'un champ de
+ * la liste blanche et échappe la valeur.
+ */
 export async function searchReferentiel(params: SearchParams): Promise<{ total: number; hits: ArticleHit[] }> {
   const { q, source, countryCode, convention, payrollCode, livre, from = 0, size = 10 } = params
   const isBrowse = !q || q === '*'
 
   try {
-    const filterArr: object[] = [{ term: { access_level: 'public' } }]
-    if (source)      filterArr.push({ term: { source } })
-    if (countryCode) filterArr.push({ term: { country_code: countryCode } })
-    if (convention)  filterArr.push({ term: { convention_slug: convention } })
-    if (payrollCode) filterArr.push({ term: { payroll_codes: payrollCode } })
-    if (livre)       filterArr.push({ term: { livre } })
+    const filtres = [filtreEgalite('access_level', 'public')]
+    if (source)      filtres.push(filtreEgalite('source', source))
+    if (countryCode) filtres.push(filtreEgalite('country_code', countryCode))
+    if (convention)  filtres.push(filtreEgalite('convention_slug', convention))
+    if (payrollCode) filtres.push(filtreEgalite('payroll_codes', payrollCode))
+    if (livre)       filtres.push(filtreEgalite('livre', livre))
 
-    const mustClause = isBrowse
-      ? { match_all: {} }
-      : { multi_match: { query: q, fields: ['article_numero^5', 'titre_article^3', 'texte', 'keywords^2'], fuzziness: 'AUTO', type: 'best_fields' } }
+    // Pagination : `page`/`hitsPerPage` fait rendre à Meilisearch un total
+    // EXHAUSTIF (`totalHits`), là où `offset`/`limit` ne donne qu'une
+    // estimation. L'interface pagine toujours par multiples de `size`, donc le
+    // calcul de page est exact ; le cas non aligné reste traité par offset.
+    const pagine = size > 0 && from % size === 0
+    // Les options de surlignage sont communes aux deux modes de pagination.
+    // Le même balisage <em> que l'ancien surlignage Elasticsearch : la page
+    // Référentiels échappe tout le HTML puis ne restaure que <em>/</em>.
+    const surlignage = {
+      filter: filtres.join(' AND '),
+      attributesToHighlight: ['texte', 'titre_article'],
+      showRankingScore: true,
+      attributesToCrop: ['texte'],
+      cropLength: 40,
+      highlightPreTag: '<em>',
+      highlightPostTag: '</em>',
+    }
+    const requete = isBrowse ? '' : q
 
-    const response = await esClient.search({
-      index: ES_INDEX,
-      from,
-      size,
-      query: {
-        bool: {
-          must: mustClause,
-          filter: filterArr,
-        },
-      } as any,
-      highlight: { fields: { texte: { fragment_size: 200, number_of_fragments: 2 }, titre_article: { number_of_fragments: 1 } } } as any,
-    })
+    // Les deux appels sont écrits séparément À DESSEIN. Le SDK type la réponse
+    // d'après les options reçues : `page`/`hitsPerPage` donne `totalHits`
+    // (exhaustif), `offset`/`limit` donne `estimatedTotalHits`. Passer un objet
+    // d'options construit par un ternaire rendait le type incertain et forçait
+    // une assertion — ici chaque branche est exacte, sans `as`.
+    const { hits, total } = pagine
+      ? await (async () => {
+          const r = await indexDroit().search(requete, {
+            ...surlignage, page: Math.floor(from / size) + 1, hitsPerPage: size,
+          })
+          return { hits: enArticles(r.hits), total: r.totalHits }
+        })()
+      : await (async () => {
+          const r = await indexDroit().search(requete, {
+            ...surlignage, offset: from, limit: size,
+          })
+          return { hits: enArticles(r.hits), total: r.estimatedTotalHits }
+        })()
 
-    const hits: ArticleHit[] = response.hits.hits.map((h: any) => ({
-      ...(h._source as ArticleHit),
-      score: h._score ?? 0,
-      highlight: h.highlight,
-    }))
-    const total = typeof response.hits.total === 'object' ? response.hits.total.value : (response.hits.total ?? 0)
-
-    // Si ES répond mais index vide, tenter PG
+    // Index vide ou en retard sur PostgreSQL : la source de vérité répond.
     if (hits.length === 0) {
       const pg = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
       if (pg.total > 0) return { total: pg.total, hits: pg.hits.map(a => ({ ...a, score: 1 }) as ArticleHit) }
     }
     return { total, hits }
   } catch {
-    // Fallback PostgreSQL si Elasticsearch indisponible
+    // Moteur indisponible — PostgreSQL reste la source de vérité.
     const result = await searchArticlesFromDb({ q, source, livre, countryCode, from, size })
     return {
       total: result.total,
@@ -116,74 +176,42 @@ export async function searchReferentiel(params: SearchParams): Promise<{ total: 
   }
 }
 
+/**
+ * Arborescence source → livre.
+ *
+ * Elle est lue en PostgreSQL, et seulement là. L'ancienne version demandait à
+ * Elasticsearch une agrégation imbriquée (`by_source` → `by_livre`) ;
+ * Meilisearch ne rend que des distributions de facettes PLATES, qui ne
+ * reproduisent pas cette imbrication. Comme la réponse PostgreSQL existait
+ * déjà, était exacte et portait la même forme, c'est elle qui sert — un
+ * chemin de moins, et aucune divergence possible entre les deux.
+ */
 export async function getHierarchyTree(): Promise<unknown> {
-  try {
-    const response = await esClient.search({
-      index: ES_INDEX,
-      size: 0,
-      query: { term: { access_level: 'public' } } as any,
-      aggs: {
-        by_source: {
-          terms: { field: 'source', size: 10 },
-          aggs: { by_livre: { terms: { field: 'livre', size: 20, missing: 'Général' } } },
-        },
-      } as any,
-    })
-    return (response.aggregations as any)?.by_source?.buckets ?? []
-  } catch {
-    // Fallback PostgreSQL si Elasticsearch indisponible
-    return getHierarchyTreeFromDb()
-  }
+  return getHierarchyTreeFromDb()
 }
 
-/** Cherche dans ES, fallback PG si ES indisponible */
+/**
+ * Article par identifiant. Lu en PostgreSQL : c'est une correspondance exacte
+ * sur la clé primaire, qu'aucun moteur de recherche ne fait mieux que la base
+ * qui détient la donnée. L'ancienne version interrogeait Elasticsearch puis
+ * repliait sur PostgreSQL ; le moteur n'apportait rien et pouvait servir un
+ * document périmé.
+ */
 export async function getArticleById(articleId: string): Promise<ArticleHit | null> {
-  try {
-    const response = await esClient.search({
-      index: ES_INDEX,
-      size: 1,
-      query: {
-        bool: {
-          must:   { term: { article_id: articleId } },
-          filter: { term: { access_level: 'public' } },
-        },
-      } as any,
-    })
-    const hit = response.hits.hits[0]
-    if (hit) return { ...(hit._source as ArticleHit), score: hit._score ?? 0 }
-  } catch { /* ES indisponible → fallback PG */ }
-
   const art = await getArticleByIdFromDb(articleId)
   return art ? { ...art, payroll_codes: art.payroll_codes, score: 1 } as ArticleHit : null
 }
 
-/** Cherche dans ES, fallback PG si ES indisponible */
+/** Articles liés à une rubrique de paie. Même raison : correspondance exacte. */
 export async function getArticlesByPayrollCode(code: string): Promise<ArticleHit[]> {
-  try {
-    const response = await esClient.search({
-      index: ES_INDEX,
-      size: 5,
-      query: {
-        bool: {
-          must:   { term: { payroll_codes: code } },
-          filter: { term: { access_level: 'public' } },
-        },
-      } as any,
-    })
-    return response.hits.hits.map((h: any) => ({
-      ...(h._source as ArticleHit),
-      score: h._score ?? 0,
-    }))
-  } catch {
-    const arts = await getArticlesByPayrollCodeFromDb(code)
-    return arts.map(a => ({ ...a, payroll_codes: a.payroll_codes, score: 1 }) as ArticleHit)
-  }
+  const arts = await getArticlesByPayrollCodeFromDb(code)
+  return arts.map(a => ({ ...a, payroll_codes: a.payroll_codes, score: 1 }) as ArticleHit)
 }
 
 /**
- * Seed complet : data file → PostgreSQL → Elasticsearch
+ * Seed complet : fichier de données → PostgreSQL → index de recherche
  * Étape 1 : upsert tous les articles en PG (source de vérité)
- * Étape 2 : réindexer ES depuis PG
+ * Étape 2 : réindexer le moteur depuis PG
  */
 export async function seedReferentiel(): Promise<{
   persisted: number; indexed: number; desactives: number
@@ -210,68 +238,77 @@ export async function seedReferentiel(): Promise<{
     .map(a => a.article_id)
   const desactives = await desactiverArticlesAbsentsDuCorpus('code_travail_ci', 'CIV', idsCorpus)
 
-  // Étape 3 — ES si disponible (non bloquant)
+  // Étape 3 — le moteur de recherche, si disponible (non bloquant)
   let indexed = 0
   try {
     await ensureIndex()
     // Un article désactivé doit disparaître de l'index : la réindexation ne
     // lit que les articles actifs et laisserait sinon le document en place.
     if (desactives.length > 0) {
-      await esClient.bulk({
-        refresh: true,
-        operations: desactives.map(id => ({ delete: { _index: ES_INDEX, _id: id } })),
-      })
+      const suppression = await indexDroit().deleteDocuments(desactives)
+      await meiliClient().tasks.waitForTask(suppression.taskUid, { timeout: DELAI_INDEXATION })
     }
     indexed = await reindexFromDb()
   } catch {
-    // ES indisponible — les articles sont en PG, le fallback PG sera utilisé
+    // Moteur indisponible — les articles sont en PG, le repli PG sera utilisé.
   }
 
   return { persisted, indexed, desactives: desactives.length }
 }
 
 /**
- * Réindexe Elasticsearch depuis PostgreSQL (admin uniquement)
- * Permet de reconstruire l'index sans toucher aux données
+ * Réindexe le moteur depuis PostgreSQL (admin uniquement).
+ * Reconstruit l'index sans toucher aux données.
+ *
+ * `article_id` étant la clé primaire de l'index, `addDocuments` écrase chaque
+ * document au lieu d'en créer un doublon. La tâche est ATTENDUE : Meilisearch
+ * indexe de façon asynchrone, et rendre le compte avant la fin de la tâche
+ * afficherait un nombre d'articles indexés qui n'est pas encore vrai.
  */
 export async function reindexFromDb(): Promise<number> {
   await ensureIndex()
   const articles = await getAllActiveArticles()
-
   if (articles.length === 0) return 0
 
-  const ops = articles.flatMap(a => [
-    { index: { _index: ES_INDEX, _id: a.article_id } },
-    {
-      article_id:      a.article_id,
-      article_numero:  a.article_numero,
-      country_code:    a.country_code ?? 'CIV',
-      source:          a.source,
-      convention_slug: a.convention_slug,
-      livre:           a.livre,
-      titre:           a.titre,
-      chapitre:        a.chapitre,
-      titre_article:   a.titre_article,
-      texte:           a.texte,
-      keywords:        a.keywords ?? [],
-      payroll_codes:   a.payroll_codes ?? [],
-      access_level:    a.access_level ?? 'public',
-      tenant_id:       'public',
-    },
-  ])
+  const documents = articles.map(a => ({
+    article_id:      a.article_id,
+    article_numero:  a.article_numero,
+    country_code:    a.country_code ?? 'CIV',
+    source:          a.source,
+    convention_slug: a.convention_slug,
+    livre:           a.livre,
+    titre:           a.titre,
+    chapitre:        a.chapitre,
+    titre_article:   a.titre_article,
+    texte:           a.texte,
+    keywords:        a.keywords ?? [],
+    payroll_codes:   a.payroll_codes ?? [],
+    access_level:    a.access_level ?? 'public',
+    tenant_id:       'public',
+  }))
 
-  const result = await esClient.bulk({ operations: ops, refresh: true })
-  const errors = result.items.filter((i: any) => i.index?.error)
-  if (errors.length) console.error('[ES reindex] erreurs:', errors.length)
-  return articles.length - errors.length
+  const tache = await indexDroit().addDocuments(documents, { primaryKey: 'article_id' })
+  const fin = await meiliClient().tasks.waitForTask(tache.taskUid, { timeout: DELAI_INDEXATION })
+  if (fin.status === 'failed') {
+    console.error('[recherche] indexation en échec :', fin.error?.code ?? 'cause inconnue')
+    return 0
+  }
+  return articles.length
 }
 
-/** Stats pour le dashboard admin */
+/**
+ * Stats pour le tableau de bord admin.
+ *
+ * `es_count` garde son nom : c'est le contrat lu par `CorpusJuridiqueCard`,
+ * qui affiche « indisponible » quand la valeur est négative. Le champ compte
+ * désormais les documents de l'index Meilisearch.
+ */
 export async function getReferentielStats(): Promise<{ pg_count: number; es_count: number }> {
-  const [pgCount, esResp] = await Promise.all([
+  const [pgCount, indexCount] = await Promise.all([
     countArticles(),
-    esClient.count({ index: ES_INDEX, query: { term: { access_level: 'public' } } as any })
-      .catch(() => ({ count: -1 })),
+    indexDroit().getStats()
+      .then(s => s.numberOfDocuments)
+      .catch(() => -1),
   ])
-  return { pg_count: pgCount, es_count: esResp.count }
+  return { pg_count: pgCount, es_count: indexCount }
 }

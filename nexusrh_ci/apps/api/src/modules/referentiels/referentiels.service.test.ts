@@ -1,33 +1,46 @@
 /**
- * Tests unitaires — referentiels.service.ts (double couche ES / PostgreSQL)
+ * Tests unitaires — referentiels.service.ts (Meilisearch + PostgreSQL)
  *
- * Elasticsearch est ENTIÈREMENT mocké (esClient.search / bulk / count / ensureIndex).
- * Le repository PostgreSQL est mocké également.
+ * Le MOTEUR est mocké ici (search / addDocuments / deleteDocuments / getStats),
+ * le repository PostgreSQL aussi. Le comportement réel du moteur est couvert
+ * séparément, contre un Meilisearch qui tourne, par
+ * `src/modules/meili-integration.test.ts` — parce qu'un mock ne pouvait pas
+ * révéler que `createIndex` sur un index existant ne lève pas mais rend une
+ * tâche en échec.
  *
- * Couvre :
- *  - searchReferentiel : ES OK, browse, filtres, highlights, fallback PG (index vide), catch ES
- *  - getHierarchyTree : ES OK + fallback PG
- *  - getArticleById : ES hit, ES miss → PG, ES catch → PG, null
- *  - getArticlesByPayrollCode : ES OK + fallback PG
- *  - seedReferentiel : PG + ES OK / ES indisponible
- *  - reindexFromDb : vide, succès, erreurs bulk
- *  - getReferentielStats : ES OK + ES en échec
+ * `filtreEgalite` et `nomIndex` ne sont PAS mockés : ce sont des fonctions
+ * pures, et `filtreEgalite` porte la garde OWASP A03. La mocker reviendrait à
+ * tester une liste blanche factice.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── Mock Elasticsearch ────────────────────────────────────────────────────────
-const { searchMock, bulkMock, countMock, ensureIndexMock } = vi.hoisted(() => ({
+// ── Mock du moteur ────────────────────────────────────────────────────────────
+const {
+  searchMock, addDocumentsMock, deleteDocumentsMock, getStatsMock,
+  waitForTaskMock, ensureIndexMock,
+} = vi.hoisted(() => ({
   searchMock: vi.fn(),
-  bulkMock: vi.fn(),
-  countMock: vi.fn(),
+  addDocumentsMock: vi.fn(),
+  deleteDocumentsMock: vi.fn(),
+  getStatsMock: vi.fn(),
+  waitForTaskMock: vi.fn(),
   ensureIndexMock: vi.fn(),
 }))
 
-vi.mock('../../services/elasticsearch.js', () => ({
-  esClient: { search: searchMock, bulk: bulkMock, count: countMock },
-  ES_INDEX: 'test_index',
-  ensureIndex: ensureIndexMock,
-}))
+vi.mock('../../services/meilisearch.js', async (importOriginal) => {
+  const reel = await importOriginal<typeof import('../../services/meilisearch.js')>()
+  return {
+    ...reel,
+    ensureIndex: ensureIndexMock,
+    indexDroit: () => ({
+      search: searchMock,
+      addDocuments: addDocumentsMock,
+      deleteDocuments: deleteDocumentsMock,
+      getStats: getStatsMock,
+    }),
+    meiliClient: () => ({ tasks: { waitForTask: waitForTaskMock } }),
+  }
+})
 
 // ── Mock des fichiers de données (corpus) — minimal et déterministe ───────────
 vi.mock('../../data/code-travail-ci.js', () => ({
@@ -83,27 +96,29 @@ import {
   getReferentielStats,
 } from './referentiels.service.js'
 
-function esHit(over: Record<string, unknown> = {}) {
+/** Document tel que le moteur le rend : champs du document + champs techniques. */
+function docMoteur(over: Record<string, unknown> = {}) {
   return {
-    _id: 'ci-1',
-    _score: 2.5,
-    _source: {
-      article_id: 'ci-1', article_numero: '1', source: 'code_travail_ci',
-      titre_article: 'Congés', texte: 'Texte sur les congés', payroll_codes: ['1000'],
-    },
-    highlight: { texte: ['…<em>congés</em>…'] },
+    article_id: 'ci-1', article_numero: '1', source: 'code_travail_ci',
+    titre_article: 'Congés', texte: 'Texte sur les congés', payroll_codes: ['1000'],
+    _rankingScore: 0.87,
+    _formatted: { texte: '…<em>congés</em>…' },
     ...over,
   }
 }
 
 beforeEach(() => {
   searchMock.mockReset()
-  bulkMock.mockReset()
-  countMock.mockReset()
+  addDocumentsMock.mockReset()
+  deleteDocumentsMock.mockReset()
+  getStatsMock.mockReset()
+  waitForTaskMock.mockReset()
+  waitForTaskMock.mockResolvedValue({ status: 'succeeded' })
+  addDocumentsMock.mockResolvedValue({ taskUid: 1 })
+  deleteDocumentsMock.mockResolvedValue({ taskUid: 2 })
   ensureIndexMock.mockReset()
   ensureIndexMock.mockResolvedValue(undefined)
   desactiverMock.mockReset()
-  // Par defaut : le corpus et la base concordent, rien a retirer du service.
   desactiverMock.mockResolvedValue([])
   upsertMock.mockReset()
   getAllActiveMock.mockReset()
@@ -115,65 +130,91 @@ beforeEach(() => {
 })
 
 describe('searchReferentiel', () => {
-  it('renvoie les hits ES avec score et highlight (total objet)', async () => {
-    searchMock.mockResolvedValueOnce({
-      hits: { total: { value: 1 }, hits: [esHit()] },
-    })
+  it('rend les documents du moteur avec leur score et leur surlignage', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur()] })
     const res = await searchReferentiel({ q: 'congés' })
     expect(res.total).toBe(1)
-    expect(res.hits[0]!.score).toBe(2.5)
-    expect(res.hits[0]!.highlight?.texte?.[0]).toContain('congés')
-    // construit une requête multi_match (pas browse)
-    const arg = searchMock.mock.calls[0]![0] as { query: { bool: { must: Record<string, unknown> } } }
-    expect(arg.query.bool.must.multi_match).toBeDefined()
+    expect(res.hits[0]!.score).toBe(0.87)
+    expect(res.hits[0]!.highlight?.texte?.[0]).toContain('<em>congés</em>')
   })
 
-  it('mode browse (q vide) → match_all et applique tous les filtres', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: { value: 0 }, hits: [] } })
-    searchDbMock.mockResolvedValueOnce({ total: 0, hits: [] })
+  it('ne laisse fuiter aucun champ technique du moteur dans la réponse', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur()] })
+    const res = await searchReferentiel({ q: 'congés' })
+    expect(res.hits[0]).not.toHaveProperty('_formatted')
+    expect(res.hits[0]).not.toHaveProperty('_rankingScore')
+  })
+
+  it('applique tous les filtres, access_level en tête', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur()] })
     await searchReferentiel({
-      q: '', source: 'code_travail_ci', countryCode: 'CIV',
-      convention: 'cc', payrollCode: '1000', livre: 'L1', from: 5, size: 20,
+      q: 'x', source: 'code_travail_ci', countryCode: 'CIV',
+      convention: 'cc', payrollCode: '1000', livre: 'L1',
     })
-    const arg = searchMock.mock.calls[0]![0] as {
-      from: number; size: number
-      query: { bool: { must: Record<string, unknown>; filter: object[] } }
-    }
-    expect(arg.from).toBe(5)
-    expect(arg.size).toBe(20)
-    expect(arg.query.bool.must.match_all).toBeDefined()
-    // access_level + 5 filtres = 6
-    expect(arg.query.bool.filter).toHaveLength(6)
+    const [, options] = searchMock.mock.calls[0] as [string, { filter: string }]
+    expect(options.filter).toBe(
+      'access_level = "public" AND source = "code_travail_ci" AND country_code = "CIV"'
+      + ' AND convention_slug = "cc" AND payroll_codes = "1000" AND livre = "L1"',
+    )
   })
 
-  it('mode browse avec q = "*"', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: { value: 1 }, hits: [esHit()] } })
+  it('OWASP A03 — une valeur hostile est échappée, le filtre reste une égalité', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 0, hits: [] })
+    searchDbMock.mockResolvedValueOnce({ total: 0, hits: [] })
+    await searchReferentiel({ q: 'x', source: 'a" OR access_level = "prive' })
+    const [, options] = searchMock.mock.calls[0] as [string, { filter: string }]
+    // Le guillemet est échappé : la clause ne peut pas se refermer, donc le
+    // filtre reste une égalité sur une valeur qui n'existe pas.
+    expect(options.filter).toContain('source = "a\\" OR access_level = \\"prive"')
+  })
+
+  it('mode parcours (q vide) → requête vide envoyée au moteur', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 2, hits: [docMoteur()] })
+    await searchReferentiel({ q: '' })
+    expect(searchMock.mock.calls[0]![0]).toBe('')
+  })
+
+  it('mode parcours avec q = "*" → requête vide aussi', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur()] })
     const res = await searchReferentiel({ q: '*' })
+    expect(searchMock.mock.calls[0]![0]).toBe('')
     expect(res.total).toBe(1)
   })
 
-  it('total numérique simple (pas un objet)', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: 7, hits: [esHit()] } })
-    const res = await searchReferentiel({ q: 'x' })
-    expect(res.total).toBe(7)
+  it('pagination alignée → page/hitsPerPage, et total EXHAUSTIF', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 42, hits: [docMoteur()] })
+    const res = await searchReferentiel({ q: 'x', from: 40, size: 20 })
+    const [, options] = searchMock.mock.calls[0] as [string, Record<string, number>]
+    expect(options.page).toBe(3)
+    expect(options.hitsPerPage).toBe(20)
+    expect(options.offset).toBeUndefined()
+    expect(res.total).toBe(42)
   })
 
-  it('total absent (undefined) → 0', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: undefined, hits: [esHit()] } })
-    const res = await searchReferentiel({ q: 'x' })
-    expect(res.total).toBe(0)
+  it('pagination non alignée → offset/limit, et total estimé', async () => {
+    searchMock.mockResolvedValueOnce({ estimatedTotalHits: 99, hits: [docMoteur()] })
+    const res = await searchReferentiel({ q: 'x', from: 7, size: 20 })
+    const [, options] = searchMock.mock.calls[0] as [string, Record<string, number>]
+    expect(options.offset).toBe(7)
+    expect(options.limit).toBe(20)
+    expect(options.page).toBeUndefined()
+    expect(res.total).toBe(99)
   })
 
-  it('score absent → 0', async () => {
-    searchMock.mockResolvedValueOnce({
-      hits: { total: { value: 1 }, hits: [esHit({ _score: undefined })] },
-    })
+  it('score absent du document → 1 par défaut', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur({ _rankingScore: undefined })] })
     const res = await searchReferentiel({ q: 'x' })
-    expect(res.hits[0]!.score).toBe(0)
+    expect(res.hits[0]!.score).toBe(1)
   })
 
-  it('ES répond mais index vide → fallback PG si PG a des résultats', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: { value: 0 }, hits: [] } })
+  it('surlignage absent → pas de champ highlight inventé', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 1, hits: [docMoteur({ _formatted: undefined })] })
+    const res = await searchReferentiel({ q: 'x' })
+    expect(res.hits[0]!.highlight).toBeUndefined()
+  })
+
+  it('index vide mais PostgreSQL a des résultats → PostgreSQL répond', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 0, hits: [] })
     searchDbMock.mockResolvedValueOnce({
       total: 2,
       hits: [
@@ -183,20 +224,20 @@ describe('searchReferentiel', () => {
     })
     const res = await searchReferentiel({ q: 'congés' })
     expect(res.total).toBe(2)
-    expect(res.hits[0]!.score).toBe(1)
     expect(res.hits[0]!.article_id).toBe('pg-1')
+    expect(res.hits[0]!.score).toBe(1)
   })
 
-  it('ES index vide ET PG vide → retourne le résultat ES (0)', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { total: { value: 0 }, hits: [] } })
+  it('index vide ET PostgreSQL vide → zéro, sans erreur', async () => {
+    searchMock.mockResolvedValueOnce({ totalHits: 0, hits: [] })
     searchDbMock.mockResolvedValueOnce({ total: 0, hits: [] })
     const res = await searchReferentiel({ q: 'rien' })
     expect(res.total).toBe(0)
     expect(res.hits).toHaveLength(0)
   })
 
-  it('ES indisponible (throw) → fallback PG complet', async () => {
-    searchMock.mockRejectedValueOnce(new Error('ES down'))
+  it('moteur indisponible → repli PostgreSQL complet', async () => {
+    searchMock.mockRejectedValueOnce(new Error('moteur HS'))
     searchDbMock.mockResolvedValueOnce({
       total: 1,
       hits: [{ article_id: 'pg-x', article_numero: '9', source: 's', titre_article: 'T', texte: 't' }],
@@ -207,106 +248,58 @@ describe('searchReferentiel', () => {
   })
 })
 
-describe('getHierarchyTree', () => {
-  it('retourne les buckets d’agrégation ES', async () => {
-    searchMock.mockResolvedValueOnce({
-      aggregations: { by_source: { buckets: [{ key: 'code_travail_ci', doc_count: 5 }] } },
-    })
-    const res = (await getHierarchyTree()) as Array<{ key: string }>
-    expect(res[0]!.key).toBe('code_travail_ci')
-  })
-
-  it('aggregations absentes → tableau vide', async () => {
-    searchMock.mockResolvedValueOnce({ aggregations: undefined })
-    expect(await getHierarchyTree()).toEqual([])
-  })
-
-  it('ES en échec → fallback getHierarchyTreeFromDb', async () => {
-    searchMock.mockRejectedValueOnce(new Error('down'))
+describe('lectures exactes — PostgreSQL seul', () => {
+  it('getHierarchyTree lit PostgreSQL et n’interroge pas le moteur', async () => {
     hierarchyDbMock.mockResolvedValueOnce([{ key: 'pg' }])
     const res = (await getHierarchyTree()) as Array<{ key: string }>
     expect(res[0]!.key).toBe('pg')
-    expect(hierarchyDbMock).toHaveBeenCalled()
-  })
-})
-
-describe('getArticleById', () => {
-  it('retourne le hit ES si trouvé', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { hits: [esHit()] } })
-    const res = await getArticleById('ci-1')
-    expect(res!.article_id).toBe('ci-1')
-    expect(res!.score).toBe(2.5)
+    expect(searchMock).not.toHaveBeenCalled()
   })
 
-  it('hit ES sans score → 0', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { hits: [esHit({ _score: null })] } })
-    const res = await getArticleById('ci-1')
-    expect(res!.score).toBe(0)
-  })
-
-  it('ES sans résultat → fallback PG (trouvé)', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { hits: [] } })
+  it('getArticleById lit PostgreSQL et n’interroge pas le moteur', async () => {
     getByIdMock.mockResolvedValueOnce({
-      article_id: 'pg-1', article_numero: '1', source: 's', titre_article: 'T', texte: 't', payroll_codes: ['1000'],
+      article_id: 'pg-1', article_numero: '1', source: 's',
+      titre_article: 'T', texte: 't', payroll_codes: ['1000'],
     })
     const res = await getArticleById('pg-1')
     expect(res!.article_id).toBe('pg-1')
-    expect(res!.score).toBe(1)
     expect(res!.payroll_codes).toEqual(['1000'])
+    expect(res!.score).toBe(1)
+    expect(searchMock).not.toHaveBeenCalled()
   })
 
-  it('ES throw → fallback PG, et PG renvoie null', async () => {
-    searchMock.mockRejectedValueOnce(new Error('down'))
+  it('getArticleById rend null quand PostgreSQL ne trouve rien', async () => {
     getByIdMock.mockResolvedValueOnce(null)
     expect(await getArticleById('inconnu')).toBeNull()
   })
-})
 
-describe('getArticlesByPayrollCode', () => {
-  it('retourne les hits ES', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { hits: [esHit(), esHit({ _id: 'ci-2', _score: 1 })] } })
-    const res = await getArticlesByPayrollCode('1000')
-    expect(res).toHaveLength(2)
-    expect(res[0]!.score).toBe(2.5)
-    expect(res[1]!.score).toBe(1)
-  })
-
-  it('hit sans score → 0', async () => {
-    searchMock.mockResolvedValueOnce({ hits: { hits: [esHit({ _score: undefined })] } })
-    const res = await getArticlesByPayrollCode('1000')
-    expect(res[0]!.score).toBe(0)
-  })
-
-  it('ES throw → fallback PG', async () => {
-    searchMock.mockRejectedValueOnce(new Error('down'))
+  it('getArticlesByPayrollCode lit PostgreSQL', async () => {
     getByPayrollMock.mockResolvedValueOnce([
       { article_id: 'pg-1', article_numero: '1', source: 's', titre_article: 'T', texte: 't', payroll_codes: ['1000'] },
     ])
     const res = await getArticlesByPayrollCode('1000')
-    expect(res[0]!.score).toBe(1)
     expect(res[0]!.payroll_codes).toEqual(['1000'])
+    expect(res[0]!.score).toBe(1)
+    expect(searchMock).not.toHaveBeenCalled()
   })
 })
 
 describe('seedReferentiel', () => {
-  it('persiste en PG puis indexe ES (succès)', async () => {
+  it('persiste en PostgreSQL puis indexe (succès)', async () => {
     upsertMock.mockResolvedValueOnce(3)
     getAllActiveMock.mockResolvedValueOnce([
       { article_id: 'a1', article_numero: '1', source: 's', titre_article: 'T', texte: 't' },
     ])
-    bulkMock.mockResolvedValueOnce({ items: [{ index: {} }] })
     const res = await seedReferentiel()
     expect(res.persisted).toBe(3)
     expect(res.indexed).toBe(1)
-    expect(upsertMock).toHaveBeenCalledTimes(1)
-    // le corpus multi-pays a été agrégé et passé à upsert
     const corpus = upsertMock.mock.calls[0]![0] as unknown[]
     expect(corpus.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('ES indisponible → persiste quand même, indexed = 0', async () => {
+  it('moteur indisponible → persiste quand même, indexed = 0', async () => {
     upsertMock.mockResolvedValueOnce(5)
-    ensureIndexMock.mockRejectedValueOnce(new Error('ES down'))
+    ensureIndexMock.mockRejectedValueOnce(new Error('moteur HS'))
     const res = await seedReferentiel()
     expect(res.persisted).toBe(5)
     expect(res.indexed).toBe(0)
@@ -314,13 +307,13 @@ describe('seedReferentiel', () => {
 })
 
 describe('reindexFromDb', () => {
-  it('retourne 0 si aucun article', async () => {
+  it('rend 0 si aucun article, sans toucher à l’index', async () => {
     getAllActiveMock.mockResolvedValueOnce([])
     expect(await reindexFromDb()).toBe(0)
-    expect(bulkMock).not.toHaveBeenCalled()
+    expect(addDocumentsMock).not.toHaveBeenCalled()
   })
 
-  it('indexe tous les articles (sans erreur bulk)', async () => {
+  it('indexe tous les articles en un seul lot', async () => {
     getAllActiveMock.mockResolvedValueOnce([
       { article_id: 'a1', article_numero: '1', source: 's', titre_article: 'T', texte: 't' },
       {
@@ -330,35 +323,31 @@ describe('reindexFromDb', () => {
         access_level: 'public',
       },
     ])
-    bulkMock.mockResolvedValueOnce({ items: [{ index: {} }, { index: {} }] })
     const res = await reindexFromDb()
     expect(res).toBe(2)
-    // 2 articles → 4 opérations (action + document)
-    const ops = (bulkMock.mock.calls[0]![0] as { operations: unknown[] }).operations
-    expect(ops).toHaveLength(4)
+    const [documents, options] = addDocumentsMock.mock.calls[0] as [unknown[], { primaryKey: string }]
+    expect(documents).toHaveLength(2)
+    expect(options.primaryKey).toBe('article_id')
   })
 
-  it('déduit les erreurs bulk du compte', async () => {
+  it('attend la tâche d’indexation, et rend 0 si elle échoue', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     getAllActiveMock.mockResolvedValueOnce([
       { article_id: 'a1', article_numero: '1', source: 's', titre_article: 'T', texte: 't' },
-      { article_id: 'a2', article_numero: '2', source: 's', titre_article: 'T', texte: 't' },
     ])
-    bulkMock.mockResolvedValueOnce({ items: [{ index: { error: { type: 'x' } } }, { index: {} }] })
-    const res = await reindexFromDb()
-    expect(res).toBe(1)
+    waitForTaskMock.mockResolvedValueOnce({ status: 'failed', error: { code: 'un_code' } })
+    expect(await reindexFromDb()).toBe(0)
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
   })
 
-  it('applique les valeurs par défaut (country CIV, keywords/payroll vides, access public)', async () => {
+  it('applique les valeurs par défaut (CIV, listes vides, access public)', async () => {
     getAllActiveMock.mockResolvedValueOnce([
       { article_id: 'a1', article_numero: '1', source: 's', titre_article: 'T', texte: 't' },
     ])
-    bulkMock.mockResolvedValueOnce({ items: [{ index: {} }] })
     await reindexFromDb()
-    const ops = (bulkMock.mock.calls[0]![0] as { operations: Array<Record<string, unknown>> }).operations
-    const doc = ops[1]!
+    const [documents] = addDocumentsMock.mock.calls[0] as [Array<Record<string, unknown>>]
+    const doc = documents[0]!
     expect(doc.country_code).toBe('CIV')
     expect(doc.keywords).toEqual([])
     expect(doc.payroll_codes).toEqual([])
@@ -368,17 +357,17 @@ describe('reindexFromDb', () => {
 })
 
 describe('getReferentielStats', () => {
-  it('agrège pg_count et es_count', async () => {
+  it('agrège pg_count et le nombre de documents de l’index', async () => {
     countArticlesMock.mockResolvedValueOnce(120)
-    countMock.mockResolvedValueOnce({ count: 118 })
+    getStatsMock.mockResolvedValueOnce({ numberOfDocuments: 118 })
     const res = await getReferentielStats()
     expect(res.pg_count).toBe(120)
     expect(res.es_count).toBe(118)
   })
 
-  it('ES count en échec → es_count = -1', async () => {
+  it('moteur en échec → es_count = -1, ce que l’interface affiche « indisponible »', async () => {
     countArticlesMock.mockResolvedValueOnce(50)
-    countMock.mockRejectedValueOnce(new Error('ES down'))
+    getStatsMock.mockRejectedValueOnce(new Error('moteur HS'))
     const res = await getReferentielStats()
     expect(res.pg_count).toBe(50)
     expect(res.es_count).toBe(-1)
@@ -387,51 +376,29 @@ describe('getReferentielStats', () => {
 
 describe('seedReferentiel — retrait des articles sortis du corpus', () => {
   beforeEach(() => {
-    desactiverMock.mockReset()
-    upsertMock.mockReset()
-    getAllActiveMock.mockReset()
-    ensureIndexMock.mockReset()
-    bulkMock.mockReset()
     upsertMock.mockResolvedValue(2)
     getAllActiveMock.mockResolvedValue([])
   })
 
-  it('desactive les articles absents du corpus et les sort de l index', async () => {
-    // Le cas qui a laisse les articles fictifs visibles en production :
-    // l upsert n efface jamais, donc un article retire du fichier survivait.
+  it('désactive les articles absents du corpus et les sort de l’index', async () => {
     desactiverMock.mockResolvedValue(['art-32-3', 'art-20-1'])
-
     const r = await seedReferentiel()
-
     expect(r.desactives).toBe(2)
-    const suppressions = bulkMock.mock.calls
-      .flatMap(([arg]) => (arg as { operations?: unknown[] })?.operations ?? [])
-      .filter((op): op is { delete: { _id: string } } =>
-        typeof op === 'object' && op !== null && 'delete' in op)
-      .map(op => op.delete._id)
-    expect(suppressions).toEqual(['art-32-3', 'art-20-1'])
+    expect(deleteDocumentsMock).toHaveBeenCalledWith(['art-32-3', 'art-20-1'])
+    expect(waitForTaskMock).toHaveBeenCalledWith(2, expect.objectContaining({ timeout: expect.any(Number) }))
   })
 
-  it('ne touche a l index que s il y a quelque chose a retirer', async () => {
+  it('ne touche à l’index que s’il y a quelque chose à retirer', async () => {
     desactiverMock.mockResolvedValue([])
-
     const r = await seedReferentiel()
-
     expect(r.desactives).toBe(0)
-    const suppressions = bulkMock.mock.calls
-      .flatMap(([arg]) => (arg as { operations?: unknown[] })?.operations ?? [])
-      .filter(op => typeof op === 'object' && op !== null && 'delete' in op)
-    expect(suppressions).toHaveLength(0)
+    expect(deleteDocumentsMock).not.toHaveBeenCalled()
   })
 
-  it('ne desactive que le Code du Travail ivoirien, jamais les autres pays', async () => {
+  it('ne désactive que le Code du Travail ivoirien, jamais les autres pays', async () => {
     desactiverMock.mockResolvedValue([])
-
     await seedReferentiel()
-
-    const appel = desactiverMock.mock.calls[0]
-    expect(appel).toBeDefined()
-    const [source, pays, ids] = appel as [string, string, string[]]
+    const [source, pays, ids] = desactiverMock.mock.calls[0] as [string, string, string[]]
     expect(source).toBe('code_travail_ci')
     expect(pays).toBe('CIV')
     expect(ids).toEqual(['ci-1', 'ci-2'])

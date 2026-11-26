@@ -5,11 +5,11 @@ import {
   getArticleById, getArticlesByPayrollCode,
   seedReferentiel, reindexFromDb, getReferentielStats,
 } from './referentiels.service.js'
-import { ensureIndex } from '../../services/elasticsearch.js'
+import { ensureIndex } from '../../services/meilisearch.js'
 import { activityPlatform } from '../../utils/audit-log.js'
 
 export async function referentielsRoutes(app: FastifyInstance): Promise<void> {
-  await ensureIndex().catch(err => app.log.warn('[ES] index non dispo:', err.message))
+  await ensureIndex().catch(err => app.log.warn('[recherche] index non disponible :', err.message))
 
   // ── Recherche full-text ──────────────────────────────────────────────────────
   app.get('/search', {
