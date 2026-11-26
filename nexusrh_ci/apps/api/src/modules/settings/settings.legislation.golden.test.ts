@@ -27,6 +27,7 @@ vi.mock('@nexusrhci/shared/crypto', () => ({
   encrypt: (v: string) => `enc(${v})`,
   encryptIfPresent: (v: string | null | undefined) => (v ? `enc(${v})` : null),
   decryptIfPresent: (v: string | null | undefined) => (v ? `dec(${v})` : null),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 vi.mock('../../services/ai-credentials.service.js', () => ({
   maskKey: (k: string | null | undefined) => (k ? `••••${k.slice(-4)}` : null),

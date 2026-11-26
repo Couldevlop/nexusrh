@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
+import { decryptStoredValue } from '@nexusrhci/shared/crypto'
 import { encodeField } from '../sage/sage.service.js'
 import { auditTenant } from '../../utils/audit-log.js'
 import {
@@ -146,6 +147,24 @@ const HEAVY_EXPORT_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: '1 minute' }
 // Une PME ivoirienne classique a < 500 employés ; un export > 2000 lignes
 // indique soit un tenant entreprise (à traiter par batch), soit un abus.
 const DISA_MAX_EMPLOYEES = 2_000
+
+/**
+ * Rend lisible le NNI de chaque ligne avant de l'emettre.
+ *
+ * `employees.nni` est une colonne MIXTE : du clair pour les lignes ecrites par
+ * les seeds et les imports, un cryptogramme pour celles saisies par
+ * l'interface. Les sorties de ce module sont des DECLARATIONS LEGALES — XML
+ * DISA, CSV e-CNPS, RNS — et elles lisaient la colonne brute : au premier NNI
+ * saisi par l'interface, la declaration part avec un cryptogramme a la place du
+ * numero d'identification. `decryptStoredValue` est idempotente sur du clair,
+ * donc appliquer cette normalisation deux fois ne change rien.
+ */
+function normaliserNni<T extends { nni?: string | null }>(lignes: T[]): T[] {
+  for (const l of lignes) {
+    (l as { nni?: string | null }).nni = decryptStoredValue(l.nni) ?? ''
+  }
+  return lignes
+}
 
 const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', ensureTenantSchemaHook)
@@ -293,7 +312,7 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         aggParams,
       )
 
-      const employees = slipsRes.rows
+      const employees = normaliserNni(slipsRes.rows)
       // Habilitations : une déclaration est un document unique pour sa filiale ; elle ne
       // peut pas être produite par un RH restreint si elle agrège d'autres filiales.
       if (await countEmployeesOutOfScope(schema, employees.map(e => e.employee_id), await requestHrScope(request, 'e')) > 0) {
@@ -439,11 +458,11 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
       const decl = res.rows[0]
       if (!decl) return reply.status(404).send({ error: 'Déclaration introuvable' })
 
-      const employees = decl.data as Array<{
+      const employees = normaliserNni(decl.data as Array<{
         employee_id: string; first_name: string; last_name: string
         cnps_number: string; nni: string
         gross_salary: string; total_cnps_sal: string; total_cnps_pat: string
-      }>
+      }>)
 
       // Format CSV e-CNPS CI
       const lines: string[] = [
@@ -573,7 +592,7 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         aggParams,
       )
 
-      const employees = empsRes.rows
+      const employees = normaliserNni(empsRes.rows)
       // Habilitations : DISA = document unique de la filiale (409 si d'autres filiales y figurent).
       if (await countEmployeesOutOfScope(schema, employees.map(e => e.employee_id), await requestHrScope(request, 'e')) > 0) {
         return reply.status(409).send({ error: SHARED_PERIOD_ERROR })
@@ -724,10 +743,10 @@ const cnpsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({ error: "Échec de l'export NEVA" })
       }
 
-      const employees = d.data as Array<{
+      const employees = normaliserNni(d.data as Array<{
         nni: string; last_name: string; first_name: string; cnps_number: string
         gross_salary: string; total_cnps_sal: string; total_cnps_pat: string
-      }>
+      }>)
 
       const esc = (v: string) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       const dateDec = new Date().toISOString().split('T')[0]
@@ -857,7 +876,7 @@ ${salaries}
       )
 
       return reply.send({
-        employee: { id: emp.id, name: `${emp.first_name} ${emp.last_name}`, cnps: emp.cnps_number, nni: emp.nni },
+        employee: { id: emp.id, name: `${emp.first_name} ${emp.last_name}`, cnps: emp.cnps_number, nni: decryptStoredValue(emp.nni) },
         cessation: { exitDate, reason, ancienneteMois: Math.floor(ancienneteMois), ancienneteAns: ancienneteAns.toFixed(1) },
         droitsLegaux: {
           preavisJours,
@@ -1384,7 +1403,7 @@ ${salaries}
         rnsParams,
       )
 
-      const employees = empsRes.rows
+      const employees = normaliserNni(empsRes.rows)
       if (employees.length === 0) {
         return reply.status(404).send({ error: `Aucun bulletin pour l'année ${yr}` })
       }
@@ -1507,11 +1526,11 @@ ${salaries}
         fastify.log.error({ err: (err as Error).message }, '[cnps] DISA export failed')
         return reply.status(500).send({ error: "Échec de l'export DISA" })
       }
-      const employees = disa.data as Array<{
+      const employees = normaliserNni(disa.data as Array<{
         employee_id: string; first_name: string; last_name: string
         nni: string; cnps_number: string; job_title: string
         total_sal: string; total_cnps_sal: string; total_its: string
-      }>
+      }>)
 
       const headerLines = [
         `DÉCLARATION INDIVIDUELLE DES SALAIRES ANNUELS (DISA) — EXERCICE ${yr}`,

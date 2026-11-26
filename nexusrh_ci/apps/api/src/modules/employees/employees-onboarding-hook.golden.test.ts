@@ -29,6 +29,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
 vi.mock('@nexusrhci/shared/crypto', () => ({
   encryptIfPresent: vi.fn((v: string | null | undefined) => v ?? null),
   decryptIfPresent: vi.fn((v: string | null | undefined) => v ?? null),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 
 const { emitMock } = vi.hoisted(() => ({ emitMock: vi.fn() }))

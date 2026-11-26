@@ -31,7 +31,7 @@ vi.mock('../../utils/schema-migrations.js', () => ({
 vi.mock('@nexusrhci/shared/ssrf-guard', () => ({ isSafeOutboundUrl: isSafeOutboundUrlMock }))
 vi.mock('./attendance.fetch.js', () => ({ fetchDevicePunches: fetchDevicePunchesMock }))
 vi.mock('./attendance.queue.js', () => ({ enqueuePoll: enqueuePollMock }))
-vi.mock('@nexusrhci/shared/crypto', () => ({ encrypt: encryptMock, decryptIfPresent: decryptIfPresentMock }))
+vi.mock('@nexusrhci/shared/crypto', () => ({ encrypt: encryptMock, decryptIfPresent: decryptIfPresentMock, decryptStoredValue: decryptIfPresentMock }))
 
 import authPlugin from '../../plugins/auth.js'
 import { attendanceRoutes } from './attendance.routes.js'

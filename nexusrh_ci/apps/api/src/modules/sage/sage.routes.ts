@@ -8,6 +8,7 @@
  * SÉCURITÉ : OWASP A01 (réservé admin/hr_manager), A03 (Zod + valeurs bornées),
  * A09 (audit_log des exports), neutralisation des injections CSV (service).
  */
+import { decryptStoredValue } from '@nexusrhci/shared/crypto'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { pool as rawPool } from '../../db/pool.js'
@@ -163,6 +164,15 @@ const sageRoutes: FastifyPluginAsync = async (fastify) => {
          ${where} ORDER BY e.last_name, e.first_name`,
         params,
       )
+      // NNI et IBAN sont des colonnes MIXTES : du clair pour les lignes
+      // d'avant le chiffrement, un cryptogramme pour celles saisies par
+      // l'interface. Sans cette lecture, l'export SAGE sortait le cryptogramme
+      // a la place du numero — constate en production le 26/11/2026 sur les
+      // IBAN, les seuls deja chiffres.
+      for (const r of res.rows as Array<Record<string, unknown>>) {
+        r.nni  = decryptStoredValue(r.nni as string | null)
+        r.iban = decryptStoredValue(r.iban as string | null)
+      }
       const scope = await loadEntityScope(schema)
       const csv = buildSageCsv(sageColumnsFor('employees', scope.multiEntity), res.rows, { separator: resolveSeparator(cfg.separator), includeHeader: cfg.include_header })
       audit(schema, request.user.sub, 'sage.export_employees', { count: res.rowCount, legalEntityId: filter.legalEntityId }, request.ip ?? null)

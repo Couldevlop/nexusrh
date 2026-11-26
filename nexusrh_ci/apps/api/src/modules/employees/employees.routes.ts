@@ -3,7 +3,7 @@ import { isSelfAction, SELF_ACTION_ERROR } from '../../services/habilitation.ser
 import { z } from 'zod'
 import { pool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { encryptIfPresent, decryptIfPresent } from '@nexusrhci/shared/crypto'
+import { decryptStoredValue, encryptIfPresent } from '@nexusrhci/shared/crypto'
 import { describeDbError } from '../../utils/db-error.js'
 import { insertEmployeeRecord, afterEmployeeCreated } from '../../services/employee-create.service.js'
 import { archiveEmployeeCascade } from '../../services/employee-archive.service.js'
@@ -350,7 +350,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       const defs = redactCustom && res.rows.length ? await loadCustomFieldDefinitions(schema) : []
       const listRows = (res.rows as Array<Record<string, unknown>>).map((row) => {
         const hadIban = typeof row.iban === 'string' && row.iban !== ''
-        const iban = isHr && !masked && hadIban ? decryptIfPresent(row.iban as string) : null
+        const iban = isHr && !masked && hadIban ? decryptStoredValue(row.iban as string) : null
         row.iban_masked = iban ? maskIban(iban) : null
         delete row.iban
         if (!isHr) { row.linked_user_id = null; row.linked_user_role = null }
@@ -459,8 +459,9 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       // Masqué : jamais déchiffré (presentEmployeeRow met le chiffré à null).
       const showClear = canSeeSensitive && !isMasked(maskCtx)
       if (showClear) {
-        if (emp.nni) emp.nni = decryptIfPresent(emp.nni)
-        if (emp.iban) emp.iban = decryptIfPresent(emp.iban)
+        // Colonne mixte : decryptIfPresent effacerait un NNI en clair.
+        if (emp.nni) emp.nni = decryptStoredValue(emp.nni)
+        if (emp.iban) emp.iban = decryptStoredValue(emp.iban)
       }
       // Compte utilisateur lié : information d'administration, rôles RH seulement.
       if (!['admin', 'hr_manager', 'hr_officer'].includes(request.user.role)) {

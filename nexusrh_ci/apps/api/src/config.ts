@@ -18,6 +18,9 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6380'),
 
   ENCRYPTION_KEY:        z.string().length(64, 'ENCRYPTION_KEY doit être 64 caractères hex (32 bytes)').optional(),
+  // Clé PRÉCÉDENTE, le temps d'une rotation : déchiffre l'existant, ne chiffre
+  // jamais (cf. packages/shared/src/crypto.ts).
+  ENCRYPTION_KEY_PREVIOUS: z.string().length(64, 'ENCRYPTION_KEY_PREVIOUS doit être 64 caractères hex (32 bytes)').optional(),
   JWT_SECRET:            z.string().min(32),
   // Swagger /docs : exposé uniquement hors production, sauf override explicite.
   ENABLE_DOCS:           z.string().transform(v => v === 'true').prefault('false'),
@@ -162,8 +165,8 @@ const env = parsed.data
 // ── Durcissement secrets (OWASP A02/A05) ──────────────────────────────────────
 // Une valeur d'exemple/faible PRÉSENTE est refusée au boot (secret prévisible →
 // JWT forgeable, ou clé de chiffrement triviale → NNI/IBAN réversibles).
-// Une ENCRYPTION_KEY ABSENTE n'est pas fatale (comportement historique : le
-// chiffrement NNI/IBAN échouera à l'usage) mais émet un avertissement marqué.
+// Une ENCRYPTION_KEY ABSENTE est désormais FATALE en production (voir plus bas) :
+// une API qui démarre sans pouvoir chiffrer NNI et IBAN ment sur son état.
 const EXAMPLE_JWT_SECRET = 'nexusrh-ci-super-secret-key-minimum-32-chars!!'
 /** true si une clé PRÉSENTE est faible (n'évalue pas l'absence — voir ci-dessous). */
 function isWeakEncryptionKey(key: string): boolean {
@@ -194,8 +197,25 @@ if (env.NODE_ENV === 'production') {
   if (env.ENCRYPTION_KEY && isWeakEncryptionKey(env.ENCRYPTION_KEY)) {
     fatal.push('ENCRYPTION_KEY présente mais faible : 64 caractères hex aléatoires requis (pas la valeur d\'exemple tout-à-zéro).')
   }
+  // DÉSORMAIS FATAL, et c'est un renversement assumé : le commit 31d53b2 avait
+  // rendu l'absence tolérable pour débloquer un déploiement. Le résultat a été
+  // une API qui démarre en annonçant qu'elle fonctionne, alors que toute
+  // création d'employé portant un NNI ou un IBAN rend un 500 — exactement
+  // l'incident constaté. Une clé qui protège des numéros d'identification
+  // nationale et des IBAN ne se devine pas à l'exécution : ou elle est là, ou
+  // l'API refuse de servir.
   if (!env.ENCRYPTION_KEY) {
-    console.warn('[config] ⚠ ENCRYPTION_KEY absente en production — le chiffrement NNI/IBAN sera indisponible (les créations d\'employés avec NNI/IBAN échoueront). Définir une clé 64-hex est fortement recommandé.')
+    fatal.push('ENCRYPTION_KEY absente : obligatoire en production (NNI/IBAN, secrets TOTP, mots de passe SMTP des tenants) — openssl rand -hex 32.')
+  }
+  if (env.ENCRYPTION_KEY_PREVIOUS) {
+    if (isWeakEncryptionKey(env.ENCRYPTION_KEY_PREVIOUS)) {
+      fatal.push('ENCRYPTION_KEY_PREVIOUS présente mais faible : 64 caractères hex attendus.')
+    }
+    if (env.ENCRYPTION_KEY_PREVIOUS === env.ENCRYPTION_KEY) {
+      // Sinon la « rotation » ne rote rien et personne ne s'en aperçoit : les
+      // deux clés étant identiques, tout continue de fonctionner.
+      fatal.push('ENCRYPTION_KEY_PREVIOUS identique à ENCRYPTION_KEY : la rotation ne change rien, retirer la clé précédente.')
+    }
   }
   if (!env.CLAMAV_HOST) {
     // Le code d'analyse antivirale est correct et échoue fermé une fois

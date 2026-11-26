@@ -9,6 +9,8 @@
 export type HrDocumentType =
   | 'cdi_ci' | 'cdd_ci' | 'certificat_travail' | 'attestation_emploi'
 
+import { decryptStoredValue } from '@nexusrhci/shared/crypto'
+
 export interface HrDocumentInput {
   type: HrDocumentType
   tenantName?: string
@@ -48,7 +50,10 @@ export function generateHRDocument(input: HrDocumentInput): { title: string; mar
   const city = input.city ?? 'Abidjan'
   const emp = input.employee ?? {}
   const empName = `${emp.firstName ?? '__________'} ${emp.lastName ?? '__________'}`.trim()
-  const nni = emp.nni ?? '__________'
+  // La colonne `employees.nni` porte SOIT du clair (lignes d'avant le
+  // chiffrement) SOIT un cryptogramme (saisie par l'interface). Sans cette
+  // lecture, l'attestation imprimait le cryptogramme a la place du numero.
+  const nni = decryptStoredValue(emp.nni) ?? '__________'
   const cnpsSal = emp.cnpsNumber ?? '__________'
   const job = emp.jobTitle ?? '__________'
   const cnpsEmp = input.employer?.cnpsNumber ?? '__________'
@@ -166,6 +171,14 @@ _______________________
 Pour l'Employeur
 `
       return { title, markdown }
+    }
+    default: {
+      // Le `switch` n'avait pas de branche par defaut : un type absent de la
+      // liste faisait rendre `undefined` a la fonction, et l'appelant plantait
+      // sur `.markdown` — un 500 au lieu d'un message. `never` fait echouer la
+      // COMPILATION si un type est ajoute a l'union sans etre traite ici.
+      const inconnu: never = input.type
+      throw new Error(`Type de document RH non pris en charge : ${String(inconnu)}`)
     }
   }
 }

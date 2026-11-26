@@ -18,6 +18,7 @@ vi.mock('../config.js', () => ({
 
 vi.mock('@nexusrhci/shared/crypto', () => ({
   decryptIfPresent: (v: string | null | undefined) => (v ? v.replace('enc:', '') : null),
+  decryptStoredValue: vi.fn((v: string | null | undefined) => v ?? null),
 }))
 
 import {

@@ -20,7 +20,7 @@ import { z } from 'zod'
 import ExcelJS from 'exceljs'
 import { pool as rawPool } from '../../db/pool.js'
 import { ensureTenantSchema } from '../../utils/schema-migrations.js'
-import { decryptIfPresent, encryptIfPresent } from '@nexusrhci/shared/crypto'
+import { decryptStoredValue, decryptIfPresent, encryptIfPresent } from '@nexusrhci/shared/crypto'
 import { sendBankTransferEmail } from '../../services/email.js'
 import { loadTenantMailBySchema } from '../../services/tenant-mail.service.js'
 import {
@@ -70,8 +70,11 @@ async function fetchTransfers(schema: string, month: string, bank: string, scope
     firstName: x.first_name ?? '',
     fullName: `${(x.last_name ?? '').toUpperCase()} ${x.first_name ?? ''}`.trim(),
     employeeNumber: x.employee_number ?? '',
-    nni: decryptIfPresent(x.nni) ?? '',
-    iban: decryptIfPresent(x.iban) ?? '',
+    // decryptIfPresent rend null sur une valeur en CLAIR : le fichier de
+    // virement serait parti avec un compte beneficiaire VIDE. La colonne est
+    // mixte (clair pour les lignes importees, chiffre pour la saisie).
+    nni: decryptStoredValue(x.nni) ?? '',
+    iban: decryptStoredValue(x.iban) ?? '',
     bankName: x.bank_name ?? bank,
     department: x.department ?? '',
     jobTitle: x.job_title ?? '',

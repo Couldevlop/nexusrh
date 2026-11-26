@@ -31,6 +31,7 @@ vi.mock('../../config.js', () => ({
 vi.mock('../../utils/schema-migrations.js', () => ({ ensureTenantSchema: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@nexusrhci/shared/crypto', () => ({
   decryptIfPresent: (v: string | null) => (v ? v.replace('enc:', '') : null),
+  decryptStoredValue: (v: string | null) => (v ? v.replace('enc:', '') : null),
   encryptIfPresent: (v: string | null) => (v ? `enc:${v}` : null),
 }))
 
