@@ -48,7 +48,7 @@ export interface PrerenderPage {
   jsonLd?: Record<string, unknown>
 }
 
-const EMAIL = PUBLISHER.demoEmail
+const EMAIL = PUBLISHER.email
 /** Téléphones au format E.164 (CI, CI, France), tels qu'affichés sur la vitrine. */
 const TELEPHONES = PHONES.map((p) => p.e164)
 const ORG_URL = PUBLISHER.url
@@ -85,7 +85,7 @@ const ORGANIZATION = {
   name: 'OpenLab Consulting',
   url: ORG_URL,
   logo: `${SITE_URL}/openlab.png`,
-  email: PUBLISHER.infoEmail,
+  email: PUBLISHER.email,
   telephone: TELEPHONES,
   address: ADDRESS,
   // Un seul point de contact, comme sur la page : les trois numéros publiés, dans l'ordre.
@@ -94,7 +94,7 @@ const ORGANIZATION = {
       '@type': 'ContactPoint',
       contactType: 'customer service',
       telephone: TELEPHONES,
-      email: PUBLISHER.supportEmail,
+      email: PUBLISHER.email,
       hoursAvailable: SUPPORT_HOURS,
       areaServed: AREA_SERVED,
       availableLanguage: ['French', 'English'],
@@ -442,7 +442,7 @@ export function buildLlmsFullTxt(): string {
     `- **${t('trust.publisher.title')}** : ${t('trust.publisher.name')} — ${t('trust.publisher.text')}`,
     `- **${t('trust.labels.address')}** : ${t('contact.address')}`,
     `- **${t('trust.labels.phones')}** : ${PHONES.map((p) => p.display).join(' · ')}`,
-    `- **${t('trust.labels.emails')}** : ${PUBLISHER.infoEmail} · ${PUBLISHER.supportEmail} · ${PUBLISHER.demoEmail}`,
+    `- **${t('trust.labels.emails')}** : ${PUBLISHER.email}`,
     `- **${t('trust.labels.whatsapp')}** : ${PUBLISHER.whatsappDisplay} (${PUBLISHER.whatsapp})`,
     `- **${t('trust.labels.hours')}** : ${t('trust.supportHours')}`,
     `- **${t('trust.data.title')}** : ${t('trust.data.text')}`,

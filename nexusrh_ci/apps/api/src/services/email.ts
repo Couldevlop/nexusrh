@@ -232,7 +232,7 @@ export async function sendWelcomeTenantEmail(params: {
               <p style="margin:0;font-size:13px;">
                 <a href="https://wa.me/2250749439203" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 49 43 92 03</a>
                 &nbsp;·&nbsp;
-                <a href="mailto:support@nexusrh-ci.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">support@nexusrh-ci.com</a>
+                <a href="mailto:waopron@openlabconsulting.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">waopron@openlabconsulting.com</a>
               </p>
               <p style="margin:16px 0 0;font-size:11px;color:#9ca3af;">
                 OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · Côte d'Ivoire
@@ -260,7 +260,7 @@ export async function sendWelcomeTenantEmail(params: {
     to,
     subject: `🎉 Votre espace NexusRH est prêt — ${tenantName}`,
     html,
-    text: `Bonjour ${firstName},\n\nVotre espace NexusRH pour ${tenantName} est prêt.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+    text: `Bonjour ${firstName},\n\nVotre espace NexusRH pour ${tenantName} est prêt.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nOpenLab Consulting — waopron@openlabconsulting.com`,
   })
 }
 
@@ -299,7 +299,7 @@ export async function sendEmployeeWelcomeEmail(params: {
         </div>
       </td></tr>
       <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#9ca3af;">OpenLab Consulting · support@nexusrh-ci.com · +225 07 49 43 92 03</p>
+        <p style="margin:0;font-size:12px;color:#9ca3af;">OpenLab Consulting · waopron@openlabconsulting.com · +225 07 49 43 92 03</p>
       </td></tr>
     </table>
   </td></tr>
@@ -481,7 +481,7 @@ export async function sendPasswordResetEmail(params: {
               <p style="margin:0;font-size:13px;">
                 <a href="https://wa.me/2250749439203" style="color:${primaryColor};text-decoration:none;font-weight:600;">WhatsApp +225 07 49 43 92 03</a>
                 &nbsp;·&nbsp;
-                <a href="mailto:support@nexusrh-ci.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">support@nexusrh-ci.com</a>
+                <a href="mailto:waopron@openlabconsulting.com" style="color:${primaryColor};text-decoration:none;font-weight:600;">waopron@openlabconsulting.com</a>
               </p>
               <p style="margin:16px 0 0;font-size:11px;color:#9ca3af;">
                 OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · Côte d'Ivoire
@@ -504,7 +504,7 @@ export async function sendPasswordResetEmail(params: {
     to,
     subject: `🔑 Réinitialisation de votre mot de passe — ${tenantName}`,
     html,
-    text: `Bonjour ${firstName},\n\nLe mot de passe de votre compte administrateur sur ${tenantName} a été réinitialisé.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nChangez ce mot de passe dès votre prochaine connexion.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+    text: `Bonjour ${firstName},\n\nLe mot de passe de votre compte administrateur sur ${tenantName} a été réinitialisé.\n\nEmail : ${to}\nMot de passe temporaire : ${tempPassword}\n\nConnectez-vous sur : ${loginUrl}\n\nChangez ce mot de passe dès votre prochaine connexion.\n\nOpenLab Consulting — waopron@openlabconsulting.com`,
   })
 }
 
@@ -576,7 +576,7 @@ export async function sendPasswordResetLinkEmail(params: {
             <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
               <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
                 OpenLab Consulting — Cocody, Rivièra Faya Lauriers 8, Abidjan<br>
-                <a href="mailto:support@nexusrh-ci.com" style="color:#E85D04;text-decoration:none;">support@nexusrh-ci.com</a>
+                <a href="mailto:waopron@openlabconsulting.com" style="color:#E85D04;text-decoration:none;">waopron@openlabconsulting.com</a>
               </p>
             </td>
           </tr>
@@ -592,7 +592,7 @@ export async function sendPasswordResetLinkEmail(params: {
     to,
     subject: `🔑 Réinitialisez votre mot de passe NexusRH`,
     html,
-    text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — support@nexusrh-ci.com`,
+    text: `Bonjour ${firstName},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe NexusRH.\n\nOuvrez ce lien pour choisir un nouveau mot de passe (valable ${expiresInMinutes} minutes, usage unique) :\n${resetUrl}\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message. Votre mot de passe actuel reste inchangé.\n\nOpenLab Consulting — waopron@openlabconsulting.com`,
   })
 }
 

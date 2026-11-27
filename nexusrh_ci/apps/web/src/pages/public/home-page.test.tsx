@@ -217,8 +217,7 @@ describe('HomePage — confiance, contacts et FAQ', () => {
     const section = sectionOf(container, 'confiance')
     const text = section.textContent ?? ''
     for (const s of [
-      'OpenLab Consulting', 'Cocody, Rivièra Faya Lauriers 8, Abidjan', 'infos@openlabconsulting.com',
-      'support@nexusrh-ci.com', '7h30 – 18h00', 'conçu pour accompagner la conformité à la loi n° 2013-450',
+      'OpenLab Consulting', 'Cocody, Rivièra Faya Lauriers 8, Abidjan', 'waopron@openlabconsulting.com', '7h30 – 18h00', 'conçu pour accompagner la conformité à la loi n° 2013-450',
     ]) expect(text, s).toContain(s)
     expect(section.querySelector('a[href="/legal/mentions-legales"]')).toBeTruthy()
     expect(section.querySelector('a[href="/legal/confidentialite"]')).toBeTruthy()

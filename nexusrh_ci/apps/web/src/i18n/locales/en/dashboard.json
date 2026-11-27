@@ -41,12 +41,12 @@
     "payslipsHeadcount": "Payslips / Headcount",
     "payslipsHeadcountSub": "Last 6 months",
     "cnpsIndicators": "CNPS indicators",
-    "cnpsIndicatorsSub": "Estimated compliance rates",
-    "cnpsIndicatorsFootnote": "Based on the latest audit · ",
+    "cnpsIndicatorsSub": "From the compliance audit",
     "cnpsIndicatorsAuditLink": "View full audit →",
     "tooltipThousandsFcfa": "{{value}} k FCFA",
     "noData": "No data",
-    "unavailable": "Data unavailable"
+    "unavailable": "Data unavailable",
+    "cnpsIndicatorsEmpty": "CNPS and SMIG compliance rates are computed by the audit, from your actual payslips."
   },
   "series": {
     "gross": "Gross",
@@ -57,11 +57,6 @@
     "cnpsTotal": "Total CNPS",
     "itsDgi": "ITS / DGI",
     "employees": "Employees"
-  },
-  "compliance": {
-    "cnps": "CNPS",
-    "smig": "SMIG",
-    "mobile": "Mobile"
   },
   "table": {
     "title": "Pay periods",

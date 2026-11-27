@@ -190,7 +190,8 @@ export default function ReportingPage() {
                   <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 10 }} unit="%" domain={[0,100]} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
                     formatter={(v: number, n: string) => n === t('series.ratioPct') ? [`${v}%`] : [t('charts.tooltipThousandsFcfa', { value: v.toLocaleString('fr-CI') }), n]} />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                  <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
                   <Bar yAxisId="l" dataKey="brut"  name={t('series.gross')}  fill="#4F46E5" radius={[2,2,0,0]} />
                   <Bar yAxisId="l" dataKey="net"   name={t('series.net')}   fill="#10B981" radius={[2,2,0,0]} />
                   <Bar yAxisId="l" dataKey="cnps"  name={t('series.cnps')}  fill="#F97316" radius={[2,2,0,0]} />
@@ -289,7 +290,8 @@ export default function ReportingPage() {
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
                       formatter={(v: number, n: string) => [n === 'jours' ? t('charts.tooltipDays', { value: v }) : t('charts.tooltipRequests', { value: v }), n]} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
                     <Area type="monotone" dataKey="jours" name={t('series.absenceDays')} stroke="#EF4444" strokeWidth={2} fill="url(#gradAbs)" />
                     <Line type="monotone" dataKey="count" name={t('series.requests')} stroke="#F97316" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                   </AreaChart>
@@ -358,7 +360,7 @@ export default function ReportingPage() {
                           <td className="px-5 py-3 font-medium">{p.month}</td>
                           <td className="px-5 py-3 text-right font-mono">{formatFCFA(p.total_gross)}</td>
                           <td className="px-5 py-3 text-right font-mono text-emerald-700">{formatFCFA(p.total_net)}</td>
-                          <td className="px-5 py-3 text-right font-mono text-orange-600">{formatFCFA(p.total_cnps)}</td>
+                          <td className="px-5 py-3 text-right font-mono text-orange-700">{formatFCFA(p.total_cnps)}</td>
                           <td className="px-5 py-3 text-right font-mono text-violet-600">{formatFCFA(p.total_its ?? 0)}</td>
                           <td className="px-5 py-3 text-right">
                             <span className={`font-semibold ${ratio >= 70 ? 'text-emerald-600' : ratio >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
@@ -372,7 +374,7 @@ export default function ReportingPage() {
                       <td className="px-5 py-3">{t('table.total', { year })}</td>
                       <td className="px-5 py-3 text-right font-mono">{formatFCFA(totals.totalGross)}</td>
                       <td className="px-5 py-3 text-right font-mono text-emerald-700">{formatFCFA(totals.totalNet)}</td>
-                      <td className="px-5 py-3 text-right font-mono text-orange-600">{formatFCFA(totals.totalCnps)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-orange-700">{formatFCFA(totals.totalCnps)}</td>
                       <td className="px-5 py-3 text-right font-mono text-violet-600">{formatFCFA(totals.totalIts)}</td>
                       <td className="px-5 py-3 text-right">
                         <span className="font-bold text-emerald-700">
@@ -394,7 +396,7 @@ export default function ReportingPage() {
 // ── Composants ────────────────────────────────────────────────────────────────
 
 const COLOR_BG: Record<string, string> = {
-  blue: 'bg-blue-50 text-blue-600', orange: 'bg-orange-50 text-orange-600',
+  blue: 'bg-blue-50 text-blue-600', orange: 'bg-orange-50 text-orange-700',
   violet: 'bg-violet-50 text-violet-600', teal: 'bg-teal-50 text-teal-600',
   emerald: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600',
   red: 'bg-red-50 text-red-600', rose: 'bg-rose-50 text-rose-600',

@@ -488,7 +488,7 @@ function TabOverview({ data, scoreColor, scoreBg, score, t, onSelectEntity }: {
           <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.notRegisteredCnps')}</div>
         </div>
         <div className="rounded-xl border p-4 text-center">
-          <div className="text-3xl font-bold text-orange-600">{data.resume.nbSousSmig ?? 0}</div>
+          <div className="text-3xl font-bold text-orange-700">{data.resume.nbSousSmig ?? 0}</div>
           <div className="text-sm text-muted-foreground mt-1">{t('audit.overview.belowSmig')}</div>
         </div>
         <div className="rounded-xl border p-4 text-center">
@@ -753,7 +753,7 @@ function TabCotisations({ data, t }: { data: AuditResult; t: TFunction }) {
       {data.kpis && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: t('audit.cotisations.employeeCnps'), value: data.kpis.totalCnpsSal, color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
+            { label: t('audit.cotisations.employeeCnps'), value: data.kpis.totalCnpsSal, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
             { label: t('audit.cotisations.employerCnps'), value: data.kpis.totalCnpsPat, color: 'text-amber-600',  bg: 'bg-amber-50 border-amber-200' },
             { label: t('audit.cotisations.itsDgi'),       value: data.kpis.totalIts,      color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
             { label: t('audit.cotisations.netPaid'),      value: data.kpis.totalNet,      color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -793,7 +793,8 @@ function TabCotisations({ data, t }: { data: AuditResult; t: TFunction }) {
                 formatter={(v: number, n: string) => [`${fmt(v)} FCFA`, n]}
                 labelStyle={{ fontWeight: 700 }}
               />
-              <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
               <Bar yAxisId="left" dataKey="cnpsSal"  name={t('audit.cotisations.employeeCnps')}  stackId="a" fill="#F97316" radius={[0,0,0,0]} />
               <Bar yAxisId="left" dataKey="cnpsPat"  name={t('audit.cotisations.employerCnps')} stackId="a" fill="#FB923C" radius={[0,0,0,0]} />
               <Bar yAxisId="left" dataKey="its"       name={t('audit.cotisations.itsDgi')}    stackId="a" fill="#8B5CF6" radius={[3,3,0,0]} />
@@ -863,7 +864,8 @@ function TabCotisations({ data, t }: { data: AuditResult; t: TFunction }) {
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={tickFmt} />
                 <Tooltip formatter={(v: number, n: string) => [`${fmt(v)} FCFA`, n]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
                 <Area type="monotone" dataKey="employerCharge" name={t('audit.cotisations.employerCharge')} stroke="#4F46E5" strokeWidth={2} fill="url(#gradPat)" />
                 <Area type="monotone" dataKey="employeeCharge" name={t('audit.cotisations.employeeCharge')} stroke="#F97316" strokeWidth={2} fill="url(#gradSal)" />
               </AreaChart>
@@ -1089,7 +1091,7 @@ function TabParams({ draft, onChange, onApply, isFetching, result, t }: {
               {[
                 { label: t('audit.params.blockers'),    value: result.resume.bloquants,         color: 'text-red-600 bg-red-50 border-red-200' },
                 { label: t('audit.params.warnings'),     value: result.resume.avertissements,    color: 'text-amber-600 bg-amber-50 border-amber-200' },
-                { label: t('audit.params.withoutNni'),   value: result.resume.nbSansNni ?? 0,    color: 'text-orange-600 bg-orange-50 border-orange-200' },
+                { label: t('audit.params.withoutNni'),   value: result.resume.nbSansNni ?? 0,    color: 'text-orange-700 bg-orange-50 border-orange-200' },
                 { label: t('audit.params.belowSmig'),    value: result.resume.nbSousSmig ?? 0,   color: 'text-rose-600 bg-rose-50 border-rose-200' },
               ].map(({ label, value, color }) => (
                 <div key={label} className={`rounded-xl border p-3 text-center ${color}`}>

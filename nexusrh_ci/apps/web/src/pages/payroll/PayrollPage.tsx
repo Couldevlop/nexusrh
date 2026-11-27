@@ -334,7 +334,7 @@ export default function PayrollPage() {
                     </td>
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(p.total_gross ?? '0'))}</td>
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(p.total_net ?? '0'))}</td>
-                    <td className="p-4 text-right font-mono text-orange-600">{formatFCFA(parseInt(p.total_cnps ?? '0'))}</td>
+                    <td className="p-4 text-right font-mono text-orange-700">{formatFCFA(parseInt(p.total_cnps ?? '0'))}</td>
                     <td className="p-4 text-right font-mono text-blue-600">{formatFCFA(parseInt(p.total_its ?? '0'))}</td>
                     <td className="p-4">
                       <PayrollStatusBadge status={p.status} />

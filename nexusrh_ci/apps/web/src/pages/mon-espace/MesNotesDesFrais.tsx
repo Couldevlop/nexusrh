@@ -185,7 +185,7 @@ export default function MesNotesDesFrais() {
                   {r.lines.map(l => (
                     <div key={l.id} className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5">
-                        {l.description} <span className="text-muted-foreground/60">· {t(`expenses.categories.${l.category}`, { defaultValue: l.category })}</span>
+                        {l.description} <span className="text-muted-foreground">· {t(`expenses.categories.${l.category}`, { defaultValue: l.category })}</span>
                         {l.receipt_url && (
                           <a href={l.receipt_url} target="_blank" rel="noopener noreferrer"
                             className="inline-flex items-center gap-0.5 text-primary hover:underline"

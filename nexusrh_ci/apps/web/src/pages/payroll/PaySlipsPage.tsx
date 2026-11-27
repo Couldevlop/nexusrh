@@ -87,7 +87,7 @@ export default function PaySlipsPage() {
                     <td className="p-4 capitalize">{formatMonth(slip.month)}</td>
                     <td className="p-4 text-right font-mono">{formatFCFA(parseInt(slip.gross_salary ?? '0'))}</td>
                     <td className="p-4 text-right font-mono font-semibold">{formatFCFA(parseInt(slip.net_payable ?? '0'))}</td>
-                    <td className="p-4 text-right font-mono text-orange-600">
+                    <td className="p-4 text-right font-mono text-orange-700">
                       {formatFCFA(parseInt(slip.total_cnps_sal ?? '0'))}
                       {cols.mixed && slip.caisse_short && <span className="block text-[10px] text-muted-foreground">{slip.caisse_short}</span>}
                     </td>

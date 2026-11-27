@@ -289,7 +289,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       type="button"
                       onClick={() => toggleGroup(group.key)}
                       aria-expanded={isOpen}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                       {isOpen
                         ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
