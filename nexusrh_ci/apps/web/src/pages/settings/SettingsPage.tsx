@@ -2188,7 +2188,7 @@ export const IMPORT_TEMPLATES: ImportTemplate[] = [
 ]
 
 function generateCSV(template: ImportTemplate): string {
-  const bom = '﻿'
+  const bom = '\uFEFF'
   const lines = [
     template.headers.join(';'),
     ...template.example.map(row => row.map(v => `"${v}"`).join(';')),

@@ -60,8 +60,8 @@ describe('Lecture d’un CSV', () => {
   })
 
   it('le BOM des modèles n’est pas pris pour une partie du premier intitulé', () => {
-    // Sans cela, la colonne s'appelle « ﻿prenom » et ne correspond à rien.
-    expect(parseCSV('﻿prenom;nom\nA;B').headers[0]).toBe('prenom')
+    // Sans cela, la colonne s'appelle « prenom » et ne correspond à rien.
+    expect(parseCSV('\uFEFFprenom;nom\nA;B').headers[0]).toBe('prenom')
   })
 
   it('accepte la virgule quand le fichier n’utilise pas le point-virgule', () => {

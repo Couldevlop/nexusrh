@@ -73,7 +73,7 @@ function grossUp(targetNet: number, maritalStatus: string, childrenCount: number
   return hi
 }
 
-const fmt = (n: number): string => n.toLocaleString('fr-FR').replace(/ /g, ' ') + ' FCFA'
+const fmt = (n: number): string => n.toLocaleString('fr-FR').replace(/\u202F/g, ' ') + ' FCFA'
 
 const CP_PAR_MOIS = 2.2 // jours ouvrables acquis / mois de service (CT art. 25.1)
 

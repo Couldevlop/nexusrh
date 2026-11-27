@@ -322,7 +322,7 @@ describe('L’empreinte décrit le fichier LIVRÉ', () => {
   it('le BOM demandé fait partie de ce qui est haché et scellé', async () => {
     const rows = chain(2)
     const { csv, manifest } = await exportAudit('tenant_x', db(rows), { bom: true, signingKey: 'k' })
-    expect(csv.startsWith('﻿')).toBe(true)
+    expect(csv.startsWith('\uFEFF')).toBe(true)
     // Ce que ferait l'auditeur : sha256sum sur le fichier reçu.
     expect(createHash('sha256').update(csv, 'utf8').digest('hex')).toBe(manifest.sha256)
     expect(createHmac('sha256', 'k').update(csv, 'utf8').digest('hex')).toBe(manifest.seal)
@@ -331,7 +331,7 @@ describe('L’empreinte décrit le fichier LIVRÉ', () => {
   it('sans BOM, l’empreinte décrit le CSV nu — les deux formes restent cohérentes', async () => {
     const rows = chain(2)
     const { csv, manifest } = await exportAudit('tenant_x', db(rows), { signingKey: 'k' })
-    expect(csv.startsWith('﻿')).toBe(false)
+    expect(csv.startsWith('\uFEFF')).toBe(false)
     expect(createHash('sha256').update(csv, 'utf8').digest('hex')).toBe(manifest.sha256)
   })
 

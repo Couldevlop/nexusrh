@@ -79,7 +79,7 @@ function Counter({ to, decimals = 0 }: { to: number; decimals?: number }) {
   }, [shown, to])
   const out = decimals
     ? v.toFixed(decimals).replace('.', ',')
-    : Math.round(v).toLocaleString('fr-FR').replace(/ |,/g, ' ')
+    : Math.round(v).toLocaleString('fr-FR').replace(/\u202F|,/g, ' ')
   return <span ref={ref} className="nx-fig">{out}</span>
 }
 

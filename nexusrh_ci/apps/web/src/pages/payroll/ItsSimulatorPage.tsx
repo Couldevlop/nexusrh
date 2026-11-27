@@ -319,7 +319,7 @@ export default function ItsSimulatorPage() {
 
   const devise = result?.pack.currencyLabel ?? currencyLabelOf(formPack?.currency)
   const money = (n: number) =>
-    `${Math.round(n).toLocaleString(i18n.language === 'en' ? 'en-US' : 'fr-FR').replace(/[  ]/g, ' ')} ${devise}`.trim()
+    `${Math.round(n).toLocaleString(i18n.language === 'en' ? 'en-US' : 'fr-FR').replace(/[\u00A0\u202F]/g, ' ')} ${devise}`.trim()
   const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`
 
   const brut = result ? result.input.brut : brutMensuel + primes

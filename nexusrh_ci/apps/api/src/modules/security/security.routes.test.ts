@@ -268,7 +268,7 @@ describe("Piste d'audit — export probant", () => {
     expect(res.headers['content-type']).toContain('text/csv')
     expect(String(res.headers['content-disposition'])).toContain('attachment; filename="audit-tenant_sotra-')
     // Sans BOM, Excel — l'outil du destinataire — abîme les accents.
-    expect(res.body.startsWith('﻿')).toBe(true)
+    expect(res.body.startsWith('\uFEFF')).toBe(true)
     // Le destinataire reçoit le fichier ET de quoi le vérifier.
     expect(String(res.headers['x-audit-sha256'])).toMatch(/^[0-9a-f]{64}$/)
     expect(res.headers['x-audit-seal']).not.toBe('none')

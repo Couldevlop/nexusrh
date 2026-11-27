@@ -266,8 +266,8 @@ describe('Export livre de paie annuel (consolidé tenant-wide, inspection CI)', 
     expect(String(res.headers['content-type'])).toContain('text/csv')
     expect(String(res.headers['content-disposition'])).toContain('livre-paie-2024.csv')
 
-    expect(res.body.startsWith('﻿')).toBe(true)          // BOM Excel
-    const lines = res.body.replace('﻿', '').split('\n')
+    expect(res.body.startsWith('\uFEFF')).toBe(true)          // BOM Excel
+    const lines = res.body.replace('\uFEFF', '').split('\n')
     expect(lines[0]).toContain('Livre de paie 2024')
     expect(lines[0]).toContain('Groupe Syrse')
     expect(lines[1]).toContain('Mois;Nom;Prénom')            // en-tête colonnes

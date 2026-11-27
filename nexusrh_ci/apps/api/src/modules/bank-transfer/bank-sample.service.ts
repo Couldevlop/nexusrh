@@ -154,7 +154,7 @@ export interface SampleAnalysis {
  */
 export function decodeText(buffer: Buffer): { text: string; encoding: FileEncoding } {
   const utf8 = buffer.toString('utf8')
-  if (!utf8.includes('�')) return { text: utf8.replace(/^﻿/, ''), encoding: 'utf8' }
+  if (!utf8.includes('�')) return { text: utf8.replace(/^\uFEFF/, ''), encoding: 'utf8' }
   return { text: buffer.toString('latin1'), encoding: 'latin1' }
 }
 

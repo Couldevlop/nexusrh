@@ -241,7 +241,7 @@ describe('GET /payroll/livre-de-paie/:year/export — anti-injection CSV (OWASP 
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
-    const csv = res.body.replace(/^﻿/, '')
+    const csv = res.body.replace(/^\uFEFF/, '')
 
     // Le champ dangereux ne doit JAMAIS apparaître en tête de cellule avec un '='
     // brut (ce qui exécuterait la formule à l'ouverture dans Excel) : il doit
@@ -271,7 +271,7 @@ describe('GET /payroll/livre-de-paie/:year/export — anti-injection CSV (OWASP 
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
-    const csv = res.body.replace(/^﻿/, '')
+    const csv = res.body.replace(/^\uFEFF/, '')
     expect(csv).toContain('Yao;Jean;C1;N1;Comptable;RH;cdi')
   })
 })

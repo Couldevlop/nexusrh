@@ -274,7 +274,7 @@ export async function exportAudit(
   // Le BOM, s'il est demandé, est préfixé ICI : l'empreinte et le sceau portent
   // sur l'artefact TEL QU'IL EST LIVRÉ, octet pour octet. C'est la seule
   // propriété qui rend le contrôle faisable par le destinataire.
-  const csv = (opts.bom ? '﻿' : '') + lines.join('\r\n') + '\r\n'
+  const csv = (opts.bom ? '\uFEFF' : '') + lines.join('\r\n') + '\r\n'
 
   const sha256 = createHash('sha256').update(csv, 'utf8').digest('hex')
   const key = (opts.signingKey ?? '').trim()

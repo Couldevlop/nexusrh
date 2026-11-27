@@ -168,7 +168,7 @@ describe('GET /habilitations/audit — export CSV', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('text/csv')
     expect(res.headers['content-disposition']).toContain('.csv')
-    expect(res.body.startsWith('﻿')).toBe(true)
+    expect(res.body.startsWith('\uFEFF')).toBe(true)
     expect(res.body).toContain('Matricule')
     expect(res.body).toContain('MAT00084')
     expect(res.body).toContain('denied_scope')

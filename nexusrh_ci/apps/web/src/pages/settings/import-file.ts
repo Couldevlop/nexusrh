@@ -35,7 +35,7 @@ export function estClasseur(nom: string): boolean {
 }
 
 export function parseCSV(text: string): ImportTable {
-  const clean = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = clean.split('\n').filter((l) => l.trim())
   if (!lines[0]) return { headers: [], rows: [] }
   const sep = lines[0].includes(';') ? ';' : ','

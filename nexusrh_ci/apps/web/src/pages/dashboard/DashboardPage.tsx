@@ -51,7 +51,7 @@ interface Insight {
 
 function downloadCSV(rows: (string | number)[][], filename: string) {
   const csv = rows.map(r => r.join(';')).join('\n')
-  const bom = '﻿'
+  const bom = '\uFEFF'
   const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)

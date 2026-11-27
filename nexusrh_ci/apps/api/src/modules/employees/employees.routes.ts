@@ -980,7 +980,7 @@ const employeesRoutes: FastifyPluginAsync = async (fastify) => {
       auditLogEmployee(schema, request.user.sub, 'employees.exported', '', { count: res.rowCount }, request.ip ?? null)
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', 'attachment; filename="employes.csv"')
-      return reply.send('﻿' + lines.join('\r\n'))
+      return reply.send('\uFEFF' + lines.join('\r\n'))
     },
   })
 

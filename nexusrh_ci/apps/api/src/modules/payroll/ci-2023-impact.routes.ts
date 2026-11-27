@@ -468,7 +468,7 @@ const ci2023ImpactRoutes: FastifyPluginAsync = async (fastify) => {
         if (format === 'csv') {
           reply.header('Content-Type', 'text/csv; charset=utf-8')
           reply.header('Content-Disposition', 'attachment; filename="impact_paie_ci_2023.csv"')
-          return reply.send('﻿' + impactCsv(report))
+          return reply.send('\uFEFF' + impactCsv(report))
         }
         return reply.send({ data: report })
       } catch (err) {

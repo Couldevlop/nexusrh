@@ -1461,7 +1461,7 @@ ${salaries}
 
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="RNS_CNPS_${yr}.csv"`)
-      return reply.send('﻿' + csv)
+      return reply.send('\uFEFF' + csv)
     },
   })
 
@@ -1585,7 +1585,7 @@ ${salaries}
 
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="DISA_${yr}.csv"`)
-      return reply.send('﻿' + csv)
+      return reply.send('\uFEFF' + csv)
     },
   })
 

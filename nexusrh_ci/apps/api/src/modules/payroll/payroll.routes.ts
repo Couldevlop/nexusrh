@@ -1410,7 +1410,7 @@ const payrollRoutes: FastifyPluginAsync = async (fastify) => {
 
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', `attachment; filename="livre-paie-${year}.csv"`)
-      return reply.send('﻿' + csv)
+      return reply.send('\uFEFF' + csv)
     },
   })
 

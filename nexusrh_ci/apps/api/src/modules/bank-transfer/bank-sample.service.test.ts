@@ -137,7 +137,7 @@ describe('analyzeSample — encodage du fichier délimité', () => {
   })
 
   it('retire le BOM pour ne pas polluer le premier intitulé', async () => {
-    const res = await analyzeSample('modele.csv', Buffer.from(`﻿${headers}`, 'utf8'))
+    const res = await analyzeSample('modele.csv', Buffer.from(`\uFEFF${headers}`, 'utf8'))
     expect(res.columns[0]!.label).toBe('Compte bénéficiaire')
   })
 })

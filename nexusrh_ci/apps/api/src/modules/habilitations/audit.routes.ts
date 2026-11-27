@@ -156,7 +156,7 @@ const auditRoutes: FastifyPluginAsync = async (fastify) => {
       }
       reply.header('Content-Type', 'text/csv; charset=utf-8')
       reply.header('Content-Disposition', 'attachment; filename="piste-audit-habilitations.csv"')
-      return reply.send('﻿' + lines.join('\r\n'))
+      return reply.send('\uFEFF' + lines.join('\r\n'))
     },
   })
 }

@@ -184,7 +184,7 @@ function overlayFromCoords(
     // ne sait pas encoder → crash. On remplace tous les espaces unicode
     // par un espace ASCII standard avant dessin.
     const value = String(text)
-      .replace(/[     ]/g, ' ')
+      .replace(/[\u00A0\u202F\u2009\u2007 ]/g, ' ')
       .trim()
     if (!value) return
 

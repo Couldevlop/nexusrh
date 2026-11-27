@@ -279,7 +279,7 @@ describe('GET /payroll/ci-2023-impact — route', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('text/csv')
     expect(res.headers['content-disposition']).toContain('impact_paie_ci_2023.csv')
-    expect(res.body.startsWith('﻿')).toBe(true)
+    expect(res.body.startsWith('\uFEFF')).toBe(true)
     const rows = res.body.slice(1).split('\r\n')
     expect(rows[0]).toContain('retraite_non_cotisee_salarie')
     expect(rows[0]).toContain('estimation (bénéficiaires actuels)')

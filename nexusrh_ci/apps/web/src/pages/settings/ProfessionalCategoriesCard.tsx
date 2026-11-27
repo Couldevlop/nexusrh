@@ -96,7 +96,7 @@ export default function ProfessionalCategoriesCard({
     return next
   })
   const original = new Set(data.data.map(c => c.key))
-  const money = (n: number) => new Intl.NumberFormat('fr-FR').format(n).replace(/ /g, ' ')
+  const money = (n: number) => new Intl.NumberFormat('fr-FR').format(n).replace(/\u202F/g, ' ')
   const paysLabel = (code: string | null) =>
     code === null ? t('professionalCategories.allCountries')
       : countries.find(c => c.countryCode === code)?.name ?? code

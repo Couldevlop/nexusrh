@@ -61,7 +61,7 @@ describe('ficheMarkdown', () => {
 
   it('ne contient aucun montant ni donnée sensible', () => {
     const md = ficheMarkdown(data())
-    expect(md).not.toMatch(/\d[\d\s ]{2,}\s*(FCFA|XOF)/i)
+    expect(md).not.toMatch(/\d[\d\s\u202F]{2,}\s*(FCFA|XOF)/i)
     expect(md.toLowerCase()).not.toContain('salaire')
     expect(md.toLowerCase()).not.toContain('iban')
     expect(md.toLowerCase()).not.toContain('nni')
