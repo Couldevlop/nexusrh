@@ -48,6 +48,33 @@ git -C "$REPO_DIR" fetch --quiet origin "$SHA"
 git -C "$REPO_DIR" checkout --quiet -f FETCH_HEAD
 echo "OK arbre positionne sur $(git -C "$REPO_DIR" rev-parse HEAD)"
 
+# -- Derive du script lui-meme -----------------------------------------------
+#
+# Ce script est installe A LA MAIN dans /usr/local/bin : la commande forcee de
+# /root/.ssh/authorized_keys interdit tout autre usage de la cle de deploiement,
+# et c'est voulu — une CI compromise ne doit pas pouvoir executer n'importe quoi
+# sur le serveur. La contrepartie est qu'il peut divergir de la version
+# versionnee sans que personne ne le voie : le 26/11/2026, un correctif pousse au
+# depot est reste inerte pendant trois deploiements, dont deux echecs muets.
+#
+# On ne peut pas supprimer la dérive, on peut la rendre VISIBLE : le script se
+# compare a la version du commit qu'il deploie. Avertissement et non refus, pour
+# ne pas bloquer un deploiement urgent sur une divergence de confort.
+VERSIONNE="$REPO_DIR/nexusrh_ci/k8s/scripts/ci-deploy.sh"
+if [ -r "$VERSIONNE" ] && [ -r "$0" ]; then
+  # Comparaison directe : le `git checkout` du serveur produit du LF, donc
+  # aucune normalisation de fin de ligne n'est necessaire ici.
+  if cmp -s "$VERSIONNE" "$0"; then
+    echo "OK script de deploiement identique a la version versionnee"
+  else
+    echo "ATTENTION : le script installe DIFFERE de la version versionnee de ce commit." >&2
+    echo "            Un correctif pousse au depot peut donc etre inerte." >&2
+    echo "            Reinstaller : prod-interventions/reparer-script-deploiement.md" >&2
+  fi
+else
+  echo "ATTENTION : comparaison impossible ($VERSIONNE ou $0 illisible), derive non verifiable" >&2
+fi
+
 # -- Garde-fous AVANT toute action sur le cluster -----------------------------
 # Le depot a deja connu un retour en arriere du chart dans le repertoire de
 # travail (namespace nexusrh -> au lieu de nexusrh-ci, exception WAF retiree,

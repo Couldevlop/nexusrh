@@ -231,7 +231,7 @@ export default function MesBulletins() {
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">{t('payslips.cnpsEmployee')}</p>
-                        <p className="font-semibold text-orange-600">{formatFCFA(parseInt(slip.total_cnps_sal ?? '0'))}</p>
+                        <p className="font-semibold text-orange-700">{formatFCFA(parseInt(slip.total_cnps_sal ?? '0'))}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">{t('payslips.itsWithheld')}</p>

@@ -138,12 +138,6 @@ export default function DashboardPage() {
     { name: t('series.itsDgi'),   value: parseInt(last?.total_its  ?? '0'), fill: '#8B5CF6' },
   ].filter(d => d.value > 0)
 
-  // Conformité radiale (fictif si pas d'audit)
-  const conformiteData = [
-    { name: t('compliance.cnps'), value: 85, fill: '#F97316' },
-    { name: t('compliance.smig'), value: 97, fill: '#10B981' },
-    { name: t('compliance.mobile'), value: 78, fill: '#4F46E5' },
-  ]
 
   const roleLabel: Record<string, string> = {
     admin: t('roles.admin'), hr_manager: t('roles.hr_manager'),
@@ -294,7 +288,8 @@ export default function DashboardPage() {
                     contentStyle={{ borderRadius: 8, fontSize: 12 }}
                     formatter={(v: number, n: string) => [t('charts.tooltipThousandsFcfa', { value: v.toLocaleString('fr-CI') }), n]}
                   />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                  <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
                   <Bar dataKey="brut" name={t('series.gross')} fill="#4F46E5" radius={[3,3,0,0]} />
                   <Bar dataKey="net"  name={t('series.net')}  fill="#10B981" radius={[3,3,0,0]} />
                   <Line dataKey="cnps" name={t('series.cnps')} stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} type="monotone" />
@@ -400,25 +395,19 @@ export default function DashboardPage() {
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="font-semibold mb-1">{t('charts.cnpsIndicators')}</h2>
             <p className="text-xs text-muted-foreground mb-4">{t('charts.cnpsIndicatorsSub')}</p>
-            <div className="space-y-4">
-              {conformiteData.map(d => (
-                <div key={d.name}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium">{d.name}</span>
-                    <span className="text-sm font-bold" style={{ color: d.fill }}>{d.value}%</span>
-                  </div>
-                  <div className="h-3 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${d.value}%`, background: d.fill }}
-                    />
-                  </div>
-                </div>
-              ))}
+            {/* Cette carte affichait 85 %, 97 % et 78 % ECRITS EN DUR, sous la
+                mention « Basé sur le dernier audit ». Aucun audit ne les
+                produisait : le commentaire disait « fictif si pas d'audit »
+                mais aucune condition ne le vérifiait. Des taux de conformité
+                CNPS et SMIG inventés, dans un logiciel de paie, peuvent être
+                lus comme un constat. Ils sont retirés ; la carte renvoie
+                désormais vers l'audit qui, lui, calcule. */}
+            <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
+              <p className="max-w-xs text-sm text-muted-foreground">{t('charts.cnpsIndicatorsEmpty')}</p>
+              <a href="/cnps/audit" className="rounded-lg border px-4 py-2 text-sm font-semibold text-primary hover:bg-accent">
+                {t('charts.cnpsIndicatorsAuditLink')}
+              </a>
             </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              {t('charts.cnpsIndicatorsFootnote')}<a href="/cnps/audit" className="text-primary hover:underline">{t('charts.cnpsIndicatorsAuditLink')}</a>
-            </p>
           </div>
         </div>
 
@@ -463,7 +452,7 @@ export default function DashboardPage() {
                           <span className="font-mono text-emerald-700">{formatFCFA(net)}</span>
                           <span className="ml-1.5 text-xs text-muted-foreground">({netRatio}%)</span>
                         </td>
-                        <td className="px-5 py-3 text-right font-mono text-orange-600">{formatFCFA(cnps)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-orange-700">{formatFCFA(cnps)}</td>
                         <td className="px-5 py-3 text-right font-mono text-violet-600">{formatFCFA(its)}</td>
                         <td className="px-5 py-3 text-right font-mono text-muted-foreground">{formatFCFA(charge)}</td>
                       </tr>
@@ -559,7 +548,7 @@ function AlertCard({ color, icon: Icon, title, text }: {
   color: 'orange' | 'blue' | 'red'; icon: React.ElementType; title: string; text: string
 }) {
   const PALETTE = {
-    orange: { border: 'border-orange-200', bg: 'bg-orange-50', title: 'text-orange-800', body: 'text-orange-600', icon: 'text-orange-500' },
+    orange: { border: 'border-orange-200', bg: 'bg-orange-50', title: 'text-orange-800', body: 'text-orange-700', icon: 'text-orange-500' },
     blue:   { border: 'border-blue-200',   bg: 'bg-blue-50',   title: 'text-blue-800',   body: 'text-blue-600',   icon: 'text-blue-500' },
     red:    { border: 'border-red-200',    bg: 'bg-red-50',    title: 'text-red-800',    body: 'text-red-600',    icon: 'text-red-500' },
   } as const

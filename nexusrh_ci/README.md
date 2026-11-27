@@ -309,7 +309,7 @@ ensuite en fonction des recommandations, chercher à corriger
 
 **OpenLab Consulting**
 📍 Cocody, Rivièra Faya Lauriers 8, Abidjan
-📧 infos@openlabconsulting.com
+📧 waopron@openlabconsulting.com
 📱 +225 07 09 33 42 38
 🌐 www.openlabconsulting.com
 

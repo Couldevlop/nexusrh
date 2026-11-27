@@ -981,7 +981,7 @@ const platformRoutes: FastifyPluginAsync = async (fastify) => {
             id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             app_name        varchar(100) DEFAULT 'NexusRH',
             app_url         varchar(255) DEFAULT 'http://localhost:3001',
-            support_email   varchar(255) DEFAULT 'support@nexusrh-ci.com',
+            support_email   varchar(255) DEFAULT 'waopron@openlabconsulting.com',
             support_phone   varchar(30)  DEFAULT '+225 07 49 43 92 03',
             logo_url        text,
             favicon_url     text,

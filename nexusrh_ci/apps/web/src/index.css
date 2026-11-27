@@ -15,7 +15,11 @@
     --secondary: 33 90% 50%;   /* #F48C06 */
     --secondary-foreground: 0 0% 100%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* 46.9 % donnait 4,34:1 sur --muted : la paire text-muted-foreground
+       sur bg-muted, utilisee par toutes les pastilles neutres et les
+       panneaux secondaires, passait sous le seuil AA. 43 % remonte a
+       5,01:1 sur --muted et 5,49:1 sur blanc. */
+    --muted-foreground: 215.4 16.3% 43%;
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;

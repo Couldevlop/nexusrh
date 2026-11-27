@@ -26,8 +26,11 @@ import {
 // une nouvelle version change d'adresse et AUCUN cache ne peut servir
 // l'ancienne. C'est ce qui permet le cache long côté nginx.
 import videoUrl from '@/assets/nexusrh.mp4'
+// Image d'affiche : sans elle, le centre visuel du heros est un rectangle
+// NOIR jusqu'au clic. Extraite du carton de titre de la video elle-meme.
+import posterUrl from '@/assets/nexusrh-poster.jpg'
 
-const EMAIL    = PUBLISHER.demoEmail
+const EMAIL    = PUBLISHER.email
 const WHATSAPP = PUBLISHER.whatsapp
 const WHATSAPP_NUM = PUBLISHER.whatsappDisplay
 
@@ -85,13 +88,13 @@ function SectionHead({ eyebrow, title, lead, id, invert = false }: {
 }) {
   return (
     <header id={id} className="mb-12 scroll-mt-24">
-      <p className={`mb-4 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] ${invert ? 'text-white' : 'text-[#F04E10]'}`}>
+      <p className={`mb-4 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] ${invert ? 'text-white' : 'text-[#C43C08]'}`}>
         <span className={`h-[3px] w-8 ${invert ? 'bg-white' : 'bg-[#F04E10]'}`} />{eyebrow}
       </p>
       <h2 className={`max-w-3xl text-3xl font-bold leading-[1.08] tracking-[-0.02em] sm:text-[2.7rem] ${invert ? 'text-white' : 'text-[#0F1214]'}`}>
         {title}
       </h2>
-      {lead && <p className={`mt-5 max-w-2xl text-base leading-relaxed ${invert ? 'text-white/85' : 'text-[#5A6672]'}`}>{lead}</p>}
+      {lead && <p className={`mt-5 max-w-2xl text-base leading-relaxed ${invert ? 'text-white' : 'text-[#5A6672]'}`}>{lead}</p>}
     </header>
   )
 }
@@ -100,10 +103,10 @@ function Card({ title, text, i = 0, invert = false }: { title: string; text: str
   return (
     <Reveal delay={i * 60}>
       <div className={invert
-        ? 'h-full rounded-xl border border-white/25 bg-white/10 p-6 transition-all duration-300 hover:-translate-y-1 hover:bg-white/15'
-        : 'h-full rounded-xl border border-[#E4E8EB] bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#F04E10] hover:shadow-[0_18px_40px_-26px_#F04E10]'}>
+        ? 'h-full rounded-xl border border-white/40 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white'
+        : 'h-full rounded-xl border border-[#E4E8EB] bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#F04E10]'}>
         <h3 className={`text-[15px] font-bold tracking-tight ${invert ? 'text-white' : 'text-[#0F1214]'}`}>{title}</h3>
-        <p className={`mt-2.5 text-sm leading-relaxed ${invert ? 'text-white/80' : 'text-[#5A6672]'}`}>{text}</p>
+        <p className={`mt-2.5 text-sm leading-relaxed ${invert ? 'text-white' : 'text-[#5A6672]'}`}>{text}</p>
       </div>
     </Reveal>
   )
@@ -148,8 +151,6 @@ export default function HomePage() {
     ...r, label: t(`proof.rows.${r.key}`), note: r.note ? t(`proof.rows.${r.note}`) : null,
   }))
 
-  const marquee = HOME_DOMAINS.flatMap(d => d.modules.map(m => t(`domains.${d.key}.modules.${m.key}.title`))).join(' · ')
-
   return (
     <div className="min-h-screen bg-white text-[#0F1214] antialiased">
       <style>{`
@@ -159,12 +160,8 @@ export default function HomePage() {
         .nx-hero { background:
           radial-gradient(52% 46% at 88% 6%, rgba(240,78,16,.10), transparent 62%),
           radial-gradient(40% 40% at 4% 96%, rgba(8,145,178,.08), transparent 64%) }
-        .nx-marquee { display:flex; width:max-content; animation: nx-slide 68s linear infinite }
-        @keyframes nx-slide { from { transform: none } to { transform: translateX(-50%) } }
-        .nx-marquee:hover { animation-play-state: paused }
         @media (prefers-reduced-motion: reduce) {
           .nx-rv { opacity: 1; transform: none; transition: none }
-          .nx-marquee { animation: none }
         }
       `}</style>
 
@@ -173,7 +170,7 @@ export default function HomePage() {
       </a>
 
       {/* ── Barre ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-[#E4E8EB] bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-3">
           {/* Le logo de l'éditeur ouvre l'en-tête, en pleine taille. */}
           <a href="#contenu" className="flex items-center gap-3 sm:gap-4">
@@ -202,7 +199,7 @@ export default function HomePage() {
             <Link to="/login" className="hidden rounded-lg border-2 border-[#0F1214] px-4 py-1.5 text-sm font-bold transition-colors hover:bg-[#0F1214] hover:text-white sm:inline-block">
               {t('hero.ctaApp')}
             </Link>
-            <a href="#demo" className="rounded-lg bg-[#F04E10] px-4 py-2 text-sm font-bold text-white transition-all hover:bg-[#C43C08]">
+            <a href="#demo" className="rounded-lg bg-[#C43C08] px-4 py-2 text-sm font-bold text-white transition-all hover:bg-[#9E3007]">
               {t('nav.demo')}
             </a>
           </div>
@@ -214,37 +211,37 @@ export default function HomePage() {
         <section className="nx-hero border-b border-[#E4E8EB]">
           <div className="mx-auto grid max-w-6xl gap-14 px-6 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-center lg:py-24">
             <Reveal>
-              <p className="mb-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] text-[#F04E10]">
+              <p className="mb-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.24em] text-[#C43C08]">
                 <span className="h-[3px] w-8 bg-[#F04E10]" />{t('hero.eyebrow')}
               </p>
-              <h1 className="text-[2.8rem] font-bold leading-[1] tracking-[-0.035em] sm:text-[4.2rem]">
+              <h1 className="text-[2.8rem] font-bold leading-[1] tracking-[-0.035em] sm:text-[3.4rem] lg:text-[4.2rem]">
                 {t('hero.title')}
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5A6672]">{t('hero.lead')}</p>
-              <p className="mt-4 max-w-xl border-l-4 border-[#F04E10] pl-4 text-sm font-semibold leading-relaxed text-[#0F1214]">{t('hero.reference')}</p>
               <div className="mt-9 flex flex-wrap gap-3">
-                <a href="#demo" className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08] hover:shadow-[0_14px_30px_-12px_#F04E10]">
+                <a href="#demo" className="rounded-lg bg-[#C43C08] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#9E3007] hover:shadow-[0_14px_30px_-12px_#F04E10]">
                   {t('hero.ctaDemo')}
                 </a>
                 <Link to="/login" className="rounded-lg border-2 border-[#0F1214] px-7 py-4 text-sm font-bold transition-colors hover:bg-[#0F1214] hover:text-white">
                   {t('hero.ctaApp')}
                 </Link>
               </div>
-              <div className="mt-10 flex items-center gap-4 border-t border-[#E4E8EB] pt-6">
-                <img src="/openlab.png" alt="OpenLab Consulting" className="h-10 w-auto" />
-                <p className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-[#8A97A3]">{t('hero.editor')}</p>
+              {/* Le logo de l'editeur est deja dans la barre collante, visible juste
+                  au-dessus : le repeter ici n'ajoute rien. La mention reste. */}
+              <div className="mt-10 border-t border-[#E4E8EB] pt-6">
+                <p className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.14em] text-[#6B7785]">{t('hero.editor')}</p>
               </div>
             </Reveal>
 
             <Reveal delay={120}>
               <figure id="produit" className="scroll-mt-24 overflow-hidden rounded-xl border-2 border-[#0F1214] bg-white shadow-[10px_10px_0_0_#F04E10]">
                 <figcaption className="flex items-center justify-between border-b border-[#E4E8EB] px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em]">
-                  <span className="font-bold text-[#F04E10]">{t('video.label')}</span>
-                  <span className="text-[#8A97A3]">NEXUSRH</span>
+                  <span className="font-bold text-[#C43C08]">{t('video.label')}</span>
+                  <span className="text-[#6B7785]">NEXUSRH</span>
                 </figcaption>
-                <video controls preload="metadata" playsInline className="block aspect-video w-full bg-black" title={t('video.docTitle')}>
+                <video controls preload="metadata" playsInline poster={posterUrl} className="block aspect-video w-full bg-black" title={t('video.docTitle')}>
                   <source src={videoUrl} type="video/mp4" />
-                  {t('video.unsupported')}
+                  <span className="block p-6 text-white">{t('video.unsupported')}</span>
                 </video>
                 <p className="border-t border-[#E4E8EB] px-4 py-3 text-xs leading-relaxed text-[#5A6672]">{t('video.caption')}</p>
               </figure>
@@ -260,16 +257,16 @@ export default function HomePage() {
               { v: <Counter to={CATALOG_MODULE_COUNT} />,     l: t('stats.modulesLabel'),    s: t('stats.modulesText') },
             ].map((k, i) => (
               <div key={i} className="bg-white px-6 py-7">
-                <p className="font-mono text-2xl font-bold text-[#0891B2] sm:text-3xl">{k.v}</p>
-                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#F04E10]">{k.l}</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-[#8A97A3]">{k.s}</p>
+                <p className="font-mono text-2xl font-bold text-[#0E7490] sm:text-3xl">{k.v}</p>
+                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#C43C08]">{k.l}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-[#6B7785]">{k.s}</p>
               </div>
             ))}
           </div>
         </section>
 
         {/* ── Signature : le double plafond ───────────────────────────── */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        <section className="mx-auto max-w-6xl px-6 py-28">
           <SectionHead eyebrow={t('proof.eyebrow')} title={t('proof.title')} lead={t('proof.lead')} />
           <Reveal>
             <div className="overflow-hidden rounded-xl border-2 border-[#0F1214] bg-white">
@@ -279,7 +276,7 @@ export default function HomePage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[44rem] text-sm">
                   <thead>
-                    <tr className="border-b border-[#E4E8EB] text-left font-mono text-[10px] uppercase tracking-[0.14em] text-[#8A97A3]">
+                    <tr className="border-b border-[#E4E8EB] text-left font-mono text-[10px] uppercase tracking-[0.14em] text-[#6B7785]">
                       <th scope="col" className="px-5 py-3 font-normal">{t('proof.table.code')}</th>
                       <th scope="col" className="px-5 py-3 font-normal">{t('proof.table.label')}</th>
                       <th scope="col" className="px-5 py-3 text-right font-normal">{t('proof.table.base')}</th>
@@ -290,12 +287,12 @@ export default function HomePage() {
                   <tbody>
                     {payslipRows.map(r => (
                       <tr key={r.code} className="border-b border-[#EDF0F2] align-top transition-colors last:border-0 hover:bg-[#FAFBFC]">
-                        <td className="nx-fig px-5 py-4 font-mono text-xs font-bold text-[#F04E10]">{r.code}</td>
+                        <td className="nx-fig px-5 py-4 font-mono text-xs font-bold text-[#C43C08]">{r.code}</td>
                         <td className="px-5 py-4">
                           <span className="font-semibold">{r.label}</span>
-                          {r.note && <span className="mt-1 block font-mono text-[11px] text-[#8A97A3]">{r.note}</span>}
+                          {r.note && <span className="mt-1 block font-mono text-[11px] text-[#6B7785]">{r.note}</span>}
                         </td>
-                        <td className="nx-fig px-5 py-4 text-right font-mono font-semibold text-[#0891B2]">{r.base}</td>
+                        <td className="nx-fig px-5 py-4 text-right font-mono font-semibold text-[#0E7490]">{r.base}</td>
                         <td className="nx-fig px-5 py-4 text-right font-mono text-[#5A6672]">{r.rate}</td>
                         <td className="nx-fig px-5 py-4 text-right font-mono font-bold">{r.amount}</td>
                       </tr>
@@ -320,6 +317,9 @@ export default function HomePage() {
         <section className="border-y border-[#E4E8EB] bg-[#F7F8F9]">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <SectionHead id="conformite" eyebrow={t('compliance.eyebrow')} title={t('compliance.title')} lead={t('compliance.lead')} />
+            {/* Venu du heros, ou il redisait le chapeau mot pour mot. Ici il
+                introduit exactement ce que les six cartes detaillent. */}
+            <p className="mb-8 max-w-2xl border-l-4 border-[#F04E10] bg-white py-3 pl-5 text-sm font-semibold leading-relaxed text-[#0F1214]">{t('hero.reference')}</p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {compliance.map((k, i) => <Card key={k} i={i} title={t(`compliance.${k}.title`)} text={t(`compliance.${k}.text`)} />)}
             </div>
@@ -331,24 +331,21 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Bandeau défilant : l'ampleur de la couverture ───────────── */}
-        <div className="overflow-hidden border-b border-[#E4E8EB] py-4" aria-hidden>
-          <div className="nx-marquee gap-10 font-mono text-[11px] uppercase tracking-[0.18em] text-[#5A6672]">
-            <span>{marquee}</span><span>{marquee}</span>
-          </div>
-        </div>
-
         {/* ── Fonctionnalités : six domaines ─────────────────────────── */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        <section className="mx-auto max-w-6xl px-6 py-28">
           <SectionHead id={HOME_ANCHORS.modules} eyebrow={t('modules.eyebrow')} title={t('modules.title')} lead={t('modules.lead')} />
-          <div className="space-y-12">
+          {/* Les six domaines deroules faisaient une vingtaine de cartes d'affilee.
+              <details> replie sans JavaScript — meme grammaire que le menu mobile —
+              et laisse tout le texte dans le DOM, donc l'indexation ne perd rien. */}
+          <div className="space-y-5">
             {HOME_DOMAINS.map((d, i) => (
-              <div key={d.key} data-domain={d.key} className="border-t-2 border-[#0F1214] pt-6">
-                <h3 className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight">
-                  <span className="font-mono text-[11px] text-[#F04E10]">{String(i + 1).padStart(2, '0')}</span>
-                  {t(`domains.${d.key}.title`)}
-                </h3>
-                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <details key={d.key} data-domain={d.key} open={i === 0} className="group border-t-2 border-[#0F1214] pt-5">
+                <summary className="flex cursor-pointer list-none items-baseline gap-3 [&::-webkit-details-marker]:hidden">
+                  <span className="font-mono text-[11px] text-[#C43C08]">{String(i + 1).padStart(2, '0')}</span>
+                  <h3 className="flex-1 text-xl font-bold tracking-tight">{t(`domains.${d.key}.title`)}</h3>
+                  <span aria-hidden className="font-mono text-lg leading-none text-[#6B7785] transition-transform duration-300 group-open:rotate-45">+</span>
+                </summary>
+                <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {d.modules.map((m, j) => (
                     <li key={m.key} data-module={m.key}>
                       <Reveal delay={j * 40} className="h-full">
@@ -360,7 +357,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </details>
             ))}
           </div>
         </section>
@@ -372,7 +369,7 @@ export default function HomePage() {
             <div className="grid gap-4 md:grid-cols-2">
               {(['saas', 'onprem'] as const).map(mode => (
                 <div key={mode} data-deploy={mode} className="rounded-xl border-2 border-[#0F1214] bg-white p-6">
-                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#F04E10]">{t(`deploy.${mode}.tag`)}</p>
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#C43C08]">{t(`deploy.${mode}.tag`)}</p>
                   <h3 className="mt-2 text-2xl font-bold tracking-tight">{t(`deploy.${mode}.title`)}</h3>
                   <ul className="mt-4 space-y-2.5">
                     {DEPLOY_POINTS[mode].map(p => (
@@ -409,7 +406,7 @@ export default function HomePage() {
               </table>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-6">
-              <a href={`#${HOME_ANCHORS.demo}`} className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08]">
+              <a href={`#${HOME_ANCHORS.demo}`} className="rounded-lg bg-[#C43C08] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#9E3007]">
                 {t('deploy.cta')}
               </a>
               <Link to="/sirh-saas-ou-on-premise" className="text-sm font-semibold text-[#C43C08] underline-offset-4 hover:underline">
@@ -420,7 +417,7 @@ export default function HomePage() {
         </section>
 
         {/* ── Versement + groupes ─────────────────────────────────────── */}
-        <section className="mx-auto max-w-6xl px-6 pb-20">
+        <section className="mx-auto max-w-6xl px-6 pb-14">
           <SectionHead eyebrow={t('pay.eyebrow')} title={t('pay.title')} lead={t('pay.lead')} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Card title={t('pay.mobile.title')} text={t('pay.mobile.text')} />
@@ -429,7 +426,7 @@ export default function HomePage() {
           <MoreLinks items={[{ to: '/paiement-salaires-mobile-money', label: t('links.mobileMoney') }]} />
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 pb-20">
+        <section className="mx-auto max-w-6xl px-6 pb-14">
           <SectionHead eyebrow={t('multi.eyebrow')} title={t('multi.title')} lead={t('multi.lead')} />
           <div className="grid gap-4 sm:grid-cols-3">
             <Card title={t('multi.entities.title')} text={t('multi.entities.text')} />
@@ -448,8 +445,11 @@ export default function HomePage() {
         </section>
 
         {/* ── Sécurité : le seul renversement de la page ──────────────── */}
-        <section className="bg-[#F04E10]">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+        {/* Orange SOUTENU, pas l'orange vif : sur #F04E10 le blanc plafonne a
+            3,6:1 et le texte des cartes tombait a 2,8:1 — sous le seuil AA.
+            #C43C08 (deja dans la palette) remonte le blanc a 5,2:1. */}
+        <section className="bg-[#C43C08]">
+          <div className="mx-auto max-w-6xl px-6 py-28">
             <SectionHead invert id="securite" eyebrow={t('security.eyebrow')} title={t('security.title')} lead={t('security.lead')} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {security.map((k, i) => <Card invert key={k} i={i} title={t(`security.${k}.title`)} text={t(`security.${k}.text`)} />)}
@@ -467,39 +467,37 @@ export default function HomePage() {
               <p className="mt-2 text-sm leading-relaxed text-[#5A6672]">{t('trust.publisher.text')}</p>
               <dl className="mt-5 space-y-3 text-sm">
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.address')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.address')}</dt>
                   <dd className="text-[#3F4B56]">{t('contact.address')}</dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.phones')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.phones')}</dt>
                   <dd className="nx-fig text-[#3F4B56]">
                     {PHONES.map((ph, i) => (
                       <span key={ph.e164}>
                         {i > 0 && ' · '}
-                        <a href={`tel:${ph.e164}`} className="hover:text-[#F04E10]">{ph.display}</a>
+                        <a href={`tel:${ph.e164}`} className="hover:text-[#C43C08]">{ph.display}</a>
                       </span>
                     ))}
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.emails')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.emails')}</dt>
                   <dd className="break-all text-[#3F4B56]">
-                    <a href={`mailto:${PUBLISHER.infoEmail}`} className="hover:text-[#F04E10]">{PUBLISHER.infoEmail}</a>
-                    {' · '}
-                    <a href={`mailto:${PUBLISHER.supportEmail}`} className="hover:text-[#F04E10]">{PUBLISHER.supportEmail}</a>
+                    <a href={`mailto:${PUBLISHER.email}`} className="hover:text-[#C43C08]">{PUBLISHER.email}</a>
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.whatsapp')}</dt>
-                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[#3F4B56] hover:text-[#F04E10]">{WHATSAPP_NUM}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.whatsapp')}</dt>
+                  <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[#3F4B56] hover:text-[#C43C08]">{WHATSAPP_NUM}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.hours')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.hours')}</dt>
                   <dd className="text-[#3F4B56]">{t('trust.supportHours')}</dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.web')}</dt>
-                  <dd><a href={PUBLISHER.url} target="_blank" rel="noreferrer noopener" className="text-[#3F4B56] hover:text-[#F04E10]">www.openlabconsulting.com</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.web')}</dt>
+                  <dd><a href={PUBLISHER.url} target="_blank" rel="noreferrer noopener" className="text-[#3F4B56] hover:text-[#C43C08]">www.openlabconsulting.com</a></dd>
                 </div>
               </dl>
             </div>
@@ -521,11 +519,14 @@ export default function HomePage() {
           <div className="mx-auto max-w-4xl px-6 py-20">
             <SectionHead id={HOME_ANCHORS.faq} eyebrow={t('faq.eyebrow')} title={t('faq.title')} />
             <div className="divide-y divide-[#E4E8EB] border-y border-[#E4E8EB] bg-white">
-              {HOME_FAQ.map(k => (
-                <div key={k} data-faq={k} className="px-5 py-5">
-                  <h3 className="text-[15px] font-bold">{t(`faq.items.${k}.q`)}</h3>
+              {HOME_FAQ.map((k, i) => (
+                <details key={k} data-faq={k} open={i === 0} className="group px-5 py-5">
+                  <summary className="flex cursor-pointer list-none items-start gap-4 [&::-webkit-details-marker]:hidden">
+                    <h3 className="flex-1 text-[15px] font-bold">{t(`faq.items.${k}.q`)}</h3>
+                    <span aria-hidden className="font-mono text-lg leading-none text-[#6B7785] transition-transform duration-300 group-open:rotate-45">+</span>
+                  </summary>
                   <p className="mt-2 text-[15px] leading-relaxed text-[#3F4B56]">{t(`faq.items.${k}.a`)}</p>
-                </div>
+                </details>
               ))}
             </div>
           </div>
@@ -538,25 +539,25 @@ export default function HomePage() {
               <SectionHead eyebrow={t('contact.eyebrow')} title={t('form.title')} lead={t('form.lead')} />
               <dl className="space-y-5 border-t-2 border-[#0F1214] pt-6">
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.emailLabel')}</dt>
-                  <dd><a href={`mailto:${EMAIL}`} className="text-[15px] font-bold text-[#F04E10] underline-offset-4 hover:underline">{EMAIL}</a></dd>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('contact.emailLabel')}</dt>
+                  <dd><a href={`mailto:${EMAIL}`} className="text-[15px] font-bold text-[#C43C08] underline-offset-4 hover:underline">{EMAIL}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.whatsappLabel')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('contact.whatsappLabel')}</dt>
                   <dd><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{WHATSAPP_NUM}</a></dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('trust.labels.phones')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('trust.labels.phones')}</dt>
                   {PHONES.map(ph => (
                     <dd key={ph.e164}><a href={`tel:${ph.e164}`} className="nx-fig text-[15px] font-bold underline-offset-4 hover:underline">{ph.display}</a></dd>
                   ))}
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.addressLabel')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('contact.addressLabel')}</dt>
                   <dd className="text-sm leading-relaxed text-[#5A6672]">{t('contact.address')}</dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A97A3]">{t('contact.hoursLabel')}</dt>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#6B7785]">{t('contact.hoursLabel')}</dt>
                   <dd className="text-sm leading-relaxed text-[#5A6672]">{t('contact.hours')}</dd>
                 </div>
               </dl>
@@ -582,54 +583,54 @@ export default function HomePage() {
             <nav aria-label={t('footerNav.product')}>
               <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.product')}</p>
               <ul className="space-y-2.5 text-sm text-[#5A6672]">
-                <li><a href="#produit" className="transition-colors hover:text-[#F04E10]">{t('footerNav.overview')}</a></li>
-                <li><a href="#modules" className="transition-colors hover:text-[#F04E10]">{t('footerNav.modulesLink')}</a></li>
-                <li><a href="#conformite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.complianceLink')}</a></li>
-                <li><a href="#securite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.securityLink')}</a></li>
-                <li><a href={`#${HOME_ANCHORS.deploy}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.deployLink')}</a></li>
-                <li><a href={`#${HOME_ANCHORS.trust}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.trustLink')}</a></li>
-                <li><a href={`#${HOME_ANCHORS.faq}`} className="transition-colors hover:text-[#F04E10]">{t('footerNav.faqLink')}</a></li>
-                <li><Link to="/login" className="transition-colors hover:text-[#F04E10]">{t('footerNav.signIn')}</Link></li>
+                <li><a href="#produit" className="transition-colors hover:text-[#C43C08]">{t('footerNav.overview')}</a></li>
+                <li><a href="#modules" className="transition-colors hover:text-[#C43C08]">{t('footerNav.modulesLink')}</a></li>
+                <li><a href="#conformite" className="transition-colors hover:text-[#C43C08]">{t('footerNav.complianceLink')}</a></li>
+                <li><a href="#securite" className="transition-colors hover:text-[#C43C08]">{t('footerNav.securityLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.deploy}`} className="transition-colors hover:text-[#C43C08]">{t('footerNav.deployLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.trust}`} className="transition-colors hover:text-[#C43C08]">{t('footerNav.trustLink')}</a></li>
+                <li><a href={`#${HOME_ANCHORS.faq}`} className="transition-colors hover:text-[#C43C08]">{t('footerNav.faqLink')}</a></li>
+                <li><Link to="/login" className="transition-colors hover:text-[#C43C08]">{t('footerNav.signIn')}</Link></li>
               </ul>
             </nav>
 
             <nav aria-label={t('footerNav.resources')}>
               <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.resources')}</p>
               <ul className="space-y-2.5 text-sm text-[#5A6672]">
-                <li><Link to="/logiciel-paie-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.payrollCi')}</Link></li>
-                <li><Link to="/gestion-conges-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.leaveCi')}</Link></li>
-                <li><Link to="/paiement-salaires-mobile-money" className="transition-colors hover:text-[#F04E10]">{t('footerNav.mobileMoney')}</Link></li>
-                <li><Link to="/sirh-afrique-ouest" className="transition-colors hover:text-[#F04E10]">{t('footerNav.westAfrica')}</Link></li>
-                <li><Link to="/sirh-saas-ou-on-premise" className="transition-colors hover:text-[#F04E10]">{t('footerNav.deployLink')}</Link></li>
-                <li><Link to="/guides/calcul-its-2024-cote-divoire" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideIts')}</Link></li>
-                <li><Link to="/guides/cotisations-cnps-2024" className="transition-colors hover:text-[#F04E10]">{t('footerNav.guideCnps')}</Link></li>
+                <li><Link to="/logiciel-paie-cote-divoire" className="transition-colors hover:text-[#C43C08]">{t('footerNav.payrollCi')}</Link></li>
+                <li><Link to="/gestion-conges-cote-divoire" className="transition-colors hover:text-[#C43C08]">{t('footerNav.leaveCi')}</Link></li>
+                <li><Link to="/paiement-salaires-mobile-money" className="transition-colors hover:text-[#C43C08]">{t('footerNav.mobileMoney')}</Link></li>
+                <li><Link to="/sirh-afrique-ouest" className="transition-colors hover:text-[#C43C08]">{t('footerNav.westAfrica')}</Link></li>
+                <li><Link to="/sirh-saas-ou-on-premise" className="transition-colors hover:text-[#C43C08]">{t('footerNav.deployLink')}</Link></li>
+                <li><Link to="/guides/calcul-its-2024-cote-divoire" className="transition-colors hover:text-[#C43C08]">{t('footerNav.guideIts')}</Link></li>
+                <li><Link to="/guides/cotisations-cnps-2024" className="transition-colors hover:text-[#C43C08]">{t('footerNav.guideCnps')}</Link></li>
               </ul>
             </nav>
 
             <nav aria-label={t('footerNav.legal')}>
               <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.legal')}</p>
               <ul className="space-y-2.5 text-sm text-[#5A6672]">
-                <li><Link to="/legal/mentions-legales" className="transition-colors hover:text-[#F04E10]">{t('footerNav.legalNotice')}</Link></li>
-                <li><Link to="/legal/confidentialite" className="transition-colors hover:text-[#F04E10]">{t('footerNav.privacy')}</Link></li>
-                <li><Link to="/legal/conditions" className="transition-colors hover:text-[#F04E10]">{t('footerNav.terms')}</Link></li>
-                <li><Link to="/legal/cookies" className="transition-colors hover:text-[#F04E10]">{t('footerNav.cookies')}</Link></li>
+                <li><Link to="/legal/mentions-legales" className="transition-colors hover:text-[#C43C08]">{t('footerNav.legalNotice')}</Link></li>
+                <li><Link to="/legal/confidentialite" className="transition-colors hover:text-[#C43C08]">{t('footerNav.privacy')}</Link></li>
+                <li><Link to="/legal/conditions" className="transition-colors hover:text-[#C43C08]">{t('footerNav.terms')}</Link></li>
+                <li><Link to="/legal/cookies" className="transition-colors hover:text-[#C43C08]">{t('footerNav.cookies')}</Link></li>
               </ul>
             </nav>
 
             <div>
               <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#0F1214]">{t('footerNav.contact')}</p>
               <ul className="space-y-2.5 text-sm text-[#5A6672]">
-                <li><a href={`mailto:${EMAIL}`} className="break-all transition-colors hover:text-[#F04E10]">{EMAIL}</a></li>
+                <li><a href={`mailto:${EMAIL}`} className="break-all transition-colors hover:text-[#C43C08]">{EMAIL}</a></li>
                 {PHONES.map(ph => (
-                  <li key={ph.e164}><a href={`tel:${ph.e164}`} className="nx-fig transition-colors hover:text-[#F04E10]">{ph.display}</a></li>
+                  <li key={ph.e164}><a href={`tel:${ph.e164}`} className="nx-fig transition-colors hover:text-[#C43C08]">{ph.display}</a></li>
                 ))}
-                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-[#F04E10]">WhatsApp {WHATSAPP_NUM}</a></li>
-                <li className="pt-1 text-xs leading-relaxed text-[#8A97A3]">{t('contact.address')}</li>
+                <li><a href={WHATSAPP} target="_blank" rel="noreferrer noopener" className="nx-fig transition-colors hover:text-[#C43C08]">WhatsApp {WHATSAPP_NUM}</a></li>
+                <li className="pt-1 text-xs leading-relaxed text-[#5A6672]">{t('contact.address')}</li>
               </ul>
             </div>
           </div>
 
-          <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-[#E4E8EB] pt-6 text-xs text-[#8A97A3]">
+          <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-[#E4E8EB] pt-6 text-xs text-[#5A6672]">
             <p>© {new Date().getFullYear()} {t('footer.editor')} — {t('footer.rights')}</p>
             <p className="font-mono uppercase tracking-[0.16em]">Abidjan · Côte d'Ivoire</p>
           </div>

@@ -809,7 +809,7 @@ export default function ItsSimulatorPage() {
                         <span className="text-xs"> ({t('simulator.onBase', { amount: money(l.base) })})</span>
                       )}
                     </span>
-                    <span className="font-mono text-orange-600">{money(l.amount)}</span>
+                    <span className="font-mono text-orange-700">{money(l.amount)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between font-semibold border-t border-border pt-1.5 mt-1.5">

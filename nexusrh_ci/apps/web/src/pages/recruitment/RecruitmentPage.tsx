@@ -646,7 +646,7 @@ export default function RecruitmentPage() {
                                       updateJob.mutate({ id: job.id, body: { status: 'closed' } })
                                     }
                                   }}
-                                  className="rounded-md p-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-orange-50 hover:text-orange-700 transition-colors"
                                   title={t('table.close', 'Clôturer l\'offre')}>
                                   <Ban className="h-4 w-4" />
                                 </button>

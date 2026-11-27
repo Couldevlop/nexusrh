@@ -166,7 +166,7 @@ describe('HomePage — deux modes de déploiement', () => {
 describe('HomePage — fonctionnalités par domaine', () => {
   it('six domaines, dans l’ordre demandé', () => {
     const { container } = render(<HomePage />)
-    const titles = [...container.querySelectorAll('[data-domain] > h3')].map(h => h.textContent?.replace(/^\d{2}/, ''))
+    const titles = [...container.querySelectorAll('[data-domain] > summary h3')].map(h => h.textContent?.replace(/^\d{2}/, ''))
     expect(titles).toEqual([
       'Administration du personnel', 'Paie et conformité', 'Temps et présence',
       'Talents', 'Expérience collaborateur', 'Sécurité et intégrations',
@@ -217,8 +217,7 @@ describe('HomePage — confiance, contacts et FAQ', () => {
     const section = sectionOf(container, 'confiance')
     const text = section.textContent ?? ''
     for (const s of [
-      'OpenLab Consulting', 'Cocody, Rivièra Faya Lauriers 8, Abidjan', 'infos@openlabconsulting.com',
-      'support@nexusrh-ci.com', '7h30 – 18h00', 'conçu pour accompagner la conformité à la loi n° 2013-450',
+      'OpenLab Consulting', 'Cocody, Rivièra Faya Lauriers 8, Abidjan', 'waopron@openlabconsulting.com', '7h30 – 18h00', 'conçu pour accompagner la conformité à la loi n° 2013-450',
     ]) expect(text, s).toContain(s)
     expect(section.querySelector('a[href="/legal/mentions-legales"]')).toBeTruthy()
     expect(section.querySelector('a[href="/legal/confidentialite"]')).toBeTruthy()

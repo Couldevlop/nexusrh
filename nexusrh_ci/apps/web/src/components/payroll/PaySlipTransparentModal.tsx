@@ -209,7 +209,7 @@ export default function PaySlipTransparentModal({
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiCnpsSal', lbl)}</p>
-                <p className="text-lg font-bold font-mono mt-0.5 text-orange-600">−{formatFCFA(data.slip.totalCnpsSal)}</p>
+                <p className="text-lg font-bold font-mono mt-0.5 text-orange-700">−{formatFCFA(data.slip.totalCnpsSal)}</p>
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('transparency.kpiIts', lbl)}</p>
@@ -346,7 +346,7 @@ export default function PaySlipTransparentModal({
                         <tr className="border-b border-border bg-primary/5">
                           <td className="py-2 font-semibold capitalize">{t('transparency.comparison.current', { month: formatMonth(data.slip.month) })}</td>
                           <td className="py-2 text-right font-mono">{formatFCFA(data.slip.grossSalary)}</td>
-                          <td className="py-2 text-right font-mono text-orange-600">{formatFCFA(data.slip.totalCnpsSal)}</td>
+                          <td className="py-2 text-right font-mono text-orange-700">{formatFCFA(data.slip.totalCnpsSal)}</td>
                           <td className="py-2 text-right font-mono text-rose-600">{formatFCFA(data.slip.its)}</td>
                           <td className="py-2 text-right font-mono font-bold text-green-700">{formatFCFA(data.slip.netPayable)}</td>
                         </tr>
@@ -360,7 +360,7 @@ export default function PaySlipTransparentModal({
                                 {' '}
                                 <DeltaIndicator current={prev.grossSalary} previous={row.grossSalary} />
                               </td>
-                              <td className="py-2 text-right font-mono text-orange-600">{formatFCFA(row.totalCnpsSal)}</td>
+                              <td className="py-2 text-right font-mono text-orange-700">{formatFCFA(row.totalCnpsSal)}</td>
                               <td className="py-2 text-right font-mono text-rose-600">{formatFCFA(row.its)}</td>
                               <td className="py-2 text-right font-mono">
                                 {formatFCFA(row.netPayable)}

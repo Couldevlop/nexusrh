@@ -142,15 +142,24 @@ export function formatFCFA(amount: number | string): string {
 }
 
 // Montant dans la devise du pack législatif (XOF, XAF, NGN, GHS…).
+//
+// `style: 'currency'` rendait « 145 500 F CFA » : le symbole CLDR de XOF en
+// français est « F CFA », et les séparateurs sont des U+202F (espace fine
+// insécable) plus un U+00A0 — PAS une seule espace ordinaire. Trois écarts en
+// découlaient : le dépôt spécifie « FCFA » (CLAUDE.md), la page vitrine retire
+// déjà U+202F parce qu'il manque aux polices PDF standard, et le repli NaN de
+// cette fonction rendait « 0 FCFA » — elle se contredisait elle-même.
+// On formate donc le NOMBRE seul, on normalise les espaces, et on pose le
+// symbole retenu par le projet.
 export function formatMoney(amount: number | string, currency: string = 'XOF'): string {
   const num = typeof amount === 'string' ? parseInt(amount) : amount
-  if (isNaN(num)) return currency === 'XOF' ? '0 FCFA' : `0 ${currency}`
-  return new Intl.NumberFormat('fr-CI', {
-    style: 'currency',
-    currency,
+  const symbole = currency === 'XOF' ? 'FCFA' : currency
+  if (isNaN(num)) return `0 ${symbole}`
+  const corps = new Intl.NumberFormat('fr-CI', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(num)
+  }).format(num).replace(/[\u202F\u00A0]/g, ' ')
+  return `${corps} ${symbole}`
 }
 
 // Date « calendaire » (sans heure significative) : AAAA-MM-JJ ou minuit UTC

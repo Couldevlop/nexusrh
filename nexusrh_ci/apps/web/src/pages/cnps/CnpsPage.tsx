@@ -581,7 +581,7 @@ export default function CnpsPage() {
                   <td className="p-4 font-medium">{t('declarations.quarterCell', { quarter: d.quarter, year: d.year })}</td>
                   <td className="p-4 text-muted-foreground text-xs">{d.months?.join(', ')}</td>
                   <td className="p-4 text-right font-mono">{formatFCFA(parseInt(d.masse_salariale ?? '0'))}</td>
-                  <td className="p-4 text-right font-mono text-orange-600">{formatFCFA(parseInt(d.total_cotisations ?? '0'))}</td>
+                  <td className="p-4 text-right font-mono text-orange-700">{formatFCFA(parseInt(d.total_cotisations ?? '0'))}</td>
                   <td className="p-4 text-center">{d.employees_count}</td>
                   <td className="p-4">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${

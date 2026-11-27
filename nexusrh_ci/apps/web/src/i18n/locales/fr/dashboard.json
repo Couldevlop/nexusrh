@@ -41,12 +41,12 @@
     "payslipsHeadcount": "Bulletins / Effectifs",
     "payslipsHeadcountSub": "6 derniers mois",
     "cnpsIndicators": "Indicateurs CNPS",
-    "cnpsIndicatorsSub": "Taux de conformité estimés",
-    "cnpsIndicatorsFootnote": "Basé sur le dernier audit · ",
+    "cnpsIndicatorsSub": "Depuis l'audit de conformité",
     "cnpsIndicatorsAuditLink": "Voir l'audit complet →",
     "tooltipThousandsFcfa": "{{value}} k FCFA",
     "noData": "Aucune donnée",
-    "unavailable": "Données indisponibles"
+    "unavailable": "Données indisponibles",
+    "cnpsIndicatorsEmpty": "Les taux de conformité CNPS et SMIG sont calculés par l'audit, à partir de vos bulletins réels."
   },
   "series": {
     "gross": "Brut",
@@ -57,11 +57,6 @@
     "cnpsTotal": "CNPS total",
     "itsDgi": "ITS / DGI",
     "employees": "Employés"
-  },
-  "compliance": {
-    "cnps": "CNPS",
-    "smig": "SMIG",
-    "mobile": "Mobile"
   },
   "table": {
     "title": "Périodes de paie",

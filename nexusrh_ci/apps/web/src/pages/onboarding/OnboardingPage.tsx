@@ -375,7 +375,7 @@ function JourneyBoard({ journeyId, onBack, canEdit, role }: {
                     </div>
                   )
                 })}
-                {steps.length === 0 && <p className="px-1 text-xs text-muted-foreground/60 italic">{t('kanban.dropHint')}</p>}
+                {steps.length === 0 && <p className="px-1 text-xs text-muted-foreground italic">{t('kanban.dropHint')}</p>}
               </div>
             </div>
           )

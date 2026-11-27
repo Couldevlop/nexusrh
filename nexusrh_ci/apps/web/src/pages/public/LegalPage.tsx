@@ -33,7 +33,7 @@ export default function LegalPage() {
     <div className="min-h-screen bg-white text-[#0F1214]">
       <div className="border-b border-[#E4E8EB]">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
-          <Link to="/" className="flex items-center gap-3 text-sm font-medium text-[#5A6672] transition-colors hover:text-[#F04E10]">
+          <Link to="/" className="flex items-center gap-3 text-sm font-medium text-[#5A6672] transition-colors hover:text-[#C43C08]">
             <span aria-hidden>←</span> {t('backHome')}
           </Link>
           <img src="/openlab.png" alt="OpenLab Consulting" className="h-7 w-auto" />
@@ -43,7 +43,7 @@ export default function LegalPage() {
       <article className="mx-auto max-w-3xl px-6 py-16">
         <h1 className="text-4xl font-bold leading-tight tracking-tight">{t(`${base}.title`)}</h1>
         <p className="mt-4 text-base leading-relaxed text-[#5A6672]">{t(`${base}.lead`)}</p>
-        <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.16em] text-[#8A97A3]">
+        <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B7785]">
           {t('updated')} — {t('updatedValue')}
         </p>
 
@@ -51,7 +51,7 @@ export default function LegalPage() {
           {entry.sections.map((s, i) => (
             <section key={s}>
               <h2 className="flex items-baseline gap-3 text-lg font-bold tracking-tight">
-                <span className="font-mono text-xs text-[#F04E10]">{String(i + 1).padStart(2, '0')}</span>
+                <span className="font-mono text-xs text-[#C43C08]">{String(i + 1).padStart(2, '0')}</span>
                 {t(`${base}.${s}.h`)}
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[#3F4B56]">{t(`${base}.${s}.p`)}</p>
@@ -59,7 +59,7 @@ export default function LegalPage() {
           ))}
         </div>
 
-        <p className="mt-14 border-t border-[#E4E8EB] pt-6 text-xs leading-relaxed text-[#8A97A3]">
+        <p className="mt-14 border-t border-[#E4E8EB] pt-6 text-xs leading-relaxed text-[#6B7785]">
           {t('disclaimer')}
         </p>
       </article>

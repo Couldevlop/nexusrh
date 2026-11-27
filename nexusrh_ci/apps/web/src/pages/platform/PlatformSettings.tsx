@@ -636,7 +636,7 @@ export default function PlatformSettings() {
                 </span>
               </div>
               <Field label={t('settings.notifications.supportEmail')} hint={t('settings.notifications.supportEmailHint')}>
-                <input type="email" className={inputCls} value={settings.support_email ?? 'support@nexusrh-ci.com'}
+                <input type="email" className={inputCls} value={settings.support_email ?? 'waopron@openlabconsulting.com'}
                   onChange={e => update('support_email', e.target.value)} />
               </Field>
               <Field label={t('settings.notifications.supportPhone')} hint={t('settings.notifications.supportPhoneHint')}>

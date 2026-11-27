@@ -142,9 +142,10 @@ export const PHONES: readonly Phone[] = [
 export const PUBLISHER = {
   name: 'OpenLab Consulting',
   url: 'https://www.openlabconsulting.com',
-  demoEmail: 'waopron@openlabconsulting.com',
-  infoEmail: 'infos@openlabconsulting.com',
-  supportEmail: 'support@nexusrh-ci.com',
+  // Adresse UNIQUE : infos@openlabconsulting.com et support@nexusrh-ci.com
+  // n'ont jamais existe comme boites aux lettres. Elles etaient publiees sur la
+  // vitrine, dans le JSON-LD et au pied de chaque e-mail envoye aux clients.
+  email: 'waopron@openlabconsulting.com',
   whatsappDisplay: '+225 07 49 43 92 03',
   whatsapp: 'https://wa.me/2250749439203',
 } as const

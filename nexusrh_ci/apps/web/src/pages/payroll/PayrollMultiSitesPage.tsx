@@ -545,7 +545,7 @@ function DraftTimeline({ periodId }: { periodId: string }) {
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1"><User className="h-3 w-3" /> {ev.actorName}</span>
                   <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {formatDateTime(ev.at)}</span>
-                  {detail && <span className="text-muted-foreground/80">{detail}</span>}
+                  {detail && <span className="text-muted-foreground">{detail}</span>}
                 </div>
               </li>
             )

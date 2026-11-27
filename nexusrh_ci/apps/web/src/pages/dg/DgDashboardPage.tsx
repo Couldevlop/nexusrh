@@ -255,7 +255,8 @@ export default function DgDashboardPage() {
                   contentStyle={{ borderRadius: 8, fontSize: 12 }}
                   formatter={(v: number, n: string) => [t('overview.charts.tooltipThousandsFcfa', { value: v.toLocaleString('fr-CI') }), n]}
                 />
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }}
+                  formatter={(v: string) => <span className="text-foreground">{v}</span>} />
                 <Bar dataKey="brut" name={t('overview.series.gross')} fill="#4F46E5" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="net"  name={t('overview.series.net')}  fill="#10B981" radius={[3, 3, 0, 0]} />
                 <Line dataKey="cnps" name={t('overview.series.cnps')} stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} type="monotone" />

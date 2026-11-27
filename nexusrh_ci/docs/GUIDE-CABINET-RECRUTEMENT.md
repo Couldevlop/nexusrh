@@ -3,7 +3,7 @@
 **Édition spéciale partenaires : cabinets & agences de recrutement**
 _La RH Intelligente, au service de l'Afrique qui avance_
 
-OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · infos@openlabconsulting.com · +225 07 09 33 42 38
+OpenLab Consulting · Cocody, Rivièra Faya Lauriers 8, Abidjan · waopron@openlabconsulting.com · +225 07 09 33 42 38
 
 ---
 
@@ -111,7 +111,7 @@ CNPS 2024 (retraite, prestations familiales, AT par secteur), ITS/DGI (barème 2
 
 ## 9. Support
 
-**OpenLab Consulting** · Support WhatsApp **+225 07 49 43 92 03** · support@nexusrh-ci.com
+**OpenLab Consulting** · Support WhatsApp **+225 07 49 43 92 03** · waopron@openlabconsulting.com
 Horaires : Lun–Ven 7h30–18h00 (heure d'Abidjan)
 
 ---

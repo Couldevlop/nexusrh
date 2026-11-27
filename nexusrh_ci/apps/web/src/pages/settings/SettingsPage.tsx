@@ -1081,7 +1081,7 @@ export function UsersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <td className="p-4">
                   <div className="flex items-center gap-2">
                     <button onClick={() => toggle.mutate({ id: u.id, is_active: !u.is_active })}
-                      className={`text-xs ${u.is_active ? 'text-orange-600 hover:underline' : 'text-green-600 hover:underline'}`}>
+                      className={`text-xs ${u.is_active ? 'text-orange-700 hover:underline' : 'text-green-600 hover:underline'}`}>
                       {u.is_active ? t('users.deactivate') : t('users.activate')}
                     </button>
                     <button
@@ -2133,7 +2133,7 @@ export const IMPORT_TEMPLATES: ImportTemplate[] = [
   {
     id: 'absences',
     icon: CalendarDays,
-    color: 'bg-orange-100 text-orange-600',
+    color: 'bg-orange-100 text-orange-700',
     endpoint: '/settings/import/absences',
     headers: ['email_employe','type_absence','date_debut','date_fin','statut','motif'],
     example: [
@@ -2671,7 +2671,7 @@ const LEVEL_NAME_KEYS = ['directManager', 'hrManager', 'accounting', 'generalMan
 
 // Icône + couleur par module ; libellé/description traduits via workflow.modules.<module>.*
 const MODULE_META: Record<string, { icon: React.ElementType; color: string }> = {
-  absences: { icon: CalendarDays, color: 'bg-orange-100 text-orange-600' },
+  absences: { icon: CalendarDays, color: 'bg-orange-100 text-orange-700' },
   expenses: { icon: Receipt,      color: 'bg-rose-100 text-rose-600' },
   payroll:  { icon: Banknote,     color: 'bg-green-100 text-green-600' },
 }
