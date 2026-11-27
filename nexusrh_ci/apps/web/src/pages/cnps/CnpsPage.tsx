@@ -35,7 +35,11 @@ async function apiErrorMessage(e: unknown, fallback: string): Promise<string> {
         ? await data.text()
         : await new Promise<string>((resolve, reject) => {
             const reader = new FileReader()
-            reader.onload = () => resolve(String(reader.result ?? ''))
+            // `readAsText` ne produit qu'une chaîne ; `String()` sur le type
+            // déclaré (`string | ArrayBuffer | null`) aurait rendu la chaîne
+            // « [object ArrayBuffer] » au lieu d'échouer. Le test de type dit
+            // ce que la lecture garantit réellement.
+            reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
             reader.onerror = () => reject(reader.error)
             reader.readAsText(data)
           })

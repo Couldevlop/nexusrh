@@ -68,7 +68,7 @@ async function fetchText(url: string): Promise<string> {
       return await readBodyCapped(res, MAX_BODY_BYTES)
     } catch (e) {
       if (e instanceof BodyTooLargeError) {
-        throw new Error(`Body trop grand (> ${MAX_BODY_BYTES} bytes)`)
+        throw new Error(`Body trop grand (> ${MAX_BODY_BYTES} bytes)`, { cause: e })
       }
       throw e
     }

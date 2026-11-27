@@ -301,7 +301,7 @@ async function upsertDay(schema: string, employeeId: string, day: ComputedDay, e
       [employeeId, day.workDate, day.firstIn, day.lastOut, expectedStart, day.lateMinutes, day.status, day.justifiedBy],
     )
   } catch (e) {
-    throw new Error(`upsertDay a échoué (employee=${employeeId}, date=${day.workDate}) : ${(e as Error).message}`)
+    throw new Error(`upsertDay a échoué (employee=${employeeId}, date=${day.workDate}) : ${(e as Error).message}`, { cause: e })
   }
 }
 
@@ -434,7 +434,7 @@ async function insertWarning(
     if (!id) throw new Error('INSERT sans ligne retournée')
     return id
   } catch (e) {
-    throw new Error(`insertWarning a échoué (employee=${w.employeeId}) : ${(e as Error).message}`)
+    throw new Error(`insertWarning a échoué (employee=${w.employeeId}) : ${(e as Error).message}`, { cause: e })
   }
 }
 
@@ -463,7 +463,7 @@ async function insertSanctionDraft(schema: string, draft: SanctionDraftInput): P
     if (!id) throw new Error('INSERT sans ligne retournée')
     return id
   } catch (e) {
-    throw new Error(`insertSanctionDraft a échoué (employee=${draft.employeeId}) : ${(e as Error).message}`)
+    throw new Error(`insertSanctionDraft a échoué (employee=${draft.employeeId}) : ${(e as Error).message}`, { cause: e })
   }
 }
 

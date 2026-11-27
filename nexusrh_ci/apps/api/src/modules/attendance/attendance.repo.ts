@@ -298,7 +298,7 @@ export async function upsertDay(pool: Pool, schema: string, day: UpsertDayInput)
       ],
     )
   } catch (e) {
-    throw new Error(`upsertDay a échoué (employee=${day.employeeId}, date=${day.workDate}) : ${(e as Error).message}`)
+    throw new Error(`upsertDay a échoué (employee=${day.employeeId}, date=${day.workDate}) : ${(e as Error).message}`, { cause: e })
   }
 }
 
@@ -432,7 +432,7 @@ export async function insertWarning(pool: Pool, schema: string, w: InsertWarning
     if (!id) throw new Error('INSERT sans ligne retournée')
     return id
   } catch (e) {
-    throw new Error(`insertWarning a échoué (employee=${w.employeeId}) : ${(e as Error).message}`)
+    throw new Error(`insertWarning a échoué (employee=${w.employeeId}) : ${(e as Error).message}`, { cause: e })
   }
 }
 
@@ -466,6 +466,6 @@ export async function insertSanctionDraft(pool: Pool, schema: string, draft: San
     if (!id) throw new Error('INSERT sans ligne retournée')
     return id
   } catch (e) {
-    throw new Error(`insertSanctionDraft a échoué (employee=${draft.employeeId}) : ${(e as Error).message}`)
+    throw new Error(`insertSanctionDraft a échoué (employee=${draft.employeeId}) : ${(e as Error).message}`, { cause: e })
   }
 }

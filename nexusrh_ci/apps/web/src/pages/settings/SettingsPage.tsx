@@ -694,7 +694,13 @@ function GeneralTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 if (!file) return
                 if (file.size > 1_000_000) { void alertDialog({ message: t('general.logoTooLarge', { defaultValue: 'Image trop volumineuse (max 1 Mo).' }) }); return }
                 const reader = new FileReader()
-                reader.onload = () => setForm(p => ({ ...p, logo_url: String(reader.result) }))
+                // `readAsDataURL` ne produit qu'une chaîne. `String()` sur le
+                // type déclaré aurait enregistré « [object ArrayBuffer] » dans
+                // logo_url — un logo cassé pour tout le tenant, sans erreur.
+                reader.onload = () => {
+                  const resultat = reader.result
+                  if (typeof resultat === 'string') setForm(p => ({ ...p, logo_url: resultat }))
+                }
                 reader.readAsDataURL(file)
               }}
               className="text-sm" />

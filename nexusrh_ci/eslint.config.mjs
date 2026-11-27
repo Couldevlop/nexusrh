@@ -46,7 +46,18 @@ const REGLES_DEFAUTS = {
   '@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true }],
   // Une fonction async passée là où un retour `void` est attendu (un
   // gestionnaire d'évènement, un `forEach`) : personne n'attend la promesse.
-  '@typescript-eslint/no-misused-promises': 'error',
+  //
+  // `checksVoidReturn.attributes` est désactivé : 74 des 77 constats étaient
+  // des `onClick={async () => …}` et des `onSubmit={handleSubmit(…)}`, c'est-
+  // à-dire la forme idiomatique de React, que React Hook Form impose même.
+  // Les réécrire en `onClick={() => { void handler() }}` ne protège de rien :
+  // un rejet y est tout aussi perdu, il est seulement écrit autrement. Ce qui
+  // protège réellement, c'est la gestion d'erreur DANS le gestionnaire, que
+  // cette règle ne sait pas vérifier. Les 3 constats restants (argument et
+  // propriété, pas attribut) sont de vrais cas et restent signalés.
+  '@typescript-eslint/no-misused-promises': ['error', {
+    checksVoidReturn: { attributes: false },
+  }],
   '@typescript-eslint/await-thenable': 'error',
   // DESACTIVEE apres essai : son autocorrection a casse la compilation.
   // `npx eslint . --fix` a retire 157 assertions declarees inutiles ; `tsc`

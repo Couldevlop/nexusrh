@@ -1886,7 +1886,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation', issues: parsed.error.flatten() })
       }
-      const body = parsed.data as Record<string, unknown>
+      const body = parsed.data
+      // Indexation par clé dynamique, pour la boucle de mappage ci-dessous
+      // uniquement. Zod vient de valider la forme : ce cast ne sert qu'à
+      // l'accès par chaîne, et surtout il ne REMPLACE plus `body`, qui garde
+      // donc les types inférés (`body.rate` reste un `number`).
+      const champs = body as Record<string, unknown>
       // Mappe le modèle API (name/rate/formula) vers les colonnes réelles
       // (label/formula). 'rate' seul devient une formule "BRUT * <taux>".
       // ceiling_type/description ne sont pas stockés (colonnes absentes).
@@ -1898,17 +1903,24 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const values: unknown[] = []
       const changedFields: Record<string, unknown> = {}
       for (const [f, col] of Object.entries(colMap)) {
-        if (f in body) {
+        if (f in champs) {
           updates.push(`${col} = $${values.length + 1}`)
-          values.push(body[f])
-          changedFields[f] = body[f]
+          values.push(champs[f])
+          changedFields[f] = champs[f]
         }
       }
-      // rate fourni sans formula explicite → traduit en formule
-      if ('rate' in body && !('formula' in body) && body['rate'] != null) {
+      // rate fourni sans formula explicite → traduit en formule.
+      //
+      // `rate` est validé par Zod comme un `number` borné (-10 à 10). Mais il
+      // était lu via `body['rate']` sur un `Record<string, unknown>` : le type
+      // que Zod venait d'établir était jeté une ligne plus haut, et la formule
+      // de paie écrite en base devenait « BRUT * [object Object] » pour toute
+      // valeur non scalaire. Lu sur `body`, le type survit et la concaténation
+      // ne porte plus que sur un nombre.
+      if (body.rate != null && body.formula === undefined) {
         updates.push(`formula = $${values.length + 1}`)
-        values.push(`BRUT * ${body['rate']}`)
-        changedFields['formula'] = `BRUT * ${body['rate']}`
+        values.push(`BRUT * ${body.rate}`)
+        changedFields['formula'] = `BRUT * ${body.rate}`
       }
       if (!updates.length) return reply.status(400).send({ error: 'Aucun champ' })
       values.push(id)
