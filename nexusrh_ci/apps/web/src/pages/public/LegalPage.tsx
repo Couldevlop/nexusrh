@@ -43,7 +43,7 @@ export default function LegalPage() {
       <article className="mx-auto max-w-3xl px-6 py-16">
         <h1 className="text-4xl font-bold leading-tight tracking-tight">{t(`${base}.title`)}</h1>
         <p className="mt-4 text-base leading-relaxed text-[#5A6672]">{t(`${base}.lead`)}</p>
-        <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.16em] text-[#8A97A3]">
+        <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B7785]">
           {t('updated')} — {t('updatedValue')}
         </p>
 
@@ -59,7 +59,7 @@ export default function LegalPage() {
           ))}
         </div>
 
-        <p className="mt-14 border-t border-[#E4E8EB] pt-6 text-xs leading-relaxed text-[#8A97A3]">
+        <p className="mt-14 border-t border-[#E4E8EB] pt-6 text-xs leading-relaxed text-[#6B7785]">
           {t('disclaimer')}
         </p>
       </article>

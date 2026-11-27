@@ -147,7 +147,7 @@ function Page({ page }: { page: SeoPageContent }) {
       </header>
 
       <main id="contenu" className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
-        <nav aria-label={ui.crumbs} className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#8A97A3]">
+        <nav aria-label={ui.crumbs} className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#6B7785]">
           <ol className="flex flex-wrap items-center gap-2">
             <li><Link to="/" className="hover:text-[#F04E10]">{ui.home}</Link></li>
             <li aria-hidden>/</li>
@@ -158,7 +158,7 @@ function Page({ page }: { page: SeoPageContent }) {
         <article className="mt-6">
           <h1 className="text-3xl font-bold leading-tight tracking-[-0.02em] sm:text-[2.6rem]">{page.h1}</h1>
           <p className="mt-5 text-lg leading-relaxed text-[#5A6672]">{page.lead}</p>
-          <p className="mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-[#8A97A3]">
+          <p className="mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-[#6B7785]">
             {ui.updated} <time dateTime={page.updated}>{formatDate(page.updated, page.lang)}</time> · OpenLab Consulting
           </p>
 

@@ -166,7 +166,7 @@ describe('HomePage — deux modes de déploiement', () => {
 describe('HomePage — fonctionnalités par domaine', () => {
   it('six domaines, dans l’ordre demandé', () => {
     const { container } = render(<HomePage />)
-    const titles = [...container.querySelectorAll('[data-domain] > h3')].map(h => h.textContent?.replace(/^\d{2}/, ''))
+    const titles = [...container.querySelectorAll('[data-domain] > summary h3')].map(h => h.textContent?.replace(/^\d{2}/, ''))
     expect(titles).toEqual([
       'Administration du personnel', 'Paie et conformité', 'Temps et présence',
       'Talents', 'Expérience collaborateur', 'Sécurité et intégrations',

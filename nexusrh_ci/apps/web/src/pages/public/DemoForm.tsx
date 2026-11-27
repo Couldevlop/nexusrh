@@ -138,7 +138,7 @@ export default function DemoForm() {
               aria-describedby="df-captcha-hint" />
           </div>
           <div className="mt-1.5 flex items-center justify-between">
-            <span id="df-captcha-hint" className="text-[11px] text-[#8A97A3]">{t('form.captchaHint')}</span>
+            <span id="df-captcha-hint" className="text-[11px] text-[#6B7785]">{t('form.captchaHint')}</span>
             <button type="button" onClick={() => void loadCaptcha()}
               className="text-[11px] text-[#5A6672] underline-offset-2 hover:underline">
               {t('form.captchaReload')}
@@ -170,7 +170,7 @@ export default function DemoForm() {
           className="rounded-lg bg-[#F04E10] px-7 py-4 text-sm font-bold text-white transition-all hover:bg-[#C43C08] disabled:opacity-60">
           {status === 'sending' ? t('form.submitting') : t('form.submit')}
         </button>
-        <p className="max-w-sm text-xs leading-relaxed text-[#8A97A3]">{t('form.privacy')}</p>
+        <p className="max-w-sm text-xs leading-relaxed text-[#6B7785]">{t('form.privacy')}</p>
       </div>
     </form>
   )
