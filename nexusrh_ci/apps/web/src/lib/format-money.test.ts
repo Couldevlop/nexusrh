@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { formatFCFA, formatMoney } from './api'
 
 /** Tout caractère d'espacement non ordinaire (fine insécable, insécable…). */
-const ESPACES_EXOTIQUES = /[    ]/
+const ESPACES_EXOTIQUES = /[\u202F\u00A0\u2007\u2009]/
 
 describe('formatFCFA', () => {
   it('écrit « FCFA », jamais le symbole CLDR « F CFA »', () => {
